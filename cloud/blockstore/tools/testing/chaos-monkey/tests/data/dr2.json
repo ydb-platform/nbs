@@ -1,0 +1,1245 @@
+{
+  "Backup": {
+    "Agents": [
+      {
+        "NodeId": 1042,
+        "Devices": [
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+            "DeviceUUID": "026c6ae52ece8e44074412519c1cb626",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+            "DeviceUUID": "233a339f28fc43de9ea98c24c350a067",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+            "DeviceUUID": "2f4627d1e0782934f61d12683caab6e2",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+            "DeviceUUID": "32504defa71b5f30dd69aeb5bcf827e5",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+            "DeviceUUID": "4fcc745bb241df9ed00a4209c14bd26b",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+            "DeviceUUID": "564ae5f981b465ec6d3f1a456e53c763",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+            "DeviceUUID": "738be3eb1531539c75359be3c2c2645e",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+            "DeviceUUID": "7e8d05e8e695cec993865a222b4ecfe4",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+            "DeviceUUID": "83f63dd8e6276ff00c4a5020bc50765e",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+            "DeviceUUID": "9e05a730bb8ba8a8cf9541c5000b74f9",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+            "DeviceUUID": "ac5e33dcfe5110c57798c5f5607ca0b1",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+            "DeviceUUID": "b05fd0dfe9dafeab5f36602bf369589f",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+            "DeviceUUID": "d4d2b4db9310b9f2db3baa1b2c23101f",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+            "DeviceUUID": "de9b5b08983bbfcf41c1ca14de83b5e9",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "State": "DEVICE_STATE_ERROR",
+            "StateMessage": "MirroredDiskId=xxx, ReplacementReason=yyy",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+            "DeviceUUID": "e1b4969cb1729e75022726f74dab9bd6",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1042,
+            "Rack": "sas-9:1",
+            "State": "DEVICE_STATE_ERROR",
+            "StateTs": "1672053059428866",
+            "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-3.cloud.yandex.net",
+              "Port": 10020
+            }
+          }
+        ],
+        "AgentId": "sas09-2ct29-3.cloud.yandex.net",
+        "State": "AGENT_STATE_UNAVAILABLE",
+        "StateTs": "1673574046273753",
+        "SeqNumber": "1",
+        "DedicatedDiskAgent": true,
+        "StateMessage": "private api: finish migration test (eternal-1023gb-nonrepl-test-disk)"
+      },
+      {
+        "NodeId": 1040,
+        "Devices": [
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+            "DeviceUUID": "19976ede574249e1c20ee6a1ec255c07",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+            "DeviceUUID": "1f70a1d5c53d46c4f8324d9a7835de92",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+            "DeviceUUID": "34c0cbd43d1dce03b31fb913061ccc63",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+            "DeviceUUID": "40f2fb197c93049012a0d06dbd8f371b",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+            "DeviceUUID": "4f7c2de457e93e4f28f07999a07f2ae5",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+            "DeviceUUID": "5e5d4b80a4da549463a8e551bf296a63",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+            "DeviceUUID": "63984b18824befa1d617784f8abdc712",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+            "DeviceUUID": "6ba395a798c2ae4ebdfd8159c1958001",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+            "DeviceUUID": "7abbc656637552c4faca3213113aa089",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateMessage": "MirroredDiskId=xxx, ReplacementReason=yyy",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+            "DeviceUUID": "a44f20b5886e2e6df97019f77ce76396",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "State": "DEVICE_STATE_WARNING",
+            "StateMessage": "MirroredDiskId=xxx, ReplacementReason=yyy",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+            "DeviceUUID": "a54d2c5beccf58038068cd52461b41a9",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "State": "DEVICE_STATE_ERROR",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+            "DeviceUUID": "a9182abab80148cb1a199924e1ab37ac",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "State": "DEVICE_STATE_ERROR",
+            "StateMessage": "MirroredDiskId=xxx, ReplacementReason=yyy",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+            "DeviceUUID": "adfbf06cf323b6ab2344c124b0934ae1",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+            "DeviceUUID": "b562379039438a62f176a1f05d8c214a",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          },
+          {
+            "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+            "DeviceUUID": "cf3089c78dc94658f6efd663c32831c9",
+            "BlockSize": 4096,
+            "BlocksCount": "24379392",
+            "NodeId": 1040,
+            "Rack": "sas-10:1",
+            "StateTs": "1672053125040324",
+            "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+            "UnadjustedBlockCount": "24413696",
+            "RdmaEndpoint": {
+              "Host": "sas09-2ct29-4.cloud.yandex.net",
+              "Port": 10020
+            }
+          }
+        ],
+        "AgentId": "sas09-2ct29-4.cloud.yandex.net",
+        "State": "AGENT_STATE_WARNING",
+        "StateTs": "1673622375118772",
+        "SeqNumber": "1",
+        "DedicatedDiskAgent": true,
+        "StateMessage": "private api: start migration test (eternal-1023gb-nonrepl-test-disk)"
+      }
+    ],
+    "Config": {
+      "Version": 12,
+      "KnownAgents": [
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "026c6ae52ece8e44074412519c1cb626"
+            },
+            {
+              "DeviceUUID": "233a339f28fc43de9ea98c24c350a067"
+            },
+            {
+              "DeviceUUID": "2f4627d1e0782934f61d12683caab6e2"
+            },
+            {
+              "DeviceUUID": "32504defa71b5f30dd69aeb5bcf827e5"
+            },
+            {
+              "DeviceUUID": "4fcc745bb241df9ed00a4209c14bd26b"
+            },
+            {
+              "DeviceUUID": "564ae5f981b465ec6d3f1a456e53c763"
+            },
+            {
+              "DeviceUUID": "738be3eb1531539c75359be3c2c2645e"
+            },
+            {
+              "DeviceUUID": "7e8d05e8e695cec993865a222b4ecfe4"
+            },
+            {
+              "DeviceUUID": "83f63dd8e6276ff00c4a5020bc50765e"
+            },
+            {
+              "DeviceUUID": "9e05a730bb8ba8a8cf9541c5000b74f9"
+            },
+            {
+              "DeviceUUID": "ac5e33dcfe5110c57798c5f5607ca0b1"
+            },
+            {
+              "DeviceUUID": "b05fd0dfe9dafeab5f36602bf369589f"
+            },
+            {
+              "DeviceUUID": "d4d2b4db9310b9f2db3baa1b2c23101f"
+            },
+            {
+              "DeviceUUID": "de9b5b08983bbfcf41c1ca14de83b5e9"
+            },
+            {
+              "DeviceUUID": "e1b4969cb1729e75022726f74dab9bd6"
+            }
+          ],
+          "AgentId": "sas09-2ct29-3.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "19976ede574249e1c20ee6a1ec255c07"
+            },
+            {
+              "DeviceUUID": "1f70a1d5c53d46c4f8324d9a7835de92"
+            },
+            {
+              "DeviceUUID": "34c0cbd43d1dce03b31fb913061ccc63"
+            },
+            {
+              "DeviceUUID": "40f2fb197c93049012a0d06dbd8f371b"
+            },
+            {
+              "DeviceUUID": "4f7c2de457e93e4f28f07999a07f2ae5"
+            },
+            {
+              "DeviceUUID": "5e5d4b80a4da549463a8e551bf296a63"
+            },
+            {
+              "DeviceUUID": "63984b18824befa1d617784f8abdc712"
+            },
+            {
+              "DeviceUUID": "6ba395a798c2ae4ebdfd8159c1958001"
+            },
+            {
+              "DeviceUUID": "7abbc656637552c4faca3213113aa089"
+            },
+            {
+              "DeviceUUID": "a44f20b5886e2e6df97019f77ce76396"
+            },
+            {
+              "DeviceUUID": "a54d2c5beccf58038068cd52461b41a9"
+            },
+            {
+              "DeviceUUID": "a9182abab80148cb1a199924e1ab37ac"
+            },
+            {
+              "DeviceUUID": "adfbf06cf323b6ab2344c124b0934ae1"
+            },
+            {
+              "DeviceUUID": "b562379039438a62f176a1f05d8c214a"
+            },
+            {
+              "DeviceUUID": "cf3089c78dc94658f6efd663c32831c9"
+            }
+          ],
+          "AgentId": "sas09-2ct29-4.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "04e69ef275002f98b7d3e4e4adb948bf"
+            },
+            {
+              "DeviceUUID": "2ce4a1af8cb84a97cb82d42e0f0ae2a9"
+            },
+            {
+              "DeviceUUID": "328e515d9c13f21296160f43d58dbf1b"
+            },
+            {
+              "DeviceUUID": "3754fc41e4d23bf6b960931d817642a8"
+            },
+            {
+              "DeviceUUID": "3d9dff90f7756ea7c975726f167cf1a2"
+            },
+            {
+              "DeviceUUID": "438346981e4b0a749c130c802cfec81a"
+            },
+            {
+              "DeviceUUID": "45f346241e63e2241470235f7c8d7fed"
+            },
+            {
+              "DeviceUUID": "6cf41de39b4c1eb245afd50b71680088"
+            },
+            {
+              "DeviceUUID": "80fce5465056dcf1eec95f96a4279ae2"
+            },
+            {
+              "DeviceUUID": "a2a806b37aacebdf653424ee7e85e5e0"
+            },
+            {
+              "DeviceUUID": "a7e9f61666c5e5992fd59222bde85b2d"
+            },
+            {
+              "DeviceUUID": "b2b0a3e48257ca3573b2d046195a6d02"
+            },
+            {
+              "DeviceUUID": "cc083974538fd2291b2da97d67172e72"
+            },
+            {
+              "DeviceUUID": "d67edfcedb4402ae99eff37b1c9273db"
+            },
+            {
+              "DeviceUUID": "d74f25e7dcd237cb5cc28bee127066e9"
+            }
+          ],
+          "AgentId": "sas09-2ct29-5.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "0352186e9b313660025b94d46148ce14"
+            },
+            {
+              "DeviceUUID": "04b1b778bb89edc6346bd4b301fc1296"
+            },
+            {
+              "DeviceUUID": "12c79c1e7d0cc7e1cc5694bad26be7ad"
+            },
+            {
+              "DeviceUUID": "164dc4becc6b3d9f31644211b9c301a7"
+            },
+            {
+              "DeviceUUID": "186eeb768663fb0e83b5fda25deb8096"
+            },
+            {
+              "DeviceUUID": "219c1b9c9d49906a21b818d32e8a241c"
+            },
+            {
+              "DeviceUUID": "22bb3d161afb183ad323d9fe8b79a4b2"
+            },
+            {
+              "DeviceUUID": "2b16b9272f975861cefcc03e493b9451"
+            },
+            {
+              "DeviceUUID": "2b41600bde1c46ec60697723e6ed6903"
+            },
+            {
+              "DeviceUUID": "2db6a0025438b56a526474de81a60513"
+            },
+            {
+              "DeviceUUID": "2ef4cddde8bdf1180ff0ea0b86a7914c"
+            },
+            {
+              "DeviceUUID": "3e973b13510ed2e9929b9e740a3db680"
+            },
+            {
+              "DeviceUUID": "3feb6aecc90c24ce72f1c7fc26c9b664"
+            },
+            {
+              "DeviceUUID": "406d1de3778cc8eaaa42e446494abf71"
+            },
+            {
+              "DeviceUUID": "412e4f090c001a7592732306a5245673"
+            },
+            {
+              "DeviceUUID": "41dda6765a109fac9bafca59f434a8b5"
+            },
+            {
+              "DeviceUUID": "42695fb56d3fedba56ae5a9c94484436"
+            },
+            {
+              "DeviceUUID": "42d4efb1e8e54aaac15574a71fee7b6c"
+            },
+            {
+              "DeviceUUID": "4a520a591869bed918d6c77ce7805900"
+            },
+            {
+              "DeviceUUID": "4a82923f9d332c8e70c5da5feae5cd03"
+            },
+            {
+              "DeviceUUID": "518ac0b5f6d638c1b43e37554b4babb5"
+            },
+            {
+              "DeviceUUID": "51b9af616bc8a1ff77e63f90a17c6d57"
+            },
+            {
+              "DeviceUUID": "5d00d141e922c76d231c15d6b7a29e12"
+            },
+            {
+              "DeviceUUID": "64ef15b5e459f8cd914b5235cf68cc8d"
+            },
+            {
+              "DeviceUUID": "66aa2891262ecc479dcaa6c186bae9c0"
+            },
+            {
+              "DeviceUUID": "6f6656311e6d84c35c6b8a92430d7f6a"
+            },
+            {
+              "DeviceUUID": "7310bb2ac98007dfe1c540c0257b4305"
+            },
+            {
+              "DeviceUUID": "73bbbc1ab0f12e40a4bf3cc3155ebd7e"
+            },
+            {
+              "DeviceUUID": "77eba96cb3938878a8bbac8fad41034c"
+            },
+            {
+              "DeviceUUID": "78c5596d5c656f829cd0fe42b5e675d3"
+            },
+            {
+              "DeviceUUID": "790325852dff534bceccd66aac19d97a"
+            },
+            {
+              "DeviceUUID": "7a4ad2c3621e66e23abfebc54a9b7f85"
+            },
+            {
+              "DeviceUUID": "84e70adcafbea17844501f3301c5c301"
+            },
+            {
+              "DeviceUUID": "88b66acaa22bfa115f5b4c36d9f63d19"
+            },
+            {
+              "DeviceUUID": "88d035e9ddc0970664e2a9f1e63f45f4"
+            },
+            {
+              "DeviceUUID": "928fdc3c74c595769340a5b004d7b72e"
+            },
+            {
+              "DeviceUUID": "a37e203481b033c2201700a1d08cf757"
+            },
+            {
+              "DeviceUUID": "a9b239b7fced92d004455a22ead88de4"
+            },
+            {
+              "DeviceUUID": "abd2b21a4def4e344709f5de0f29d4c7"
+            },
+            {
+              "DeviceUUID": "afd97bfc5262860f8992fb9496f674da"
+            },
+            {
+              "DeviceUUID": "b29605794133c699dcc1b2a4e2f3d56c"
+            },
+            {
+              "DeviceUUID": "b572177fd7cdaea98ac9fa76c54575f5"
+            },
+            {
+              "DeviceUUID": "b6b9a3994c89d4cb0924b2997e0004ec"
+            },
+            {
+              "DeviceUUID": "bfb75efd0aaad9dbf98a2ed1fbe61457"
+            },
+            {
+              "DeviceUUID": "c1f47bd22a8f3c797e0ea0065303d672"
+            },
+            {
+              "DeviceUUID": "c2a47e963169e0000bbc3a1f5dde4b6b"
+            },
+            {
+              "DeviceUUID": "c88db9d09d4ee88139b0d10d8b5ebff3"
+            },
+            {
+              "DeviceUUID": "c8d4b145b9ac998dc38fe04f3b63acd4"
+            },
+            {
+              "DeviceUUID": "cb1d5f8088a2962645d887f7cd5469a8"
+            },
+            {
+              "DeviceUUID": "d6e1e860bf11a1d1666d8e525c3e052f"
+            },
+            {
+              "DeviceUUID": "d81832a7a28dfb6b1612c8ebe8272d5c"
+            },
+            {
+              "DeviceUUID": "e66ba89d02d13a78f251bdb86960299c"
+            },
+            {
+              "DeviceUUID": "e6abf2d5db8364fc051c870410696ca8"
+            },
+            {
+              "DeviceUUID": "e6b61e5cc5c498f19bcd6b3d8158c9a4"
+            },
+            {
+              "DeviceUUID": "eaf0758095750dc6d72be7efe77f0ea5"
+            },
+            {
+              "DeviceUUID": "eeef230eea0da8211ad54e7ab4da10cd"
+            },
+            {
+              "DeviceUUID": "f0ac21210d9900ced5de5cf305a4a40c"
+            },
+            {
+              "DeviceUUID": "f0c68725cff046fcdb04dd22fe422940"
+            },
+            {
+              "DeviceUUID": "f0d86474c7d5f68d1d2b8f527ef660a8"
+            },
+            {
+              "DeviceUUID": "f2a675a245f1fd36636da869ed24534d"
+            },
+            {
+              "DeviceUUID": "f5f0b3451cfc1535ebda57c0dbbbff44"
+            },
+            {
+              "DeviceUUID": "f64672aad307de35539d1bbf8363cfdb"
+            },
+            {
+              "DeviceUUID": "fec8e4cdf61379c5d97eedca7a900470"
+            }
+          ],
+          "AgentId": "sas09-3ct10-3a.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "044dd1a0a9315be6a4f4f096a5ef7352"
+            },
+            {
+              "DeviceUUID": "1dd4571de06aff895ce1233ef5a24b1c"
+            },
+            {
+              "DeviceUUID": "1f5901cf2572b92d6c625650f98308f6"
+            },
+            {
+              "DeviceUUID": "2e6d2d4824c83c1070efe2ff0de08ac8"
+            },
+            {
+              "DeviceUUID": "3765dc41e1bd0e2f08357b73827d33a4"
+            },
+            {
+              "DeviceUUID": "3c63a2072d2191ef2a785b28385665ab"
+            },
+            {
+              "DeviceUUID": "3d7eb64aa22571393cd388c91593f50f"
+            },
+            {
+              "DeviceUUID": "65604954f120312e0404e9a02cc068ac"
+            },
+            {
+              "DeviceUUID": "9ff01903fbab3e0f57d8c83200d43ade"
+            },
+            {
+              "DeviceUUID": "a8b6fbdca0b5e001c915fb9e131d1326"
+            },
+            {
+              "DeviceUUID": "b949d1107e55f269cd64a51afbbf1a89"
+            },
+            {
+              "DeviceUUID": "ba33e91c02321d3517fb8cd5f917dd26"
+            },
+            {
+              "DeviceUUID": "c19f26d699f5e3d241fa34b3749a9f87"
+            },
+            {
+              "DeviceUUID": "cf46ea8a0cd50682c6c0dc99810b753b"
+            },
+            {
+              "DeviceUUID": "faab496da68c09877442b7c33ad5636a"
+            }
+          ],
+          "AgentId": "sas09-ct7-18.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "11b83f90a3f2ecf56ff394d9caed3aaf"
+            },
+            {
+              "DeviceUUID": "247cdbda452e9eb68ffbe12bfa333b29"
+            },
+            {
+              "DeviceUUID": "2e69709b0d3efe17e8d6f18d8532ad71"
+            },
+            {
+              "DeviceUUID": "3e011cb33fd7da5dfee1db191e199e71"
+            },
+            {
+              "DeviceUUID": "4926cdb9604c00bb31d160de9cebc339"
+            },
+            {
+              "DeviceUUID": "4f32be5f10adb67165f82de08cff8ce3"
+            },
+            {
+              "DeviceUUID": "52facb091391a1964b6c521522f23797"
+            },
+            {
+              "DeviceUUID": "62fad7eb0c38172cb9c9174df8b56bf1"
+            },
+            {
+              "DeviceUUID": "639f23973c545283db7c3f23fc0efa1b"
+            },
+            {
+              "DeviceUUID": "7735c663145228fce1617c59e96540a3"
+            },
+            {
+              "DeviceUUID": "8558fd653e5d5ba5a4db8333abef26e6"
+            },
+            {
+              "DeviceUUID": "8c0f6bd7545a1a0fb377852d102edd8d"
+            },
+            {
+              "DeviceUUID": "8ced9699b68bc7ed38a903441e0d66f6"
+            },
+            {
+              "DeviceUUID": "c003693fb0330260befa4791c515efd8"
+            },
+            {
+              "DeviceUUID": "e8a0b723fb6aeb3509800fb8535c76d1"
+            }
+          ],
+          "AgentId": "sas09-ct7-24.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "2dd7fc3471cb19b2da981751e774cb8a"
+            },
+            {
+              "DeviceUUID": "2e3fbb37489c17cbd52dcedce2d3f1d1"
+            },
+            {
+              "DeviceUUID": "464e9f7927a70ab0868ac4ea070631bb"
+            },
+            {
+              "DeviceUUID": "4f3af2acc29543b939c278373bd89316"
+            },
+            {
+              "DeviceUUID": "56f54753a6a190ad33100dc549274643"
+            },
+            {
+              "DeviceUUID": "739f24fa32151a1fc5ed3f3d94bf0860"
+            },
+            {
+              "DeviceUUID": "7ae1db7d362eda5b5323e1668f9dbb77"
+            },
+            {
+              "DeviceUUID": "8a9f400c783c981ac0c02172ac364483"
+            },
+            {
+              "DeviceUUID": "8abf8087c703b89d4e63f2288085bbdf"
+            },
+            {
+              "DeviceUUID": "8da8e794179d14567317531eaa156fa8"
+            },
+            {
+              "DeviceUUID": "ad687298a09840a0be407dd5ae9213da"
+            },
+            {
+              "DeviceUUID": "db5e28599b1244a2d7a3e4dae605c3ed"
+            },
+            {
+              "DeviceUUID": "dce21f9ff730496d10d8edf26f7159fd"
+            },
+            {
+              "DeviceUUID": "e3a96c1c3c188d7585c8906ed3138c66"
+            },
+            {
+              "DeviceUUID": "f6051f172dfcdb13072f85757ca7b23f"
+            }
+          ],
+          "AgentId": "sas09-ct7-25.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "08267596b6d0a5a4231db21556a8670d"
+            },
+            {
+              "DeviceUUID": "180fbf6782d5294fbd3d2289c7e56f9c"
+            },
+            {
+              "DeviceUUID": "264e2a446ff76d5d2f80844e84fcfa36"
+            },
+            {
+              "DeviceUUID": "28a71af8a69ee515f6228882d485d421"
+            },
+            {
+              "DeviceUUID": "35d973ad90a9520921681634e0db4b46"
+            },
+            {
+              "DeviceUUID": "3627e6ff71cfcb088c205416cf0ad111"
+            },
+            {
+              "DeviceUUID": "3ecae5af722831f2d11dc3a8bfc9b584"
+            },
+            {
+              "DeviceUUID": "6ed17b82b9ea3a54d5f5e2f9c2bef8a3"
+            },
+            {
+              "DeviceUUID": "7433a4b3d74df2d78ff97f4c449a4e22"
+            },
+            {
+              "DeviceUUID": "76a3696137b7354d5f40154e3f9adda4"
+            },
+            {
+              "DeviceUUID": "7ec789c0b702102959477a53a531160a"
+            },
+            {
+              "DeviceUUID": "845dfdb83df22a72f221c1d73d7357fa"
+            },
+            {
+              "DeviceUUID": "8bc7453465ee74caa1e3408843e905ee"
+            },
+            {
+              "DeviceUUID": "bf88cfa6e95486ac22ccb2c0cf8bbb0f"
+            },
+            {
+              "DeviceUUID": "f4a59a27e1eb490edab0ceb7e9daab29"
+            }
+          ],
+          "AgentId": "sas09-ct7-26.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "010ca3e465e9af8e2904da76e1c637bf"
+            },
+            {
+              "DeviceUUID": "30e0cc487ecd99c6e186f2881d22ca8e"
+            },
+            {
+              "DeviceUUID": "39027c8424fedba93cac694d975edfdf"
+            },
+            {
+              "DeviceUUID": "404e12f8764d69b4758821a12fb0ce25"
+            },
+            {
+              "DeviceUUID": "6f7c5a966864cbce5706fc4e38ebd71c"
+            },
+            {
+              "DeviceUUID": "70a2f18c7a2eb627632528c868735af9"
+            },
+            {
+              "DeviceUUID": "7131b38f98a99ac480ff6315375b273f"
+            },
+            {
+              "DeviceUUID": "9dc40156571665cd7984f9dc1f1f5dfa"
+            },
+            {
+              "DeviceUUID": "a006af3581c330343d8e12096678d3dc"
+            },
+            {
+              "DeviceUUID": "b4785c1459c561b3e5cba1663b5fb33a"
+            },
+            {
+              "DeviceUUID": "c3e20c04e6d1e497a68c420546340c6b"
+            },
+            {
+              "DeviceUUID": "c49b25c390ab3cd8d26c92757e00d0d8"
+            },
+            {
+              "DeviceUUID": "c5ce2e5c1a5e9550acc2e873b108cde9"
+            },
+            {
+              "DeviceUUID": "f7c1af62d2dea05a0602528fd765b2f1"
+            },
+            {
+              "DeviceUUID": "f7e9eab772a1ffd345ceddd1af281a0b"
+            }
+          ],
+          "AgentId": "sas09-ct7-27.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "09bcd3a3e8162681b3d4601d76ff99ed"
+            },
+            {
+              "DeviceUUID": "0b15e95e28499e8b0365f7e0bcce5f21"
+            },
+            {
+              "DeviceUUID": "13d18eafb47ba22a7260c220ef309b02"
+            },
+            {
+              "DeviceUUID": "21e5a4f685008cb4aebc6cfbdca01c07"
+            },
+            {
+              "DeviceUUID": "332f7e30773a4f011a167fe43d6a89e7"
+            },
+            {
+              "DeviceUUID": "3ebe8b3fa091b35b33b0a404f48806f1"
+            },
+            {
+              "DeviceUUID": "4713cbf44431b15a2c8f4daae6577c7c"
+            },
+            {
+              "DeviceUUID": "604456261fb247fa61ccf4fc9030a69a"
+            },
+            {
+              "DeviceUUID": "6e5330aa68b72e862d0123a35744890f"
+            },
+            {
+              "DeviceUUID": "6ee12979847dd94a8556006c2f7f15f0"
+            },
+            {
+              "DeviceUUID": "76c012842084746901ca4eee7c7c8882"
+            },
+            {
+              "DeviceUUID": "77253ec7e779b8327c94e93a2ef25b66"
+            },
+            {
+              "DeviceUUID": "86dd5021035a2f8ca60b76868624c6fd"
+            },
+            {
+              "DeviceUUID": "d8597b764b1dc6759d041aa74332c97f"
+            },
+            {
+              "DeviceUUID": "ec8f749818692124c3408c2e52675230"
+            }
+          ],
+          "AgentId": "sas09-ct7-28.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "07d2eb2c3defa58bb073b40342f1756d"
+            },
+            {
+              "DeviceUUID": "111711de9ec3d6dcb84437cf47f8c502"
+            },
+            {
+              "DeviceUUID": "226551842a01677b6ff3285cb7e8e628"
+            },
+            {
+              "DeviceUUID": "326cfc10641a21ff39cc14749a9e22f5"
+            },
+            {
+              "DeviceUUID": "39d3723fddc3005a0167a5820121c02e"
+            },
+            {
+              "DeviceUUID": "58f49ccb8c82d63829a4731adb4a7766"
+            },
+            {
+              "DeviceUUID": "5f62c7f1da00cc5973ffe2c3830c1288"
+            },
+            {
+              "DeviceUUID": "61f9b349aa07e7386183edde07987f0d"
+            },
+            {
+              "DeviceUUID": "8c70fa49ddf66903f87457bc595a1142"
+            },
+            {
+              "DeviceUUID": "adef5141bcde3474491ef5ece6903f0a"
+            },
+            {
+              "DeviceUUID": "b279465f76c6d32fe642c6556b7fcf44"
+            },
+            {
+              "DeviceUUID": "b55314f69730a7529611268ce717d4a1"
+            },
+            {
+              "DeviceUUID": "c32f7f896c637748261abf9421ce4e47"
+            },
+            {
+              "DeviceUUID": "d9aba91b7e14f8e83849ad10efb75513"
+            },
+            {
+              "DeviceUUID": "e8a0230ae77c7e4a1cfe0261ac634f3e"
+            }
+          ],
+          "AgentId": "sas09-ct7-29.cloud.yandex.net"
+        },
+        {
+          "Devices": [
+            {
+              "DeviceUUID": "1d2041984ee55d7294a29592d36c0c92"
+            },
+            {
+              "DeviceUUID": "27f814b0adbd3ada24e9915be0f5dd77"
+            },
+            {
+              "DeviceUUID": "42f49a4f0cbe1b83978d5fd49303a6c2"
+            },
+            {
+              "DeviceUUID": "44774f60bd49b670012fbfd86a7c7b82"
+            },
+            {
+              "DeviceUUID": "60da02bce2afbbf2c1d62a0a7dd27a17"
+            },
+            {
+              "DeviceUUID": "6262a33ebdbe85bbcfb267c3d096cbb0"
+            },
+            {
+              "DeviceUUID": "6bcb0901a4853ca30e87890cc11d630e"
+            },
+            {
+              "DeviceUUID": "77a871d4453143a8d72e803aa17ecdb6"
+            },
+            {
+              "DeviceUUID": "7ce11a867d860fad80ef27755449f23a"
+            },
+            {
+              "DeviceUUID": "8a997d33c0be68f040fc88b7e17a537a"
+            },
+            {
+              "DeviceUUID": "9652facdcd9a018a89bb228786cb17e0"
+            },
+            {
+              "DeviceUUID": "ac58a4f7fa2a331f7b857fe503bf2710"
+            },
+            {
+              "DeviceUUID": "b44d798d9f367b7cd8d634adaab318e7"
+            },
+            {
+              "DeviceUUID": "b591cc4aa6d5c466ce984a987d813d59"
+            },
+            {
+              "DeviceUUID": "c167f750a1d7f03481db28623037b49b"
+            }
+          ],
+          "AgentId": "sas09-ct7-30.cloud.yandex.net"
+        }
+      ],
+      "LastDiskStateSeqNo": "529",
+      "WritableState": true,
+      "DevicePoolConfigs": [
+        {
+          "Name": "local-ssd",
+          "AllocationUnit": "99857989632",
+          "Kind": "DEVICE_POOL_KIND_LOCAL"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TYdbStatsConfig
+{
+    // Table to report stats.
+    optional string StatsTableName = 1;
+
+    // History table name.
+    optional string HistoryTablePrefix = 2;
+
+    // Ydb database where table are.
+    optional string DatabaseName = 3;
+
+    // Token file name.
+    optional string TokenFile= 4;
+
+    // Ydb host name and port.
+    optional string ServerAddress = 5;
+
+    // Number of days to keep history tables.
+    optional uint32 HistoryTableLifetimeDays = 6;
+
+    // Rotate history table after.
+    optional uint32 StatsTableRotationAfterDays = 7;
+
+    // Table to report stats.
+    optional string ArchiveStatsTableName = 8;
+
+    // Table to report metrics.
+    optional string BlobLoadMetricsTableName = 9;
+
+    // use secure connection to YDB.
+    optional bool UseSsl = 10;
+}

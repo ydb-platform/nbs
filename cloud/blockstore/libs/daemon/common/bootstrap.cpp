@@ -1,0 +1,971 @@
+#include "bootstrap.h"
+
+#include "config_initializer.h"
+#include "options.h"
+
+#include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/common/caching_allocator.h>
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/fault_injection.h>
+#include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/blockstore/libs/diagnostics/probes.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/discovery/balancing.h>
+#include <cloud/blockstore/libs/discovery/ban.h>
+#include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/discovery/discovery.h>
+#include <cloud/blockstore/libs/discovery/fetch.h>
+#include <cloud/blockstore/libs/discovery/healthcheck.h>
+#include <cloud/blockstore/libs/discovery/ping.h>
+#include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
+#include <cloud/blockstore/libs/endpoints/service_endpoint.h>
+#include <cloud/blockstore/libs/endpoints/session_manager.h>
+#include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
+#include <cloud/blockstore/libs/endpoints_nbd/nbd_server.h>
+#include <cloud/blockstore/libs/endpoints_rdma/rdma_server.h>
+#include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
+#include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
+#include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/nbd/server.h>
+#include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma/client.h>
+#include <cloud/blockstore/libs/rdma/server.h>
+#include <cloud/blockstore/libs/rdma/verbs.h>
+#include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/server/server.h>
+#include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_error_transform.h>
+#include <cloud/blockstore/libs/service/service_filtered.h>
+#include <cloud/blockstore/libs/service/service_null.h>
+#include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/service_local.h>
+#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_null.h>
+#include <cloud/blockstore/libs/service_local/storage_rdma.h>
+#include <cloud/blockstore/libs/service_local/storage_spdk.h>
+#include <cloud/blockstore/libs/service_throttling/throttler_logger.h>
+#include <cloud/blockstore/libs/service_throttling/throttler_metrics.h>
+#include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
+#include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
+#include <cloud/blockstore/libs/service_throttling/throttling.h>
+#include <cloud/blockstore/libs/spdk/config.h>
+#include <cloud/blockstore/libs/spdk/env.h>
+#include <cloud/blockstore/libs/spdk/memory.h>
+#include <cloud/blockstore/libs/storage_local/config.h>
+#include <cloud/blockstore/libs/storage_local/storage_local.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
+#include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+#include <cloud/blockstore/libs/throttling/throttler.h>
+#include <cloud/blockstore/libs/throttling/throttler_metrics.h>
+#include <cloud/blockstore/libs/throttling/throttler_logger.h>
+#include <cloud/blockstore/libs/validation/validation.h>
+#include <cloud/blockstore/libs/vhost/server.h>
+#include <cloud/blockstore/libs/vhost/vhost.h>
+
+#include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
+#include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/stats_updater.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/executor.h>
+#include <cloud/storage/core/libs/grpc/logging.h>
+#include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/version/version.h>
+
+#include <library/cpp/lwtrace/mon/mon_lwtrace.h>
+#include <library/cpp/lwtrace/probes.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/protobuf/util/pb_io.h>
+
+#include <util/datetime/base.h>
+#include <util/stream/file.h>
+#include <util/stream/str.h>
+#include <util/system/hostname.h>
+
+namespace NCloud::NBlockStore::NServer {
+
+using namespace NMonitoring;
+using namespace NNvme;
+
+using namespace NCloud::NBlockStore::NDiscovery;
+using namespace NCloud::NBlockStore::NStorage;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TString TraceLoggerId = "st_trace_logger";
+const TString SlowRequestsFilterId = "st_slow_requests_filter";
+
+////////////////////////////////////////////////////////////////////////////////
+
+NVhost::TServerConfig CreateVhostServerConfig(const TServerAppConfig& config)
+{
+    return NVhost::TServerConfig {
+        .ThreadsCount = config.GetVhostThreadsCount(),
+        .Affinity = config.GetVhostAffinity()
+    };
+}
+
+NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
+{
+    return NBD::TServerConfig {
+        .ThreadsCount = config.GetNbdThreadsCount(),
+        .LimiterEnabled = config.GetNbdLimiterEnabled(),
+        .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
+        .Affinity = config.GetNbdAffinity()
+    };
+}
+
+TNVMeEndpointConfig CreateNVMeEndpointConfig(const TServerAppConfig& config)
+{
+    return TNVMeEndpointConfig {
+        .Nqn = config.GetNVMeEndpointNqn(),
+        .TransportIDs = config.GetNVMeEndpointTransportIDs(),
+    };
+}
+
+TSCSIEndpointConfig CreateSCSIEndpointConfig(const TServerAppConfig& config)
+{
+    return TSCSIEndpointConfig {
+        .ListenAddress = config.GetSCSIEndpointListenAddress(),
+        .ListenPort = config.GetSCSIEndpointListenPort(),
+    };
+}
+
+TRdmaEndpointConfig CreateRdmaEndpointConfig(const TServerAppConfig& config)
+{
+    return TRdmaEndpointConfig {
+        .ListenAddress = config.GetRdmaEndpointListenAddress(),
+        .ListenPort = config.GetRdmaEndpointListenPort(),
+    };
+}
+
+TThrottlingServiceConfig CreateThrottlingServicePolicyConfig(
+    const TServerAppConfig& config)
+{
+    return TThrottlingServiceConfig(
+        config.GetMaxReadBandwidth(),
+        config.GetMaxWriteBandwidth(),
+        config.GetMaxReadIops(),
+        config.GetMaxWriteIops(),
+        config.GetMaxBurstTime()
+    );
+}
+
+NRdma::EWaitMode ConvertWaitMode(NProto::EWaitMode mode)
+{
+    switch (mode) {
+        case NProto::WAIT_MODE_POLL:
+            return NRdma::EWaitMode::Poll;
+
+        case NProto::WAIT_MODE_BUSY_WAIT:
+            return NRdma::EWaitMode::BusyWait;
+
+        case NProto::WAIT_MODE_ADAPTIVE_WAIT:
+            return NRdma::EWaitMode::AdaptiveWait;;
+
+        default:
+            Y_FAIL("unsupported wait mode %d", mode);
+    }
+}
+
+NRdma::TClientConfigPtr CreateRdmaClientConfig(const TServerAppConfigPtr app)
+{
+    auto server = app->GetServerConfig();
+    auto config = std::make_shared<NRdma::TClientConfig>();
+
+    if (server->HasRdmaClientConfig()) {
+        auto client = server->GetRdmaClientConfig();
+
+        config->QueueSize = client.GetQueueSize();
+        config->MaxBufferSize = client.GetMaxBufferSize();
+        config->WaitMode = ConvertWaitMode(client.GetWaitMode());
+        config->PollerThreads = client.GetPollerThreads();
+    };
+
+    return config;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TBootstrapBase::TBootstrapBase(IDeviceHandlerFactoryPtr deviceHandlerFactory)
+    : DeviceHandlerFactory(std::move(deviceHandlerFactory))
+{}
+
+TBootstrapBase::~TBootstrapBase()
+{}
+
+void TBootstrapBase::ParseOptions(int argc, char** argv)
+{
+    Y_VERIFY(!Configs);
+    Configs = InitConfigs(argc, argv);
+}
+
+void TBootstrapBase::Init()
+{
+    TLogSettings logSettings;
+    logSettings.UseLocalTimestamps = true;
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
+    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    Configs->Log = Log;
+    STORAGE_INFO("NBS server version: " << GetFullVersionString());
+
+    Timer = CreateWallClockTimer();
+    Scheduler = CreateScheduler();
+    BackgroundThreadPool = CreateThreadPool("Background", 1);
+    BackgroundScheduler = CreateBackgroundScheduler(
+        Scheduler,
+        BackgroundThreadPool);
+
+    switch (Configs->Options->ServiceKind) {
+        case TOptionsCommon::EServiceKind::Ydb:
+            InitKikimrService();
+            break;
+        case TOptionsCommon::EServiceKind::Local:
+            InitLocalService();
+            break;
+        case TOptionsCommon::EServiceKind::Null:
+            InitNullService();
+            break;
+    }
+
+    STORAGE_INFO("Service initialized");
+
+    GrpcLog = Logging->CreateLog("GRPC");
+    GrpcLoggerInit(
+        GrpcLog,
+        Configs->Options->EnableGrpcTracing);
+
+    auto diagnosticsConfig = Configs->DiagnosticsConfig;
+    if (TraceReaders.size()) {
+        TraceProcessor = CreateTraceProcessor(
+            Timer,
+            BackgroundScheduler,
+            Logging,
+            Monitoring,
+            "BLOCKSTORE_TRACE",
+            NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
+            TraceReaders);
+
+        STORAGE_INFO("TraceProcessor initialized");
+    }
+
+    auto clientInactivityTimeout = Configs->GetInactiveClientsTimeout();
+
+    auto rootGroup = Monitoring->GetCounters()
+        ->GetSubgroup("counters", "blockstore");
+
+    auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
+
+    auto versionCounter = revisionGroup->GetCounter(
+        "version",
+        false);
+    *versionCounter = 1;
+
+    InitCriticalEventsCounter(serverGroup);
+
+    for (auto& event: PostponedCriticalEvents) {
+        ReportCriticalEvent(
+            event,
+            "",     // message
+            false); // verifyDebug
+    }
+    PostponedCriticalEvents.clear();
+
+    RequestStats = CreateServerRequestStats(serverGroup, Timer);
+
+    if (!VolumeStats) {
+        VolumeStats = CreateVolumeStats(
+            Monitoring,
+            Configs->DiagnosticsConfig,
+            clientInactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+    }
+
+    ServerStats = CreateServerStats(
+        Configs->ServerConfig,
+        Configs->DiagnosticsConfig,
+        Monitoring,
+        ProfileLog,
+        RequestStats,
+        VolumeStats);
+
+    STORAGE_INFO("Stats initialized");
+
+    TVector<IStorageProviderPtr> storageProviders;
+
+    if (Configs->LocalStorageConfig->GetEnabled()) {
+        STORAGE_INFO("Initialize Local Storage Provider");
+
+        storageProviders.push_back(NServer::CreateLocalStorageProvider(
+            FQDNHostName(),
+            AioStorageProvider,
+            Logging,
+            ServerStats));
+    }
+
+    if (Configs->ServerConfig->GetNvmfInitiatorEnabled()) {
+        Y_VERIFY(Spdk);
+
+        const auto& config = *Configs->DiskAgentConfig;
+
+        storageProviders.push_back(CreateSpdkStorageProvider(
+            Spdk,
+            CreateSyncCachingAllocator(
+                Spdk->GetAllocator(),
+                config.GetPageSize(),
+                config.GetMaxPageCount(),
+                config.GetPageDropSize()),
+            ServerStats));
+    }
+
+    if (!Configs->GetUseNonreplicatedRdmaActor() && RdmaClient) {
+        storageProviders.push_back(CreateRdmaStorageProvider(
+            ServerStats,
+            RdmaClient));
+    }
+
+    storageProviders.push_back(CreateDefaultStorageProvider(Service));
+    StorageProvider = CreateMultiStorageProvider(std::move(storageProviders));
+
+    STORAGE_INFO("StorageProvider initialized");
+
+    TSessionManagerOptions sessionManagerOptions;
+    sessionManagerOptions.StrictContractValidation
+        = Configs->ServerConfig->GetStrictContractValidation();
+    sessionManagerOptions.DefaultClientConfig
+        = Configs->EndpointConfig->GetClientConfig();
+    sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
+    sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
+
+    Executor = TExecutor::Create("SVC");
+
+    auto sessionManager = CreateSessionManager(
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring,
+        RequestStats,
+        VolumeStats,
+        ServerStats,
+        Service,
+        StorageProvider,
+        Executor,
+        sessionManagerOptions);
+
+    STORAGE_INFO("SessionManager initialized");
+
+    THashMap<NProto::EClientIpcType, IEndpointListenerPtr> endpointListeners;
+
+    GrpcEndpointListener = CreateSocketEndpointListener(
+        Logging,
+        Configs->ServerConfig->GetUnixSocketBacklog());
+    endpointListeners.emplace(NProto::IPC_GRPC, GrpcEndpointListener);
+
+    STORAGE_INFO("SocketEndpointListener initialized");
+
+    if (Configs->ServerConfig->GetNbdEnabled()) {
+        NbdServer = NBD::CreateServer(
+            Logging,
+            CreateNbdServerConfig(*Configs->ServerConfig));
+
+        STORAGE_INFO("NBD Server initialized");
+
+        auto nbdEndpointListener = CreateNbdEndpointListener(
+            NbdServer,
+            Logging,
+            ServerStats);
+
+        endpointListeners.emplace(
+            NProto::IPC_NBD,
+            std::move(nbdEndpointListener));
+
+        STORAGE_INFO("NBD EndpointListener initialized");
+    }
+
+    if (Configs->ServerConfig->GetVhostEnabled()) {
+        NVhost::InitVhostLog(Logging);
+
+        if (!DeviceHandlerFactory) {
+            DeviceHandlerFactory = CreateDefaultDeviceHandlerFactory();
+        }
+
+        VhostServer = NVhost::CreateServer(
+            Logging,
+            ServerStats,
+            NVhost::CreateVhostQueueFactory(),
+            DeviceHandlerFactory,
+            CreateVhostServerConfig(*Configs->ServerConfig),
+            VhostCallbacks);
+
+        STORAGE_INFO("VHOST Server initialized");
+
+        auto vhostEndpointListener = CreateVhostEndpointListener(
+            VhostServer);
+
+        if (Configs->ServerConfig->GetVhostServerPath()
+                && !Configs->Options->TemporaryServer)
+        {
+            vhostEndpointListener = CreateExternalVhostEndpointListener(
+                Logging,
+                ServerStats,
+                Executor,
+                Configs->ServerConfig->GetVhostServerPath(),
+                Configs->Options->SkipDeviceLocalityValidation
+                    ? TString {}
+                    : FQDNHostName(),
+                std::move(vhostEndpointListener));
+
+            STORAGE_INFO("VHOST External Vhost EndpointListener initialized");
+        }
+
+        endpointListeners.emplace(
+            NProto::IPC_VHOST,
+            std::move(vhostEndpointListener));
+
+        STORAGE_INFO("VHOST EndpointListener initialized");
+    }
+
+    if (Configs->ServerConfig->GetNVMeEndpointEnabled()) {
+        Y_VERIFY(Spdk);
+
+        auto listener = CreateNVMeEndpointListener(
+            Spdk,
+            Logging,
+            ServerStats,
+            Executor,
+            CreateNVMeEndpointConfig(*Configs->ServerConfig));
+
+        endpointListeners.emplace(
+            NProto::IPC_NVME,
+            std::move(listener));
+
+        STORAGE_INFO("NVMe EndpointListener initialized");
+    }
+
+    if (Configs->ServerConfig->GetSCSIEndpointEnabled()) {
+        Y_VERIFY(Spdk);
+
+        auto listener = CreateSCSIEndpointListener(
+            Spdk,
+            Logging,
+            ServerStats,
+            Executor,
+            CreateSCSIEndpointConfig(*Configs->ServerConfig));
+
+        endpointListeners.emplace(
+            NProto::IPC_SCSI,
+            std::move(listener));
+
+        STORAGE_INFO("SCSI EndpointListener initialized");
+    }
+
+    if (Configs->ServerConfig->GetRdmaEndpointEnabled()) {
+        // TODO: read config
+        auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
+
+        if (Verbs == nullptr) {
+            Verbs = NRdma::NVerbs::CreateVerbs();
+        }
+
+        RdmaServer = NRdma::CreateServer(
+            Verbs,
+            Logging,
+            Monitoring,
+            std::move(rdmaConfig));
+
+        STORAGE_INFO("RDMA Server initialized");
+
+        RdmaThreadPool = CreateThreadPool("RDMA", 1);
+        auto listener = CreateRdmaEndpointListener(
+            RdmaServer,
+            Logging,
+            ServerStats,
+            Executor,
+            RdmaThreadPool,
+            CreateRdmaEndpointConfig(*Configs->ServerConfig));
+
+        endpointListeners.emplace(
+            NProto::IPC_RDMA,
+            std::move(listener));
+
+        STORAGE_INFO("RDMA EndpointListener initialized");
+    }
+
+    auto endpointManager = CreateEndpointManager(
+        Logging,
+        ServerStats,
+        Executor,
+        std::move(sessionManager),
+        std::move(endpointListeners),
+        Configs->ServerConfig->GetNbdSocketSuffix());
+
+    STORAGE_INFO("EndpointManager initialized");
+
+    IEndpointStoragePtr endpointStorage;
+    switch (Configs->ServerConfig->GetEndpointStorageType()) {
+        case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
+        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING:
+            endpointStorage = CreateKeyringEndpointStorage(
+                Configs->ServerConfig->GetRootKeyringName(),
+                Configs->ServerConfig->GetEndpointsKeyringName());
+            break;
+        case NCloud::NProto::ENDPOINT_STORAGE_FILE:
+            endpointStorage = CreateFileEndpointStorage(
+                Configs->ServerConfig->GetEndpointStorageDir());
+            break;
+        default:
+            Y_FAIL(
+                "unsupported endpoint storage type %d",
+                Configs->ServerConfig->GetEndpointStorageType());
+    }
+    STORAGE_INFO("EndpointStorage initialized");
+
+    EndpointService = CreateMultipleEndpointService(
+        std::move(Service),
+        Timer,
+        Scheduler,
+        Logging,
+        RequestStats,
+        VolumeStats,
+        ServerStats,
+        std::move(endpointStorage),
+        std::move(endpointManager),
+        Configs->EndpointConfig->GetClientConfig());
+    Service = EndpointService;
+
+    STORAGE_INFO("MultipleEndpointService initialized");
+
+    if (Configs->ServerConfig->GetThrottlingEnabled()) {
+        Service = CreateThrottlingService(
+            std::move(Service),
+            CreateThrottler(
+                CreateServiceThrottlerLogger(RequestStats, Logging),
+                CreateThrottlerMetricsStub(),
+                CreateServiceThrottlerPolicy(
+                    CreateThrottlingServicePolicyConfig(
+                        *Configs->ServerConfig)),
+                CreateServiceThrottlerTracker(),
+                Timer,
+                Scheduler,
+                VolumeStats));
+
+        STORAGE_INFO("ThrottlingService initialized");
+    }
+
+    auto udsService = CreateFilteredService(Service, {
+        EBlockStoreRequest::Ping,
+        EBlockStoreRequest::QueryAvailableStorage,
+        EBlockStoreRequest::DescribeVolume,
+        EBlockStoreRequest::KickEndpoint,
+        EBlockStoreRequest::StopEndpoint,
+        EBlockStoreRequest::CreateVolumeFromDevice,
+        EBlockStoreRequest::ResumeDevice
+    });
+
+    InitAuthService();
+
+    if (Configs->ServerConfig->GetStrictContractValidation()) {
+        Service = CreateValidationService(
+            Logging,
+            Monitoring,
+            std::move(Service),
+            CreateCrcDigestCalculator(),
+            clientInactivityTimeout);
+
+        STORAGE_INFO("ValidationService initialized");
+    }
+
+    Server = CreateServer(
+        Configs->ServerConfig,
+        Logging,
+        ServerStats,
+        Service,
+        std::move(udsService));
+
+    STORAGE_INFO("Server initialized");
+
+    GrpcEndpointListener->SetClientAcceptor(Server->GetClientAcceptor());
+
+    TVector<IIncompleteRequestProviderPtr> requestProviders = {
+        Server,
+        EndpointService
+    };
+
+    if (NbdServer) {
+        requestProviders.push_back(NbdServer);
+    }
+
+    if (VhostServer) {
+        requestProviders.push_back(VhostServer);
+    }
+
+    ServerStatsUpdater = CreateStatsUpdater(
+        Timer,
+        BackgroundScheduler,
+        CreateIncompleteRequestProcessor(
+            ServerStats,
+            std::move(requestProviders)));
+
+    STORAGE_INFO("ServerStatsUpdater initialized");
+}
+
+void TBootstrapBase::InitSpdk()
+{
+    const bool needSpdkForInitiator =
+        Configs->ServerConfig->GetNvmfInitiatorEnabled();
+
+    const bool needSpdkForTarget =
+        Configs->ServerConfig->GetNVMeEndpointEnabled() ||
+        Configs->ServerConfig->GetSCSIEndpointEnabled();
+
+    const bool needSpdkForDiskAgent =
+        Configs->DiskAgentConfig->GetEnabled() &&
+        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK;
+
+    if (needSpdkForInitiator || needSpdkForTarget || needSpdkForDiskAgent) {
+        Spdk = NSpdk::CreateEnv(Configs->SpdkEnvConfig);
+        VhostCallbacks = NSpdk::VhostCallbacks();
+
+        STORAGE_INFO("Spdk initialized");
+    }
+}
+
+void TBootstrapBase::InitProfileLog()
+{
+    if (Configs->Options->ProfileFile) {
+        ProfileLog = CreateProfileLog(
+            {
+                Configs->Options->ProfileFile,
+                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
+            },
+            Timer,
+            BackgroundScheduler
+        );
+    } else {
+        ProfileLog = CreateProfileLogStub();
+    }
+}
+
+void TBootstrapBase::InitRdmaClient()
+{
+    try {
+        if (Configs->ServerConfig->GetRdmaClientEnabled()) {
+            if (Verbs == nullptr) {
+                Verbs = NRdma::NVerbs::CreateVerbs();
+            }
+
+            RdmaClient = NRdma::CreateClient(
+                Verbs,
+                Logging,
+                Monitoring,
+                CreateRdmaClientConfig(Configs->ServerConfig));
+
+            STORAGE_INFO("RDMA client initialized");
+        }
+    } catch (...) {
+        STORAGE_ERROR("Failed to initialize RDMA client: "
+            << CurrentExceptionMessage().c_str());
+
+        RdmaClient = nullptr;
+        PostponedCriticalEvents.push_back(GetCriticalEventForRdmaError());
+    }
+}
+
+void TBootstrapBase::InitDbgConfigs()
+{
+    Configs->InitServerConfig();
+    Configs->InitEndpointConfig();
+    Configs->InitHostPerformanceProfile();
+    Configs->InitLocalStorageConfig();
+    Configs->InitDiskAgentConfig();
+    Configs->InitDiskRegistryProxyConfig();
+    Configs->InitDiagnosticsConfig();
+    Configs->InitDiscoveryConfig();
+    Configs->InitSpdkEnvConfig();
+
+    TLogSettings logSettings;
+    logSettings.UseLocalTimestamps = true;
+    logSettings.FiltrationLevel =
+        static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
+
+    Logging = CreateLoggingService("console", logSettings);
+
+    InitLWTrace();
+
+    auto monPort = Configs->GetMonitoringPort();
+    if (monPort) {
+        auto monAddress = Configs->GetMonitoringAddress();
+        auto threadsCount = Configs->GetMonitoringThreads();
+        Monitoring = CreateMonitoringService(monPort, monAddress, threadsCount);
+    } else {
+        Monitoring = CreateMonitoringServiceStub();
+    }
+}
+
+void TBootstrapBase::InitLocalService()
+{
+    InitDbgConfigs();
+    InitRdmaClient();
+    InitSpdk();
+    InitProfileLog();
+
+    DiscoveryService = CreateDiscoveryServiceStub(
+        FQDNHostName(),
+        Configs->DiscoveryConfig->GetConductorInstancePort(),
+        Configs->DiscoveryConfig->GetConductorSecureInstancePort()
+    );
+
+    const auto& config = Configs->ServerConfig->GetLocalServiceConfig()
+        ? *Configs->ServerConfig->GetLocalServiceConfig()
+        : NProto::TLocalServiceConfig();
+
+    FileIOService = CreateAIOService();
+
+    NvmeManager = CreateNvmeManager(
+        Configs->DiskAgentConfig->GetSecureEraseTimeout());
+
+    Service = CreateLocalService(
+        config,
+        DiscoveryService,
+        CreateAioStorageProvider(
+            FileIOService,
+            NvmeManager,
+            false   // directIO
+        ));
+}
+
+void TBootstrapBase::InitNullService()
+{
+    InitDbgConfigs();
+    InitRdmaClient();
+    InitSpdk();
+    InitProfileLog();
+
+    const auto& config = Configs->ServerConfig->GetNullServiceConfig()
+        ? *Configs->ServerConfig->GetNullServiceConfig()
+        : NProto::TNullServiceConfig();
+
+    Service = CreateNullService(config);
+}
+
+void TBootstrapBase::InitLWTrace()
+{
+    auto& probes = NLwTraceMonPage::ProbeRegistry();
+    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER));
+
+    if (Configs->DiskAgentConfig->GetEnabled()) {
+        probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_DISK_AGENT_PROVIDER));
+    }
+
+    auto diagnosticsConfig = Configs->DiagnosticsConfig;
+    auto& lwManager = NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace());
+
+    const TVector<std::tuple<TString, TString>> desc = {
+        {"RequestStarted",                  "BLOCKSTORE_SERVER_PROVIDER"},
+        {"BackgroundTaskStarted_Partition", "BLOCKSTORE_STORAGE_PROVIDER"},
+        {"RequestReceived_DiskAgent",       "BLOCKSTORE_STORAGE_PROVIDER"},
+    };
+
+    auto traceLog = CreateUnifiedAgentLoggingService(
+        Logging,
+        diagnosticsConfig->GetTracesUnifiedAgentEndpoint(),
+        diagnosticsConfig->GetTracesSyslogIdentifier()
+    );
+
+    if (auto samplingRate = diagnosticsConfig->GetSamplingRate()) {
+        NLWTrace::TQuery query = ProbabilisticQuery(
+            desc,
+            samplingRate,
+            diagnosticsConfig->GetLWTraceShuttleCount());
+        lwManager.New(TraceLoggerId, query);
+        TraceReaders.push_back(CreateTraceLogger(
+            TraceLoggerId,
+            traceLog,
+            "BLOCKSTORE_TRACE"
+        ));
+    }
+
+    if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
+        NLWTrace::TQuery query = ProbabilisticQuery(
+            desc,
+            samplingRate,
+            diagnosticsConfig->GetLWTraceShuttleCount());
+        lwManager.New(SlowRequestsFilterId, query);
+        TraceReaders.push_back(CreateSlowRequestsFilter(
+            SlowRequestsFilterId,
+            traceLog,
+            "BLOCKSTORE_TRACE",
+            diagnosticsConfig->GetHDDSlowRequestThreshold(),
+            diagnosticsConfig->GetSSDSlowRequestThreshold(),
+            diagnosticsConfig->GetNonReplicatedSSDSlowRequestThreshold(),
+            diagnosticsConfig->GetRequestThresholds()));
+    }
+
+    lwManager.RegisterCustomAction(
+        "ServiceErrorAction", &CreateServiceErrorActionExecutor);
+
+    if (diagnosticsConfig->GetLWTraceDebugInitializationQuery()) {
+        NLWTrace::TQuery query;
+        ParseProtoTextFromFile(
+            diagnosticsConfig->GetLWTraceDebugInitializationQuery(),
+            query);
+
+        lwManager.New("diagnostics", query);
+    }
+}
+
+void TBootstrapBase::Start()
+{
+#define START_COMMON_COMPONENT(c)                                              \
+    if (c) {                                                                   \
+        c->Start();                                                            \
+        STORAGE_INFO("Started " << #c);                                        \
+    }                                                                          \
+// START_COMMON_COMPONENT
+
+#define START_KIKIMR_COMPONENT(c)                                              \
+    if (Get##c()) {                                                            \
+        Get##c()->Start();                                                     \
+        STORAGE_INFO("Started " << #c);                                        \
+    }                                                                          \
+// START_KIKIMR_COMPONENT
+
+    START_KIKIMR_COMPONENT(AsyncLogger);
+    START_COMMON_COMPONENT(Logging);
+    START_KIKIMR_COMPONENT(LogbrokerService);
+    START_KIKIMR_COMPONENT(NotifyService);
+    START_COMMON_COMPONENT(Monitoring);
+    START_COMMON_COMPONENT(ProfileLog);
+    START_KIKIMR_COMPONENT(CgroupStatsFetcher);
+    START_COMMON_COMPONENT(DiscoveryService);
+    START_COMMON_COMPONENT(TraceProcessor);
+    START_KIKIMR_COMPONENT(TraceSerializer);
+    START_KIKIMR_COMPONENT(ClientPercentiles);
+    START_KIKIMR_COMPONENT(StatsAggregator);
+    START_KIKIMR_COMPONENT(IamTokenClient);
+    START_KIKIMR_COMPONENT(YdbStorage);
+    START_KIKIMR_COMPONENT(StatsUploader);
+    START_COMMON_COMPONENT(Spdk);
+    START_KIKIMR_COMPONENT(ActorSystem);
+    START_KIKIMR_COMPONENT(SubmissionQueue);
+    START_KIKIMR_COMPONENT(CompletionQueue);
+    START_COMMON_COMPONENT(FileIOService);
+    START_COMMON_COMPONENT(Service);
+    START_COMMON_COMPONENT(VhostServer);
+    START_COMMON_COMPONENT(NbdServer);
+    START_COMMON_COMPONENT(GrpcEndpointListener);
+    START_COMMON_COMPONENT(Executor);
+    START_COMMON_COMPONENT(Server);
+    START_COMMON_COMPONENT(ServerStatsUpdater);
+    START_COMMON_COMPONENT(BackgroundThreadPool);
+    START_COMMON_COMPONENT(RdmaClient);
+
+    // we need to start scheduler after all other components for 2 reasons:
+    // 1) any component can schedule a task that uses a dependency that hasn't
+    // started yet
+    // 2) we have loops in our dependencies, so there is no 'correct' starting
+    // order
+    START_COMMON_COMPONENT(Scheduler);
+
+    if (Configs->Options->MemLock) {
+        LockProcessMemory(Log);
+        STORAGE_INFO("Process memory locked");
+    }
+
+    EndpointService->RestoreEndpoints();
+    STORAGE_INFO("Started endpoints restoring");
+
+#undef START_COMMON_COMPONENT
+#undef START_KIKIMR_COMPONENT
+}
+
+void TBootstrapBase::Stop()
+{
+#define STOP_COMMON_COMPONENT(c)                                               \
+    if (c) {                                                                   \
+        c->Stop();                                                             \
+        STORAGE_INFO("Stopped " << #c);                                        \
+    }                                                                          \
+// STOP_COMMON_COMPONENT
+
+#define STOP_KIKIMR_COMPONENT(c)                                               \
+    if (Get##c()) {                                                            \
+        Get##c()->Stop();                                                      \
+        STORAGE_INFO("Stopped " << #c);                                        \
+    }                                                                          \
+// STOP_KIKIMR_COMPONENT
+
+    // stopping scheduler before all other components to avoid races between
+    // scheduled tasks and shutting down of component dependencies
+    STOP_COMMON_COMPONENT(Scheduler);
+
+    STOP_COMMON_COMPONENT(RdmaClient);
+    STOP_COMMON_COMPONENT(BackgroundThreadPool);
+    STOP_COMMON_COMPONENT(ServerStatsUpdater);
+    STOP_COMMON_COMPONENT(Server);
+    STOP_COMMON_COMPONENT(Executor);
+    STOP_COMMON_COMPONENT(GrpcEndpointListener);
+    STOP_COMMON_COMPONENT(NbdServer);
+    STOP_COMMON_COMPONENT(VhostServer);
+    STOP_COMMON_COMPONENT(Service);
+    STOP_COMMON_COMPONENT(FileIOService);
+    STOP_KIKIMR_COMPONENT(CompletionQueue);
+    STOP_KIKIMR_COMPONENT(SubmissionQueue);
+    STOP_KIKIMR_COMPONENT(ActorSystem);
+    STOP_COMMON_COMPONENT(Spdk);
+    STOP_KIKIMR_COMPONENT(StatsUploader);
+    STOP_KIKIMR_COMPONENT(YdbStorage);
+    STOP_KIKIMR_COMPONENT(IamTokenClient);
+    STOP_KIKIMR_COMPONENT(StatsAggregator);
+    STOP_KIKIMR_COMPONENT(ClientPercentiles);
+    STOP_KIKIMR_COMPONENT(TraceSerializer);
+    STOP_COMMON_COMPONENT(TraceProcessor);
+    STOP_COMMON_COMPONENT(DiscoveryService);
+    STOP_KIKIMR_COMPONENT(CgroupStatsFetcher);
+    STOP_COMMON_COMPONENT(ProfileLog);
+    STOP_COMMON_COMPONENT(Monitoring);
+    STOP_KIKIMR_COMPONENT(LogbrokerService);
+    STOP_COMMON_COMPONENT(Logging);
+    STOP_KIKIMR_COMPONENT(AsyncLogger);
+
+#undef STOP_COMMON_COMPONENT
+#undef STOP_KIKIMR_COMPONENT
+}
+
+IBlockStorePtr TBootstrapBase::GetBlockStoreService()
+{
+    return Service;
+}
+
+}   // namespace NCloud::NBlockStore::NServer

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Balancer state (Enabled/Diabled)
+
+enum EBalancerOpStatus {
+    DONT_CHANGE = 0;
+    ENABLE = 1;
+    DISABLE = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ChangeBalancer request/response
+
+message TConfigureVolumeBalancerRequest
+{
+    EBalancerOpStatus OpStatus = 1;
+}
+
+message TConfigureVolumeBalancerResponse
+{
+    EBalancerOpStatus OpStatus = 1;
+}

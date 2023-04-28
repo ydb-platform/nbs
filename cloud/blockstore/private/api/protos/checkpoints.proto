@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Checkpoint data deletion. Doesn't delete checkpointId->commitId mapping.
+
+message TDeleteCheckpointDataRequest
+{
+  // Label of the volume to delete checkpoint data from.
+  string DiskId = 1;
+
+  // Checkpoint identifier.
+  string CheckpointId = 2;
+}
+
+message TDeleteCheckpointDataResponse
+{
+  // Optional error, set only if error happened.
+  NCloud.NProto.TError Error = 1;
+}

@@ -1,0 +1,124 @@
+#include "part_actor.h"
+
+#include <cloud/blockstore/libs/storage/core/probes.h>
+
+namespace NCloud::NBlockStore::NStorage::NPartition {
+
+using namespace NActors;
+
+using namespace NKikimr;
+using namespace NKikimr::NTabletFlatExecutor;
+
+LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::HandleDeleteGarbage(
+    const TEvPartitionPrivate::TEvDeleteGarbageRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TDeleteGarbageMethod>(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext,
+        std::move(ev->TraceId));
+
+    TRequestScope timer(*requestInfo);
+
+    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+
+    LWTRACK(
+        RequestReceived_Partition,
+        requestInfo->CallContext->LWOrbit,
+        "DeleteGarbage",
+        requestInfo->CallContext->RequestId);
+
+    AddTransaction(*requestInfo);
+
+    ExecuteTx<TDeleteGarbage>(
+        ctx,
+        requestInfo,
+        msg->CommitId,
+        std::move(msg->NewBlobs),
+        std::move(msg->GarbageBlobs));
+}
+
+bool TPartitionActor::PrepareDeleteGarbage(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TDeleteGarbage& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TPartitionActor::ExecuteDeleteGarbage(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TDeleteGarbage& args)
+{
+    TRequestScope timer(*args.RequestInfo);
+    TPartitionDatabase db(tx.DB);
+
+    i64 newBlobBytes = 0;
+    for (const auto& blobId: args.NewBlobs) {
+        newBlobBytes += blobId.BlobSize();
+
+        bool deleted = State->GetGarbageQueue().RemoveNewBlob(blobId);
+        Y_VERIFY(deleted);
+    }
+
+    i64 garbageBlobBytes = 0;
+    for (const auto& blobId: args.GarbageBlobs) {
+        garbageBlobBytes += blobId.BlobSize();
+
+        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+            "[%lu] Delete garbage blob: %s",
+            TabletID(),
+            ToString(MakeBlobId(TabletID(), blobId)).data());
+
+        bool deleted = State->GetGarbageQueue().RemoveGarbageBlob(blobId);
+        Y_VERIFY(deleted);
+
+        db.DeleteGarbageBlob(blobId);
+    }
+
+    UpdateStorageStat(newBlobBytes - garbageBlobBytes);
+    UpdateExecutorStats(ctx);
+
+    State->SetLastCollectCommitId(args.CommitId);
+
+    db.WriteMeta(State->GetMeta());
+}
+
+void TPartitionActor::CompleteDeleteGarbage(
+    const TActorContext& ctx,
+    TTxPartition::TDeleteGarbage& args)
+{
+    TRequestScope timer(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvDeleteGarbageResponse>();
+    response->ExecCycles = args.RequestInfo->GetExecCycles();
+
+    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
+
+    LWTRACK(
+        ResponseSent_Partition,
+        args.RequestInfo->CallContext->LWOrbit,
+        "DeleteGarbage",
+        args.RequestInfo->CallContext->RequestId);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    RemoveTransaction(*args.RequestInfo);
+
+    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    PartCounters->RequestCounters.DeleteGarbage.AddRequest(time);
+}
+
+}   // namespace NCloud::NBlockStore::NStorage::NPartition

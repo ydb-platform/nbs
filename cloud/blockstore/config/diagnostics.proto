@@ -1,0 +1,175 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+import "cloud/storage/core/protos/trace.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+// HostName scheme
+
+enum EHostNameScheme
+{
+    HOSTNAME_RAW = 0;
+    HOSTNAME_BASTION = 1;
+    HOSTNAME_YDBVIEWER = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Operation threshold
+
+message TOperationPerfThreshold
+{
+    // Operation threshold. In milliseconds.
+    optional uint64 Threshold = 1;
+
+    // Percentile to apply threshold to. [0..100]
+    optional double Percentile = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume thresholds
+
+message TVolumePerfThreshold
+{
+    optional TOperationPerfThreshold ReadThreshold = 1;
+    optional TOperationPerfThreshold WriteThreshold = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume performance measurements settings
+
+message TOperationCoefficients
+{
+    optional uint32 Iops = 1;
+    optional uint32 Bandwidth = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume performance measurements settings
+
+message TVolumePerfSettings
+{
+    optional TOperationCoefficients Write = 1;
+    optional TOperationCoefficients Read = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiagnosticsConfig
+{
+    // How NBS generates name for external resources.
+    optional EHostNameScheme HostNameScheme = 1;
+
+    // Domain for hosts refered via bastion.
+    optional string BastionNameSuffix = 2;
+
+    // Ydb viewer host name.
+    optional string ViewerHostName = 3;
+
+    // Kikimr monitoring port.
+    optional string KikimrMonitoringPort = 4;
+
+    // Name of cluster in Solomon.
+    optional string SolomonClusterName = 5;
+
+    // Kikimr monitoring port.
+    optional uint32 KikimrMonPort = 6;
+
+    // Nbs monitoring port.
+    optional uint32 NbsMonPort = 7;
+
+    // The tracks of the requests whose processing time in ms exceeds these
+    // values have a chance to be logged
+    optional uint32 HDDSlowRequestThreshold = 8;
+    optional uint32 SSDSlowRequestThreshold = 9;
+    optional uint32 NonReplicatedSSDSlowRequestThreshold = 10;
+
+    // Dump profile log data every ProfileLogTimeThreshold ms
+    optional uint32 ProfileLogTimeThreshold = 12;
+
+    optional bool UseAsyncLogger = 13;
+
+    // [obsolete]
+    // SSD disk performance threshold
+    // optional TVolumePerfThreshold SsdPerfThreshold = 14;
+
+    // [obsolete]
+    // HDD disk performance threshold
+    // optional TVolumePerfThreshold HddPerfThreshold = 15;
+
+    // Solomon host url.
+    optional string SolomonUrl = 16;
+
+    // Allow destructive LWTrace actions.
+    optional bool UnsafeLWTrace = 17;
+
+    // Path to LWTrace query file.
+    optional string LWTraceDebugInitializationQuery = 18;
+
+    // Project name in solomon.
+    optional string SolomonProject = 20;
+
+    // Sampling rate for request tracking
+    optional uint32 SamplingRate = 21;
+
+    // Sampling rate for requests with processing time above "slow" threshold
+    optional uint32 SlowRequestSamplingRate = 22;
+
+    // Performance measurements coefficients for SSD.
+    optional TVolumePerfSettings SsdPerfSettings = 23;
+
+    // Performance measurements coefficients for HDD.
+    optional TVolumePerfSettings HddPerfSettings = 24;
+
+    // Performance measurements coefficients for NRD.
+    optional TVolumePerfSettings NonreplPerfSettings = 25;
+
+    // Performance measurements coefficients for mirror2 disks.
+    optional TVolumePerfSettings Mirror2PerfSettings = 26;
+
+    // Performance measurements coefficients for mirror3 disks.
+    optional TVolumePerfSettings Mirror3PerfSettings = 27;
+
+    // Expected io parallelism. Used in disk performance guarantees.
+    optional uint32 ExpectedIoParallelism = 28;
+
+    // Unified agent endpoint
+    optional string TracesUnifiedAgentEndpoint = 29;
+
+    // Performance measurements coefficients for local disks.
+    optional TVolumePerfSettings LocalSSDPerfSettings = 30;
+
+    // Traces "syslog" identifier
+    optional string TracesSyslogIdentifier = 31;
+
+    // Path to file with cpu wait counters.
+    optional string CpuWaitFilename = 32;
+
+    // Number of shuttles in lwtrace pool.
+    optional uint32 LWTraceShuttleCount = 33;
+
+    // Predictor's interval window (ms).
+    optional uint32 PostponeTimePredictorInterval = 34;
+
+    // Max possible predicted time (ms).
+    optional uint32 PostponeTimePredictorMaxTime = 35;
+
+    // Requests percentage in predictor to calculate possible delay [0.0, 1.0].
+    optional double PostponeTimePredictorPercentage = 36;
+
+    // Request duration after which it should show up in max
+    // request time alert. Thresholds are for different media kinds.
+    // Measured in milliseconds.
+    optional uint32 SSDDowntimeThreshold = 37;
+    optional uint32 HDDDowntimeThreshold = 38;
+    optional uint32 NonreplicatedSSDDowntimeThreshold = 39;
+    optional uint32 Mirror2SSDDowntimeThreshold = 40;
+    optional uint32 Mirror3SSDDowntimeThreshold = 41;
+    optional uint32 LocalSSDDowntimeThreshold = 42;
+
+    // The tracks of the requests whose processing time in ms exceeds
+    // corresponding values have a chance to be logged.
+    repeated NCloud.NProto.TLWTraceThreshold RequestThresholds = 43;
+}

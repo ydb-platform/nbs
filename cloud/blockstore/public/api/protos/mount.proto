@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/blockstore/public/api/protos/volume.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Client IPC type
+
+enum EClientIpcType
+{
+    IPC_GRPC = 0;
+    IPC_VHOST = 1;
+    IPC_NBD = 2;
+    IPC_NVME = 3;
+    IPC_SCSI = 4;
+    IPC_RDMA = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Mount Flags
+
+enum EMountFlag
+{
+    MF_NONE = 0;
+    MF_THROTTLING_DISABLED = 1;
+    MF_FORCE_WRITE = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume mount request/response.
+
+message TMountVolumeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to mount.
+    string DiskId = 2;
+
+    // VM information.
+    string InstanceId = 3;
+
+    // VM token.
+    string Token = 4;
+
+    // Volume access mode.
+    EVolumeAccessMode VolumeAccessMode = 6;
+
+    // Volume mount mode.
+    EVolumeMountMode VolumeMountMode = 7;
+
+    // IPC type used by client (only for monitoring).
+    EClientIpcType IpcType = 8;
+
+    // Client version info.
+    string ClientVersionInfo = 10;
+
+    // Obsolete, use MountFlags instead.
+    bool ThrottlingDisabled = 11;
+
+    // Volume generation.
+    uint64 MountSeqNumber = 12;
+
+    // Encryption key hash.
+    bytes EncryptionKeyHash = 13;
+
+    // Mount flags.
+    uint32 MountFlags = 14;
+}
+
+message TMountVolumeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Volume information.
+    TVolume Volume = 2;
+
+    // Session identifier.
+    string SessionId = 3;
+
+    // Inactive clients timeout (in milliseconds).
+    uint32 InactiveClientsTimeout = 4;
+
+    // Service version information.
+    string ServiceVersionInfo = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume unmount request/response.
+
+message TUnmountVolumeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to unmount.
+    string DiskId = 2;
+
+    // VM information.
+    string InstanceId = 3;
+
+    // VM token.
+    string Token = 4;
+
+    // If unmount shall ignore pending operations. Do we need it?
+    bool Force = 5;
+
+    // Session identifier.
+    string SessionId = 6;
+}
+
+message TUnmountVolumeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

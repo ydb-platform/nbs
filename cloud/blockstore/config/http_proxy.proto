@@ -1,0 +1,22 @@
+syntax = "proto2";
+
+import "cloud/blockstore/config/certificate.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message THttpProxyConfig
+{
+    optional uint32 Port = 1;
+    optional uint32 SecurePort = 2;
+    repeated TCertificate Certs = 3;
+    // Use "localhost-expanded" special value to set this to `hostname --fqdn`
+    optional string NbsServerHost = 4;
+    optional uint32 NbsServerPort = 5;
+    optional string NbsServerCertFile = 6;
+    optional bool NbsServerInsecure = 7;
+    optional string RootCertsFile = 8;
+}

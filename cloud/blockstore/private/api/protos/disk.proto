@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+// XXX this import is prohibited by ya.make
+// that's why instead of EDeviceState and EAgentState we use integers here
+// import "cloud/blockstore/libs/storage/protos/disk.proto";
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// DiskRegistryChangeState request/response.
+
+message TDiskRegistryChangeStateRequest
+{
+    message TChangeDeviceState
+    {
+        string DeviceUUID = 1;
+        uint32 State = 2;
+    };
+
+    message TChangeAgentState
+    {
+        string AgentId = 1;
+        uint32 State = 2;
+    };
+
+    message TDisableAgent
+    {
+        string AgentId = 1;
+        repeated string DeviceUUIDs = 2;
+    };
+
+    oneof ChangeState {
+        TChangeDeviceState ChangeDeviceState = 1;
+        TChangeAgentState ChangeAgentState = 2;
+        TDisableAgent DisableAgent = 3;
+    };
+
+    string Message = 101;
+}
+
+message TDiskRegistryChangeStateResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReassignDiskRegistry request/response.
+
+message TReassignDiskRegistryRequest
+{
+    string SystemKind = 1;
+    string LogKind = 2;
+    string IndexKind = 3;
+}
+
+message TReassignDiskRegistryResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetDiskRegistryTabletInfo request/response.
+
+message TGetDiskRegistryTabletInfoRequest
+{
+}
+
+message TGetDiskRegistryTabletInfoResponse
+{
+    uint64 TabletId = 1;
+}

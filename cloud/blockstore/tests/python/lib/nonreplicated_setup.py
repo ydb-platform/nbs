@@ -1,0 +1,329 @@
+import logging
+import os
+import tempfile
+
+from subprocess import call
+from collections import namedtuple
+
+from google.protobuf.text_format import MessageToBytes
+
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, \
+    TDiskRegistryProxyConfig, DISK_AGENT_BACKEND_AIO
+
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
+
+
+CFG_PREFIX = 'Cloud.NBS.'
+
+
+Device = namedtuple(
+    'Device',
+    [
+        'path',
+        'uuid',
+        'block_size',
+        'block_count',
+        'handle'
+    ]
+)
+
+
+def enable_custom_cms_configs(client):
+    req = msgbus.TConsoleRequest()
+    configs_config = req.SetConfigRequest.Config.ConfigsConfig
+
+    restrictions = configs_config.UsageScopeRestrictions
+
+    restrictions.AllowedTenantUsageScopeKinds.append(
+        console.TConfigItem.NamedConfigsItem)
+    restrictions.AllowedNodeTypeUsageScopeKinds.append(
+        console.TConfigItem.NamedConfigsItem)
+
+    response = client.invoke(req, 'ConsoleRequest')
+    assert response.Status.Code == StatusIds.SUCCESS
+
+
+def update_cms_config(client, name, config, node_type=None):
+    req = msgbus.TConsoleRequest()
+    action = req.ConfigureRequest.Actions.add()
+
+    custom_cfg = action.AddConfigItem.ConfigItem.Config.NamedConfigs.add()
+    custom_cfg.Name = CFG_PREFIX + name
+    custom_cfg.Config = MessageToBytes(config, as_one_line=True)
+
+    s = action.AddConfigItem.ConfigItem.UsageScope
+
+    s.TenantAndNodeTypeFilter.Tenant = '/Root/nbs'
+    if node_type is not None:
+        s.TenantAndNodeTypeFilter.NodeType = node_type
+
+    action.AddConfigItem.ConfigItem.MergeStrategy = console.TConfigItem.MERGE
+
+    response = client.invoke(req, 'ConsoleRequest')
+    assert response.Status.Code == StatusIds.SUCCESS
+
+
+def create_file_device(dir, device_id, block_size, block_count_per_device):
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".nonrepl", delete=False, dir=dir)
+
+    tmp_file.seek(block_count_per_device * block_size - 1)
+    tmp_file.write(b'\0')
+    tmp_file.flush()
+
+    return Device(
+        path=tmp_file.name,
+        uuid="FileDevice-" + str(device_id),
+        block_size=block_size,
+        block_count=block_count_per_device,
+        handle=tmp_file
+    )
+
+
+def create_memory_device(device_id, block_size, block_count_per_device):
+    return Device(
+        path=None,
+        uuid="MemoryDevice-" + str(device_id),
+        block_size=block_size,
+        block_count=block_count_per_device,
+        handle=None
+    )
+
+
+def create_memory_devices(
+        device_count,
+        block_size,
+        block_count_per_device):
+
+    devices = []
+    for i in range(device_count):
+        devices.append(create_memory_device(
+            i + 1,
+            block_size,
+            block_count_per_device
+        ))
+
+    return devices
+
+
+def create_file_devices(
+        dir,
+        device_count,
+        block_size,
+        block_count_per_device):
+
+    devices = []
+    try:
+        for i in range(device_count):
+            devices.append(create_file_device(
+                dir,
+                i + 1,
+                block_size,
+                block_count_per_device
+            ))
+    except Exception:
+        for d in devices:
+            d.handle.close()
+            os.unlink(d.path)
+        raise
+
+    return devices
+
+
+def create_devices(
+        use_memory_devices,
+        device_count,
+        block_size,
+        block_count_per_device,
+        ram_drive_path):
+
+    devices = []
+
+    if use_memory_devices:
+        logging.info("Use memory devices for NRD")
+
+        devices = create_memory_devices(
+            device_count,
+            block_size,
+            block_count_per_device)
+    else:
+        logging.info("Use file devices for NRD")
+
+        dir = ram_drive_path
+
+        if dir is not None:
+            logging.info("create device files on RAM disk at %s" % dir)
+        else:
+            logging.info("create device files in default TMP folder")
+
+        try:
+            devices = create_file_devices(
+                dir,
+                device_count,
+                block_size,
+                block_count_per_device)
+        except Exception as e:
+            logging.error("can't create device files: {}".format(e))
+
+            if dir is None:
+                raise
+
+            logging.info("content of {}: {}".format(dir, os.listdir(dir)))
+
+            logging.warn("fallback to default TMP folder")
+
+            devices = create_file_devices(
+                None,
+                device_count,
+                block_size,
+                block_count_per_device)
+
+        for device in devices:
+            logging.info("device '%s' stores in %s" % (device.uuid, device.path))
+
+    return devices
+
+
+def setup_disk_registry_proxy_config(kikimr):
+    config = TDiskRegistryProxyConfig()
+    config.Owner = 16045690984503103501
+    config.OwnerIdx = 2
+
+    update_cms_config(kikimr, 'DiskRegistryProxyConfig', config)
+
+
+def setup_disk_agent_config(
+        kikimr,
+        devices,
+        device_erase_method,
+        dedicated_disk_agent=False,
+        agent_id="localhost",
+        node_type='disk-agent'):
+
+    config = TDiskAgentConfig()
+    config.Enabled = True
+    config.DedicatedDiskAgent = dedicated_disk_agent
+    config.Backend = DISK_AGENT_BACKEND_AIO
+    config.DirectIoFlagDisabled = True
+    config.AgentId = agent_id
+    config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
+    config.AcquireRequired = True
+    config.RegisterRetryTimeout = 1000  # 1 second
+    if device_erase_method is not None:
+        config.DeviceEraseMethod = device_erase_method
+
+    for device in devices:
+        if device.path is not None:
+            arg = config.FileDevices.add()
+            arg.Path = device.path
+            arg.DeviceId = device.uuid
+            arg.BlockSize = device.block_size
+        else:
+            arg = config.MemoryDevices.add()
+            arg.Name = device.uuid
+            arg.DeviceId = device.uuid
+            arg.BlockSize = device.block_size
+            arg.BlocksCount = device.block_count
+
+    update_cms_config(kikimr, 'DiskAgentConfig', config, node_type=node_type)
+
+
+def make_agent_node_type(i):
+    return "disk-agent-%s" % i if i > 0 else "disk-agent"
+
+
+def make_agent_id(i):
+    return "localhost-%s" % i if i > 0 else "localhost"
+
+
+class DeviceInfo:
+
+    def __init__(self, uuid, serial_number=None):
+        self.uuid = uuid
+        self.serial_number = serial_number if serial_number else 'SN-' + uuid
+
+
+class AgentInfo:
+
+    def __init__(self, agent_id, devices):
+        self.agent_id = agent_id
+        self.devices = devices
+
+
+def setup_disk_registry_config(
+        agent_infos,
+        nbs_port,
+        nbs_client_binary_path):
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".nonrepl")
+
+    for agent_info in agent_infos:
+        tmp_file.write(b'KnownAgents {\n')
+        tmp_file.write(b'AgentId: "%s"\n' % agent_info.agent_id.encode("utf8"))
+
+        for device in agent_info.devices:
+            tmp_file.write(
+                f'''
+                KnownDevices <
+                    DeviceUUID: "{device.uuid}"
+                    SerialNumber: "{device.serial_number}"
+                >
+                '''.encode("utf8"))
+
+        tmp_file.write(b'}\n')
+    tmp_file.flush()
+
+    result = call(
+        [nbs_client_binary_path,
+            "UpdateDiskRegistryConfig",
+            "--proto",
+            "--input", tmp_file.name,
+            "--host", "localhost",
+            "--port", str(nbs_port)]
+    )
+
+    assert result == 0
+
+
+def setup_disk_registry_config_simple(
+        devices,
+        nbs_port,
+        nbs_client_binary_path):
+
+    setup_disk_registry_config(
+        [AgentInfo(make_agent_id(0), [DeviceInfo(d.uuid) for d in devices])],
+        nbs_port,
+        nbs_client_binary_path
+    )
+
+
+def enable_writable_state(nbs_port, nbs_client_binary_path):
+    result = call(
+        [nbs_client_binary_path,
+            "ExecuteAction",
+            "--action", "DiskRegistrySetWritableState",
+            "--input-bytes", '{"State": true}',
+            "--host", "localhost",
+            "--port", str(nbs_port)]
+    )
+
+    assert result == 0
+
+
+def setup_nonreplicated(
+        kikimr_client,
+        devices_per_agent,
+        device_erase_method=None,
+        dedicated_disk_agent=False,
+        agent_count=1):
+    enable_custom_cms_configs(kikimr_client)
+    setup_disk_registry_proxy_config(kikimr_client)
+    for i in range(agent_count):
+        setup_disk_agent_config(
+            kikimr_client,
+            devices_per_agent[i],
+            device_erase_method,
+            dedicated_disk_agent,
+            agent_id=make_agent_id(i),
+            node_type=make_agent_node_type(i))

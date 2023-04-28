@@ -1,0 +1,102 @@
+#pragma once
+
+#include "public.h"
+
+#include "agent_counters.h"
+
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/storage/core/libs/common/error.h>
+
+#include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAgentListConfig
+{
+    double TimeoutGrowthFactor = 2;
+    TDuration MinRejectAgentTimeout;
+    TDuration MaxRejectAgentTimeout;
+    TDuration DisconnectRecoveryInterval;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAgentList
+{
+    using TAgentId = TString;
+    using TDeviceId = TString;
+    using TNodeId = ui32;
+
+private:
+    const TAgentListConfig Config;
+    const NMonitoring::TDynamicCountersPtr ComponentGroup;
+
+    double RejectTimeoutMultiplier = 1;
+    TInstant LastAgentEventTs;
+
+    TVector<NProto::TAgentConfig> Agents;
+    TVector<TAgentCounters> AgentCounters;
+    TSimpleCounter RejectAgentTimeoutCounter;
+
+    THashMap<TAgentId, size_t> AgentIdToIdx;
+    THashMap<TNodeId, size_t> NodeIdToIdx;
+
+public:
+    TAgentList(
+        const TAgentListConfig& config,
+        NMonitoring::TDynamicCountersPtr counters,
+        TVector<NProto::TAgentConfig> configs);
+
+    const TVector<NProto::TAgentConfig>& GetAgents() const
+    {
+        return Agents;
+    }
+
+    TNodeId FindNodeId(const TAgentId& agentId) const;
+
+    NProto::TAgentConfig* FindAgent(TNodeId nodeId);
+    const NProto::TAgentConfig* FindAgent(TNodeId nodeId) const;
+
+    NProto::TAgentConfig* FindAgent(const TAgentId& agentId);
+    const NProto::TAgentConfig* FindAgent(const TAgentId& agentId) const;
+
+    NProto::TAgentConfig& RegisterAgent(
+        NProto::TAgentConfig config,
+        TInstant timestamp,
+        THashSet<TDeviceId>* newDevices);
+
+    bool RemoveAgent(TNodeId nodeId);
+    bool RemoveAgent(const TAgentId& agentId);
+
+    bool RemoveAgentFromNode(TNodeId nodeId);
+
+    void PublishCounters(TInstant now);
+    void UpdateCounters(
+        const NProto::TAgentStats& stats,
+        const NProto::TMeanTimeBetweenFailures& mtbf);
+
+    TDuration GetRejectAgentTimeout(TInstant now) const;
+    void OnAgentDisconnected(TInstant now);
+
+private:
+    NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);
+
+    NProto::TAgentConfig& AddNewAgent(
+        NProto::TAgentConfig config,
+        TInstant timestamp,
+        THashSet<TDeviceId>* newDevices);
+
+    void TransferAgent(
+        NProto::TAgentConfig& agent,
+        TNodeId newNodeId);
+
+    void RemoveAgentByIdx(size_t index);
+};
+
+}   // namespace NCloud::NBlockStore::NStorage

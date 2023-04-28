@@ -1,0 +1,104 @@
+#include "part_actor.h"
+
+#include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
+
+#include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
+
+#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/hfunc.h>
+
+namespace NCloud::NBlockStore::NStorage::NPartition {
+
+using namespace NActors;
+using namespace NKikimr;
+using namespace NKikimr::NTabletFlatExecutor;
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::HandleAddUnconfirmedBlobs(
+    const TEvPartitionPrivate::TEvAddUnconfirmedBlobsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    using TMethod = TEvPartitionPrivate::TAddUnconfirmedBlobsMethod;
+    auto requestInfo = CreateRequestInfo<TMethod>(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext,
+        std::move(ev->TraceId));
+
+    TRequestScope timer(*requestInfo);
+
+    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+
+    LWTRACK(
+        RequestReceived_Partition,
+        requestInfo->CallContext->LWOrbit,
+        "AddUnconfirmedBlobs",
+        requestInfo->CallContext->RequestId);
+
+    AddTransaction(*requestInfo);
+
+    ExecuteTx<TAddUnconfirmedBlobs>(
+        ctx,
+        requestInfo,
+        msg->CommitId,
+        std::move(msg->Blobs));
+}
+
+bool TPartitionActor::PrepareAddUnconfirmedBlobs(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TAddUnconfirmedBlobs& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TPartitionActor::ExecuteAddUnconfirmedBlobs(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TAddUnconfirmedBlobs& args)
+{
+    Y_UNUSED(ctx);
+
+    TPartitionDatabase db(tx.DB);
+
+    for (const auto& blob: args.Blobs) {
+        State->WriteUnconfirmedBlob(db, args.CommitId, blob);
+    }
+}
+
+void TPartitionActor::CompleteAddUnconfirmedBlobs(
+    const TActorContext& ctx,
+    TTxPartition::TAddUnconfirmedBlobs& args)
+{
+    TRequestScope timer(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvAddUnconfirmedBlobsResponse>();
+    response->ExecCycles = args.RequestInfo->GetExecCycles();
+
+    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
+
+    LWTRACK(
+        ResponseSent_Partition,
+        args.RequestInfo->CallContext->LWOrbit,
+        "AddUnconfirmedBlobs",
+        args.RequestInfo->CallContext->RequestId);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    RemoveTransaction(*args.RequestInfo);
+
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    PartCounters->RequestCounters.AddUnconfirmedBlobs.AddRequest(time);
+}
+
+}   // namespace NCloud::NBlockStore::NStorage::NPartition

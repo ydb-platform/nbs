@@ -1,0 +1,408 @@
+from __future__ import print_function
+
+import json
+import logging
+import os
+import requests
+import retrying
+import socket
+import sys
+import tempfile
+import time
+import urllib3
+import uuid
+
+import yatest.common as common
+import ydb.tests.library.common.yatest_common as yatest_common
+from ydb.tests.library.harness.daemon import Daemon
+
+import cloud.blockstore.public.sdk.python.protos as protos
+
+from cloud.blockstore.config.client_pb2 import TClientConfig
+from cloud.blockstore.tests.python.lib.stats import dump_stats
+
+from cloud.blockstore.public.sdk.python.client.grpc_client import GrpcClient
+from cloud.blockstore.public.sdk.python.client.error import ClientError
+from cloud.blockstore.public.sdk.python.client.error_codes import EFacility
+
+
+def thread_count():
+    return int(common.get_param("threads", 2))
+
+
+def counters_url(host, mon_port):
+    return "http://%s:%s/counters/counters=blockstore/json" % (host, mon_port)
+
+
+def _extract_tracks(nbs_log_path, track_filter):
+    if nbs_log_path is None:
+        return []
+    tracks = []
+    with open(nbs_log_path) as f:
+        for line in f.readlines():
+            if track_filter is not None and line.find(track_filter) < 0:
+                continue
+            parts = line.rstrip().split("BLOCKSTORE_TRACE WARN: ")
+            if len(parts) == 2:
+                tracks.append(json.loads(parts[1]))
+
+    return tracks
+
+
+_STABLE_PROBES = []
+
+for request in ["ZeroBlocks", "WriteBlocks", "ReadBlocks"]:
+    _STABLE_PROBES += [
+        ("RequestStarted", request),
+        ("RequestSent_Proxy", request),
+        ("RequestReceived_Service", request),
+        ("RequestReceived_ThrottlingService", request),
+        ("RequestPostponed_ThrottlingService", request),
+        ("RequestAdvanced_ThrottlingService", request),
+        ("RequestReceived_Volume", request),
+        ("RequestPostponed_Volume", request),
+        ("RequestAdvanced_Volume", request),
+        # ("ResponseReceived_Proxy", request),
+        ("ResponseSent", request),
+    ]
+
+
+def _dump_tracks(tracks, f):
+    signatures = set()
+    for track in tracks:
+        if not len(track):
+            continue
+
+        if len(track[0]) < 3:
+            continue
+
+        if (track[0][0], track[0][2]) not in _STABLE_PROBES:
+            continue
+
+        signature = []
+        for item in track:
+            if len(item) < 3:
+                continue
+            if (item[0], item[2]) not in _STABLE_PROBES:
+                continue
+            s = "%s:%s" % (item[0], item[2])
+            if s not in signature:
+                signature.append(s)
+        signatures.add(json.dumps(signature))
+    for s in sorted(list(signatures)):
+        print(s, file=f)
+
+
+class LoadTest(Daemon):
+
+    def __init__(
+            self,
+            test_name,
+            config_path,
+            nbs_port,
+            host="localhost",
+            client_config=TClientConfig(),
+            enable_tls=False,
+            endpoint_storage_dir=None,
+            spdk_config=None):
+
+        self.__test_name = test_name
+        self.__results_path = yatest_common.output_path() + "/results.txt"
+
+        binary_path = common.binary_path(
+            "cloud/blockstore/tools/testing/loadtest/bin/blockstore-loadtest")
+
+        params = [
+            binary_path,
+            "--host", host,
+            "--secure-port" if enable_tls else "--port", str(nbs_port),
+            "--config", config_path,
+            "--results", self.__results_path,
+            "--verbose", "info"
+        ]
+
+        if client_config is not None:
+            client_config_path = yatest_common.output_path() + "/client.txt"
+            with open(client_config_path, "w") as f:
+                client_config.ThreadsCount = thread_count()
+                f.write(str(client_config))
+            params.extend(["--client-config", client_config_path])
+
+        if spdk_config is not None:
+            spdk_config_path = yatest_common.output_path() + "/spdk.txt"
+            with open(spdk_config_path, "w") as f:
+                f.write(str(spdk_config))
+            params.extend(["--spdk-config", spdk_config_path])
+
+        if endpoint_storage_dir is not None:
+            params.extend(["--endpoint-storage-dir", endpoint_storage_dir])
+
+        super(LoadTest, self).__init__(
+            command=params,
+            cwd=common.output_path(),
+            timeout=180,
+            stdin_file=os.path.join(common.output_path(), "%s_stdin.txt" % test_name),
+            stdout_file=os.path.join(common.output_path(), "%s_stdout.txt" % test_name),
+            stderr_file=os.path.join(common.output_path(), "%s_stderr.txt" % test_name))
+
+    def create_canonical_files(
+            self,
+            mon_port=None,
+            host="localhost",
+            stat_filter=None,
+            nbs_log_path=None,
+            track_filter=None):
+
+        if self.daemon.exit_code != 0:
+            return None
+
+        canonical_files = []
+
+        full_stats_path = os.path.join(common.output_path(), "full_stats_%s.txt" % self.__test_name)
+
+        if stat_filter is not None:
+            stats_path = os.path.join(common.output_path(), "stats_%s.txt" % self.__test_name)
+            with open(stats_path, "w") as f, open(full_stats_path, "w") as ff:
+                dump_stats(counters_url(host, mon_port), stat_filter, f, ff)
+            canonical_files.append(common.canonical_file(stats_path))
+
+        with open(self.__results_path, "r") as f:
+            for s in f:
+                s = s.strip()
+                if len(s) == 0:
+                    continue
+
+                try:
+                    data = json.loads(s)
+                except ValueError as e:
+                    logging.error("Failed to parse json: {}. Error: {}".format(s, e))
+                    continue
+
+                if "TestResults" not in data:
+                    continue
+
+                svr = data["StatVolumeResponse"]
+                assert "WriteAndZeroRequestsInFlight" not in svr, \
+                    "there should be zero write and zero requests in flight"
+
+                tr = data["TestResults"]
+
+                delta = (float)(tr["EndTime"] - tr["StartTime"]) / 1000000
+                iops = (float)(tr["RequestsCompleted"]) / delta
+                print("iops = {}".format(iops), file=sys.stderr)
+                if "BlocksRead" in data:
+                    bw = (float)(tr["BlocksRead"] * 4096) / delta
+                    print("read performance = {} MB/s".format(bw / 1024 ** 2), file=sys.stderr)
+                    print("read latency = " + json.dumps(tr["ReadLatency"]), file=sys.stderr)
+                if "BlocksWritten" in tr:
+                    bw = (float)(tr["BlocksWritten"] * 4096) / delta
+                    print("write performance = {} MB/s".format(bw / 1024 ** 2), file=sys.stderr)
+                    print("write latency = " + json.dumps(tr["WriteLatency"]), file=sys.stderr)
+                if "BlocksZeroed" in tr:
+                    bw = (float)(tr["BlocksZeroed"] * 4096) / delta
+                    print("zero performance = {} MB/s".format(bw / 1024 ** 2), file=sys.stderr)
+                    print("zero latency = " + json.dumps(tr["ZeroLatency"]), file=sys.stderr)
+
+        tracks = _extract_tracks(nbs_log_path, track_filter)
+        if len(tracks):
+            tracks_path = os.path.join(common.output_path(), "tracks_%s.txt" % self.__test_name)
+            with open(tracks_path, "w") as f:
+                _dump_tracks(tracks, f)
+            canonical_files.append(common.canonical_file(tracks_path))
+
+        return canonical_files if len(canonical_files) else None
+
+
+def run_test(
+        test_name,
+        config_path,
+        nbs_port,
+        mon_port,
+        host="localhost",
+        stat_filter=None,
+        nbs_log_path=None,
+        client_config=TClientConfig(),
+        enable_tls=False,
+        track_filter=None,
+        endpoint_storage_dir=None,
+        spdk_config=None,
+        env_processes=[]):
+
+    r = LoadTest(
+        test_name,
+        config_path,
+        nbs_port,
+        host,
+        client_config,
+        enable_tls,
+        endpoint_storage_dir,
+        spdk_config)
+
+    def kill_all():
+        for p in env_processes + [r]:
+            try:
+                p.kill()
+            except Exception as e:
+                logging.warning(e)
+
+    r.start()
+
+    while r.is_alive():
+        time.sleep(5)
+        dead = [p for p in env_processes if not p.is_alive()]
+        for p in dead:
+            logging.warning(
+                "Found a terminated process: {}, {}.".format(
+                    p.command,
+                    p.returncode
+                ))
+        if dead:
+            kill_all()
+            raise Exception(
+                'Several ({}) processes terminated prematurely.'.format(len(dead)))
+
+    r.stop()
+
+    return r.create_canonical_files(
+        mon_port,
+        host,
+        stat_filter,
+        nbs_log_path,
+        track_filter)
+
+
+def is_grpc_error(exception):
+    if isinstance(exception, ClientError):
+        return exception.facility == EFacility.FACILITY_GRPC.value
+
+    return False
+
+
+@retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
+def wait_for_nbs_server(port):
+    '''
+    Ping NBS server with delay between attempts to ensure
+    it is running and listening by the moment the actual test execution begins
+    '''
+
+    with GrpcClient(str("localhost:%d" % port)) as grpc_client:
+        grpc_client.ping(protos.TPingRequest())
+
+
+@retrying.retry(stop_max_delay=60000, wait_fixed=1000)
+def wait_for_nbs_server_proxy(secure_port):
+    '''
+    Ping NBS server proxy with delay between attempts to ensure
+    it is running and listening by the moment the actual test execution begins
+    '''
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    r = requests.post(str("https://localhost:%d/ping" % secure_port), verify=False)
+    r.raise_for_status()
+
+
+@retrying.retry(stop_max_delay=60000, wait_fixed=1000)
+def wait_for_disk_agent(mon_port):
+    '''
+    Check disk agent mon_port with delay between attempts to ensure
+    it is running and listening by the moment the actual test execution begins
+    '''
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        result = sock.connect_ex(('localhost', mon_port))
+
+    if result != 0:
+        raise RuntimeError("Failed to connect to disk agent")
+
+
+def get_nbs_counters(mon_port):
+    r = requests.get(counters_url('localhost', mon_port), timeout=10)
+    r.raise_for_status()
+
+    return r.json()
+
+
+def get_free_socket_path(name):
+    file_name = str(uuid.uuid4()) + "_" + name
+    unix_socket_path = tempfile.gettempdir() + "/" + file_name
+
+    # Chop path because it's limited in some environments.
+    UDS_PATH_LEN_LIMIT = 100
+    if len(unix_socket_path) > UDS_PATH_LEN_LIMIT:
+        to_chop = min(len(unix_socket_path) - UDS_PATH_LEN_LIMIT, len(file_name) - 1)
+        unix_socket_path = unix_socket_path[:-to_chop]
+    assert len(unix_socket_path) <= UDS_PATH_LEN_LIMIT
+
+    if os.path.exists(unix_socket_path):
+        os.remove(unix_socket_path)
+
+    return unix_socket_path
+
+
+def get_file_size(filename):
+    fd = os.open(filename, os.O_RDONLY)
+    try:
+        return os.lseek(fd, 0, os.SEEK_END)
+    finally:
+        os.close(fd)
+
+
+def get_nbs_device_path(path=None):
+    if not path:
+        path = os.getenv("NBS_DEVICE_PATH")
+
+    if not path:
+        raise RuntimeError("Invalid path")
+
+    if not os.path.exists(path):
+        raise RuntimeError("Path does not exist: {}".format(path))
+
+    return path
+
+
+def get_sensor_by_name(sensors, component, name, def_value=None):
+    for sensor in sensors:
+        labels = sensor['labels']
+        if labels.get('component') != component:
+            continue
+        if labels.get('sensor') != name:
+            continue
+
+        return sensor.get('value', def_value)
+    return def_value
+
+
+# wait for DiskAgent registration & secure erase
+def wait_for_free_bytes(mon_port):
+    while True:
+        logging.info("Wait for agents...")
+        time.sleep(1)
+        sensors = get_nbs_counters(mon_port)['sensors']
+        bytes = get_sensor_by_name(sensors, 'disk_registry', 'FreeBytes', 0)
+
+        if bytes > 0:
+            logging.info("Bytes: {}".format(bytes))
+            break
+
+
+# wait for DA & secure erase of all available devices
+def wait_for_secure_erase(mon_port):
+    while True:
+        logging.info("Wait for agents ...")
+        time.sleep(1)
+        sensors = get_nbs_counters(mon_port)['sensors']
+        agents = get_sensor_by_name(sensors, 'disk_registry', 'AgentsInOnlineState', 0)
+        if agents == 0:
+            continue
+
+        logging.info("Agents: {}".format(agents))
+
+        bytes = get_sensor_by_name(sensors, 'disk_registry', 'FreeBytes', 0)
+        dd = get_sensor_by_name(sensors, 'disk_registry', 'DirtyDevices', 0)
+        logging.info("Dirty devices: {}".format(dd))
+        if dd == 0:
+            logging.info("Bytes: {}".format(bytes))
+
+            assert(bytes != 0)
+            break

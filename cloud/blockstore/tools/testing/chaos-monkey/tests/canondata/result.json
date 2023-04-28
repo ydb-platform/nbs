@@ -1,0 +1,11 @@
+{
+    "tests.tests.TestCleanup": {
+        "uri": "file://tests.tests.TestCleanup/test.golden"
+    },
+    "tests.tests.TestFetchAnalyzeDisable": {
+        "uri": "file://tests.tests.TestFetchAnalyzeDisable/test.golden"
+    },
+    "tests.tests.TestStateAnalysis": {
+        "uri": "file://tests.tests.TestStateAnalysis/test.golden"
+    }
+}

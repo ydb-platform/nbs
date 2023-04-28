@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Upload client metrics
+
+message TUploadClientMetricsRequest
+{
+    // Request headers (must contain at least ClientId).
+    THeaders Headers = 1;
+
+    // Encoded metrics (dynamic counters in spack format with zstd compression).
+    bytes Metrics = 2;
+}
+
+message TUploadClientMetricsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

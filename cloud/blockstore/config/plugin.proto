@@ -1,0 +1,38 @@
+syntax = "proto2";
+
+import "cloud/blockstore/public/api/protos/client.proto";
+import "cloud/blockstore/public/api/protos/encryption.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPluginConfig
+{
+    // VM description
+    optional TClientProfile ClientProfile = 1;
+
+    // Explicit performance profile
+    optional TClientPerformanceProfile ClientPerformanceProfile = 2;
+
+    // Path to the file with TClientAppConfig in textual format
+    // Legacy: my be a path to the file with TClientConfig
+    optional string ClientConfig = 3;
+
+    // Client identifier.
+    optional string ClientId = 4;
+}
+
+message TPluginMountConfig
+{
+    // Label of volume to mount.
+    optional string DiskId = 1;
+
+    // Device unix-socket path.
+    optional string UnixSocketPath = 2;
+
+    // Device encryption spec.
+    optional TEncryptionSpec EncryptionSpec = 3;
+}

@@ -1,0 +1,92 @@
+#pragma once
+
+#include "public.h"
+
+#include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/client/throttling.h>
+#include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/daemon/common/config_initializer.h>
+#include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/discovery/public.h>
+#include <cloud/blockstore/libs/endpoints/public.h>
+#include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/logbroker/iface/public.h>
+#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/server/public.h>
+#include <cloud/blockstore/libs/service/public.h>
+#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/features_config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
+#include <cloud/blockstore/libs/storage_local/public.h>
+#include <cloud/blockstore/libs/ydbstats/config.h>
+
+#include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/iam/iface/public.h>
+#include <cloud/storage/core/libs/kikimr/config_initializer.h>
+
+#include <ydb/core/protos/config.pb.h>
+
+#include <library/cpp/json/writer/json_value.h>
+#include <library/cpp/logger/log.h>
+
+namespace google::protobuf {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class Message;
+
+}   // namespace google::protobuf
+
+namespace NCloud::NBlockStore::NServer {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TConfigInitializerYdb final
+    : public TConfigInitializerCommon
+    , public NCloud::NStorage::TConfigInitializerYdbBase
+{
+    TOptionsYdbPtr Options;
+
+    NYdbStats::TYdbStatsConfigPtr StatsConfig;
+    NStorage::TStorageConfigPtr StorageConfig;
+    NStorage::TFeaturesConfigPtr FeaturesConfig;
+    NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
+    NNotify::TNotifyConfigPtr NotifyConfig;
+    NIamClient::TIamClientConfigPtr IamClientConfig;
+
+    TConfigInitializerYdb(TOptionsYdbPtr options);
+
+    void InitFeaturesConfig();
+    void InitLogbrokerConfig();
+    void InitNotifyConfig();
+    void InitStatsUploadConfig();
+    void InitStorageConfig();
+    void InitIamClientConfig();
+
+    bool GetUseNonreplicatedRdmaActor() const override;
+    TDuration GetInactiveClientsTimeout() const override;
+
+    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+
+private:
+    void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;
+
+    void ApplyDiagnosticsConfig(const TString& text);
+    void ApplyDiscoveryServiceConfig(const TString& text);
+    void ApplyDiskAgentConfig(const TString& text);
+    void ApplyDiskRegistryProxyConfig(const TString& text);
+    void ApplyFeaturesConfig(const TString& text);
+    void ApplyLocalStorageConfig(const TString& text);
+    void ApplyLogbrokerConfig(const TString& text);
+    void ApplyNotifyConfig(const TString& text);
+    void ApplyServerAppConfig(const TString& text);
+    void ApplySpdkEnvConfig(const TString& text);
+    void ApplyStorageServiceConfig(const TString& text);
+    void ApplyYdbStatsConfig(const TString& text);
+    void ApplyIamClientConfig(const TString& text);
+};
+
+}   // namespace NCloud::NBlockStore::NServer

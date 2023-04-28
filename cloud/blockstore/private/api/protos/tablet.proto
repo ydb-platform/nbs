@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// ResetTablet request/response.
+
+message TResetTabletRequest
+{
+    uint64 TabletId = 1;
+    uint32 Generation = 2;
+}
+
+message TResetTabletResponse
+{
+    string Status = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// KillTablet request/response.
+
+message TKillTabletRequest
+{
+    uint64 TabletId = 1;
+}
+
+message TKillTabletResponse
+{}

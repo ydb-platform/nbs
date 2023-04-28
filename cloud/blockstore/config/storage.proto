@@ -1,0 +1,797 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EAuthorizationMode
+{
+    // All requests are allowed. Authorization failures are not reported.
+    AUTHORIZATION_IGNORE = 0;
+    // Requests when authorizer is disabled and requests with empty token are
+    // allowed but reported. Other authorization failures fail requests.
+    AUTHORIZATION_ACCEPT = 1;
+    // All authorization failures fail requests.
+    AUTHORIZATION_REQUIRE = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EChannelAllocationMode
+{
+    // [obsolete]
+    // Send NumChannels+ChannelProfileId settings to schemeshard in CreateVolume
+    // and AlterVolume requests
+    // CA_IMPLICIT = 0;
+
+    // [obsolete]
+    // Send ExplicitChannelProfiles alongside NumChannels+ChannelProfileId
+    // CA_BOTH = 1;
+
+    // Send only ExplicitChannelProfiles
+    CA_EXPLICIT = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum ECompactionType
+{
+    // RangeScore = BlobCount
+    CT_DEFAULT = 0;
+    // RangeScore = blobstorage load reduction in seconds
+    CT_LOAD = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EVolumePreemptionType
+{
+    // Do not preempt volumes when host is overloaded
+    PREEMPTION_NONE = 0;
+    // Move most resource consuming disk
+    PREEMPTION_MOVE_MOST_HEAVY = 1;
+    // Move least resource consumig disk
+    PREEMPTION_MOVE_LEAST_HEAVY = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TStorageServiceConfig
+{
+    // Tablet channel profiles to use (legacy, see NBS-458).
+    // optional uint32 ChannelsProfile = 1; // obsolete
+    // optional uint32 ChannelsProfileSSD = 2; // obsolete
+    // optional uint32 ChannelsProfileHybrid = 3; // obsolete
+
+    // Schemeshard directory for volumes.
+    optional string SchemeShardDir = 4;
+
+    // Minimum blob size (in bytes) that lets compaction materialize zero blocks
+    // and add this blob to the merged index.
+    // optional uint32 WriteMergedBlobThreshold = 5; // obsolete
+
+    // Minimum write request size (in bytes) that lets us write the data directly
+    // to blobstorage (as a merged blob).
+    optional uint32 WriteBlobThreshold = 6;
+
+    // The size of data (in bytes) in the fresh blocks table that triggers flushing.
+    optional uint32 FlushThreshold = 7;
+
+    // Maximum number of fresh blocks to keep.
+    // optional uint32 MaxFreshBlocks = 8; // obsolete
+
+    // Number of overlapped blobs.
+    optional uint32 CompactionThreshold = 9;
+
+    // Number of blobs queued for cleanup.
+    optional uint32 CleanupThreshold = 10;
+
+    // Number of blobs queued for collect.
+    optional uint32 CollectGarbageThreshold = 11;
+
+    // Timeout for hive locks (in milliseconds).
+    optional uint32 HiveLockExpireTimeout = 12;
+
+    // Cooldown time between tablet reboots (in milliseconds).
+    optional uint32 TabletRebootCoolDownIncrement = 13;
+    optional uint32 TabletRebootCoolDownMax = 14;
+
+    // Should local service be started or not.
+    optional bool DisableLocalService = 15;
+
+    // Number of reties before pipe client reports failure.
+    optional uint32 PipeClientRetryCount = 16;
+
+    // Mimimum timeout before pipe client reconnect attempt.
+    optional uint32 PipeClientMinRetryTime = 17;
+
+    // Maximum timeout before pipe client reconnect attempt.
+    optional uint32 PipeClientMaxRetryTime = 18;
+
+    // Fresh data will be chunked into blobs of such size (in bytes) during flushing.
+    optional uint32 FlushBlobSizeThreshold = 19;
+
+    // Period to write usage stats to log (in milliseconds).
+    // optional uint32 UsageStatsLogPeriod = 20;  // obsolete
+
+    // Retry timeout for compaction started from monitoring (in milliseconds).
+    optional uint32 CompactionRetryTimeout = 21;
+
+    // Number of deletions before starting an update process.
+    optional uint32 UpdateBlobsThreshold = 22;
+
+    // File to write metering data.
+    // optional string MeteringFilename = 23;  // obsolete
+
+    // Number of garbage blocks before start compaction.
+    optional uint32 CompactionGarbageThreshold = 24;
+
+    // Maximum request size in bytes.
+    optional uint64 MaxReadWriteRangeSize = 25;
+
+    // Maximum blob range size (in bytes).
+    optional uint32 MaxBlobRangeSize = 26;
+
+    // Timeout for considering client inactive after mounting (in milliseconds).
+    optional uint32 InactiveClientsTimeout = 27;
+
+    // Allow the service to unmount inactive clients.
+    // optional bool UnmountInactiveClients = 28;  // obsolete
+
+    // Allow multiple clients to mount the same volume (with access restrictions).
+    // optional bool MultipleMountAllowed = 29;    // obsolete
+
+    // Maximum allowed requests in-progress.
+    optional uint32 MaxIORequestsInFlight = 30;
+    optional uint32 MaxIORequestsInFlightSSD = 31;
+
+    // Allow setting Version field in ModifyScheme request.
+    optional bool AllowVersionInModifyScheme = 32;
+
+    // Require mounting volume by any client willing to submit read/write/zero blocks requests.
+    // optional bool MountRequired = 33;   // obsolete
+
+    // Service version info.
+    optional string ServiceVersionInfo = 34;
+
+    // Size of allocation unit for SSD drives (in GiB).
+    optional uint32 AllocationUnitSSD = 35;
+
+    // Size of allocation unit for HDD drives (in GiB).
+    optional uint32 AllocationUnitHDD = 36;
+
+    // Throttling feature flags.
+    optional bool ThrottlingEnabled = 37;
+    optional bool ThrottlingEnabledSSD = 38;
+
+    // Volumes stats upload to db period.
+    optional uint32 StatsUploadInterval = 39;
+
+    // Default throttling settings.
+    optional uint32 ThrottlingBurstPercentage = 40;
+    optional uint32 ThrottlingMaxPostponedWeight = 41;   // in bytes
+    optional uint32 ThrottlingBoostTime = 42;            // in milliseconds
+    optional uint32 ThrottlingBoostRefillTime = 43;      // in milliseconds
+
+    // Disk boost rate corresponds to the following unit count.
+    optional uint32 ThrottlingSSDBoostUnits = 44;
+    optional uint32 ThrottlingHDDBoostUnits = 45;
+
+    // Performance per allocation unit.
+    optional uint32 SSDUnitReadBandwidth = 46;   // in MiB/s
+    optional uint32 SSDUnitWriteBandwidth = 47;  // in MiB/s
+    optional uint32 SSDMaxReadBandwidth = 48;    // in MiB/s
+    optional uint32 SSDMaxWriteBandwidth = 49;   // in MiB/s
+    optional uint32 SSDUnitReadIops = 50;
+    optional uint32 SSDUnitWriteIops = 51;
+    optional uint32 SSDMaxReadIops = 52;
+    optional uint32 SSDMaxWriteIops = 53;
+    optional uint32 HDDUnitReadBandwidth = 54;   // in MiB/s
+    optional uint32 HDDUnitWriteBandwidth = 55;  // in MiB/s
+    optional uint32 HDDMaxReadBandwidth = 56;    // in MiB/s
+    optional uint32 HDDMaxWriteBandwidth = 57;   // in MiB/s
+    optional uint32 HDDUnitReadIops = 58;
+    optional uint32 HDDUnitWriteIops = 59;
+    optional uint32 HDDMaxReadIops = 60;
+    optional uint32 HDDMaxWriteIops = 61;
+
+    optional EAuthorizationMode AuthorizationMode = 62;
+
+    // Throttler postpone/reject threshold in milliseconds.
+    optional uint32 MaxThrottlerDelay = 63;
+
+    // Partition backpressure feature calculation settings.
+    optional uint32 CompactionScoreLimitForBackpressure = 64;
+    optional uint32 CompactionScoreThresholdForBackpressure = 65;
+    optional uint32 CompactionScoreFeatureMaxValue = 66;
+    optional uint32 FreshByteCountLimitForBackpressure = 67;
+    optional uint32 FreshByteCountThresholdForBackpressure = 68;
+    optional uint32 FreshByteCountFeatureMaxValue = 69;
+
+    // Max write request cost multiplier due to backpressure.
+    optional uint32 MaxWriteCostMultiplier = 70;
+
+    // Timeout to register client at volume.
+    optional uint32 InitialAddClientTimeout = 71;
+
+    // Timeout to register client after tablet local start.
+    optional uint32 LocalStartAddClientTimeout = 72;
+
+    // Channel configuration.
+    optional string HDDSystemChannelPoolKind = 73;
+    optional string HDDLogChannelPoolKind = 74;
+    optional string HDDIndexChannelPoolKind = 75;
+    optional string HDDMixedChannelPoolKind = 76;
+    optional string HDDMergedChannelPoolKind = 77;
+    optional string SSDSystemChannelPoolKind = 78;
+    optional string SSDLogChannelPoolKind = 79;
+    optional string SSDIndexChannelPoolKind = 80;
+    optional string SSDMixedChannelPoolKind = 81;
+    optional string SSDMergedChannelPoolKind = 82;
+    optional string HybridSystemChannelPoolKind = 83;
+    optional string HybridLogChannelPoolKind = 84;
+    optional string HybridIndexChannelPoolKind = 85;
+    optional string HybridMixedChannelPoolKind = 86;
+    optional string HybridMergedChannelPoolKind = 87;
+
+    // [obsolete] Channel allocation mode for schemeshard.
+    // we always use explicit channel profiles.
+    // optional EChannelAllocationMode ChannelAllocationMode = 88;
+
+    // Scatters new volumes across multiple schemeshard directories
+    // optional bool ScatterVolumesInSchemeShard = 89; // obsolete
+
+    // FolderId of this NBS instance. Used for authorization.
+    optional string FolderId = 90;
+
+    // Enables allocation of special channels for Mixed blobs.
+    optional bool AllocateSeparateMixedChannels = 91;
+
+    // Retry timeout for cleanup started from monitoring (in milliseconds).
+    optional uint32 CleanupRetryTimeout = 92;
+
+    // Channel free space threshold - used for write request balancing.
+    optional uint32 ChannelFreeSpaceThreshold = 93;
+    // Channel min free space - used for write request balancing.
+    optional uint32 ChannelMinFreeSpace = 94;
+
+    // Minimum number of channels per partition.
+    optional uint32 MinChannelCount = 95;
+
+    // Weight of read/zero/describe requests in throttler's postponed request
+    // queue, bytes.
+    optional uint32 DefaultPostponedRequestWeight = 96;
+
+    // Timeout for client to send ping (in milliseconds).
+    optional uint32 ClientRemountPeriod = 97;
+
+    // Index caching parameters (only for partition2).
+    optional uint32 ZoneBlockCount = 98;
+    optional uint32 HotZoneRequestCountFactor = 99;
+    optional uint32 ColdZoneRequestCountFactor = 100;
+
+    // Enables/disables write request batching.
+    optional bool WriteRequestBatchingEnabled = 101;
+
+    // BlockList cache size (only for partition2).
+    optional uint32 BlockListCacheSizePercentage = 102;
+
+    // Max blobs to process in a single Cleanup op run.
+    optional uint32 MaxBlobsToCleanup = 103;
+
+    // Blob size limit in bytes.
+    optional uint32 MaxBlobSize = 104;
+
+    // Size of allocation unit for non-replicated SSD drives (in Gb).
+    optional uint32 AllocationUnitNonReplicatedSSD = 105;
+
+    // Performance per allocation unit for nonreplicated volumes.
+    optional uint32 NonReplicatedSSDUnitReadBandwidth = 106;    // in MiB/s
+    optional uint32 NonReplicatedSSDUnitWriteBandwidth = 107;   // in MiB/s
+    optional uint32 NonReplicatedSSDMaxReadBandwidth = 108;     // in MiB/s
+    optional uint32 NonReplicatedSSDMaxWriteBandwidth = 109;    // in MiB/s
+    optional uint32 NonReplicatedSSDUnitReadIops = 110;
+    optional uint32 NonReplicatedSSDUnitWriteIops = 111;
+    optional uint32 NonReplicatedSSDMaxReadIops = 112;
+    optional uint32 NonReplicatedSSDMaxWriteIops = 113;
+
+    // Compaction type.
+    optional ECompactionType SSDCompactionType = 114;
+    optional ECompactionType HDDCompactionType = 115;
+
+    // Enables approximate garbage compaction for partition v1.
+    optional bool V1GarbageCompactionEnabled = 116;
+
+    // Enables digest calculation & logging for some blocks.
+    optional bool BlockDigestsEnabled = 117;
+
+    // Partition2 index structures conversion attempt time interval (in ms).
+    optional uint32 IndexStructuresConversionAttemptInterval = 118;
+
+    // Calculate block digests for the following percentage of blocks in each
+    // block group.
+    optional uint32 DigestedBlocksPercentage = 119;
+
+    // If there is more garbage in some range than this limit, compact it.
+    // Measured in percents (similar to CompactionGarbageThreshold).
+    optional uint32 CompactionRangeGarbageThreshold = 120;
+
+    // Limits the number of affected blocks sent from compaction to addblobs.
+    optional uint32 MaxAffectedBlocksPerCompaction = 121;
+
+    // Real performance per allocation unit.
+    optional uint32 RealSSDUnitReadBandwidth = 122;     // in MiB/s
+    optional uint32 RealSSDUnitWriteBandwidth = 123;    // in MiB/s
+    optional uint32 RealSSDUnitReadIops = 124;
+    optional uint32 RealSSDUnitWriteIops = 125;
+    optional uint32 RealHDDUnitReadBandwidth = 126;     // in MiB/s
+    optional uint32 RealHDDUnitWriteBandwidth = 127;    // in MiB/s
+    optional uint32 RealHDDUnitReadIops = 128;
+    optional uint32 RealHDDUnitWriteIops = 129;
+
+    // Period (in milliseconds) between recycling retired nonreplicated disks.
+    optional uint32 NonReplicatedDiskRecyclingPeriod = 130;
+
+    // Compaction delay settings.
+    optional uint32 MaxCompactionDelay = 131;   // in ms
+    optional uint32 MinCompactionDelay = 132;   // in ms
+    optional uint32 CompactionScoreHistorySize = 133;
+
+    // Volume preemption strategy.
+    optional EVolumePreemptionType VolumePreemptionType = 134;
+
+    // CPU load percentage to move volumes from host.
+    optional uint32 PreemptionPushPercentage = 135;
+
+    // CPU load percentage to move volumes to host.
+    optional uint32 PreemptionPullPercentage = 136;
+
+    // Partition tablet version to be used for new volumes.
+    optional uint32 DefaultTabletVersion = 137;
+
+    // Max number of intervals stored in RangeMap for each blob (v2 only).
+    optional uint32 MaxRangesPerBlob = 138;
+
+    // Cleanup delay settings.
+    optional uint32 MaxCleanupDelay = 139;  // in ms
+    optional uint32 MinCleanupDelay = 140;  // in ms
+    optional uint32 CleanupScoreHistorySize = 141;
+
+    // Allow to change channel pool kinds upon volume resizing.
+    optional bool PoolKindChangeAllowed = 142;
+
+    // If set, service/volume will acquire devices for mounted volumes.
+    optional bool AcquireNonReplicatedDevices = 143;
+
+    // Inflight limit for IO requests.
+    optional uint32 NonReplicatedInflightLimit = 144;
+
+    // Max disks per placement group.
+    optional uint32 MaxDisksInPlacementGroup = 145;
+
+    // Max placement partitions per group.
+    optional uint32 MaxPlacementPartitionCount = 295;
+
+    // Max disks per placement group with partition placement strategy.
+    optional uint32 MaxDisksInPartitionPlacementGroup = 296;
+
+    // Overrides WriteBlobThreshold for SSD volumes.
+    optional uint32 WriteBlobThresholdSSD = 146;
+
+    // DiskRegistry destroys broken disks after this period of time.
+    optional uint32 BrokenDiskDestructionDelay = 147;   // in ms
+
+    // Volume mount history duration.
+    optional uint32 VolumeHistoryDuration = 148;    // in ms
+
+    // CompactionThreshold analogues for CT_LOAD compaction policy.
+    optional uint32 SSDMaxBlobsPerRange = 149;
+    optional uint32 HDDMaxBlobsPerRange = 150;
+
+    // Just drop fresh blocks upon Flush, don't save them as blobs (debug flag).
+    optional bool FlushToDevNull = 151;
+
+    // Max Compaction/Cleanup exec time per second.
+    optional uint32 MaxCompactionExecTimePerSecond = 152;   // in ms
+    optional uint32 MaxCleanupExecTimePerSecond = 153;  // in ms
+
+    // Don't automatically enqueue garbage collection upon partition startup.
+    optional bool DontEnqueueCollectGarbageUponPartitionStartup = 154;
+
+    optional uint32 NonReplicatedDiskRepairTimeout = 155;
+
+    // New volumes will be created with partition count proportional to their size.
+    optional uint64 BytesPerPartition = 156;
+
+    // Bytes per stripe (applicable for multipartition volumes).
+    optional uint32 BytesPerStripe = 157;
+
+    // Max partitions per volume.
+    optional uint32 MaxPartitionsPerVolume = 158;
+
+    // Min timeout for agent to restore connection (in milliseconds).
+    optional uint32 NonReplicatedAgentMinTimeout = 159;
+
+    // Timeout for DR -> DA requests (in milliseconds).
+    optional uint32 AgentRequestTimeout = 160;
+
+    // Timeout before allowing infra to withdraw our agents/devices.
+    optional uint32 NonReplicatedInfraTimeout = 161;
+
+    // Timeout for nonrepl partition -> DA requests.
+    // optional uint32 NonReplicatedRequestTimeout = 162; // obsolete
+
+    // CompactionScore limit after which compaction throttling is disabled.
+    optional uint32 CompactionScoreLimitForThrottling = 163;
+
+    // CleanupQueueBytes limit after which cleanup throttling is disabled.
+    optional uint64 CleanupQueueBytesLimitForThrottling = 164;
+
+    // The desired byte count read/written by a compaction run.
+    optional uint64 TargetCompactionBytesPerOp = 165;
+
+    // Max skipped blobs during range compaction.
+    optional uint32 MaxSkippedBlobsDuringCompaction = 166;
+
+    // MaxBlobsPerRange overrides for partition v2.
+    optional uint32 SSDV2MaxBlobsPerRange = 167;
+    optional uint32 HDDV2MaxBlobsPerRange = 168;
+
+    // Enables incremental compaction for v1 tablets.
+    optional bool IncrementalCompactionEnabled = 169;
+    // Compaction in partition v1 will generate sparse merged blobs instead of
+    // mixed blobs if this flag is set.
+    // optional bool UseSparseMergedBlobs = 170; // obsolete
+
+    // Enables some optimizations for small requests (affects partition v2 only).
+    optional bool OptimizeForShortRanges = 171;
+
+    // Consecutive timeout limit after which nr device is considered unavailable.
+    // optional uint32 MaxConsecutiveDeviceTimeouts = 172; // obsolete
+
+    // Max blobs and blocks processed by a single v2 garbage compaction iteration.
+    optional uint32 CompactionGarbageBlobLimit = 173;
+    optional uint32 CompactionGarbageBlockLimit = 174;
+
+    // User data may be dumped on some monitoring pages if this flag is set.
+    // See https://st.yandex-team.ru/NBS-1726#5fd39472aa62c1459c7287cb
+    optional bool UserDataDebugDumpAllowed = 175;
+
+    // Fresh channels configuration.
+    optional string HDDFreshChannelPoolKind = 176;
+    optional string SSDFreshChannelPoolKind = 177;
+    optional string HybridFreshChannelPoolKind = 178;
+
+    // Number of fresh channels per partition.
+    optional uint32 FreshChannelCount = 179;
+
+    // Enables fresh channel write requests.
+    optional bool FreshChannelWriteRequestsEnabled = 180;
+
+    // Min timeout for nonrepl partition -> DA requests.
+    optional uint32 NonReplicatedMinRequestTimeout = 181;
+
+    // Max timeout for nonrepl partition -> DA requests.
+    optional uint32 NonReplicatedMaxRequestTimeout = 182;
+
+    // Max timed out state duration after which nr device is considered unavailable.
+    optional uint32 MaxTimedOutDeviceStateDuration = 183;
+
+    // Run GC barriers for all channels in tablet history.
+    // optional bool CleanupPartitionChannelsAtStartup = 184; // obsolete
+
+    // Run GC soft barriers for all channels in tablet history (v2 only).
+    optional bool RunV2SoftGcAtStartup = 185;
+
+    // Lifetime of deleted checkpoint in checkpoints history.
+    optional uint32 DeletedCheckpointHistoryLifetime = 186;
+
+    // Enables creation of multipartition volumes.
+    optional bool MultipartitionVolumesEnabled = 187;
+
+    // Allow to start migration for non-replicated SSD drives.
+    optional bool NonReplicatedMigrationStartAllowed = 188;
+
+    // Current migration index will be saved every N blocks.
+    // Affects only nonrepl volumes.
+    optional uint32 MigrationIndexCachingInterval = 189;
+
+    // Flush threshold for fresh blobs count in fresh channel.
+    optional uint32 FreshBlobCountFlushThreshold = 190;
+
+    // Max bandwidth used by migration in MiB/s (actual bandwidth is x2 due to
+    // the need to read and write).
+    optional uint32 MaxMigrationBandwidth = 191;
+
+    // Expected DiskAgent size in AUs. Used to throttle migration proportionally
+    // to the agent share allocated to the volume that's being migrated.
+    optional uint32 ExpectedDiskAgentSize = 192;
+
+    // Overrides BytesPerPartition for network-ssd volumes.
+    optional uint64 BytesPerPartitionSSD = 193;
+
+    // Period after which E_IO becomes silent.
+    // optional uint32 NonReplicatedIOFadingDuration = 194; // obsolete
+
+    // Placement group alert period.
+    optional uint32 PlacementGroupAlertPeriod = 195;
+
+    // Sets initial binding to REMOTE to avoid starting all volumes at once
+    // upon server restart. Local volumes will be restarted locally one by one
+    // after initial mount.
+    // optional bool TwoStageLocalMountEnabled = 196; // obsolete
+
+    // Allow to create load actor.
+    optional bool EnableLoadActor = 197;
+
+    // CpuMatBenchNs system pool threshold for volume balancer.
+    optional uint64 CpuMatBenchNsSystemThreshold = 198;
+
+    // CpuMatBenchNs user pool threshold for volume balancer.
+    optional uint64 CpuMatBenchNsUserThreshold = 199;
+
+    // Disables NRD migration in volume actor.
+    optional bool NonReplicatedVolumeMigrationDisabled = 200;
+
+    // Maximum number of migrations running in parallel.
+    optional uint32 MaxNonReplicatedDeviceMigrationsInProgress = 201;
+
+    // Enable calculation of the LogicalUsedBlocks metric.
+    optional bool LogicalUsedBlocksCalculationEnabled = 202;
+
+    // Enables extra diagnostics by dumping block commitIds.
+    optional bool DumpBlockCommitIdsIntoProfileLog = 203;
+
+    // Uses the first 4 bytes of the block as its digest.
+    optional bool UseTestBlockDigestGenerator = 204;
+
+    // Enables conversion of rangeMap into mixedIndex for partition v2.
+    optional bool EnableConversionIntoMixedIndexV2 = 205;
+
+    // Number of disks to be reported to YDB in a single request.
+    optional uint32 StatsUploadDiskCount = 206;
+
+    // Retry timeout for YDB stats.
+    optional uint32 StatsUploadRetryTimeout = 207;
+
+    // Number of volume history records per monitoring page.
+    optional uint32 VolumeHistoryCacheSize = 208;
+
+    // Duration of two stage local mount after start.
+    // optional uint32 TwoStageLocalMountDuration = 209; // obsolete
+
+    // Start all mounted volumes remotely.
+    optional bool RemoteMountOnly = 210;
+
+    // Max number of volumes started locally.
+    optional uint32 MaxLocalVolumes = 211;
+
+    // Flush threshold for fresh blob byte count.
+    optional uint32 FreshBlobByteCountFlushThreshold = 212;
+
+    // Max block count in one transaction for updating logicalUsedBlocks.
+    optional uint32 LogicalUsedBlocksUpdateBlockCount = 213;
+
+    // Grace period before making next attempt to update volume config
+    optional uint32 DiskRegistryVolumeConfigUpdatePeriod = 214;
+
+    // Enables extra diagnostics by dumping blob updates.
+    optional bool DumpBlobUpdatesIntoProfileLog = 215;
+
+    // Reassign request retry timeout in milliseconds.
+    optional uint32 ReassignRequestRetryTimeout = 216;
+
+    // Parameters used for calculating the metrics
+    // Maximum bandwidth on group
+    // for SSD
+    optional string CommonSSDPoolKind = 217;
+    optional uint64 MaxSSDGroupWriteIops = 218;
+    optional uint64 MaxSSDGroupWriteBandwidth = 219;
+    optional uint64 MaxSSDGroupReadIops = 220;
+    optional uint64 MaxSSDGroupReadBandwidth = 221;
+    // for HDD
+    optional string CommonHDDPoolKind = 222;
+    optional uint64 MaxHDDGroupWriteIops = 223;
+    optional uint64 MaxHDDGroupWriteBandwidth = 224;
+    optional uint64 MaxHDDGroupReadIops = 225;
+    optional uint64 MaxHDDGroupReadBandwidth = 226;
+    // for OverlayDisk
+    optional string CommonOverlayPrefixPoolKind = 227;
+
+    // Enables mixed index cache for partition v1.
+    optional bool MixedIndexCacheV1Enabled = 228;
+
+    // Maximum number of compaction ranges to cache for partition v1 network-ssd.
+    optional uint32 MixedIndexCacheV1SizeSSD = 229;
+
+    // Size of allocation unit for mirror2 SSD drives (in Gb).
+    optional uint32 AllocationUnitMirror2SSD = 230;
+
+    // Performance per allocation unit for mirror2 volumes.
+    optional uint32 Mirror2SSDUnitReadBandwidth = 231;    // in MiB/s
+    optional uint32 Mirror2SSDUnitWriteBandwidth = 232;   // in MiB/s
+    optional uint32 Mirror2SSDMaxReadBandwidth = 233;     // in MiB/s
+    optional uint32 Mirror2SSDMaxWriteBandwidth = 234;    // in MiB/s
+    optional uint32 Mirror2SSDUnitReadIops = 235;
+    optional uint32 Mirror2SSDUnitWriteIops = 236;
+    optional uint32 Mirror2SSDMaxReadIops = 237;
+    optional uint32 Mirror2SSDMaxWriteIops = 238;
+
+    // Number of replicas for mirror2 disks.
+    optional uint32 Mirror2DiskReplicaCount = 239;
+
+    optional uint32 MaxReadBlobErrorsBeforeSuicide = 240;
+
+    // Interval between throttler state updates in local db (in milliseconds).
+    optional uint32 ThrottlerStateWriteInterval = 241;
+
+    // Reject mount instead of trying to start volume locally
+    // when AddClient request times out.
+    optional bool RejectMountOnAddClientTimeout = 242;
+
+    // Timeout for notify disks request (in milliseconds).
+    optional uint32 NonReplicatedVolumeNotificationTimeout = 243;
+
+    // Enables persistent cache for tablet boot info.
+    optional string TabletBootInfoCacheFilePath = 244;
+    // In fallback mode, all requests to Hive are served from cache.
+    optional bool HiveProxyFallbackMode = 245;
+    // Enables persistent cache for volume path description.
+    optional string PathDescriptionCacheFilePath = 246;
+    // In fallback mode, all requests to SchemeShard are served from cache.
+    optional bool SSProxyFallbackMode = 247;
+
+    // Max acceptable number of cpus we are waiting for (measured in %).
+    // If excceeded. balancer starts pushing volumes to svms.
+    optional uint32 CpuLackThreshold = 248;
+
+    // Initial pull timeout for preempted volumes.
+    optional uint32 InitialPullDelay = 249;
+
+    // Size of allocation unit for local SSD (in Gb).
+    // optional uint32 AllocationUnitLocalSSD = 250; // obsolete
+
+    // Rdma port @ DiskAgent.
+    optional uint32 RdmaTargetPort = 251;
+
+    // Use rdma for main NRD datapath.
+    optional bool UseNonreplicatedRdmaActor = 252;
+
+    // Size of allocation unit for mirror3 SSD drives (in Gb).
+    optional uint32 AllocationUnitMirror3SSD = 253;
+
+    // Performance per allocation unit for mirror3 volumes.
+    optional uint32 Mirror3SSDUnitReadBandwidth = 254;    // in MiB/s
+    optional uint32 Mirror3SSDUnitWriteBandwidth = 255;   // in MiB/s
+    optional uint32 Mirror3SSDMaxReadBandwidth = 256;     // in MiB/s
+    optional uint32 Mirror3SSDMaxWriteBandwidth = 257;    // in MiB/s
+    optional uint32 Mirror3SSDUnitReadIops = 258;
+    optional uint32 Mirror3SSDUnitWriteIops = 259;
+    optional uint32 Mirror3SSDMaxReadIops = 260;
+    optional uint32 Mirror3SSDMaxWriteIops = 261;
+
+    // Number of replicas for mirror3 disks.
+    optional uint32 Mirror3DiskReplicaCount = 262;
+
+    // Timeout for secure erase (in milliseconds).
+    optional uint32 NonReplicatedSecureEraseTimeout = 263;
+
+    // Number of ranges to process in a single Compaction run.
+    optional uint32 CompactionRangeCountPerRun = 264;
+
+    // Specifies whether to use CompactionRangeCountPerRun.
+    optional bool BatchCompactionEnabled = 265;
+
+    // Timeout before allowing infra to withdraw our unavailable agents.
+    optional uint32 NonReplicatedInfraUnavailableAgentTimeout = 266;
+
+    // Use rdma in volumes by default.
+    optional bool UseRdma = 267;
+
+    // Hive min timeout for tablet boot requests.
+    optional uint32 MinExternalBootRequestTimeout = 268;
+
+    // Hive timeout increment for tablet boot requests.
+    optional uint32 ExternalBootRequestTimeoutIncrement = 269;
+
+    // Hive max timeout for tablet boot requests.
+    optional uint32 MaxExternalBootRequestTimeout = 270;
+
+    // Max timeout for agent to restore connection (in milliseconds).
+    optional uint32 NonReplicatedAgentMaxTimeout = 271;
+
+    // The time interval after which one agent disconnect is completely
+    // recovered in the dynamic reject timeout multiplier.
+    optional uint32 NonReplicatedAgentDisconnectRecoveryInterval = 272;
+
+    // The multiplier that controls the growth rate of the dynamic agent reject
+    // timeout.
+    optional double NonReplicatedAgentTimeoutGrowthFactor = 273;
+
+    // Do not suspend new non default (local ssd etc) devices.
+    optional bool NonReplicatedDontSuspendDevices = 274;
+
+    // Timeout increment for resending AddClient during mount.
+    optional uint32 AddClientRetryTimeoutIncrement = 275;
+
+    // Enables blob patching during compaction.
+    optional bool BlobPatchingEnabled = 276;
+
+    // The number of operations into which the DR
+    // will split the restore transaction.
+    optional uint32 DiskRegistrySplitTransactionCounter = 277;
+
+    // The time of making backups disk registry in milliseconds.
+    optional uint64 DiskRegistryBackupPeriod = 278;
+
+    // Folder for disk registry backups.
+    optional string DiskRegistryBackupDirPath = 279;
+
+    // Expected client backoff timeout increment in milliseconds - used to
+    // calculate some internal timeouts.
+    optional uint32 ExpectedClientBackoffIncrement = 280;
+
+    // Maximum number of pending deallocation requests per one disk.
+    optional uint32 MaxNonReplicatedDiskDeallocationRequests = 281;
+
+    // Lifetime of objects in nonrepl metrics cache in milliseconds.
+    optional uint64 DiskRegistryMetricsCachePeriod = 282; // deprecated
+
+    // Value for the 'host' label.
+    optional string DiskRegistryCountersHost = 283;
+
+    // Maximum allowed fresh byte count after which we start to reject writes.
+    optional uint32 FreshByteCountHardLimit = 284;
+
+    // Interval to postpone volume push/pull.
+    optional uint32 BalancerActionDelayInterval = 285;
+
+    // Enable resync feature for mirrored partitions.
+    optional bool UseMirrorResync = 286;
+
+    // Force resync start for mirrored partitions.
+    optional bool ForceMirrorResync = 287;
+
+    // Current resync index will be saved every N blocks.
+    // Affects only mirror volumes.
+    optional uint32 ResyncIndexCachingInterval = 288;
+
+    // Resync will start upon AddClient / volume reboot after the specified
+    // period of client inactivity in milliseconds.
+    // Affects only mirror volumes.
+    optional uint32 ResyncAfterClientInactivityInterval = 289;
+
+    // File to store the list of volumes preempted from monitoring.
+    optional string ManuallyPreemptedVolumesFile = 290;
+
+    // Periodicity of volume liveness check in ManuallyPreemptedVolumesFile in
+    // milliseconds.
+    optional uint64 ManuallyPreemptedVolumeLivenessCheckPeriod = 291;
+
+    // Half-decay interval for cumulative load counters used for balancing in
+    // the discovery component (in milliseconds).
+    optional uint32 PingMetricsHalfDecayInterval = 292;
+
+    // Disable manually preempted volumes tracking. Used during
+    // nbs restart for NBS2.
+    optional bool DisableManuallyPreemptedVolumesTracking = 293;
+
+    // Disable starting partitions for gc at volume start
+    optional bool DisableStartPartitionsForGc = 294;
+
+    // Enables adding of unconfirmed blobs to speed up writing.
+    optional bool AddingUnconfirmedBlobsEnabled = 297;
+
+    // Blob compression experiment params. See NBS-3949.
+    optional uint32 BlobCompressionRate = 298;
+    optional string BlobCompressionCodec = 299;
+
+    // If set, writes will be additionally throttled by disk space score
+    // backpressure feature.
+    optional bool DiskSpaceScoreThrottlingEnabled = 300;
+
+    // Allow to start migration for mirrored SSD drives.
+    optional bool MirroredMigrationStartAllowed = 301;
+}

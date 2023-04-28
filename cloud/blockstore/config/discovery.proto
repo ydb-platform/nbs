@@ -1,0 +1,44 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiscoveryServiceConfig
+{
+    // Conductor api url.
+    optional string ConductorApiUrl = 1;
+
+    // Static instance list file.
+    optional string InstanceListFile = 2;
+
+    // Banned instance list file.
+    optional string BannedInstanceListFile = 3;
+
+    // The interval between the requests to conductor api (in milliseconds).
+    optional uint32 ConductorRequestInterval = 4;
+
+    // Local files reload interval (in milliseconds).
+    optional uint32 LocalFilesReloadInterval = 5;
+
+    // Minimum interval between ping requests to NBS instances (in milliseconds).
+    optional uint32 HealthCheckInterval = 6;
+
+    // Conductor group list
+    repeated string ConductorGroups = 7;
+
+    // Default ports for NBS instances obtained from conductor
+    optional uint32 ConductorInstancePort = 8;
+    optional uint32 ConductorSecureInstancePort = 9;
+
+    // Conductor request timeout
+    optional uint32 ConductorRequestTimeout = 10;
+
+    // Ping request timeout
+    optional uint32 PingRequestTimeout = 11;
+
+    // Max ping requests per one healthcheck cycle
+    optional uint32 MaxPingRequestsPerHealthCheck = 12;
+}

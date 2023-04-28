@@ -1,0 +1,341 @@
+#include "disk_registry_actor.h"
+
+#include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+using namespace NActors;
+
+using namespace NKikimr;
+using namespace NKikimr::NTabletFlatExecutor;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNotifyActor final
+    : public TActorBootstrapped<TNotifyActor>
+{
+private:
+    const TActorId Owner;
+    const ui64 TabletID;
+    const TRequestInfoPtr RequestInfo;
+    const TStorageConfigPtr Config;
+    const TVector<TDiskNotification> DiskIds;
+
+    TVector<TDiskNotification> NotifiedDisks;
+    int PendingOperations = 0;
+
+public:
+    TNotifyActor(
+        const TActorId& owner,
+        ui64 tabletID,
+        TRequestInfoPtr requestInfo,
+        TStorageConfigPtr config,
+        TVector<TDiskNotification> diskIds);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    void NotifyDisks(const TActorContext& ctx);
+    void ReplyAndDie(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleReallocateDiskResponse(
+        const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleTimeout(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TNotifyActor::TNotifyActor(
+        const TActorId& owner,
+        const ui64 tabletID,
+        TRequestInfoPtr requestInfo,
+        TStorageConfigPtr config,
+        TVector<TDiskNotification> diskIds)
+    : Owner(owner)
+    , TabletID(tabletID)
+    , RequestInfo(std::move(requestInfo))
+    , Config(std::move(config))
+    , DiskIds(std::move(diskIds))
+{
+    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
+}
+
+void TNotifyActor::Bootstrap(const TActorContext& ctx)
+{
+    Become(&TThis::StateWork);
+
+    NotifyDisks(ctx);
+
+    if (PendingOperations) {
+        ctx.Schedule(
+            Config->GetNonReplicatedVolumeNotificationTimeout(),
+            new TEvents::TEvWakeup());
+
+        return;
+    }
+
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, "Nothing to do");
+    ReplyAndDie(ctx);
+}
+
+void TNotifyActor::ReplyAndDie(const TActorContext& ctx)
+{
+    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksResponse>(
+        RequestInfo->CallContext);
+    response->NotifiedDisks = std::move(NotifiedDisks);
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+    NCloud::Send(
+        ctx,
+        Owner,
+        std::make_unique<TEvDiskRegistryPrivate::TEvOperationCompleted>());
+    Die(ctx);
+}
+
+void TNotifyActor::NotifyDisks(const TActorContext& ctx)
+{
+    PendingOperations = DiskIds.size();
+
+    ui64 cookie = 0;
+    for (const auto& [diskId, seqNo]: DiskIds) {
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "[%lu] Notifying volume: DiskId=%s",
+            TabletID,
+            diskId.Quote().c_str());
+
+        auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+        request->Record.SetDiskId(diskId);
+        NCloud::Send(
+            ctx,
+            MakeVolumeProxyServiceId(),
+            std::move(request),
+            cookie++
+        );
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNotifyActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx);
+}
+
+void TNotifyActor::HandleTimeout(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "Notify disks request timed out");
+
+    ReplyAndDie(ctx);
+}
+
+void TNotifyActor::HandleReallocateDiskResponse(
+    const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto cookie = ev->Cookie;
+
+    --PendingOperations;
+
+    Y_VERIFY(PendingOperations >= 0);
+
+    const auto& diskId = DiskIds[cookie].DiskId;
+
+    if (HasError(ev->Get()->Record)) {
+        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "[%lu] Volume notification failed: DiskId=%s, Error=%s",
+            TabletID,
+            diskId.Quote().c_str(),
+            ev->Get()->Record.GetError().GetMessage().Quote().c_str());
+    } else {
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "[%lu] Volume notification succeeded: DiskId=%s",
+            TabletID,
+            diskId.Quote().c_str());
+
+        NotifiedDisks.push_back(DiskIds[cookie]);
+    }
+
+    if (!PendingOperations) {
+        ReplyAndDie(ctx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TNotifyActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleTimeout);
+
+        HFunc(TEvVolume::TEvReallocateDiskResponse, HandleReallocateDiskResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            break;
+    }
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryActor::HandleListDisksToNotify(
+    const TEvDiskRegistryPrivate::TEvListDisksToNotifyRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(ListDisksToNotify);
+
+    const auto& disksToNotify = State->GetDisksToNotify();
+
+    TVector<TString> diskIds(Reserve(disksToNotify.size()));
+    for (const auto& [diskId, seqNo]: disksToNotify) {
+        diskIds.push_back(diskId);
+    }
+
+    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvListDisksToNotifyResponse>(
+        std::move(diskIds));
+
+    NCloud::Send(ctx, ev->Sender, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryActor::NotifyDisks(const TActorContext& ctx)
+{
+    if (DisksNotificationInProgress || State->GetDisksToNotify().empty()) {
+        return;
+    }
+
+    DisksNotificationInProgress = true;
+
+    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksRequest>();
+
+    auto deadline = Min(DisksNotificationStartTs, ctx.Now()) + TDuration::Seconds(5);
+    if (deadline > ctx.Now()) {
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            "[%lu] Scheduled disks notification, now: %lu, deadline: %lu",
+            TabletID(),
+            ctx.Now().MicroSeconds(),
+            deadline.MicroSeconds());
+
+        ctx.Schedule(deadline, request.release());
+    } else {
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            "[%lu] Sending disks notification request",
+            TabletID());
+
+        NCloud::Send(ctx, ctx.SelfID, std::move(request));
+    }
+}
+
+void TDiskRegistryActor::HandleNotifyDisks(
+    const TEvDiskRegistryPrivate::TEvNotifyDisksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(NotifyDisks);
+
+    DisksNotificationStartTs = ctx.Now();
+
+    DisksBeingNotified.reserve(State->GetDisksToNotify().size());
+    for (const auto& [diskId, seqNo]: State->GetDisksToNotify()) {
+        DisksBeingNotified.emplace_back(diskId, seqNo);
+    }
+
+    auto actor = NCloud::Register<TNotifyActor>(
+        ctx,
+        SelfId(),
+        TabletID(),
+        CreateRequestInfo(
+            SelfId(),
+            0,
+            MakeIntrusive<TCallContext>(),
+            NWilson::TTraceId::NewTraceId()
+        ),
+        Config,
+        DisksBeingNotified
+    );
+    Actors.insert(actor);
+}
+
+void TDiskRegistryActor::HandleNotifyDisksResponse(
+    const TEvDiskRegistryPrivate::TEvNotifyDisksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ExecuteTx<TDeleteNotifiedDisks>(
+        ctx,
+        CreateRequestInfo<TEvDiskRegistryPrivate::TNotifyDisksMethod>(
+            ev->Sender,
+            ev->Cookie,
+            ev->Get()->CallContext,
+            std::move(ev->TraceId)
+        ),
+        ev->Get()->NotifiedDisks
+    );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TDiskRegistryActor::PrepareDeleteNotifiedDisks(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxDiskRegistry::TDeleteNotifiedDisks& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TDiskRegistryActor::ExecuteDeleteNotifiedDisks(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxDiskRegistry::TDeleteNotifiedDisks& args)
+{
+    Y_UNUSED(ctx);
+
+    TDiskRegistryDatabase db(tx.DB);
+    for (const auto& x: args.DiskIds) {
+        State->DeleteDiskToNotify(db, x.DiskId, x.SeqNo);
+    }
+}
+
+void TDiskRegistryActor::CompleteDeleteNotifiedDisks(
+    const TActorContext& ctx,
+    TTxDiskRegistry::TDeleteNotifiedDisks& args)
+{
+    Y_UNUSED(args);
+
+    DisksNotificationInProgress = false;
+    DisksBeingNotified.clear();
+    NotifyDisks(ctx);
+    SecureErase(ctx);
+}
+
+}   // namespace NCloud::NBlockStore::NStorage

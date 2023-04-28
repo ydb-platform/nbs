@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+import "cloud/blockstore/libs/storage/protos/disk.proto";
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+import "ydb/core/protos/blockstore_config.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+// Create disk from devices
+
+message TCreateDiskFromDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Force dangerous actions.
+    bool Force = 2;
+
+    NKikimrBlockStore.TVolumeConfig VolumeConfig = 3;
+
+    // List of devices (agentId & device name) that make up the disk.
+    repeated TDeviceConfig Devices = 4;
+}
+
+message TCreateDiskFromDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Number of total logical blocks.
+    uint64 BlockCount = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Change disk device
+
+message TChangeDiskDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Disk identification
+    string DiskId = 2;
+
+    // Source device identification
+    string SourceDeviceId = 3;
+
+    // Target device identification
+    string TargetDeviceId = 4;
+}
+
+message TChangeDiskDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

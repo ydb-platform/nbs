@@ -1,0 +1,26 @@
+#pragma once
+
+#include "public.h"
+
+#include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/rdma/public.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
+
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NActors::IActorPtr CreateNonreplicatedPartitionMigration(
+    TStorageConfigPtr config,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    ui64 initialMigrationIndex,
+    TString rwClientId,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
+    NRdma::IClientPtr rdmaClient);
+
+}   // namespace NCloud::NBlockStore::NStorage

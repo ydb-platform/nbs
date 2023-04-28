@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option java_package = "ru.yandex.cloud.storage.proto";
+option go_package = "a.yandex-team.ru/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Error Flags.
+
+enum EErrorFlag
+{
+    // Note: sequential flag numbers starting from one are used, not powers of two
+
+    EF_NONE = 0;
+    // Be careful using EF_SILENT with retriable errors. This flag changes error
+    // kind to EErrorKind::ErrorSilent making the error non-retriable.
+    EF_SILENT = 1;
+
+    // Currently set if a problem with nonreplicated disk/agent was detected.
+    EF_HW_PROBLEMS_DETECTED = 2;
+
+    // TODO: EF_RETRIABLE, EF_CLIENT
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Error description.
+
+message TError
+{
+    // Error code.
+    uint32 Code = 1;
+
+    // Error message.
+    string Message = 2;
+
+    // Flags.
+    uint32 Flags = 3;
+}

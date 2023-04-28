@@ -1,0 +1,545 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/libs/storage/protos";
+
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/blockstore/public/api/protos/volume.proto";
+
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/media.proto";
+import "cloud/storage/core/protos/trace.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume client info.
+
+message TVolumeClientInfo
+{
+    // Client identifier.
+    string ClientId = 1;
+
+    // Volume access mode.
+    EVolumeAccessMode VolumeAccessMode = 2;
+
+    // Volume mount mode.
+    EVolumeMountMode VolumeMountMode = 3;
+
+    // Obsolete, use MountFlags.
+    bool ThrottlingDisabled = 4;
+
+    // Timestamp of client disconnection.
+    uint64 DisconnectTimestamp = 5;
+
+    // Mount seq number.
+    uint64 MountSeqNumber = 6;
+
+    // Host the client came from.
+    string Host = 7;
+
+    // Mount flags.
+    uint32 MountFlags = 8;
+
+    // Last activity timestamp. Valid only for resyncable volumes.
+    uint64 LastActivityTimestamp = 9;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Add client to volume request/response.
+
+message TAddClientRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to connect to.
+    string DiskId = 2;
+
+    // Volume access mode.
+    EVolumeAccessMode VolumeAccessMode = 3;
+
+    // Volume mount mode.
+    EVolumeMountMode VolumeMountMode = 4;
+
+    // Obsolete, use MountFlags.
+    bool ThrottlingDisabled = 5;
+
+    // Expected mount seq number.
+    uint64 MountSeqNumber = 6;
+
+    // Host the client came from.
+    string Host = 7;
+
+    // Mount flags.
+    uint32 MountFlags = 8;
+}
+
+message TAddClientResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Volume tablet identifier.
+    uint64 TabletId = 2;
+
+    // Client identifier.
+    string ClientId = 3;
+
+    // Volume information.
+    TVolume Volume = 4;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 5;
+
+    // Expected pipe generation. Deprecated.
+    uint32 ExpectedPipeGeneration = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Remove client from volume request/response.
+
+message TRemoveClientRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to disconnect from.
+    string DiskId = 2;
+
+    // Is request coming from monitoring
+    bool IsMonRequest = 3;
+}
+
+message TRemoveClientResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Volume tablet identifier.
+    uint64 TabletId = 2;
+
+    // Label of volume attempted to be connected to.
+    string DiskId = 3;
+
+    // Client identifier.
+    string ClientId = 4;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Wait ready request/response.
+
+message TWaitReadyRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to wait readiness of.
+    string DiskId = 2;
+}
+
+message TWaitReadyResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Volume information.
+    TVolume Volume = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetUsedBlocks request/response
+
+message TGetUsedBlocksRequest {
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to get partition info from.
+    string DiskId = 2;
+}
+
+// Serialized bitmap for this chunk.
+message TUsedBlockData {
+    uint32 ChunkIdx = 1;
+    bytes Data = 2;
+}
+
+message TGetUsedBlocksResponse {
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+
+    repeated TUsedBlockData UsedBlocks = 3;
+}
+////////////////////////////////////////////////////////////////////////////////
+// GetPartitionInfo request/response.
+
+message TGetPartitionInfoRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to get partition info from.
+    string DiskId = 2;
+
+    // Partition id.
+    uint32 PartitionId = 3;
+}
+
+message TGetPartitionInfoResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Partition info data in JSON format.
+    string Payload = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CompactRange request/response.
+
+message TCompactRangeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to compact.
+    string DiskId = 2;
+
+    // Start block range index.
+    uint64 StartIndex = 3;
+
+    // Number of blocks in compaction range.
+    uint32 BlocksCount = 4;
+
+    // Additional flags. Do we need it?
+    uint32 Flags = 5;
+
+    // Explicitly assigned id by volume in case of multiple partitions.
+    string OperationId = 6;
+}
+
+message TCompactRangeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Compact operation reference
+    string OperationId = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CompactStatus request/response.
+
+message TGetCompactionStatusRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to compact.
+    string DiskId = 2;
+
+    // Compact operation reference.
+    string OperationId = 3;
+
+    // Additional flags. Do we need it?
+    uint32 Flags = 4;
+}
+
+message TGetCompactionStatusResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Number of processed ranges.
+    uint32 Progress = 2;
+
+    // Total number of ranges.
+    uint32 Total = 3;
+
+    // Flag if operation completed.
+    bool IsCompleted = 4;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReallocateDisk request/response.
+
+message TReallocateDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+}
+
+message TReallocateDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UpdateUsedBlocks request/response.
+
+message TUpdateUsedBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+
+    // Blocks.
+    repeated uint64 StartIndices = 3;
+    repeated uint32 BlockCounts = 4;
+
+    // Set or unset.
+    bool Used = 5;
+}
+
+message TUpdateUsedBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TCachedPartStats
+
+message TCachedPartStats
+{
+    uint64 MixedBytesCount = 1;
+    uint64 MergedBytesCount = 2;
+    uint64 FreshBytesCount = 3;
+    uint64 UsedBytesCount = 4;
+    uint64 BytesCount = 5;
+    uint64 CheckpointBytes = 6;
+    uint32 CompactionScore = 7;
+    uint32 CompactionGarbageScore = 8;
+    uint64 CleanupQueueBytes = 9;
+    uint64 GarbageQueueBytes = 10;
+    uint64 ChannelHistorySize = 11;
+    uint64 LogicalUsedBytesCount = 12;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetVolumeLoadInfo request/response
+
+enum EVolumeBinding
+{
+    BINDING_NOT_SET = 0;
+    BINDING_LOCAL = 1;
+    BINDING_REMOTE = 2;
+};
+
+enum EPreemptionSource
+{
+    SOURCE_BALANCER = 0;
+    SOURCE_INITIAL_MOUNT = 1;
+    SOURCE_MANUAL = 2;
+    SOURCE_NONE = 3;
+};
+
+message TVolumeBalancerDiskStats
+{
+    string DiskId = 1;
+    string CloudId = 2;
+
+    uint64 SystemCpu = 3;
+    uint64 UserCpu = 4;
+
+    string Host = 5;
+
+    bool IsManuallyPreempted = 6;
+    bool IsLocal = 7;
+
+    EPreemptionSource PreemptionSource = 8;
+
+    uint32 NumSystemThreads = 9;
+    uint32 NumUserThreads = 10;
+
+    string FolderId = 11;
+
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 12;
+}
+
+message TGetVolumeLoadInfoRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+}
+
+message TGetVolumeLoadInfoResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    TVolumeBalancerDiskStats Stats = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Checkpoint data deletion. Doesn't delete checkpointId->commitId mapping.
+
+message TDeleteCheckpointDataRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // Label of the volume to delete checkpoint data from.
+    string DiskId = 2;
+
+    // Checkpoint identifier.
+    string CheckpointId = 3;
+}
+
+message TDeleteCheckpointDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RebuildMetadata request/response.
+
+enum ERebuildMetadataType
+{
+    USED_BLOCKS = 0;
+    BLOCK_COUNT = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RebuildMetadata request/response.
+
+message TRebuildMetadataRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DiskId = 2;
+
+    ERebuildMetadataType MetadataType = 3;
+
+    uint32 BatchSize = 4;
+}
+
+message TRebuildMetadataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetRebuildMetadataStatus request/response.
+
+message TMetadataRebuildProgress
+{
+    // Number of units processed so far.
+    uint64 Processed = 1;
+
+    // Total number of units to process.
+    uint64 Total = 2;
+
+    // Is operation completed.
+    bool IsCompleted = 3;
+}
+
+message TGetRebuildMetadataStatusRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DiskId = 2;
+}
+
+message TGetRebuildMetadataStatusResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    TMetadataRebuildProgress Progress = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ScanDisk request/response.
+
+message TScanDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+
+    // Number of blobs per batch.
+    uint32 BatchSize = 3;
+}
+
+message TScanDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetVolumeInfo request/response.
+
+message TGetVolumeInfoRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+}
+
+message TGetVolumeInfoResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+
+    TVolume Volume = 3;
+}

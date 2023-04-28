@@ -1,0 +1,197 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/libs/storage/protos";
+
+import "cloud/blockstore/public/api/protos/volume.proto";
+
+import "cloud/storage/core/protos/media.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TChannelProfile
+{
+    uint32 DataKind = 1;
+    string PoolKind = 2;    // needed only for mon pages
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPartitionConfig
+{
+    // Label of volume.
+    string DiskId = 1;
+
+    // Owner information.
+    string ProjectId = 2;
+
+    // VM information.
+    string InstanceId = 3;
+
+    // Minimum addressable block size (smallest unit of I/O operations).
+    uint32 BlockSize = 4;
+
+    // Maximum number of blocks stored in volume.
+    uint64 BlocksCount = 5;
+
+    // Number of user channels to store blobs.
+    uint32 ChannelsCount = 6;
+
+    // Storage media to use.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
+
+    // User folder Id, used for billing.
+    string FolderId = 8;
+
+    // Cloud Id, used for billing.
+    string CloudId = 9;
+
+    // Partition tablet version.
+    uint32 TabletVersion = 10;
+
+    // Used for throttling
+    TVolumePerformanceProfile PerformanceProfile = 11;
+
+    // Optional label of base volume.
+    // If this is set then current volume is called "overlay volume".
+    string BaseDiskId = 12;
+
+    // Optional "base volume checkpoint" overlay volume sits on.
+    // Should not be empty when BaseDiskId is not empty.
+    string BaseDiskCheckpointId = 13;
+
+    // Explicit channel configuration, a replacement for ChannelsCount.
+    repeated TChannelProfile ExplicitChannelProfiles = 14;
+
+    // Effectively limits max blob size. This value needs to be fixed for each
+    // v1 disk since it affects the behaviour of block masks for all existing blobs.
+    uint32 MaxBlocksInBlob = 15;
+
+    // Determines index geometry for v2 partitions.
+    uint32 ZoneBlockCount = 16;
+
+    // Optional tablet id of base volume.
+    uint64 BaseDiskTabletId = 17;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPartitionStats
+{
+    // I/O operations invoked directly by user.
+    TIOCounters UserReadCounters = 1;
+    TIOCounters UserWriteCounters = 2;
+
+    // Background I/O operations (system overhead).
+    TIOCounters SysReadCounters = 3;
+    TIOCounters SysWriteCounters = 4;
+    TIOCounters SysChecksumCounters = 14;
+
+    // Numbers of stored blobs.
+    uint64 MixedBlobsCount = 5;
+    uint64 MergedBlobsCount = 6;
+
+    // Numbers of stored blocks.
+    uint64 FreshBlocksCount = 7;
+    uint64 MixedBlocksCount = 8;
+    uint64 MergedBlocksCount = 9;
+
+    // Number of blocks actually used.
+    uint64 UsedBlocksCount = 10;
+
+    // Number of garbage blocks.
+    uint64 GarbageBlocksCount = 11;
+
+    // Number of overwritten blocks stored only for checkpoints.
+    uint64 CheckpointBlocksCount = 12;
+
+    // Number of blocks used from user's point of view.
+    // Includes the blocks used at the base disk (for overlay disks).
+    uint64 LogicalUsedBlocksCount = 13;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPartitionMeta
+{
+    // Partition configuration.
+    TPartitionConfig Config = 1;
+
+    // Partition statistics.
+    TPartitionStats Stats = 2;
+
+    // Last garbage collection gen:step.
+    uint64 LastCollectCommitId = 3;
+
+    // Last flush commitId (valid only for partition v2).
+    uint64 LastFlushCommitId = 4;
+
+    // Commit id up to which it's safe to trim fresh log (valid only for
+    // partition v1).
+    uint64 TrimFreshLogToCommitId = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TBlobMeta
+{
+    message TMixedBlocks
+    {
+        repeated uint32 Blocks = 1;
+        repeated uint64 CommitIds = 2;
+    }
+
+    message TMergedBlocks
+    {
+        uint32 Start = 1;
+        uint32 End = 2;
+        uint32 Skipped = 3;
+    }
+
+    oneof Blocks
+    {
+        TMixedBlocks MixedBlocks = 1;
+        TMergedBlocks MergedBlocks = 2;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TBlobMeta2
+{
+    repeated uint32 StartIndices = 1;
+    repeated uint32 EndIndices = 2;
+    uint32 BlockCount = 3;
+    uint32 CheckpointBlockCount = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFreshBlobMeta
+{
+    repeated uint32 StartIndices = 1;
+    repeated uint32 EndIndices = 2;
+    bool IsZero = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFreshBlobMeta2
+{
+    repeated uint32 StartIndices = 1;
+    repeated uint32 EndIndices = 2;
+    repeated uint64 DeletionIds = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCheckpointMeta
+{
+    uint64 CommitId = 1;
+    string CheckpointId = 2;
+    string IdempotenceId = 3;
+    uint64 DateCreated = 4;
+    TPartitionStats Stats = 5;
+    uint64 DateDeleted = 6;
+}

@@ -1,0 +1,17 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+// Config for Notify service (https://github.yandex-team.ru/data-ui/notify).
+
+message TNotifyConfig
+{
+    // Service endpoint.
+    optional string Endpoint = 2;
+
+    // TLS details.
+    optional string CaCertFilename = 3;
+}

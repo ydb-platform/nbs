@@ -1,0 +1,31 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum ELocalStorageBackend
+{
+    LOCAL_STORAGE_BACKEND_AIO  = 0;
+    LOCAL_STORAGE_BACKEND_NULL = 1;
+}
+
+message TLocalStorageConfig
+{
+    optional bool Enabled = 1;
+
+    optional bool DirectIoDisabled = 2;
+
+    // Use Submission queue for completions too.
+    optional bool SingleQueue = 3;
+
+    optional ELocalStorageBackend Backend = 4;
+
+    // Submission Queue threads. 0 for default value; -1 for inline submission queue;
+    optional int32 SubmissionQueueThreadCount = 5;
+
+    // Completion Queue threads. 0 for default value; -1 for inline completion queue;
+    optional int32 CompletionQueueThreadCount = 6;
+};

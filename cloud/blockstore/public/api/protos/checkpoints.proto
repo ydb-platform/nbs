@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/trace.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Checkpoint creation request/reposnse
+
+message TCreateCheckpointRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to create checkpoint on.
+    string DiskId = 2;
+
+    // Checkpoint identifier.
+    string CheckpointId = 3;
+}
+
+message TCreateCheckpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Checkpoint deletion request/response
+
+message TDeleteCheckpointRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to delete checkpoint from.
+    string DiskId = 2;
+
+    // Checkpoint identifier.
+    string CheckpointId = 3;
+}
+
+message TDeleteCheckpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Get changed blocks between two checkpoints
+
+message TGetChangedBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+
+    // Start block index.
+    uint64 StartIndex = 3;
+
+    // Number of blocks to check.
+    uint32 BlocksCount = 4;
+
+    // Checkpoint identifier.
+    string LowCheckpointId = 5;
+
+    // Checkpoint identifier.
+    string HighCheckpointId = 6;
+
+    // Only affects case when LowCheckpointId is not set.
+    bool IgnoreBaseDisk = 7;
+}
+
+message TGetChangedBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Bit mask where bit is set if block has changed between checkpoints.
+    bytes Mask = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}

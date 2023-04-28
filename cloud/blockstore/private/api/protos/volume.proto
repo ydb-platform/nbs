@@ -1,0 +1,275 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+import "cloud/blockstore/private/api/protos/blob.proto";
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeBlocks request/response.
+
+message TDescribeBlocksRequest
+{
+    string DiskId = 1;
+    uint32 StartIndex = 2;
+    uint32 BlocksCount = 3;
+    string CheckpointId = 4;
+    uint32 BlocksCountToRead = 5;
+}
+
+message TFreshBlockRange
+{
+    uint32 StartIndex = 1;
+    uint32 BlocksCount = 2;
+    bytes BlocksContent = 3;
+}
+
+message TRangeInBlob
+{
+    uint32 BlobOffset = 1;
+    uint32 BlockIndex = 2;
+    uint32 BlocksCount = 3;
+}
+
+message TBlobPiece
+{
+    TLogoBlobID BlobId = 1;
+    uint32 BSGroupId = 2;
+    repeated TRangeInBlob Ranges = 3;
+}
+
+message TDescribeBlocksResponse
+{
+    repeated TFreshBlockRange FreshBlockRanges = 1;
+    repeated TBlobPiece BlobPieces = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CompactRange request/response.
+
+message TCompactRangeRequest
+{
+    string DiskId = 1;
+    uint32 StartIndex = 2;
+    uint32 BlocksCount = 3;
+}
+
+message TCompactRangeResponse
+{
+    string OperationId = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetCompactionStatus request/response.
+
+message TGetCompactionStatusRequest
+{
+    string DiskId = 1;
+
+    string OperationId = 2;
+}
+
+message TGetCompactionStatusResponse
+{
+    // Number of processed ranges.
+    uint32 Progress = 1;
+
+    // Total number of ranges.
+    uint32 Total = 2;
+
+    // Compaction status.
+    bool IsCompleted = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ModifyTags request/response.
+
+message TModifyTagsRequest
+{
+    string DiskId = 1;
+
+    repeated string TagsToAdd = 2;
+    repeated string TagsToRemove = 3;
+}
+
+message TModifyTagsResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeVolume request.
+
+message TDescribeVolumeRequest
+{
+    string DiskId = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RebaseVolume request/response.
+
+message TRebaseVolumeRequest
+{
+    // Label of volume to apply rebase for.
+    string DiskId = 1;
+
+    // Label of volume to rebase onto.
+    string TargetBaseDiskId = 2;
+
+    // Volume configuration version.
+    uint32 ConfigVersion = 3;
+}
+
+message TRebaseVolumeResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RebindVolumes request/response.
+
+message TRebindVolumesRequest
+{
+    // EVolumeBinding, see libs/storage/service/service_state.h
+    uint32 Binding = 1;
+};
+
+message TRebindVolumesResponse
+{
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// DrainNode request/response.
+
+message TDrainNodeRequest
+{
+    // KeepDown hive flag. If set, the node will stay disabled after draining.
+    bool KeepDown = 1;
+};
+
+message TDrainNodeResponse
+{
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// RebuildMetadata request/response.
+
+enum ERebuildMetadataType
+{
+    USED_BLOCKS = 0;
+    BLOCK_COUNT = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RebuildMetadata request/response.
+
+message TRebuildMetadataRequest
+{
+    string DiskId = 1;
+
+    // Type of metadata to rebuild.
+    ERebuildMetadataType MetadataType = 2;
+
+    // Operation specific batch size.
+    uint32 BatchSize = 3;
+}
+
+message TRebuildMetadataResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetRebuildMetadataStatus request/response.
+
+message TMetadataRebuildProgress
+{
+    // Number of units processed so far.
+    uint64 Processed = 1;
+
+    // Total number of units to process.
+    uint64 Total = 2;
+
+    // Is operation completed.
+    bool IsCompleted = 3;
+}
+
+message TGetRebuildMetadataStatusRequest
+{
+    string DiskId = 1;
+}
+
+message TGetRebuildMetadataStatusResponse
+{
+    TMetadataRebuildProgress Progress = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ScanDisk request/response.
+
+message TScanDiskRequest
+{
+    string DiskId = 1;
+
+    // Number of blobs per batch.
+    uint32 BatchSize = 2;
+}
+
+message TScanDiskResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetScanDiskStatus request/response.
+
+message TScanDiskProgress
+{
+    // Number of blobs processed so far.
+    uint64 Processed = 1;
+
+    // Total number of blobs to process.
+    uint64 Total = 2;
+
+    // Is operation completed.
+    bool IsCompleted = 3;
+
+    // Blobs processed with error.
+    repeated TLogoBlobID BrokenBlobs = 4;
+}
+
+message TGetScanDiskStatusRequest
+{
+    string DiskId = 1;
+}
+
+message TGetScanDiskStatusResponse
+{
+    TScanDiskProgress Progress = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SetupChannels request/response.
+
+message TVolumeChannelsToPoolsKinds
+{
+    // Mapping from channels to PoolKinds.
+    map<uint32, string> Data = 1;
+}
+
+message TSetupChannelsRequest
+{
+    // Label of the volume to apply to setup channels for.
+    string DiskId = 1;
+
+    // Config version.
+    uint32 ConfigVersion = 2;
+
+    // Mapping volume channel ids to media kinds.
+    NPrivateProto.TVolumeChannelsToPoolsKinds VolumeChannelsToPoolsKinds = 3;
+
+    // Is PoolKind set manually or by config.
+    optional bool IsPartitionsPoolKindSetManually = 4;
+}
+
+message TSetupChannelsResponse
+{
+}

@@ -1,0 +1,16 @@
+from cloud.blockstore.public.api.protos.actions_pb2 import *        # noqa
+from cloud.blockstore.public.api.protos.checkpoints_pb2 import *    # noqa
+from cloud.blockstore.public.api.protos.client_pb2 import *         # noqa
+from cloud.blockstore.public.api.protos.cms_pb2 import *            # noqa
+from cloud.blockstore.public.api.protos.discovery_pb2 import *      # noqa
+from cloud.blockstore.public.api.protos.disk_pb2 import *           # noqa
+from cloud.blockstore.public.api.protos.endpoints_pb2 import *      # noqa
+from cloud.blockstore.public.api.protos.headers_pb2 import *        # noqa
+from cloud.blockstore.public.api.protos.io_pb2 import *             # noqa
+from cloud.blockstore.public.api.protos.local_ssd_pb2 import *      # noqa
+from cloud.blockstore.public.api.protos.metrics_pb2 import *        # noqa
+from cloud.blockstore.public.api.protos.mount_pb2 import *          # noqa
+from cloud.blockstore.public.api.protos.ping_pb2 import *           # noqa
+from cloud.blockstore.public.api.protos.volume_pb2 import *         # noqa
+from cloud.storage.core.protos.error_pb2 import *                   # noqa
+from cloud.storage.core.protos.media_pb2 import *                   # noqa

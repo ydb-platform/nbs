@@ -1,0 +1,3 @@
+cleanup: Unavailable agent sas09-2ct29-3.cloud.yandex.net
+cleanup: restored state for device de9b5b08983bbfcf41c1ca14de83b5e9: received request: {"DisableAgent":null,"ChangeDeviceState":{"DeviceUUID":"de9b5b08983bbfcf41c1ca14de83b5e9","State":0},"Message":"chaos-monkey: restoring device state, prev state message: MirroredDiskId=xxx, ReplacementReason=yyy"}
+cleanup: restored state for device a9182abab80148cb1a199924e1ab37ac: received request: {"DisableAgent":null,"ChangeDeviceState":{"DeviceUUID":"a9182abab80148cb1a199924e1ab37ac","State":0},"Message":"chaos-monkey: restoring device state, prev state message: MirroredDiskId=xxx, ReplacementReason=yyy"}

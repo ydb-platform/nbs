@@ -1,0 +1,1291 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/libs/storage/protos";
+
+import "cloud/blockstore/public/api/protos/disk.proto";
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/blockstore/public/api/protos/io.proto";
+import "cloud/blockstore/public/api/protos/placement.proto";
+import "cloud/blockstore/public/api/protos/rdma.proto";
+import "cloud/blockstore/public/api/protos/volume.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/media.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EAgentState
+{
+    AGENT_STATE_ONLINE = 0;
+    AGENT_STATE_WARNING = 1;
+    AGENT_STATE_UNAVAILABLE = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EDeviceState
+{
+    DEVICE_STATE_ONLINE = 0;
+    DEVICE_STATE_WARNING = 1;
+    DEVICE_STATE_ERROR = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Mean time between failures.
+message TMeanTimeBetweenFailures
+{
+    // Work time in seconds.
+    uint64 WorkTime = 1;
+
+    // Number of transitions to broken state.
+    uint64 BrokenCount = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TAgentConfig
+{
+    // Node that agent is running on.
+    uint32 NodeId = 1;
+
+    // Devices attached to the agent.
+    repeated TDeviceConfig Devices = 2;
+
+    // Disk Agent Id which is used for registration in Disk registry.
+    string AgentId = 3;
+
+    // Current state of the Disk Agent
+    EAgentState State = 4;
+
+    // Timestamp when state has been changed (in microseconds)
+    uint64 StateTs = 5;
+
+    // Timestamp when CMS requested host shutdown (in microseconds)
+    uint64 CmsTs = 6;
+
+    // Agent generation.
+    uint64 SeqNumber = 7;
+
+    // Dedicated process flag.
+    bool DedicatedDiskAgent = 8;
+
+    // Reason for agent state.
+    string StateMessage = 9;
+
+    // Timestamp of the last transition to available state (in seconds)..
+    uint64 WorkTs = 10;
+
+    // Mean time between failures.
+    TMeanTimeBetweenFailures TimeBetweenFailures = 11;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskSession
+{
+    // Label of volume.
+    string DiskId = 1;
+
+    // Session identifier.
+    string SessionId = 2;
+
+    // Is session acquisition in progress.
+    bool AcquireInProgress = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeviceConfig
+{
+    // Device name.
+    string DeviceName = 1;
+
+    // Device identifier.
+    string DeviceUUID = 2;
+
+    // Device blocks size in bytes.
+    uint32 BlockSize = 3;
+
+    // Number of total device blocks available (may be adjusted by DR).
+    uint64 BlocksCount = 4;
+
+    // NVMe-oF transport identifier.
+    string TransportId = 5;
+
+    // Node id of the host where this device is located.
+    uint32 NodeId = 6;
+
+    // The rack where this device is located.
+    string Rack = 7;
+
+    // Current state of the device.
+    EDeviceState State = 8;
+
+    // Timestamp when state has been changed (in microseconds)
+    uint64 StateTs = 9;
+
+    // Timestamp when CMS requested device shutdown (in microseconds).
+    uint64 CmsTs = 10;
+
+    // Reason for device state.
+    string StateMessage = 11;
+
+    // NVMe controller name.
+    string BaseName = 12;
+
+    // Agent id.
+    string AgentId = 13;
+
+    // Number of total device blocks available.
+    uint64 UnadjustedBlockCount = 14;
+
+    // Rdma target endpoint.
+    TRdmaEndpoint RdmaEndpoint = 15;
+
+    // Device pool name.
+    string PoolName = 16;
+
+    // Device pool kind.
+    EDevicePoolKind PoolKind = 17;
+
+    // Serial number.
+    string SerialNumber = 18;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeviceMigration
+{
+    // Migration source device id.
+    string SourceDeviceId = 1;
+
+    // Migration target device config.
+    TDeviceConfig TargetDevice = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFinishedDeviceMigration
+{
+    string DeviceId = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskConfig
+{
+    // Label of volume.
+    string DiskId = 1;
+
+    // List of device UUIDs that make up the disk.
+    repeated string DeviceUUIDs = 2;
+
+    // Disk blocks size in bytes.
+    uint32 BlockSize = 3;
+
+    // Disk's current state.
+    EDiskState State = 4;
+
+    // Timestamp when state has been changed (in microseconds)
+    uint64 StateTs = 5;
+
+    // Migration configuration
+    repeated TDeviceMigration Migrations = 6;
+
+    // Cloud Id, used for user notification.
+    string CloudId = 7;
+
+    // Folder Id, used for user notification.
+    string FolderId = 8;
+
+    // User Id, used for user notification.
+    string UserId = 9;
+
+    // Replica count for mirrored disks.
+    uint32 ReplicaCount = 10;
+
+    // Master disk id (for replicas).
+    string MasterDiskId = 11;
+
+    // Finished or canceled device migrations.
+    repeated TFinishedDeviceMigration FinishedMigrations = 12;
+
+    // New devices used instead of recently replaced ones.
+    repeated string DeviceReplacementUUIDs = 13;
+
+    // Storage media.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 14;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPlacementGroupConfig
+{
+    // Id of the group.
+    string GroupId = 1;
+
+    message TDiskInfo
+    {
+        string DiskId = 1;
+        repeated string DeviceRacks = 2;
+
+        // For PLACEMENT_STRATEGY_PARTITION takes values from 1 to
+        // PlacementPartitionCount.
+        uint32 PlacementPartitionIndex = 3;
+    }
+
+    // Disks in this group.
+    repeated TDiskInfo Disks = 2;
+
+    // Config version.
+    uint32 ConfigVersion = 3;
+
+    // Custom placement group settings.
+    TPlacementGroupSettings Settings = 4;
+
+    // Placement strategy.
+    EPlacementStrategy PlacementStrategy = 5;
+
+    // Number of placement partitions.
+    // Used for PLACEMENT_STRATEGY_PARTITION PlacementStrategy.
+    uint32 PlacementPartitionCount = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDevicePoolConfig
+{
+    // Device pool name.
+    string Name = 1;
+
+    // Allocation unit for this pool (in bytes).
+    uint64 AllocationUnit = 2;
+
+    // Device pool kind.
+    EDevicePoolKind Kind = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskRegistryConfig
+{
+    // Disk registry config version.
+    uint32 Version = 1;
+
+    // List of agents allowed to connect to the Disk Registry.
+    repeated TAgentConfig KnownAgents = 2;
+
+    uint64 LastDiskStateSeqNo = 3;
+
+    // Allow to allocate disks.
+    bool WritableState = 4;
+
+    // Device overrides. See NBS-2432.
+    repeated TDeviceOverride DeviceOverrides = 5;
+
+    // Device pool configs.
+    repeated TDevicePoolConfig DevicePoolConfigs = 6;
+
+    // Restore state.
+    bool RestoreState = 7;
+
+    // Last backup timestamp (in milliseconds)
+    uint64 LastBackupTs = 8;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeviceRateLimits
+{
+    uint64 IopsLimit = 1;
+
+    // Common bandwidth limit (in megabytes per second)
+    uint64 BandwidthLimit = 2;
+
+    // Read bandwidth limit (in megabytes per second)
+    uint64 ReadBandwidthLimit = 3;
+
+    // Write bandwidth limit (in megabytes per second)
+    uint64 WriteBandwidthLimit = 4;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeviceStats
+{
+    message TBucketInfo
+    {
+        double Value = 1;
+        uint64 Count = 2;
+    };
+
+    string DeviceUUID = 1;
+
+    repeated TBucketInfo HistogramBuckets = 2;
+
+    uint64 BytesRead = 3;
+    uint64 NumReadOps = 4;
+    uint64 BytesWritten = 5;
+    uint64 NumWriteOps = 6;
+
+    uint64 Errors = 7;
+
+    uint64 BytesZeroed = 8;
+    uint64 NumZeroOps = 9;
+
+    uint64 NumEraseOps = 10;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TAgentStats
+{
+    // Node that agent is running on.
+    uint32 NodeId = 1;
+
+    // Devices attached to the agent.
+    repeated TDeviceStats DeviceStats = 2;
+
+    // Error count at Disk Agent initialization
+    uint32 InitErrorsCount = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskRegistryStateBackup
+{
+    repeated TDiskConfig Disks = 1;
+    repeated TPlacementGroupConfig PlacementGroups = 2;
+    repeated TAgentConfig Agents = 3;
+    repeated TDiskSession Sessions = 4;
+    TDiskRegistryConfig Config = 5;
+
+    // deprecated
+    repeated string OldDirtyDevices = 6;
+
+    message TDiskStateUpdate
+    {
+        TDiskState State = 1;
+        uint64 SeqNo = 2;
+    };
+
+    repeated TDiskStateUpdate DiskStateChanges = 7;
+
+    message TBrokenDiskInfo
+    {
+        string DiskId = 1;
+        uint64 TsToDestroy = 2;
+    }
+
+    repeated TBrokenDiskInfo BrokenDisks = 8;
+    repeated string DisksToNotify = 9;
+    repeated string DisksToCleanup = 10;
+    repeated string ErrorNotifications = 11;
+    repeated string OutdatedVolumeConfigs = 12;
+    repeated string SuspendedDevices = 13;
+
+    message TDirtyDevice
+    {
+        string Id = 1;
+        string DiskId = 2;
+    }
+
+    repeated TDirtyDevice DirtyDevices = 14;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TRegisterAgentRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Agent configuration.
+    TAgentConfig AgentConfig = 2;
+}
+
+message TRegisterAgentResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TUnregisterAgentRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Node that agent is running on.
+    uint32 NodeId = 2;
+}
+
+message TUnregisterAgentResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TAllocateDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to create.
+    string DiskId = 2;
+
+    // Minimum addressable block size (smallest unit of I/O operations).
+    uint32 BlockSize = 3;
+
+    // Maximum number of blocks stored in volume.
+    uint64 BlocksCount = 4;
+
+    // Placement group id.
+    string PlacementGroupId = 5;
+
+    // Cloud Id, used for user notification.
+    string CloudId = 6;
+
+    // Folder Id, used for user notification.
+    string FolderId = 7;
+
+    // Replica count (for mirrored disks).
+    uint32 ReplicaCount = 8;
+
+    // Target agent ids.
+    repeated string AgentIds = 9;
+
+    // Device pool name.
+    string PoolName = 10;
+
+    // Storage media to use.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 11;
+
+    // Placement partition index.
+    uint32 PlacementPartitionIndex = 12;
+}
+
+message TReplica
+{
+    // Device list.
+    repeated TDeviceConfig Devices = 1;
+}
+
+message TAllocateDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of device UUIDs that make up the disk.
+    repeated TDeviceConfig Devices = 2;
+
+    // IO state
+    EVolumeIOMode IOMode = 3;
+
+    // Migration configuration
+    repeated TDeviceMigration Migrations = 4;
+
+    // IO state timestamp
+    uint64 IOModeTs = 5;
+
+    // Mute IO errors after a while
+    bool MuteIOErrors = 6;
+
+    // Replicas for mirrored disks.
+    repeated TReplica Replicas = 7;
+
+    // New devices used instead of recently replaced ones.
+    repeated string DeviceReplacementUUIDs = 8;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeallocateDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to remove.
+    string DiskId = 2;
+
+    // Deallocate disk even if it wasn't marked for cleanup
+    bool Force = 3;
+
+    // Wait for secure cleanup of disk's devices before response.
+    bool Sync = 4;
+}
+
+message TDeallocateDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TAcquireDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of device UUIDs to acquire.
+    repeated string DeviceUUIDs = 2;
+
+    // Session identifier.
+    string SessionId = 3;
+
+    // Rate limits.
+    TDeviceRateLimits RateLimits = 4;
+
+    // Access mode.
+    EVolumeAccessMode AccessMode = 5;
+
+    // MountSeqNumber from volume state.
+    uint64 MountSeqNumber = 6;
+
+    // Disk id.
+    string DiskId = 7;
+
+    // Volume generation.
+    uint32 VolumeGeneration = 8;
+}
+
+message TAcquireDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TReleaseDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of device UUIDs to release.
+    repeated string DeviceUUIDs = 2;
+
+    // Session identifier.
+    string SessionId = 3;
+
+    // Disk id.
+    string DiskId = 4;
+
+    // Volume generation.
+    uint32 VolumeGeneration = 5;
+}
+
+message TReleaseDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TAcquireDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to acquire.
+    string DiskId = 2;
+
+    // Session identifier.
+    string SessionId = 3;
+
+    // Access mode.
+    EVolumeAccessMode AccessMode = 4;
+
+    // MountSeqNumber from volume state.
+    uint64 MountSeqNumber = 5;
+
+    // Volume generation.
+    uint32 VolumeGeneration = 6;
+}
+
+message TAcquireDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of devices that make up the disk.
+    repeated TDeviceConfig Devices = 2;
+
+    // Migration configuration.
+    repeated TDeviceMigration Migrations = 3;
+
+    // Replicas.
+    repeated TReplica Replicas = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TReleaseDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to release.
+    string DiskId = 2;
+
+    // Session identifier.
+    string SessionId = 3;
+
+    // Volume generation.
+    uint32 VolumeGeneration = 4;
+}
+
+message TReleaseDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDescribeDiskRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+}
+
+message TDescribeDiskResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of device configs that make up the disk.
+    repeated TDeviceConfig Devices = 2;
+
+    // Minimum addressable block size (smallest unit of I/O operations).
+    uint32 BlockSize = 3;
+
+    // Maximum number of blocks stored in volume.
+    uint64 BlocksCount = 4;
+
+    // Disk's current state.
+    EDiskState State = 5;
+
+    // Timestamp when state has been changed (in microseconds)
+    uint64 StateTs = 6;
+
+    // Migrations.
+    repeated TDeviceMigration Migrations = 7;
+
+    // Replicas.
+    repeated TReplica Replicas = 8;
+
+    // Cloud Id, used for user notification.
+    string CloudId = 9;
+
+    // Folder Id, used for user notification.
+    string FolderId = 10;
+
+    // New devices used instead of recently replaced ones.
+    repeated string DeviceReplacementUUIDs = 11;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Blocks read request/response.
+
+message TReadDeviceBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // UUID of device to read from.
+    string DeviceUUID = 2;
+
+    // Start block index.
+    uint64 StartIndex = 3;
+
+    // Logical block size
+    uint32 BlockSize = 4;
+
+    // Number of blocks to read.
+    uint32 BlocksCount = 5;
+
+    // Session identifier.
+    string SessionId = 6;
+}
+
+message TReadDeviceBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Requested blocks.
+    TIOVector Blocks = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Blocks write request/response.
+
+message TWriteDeviceBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // UUID of device to write to.
+    string DeviceUUID = 2;
+
+    // Start block index.
+    uint64 StartIndex = 3;
+
+    // Logical block size
+    uint32 BlockSize = 4;
+
+    // Blocks to write.
+    TIOVector Blocks = 5;
+
+    // Session identifier.
+    string SessionId = 6;
+}
+
+message TWriteDeviceBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Blocks zero request/response.
+
+message TZeroDeviceBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // UUID of device to write to.
+    string DeviceUUID = 2;
+
+    // Start block index.
+    uint64 StartIndex = 3;
+
+    // Logical block size
+    uint32 BlockSize = 4;
+
+    // Number of blocks to delete.
+    uint32 BlocksCount = 5;
+
+    // Session identifier.
+    string SessionId = 6;
+}
+
+message TZeroDeviceBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Update Disk Registry config
+
+message TUpdateConfigRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    TDiskRegistryConfig Config = 2;
+
+    // Ignore affected disks and force to apply config
+    // Removed. See NBS-2299.
+    // bool ForceUpdate = 3;
+
+    // Ignore config version and force to apply config
+    bool IgnoreVersion = 4;
+}
+
+message TUpdateConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Disks that depend on removed devices
+    repeated string AffectedDisks = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Describe Disk Registry config
+
+message TDescribeConfigRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TDescribeConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    TDiskRegistryConfig Config = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Secure erase devices
+
+message TSecureEraseDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DeviceUUID = 2;
+}
+
+message TSecureEraseDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Checksum blocks request/response.
+
+message TChecksumDeviceBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // UUID of device to read from.
+    string DeviceUUID = 2;
+
+    // Start block index.
+    uint64 StartIndex = 3;
+
+    // Logical block size
+    uint32 BlockSize = 4;
+
+    // Number of blocks to read.
+    uint32 BlocksCount = 5;
+
+    // Session identifier.
+    string SessionId = 6;
+}
+
+message TChecksumDeviceBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Requested blocks checksum.
+    uint64 Checksum = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Disable agent request/response.
+
+message TDisableConcreteAgentRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Optional device filter - if set, only the specified devices will be
+    // affected.
+    repeated string DeviceUUIDs = 2;
+}
+
+message TDisableConcreteAgentResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Disk registry force migration request/response.
+
+message TStartForceMigrationRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Disk whose device will be migrated.
+    string SourceDiskId = 2;
+
+    // Device to migrate.
+    string SourceDeviceId = 3;
+
+    // Target device for migration.
+    string TargetDeviceId = 4;
+}
+
+message TStartForceMigrationResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TUpdateAgentStatsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    TAgentStats AgentStats = 2;
+}
+
+message TUpdateAgentStatsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TReplaceDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Target disk
+    string DiskId = 2;
+
+    // Device to be replaced
+    string DeviceUUID = 3;
+}
+
+message TReplaceDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TChangeDeviceStateRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Target device.
+    string DeviceUUID = 2;
+
+    // New state.
+    EDeviceState DeviceState = 3;
+
+    // Reason for the new state.
+    string Reason = 4;
+}
+
+message TChangeDeviceStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TChangeAgentStateRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Target agent.
+    string AgentId = 2;
+
+    // New state.
+    EAgentState AgentState = 3;
+
+    // Reason for the new state.
+    string Reason = 4;
+}
+
+message TChangeAgentStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDisableAgentRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Target agent.
+    string AgentId = 2;
+
+    // Optional device filter - if set, only the specified devices will be
+    // affected.
+    repeated string DeviceUUIDs = 3;
+}
+
+message TDisableAgentResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeviceMigrationIds
+{
+    // Migration source device id
+    string SourceDeviceId = 1;
+
+    // Migration target device id
+    string TargetDeviceId = 2;
+}
+
+message TFinishMigrationRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+
+    // Migrations.
+    repeated TDeviceMigrationIds Migrations = 3;
+}
+
+message TFinishMigrationResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Backup Disk Registry state
+
+message TBackupDiskRegistryStateRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Backup local DB instead of memory state.
+    bool BackupLocalDB = 2;
+
+    // File to save backup file.
+    string BackupFilePath = 3;
+}
+
+message TBackupDiskRegistryStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Disk Regsitry state backup
+    TDiskRegistryStateBackup Backup = 2;
+
+    // File to save backup file.
+    string BackupFilePath = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Restore Disk Registry state
+
+message TRestoreDiskRegistryStateRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Disk Registry state backup.
+    TDiskRegistryStateBackup Backup = 2;
+
+    // Ignore validation check.
+    bool Force = 3;
+}
+
+message TRestoreDiskRegistryStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Allows/forbids DiskRegistry tablet to modify local database.
+
+message TSetWritableStateRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Change writable state option.
+    bool State = 2;
+}
+
+message TSetWritableStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TMarkDiskForCleanupRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Volume label.
+    string DiskId = 2;
+}
+
+message TMarkDiskForCleanupResponse
+{
+    // Optional error, will be set if error occured.
+    NCloud.NProto.TError Error = 1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSetUserIdRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Volume label.
+    string DiskId = 2;
+
+    // User IAM ID for notifications.
+    string UserId = 3;
+}
+
+message TSetUserIdResponse
+{
+    // Optional error, will be set if error occured.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TUpdateDiskBlockSizeRequest
+{
+    // Disk identifier to perform operations on.
+    string DiskId = 1;
+
+    // Disk block size in bytes.
+    uint32 BlockSize = 2;
+
+    // Force dangerous actions
+    bool Force = 3;
+}
+
+message TUpdateDiskBlockSizeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TUpdateDiskReplicaCountRequest
+{
+    // Disk identifier to perform operations on.
+    string MasterDiskId = 1;
+
+    // Desired replica count
+    uint32 ReplicaCount = 2;
+}
+
+message TUpdateDiskReplicaCountResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TMarkReplacementDeviceRequest
+{
+    // Disk identifier to perform operations on.
+    string DiskId = 1;
+
+    // Device id to mark.
+    string DeviceId = 2;
+
+    // Adds/removes this device to the replacement list.
+    bool IsReplacement = 3;
+}
+
+message TMarkReplacementDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Suspend device
+
+message TSuspendDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Device id.
+    string DeviceId = 2;
+}
+
+message TSuspendDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Update placement group settings
+
+message TUpdatePlacementGroupSettingsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Id of the group.
+    string GroupId = 2;
+
+    // Config version.
+    uint32 ConfigVersion = 3;
+
+    // Settings.
+    TPlacementGroupSettings Settings = 4;
+}
+
+message TUpdatePlacementGroupSettingsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume create from devices request/response.
+
+message TCreateVolumeFromDevicesRequest
+{
+    // Label of volume to create.
+    string DiskId = 1;
+
+    // Owner information.
+    string ProjectId = 2;
+
+    // User folder Id, used for billing.
+    string FolderId = 3;
+
+    // Cloud Id, used for billing.
+    string CloudId = 4;
+
+    // Block size in bytes
+    uint32 BlockSize = 5;
+
+    // Devices from which the disk is assembled
+    repeated string DeviceUUIDs = 6;
+}
+
+message TCreateVolumeFromDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

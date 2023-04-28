@@ -1,0 +1,158 @@
+syntax = "proto2";
+
+import "cloud/blockstore/config/rdma.proto";
+import "cloud/blockstore/config/spdk.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+// Device erase method
+
+enum EDeviceEraseMethod
+{
+    DEVICE_ERASE_METHOD_ZERO_FILL = 0;
+    DEVICE_ERASE_METHOD_USER_DATA_ERASE = 1;
+    DEVICE_ERASE_METHOD_CRYPTO_ERASE = 2;
+    DEVICE_ERASE_METHOD_NONE = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Backends for Disk agent.
+
+enum EDiskAgentBackendType
+{
+    DISK_AGENT_BACKEND_SPDK = 0;
+    DISK_AGENT_BACKEND_AIO = 1;
+    DISK_AGENT_BACKEND_NULL = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TMemoryDeviceArgs
+{
+    optional string Name = 1;
+    optional uint64 BlocksCount = 2;
+    optional uint32 BlockSize = 3;
+
+    // Device identifier. Must be globally unique.
+    optional string DeviceId = 4;
+
+    // Device pool name.
+    optional string PoolName = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFileDeviceArgs
+{
+    optional string Path = 1;
+    optional uint32 BlockSize = 2;
+
+    // Device identifier. Must be globally unique.
+    optional string DeviceId = 3;
+
+    // Device pool name.
+    optional string PoolName = 4;
+
+    // Serial number. For testing purposes.
+    optional string SerialNumber = 5;
+
+    // Data offset relative to the beginning of the file.
+    optional uint64 Offset = 6;
+    // File size override.
+    optional uint64 FileSize = 7;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNVMeDeviceArgs
+{
+    optional string BaseName = 1;
+    optional string TransportId = 2;
+
+    // Device identifier. Must be globally unique.
+    repeated string DeviceIds = 3;
+
+    // Device pool name.
+    optional string PoolName = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNVMeTargetArgs
+{
+    optional string Nqn = 1;
+    repeated string TransportIds = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskAgentConfig
+{
+    optional bool Enabled = 1;
+
+    // Attached devices.
+    repeated TMemoryDeviceArgs MemoryDevices = 2;
+    repeated TFileDeviceArgs FileDevices = 3;
+    repeated TNVMeDeviceArgs NvmeDevices = 4;
+
+    // NVMe-oF target setup.
+    optional TNVMeTargetArgs NvmeTarget = 5;
+
+    // Disk Agent Id which is used for registration in Disk registry.
+    optional string AgentId = 6;
+
+    // Allocator.
+    optional uint32 PageSize = 7;
+    optional uint32 MaxPageCount = 8;
+    optional uint32 PageDropSize = 9;
+
+    // Timeout (in milliseconds) before retry register agent at Disk Registry.
+    optional uint32 RegisterRetryTimeout = 10;
+
+    // Backend to perform IO.
+    optional EDiskAgentBackendType Backend = 11;
+
+    // If set, i/o won't work without acquire.
+    optional bool AcquireRequired = 12;
+
+    // Device secure erase method.
+    optional EDeviceEraseMethod DeviceEraseMethod = 13;
+
+    // Devices can be acquired by another writer after this time interval.
+    optional uint32 ReleaseInactiveSessionsTimeout = 14;
+
+    // Open device file without directIO flag. Used with AIO backend & RAM drive.
+    optional bool DirectIoFlagDisabled = 15;
+
+    // Agent generation number which is used for registration in Disk registry.
+    optional uint64 SeqNumber = 16;
+
+    // Use disk-agent in dedicated process.
+    optional bool DedicatedDiskAgent = 17;
+
+    // Timeout (in seconds) before aborting NVM format command.
+    optional uint32 SecureEraseTimeout = 18;
+
+    // SPDK config used by dedicated disk agent.
+    optional TSpdkEnvConfig SpdkEnvConfig = 19;
+
+    // RDMA target config.
+    optional TRdmaTarget RdmaTarget = 20;
+
+    // Use flock to lock devices on agent initialization.
+    optional bool DeviceLockingEnabled = 21;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskRegistryProxyConfig
+{
+    optional uint64 Owner = 1;
+    optional uint64 OwnerIdx = 2;
+
+    // timeout (in milliseconds) for lookup/create DR tablet request
+    optional uint32 LookupTimeout = 3;
+}

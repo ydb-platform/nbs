@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLogbrokerConfig
+{
+    optional string Address = 1;
+    optional uint32 Port = 2;
+    optional string Database = 3;
+    optional bool UseLogbrokerCDS = 4;
+    optional string CaCertFilename = 5;
+
+    optional string Topic = 6;
+    optional string SourceId = 7;
+
+    optional string MetadataServerAddress = 8;
+}

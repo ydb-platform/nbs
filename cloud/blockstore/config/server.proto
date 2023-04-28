@@ -1,0 +1,205 @@
+syntax = "proto3";
+
+import "cloud/blockstore/config/certificate.proto";
+import "cloud/blockstore/config/rdma.proto";
+import "cloud/storage/core/protos/endpoints.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TAffinity
+{
+    repeated uint32 CPU = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLocation
+{
+    optional string DataCenter = 1;
+    optional string Rack = 2;
+    optional uint64 Body = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TServerConfig
+{
+    // Host name or address to listen on.
+    optional string Host = 1;
+
+    // Port to listen on.
+    optional uint32 Port = 2;
+
+    // Host name or address to listen on (for data service requests).
+    optional string DataHost = 3;
+
+    // Port to listen on (for data service requests).
+    optional uint32 DataPort = 4;
+
+    // Number of gRPC threads.
+    optional uint32 ThreadsCount = 5;
+
+    // Maximum size of gRPC message.
+    optional uint32 MaxMessageSize = 6;
+
+    // Number of prepared gRPC requests.
+    optional uint32 PreparedRequestsCount = 7;
+
+    // Memory quota for gRPC request processing.
+    optional uint32 MemoryQuotaBytes = 8;
+
+    // Host name or address to listen on (with TLS enabled).
+    optional string SecureHost = 50;
+
+    // Port to listen on (with TLS enabled).
+    optional uint32 SecurePort = 9;
+
+    // TLS details.
+    optional string RootCertsFile = 10;
+    // The following 2 are deprecated in favor of Certs.
+    optional string CertFile = 11;
+    optional string CertPrivateKeyFile = 12;
+    repeated TCertificate Certs = 27;
+
+    // TCP KeepAlive details.
+    optional bool KeepAliveEnabled = 13;
+    optional uint32 KeepAliveIdleTimeout = 14;   // (in milliseconds).
+    optional uint32 KeepAliveProbeTimeout = 15;  // (in milliseconds).
+    optional uint32 KeepAliveProbesCount = 16;
+
+    // Run additional checks for interactions between client and server .
+    optional bool StrictContractValidation = 17;
+
+    // Load configs from cms.
+    optional bool LoadCmsConfigs = 18;
+
+    // Shutdown timeout (in milliseconds).
+    optional uint32 ShutdownTimeout = 19;
+
+    // Request timeout (in milliseconds).
+    optional uint32 RequestTimeout = 20;
+
+    // Unix-socket details.
+    optional string UnixSocketPath = 21;
+    optional uint32 UnixSocketBacklog = 22;
+
+    // Limit of grpc threads count.
+    optional uint32 GrpcThreadsLimit = 23;
+
+    // Vhost server details.
+    optional bool VhostEnabled = 24;
+    optional uint32 VhostThreadsCount = 25;
+    optional TAffinity VhostAffinity = 37;
+
+    // [obsolete] Client details for endpoints.
+    // optional TClientThrottlingConfig ClientThrottlingConfig = 30;
+
+    // NVMEoF initiator enabled.
+    optional bool NvmfInitiatorEnabled = 31;
+
+    // Node type
+    optional string NodeType = 32;
+
+    // Endpoint storage details.
+    optional NCloud.NProto.EEndpointStorageType EndpointStorageType = 106;
+    optional string RootKeyringName = 33;
+    optional string EndpointsKeyringName = 42;
+    optional string EndpointStorageDir = 107;
+
+    // Nbd server details.
+    optional bool NbdEnabled = 34;
+    optional uint32 NbdThreadsCount = 35;
+    optional bool NbdLimiterEnabled = 61;
+    optional uint64 MaxInFlightBytesPerThread = 36;
+    optional TAffinity NbdAffinity = 38;
+
+    // Dynamic node registration params.
+    optional uint32 NodeRegistrationMaxAttempts = 39;
+    optional uint32 NodeRegistrationTimeout = 40;   // in ms
+    optional uint32 NodeRegistrationErrorTimeout = 41;  // in ms
+
+    // Suffix for nbd-socket
+    optional string NbdSocketSuffix = 43;
+
+    // GRPC KeepAlive
+    optional uint32 GrpcKeepAliveTime = 44; // ms
+    optional uint32 GrpcKeepAliveTimeout = 45; // ms
+    optional bool GrpcKeepAlivePermitWithoutCalls = 46;
+    optional uint32 GrpcHttp2MinRecvPingIntervalWithoutData = 47; // ms
+    optional uint32 GrpcHttp2MinSentPingIntervalWithoutData = 48; // ms
+
+    // [obsolete] Enable disk-agent in dedicated process.
+    // optional bool DedicatedDiskAgent = 53;
+
+    // NVMe endpoint details.
+    optional bool NVMeEndpointEnabled = 54;
+    optional string NVMeEndpointNqn = 55;
+    repeated string NVMeEndpointTransportIDs = 56;
+
+    // SCSI endpoint details.
+    optional bool SCSIEndpointEnabled = 57;
+    optional string SCSIEndpointName = 58;
+    optional string SCSIEndpointListenAddress = 59;
+    optional uint32 SCSIEndpointListenPort = 60;
+
+    // RDMA endpoint details.
+    optional bool RdmaEndpointEnabled = 62;
+    optional string RdmaEndpointListenAddress = 63;
+    optional uint32 RdmaEndpointListenPort = 64;
+
+    // RDMA client details.
+    optional bool RdmaClientEnabled = 65;
+    optional TRdmaClient RdmaClientConfig = 66;
+
+    // Throttling service details.
+    optional bool ThrottlingEnabled = 100;
+    // Bytes per second.
+    optional uint32 MaxReadBandwidth = 101;
+    optional uint32 MaxWriteBandwidth = 102;
+    // Iops.
+    optional uint32 MaxReadIops = 103;
+    optional uint32 MaxWriteIops = 104;
+    // Max burst length in milliseconds.
+    optional uint32 MaxBurstTime = 105;
+
+    // Path to vhost server executable.
+    optional string VhostServerPath = 108;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNullServiceConfig
+{
+    optional bool AddReadResponseData = 1;
+    optional uint32 DiskBlockSize = 2;
+    optional uint64 DiskBlocksCount = 3;
+    optional uint32 IopsLimit = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLocalServiceConfig
+{
+    optional string DataDir = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TKikimrServiceConfig
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TServerAppConfig
+{
+    optional TServerConfig ServerConfig = 1;
+
+    optional TNullServiceConfig NullServiceConfig = 4;
+    optional TLocalServiceConfig LocalServiceConfig = 2;
+    optional TKikimrServiceConfig KikimrServiceConfig = 3;
+}

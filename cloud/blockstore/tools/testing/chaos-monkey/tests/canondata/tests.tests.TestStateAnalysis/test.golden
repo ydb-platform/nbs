@@ -1,0 +1,35 @@
+targets:
+[
+    {
+        "DiskId": "cga7mpius6uopt9beskc",
+        "DeviceUUIDs": null,
+        "AgentId": "sas09-ct7-28.cloud.yandex.net"
+    },
+    {
+        "DiskId": "cga7mpius6uopt9beskc_nonreplicating",
+        "DeviceUUIDs": [
+            "3765dc41e1bd0e2f08357b73827d33a4"
+        ],
+        "AgentId": "sas09-ct7-18.cloud.yandex.net"
+    }
+]
+alternative targets:
+[
+    {
+        "DiskId": "cga7mpius6uopt9beskc",
+        "DeviceUUIDs": [
+            "08267596b6d0a5a4231db21556a8670d",
+            "180fbf6782d5294fbd3d2289c7e56f9c",
+            "264e2a446ff76d5d2f80844e84fcfa36",
+            "28a71af8a69ee515f6228882d485d421",
+            "35d973ad90a9520921681634e0db4b46",
+            "3627e6ff71cfcb088c205416cf0ad111",
+            "3ecae5af722831f2d11dc3a8bfc9b584",
+            "6ed17b82b9ea3a54d5f5e2f9c2bef8a3",
+            "7433a4b3d74df2d78ff97f4c449a4e22",
+            "76a3696137b7354d5f40154e3f9adda4",
+            "7ec789c0b702102959477a53a531160a"
+        ],
+        "AgentId": "sas09-ct7-26.cloud.yandex.net"
+    }
+]

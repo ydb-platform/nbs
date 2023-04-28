@@ -1,0 +1,5 @@
+config:
+{{ range .Configs }}
+  {{ .FileName }}: |+
+    {{ .Text }}
+{{ end }}

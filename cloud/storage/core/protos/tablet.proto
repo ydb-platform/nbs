@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option java_package = "ru.yandex.cloud.storage.proto";
+option go_package = "a.yandex-team.ru/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Tablet storage info.
+
+message TTabletChannelHistoryEntry
+{
+    uint32 FromGeneration = 1;
+    uint32 GroupId = 2;
+};
+
+message TTabletChannelInfo
+{
+    string StoragePool = 1;
+    repeated TTabletChannelHistoryEntry History = 2;
+};
+
+message TTabletStorageInfo
+{
+    uint64 TabletId = 1;
+    uint64 Version = 2;
+    repeated TTabletChannelInfo Channels = 3;
+};

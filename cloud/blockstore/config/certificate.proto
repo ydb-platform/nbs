@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCertificate
+{
+    optional string CertFile = 1;
+    optional string CertPrivateKeyFile = 2;
+}

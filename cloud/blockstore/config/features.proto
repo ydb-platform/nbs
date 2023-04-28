@@ -1,0 +1,38 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFilters
+{
+    repeated string CloudIds = 1;
+    repeated string FolderIds = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFeatureConfig
+{
+    // Feature name.
+    optional string Name = 1;
+
+    // Feature parameters.
+    oneof Params
+    {
+        TFilters Whitelist = 2;
+        TFilters Blacklist = 3;
+    }
+
+    // Optional value - for non-binary features.
+    optional string Value = 4;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFeaturesConfig
+{
+    repeated TFeatureConfig Features = 1;
+}

@@ -1,0 +1,76 @@
+option optimize_for = SPEED;
+
+import "library/cpp/eventlog/proto/events_extension.proto";
+
+package NCloud.NBlockStore.NProto;
+
+message TProfileLogBlockInfo {
+    option (message_id) = 3;
+    optional uint64 BlockIndex = 1;
+    optional uint32 Checksum = 2;
+};
+
+message TProfileLogBlockRange {
+    option (message_id) = 4;
+    optional uint64 BlockIndex = 1;
+    optional uint32 BlockCount = 2;
+};
+
+message TProfileLogBlockCommitId {
+    option (message_id) = 6;
+    optional uint64 BlockIndex = 1;
+    optional uint64 MinCommitIdOld = 2;
+    optional uint64 MaxCommitIdOld = 3;
+    optional uint64 MinCommitIdNew = 4;
+    optional uint64 MaxCommitIdNew = 5;
+}
+
+message TProfileLogBlobUpdate {
+    option (message_id) = 8;
+    optional uint64 CommitId = 1;
+    optional TProfileLogBlockRange BlockRange = 2;
+}
+
+message TProfileLogBlobUpdateList {
+    option (message_id) = 9;
+    optional uint64 TimestampMcs = 1;
+    repeated TProfileLogBlobUpdate BlobUpdates = 2;
+    optional uint64 CleanupCommitId = 3;
+}
+
+message TProfileLogBlockInfoList {
+    option (message_id) = 5;
+    optional uint64 TimestampMcs = 1;
+    optional uint32 RequestType = 2;
+    repeated TProfileLogBlockInfo BlockInfos = 3;
+    optional uint64 CommitId = 4;
+};
+
+message TProfileLogBlockCommitIdList {
+    option (message_id) = 7;
+    optional uint64 TimestampMcs = 1;
+    optional uint32 RequestType = 2;
+    repeated TProfileLogBlockCommitId BlockCommitIds = 3;
+    optional uint64 CommitId = 4;
+}
+
+message TProfileLogRequestInfo {
+    option (message_id) = 1;
+    optional uint64 TimestampMcs = 1;
+    optional uint64 DurationMcs = 2;
+    optional uint32 RequestType = 3;
+    optional uint64 BlockIndex = 4; // legacy, use Ranges
+    optional uint32 BlockCount = 5; // legacy, use Ranges
+    repeated TProfileLogBlockRange Ranges = 6;
+    optional uint64 PostponedTimeMcs = 7;
+};
+
+message TProfileLogRecord {
+    option (message_id) = 2;
+    optional string DiskId = 1;
+    repeated TProfileLogRequestInfo Requests = 2;
+    optional uint64 Version = 3;
+    repeated TProfileLogBlockInfoList BlockInfoLists = 4;
+    repeated TProfileLogBlockCommitIdList BlockCommitIdLists = 5;
+    repeated TProfileLogBlobUpdateList BlobUpdateLists = 6;
+};

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Health-check request/response
+
+message TPingRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TPingResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Most recent stats, will be used for load balancing
+    uint64 LastByteCount = 2;
+    uint64 LastRequestCount = 3;
+}

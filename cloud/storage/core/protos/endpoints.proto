@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option java_package = "ru.yandex.cloud.storage.proto";
+option go_package = "a.yandex-team.ru/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Endpoint storage type
+
+enum EEndpointStorageType
+{
+    ENDPOINT_STORAGE_DEFAULT = 0;
+    ENDPOINT_STORAGE_KEYRING = 1;
+    ENDPOINT_STORAGE_FILE = 2;
+}

@@ -1,0 +1,170 @@
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.util import LogLevels
+
+from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+
+from cloud.blockstore.tests.python.lib.nonreplicated_setup import create_file_devices, \
+    setup_disk_registry_proxy_config, setup_disk_agent_config
+
+from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
+
+from .nbs_runner import LocalNbs
+
+import logging
+import os
+
+
+logger = logging.getLogger(__name__)
+
+
+class LocalLoadTest:
+
+    def __init__(
+            self,
+            endpoint,
+            run_kikimr=True,
+            server_app_config=None,
+            contract_validation=False,
+            storage_config_patches=None,
+            tracking_enabled=False,
+            enable_access_service=False,
+            use_in_memory_pdisks=False,
+            enable_tls=False,
+            discovery_config=None,
+            restart_interval=None,
+            dynamic_pdisks=[],
+            dynamic_storage_pools=[
+                dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
+                dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
+            ],
+            features_config_patch=None,
+            grpc_trace=False,
+            with_nrd=False,
+            nrd_device_count=1,
+            rack='',
+            bs_cache_file_path=None,
+    ):
+
+        self.__endpoint = endpoint
+
+        self.configurator = KikimrConfigGenerator(
+            erasure=None,
+            has_cluster_uuid=False,
+            use_in_memory_pdisks=use_in_memory_pdisks,
+            dynamic_pdisks=dynamic_pdisks,
+            dynamic_storage_pools=dynamic_storage_pools,
+            additional_log_configs={"HIVE": LogLevels.TRACE},
+            bs_cache_file_path=bs_cache_file_path,
+        )
+        self.kikimr_cluster = kikimr_cluster_factory(
+            configurator=self.configurator)
+
+        kikimr_port = 0
+
+        if run_kikimr:
+            self.kikimr_cluster.start()
+            kikimr_port = list(self.kikimr_cluster.nodes.values())[0].port
+
+        self.__devices = []
+
+        if with_nrd:
+            assert(run_kikimr)
+
+            storage = TStorageServiceConfig()
+            storage.AllocationUnitNonReplicatedSSD = 1
+            storage.AcquireNonReplicatedDevices = True
+            storage.NonReplicatedInfraTimeout = 60000
+            storage.NonReplicatedAgentMinTimeout = 3000
+            storage.NonReplicatedAgentMaxTimeout = 3000
+            storage.NonReplicatedDiskRecyclingPeriod = 5000
+
+            if storage_config_patches:
+                storage_config_patches += [storage]
+            else:
+                storage_config_patches = [storage]
+
+        self.nbs = LocalNbs(
+            kikimr_port,
+            self.configurator.domains_txt,
+            server_app_config=server_app_config,
+            contract_validation=contract_validation,
+            storage_config_patches=storage_config_patches,
+            tracking_enabled=tracking_enabled,
+            enable_access_service=enable_access_service,
+            enable_tls=enable_tls,
+            discovery_config=discovery_config,
+            restart_interval=restart_interval,
+            dynamic_storage_pools=dynamic_storage_pools,
+            load_configs_from_cms=run_kikimr,
+            features_config_patch=features_config_patch,
+            grpc_trace=grpc_trace,
+            rack=rack)
+
+        if run_kikimr:
+            self.nbs.setup_cms(self.kikimr_cluster.client)
+
+        if with_nrd:
+            self.__devices = create_file_devices(
+                None,   # dir
+                nrd_device_count,
+                4096,
+                262144)
+
+            setup_disk_registry_proxy_config(self.kikimr_cluster.client)
+            setup_disk_agent_config(
+                self.kikimr_cluster.client,
+                self.__devices,
+                device_erase_method=None,
+                node_type=None)
+
+        self.nbs.start()
+        wait_for_nbs_server(self.nbs.nbs_port)
+
+    def tear_down(self):
+        self.nbs.stop()
+        self.kikimr_cluster.stop()
+
+        for d in self.__devices:
+            d.handle.close()
+            os.unlink(d.path)
+
+    @property
+    def endpoint(self):
+        return 'localhost:' + str(self.nbs.nbs_port)
+
+    @property
+    def nbs_port(self):
+        return self.nbs.nbs_port
+
+    @property
+    def nbs_data_port(self):
+        return self.nbs.nbs_data_port
+
+    @property
+    def nbs_secure_port(self):
+        return self.nbs.nbs_secure_port
+
+    @property
+    def counters_url(self):
+        return "http://localhost:%s/counters/counters=blockstore/json" % self.mon_port
+
+    @property
+    def mon_port(self):
+        return self.nbs.mon_port
+
+    @property
+    def nbs_log_path(self):
+        return self.nbs.stderr_file_name
+
+    @property
+    def access_service(self):
+        return self.nbs.access_service
+
+    @property
+    def devices(self):
+        return self.__devices
+
+    @property
+    def pdisks_info(self):
+        return self.configurator.pdisks_info

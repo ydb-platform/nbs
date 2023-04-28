@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+option go_package = "a.yandex-team.ru/cloud/storage/core/tools/common/go/configurator/kikimr-proto";
+
+message TExecutor {
+    enum EType {
+        BASIC = 1;
+        IO = 2;
+        UNITED = 3;
+    };
+
+    optional EType Type = 1;
+    optional uint32 Threads = 2;
+    optional uint64 SpinThreshold = 3;
+    optional string Name = 4;
+    optional uint32 TimePerMailboxMicroSecs = 5;
+}
+
+message TScheduler {
+    optional uint64 Resolution = 1;
+    optional uint64 SpinThreshold = 2;
+    optional uint64 ProgressThreshold = 3;
+}
+
+message TServiceExecutor {
+    required string ServiceName = 1;
+    required uint32 ExecutorId = 2;
+}
+
+message TActorSystemConfig {
+    repeated TExecutor Executor = 1;
+    optional TScheduler Scheduler = 2;
+
+    optional uint32 SysExecutor = 3;
+    optional uint32 UserExecutor = 4;
+    optional uint32 IoExecutor = 5;
+    optional uint32 BatchExecutor = 6;
+
+    repeated TServiceExecutor ServiceExecutor = 7;
+}

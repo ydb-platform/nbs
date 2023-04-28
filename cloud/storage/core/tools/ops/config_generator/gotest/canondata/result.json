@@ -1,0 +1,5 @@
+{
+    "gotest.gotest.TestGenerator": {
+        "uri": "file://gotest.gotest.TestGenerator/test.golden"
+    }
+}

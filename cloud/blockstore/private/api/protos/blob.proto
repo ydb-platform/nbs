@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+option java_package = "ru.yandex.cloud.blockstore.proto";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLogoBlobID
+{
+    fixed64 RawX1 = 1;
+    fixed64 RawX2 = 2;
+    fixed64 RawX3 = 3;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// CheckBlob request/response.
+
+message TCheckBlobRequest
+{
+    TLogoBlobID BlobId = 1;
+    uint32 BSGroupId = 2;
+    bool IndexOnly = 3;
+}
+
+message TCheckBlobResponse
+{
+    string Status = 1;
+    string Reason = 2;
+}

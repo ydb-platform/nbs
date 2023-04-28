@@ -1,0 +1,79 @@
+#include "client.h"
+#include "server.h"
+#include "test_verbs.h"
+
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
+
+#include <library/cpp/testing/unittest/registar.h>
+
+#include <util/stream/printf.h>
+
+namespace NCloud::NBlockStore::NRdma {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TClientHandler
+    : IClientHandler
+{
+    void HandleResponse(
+        TClientRequestPtr req,
+        ui32 status,
+        size_t responseBytes) override
+    {
+        Y_UNUSED(req);
+        Y_UNUSED(status);
+        Y_UNUSED(responseBytes);
+    }
+};
+
+struct TServerHandler
+    : IServerHandler
+{
+    void HandleRequest(
+        void* context,
+        TCallContextPtr callContext,
+        TStringBuf in,
+        TStringBuf out) override
+    {
+        Y_UNUSED(context);
+        Y_UNUSED(callContext);
+        Y_UNUSED(in);
+        Y_UNUSED(out);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TRdmaServerTest)
+{
+    Y_UNIT_TEST(ShouldStartEndpoint)
+    {
+        auto verbs =
+            NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+        auto clientConfig = std::make_shared<TClientConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+        server->Start();
+
+        auto serverEndpoint = server->StartEndpoint(
+            "::",
+            10020,
+            std::make_shared<TServerHandler>());
+
+        server->Stop();
+    }
+};
+
+}   // namespace NCloud::NBlockStore::NRdma

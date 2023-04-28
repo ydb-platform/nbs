@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+import "ydb/core/protos/tablet.proto";
+
+package NCloud.NStorage.NHiveProxy.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TTabletBootInfo
+{
+    required NKikimrTabletBase.TTabletStorageInfo StorageInfo = 1;
+    required uint64 SuggestedGeneration = 2;
+}
+
+message TTabletBootInfoCache
+{
+    // Mapping from TabletId.
+    map<uint64, TTabletBootInfo> Data = 1;
+}

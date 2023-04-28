@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/rdma.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EWaitMode
+{
+    WAIT_MODE_POLL = 0;
+    WAIT_MODE_BUSY_WAIT = 1;
+    WAIT_MODE_ADAPTIVE_WAIT = 2;
+}
+
+message TRdmaServer
+{
+    uint32 Backlog = 1;
+    uint32 QueueSize = 2;
+    uint32 MaxBufferSize = 3;
+    uint64 KeepAliveTimeout = 4;    // in milliseconds
+    EWaitMode WaitMode = 5;
+    uint32 PollerThreads = 6;
+    uint32 MaxInflightBytes = 7;    // per client
+}
+
+message TRdmaClient
+{
+    uint32 QueueSize = 1;
+    uint32 MaxBufferSize = 2;
+    uint32 PollerThreads = 3;
+    EWaitMode WaitMode = 4;
+}
+
+message TRdmaTarget
+{
+    TRdmaEndpoint Endpoint = 1;
+    TRdmaServer Server = 2;
+}

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option java_package = "ru.yandex.cloud.storage.proto";
+option go_package = "a.yandex-team.ru/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Disk/FS media kind
+
+enum EStorageMediaKind
+{
+    STORAGE_MEDIA_DEFAULT = 0;
+    STORAGE_MEDIA_SSD = 1;
+    STORAGE_MEDIA_HYBRID = 2;
+    STORAGE_MEDIA_HDD = 3;
+    STORAGE_MEDIA_SSD_NONREPLICATED = 4;
+    STORAGE_MEDIA_SSD_MIRROR2 = 5;
+    STORAGE_MEDIA_SSD_LOCAL = 6;
+    STORAGE_MEDIA_SSD_MIRROR3 = 7;
+}

@@ -1,0 +1,69 @@
+#include "disk_registry_self_counters.h"
+
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistrySelfCounters::Init(NMonitoring::TDynamicCountersPtr counters)
+{
+    FreeBytes = counters->GetCounter("FreeBytes");
+    TotalBytes = counters->GetCounter("TotalBytes");
+    AllocatedDisks = counters->GetCounter("AllocatedDisks");
+    AllocatedDevices = counters->GetCounter("AllocatedDevices");
+    DirtyDevices = counters->GetCounter("DirtyDevices");
+    DevicesInOnlineState = counters->GetCounter("DevicesInOnlineState");
+    DevicesInWarningState = counters->GetCounter("DevicesInWarningState");
+    DevicesInErrorState = counters->GetCounter("DevicesInErrorState");
+    AgentsInOnlineState = counters->GetCounter("AgentsInOnlineState");
+    AgentsInWarningState = counters->GetCounter("AgentsInWarningState");
+    AgentsInUnavailableState = counters->GetCounter("AgentsInUnavailableState");
+    DisksInOnlineState = counters->GetCounter("DisksInOnlineState");
+    DisksInMigrationState = counters->GetCounter("DisksInMigrationState");
+    DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");
+    DisksInTemporarilyUnavailableState = counters->GetCounter("DisksInTemporarilyUnavailableState");
+    DisksInErrorState = counters->GetCounter("DisksInErrorState");
+    PlacementGroups = counters->GetCounter("PlacementGroups");
+    FullPlacementGroups = counters->GetCounter("FullPlacementGroups");
+    AllocatedDisksInGroups = counters->GetCounter("AllocatedDisksInGroups");
+    Mirror2Disks = counters->GetCounter("Mirror2Disks");
+    Mirror2DisksMinus1 = counters->GetCounter("Mirror2DisksMinus1");
+    Mirror2DisksMinus2 = counters->GetCounter("Mirror2DisksMinus2");
+    Mirror3Disks = counters->GetCounter("Mirror3Disks");
+    Mirror3DisksMinus1 = counters->GetCounter("Mirror3DisksMinus1");
+    Mirror3DisksMinus2 = counters->GetCounter("Mirror3DisksMinus2");
+    Mirror3DisksMinus3 = counters->GetCounter("Mirror3DisksMinus3");
+    MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
+    PlacementGroupsWithRecentlyBrokenSingleDisk =
+        counters->GetCounter("PlacementGroupsWithRecentlyBrokenSingleDisk");
+    PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks =
+        counters->GetCounter("PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks");
+    PlacementGroupsWithBrokenSingleDisk =
+        counters->GetCounter("PlacementGroupsWithBrokenSingleDisk");
+    PlacementGroupsWithBrokenTwoOrMoreDisks =
+        counters->GetCounter("PlacementGroupsWithBrokenTwoOrMoreDisks");
+    MeanTimeBetweenFailures =
+        counters->GetCounter("MeanTimeBetweenFailures");
+
+    QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
+
+    DefaultPoolCounters.Init(counters->GetSubgroup("pool", "default"));
+    LocalPoolCounters.Init(counters->GetSubgroup("pool", "local"));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistrySelfCounters::TDevicePoolCounters::Init(
+    NMonitoring::TDynamicCountersPtr counters)
+{
+    FreeBytes = counters->GetCounter("FreeBytes");
+    TotalBytes = counters->GetCounter("TotalBytes");
+    AllocatedDevices = counters->GetCounter("AllocatedDevices");
+    DirtyDevices = counters->GetCounter("DirtyDevices");
+    DevicesInOnlineState = counters->GetCounter("DevicesInOnlineState");
+    DevicesInWarningState = counters->GetCounter("DevicesInWarningState");
+    DevicesInErrorState = counters->GetCounter("DevicesInErrorState");
+}
+
+}   // namespace NCloud::NBlockStore::NStorage
