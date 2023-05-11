@@ -87,8 +87,17 @@ void TVolumeActor::ScheduleRetryStartPartition(
         partition.RetryCookie.Get());
 }
 
-void TVolumeActor::SendPendingRequests(const TActorContext& ctx)
+void TVolumeActor::OnStarted(const TActorContext& ctx)
 {
+    if (!StartCompletionTimestamp) {
+        StartCompletionTimestamp = ctx.Now();
+
+        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] Volume started, time: %lu",
+            TabletID(),
+            GetStartTime().MicroSeconds());
+    }
+
     while (!PendingRequests.empty()) {
         ctx.Send(PendingRequests.front().Event.release());
         PendingRequests.pop_front();
@@ -236,6 +245,8 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
 
 void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 {
+    StartInitializationTimestamp = ctx.Now();
+
     Y_VERIFY(State);
     State->SetReadWriteError({});
 
@@ -249,7 +260,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
         SetupNonreplicatedPartitions(ctx);
 
         if (State->Ready()) {
-            SendPendingRequests(ctx);
+            OnStarted(ctx);
         }
     }
 }
@@ -546,7 +557,7 @@ void TVolumeActor::HandleTabletStatus(
 
     if (state == TPartitionInfo::READY) {
         // All partitions ready, it's time to reply to requests
-        SendPendingRequests(ctx);
+        OnStarted(ctx);
     }
 }
 
@@ -569,7 +580,7 @@ void TVolumeActor::HandleWaitReadyResponse(
 
         if (state == TPartitionInfo::READY) {
             // All partitions ready, it's time to reply to requests
-            SendPendingRequests(ctx);
+            OnStarted(ctx);
             ProcessNextCheckpointRequest(ctx);
         }
     }

@@ -23,13 +23,13 @@ TCopyRangeActor::TCopyRangeActor(
         TBlockRange64 range,
         TActorId source,
         TActorId target,
-        TString writerSessionId,
+        TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator)
     : RequestInfo(std::move(requestInfo))
     , Range(range)
     , Source(source)
     , Target(target)
-    , WriterSessionId(std::move(writerSessionId))
+    , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , Buffer(TString(Range.Size() * blockSize, 0))
     , SgList(Buffer.GetGuardedSgList())
@@ -64,13 +64,14 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.SetSessionId(TString(BackgroundOpsSessionId));
+    // TODO: remove after NBS-3886
+    request->Record.SetSessionId(TString(BackgroundOpsClientId));
     request->Record.BlockSize = blockSize;
     request->Record.Sglist = SgList;
-    request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetIsBackgroundRequest(true);
+    headers->SetClientId(TString(BackgroundOpsClientId));
 
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
@@ -79,8 +80,7 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             0,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     request.release();
@@ -96,12 +96,17 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
-    request->Record.SetSessionId(
-        WriterSessionId ? WriterSessionId : TString(BackgroundOpsSessionId));
+    auto clientId =
+        WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
+    // TODO: remove after NBS-3886
+    request->Record.SetSessionId(clientId);
     request->Record.BlocksCount = Range.Size();
     request->Record.BlockSize = blockSize;
     request->Record.Sglist = SgList;
-    request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetIsBackgroundRequest(true);
+    headers->SetClientId(std::move(clientId));
 
     for (const auto blockIndex: xrange(Range)) {
         auto* data = Buffer.Get().Data() + (blockIndex - Range.Start) * blockSize;
@@ -116,9 +121,6 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
         }
     }
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
             Target,
@@ -126,8 +128,7 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             0,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     request.release();
@@ -148,8 +149,6 @@ void TCopyRangeActor::Done(const TActorContext& ctx)
         WriteDuration,
         std::move(AffectedBlockInfos)
     );
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -185,8 +184,6 @@ void TCopyRangeActor::HandleReadResponse(
 
     auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     Error = msg->Record.GetError();
 
     if (HasError(Error)) {
@@ -217,8 +214,6 @@ void TCopyRangeActor::HandleWriteResponse(
     WriteDuration = ctx.Now() - WriteStartTs;
 
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     Error = msg->Record.GetError();
     Done(ctx);

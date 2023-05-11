@@ -9,7 +9,6 @@
 #include <cloud/blockstore/config/disk.pb.h>
 
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/spdk/env.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>

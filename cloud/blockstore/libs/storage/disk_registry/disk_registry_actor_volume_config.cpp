@@ -245,8 +245,7 @@ void TDiskRegistryActor::HandleUpdateVolumeConfig(
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             dependentTaskId,
-            msg->CallContext,
-            std::move(ev->TraceId));
+            msg->CallContext);
 
         auto actor = NCloud::Register<TUpdateActor>(
             ctx,
@@ -339,8 +338,7 @@ void TDiskRegistryActor::HandleFinishVolumeConfigUpdate(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TFinishVolumeConfigUpdate>(
         ctx,

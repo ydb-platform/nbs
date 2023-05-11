@@ -11,9 +11,8 @@ void TCheckpointStore::Add(const TString& checkpointId)
 
 void TCheckpointStore::DeleteData(const TString& checkpointId)
 {
-    auto it = Checkpoints.FindPtr(checkpointId);
-    if (it) {
-        *it = true;
+    if (auto* dataDeleted = Checkpoints.FindPtr(checkpointId)) {
+        *dataDeleted = true;
     }
 }
 
@@ -47,7 +46,7 @@ TString TCheckpointStore::GetLast() const
 {
     TVector<TString> checkpoints = Get();
     if (checkpoints.empty()) {
-        return TString();
+        return {};
     }
 
     return checkpoints.back();

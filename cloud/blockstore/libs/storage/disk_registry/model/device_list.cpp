@@ -481,6 +481,19 @@ const NProto::TDeviceConfig* TDeviceList::FindDevice(const TDeviceId& id) const
     return &it->second;
 }
 
+TVector<NProto::TDeviceConfig> TDeviceList::GetBrokenDevices() const
+{
+    TVector<NProto::TDeviceConfig> devices;
+
+    for (const auto& x: AllDevices){
+        if (x.second.GetState() == NProto::DEVICE_STATE_ERROR) {
+            devices.push_back(x.second);
+        }
+    }
+
+    return devices;
+}
+
 TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
 {
     TVector<NProto::TDeviceConfig> devices;

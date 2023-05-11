@@ -30,8 +30,7 @@ void TVolumeActor::HandleReadHistory(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ProcessReadHistory(
         ctx,
@@ -101,7 +100,6 @@ void TVolumeActor::CompleteReadHistory(
         auto response = std::make_unique<TEvVolumePrivate::TEvReadHistoryResponse>();
         response->History = std::move(args.History);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     }
 

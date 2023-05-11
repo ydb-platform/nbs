@@ -2,7 +2,6 @@
 
 #include "service_actor.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/mount_token.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>

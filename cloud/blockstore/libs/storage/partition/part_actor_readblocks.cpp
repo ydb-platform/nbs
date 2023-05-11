@@ -640,9 +640,6 @@ void TReadBlocksActor::ReadBlocks(
             ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
             batch.GroupId);
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
                 ForkFailed,
@@ -657,8 +654,7 @@ void TReadBlocksActor::ReadBlocks(
             ctx,
             Tablet,
             std::move(request),
-            batchIndex,
-            std::move(traceId));
+            batchIndex);
     }
 }
 
@@ -700,8 +696,6 @@ void TReadBlocksActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -721,8 +715,6 @@ void TReadBlocksActor::HandleReadBlobResponse(
     auto* msg = ev->Get();
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& error = msg->GetError();
     if (HandleError(ctx, error)) {
@@ -935,12 +927,9 @@ void TPartitionActor::HandleReadBlocksRequest(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -963,8 +952,6 @@ void TPartitionActor::HandleReadBlocksRequest(
                 << "index: " << msg->Record.GetStartIndex()
                 << ", count: " << msg->Record.GetBlocksCount()
                 << "]"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -1023,8 +1010,6 @@ TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
                     TStringBuilder()
                         << "checkpoint not found: " << checkpointId.Quote(),
                     flags));
-
-            BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -1157,7 +1142,6 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReplyLocal,
             MakeError(E_REJECTED, "ReadBlocks transaction was interrupted")
         );
-        BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -1239,7 +1223,6 @@ void TPartitionActor::CompleteReadBlocks(
         args.BlockInfos,
         *args.ReadHandler
     );
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

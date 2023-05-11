@@ -50,8 +50,7 @@ void TVolumeActor::HandleUpdateUsedBlocks(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     auto& ub = State->AccessUsedBlocks();
 

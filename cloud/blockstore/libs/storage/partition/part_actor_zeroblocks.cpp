@@ -112,17 +112,12 @@ void TZeroBlocksActor::AddBlobs(const TActorContext& ctx)
         ADD_WRITE_RESULT
     );
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     SafeToUseOrbit = false;
 
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TZeroBlocksActor::NotifyCompleted(
@@ -169,8 +164,6 @@ void TZeroBlocksActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     if (SafeToUseOrbit) {
         LWTRACK(
             ResponseSent_Partition,
@@ -202,8 +195,6 @@ void TZeroBlocksActor::HandleAddBlobsResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     SafeToUseOrbit = true;
 
@@ -242,12 +233,9 @@ void TPartitionActor::HandleZeroBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TZeroBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -270,8 +258,6 @@ void TPartitionActor::HandleZeroBlocks(
                 << "index: " << msg->Record.GetStartIndex()
                 << ", count: " << msg->Record.GetBlocksCount()
                 << "]"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -439,8 +425,6 @@ void TPartitionActor::CompleteZeroBlocks(
         commitId);
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

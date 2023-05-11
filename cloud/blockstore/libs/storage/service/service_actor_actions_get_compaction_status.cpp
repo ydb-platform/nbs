@@ -107,8 +107,7 @@ void TGetCompactionStatusActionActor::GetCompactionStatus(const TActorContext& c
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TGetCompactionStatusActionActor::HandleSuccess(

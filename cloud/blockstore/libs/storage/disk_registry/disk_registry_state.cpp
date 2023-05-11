@@ -243,6 +243,7 @@ TDiskRegistryState::TDiskRegistryState(
         StorageConfig->GetNonReplicatedAgentMinTimeout(),
         StorageConfig->GetNonReplicatedAgentMaxTimeout(),
         StorageConfig->GetNonReplicatedAgentDisconnectRecoveryInterval(),
+        StorageConfig->GetSerialNumberValidationEnabled(),
     }, counters, std::move(agents))
     , DeviceList([&] {
         TVector<TDeviceId> uuids;
@@ -385,6 +386,10 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
+    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL) {
+        return;
+    }
+
     if (disk.MasterDiskId) {
         // mirrored disk replica
         if (!StorageConfig->GetMirroredMigrationStartAllowed()) {
@@ -527,7 +532,8 @@ const TVector<NProto::TAgentConfig>& TDiskRegistryState::GetAgents() const
     return AgentList.GetAgents();
 }
 
-void TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
+auto TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
+    -> const TKnownAgent&
 {
     const auto& agentId = agent.GetAgentId();
 
@@ -588,6 +594,8 @@ void TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
                 << rack << " != " << device.GetRack();
         }
     }
+
+    return *knownAgent;
 }
 
 auto TDiskRegistryState::FindDisk(const TDeviceId& uuid) const -> TDiskId
@@ -653,8 +661,8 @@ void TDiskRegistryState::RemoveAgentFromNode(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     TInstant timestamp,
-    TVector<TDiskStateUpdate>* affectedDisks,
-    THashMap<TString, ui64>* notifiedDisks)
+    TVector<TDiskId>* affectedDisks,
+    TVector<TDiskId>* notifiedDisks)
 {
     Y_VERIFY_DEBUG(agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE);
 
@@ -683,7 +691,8 @@ void TDiskRegistryState::RemoveAgentFromNode(
     DeviceList.UpdateDevices(agent, nodeId);
 
     for (const auto& id: diskIds) {
-        notifiedDisks->emplace(id, AddDiskToNotify(db, id));
+        AddDiskToNotify(db, id);
+        notifiedDisks->push_back(id);
     }
 
     db.UpdateAgent(agent);
@@ -696,11 +705,11 @@ NProto::TError TDiskRegistryState::RegisterAgent(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig config,
     TInstant timestamp,
-    TVector<TDiskStateUpdate>* affectedDisks,
-    THashMap<TString, ui64>* notifiedDisks)
+    TVector<TDiskId>* affectedDisks,
+    TVector<TDiskId>* notifiedDisks)
 {
     try {
-        ValidateAgent(config);
+        const TKnownAgent& knownAgent = ValidateAgent(config);
 
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
                 buddy && buddy->GetAgentId() != config.GetAgentId())
@@ -720,6 +729,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         auto& agent = AgentList.RegisterAgent(
             std::move(config),
             timestamp,
+            knownAgent,
             &newDevices);
 
         for (auto& d: *agent.MutableDevices()) {
@@ -766,9 +776,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         }
 
         for (auto& id: diskIds) {
-            TMaybe<TDiskStateUpdate> update = TryUpdateDiskState(db, id, timestamp);
-            if (update) {
-                affectedDisks->push_back(std::move(*update));
+            if (TryUpdateDiskState(db, id, timestamp)) {
+                affectedDisks->push_back(id);
             }
         }
 
@@ -776,7 +785,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             db.DeleteOldAgent(prevNodeId);
 
             for (const auto& id: diskIds) {
-                notifiedDisks->emplace(id, AddDiskToNotify(db, id));
+                AddDiskToNotify(db, id);
+                notifiedDisks->push_back(id);
             }
         }
 
@@ -849,7 +859,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     const TString& deviceId,
     TInstant timestamp,
     TString message,
-    TMaybe<TDiskStateUpdate>* update)
+    bool* diskStateUpdated)
 {
     try {
         if (!diskId) {
@@ -946,7 +956,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
 
         *it = targetDevice.GetDeviceUUID();
 
-        *update = TryUpdateDiskState(db, diskId, disk, timestamp);
+        *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
 
         UpdateAgent(db, *agentPtr);
 
@@ -1271,6 +1281,19 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     } catch (const TServiceError& e) {
         return MakeError(e.GetCode(), e.what());
     }
+}
+
+ui32 TDiskRegistryState::CalculateRackCount() const
+{
+    THashSet<TStringBuf> racks;
+
+    for (const auto& agent: AgentList.GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            racks.insert(device.GetRack());
+        }
+    }
+
+    return racks.size();
 }
 
 TDeque<TRackInfo> TDiskRegistryState::GatherRacksInfo() const
@@ -2429,6 +2452,16 @@ NProto::TError TDiskRegistryState::FillAllDiskDevices(
     return error;
 }
 
+NProto::EDiskState TDiskRegistryState::GetDiskState(const TDiskId& diskId) const
+{
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return NProto::DISK_STATE_ERROR;
+    }
+
+    return disk->State;
+}
+
 NProto::TError TDiskRegistryState::GetDiskInfo(
     const TString& diskId,
     TDiskInfo& diskInfo) const
@@ -2692,6 +2725,11 @@ const NProto::TDiskRegistryConfig& TDiskRegistryState::GetConfig() const
     return CurrentConfig;
 }
 
+ui32 TDiskRegistryState::GetDiskCount() const
+{
+    return Disks.size();
+}
+
 TVector<TString> TDiskRegistryState::GetDiskIds() const
 {
     TVector<TString> ids(Reserve(Disks.size()));
@@ -2724,6 +2762,11 @@ bool TDiskRegistryState::IsMasterDisk(const TString& diskId) const
 {
     const auto* disk = Disks.FindPtr(diskId);
     return disk && disk->ReplicaCount;
+}
+
+TVector<NProto::TDeviceConfig> TDiskRegistryState::GetBrokenDevices() const
+{
+    return DeviceList.GetBrokenDevices();
 }
 
 TVector<NProto::TDeviceConfig> TDiskRegistryState::GetDirtyDevices() const
@@ -3674,7 +3717,7 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     NProto::EAgentState newState,
     TInstant timestamp,
     TString reason,
-    TVector<TDiskStateUpdate>& affectedDisks)
+    TVector<TDiskId>& affectedDisks)
 {
     auto error = CheckAgentStateTransition(agentId, newState, timestamp);
     if (FAILED(error.GetCode())) {
@@ -3715,7 +3758,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
     TDiskRegistryDatabase& db,
     const NProto::TAgentConfig& agent,
     TInstant timestamp,
-    TVector<TDiskStateUpdate>& affectedDisks)
+    TVector<TDiskId>& affectedDisks)
 {
     UpdateAgent(db, agent);
     DeviceList.UpdateDevices(agent);
@@ -3768,7 +3811,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                     deviceId);
 
                 if (canReplaceDevice) {
-                    TMaybe<TDiskStateUpdate> update;
+                    bool updated = false;
 
                     ReplaceDevice(
                         db,
@@ -3778,7 +3821,11 @@ void TDiskRegistryState::ApplyAgentStateChange(
                         MakeMirroredDiskDeviceReplacementMessage(
                             disk.MasterDiskId,
                             "agent unavailable"),
-                        &update);
+                        &updated);
+
+                    if (updated) {
+                        affectedDisks.push_back(diskId);
+                    }
                 } else {
                     ReportMirroredDiskDeviceReplacementForbidden();
                 }
@@ -3791,9 +3838,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
     }
 
     for (auto& id: diskIds) {
-        TMaybe<TDiskStateUpdate> update = TryUpdateDiskState(db, id, timestamp);
-        if (update) {
-            affectedDisks.push_back(std::move(*update));
+        if (TryUpdateDiskState(db, id, timestamp)) {
+            affectedDisks.push_back(std::move(id));
         }
     }
 }
@@ -3830,7 +3876,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     NProto::EAgentState newState,
     TInstant now,
     bool dryRun,
-    TVector<TDiskStateUpdate>& affectedDisks,
+    TVector<TDiskId>& affectedDisks,
     TDuration& timeout)
 {
     auto error = CheckAgentStateTransition(agentId, newState, now);
@@ -3933,7 +3979,7 @@ TMaybe<TInstant> TDiskRegistryState::GetAgentCmsTs(
     return {};
 }
 
-TMaybe<TDiskStateUpdate> TDiskRegistryState::TryUpdateDiskState(
+bool TDiskRegistryState::TryUpdateDiskState(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     TInstant timestamp)
@@ -3954,7 +4000,7 @@ TMaybe<TDiskStateUpdate> TDiskRegistryState::TryUpdateDiskState(
         timestamp);
 }
 
-TMaybe<TDiskStateUpdate> TDiskRegistryState::TryUpdateDiskState(
+bool TDiskRegistryState::TryUpdateDiskState(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     TDiskState& disk,
@@ -3963,7 +4009,7 @@ TMaybe<TDiskStateUpdate> TDiskRegistryState::TryUpdateDiskState(
     const auto newState = CalculateDiskState(disk);
     const auto oldState = disk.State;
     if (oldState == newState) {
-        return {};
+        return false;
     }
 
     disk.State = newState;
@@ -3977,15 +4023,6 @@ TMaybe<TDiskStateUpdate> TDiskRegistryState::TryUpdateDiskState(
         diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
     }
 
-    const auto seqNo = DiskStateSeqNo++;
-
-    db.UpdateDiskState(diskState, seqNo);
-    db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
-
-    TMaybe<TDiskStateUpdate> update = TDiskStateUpdate{
-        std::move(diskState),
-        seqNo};
-
     UpdateAndNotifyDisk(db, diskId, disk);
 
     if (newState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
@@ -3996,10 +4033,15 @@ TMaybe<TDiskStateUpdate> TDiskRegistryState::TryUpdateDiskState(
         // currently we don't want to report mirrored disk state updates since
         // they are not supposed to break
 
-        DiskStateUpdates.push_back(*update);
+        const auto seqNo = DiskStateSeqNo++;
+
+        db.UpdateDiskState(diskState, seqNo);
+        db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
+
+        DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
     }
 
-    return update;
+    return true;
 }
 
 void TDiskRegistryState::DeleteDiskStateUpdate(
@@ -4084,7 +4126,7 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     NProto::EDeviceState newState,
     TInstant now,
     TString reason,
-    TMaybe<TDiskStateUpdate>& affectedDisk)
+    TDiskId& affectedDisk)
 {
     auto error = CheckDeviceStateTransition(deviceId, newState, now);
     if (FAILED(error.GetCode())) {
@@ -4131,7 +4173,7 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
     NProto::EDeviceState newState,
     TInstant now,
     bool dryRun,
-    TMaybe<TDiskStateUpdate>& affectedDisk,
+    TDiskId& affectedDisk,
     TDuration& timeout)
 {
     auto error = CheckDeviceStateTransition(deviceId, newState, now);
@@ -4206,7 +4248,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     const NProto::TAgentConfig& agent,
     const NProto::TDeviceConfig& device,
     TInstant now,
-    TMaybe<TDiskStateUpdate>& affectedDisk)
+    TDiskId& affectedDisk)
 {
     UpdateAgent(db, agent);
     DeviceList.UpdateDevices(agent);
@@ -4240,6 +4282,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
             device.GetDeviceUUID());
 
         if (canReplaceDevice) {
+            bool updated = false;
             ReplaceDevice(
                 db,
                 diskId,
@@ -4248,7 +4291,10 @@ void TDiskRegistryState::ApplyDeviceStateChange(
                 MakeMirroredDiskDeviceReplacementMessage(
                     disk->MasterDiskId,
                     "device failure"),
-                &affectedDisk);
+                &updated);
+            if (updated) {
+                affectedDisk = diskId;
+            }
         } else {
             ReportMirroredDiskDeviceReplacementForbidden();
         }
@@ -4256,7 +4302,9 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    affectedDisk = TryUpdateDiskState(db, diskId, *disk, now);
+    if (TryUpdateDiskState(db, diskId, *disk, now)) {
+        affectedDisk = diskId;
+    }
 
     if (device.GetState() != NProto::DEVICE_STATE_WARNING) {
         CancelDeviceMigration(db, diskId, *disk, uuid);
@@ -4343,7 +4391,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     const TDeviceId& sourceId,
     const TDeviceId& targetId,
     TInstant timestamp,
-    TMaybe<TDiskStateUpdate>* affectedDisk)
+    bool* diskStateUpdated)
 {
     if (!Disks.contains(diskId)) {
         return MakeError(E_NOT_FOUND, TStringBuilder() <<
@@ -4389,7 +4437,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
         }
     }
 
-    *affectedDisk = TryUpdateDiskState(db, diskId, disk, timestamp);
+    *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
 
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 

@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include "trace.h"
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -11,6 +9,7 @@
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/event.h>
+#include <library/cpp/actors/core/log.h>
 
 namespace NCloud::NBlockStore {
 
@@ -42,7 +41,6 @@ inline bool IsUnrecoverable(const NKikimrProto::EReplyStatus status)
         auto response = std::make_unique<ns::TEv##name##Response>(             \
             MakeError(E_REJECTED, #name " request rejected"));                 \
                                                                                \
-        BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);              \
         NCloud::Reply(ctx, *ev, std::move(response));                          \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_REQUEST

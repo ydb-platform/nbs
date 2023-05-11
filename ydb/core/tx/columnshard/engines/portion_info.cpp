@@ -18,7 +18,7 @@ TString TPortionInfo::AddOneChunkColumn(const std::shared_ptr<arrow::Array>& arr
                                         const std::shared_ptr<arrow::Field>& field,
                                         TColumnRecord&& record,
                                         const arrow::ipc::IpcWriteOptions& writeOptions,
-                                        ui32 limitBytes) {
+                                        const ui32 limitBytes) {
     auto blob = SerializeColumn(array, field, writeOptions);
     if (blob.size() >= limitBytes) {
         return {};
@@ -27,62 +27,6 @@ TString TPortionInfo::AddOneChunkColumn(const std::shared_ptr<arrow::Array>& arr
     record.Chunk = 0;
     Records.emplace_back(std::move(record));
     return blob;
-}
-
-TPortionInfo::TPreparedBatchData TPortionInfo::PrepareForAssemble(const TIndexInfo& indexInfo,
-                                                     const std::shared_ptr<arrow::Schema>& schema,
-                                                     const THashMap<TBlobRange, TString>& blobsData, const std::optional<std::set<ui32>>& columnIds) const {
-    // Correct records order
-    TMap<int, TMap<ui32, TBlobRange>> columnChunks; // position in schema -> ordered chunks
-
-    std::vector<std::shared_ptr<arrow::Field>> schemaFields;
-
-    for (auto&& i : schema->fields()) {
-        if (columnIds && !columnIds->contains(indexInfo.GetColumnId(i->name()))) {
-            continue;
-        }
-        schemaFields.emplace_back(i);
-    }
-
-    for (auto& rec : Records) {
-        if (columnIds && !columnIds->contains(rec.ColumnId)) {
-            continue;
-        }
-        ui32 columnId = rec.ColumnId;
-        TString columnName = indexInfo.GetColumnName(columnId);
-        std::string name(columnName.data(), columnName.size());
-        int pos = schema->GetFieldIndex(name);
-        if (pos < 0) {
-            continue; // no such column in schema - do not need it
-        }
-
-        columnChunks[pos][rec.Chunk] = rec.BlobRange;
-    }
-
-    // Make chunked arrays for columns
-    std::vector<TPreparedColumn> columns;
-    columns.reserve(columnChunks.size());
-
-    for (auto& [pos, orderedChunks] : columnChunks) {
-        auto field = schema->field(pos);
-
-        TVector<TString> blobs;
-        blobs.reserve(orderedChunks.size());
-        ui32 expected = 0;
-        for (auto& [chunk, blobId] : orderedChunks) {
-            Y_VERIFY(chunk == expected);
-            ++expected;
-
-            auto it = blobsData.find(blobId);
-            Y_VERIFY(it != blobsData.end());
-            TString data = it->second;
-            blobs.push_back(data);
-        }
-
-        columns.emplace_back(TPreparedColumn(field, std::move(blobs)));
-    }
-
-    return TPreparedBatchData(std::move(columns), std::make_shared<arrow::Schema>(schemaFields));
 }
 
 void TPortionInfo::AddMinMax(ui32 columnId, const std::shared_ptr<arrow::Array>& column, bool sorted) {
@@ -100,11 +44,12 @@ void TPortionInfo::AddMinMax(ui32 columnId, const std::shared_ptr<arrow::Array>&
     Meta.ColumnMeta[columnId].Max = NArrow::GetScalar(column, minMaxPos.second);
 }
 
-void TPortionInfo::AddMetadata(const TIndexInfo& indexInfo, const std::shared_ptr<arrow::RecordBatch>& batch,
+void TPortionInfo::AddMetadata(const ISnapshotSchema& snapshotSchema, const std::shared_ptr<arrow::RecordBatch>& batch,
                                const TString& tierName) {
     TierName = tierName;
     Meta = {};
 
+    auto& indexInfo = snapshotSchema.GetIndexInfo();
     /// @note It does not add RawBytes info for snapshot columns, only for user ones.
     for (auto& [columnId, col] : indexInfo.Columns) {
         auto column = batch->GetColumnByName(col.Name);
@@ -218,14 +163,12 @@ void TPortionInfo::LoadMetadata(const TIndexInfo& indexInfo, const TColumnRecord
     }
 }
 
-void TPortionInfo::MinMaxValue(const ui32 columnId, std::shared_ptr<arrow::Scalar>& minValue, std::shared_ptr<arrow::Scalar>& maxValue) const {
+std::tuple<std::shared_ptr<arrow::Scalar>, std::shared_ptr<arrow::Scalar>> TPortionInfo::MinMaxValue(const ui32 columnId) const {
     auto it = Meta.ColumnMeta.find(columnId);
     if (it == Meta.ColumnMeta.end()) {
-        minValue = nullptr;
-        maxValue = nullptr;
+        return std::make_tuple(std::shared_ptr<arrow::Scalar>(), std::shared_ptr<arrow::Scalar>());
     } else {
-        minValue = it->second.Min;
-        maxValue = it->second.Max;
+        return std::make_tuple(it->second.Min, it->second.Max);
     }
 }
 
@@ -252,7 +195,7 @@ std::shared_ptr<arrow::ChunkedArray> TPortionInfo::TPreparedColumn::Assemble(con
     ui32 count = 0;
     if (!reverse) {
         for (auto& blob : Blobs) {
-            batches.push_back(NArrow::DeserializeBatch(blob, schema));
+            batches.push_back(blob.BuildRecordBatch(schema));
             Y_VERIFY(batches.back());
             if (count + batches.back()->num_rows() >= needCount) {
                 Y_VERIFY(count <= needCount);
@@ -266,7 +209,7 @@ std::shared_ptr<arrow::ChunkedArray> TPortionInfo::TPreparedColumn::Assemble(con
         }
     } else {
         for (auto it = Blobs.rbegin(); it != Blobs.rend(); ++it) {
-            batches.push_back(NArrow::DeserializeBatch(*it, schema));
+            batches.push_back(it->BuildRecordBatch(schema));
             Y_VERIFY(batches.back());
             if (count + batches.back()->num_rows() >= needCount) {
                 Y_VERIFY(count <= needCount);
@@ -288,11 +231,17 @@ std::shared_ptr<arrow::ChunkedArray> TPortionInfo::TPreparedColumn::Assemble(con
 
 std::shared_ptr<arrow::RecordBatch> TPortionInfo::TPreparedBatchData::Assemble(const TAssembleOptions& options) const {
     std::vector<std::shared_ptr<arrow::ChunkedArray>> columns;
+    std::vector< std::shared_ptr<arrow::Field>> fields;
+    ui64 limit = options.RecordsCountLimit ? *options.RecordsCountLimit : Max<ui64>();
     for (auto&& i : Columns) {
-        columns.emplace_back(i.Assemble(options.GetRecordsCountLimitDef(Max<ui32>()), !options.IsForwardAssemble()));
+        if (!options.IsAcceptedColumn(i.GetColumnId())) {
+            continue;
+        }
+        columns.emplace_back(i.Assemble(limit, !options.ForwardAssemble));
+        fields.emplace_back(i.GetField());
     }
 
-    auto table = arrow::Table::Make(Schema, columns);
+    auto table = arrow::Table::Make(std::make_shared<arrow::Schema>(fields), columns);
     auto res = table->CombineChunks();
     Y_VERIFY(res.ok());
     return NArrow::ToBatch(*res);

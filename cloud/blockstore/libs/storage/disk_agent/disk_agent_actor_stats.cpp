@@ -242,8 +242,7 @@ void TDiskAgentActor::HandleCollectStats(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyFrom = ctx.SelfID;
@@ -258,9 +257,7 @@ void TDiskAgentActor::HandleCollectStats(
                 replyFrom,
                 response.release(),
                 0,          // flags
-                requestInfo->Cookie,
-                nullptr,    // forwardOnNondelivery
-                std::move(requestInfo->TraceId)));
+                requestInfo->Cookie));
     };
 
     auto result = State->CollectStats();

@@ -37,8 +37,7 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         CreateRequestInfo<TEvDiskRegistry::TCreateDiskFromDevicesMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         ),
         record.GetForce(),
         volume.GetDiskId(),

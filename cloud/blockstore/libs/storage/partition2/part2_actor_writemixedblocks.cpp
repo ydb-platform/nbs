@@ -267,15 +267,11 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        auto traceId = req.SubRequests.front().RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         NCloud::Send(
             ctx,
             Tablet,
             std::move(request),
-            i,  // cookie
-            std::move(traceId));
+            i);
     }
 }
 
@@ -306,15 +302,10 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
         ADD_WRITE_RESULT,
         std::move(blobs));
 
-    auto traceId = requestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TWriteMixedBlocksActor::NotifyCompleted(
@@ -390,8 +381,6 @@ void TWriteMixedBlocksActor::Reply(
     TRequestInfo& requestInfo,
     IEventBasePtr response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         requestInfo.CallContext->LWOrbit,
@@ -411,13 +400,6 @@ void TWriteMixedBlocksActor::HandleWriteBlobResponse(
 
     for (const auto& sr: Requests[ev->Cookie].SubRequests) {
         sr.RequestInfo->AddExecCycles(msg->ExecCycles);
-        BLOCKSTORE_TRACE_RECEIVED(
-            ctx,
-            &sr.RequestInfo->TraceId,
-            this,
-            msg,
-            &ev->TraceId
-        );
     }
 
     if (HandleError(ctx, msg->GetError())) {
@@ -448,13 +430,6 @@ void TWriteMixedBlocksActor::HandleAddBlobsResponse(
     for (const auto& r: Requests) {
         for (const auto& sr: r.SubRequests) {
             sr.RequestInfo->AddExecCycles(msg->ExecCycles);
-            BLOCKSTORE_TRACE_RECEIVED(
-                ctx,
-                &sr.RequestInfo->TraceId,
-                this,
-                msg,
-                &ev->TraceId
-            );
             sr.RequestInfo->CallContext->LWOrbit.Join(CombinedContext->LWOrbit);
         }
     }

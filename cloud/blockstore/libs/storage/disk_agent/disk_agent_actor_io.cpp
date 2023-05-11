@@ -39,9 +39,7 @@ void Reply(
             replyFrom,
             response.release(),
             0,          // flags
-            request.Cookie,
-            nullptr,    // forwardOnNondelivery
-            std::move(request.TraceId)));
+            request.Cookie));
 }
 
 }   // namespace
@@ -59,8 +57,7 @@ void TDiskAgentActor::PerformIO(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     const ui64 started = GetCycleCount();
 

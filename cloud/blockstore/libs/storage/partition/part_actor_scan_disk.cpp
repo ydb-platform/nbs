@@ -422,8 +422,7 @@ void TPartitionActor::HandleScanDiskBatch(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TScanDiskBatchMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 

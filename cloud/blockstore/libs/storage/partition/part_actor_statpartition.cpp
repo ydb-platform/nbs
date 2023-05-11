@@ -49,10 +49,7 @@ void TPartitionActor::HandleStatPartition(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -93,8 +90,6 @@ void TPartitionActor::HandleStatPartition(
         State->GetCompactionDelay().MilliSeconds());
     response->Record.MutableStats()->SetCleanupDelay(
         State->GetCleanupDelay().MilliSeconds());
-
-    BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

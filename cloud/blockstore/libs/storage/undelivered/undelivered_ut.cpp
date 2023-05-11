@@ -94,11 +94,7 @@ public:
         auto* ev = new IEventHandle(
             NStorage::MakeUndeliveredHandlerServiceId(),
             Sender,
-            request.release(),
-            0,          // flags
-            0,          // cookie
-            nullptr,    // forwardOnNondelivery
-            NWilson::TTraceId::NewTraceId());
+            request.release());
 
         Runtime.Send(ev, 0);
     }

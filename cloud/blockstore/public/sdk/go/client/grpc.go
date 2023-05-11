@@ -108,7 +108,7 @@ func (client *grpcClient) executeRequest(
 	requestId := nextRequestId()
 	client.setupHeaders(ctx, req)
 
-	if logger := client.log.Logger(LOG_DEBUG); logger != nil {
+	if logger := client.log.Logger(requestLogLevel(req)); logger != nil {
 		logger.Printf(ctx, "%s #%d sending request", requestName(req), requestId)
 	}
 
@@ -129,7 +129,7 @@ func (client *grpcClient) executeRequest(
 	}
 
 	if requestTime < requestTimeWarnThreshold {
-		if logger := client.log.Logger(LOG_DEBUG); logger != nil {
+		if logger := client.log.Logger(requestLogLevel(req)); logger != nil {
 			logger.Printf(
 				ctx,
 				"%s%s #%d request completed (time: %v, size: %d, error: %v)",

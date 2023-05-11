@@ -275,8 +275,7 @@ void TDiskRegistryActor::HandleCmsAction(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>(),
-        std::move(ev->TraceId));
+        MakeIntrusive<TCallContext>());
 
     auto actor = NCloud::Register<TCmsRequestActor>(
         ctx,

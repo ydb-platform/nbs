@@ -50,6 +50,7 @@ public:
     }
 
     void Set(TDuration duration);
+    TDuration Get();
     void Clear();
 };
 

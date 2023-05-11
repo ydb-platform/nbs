@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/datetime/base.h>
 #include <util/system/error.h>
 
 #include <fcntl.h>
@@ -103,6 +104,18 @@ void TTimerHandle::Set(TDuration duration)
     if (res < 0) {
         RDMA_THROW_ERROR("timerfd_settime");
     }
+}
+
+TDuration TTimerHandle::Get()
+{
+    itimerspec spec;
+    int res = timerfd_gettime(Fd, &spec);
+    if (res < 0) {
+        RDMA_THROW_ERROR("timerfd_gettime");
+    }
+    return
+        TDuration::Seconds(spec.it_value.tv_sec) +
+        TDuration::MicroSeconds(spec.it_value.tv_nsec / 1000);
 }
 
 void TTimerHandle::Clear()

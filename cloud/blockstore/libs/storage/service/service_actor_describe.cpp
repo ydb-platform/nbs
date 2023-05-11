@@ -80,31 +80,25 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId);
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
 {
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
     request->Record.SetDiskId(DiskId);
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TDescribeVolumeActor::HandleDescribeVolumeResponse(
@@ -112,8 +106,6 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -153,8 +145,6 @@ void TDescribeVolumeActor::HandleDescribeDiskResponse(
 {
     const auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
@@ -185,7 +175,6 @@ void TDescribeVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvDescribeVolumeResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -218,12 +207,9 @@ void TServiceActor::HandleDescribeVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     const auto& request = msg->Record;
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     if (request.GetDiskId().empty()) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,

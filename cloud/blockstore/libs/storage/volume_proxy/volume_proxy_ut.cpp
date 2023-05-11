@@ -341,6 +341,93 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         UNIT_ASSERT(ppCount != 0);
     }
+
+    Y_UNIT_TEST(ShouldMapBaseDisk)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.WaitForVolume();
+
+        ui64 volumeTabletId;
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+        service.DescribeVolume();
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        UNIT_ASSERT(false);
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+        service.StatVolume();
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
+                DefaultDiskId));
+        service.StatVolume();
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
+                DefaultDiskId));
+
+        bool describe = false;
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        describe = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        service.StatVolume();
+        UNIT_ASSERT(describe);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

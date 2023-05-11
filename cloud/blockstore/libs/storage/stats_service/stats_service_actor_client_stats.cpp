@@ -16,13 +16,9 @@ void TStatsServiceActor::HandleUploadClientMetrics(
     const auto& clientId = GetClientId(*msg);
     const auto& metrics = msg->Record.GetMetrics();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
-
     ClientStatsAggregator->AddStats(clientId, metrics, ctx.Now());
 
     auto response = std::make_unique<TEvService::TEvUploadClientMetricsResponse>();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

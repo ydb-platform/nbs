@@ -203,15 +203,10 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         NCloud::Send(
             ctx,
             Tablet,
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
     }
 }
 
@@ -253,18 +248,12 @@ void TWriteMergedBlocksActor::AddBlobs(
             std::move(blobs));
     }
 
-    auto traceId = RequestInfo->TraceId.Clone();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     SafeToUseOrbit = false;
 
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TWriteMergedBlocksActor::NotifyCompleted(
@@ -332,8 +321,6 @@ void TWriteMergedBlocksActor::Reply(
     TRequestInfo& requestInfo,
     IEventBasePtr response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
-
     if (SafeToUseOrbit) {
         LWTRACK(
             ResponseSent_Partition,
@@ -354,13 +341,6 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
     const auto* msg = ev->Get();
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
-    BLOCKSTORE_TRACE_RECEIVED(
-        ctx,
-        &RequestInfo->TraceId,
-        this,
-        msg,
-        &ev->TraceId
-    );
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -393,13 +373,6 @@ void TWriteMergedBlocksActor::HandleAddBlobsResponse(
     SafeToUseOrbit = true;
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
-    BLOCKSTORE_TRACE_RECEIVED(
-        ctx,
-        &RequestInfo->TraceId,
-        this,
-        msg,
-        &ev->TraceId
-    );
 
     const auto& error = msg->GetError();
     if (HandleError(ctx, error)) {
@@ -418,13 +391,6 @@ void TWriteMergedBlocksActor::HandleAddUnconfirmedBlobsResponse(
     SafeToUseOrbit = true;
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
-    BLOCKSTORE_TRACE_RECEIVED(
-        ctx,
-        &RequestInfo->TraceId,
-        this,
-        msg,
-        &ev->TraceId
-    );
 
     const auto& error = msg->GetError();
     if (HandleError(ctx, error)) {

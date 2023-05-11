@@ -29,7 +29,6 @@ struct TRequestInfo
     const ui64 Cookie = 0;
 
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
-    NWilson::TTraceId TraceId;
     TCancelRoutine* CancelRoutine = nullptr;
 
     const ui64 Started = GetCycleCount();
@@ -40,12 +39,10 @@ struct TRequestInfo
     TRequestInfo(
             const NActors::TActorId& sender,
             ui64 cookie,
-            TCallContextPtr callContext,
-            NWilson::TTraceId traceId)
+            TCallContextPtr callContext)
         : Sender(sender)
         , Cookie(cookie)
         , CallContext(std::move(callContext))
-        , TraceId(std::move(traceId))
     {
     }
 
@@ -112,28 +109,24 @@ struct TRequestScope
 inline TRequestInfoPtr CreateRequestInfo(
     const NActors::TActorId& sender,
     ui64 cookie,
-    TCallContextPtr callContext,
-    NWilson::TTraceId traceId = {})
+    TCallContextPtr callContext)
 {
     return MakeIntrusive<TRequestInfo>(
         sender,
         cookie,
-        std::move(callContext),
-        std::move(traceId));
+        std::move(callContext));
 }
 
 inline TRequestInfoPtr CreateRequestInfo(
     const NActors::TActorId& sender,
     ui64 cookie,
     TCallContextPtr callContext,
-    NWilson::TTraceId traceId,
     TRequestInfo::TCancelRoutine callback)
 {
     auto requestInfo = MakeIntrusive<TRequestInfo>(
         sender,
         cookie,
-        std::move(callContext),
-        std::move(traceId));
+        std::move(callContext));
 
     requestInfo->CancelRoutine = callback;
 
@@ -144,8 +137,7 @@ template <typename TMethod>
 TRequestInfoPtr CreateRequestInfo(
     const NActors::TActorId& sender,
     ui64 cookie,
-    TCallContextPtr callContext,
-    NWilson::TTraceId traceId = {})
+    TCallContextPtr callContext)
 {
     auto callback = [] (
         const NActors::TActorContext& ctx,
@@ -161,7 +153,6 @@ TRequestInfoPtr CreateRequestInfo(
         sender,
         cookie,
         std::move(callContext),
-        std::move(traceId),
         callback);
 }
 

@@ -40,7 +40,7 @@ void TVolumeActor::CopyCachedStatsToPartCounters(
     TPartitionDiskCounters& dst)
 {
 #define POPULATE_COUNTERS(name, ...)                                           \
-    dst.Simple.name.Set(src.Get##name());                                     \
+    dst.Simple.name.Set(src.Get##name());                                      \
 // POPULATE_COUNTERS
 
     BLOCKSTORE_CACHED_COUNTERS(POPULATE_COUNTERS)
@@ -104,8 +104,7 @@ void TVolumeActor::HandleNonreplicatedPartCounters(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId)
+        msg->CallContext
     );
 
     if (State->GetNonreplicatedPartitionActor() != ev->Sender) {
@@ -149,8 +148,7 @@ void TVolumeActor::HandlePartCounters(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId)
+        msg->CallContext
     );
 
     ui32 index = 0;
@@ -252,7 +250,7 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 
     NBlobMetrics::TBlobLoadMetrics offsetPartitionMetrics;
 
-    for (auto& info : State->GetPartitionStatInfos())
+    for (auto& info: State->GetPartitionStatInfos())
     {
         if (!info.LastCounters) {
             stats->AggregateWith(info.CachedCounters);
@@ -274,11 +272,11 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 
     stats->Simple.ChannelHistorySize.Set(channelsHistorySize);
 
-    NBlobMetrics::TBlobLoadMetrics blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
-         State->GetMeta().GetVolumeConfig().GetVolumeExplicitChannelProfiles(),
+    auto blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
+        State->GetMeta().GetVolumeConfig().GetVolumeExplicitChannelProfiles(),
         *Executor()->GetResourceMetrics());
-    NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics = NBlobMetrics::TakeDelta(
-        PrevMetrics, blobLoadMetrics);
+    auto offsetLoadMetrics =
+        NBlobMetrics::TakeDelta(PrevMetrics, blobLoadMetrics);
     offsetLoadMetrics += offsetPartitionMetrics;
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
@@ -336,6 +334,9 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.ResyncProgress.Set(
         100 * State->GetMeta().GetResyncIndex() / GetBlocksCount()
     );
+
+    simple.LastVolumeLoadTime.Set(GetLoadTime().MicroSeconds());
+    simple.LastVolumeStartTime.Set(GetStartTime().MicroSeconds());
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);

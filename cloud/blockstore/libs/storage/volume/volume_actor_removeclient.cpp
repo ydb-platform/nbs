@@ -26,6 +26,8 @@ void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
     request->Record.SetDiskId(State->GetDiskId());
+    request->Record.MutableHeaders()->SetClientId(clientId);
+    // TODO: remove after NBS-3886
     request->Record.SetSessionId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
 
@@ -70,12 +72,6 @@ void TVolumeActor::HandleReleaseDiskResponse(
             response->Record.SetClientId(cr->GetClientId());
             response->Record.SetTabletId(TabletID());
 
-            BLOCKSTORE_TRACE_SENT(
-                ctx,
-                &cr->RequestInfo->TraceId,
-                this,
-                response
-            );
             NCloud::Reply(ctx, *cr->RequestInfo, std::move(response));
 
             PendingClientRequests.pop_front();
@@ -118,10 +114,7 @@ void TVolumeActor::HandleRemoveClient(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     auto request = std::make_shared<TClientRequest>(
         std::move(requestInfo),
@@ -211,7 +204,6 @@ void TVolumeActor::CompleteRemoveClient(
         response->Record.SetClientId(clientId);
         response->Record.SetTabletId(TabletID());
 
-        BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
@@ -228,7 +220,6 @@ void TVolumeActor::CompleteRemoveClient(
     response->Record.SetClientId(clientId);
     response->Record.SetTabletId(TabletID());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     OnClientListUpdate(ctx);

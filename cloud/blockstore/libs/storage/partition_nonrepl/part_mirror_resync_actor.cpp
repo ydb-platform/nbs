@@ -61,6 +61,19 @@ void TMirrorPartitionResyncActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
+void TMirrorPartitionResyncActor::RejectPostponedRead(TPostponedRead& pr)
+{
+    auto& ev = pr.Ev;
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
+        HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            break;
+    }
+}
+
 void TMirrorPartitionResyncActor::KillActors(const TActorContext& ctx)
 {
     NCloud::Send<TEvents::TEvPoisonPill>(ctx, MirrorActorId);
@@ -126,11 +139,15 @@ void TMirrorPartitionResyncActor::HandlePoisonPill(
 
     KillActors(ctx);
 
+    for (auto& pr: PostponedReads) {
+        RejectPostponedRead(pr);
+    }
+    PostponedReads.clear();
+
     Poisoner = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>(),
-        std::move(ev->TraceId));
+        MakeIntrusive<TCallContext>());
 
     if (IsAnybodyAlive()) {
         return;

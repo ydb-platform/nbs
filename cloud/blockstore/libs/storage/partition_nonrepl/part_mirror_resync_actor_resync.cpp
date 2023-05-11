@@ -100,8 +100,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         0,  // cookie
-        MakeIntrusive<TCallContext>(),
-        NWilson::TTraceId::NewTraceId()
+        MakeIntrusive<TCallContext>()
     );
 
     TVector<TResyncReplica> replicas;
@@ -199,6 +198,18 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         } else {
             ReportResyncFailed();
         }
+
+        TDeque<TPostponedRead> postponedReads;
+        for (auto& pr: PostponedReads) {
+            const auto readRangeId = BlockRange2RangeId(pr.BlockRange);
+            if (readRangeId == rangeId) {
+                RejectPostponedRead(pr);
+            } else {
+                postponedReads.push_back(std::move(pr));
+            }
+        }
+        PostponedReads.swap(postponedReads);
+
         return;
     }
 
@@ -226,10 +237,10 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     State.MarkResynced(range);
     while (PostponedReads.size()) {
         auto& pr = PostponedReads.front();
-        const auto rangeId = BlockRange2RangeId(pr.BlockRange);
+        const auto readRangeId = BlockRange2RangeId(pr.BlockRange);
 
         bool resynced = true;
-        for (ui32 id = rangeId.first; id <= rangeId.second; ++id) {
+        for (ui32 id = readRangeId.first; id <= readRangeId.second; ++id) {
             if (!State.IsResynced(RangeId2BlockRange(id))) {
                 resynced = false;
                 break;

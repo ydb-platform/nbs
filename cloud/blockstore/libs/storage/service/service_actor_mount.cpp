@@ -1,7 +1,6 @@
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -50,8 +49,7 @@ public:
             ctx,
             SessionActor,
             std::move(request),
-            RequestInfo->Cookie,
-            std::move(RequestInfo->TraceId));
+            RequestInfo->Cookie);
 
         Become(&TThis::StateWork);
     }
@@ -120,8 +118,7 @@ void TServiceActor::HandleMountVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        ev->TraceId.Clone());
+        msg->CallContext);
 
     auto volume = State.GetOrAddVolume(diskId);
 

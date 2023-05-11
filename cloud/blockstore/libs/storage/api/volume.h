@@ -162,6 +162,18 @@ struct TEvVolume
     };
 
     //
+    // ClearBaseDiskIdToTabletIdMapping
+    //
+    struct TClearBaseDiskIdToTabletIdMapping
+    {
+        const TString BaseDiskId;
+
+        explicit TClearBaseDiskIdToTabletIdMapping(TString baseDiskId)
+            : BaseDiskId(std::move(baseDiskId))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -241,6 +253,8 @@ struct TEvVolume
         EvSetupChannelsRequest = EvBegin + 49,
         EvSetupChannelsResponse = EvBegin + 50,
 
+        EvClearBaseDiskIdToTabletIdMapping = EvBegin + 51,
+
         EvEnd
     };
 
@@ -297,6 +311,11 @@ struct TEvVolume
     using TEvMapBaseDiskIdToTabletId = TRequestEvent<
         TMapBaseDiskIdToTabletId,
         EvMapBaseDiskIdToTabletId
+    >;
+
+    using TEvClearBaseDiskIdToTabletIdMapping = TRequestEvent<
+        TClearBaseDiskIdToTabletIdMapping,
+        EvClearBaseDiskIdToTabletIdMapping
     >;
 };
 

@@ -87,6 +87,7 @@ public:
     TDiskId FindDiskId(const TDeviceId& id) const;
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& id) const;
 
+    TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
 
     NProto::TDeviceConfig AllocateDevice(

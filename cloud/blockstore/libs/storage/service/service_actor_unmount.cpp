@@ -2,7 +2,6 @@
 
 #include "service.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
@@ -29,14 +28,11 @@ void TServiceActor::HandleUnmountVolume(
 
     if (!volume || !volume->VolumeSessionActor) {
 
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
-
         auto response = std::make_unique<TEvService::TEvUnmountVolumeResponse>(
             MakeError(
                 S_ALREADY,
                 TStringBuilder() << "Volume not mounted: " << diskId.Quote()));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

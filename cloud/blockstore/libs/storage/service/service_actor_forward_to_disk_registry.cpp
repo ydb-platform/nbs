@@ -19,8 +19,6 @@ void TServiceActor::ForwardRequestToDiskRegistry(
 {
     const auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
-
     LWTRACK(
         RequestReceived_Service,
         msg->CallContext->LWOrbit,

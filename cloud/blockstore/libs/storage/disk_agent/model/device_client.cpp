@@ -161,7 +161,7 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
         if (s != it->second.ReaderSessions.end()) {
             it->second.ReaderSessions.erase(s);
         } else if (it->second.WriterSession.Id == sessionId
-            || sessionId == AnyWriterSessionId)
+            || sessionId == AnyWriterClientId)
         {
             it->second.WriterSession = {};
         }
@@ -188,7 +188,7 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     TReadGuard g(it->second.Lock);
 
     bool acquired = false;
-    if (sessionId == BackgroundOpsSessionId) {
+    if (sessionId == BackgroundOpsClientId) {
         // it's fine to accept migration writes if this device is not acquired
         // migration might be in progress even for an unmounted volume
         acquired = !IsReadWriteMode(accessMode)

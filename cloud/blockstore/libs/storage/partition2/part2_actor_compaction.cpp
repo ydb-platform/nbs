@@ -297,15 +297,11 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
             ForkedReadContexts.emplace_back(request->CallContext);
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             NCloud::Send(
                 ctx,
                 Tablet,
                 std::move(request),
-                requestIndex,  // cookie
-                std::move(traceId));
+                requestIndex);
         }
         ++requestIndex;
     }
@@ -337,18 +333,13 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
             ForkedWriteContexts.emplace_back(request->CallContext);
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             writeBlobSent = true;
             ++WriteRequestsScheduled;
 
             NCloud::Send(
                 ctx,
                 Tablet,
-                std::move(request),
-                0,  // cookie
-                std::move(traceId));
+                std::move(request));
         }
     }
 
@@ -373,17 +364,12 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         BlobsSkipped,
         BlocksSkipped);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     SafeToUseOrbit = false;
 
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TCompactionActor::NotifyCompleted(
@@ -451,8 +437,6 @@ void TCompactionActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     if (SafeToUseOrbit) {
         LWTRACK(
             ResponseSent_Partition,
@@ -474,8 +458,6 @@ void TCompactionActor::HandleReadBlobResponse(
     auto msg = ev->Release();
 
     MaxExecCyclesFromRead = Max(MaxExecCyclesFromRead, msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -506,8 +488,6 @@ void TCompactionActor::HandleWriteBlobResponse(
 
     MaxExecCyclesFromWrite = Max(MaxExecCyclesFromWrite, msg->ExecCycles);
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     if (HandleError(ctx, msg->GetError())) {
         return;
     }
@@ -533,8 +513,6 @@ void TCompactionActor::HandleAddBlobsResponse(
     auto* msg = ev->Get();
 
     SafeToUseOrbit = true;
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     if (HandleError(ctx, msg->GetError())) {
         return;
     }
@@ -715,15 +693,10 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(CreateRequestId()),
         compactionMode);
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         SelfId(),
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TPartitionActor::HandleCompaction(
@@ -735,12 +708,9 @@ void TPartitionActor::HandleCompaction(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCompactionMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -758,8 +728,6 @@ void TPartitionActor::HandleCompaction(
     {
         auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

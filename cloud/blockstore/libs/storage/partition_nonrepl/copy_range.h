@@ -23,7 +23,7 @@ private:
     const TBlockRange64 Range;
     const NActors::TActorId Source;
     const NActors::TActorId Target;
-    const TString WriterSessionId;
+    const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
     TGuardedBuffer<TString> Buffer;
@@ -43,7 +43,7 @@ public:
         TBlockRange64 range,
         NActors::TActorId source,
         NActors::TActorId target,
-        TString writerSessionId,
+        TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator);
 
     void Bootstrap(const NActors::TActorContext& ctx);

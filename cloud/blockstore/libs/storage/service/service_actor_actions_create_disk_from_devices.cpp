@@ -206,8 +206,7 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(volumeConfig),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TCreateDiskFromDevicesActor::HandleCreateVolumeResponse(

@@ -34,9 +34,6 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(CreateRequestId())
     );
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     if (State->GetTrimFreshLogTimeout()) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog request scheduled: %lu, %s",
@@ -54,9 +51,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             SelfId(),
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
     }
 }
 
@@ -70,12 +65,9 @@ void TPartitionActor::HandleTrimFreshLog(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -95,8 +87,6 @@ void TPartitionActor::HandleTrimFreshLog(
         auto response = std::make_unique<TResponse>(
             MakeError(errorCode, std::move(errorReason))
         );
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

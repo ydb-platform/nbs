@@ -17,7 +17,6 @@ target_link_libraries(blockstore-libs-kikimr PUBLIC
   public-api-protos
   core-libs-kikimr
   cpp-actors-core
-  cpp-actors-wilson
   library-cpp-lwtrace
   ydb-core-base
   ydb-core-protos
@@ -26,5 +25,4 @@ target_sources(blockstore-libs-kikimr PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/kikimr/components.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/kikimr/events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/kikimr/helpers.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/kikimr/trace.cpp
 )

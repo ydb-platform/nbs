@@ -129,6 +129,8 @@ struct IVerbs
 
     virtual void CreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) = 0;
     virtual void DestroyQP(rdma_cm_id* id) = 0;
+
+    virtual void ModifyQP(ibv_qp *qp, ibv_qp_attr* attr, int mask) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

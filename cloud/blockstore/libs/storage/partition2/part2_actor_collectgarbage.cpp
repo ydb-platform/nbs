@@ -176,15 +176,10 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 TabletInfo->TabletID,
                 request->Print(true).data());
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             SendToBSProxy(
                 ctx,
                 kv.first,
-                request.release(),
-                0,  // cookie
-                std::move(traceId));
+                request.release());
 
             ++RequestsInFlight;
         }
@@ -199,15 +194,10 @@ void TCollectGarbageActor::DeleteGarbage(const TActorContext& ctx)
         std::move(NewBlobs),
         std::move(GarbageBlobs));
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TCollectGarbageActor::NotifyCompleted(
@@ -238,8 +228,6 @@ void TCollectGarbageActor::ReplyAndDie(const TActorContext& ctx)
 
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -257,8 +245,6 @@ void TCollectGarbageActor::HandleCollectGarbageResult(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     HandleError(MakeKikimrError(msg->Status, msg->ErrorReason));
 
@@ -281,8 +267,6 @@ void TCollectGarbageActor::HandleDeleteGarbageResponse(
 {
     const auto* msg = ev->Get();
     RequestInfo->AddExecCycles(msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     HandleError(msg->GetError());
     ReplyAndDie(ctx);
@@ -433,15 +417,10 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
                 TabletInfo->TabletID,
                 request->Print(true).data());
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             SendToBSProxy(
                 ctx,
                 kv.first,
-                request.release(),
-                0,  // cookie
-                std::move(traceId));
+                request.release());
 
             ++RequestsInFlight;
         }
@@ -476,8 +455,6 @@ void TCollectGarbageHardActor::ReplyAndDie(const TActorContext& ctx)
 
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -495,8 +472,6 @@ void TCollectGarbageHardActor::HandleCollectGarbageResult(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     HandleError(MakeKikimrError(msg->Status, msg->ErrorReason));
 
@@ -563,9 +538,6 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     if (State->GetCollectTimeout()) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] CollectGarbage request scheduled: %lu, %s",
@@ -583,9 +555,7 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             SelfId(),
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
     }
 }
 
@@ -598,12 +568,9 @@ void TPartitionActor::HandleCollectGarbage(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCollectGarbageMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -621,8 +588,6 @@ void TPartitionActor::HandleCollectGarbage(
     {
         auto response = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

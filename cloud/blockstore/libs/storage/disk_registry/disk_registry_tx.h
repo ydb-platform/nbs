@@ -208,8 +208,8 @@ struct TTxDiskRegistry
         const NActors::TActorId RegisterActorId;
 
         NProto::TError Error;
-        TVector<TDiskStateUpdate> AffectedDisks;
-        THashMap<TString, ui64> NotifiedDisks;
+        TVector<TString> AffectedDisks;
+        TVector<TString> NotifiedDisks;
 
         TAddAgent(
                 TRequestInfoPtr requestInfo,
@@ -241,7 +241,7 @@ struct TTxDiskRegistry
         const TInstant Timestamp;
 
         NProto::TError Error;
-        TVector<TDiskStateUpdate> AffectedDisks;
+        TVector<TString> AffectedDisks;
 
         TRemoveAgent(
                 TRequestInfoPtr requestInfo,
@@ -508,7 +508,7 @@ struct TTxDiskRegistry
         const TString Reason;
         const bool IsDisableAgentRequest;
 
-        TVector<TDiskStateUpdate> AffectedDisks;
+        TVector<TString> AffectedDisks;
         NProto::TError Error;
 
         TUpdateAgentState(
@@ -545,7 +545,7 @@ struct TTxDiskRegistry
         const TInstant StateTs;
         const TString Reason;
 
-        TMaybe<TDiskStateUpdate> AffectedDisk;
+        TString AffectedDisk;
         NProto::TError Error;
 
         TUpdateDeviceState(
@@ -563,7 +563,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            AffectedDisk.Clear();
+            AffectedDisk.clear();
             Error.Clear();
         }
     };
@@ -578,8 +578,6 @@ struct TTxDiskRegistry
         const TString DiskId;
         const TString DeviceId;
         const TInstant Timestamp;
-
-        TMaybe<TDiskStateUpdate> DiskStateUpdate;
 
         NProto::TError Error;
 
@@ -596,7 +594,6 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            DiskStateUpdate.Clear();
             Error.Clear();
         }
     };
@@ -614,7 +611,7 @@ struct TTxDiskRegistry
         const bool DryRun;
 
         NProto::TError Error;
-        TMaybe<TDiskStateUpdate> AffectedDisk;
+        TString AffectedDisk;
         TInstant TxTs;
         TDuration Timeout;
 
@@ -633,7 +630,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            AffectedDisk.Clear();
+            AffectedDisk.clear();
             Error.Clear();
         }
     };
@@ -650,7 +647,7 @@ struct TTxDiskRegistry
         const bool DryRun;
 
         NProto::TError Error;
-        TVector<TDiskStateUpdate> AffectedDisks;
+        TVector<TString> AffectedDisks;
         TInstant TxTs;
         TDuration Timeout;
 
@@ -711,7 +708,6 @@ struct TTxDiskRegistry
         const TMigrations Migrations;
         const TInstant Timestamp;
 
-        TMaybe<TDiskStateUpdate> AffectedDisk;
         NProto::TError Error;
 
         TFinishMigration(
@@ -727,7 +723,6 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            AffectedDisk.Clear();
             Error.Clear();
         }
     };

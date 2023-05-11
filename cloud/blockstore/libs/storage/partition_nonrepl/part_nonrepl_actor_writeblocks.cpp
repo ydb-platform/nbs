@@ -125,12 +125,10 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
         request->Record.SetDeviceUUID(deviceRequest.Device.GetDeviceUUID());
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(PartConfig->GetBlockSize());
-        request->Record.SetSessionId(Request.GetSessionId());
+        // TODO: remove after NBS-3886
+        request->Record.SetSessionId(Request.GetHeaders().GetClientId());
 
         builder.BuildNextRequest(request->Record);
-
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
         TAutoPtr<IEventHandle> event(
             new IEventHandle(
@@ -139,8 +137,7 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
                 request.get(),
                 IEventHandle::FlagForwardOnNondelivery,
                 cookie++,
-                &ctx.SelfID,    // forwardOnNondelivery
-                std::move(traceId)
+                &ctx.SelfID    // forwardOnNondelivery
             ));
         request.release();
 
@@ -178,8 +175,6 @@ void TDiskAgentWriteActor::Done(
     IEventBasePtr response,
     bool failed)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_VolumeWorker,
         RequestInfo->CallContext->LWOrbit,
@@ -203,9 +198,7 @@ void TDiskAgentWriteActor::Done(
     NCloud::Send(
         ctx,
         Part,
-        std::move(completion),
-        0,  // cookie
-        std::move(RequestInfo->TraceId));
+        std::move(completion));
 
     Die(ctx);
 }
@@ -244,8 +237,6 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -291,12 +282,9 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TWriteBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -312,8 +300,6 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -378,12 +364,9 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     auto requestInfo = CreateRequestInfo<TEvService::TWriteBlocksLocalMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -399,8 +382,6 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

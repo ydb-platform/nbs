@@ -20,8 +20,7 @@ void TDiskRegistryActor::HandleCreatePlacementGroup(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received CreatePlacementGroup request: GroupId=%s "
@@ -31,8 +30,6 @@ void TDiskRegistryActor::HandleCreatePlacementGroup(
         NProto::EPlacementStrategy_Name(msg->Record.GetPlacementStrategy())
             .c_str(),
         msg->Record.GetPlacementPartitionCount());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TCreatePlacementGroup>(
         ctx,
@@ -99,15 +96,12 @@ void TDiskRegistryActor::HandleDestroyPlacementGroup(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received DestroyPlacementGroup request: GroupId=%s",
         TabletID(),
         msg->Record.GetGroupId().c_str());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TDestroyPlacementGroup>(
         ctx,
@@ -182,8 +176,7 @@ void TDiskRegistryActor::HandleAlterPlacementGroupMembership(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received AlterPlacementGroupMembership request: GroupId=%s"
@@ -193,8 +186,6 @@ void TDiskRegistryActor::HandleAlterPlacementGroupMembership(
         msg->Record.GetPlacementPartitionIndex(),
         msg->Record.DisksToAddSize(),
         msg->Record.DisksToRemoveSize());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TAlterPlacementGroupMembership>(
         ctx,
@@ -296,14 +287,11 @@ void TDiskRegistryActor::HandleListPlacementGroups(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received ListPlacementGroups request",
         TabletID());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     auto response = std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
     for (const auto& x: State->GetPlacementGroups()) {
@@ -326,15 +314,12 @@ void TDiskRegistryActor::HandleDescribePlacementGroup(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received DescribePlacementGroup request: GroupId=%s",
         TabletID(),
         msg->Record.GetGroupId().c_str());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     auto response = std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
     if (auto* g = State->FindPlacementGroup(msg->Record.GetGroupId())) {

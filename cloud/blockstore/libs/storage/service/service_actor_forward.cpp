@@ -69,8 +69,6 @@ void TServiceActor::ForwardRequest(
 {
     const auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
-
     LWTRACK(
         RequestReceived_Service,
         msg->CallContext->LWOrbit,
@@ -90,7 +88,6 @@ void TServiceActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorMessage)));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 

@@ -66,8 +66,7 @@ void TMirrorPartitionResyncActor::ForwardRequest(
         ev->ReleaseBase().Release(),
         ev->Flags | IEventHandle::FlagForwardOnNondelivery,
         requestIdentityKey,
-        &undeliveredRequestActor,
-        std::move(ev->TraceId));
+        &undeliveredRequestActor);
 
     ctx.Send(event.release());
 }

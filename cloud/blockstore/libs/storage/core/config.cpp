@@ -98,6 +98,9 @@ TDuration MSeconds(ui32 value)
     xxx(ManuallyPreemptedVolumeLivenessCheckPeriod,  TDuration,   Days(7)     )\
                                                                                \
     xxx(BlobCompressionCodec,           TString,     "lz4"                    )\
+                                                                               \
+    xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
+    xxx(SpareNodeProbability,           ui32,               0                 )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -403,6 +406,7 @@ TDuration MSeconds(ui32 value)
     xxx(AddingUnconfirmedBlobsEnabled,             bool,      false           )\
                                                                                \
     xxx(BlobCompressionRate,                       ui32,      0               )\
+    xxx(SerialNumberValidationEnabled,             bool,      false           )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
@@ -452,6 +456,25 @@ template <>
 TDuration ConvertValue<TDuration, ui64>(const ui64& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    return TVector<TString>(value.begin(), value.end());
+}
+
+template <typename T>
+bool IsEmpty(const T& t)
+{
+    return !t;
+}
+
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+{
+    return value.empty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -508,6 +531,24 @@ IOutputStream& operator <<(
                 << "(Unknown EVolumePreemptionType value "
                 << (int)pt
                 << ")";
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+void DumpImpl(const T& t, IOutputStream& os)
+{
+    os << t;
+}
+
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
     }
 }
 
@@ -574,7 +615,7 @@ void TStorageConfig::Register(TControlBoard& controlBoard)
 type TStorageConfig::Get##name() const                                         \
 {                                                                              \
     auto value = Impl->StorageServiceConfig.Get##name();                       \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
+    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
 }                                                                              \
 // BLOCKSTORE_CONFIG_GETTER
 
@@ -587,7 +628,7 @@ type TStorageConfig::Get##name() const                                         \
 {                                                                              \
     ui64 value = Impl->Control##name;                                          \
     if (!value) value = Impl->StorageServiceConfig.Get##name();                \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
+    return value ? ConvertValue<type>(value) : Default##name;        \
 }                                                                              \
 // BLOCKSTORE_CONFIG_GETTER
 
@@ -598,7 +639,9 @@ BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_GETTER)
 void TStorageConfig::Dump(IOutputStream& out) const
 {
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": " << Get##name() << Endl;                               \
+    out << #name << ": ";                                                      \
+    DumpImpl(Get##name(), out);                                                \
+    out << Endl;                                                               \
 // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_CONFIG_DUMP);
@@ -611,7 +654,7 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
     TABLER() {                                                                 \
         TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
+        TABLED() { DumpImpl(Get##name(), out); }                               \
     }                                                                          \
 // BLOCKSTORE_CONFIG_DUMP
 

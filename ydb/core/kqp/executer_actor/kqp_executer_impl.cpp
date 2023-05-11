@@ -1,6 +1,6 @@
 #include "kqp_executer_impl.h"
 
-#include <ydb/core/formats/arrow_helpers.h>
+#include <ydb/core/formats/arrow/arrow_helpers.h>
 #include <ydb/core/kqp/runtime/kqp_transport.h>
 
 #include <ydb/public/api/protos/ydb_rate_limiter.pb.h>
@@ -91,7 +91,7 @@ IActor* CreateKqpExecuter(IKqpGateway::TExecPhysicalRequest&& request, const TSt
     const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, TKqpRequestCounters::TPtr counters,
     const NKikimrConfig::TTableServiceConfig::TAggregationConfig& aggregation,
     const NKikimrConfig::TTableServiceConfig::TExecuterRetriesConfig& executerRetriesConfig,
-    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory)
+    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, TPreparedQueryHolder::TConstPtr preparedQuery)
 {
     if (request.Transactions.empty()) {
         // commit-only or rollback-only data transaction
@@ -115,7 +115,7 @@ IActor* CreateKqpExecuter(IKqpGateway::TExecPhysicalRequest&& request, const TSt
             return CreateKqpDataExecuter(std::move(request), database, userToken, counters, false, executerRetriesConfig, std::move(asyncIoFactory));
 
         case NKqpProto::TKqpPhyTx::TYPE_SCAN:
-            return CreateKqpScanExecuter(std::move(request), database, userToken, counters, aggregation, executerRetriesConfig);
+            return CreateKqpScanExecuter(std::move(request), database, userToken, counters, aggregation, executerRetriesConfig, preparedQuery);
 
         case NKqpProto::TKqpPhyTx::TYPE_GENERIC:
             return CreateKqpDataExecuter(std::move(request), database, userToken, counters, true, executerRetriesConfig, std::move(asyncIoFactory));

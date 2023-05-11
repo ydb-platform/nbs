@@ -116,8 +116,7 @@ void TCompactRangeActionActor::CompactRange(const TActorContext& ctx)
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TCompactRangeActionActor::HandleSuccess(

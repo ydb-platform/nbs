@@ -24,12 +24,9 @@ void TPartitionActor::HandleDeleteCheckpoint(
     auto requestInfo = CreateRequestInfo<TEvService::TDeleteCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -45,8 +42,6 @@ void TPartitionActor::HandleDeleteCheckpoint(
     {
         auto response = std::make_unique<TEvService::TEvDeleteCheckpointResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -141,8 +136,6 @@ void TPartitionActor::CompleteDeleteCheckpoint(
 
     auto response = std::make_unique<TEvService::TEvDeleteCheckpointResponse>(args.Error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         args.RequestInfo->CallContext->LWOrbit,
@@ -170,8 +163,7 @@ void TPartitionActor::HandleDeleteCheckpointData(
     auto requestInfo = CreateRequestInfo<TEvVolume::TDeleteCheckpointDataMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     // TODO(NBS-2382) - support DeleteCheckpointData for partition v2
     auto response = std::make_unique<TEvVolume::TEvDeleteCheckpointDataResponse>(

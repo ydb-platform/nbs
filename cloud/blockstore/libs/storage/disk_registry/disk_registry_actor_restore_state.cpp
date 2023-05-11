@@ -385,13 +385,10 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryState(
         "[%lu] Received RestoreDiskRegistryState request",
         TabletID());
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, ev->Get());
-
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     TDiskRegistryStateSnapshot snapshot =
         MakeNewLoadState(std::move(*ev->Get()->Record.MutableBackup()));
@@ -608,8 +605,7 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryPart(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TRestoreDiskRegistryPart>(
         ctx,

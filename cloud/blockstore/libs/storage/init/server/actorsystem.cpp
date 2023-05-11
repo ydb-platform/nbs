@@ -52,6 +52,9 @@
 #include <ydb/core/tablet/node_tablet_monitor.h>
 #include <ydb/core/tablet/tablet_list_renderer.h>
 
+#include <util/digest/city.h>
+#include <util/system/hostname.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -400,27 +403,42 @@ public:
             return tablet.release();
         };
 
-        if (!StorageConfig->GetDisableLocalService()) {
-            TLocalConfig::TPtr localConfig = new TLocalConfig();
-            localConfig->TabletClassInfo[TTabletTypes::BlockStoreVolume] =
-                TLocalConfig::TTabletClassInfo(
-                    new TTabletSetupInfo(
-                        volumeFactory,
-                        TMailboxType::ReadAsFilled,
-                        appData->UserPoolId,
-                        TMailboxType::ReadAsFilled,
-                        appData->SystemPoolId));
+        const bool enableLocal = !StorageConfig->GetDisableLocalService();
+        const bool isSpareNode = !enableLocal && [&] {
+                const auto& nodes = StorageConfig->GetKnownSpareNodes();
+                const auto& fqdn = FQDNHostName();
+                const ui32 p = StorageConfig->GetSpareNodeProbability();
+
+                return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
+            }();
+
+        if (enableLocal || isSpareNode) {
+            auto localConfig = MakeIntrusive<TLocalConfig>();
+
+            if (enableLocal) {
+                localConfig->TabletClassInfo[TTabletTypes::BlockStoreVolume] =
+                    TLocalConfig::TTabletClassInfo(
+                        MakeIntrusive<TTabletSetupInfo>(
+                            volumeFactory,
+                            TMailboxType::ReadAsFilled,
+                            appData->UserPoolId,
+                            TMailboxType::ReadAsFilled,
+                            appData->SystemPoolId));
+            }
+
+            const i32 priority { isSpareNode ? -1 : 0 };
 
             localConfig->TabletClassInfo[TTabletTypes::BlockStoreDiskRegistry] =
                 TLocalConfig::TTabletClassInfo(
-                    new TTabletSetupInfo(
+                    MakeIntrusive<TTabletSetupInfo>(
                         diskRegistryFactory,
                         TMailboxType::ReadAsFilled,
                         appData->UserPoolId,
                         TMailboxType::ReadAsFilled,
-                        appData->SystemPoolId));
+                        appData->SystemPoolId),
+                    priority);
 
-            TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
+            auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
             tenantPoolConfig->AddStaticSlot(StorageConfig->GetSchemeShardDir());
 
             setup->LocalServices.emplace_back(

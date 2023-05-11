@@ -8,7 +8,7 @@
 #include <contrib/libs/apache/arrow/cpp/src/arrow/ipc/writer.h>
 
 #include <ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
-#include <ydb/core/formats/ssa_runtime_version.h>
+#include <ydb/core/formats/arrow/ssa_runtime_version.h>
 #include <ydb/core/kqp/executer_actor/kqp_executer.h>
 #include <ydb/core/tx/datashard/datashard.h>
 #include <ydb/core/tx/datashard/datashard_ut_common_kqp.h>
@@ -1234,7 +1234,8 @@ Y_UNIT_TEST_SUITE(KqpOlap) {
 
                     (`timestamp` <= CAST(1001000 AS Timestamp) AND `timestamp` >= CAST(1000999 AS Timestamp)) OR
                     (`timestamp` > CAST(1002000 AS Timestamp))
-                ORDER BY `timestamp` DESC;
+                ORDER BY `timestamp` DESC
+                LIMIT 1000;
         )");
 
         auto rows = ExecuteScanQuery(tableClient, selectQuery);
@@ -1693,7 +1694,7 @@ Y_UNIT_TEST_SUITE(KqpOlap) {
         {
             TString query = fmt::format(R"(
                 --!syntax_v1
-                PRAGMA ydb.EnableLlvm = "{}";
+                PRAGMA ydb.UseLlvm = "{}";
 
                 SELECT
                     COUNT(*)

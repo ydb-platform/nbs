@@ -494,6 +494,13 @@ struct TTestVerbs
     {
         Y_UNUSED(id);
     }
+
+    void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override
+    {
+        Y_UNUSED(qp);
+        Y_UNUSED(attr);
+        Y_UNUSED(mask);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

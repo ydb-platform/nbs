@@ -37,8 +37,7 @@ void TNonreplicatedPartitionMigrationActor::MigrateNextRange(
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         0,  // cookie
-        MakeIntrusive<TCallContext>(),
-        NWilson::TTraceId::NewTraceId()
+        MakeIntrusive<TCallContext>()
     );
 
     const auto migrationRange = State.BuildMigrationRange();

@@ -2,7 +2,6 @@
 
 #include "volume_client_actor.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>

@@ -161,8 +161,7 @@ void TNonreplicatedPartitionMigrationActor::HandlePoisonPill(
     Poisoner = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>(),
-        std::move(ev->TraceId));
+        MakeIntrusive<TCallContext>());
 
     Y_VERIFY_DEBUG(SrcActorId || DstActorId);
 

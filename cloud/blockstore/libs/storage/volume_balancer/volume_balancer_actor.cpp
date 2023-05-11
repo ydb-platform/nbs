@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>

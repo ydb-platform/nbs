@@ -88,8 +88,8 @@ message TDiskSession
     // Label of volume.
     string DiskId = 1;
 
-    // Session identifier.
-    string SessionId = 2;
+    // Client identifier.
+    string ClientId = 2;
 
     // Is session acquisition in progress.
     bool AcquireInProgress = 3;
@@ -537,7 +537,7 @@ message TAcquireDevicesRequest
     repeated string DeviceUUIDs = 2;
 
     // Session identifier.
-    string SessionId = 3;
+    string SessionId = 3; // deprecated
 
     // Rate limits.
     TDeviceRateLimits RateLimits = 4;
@@ -572,7 +572,7 @@ message TReleaseDevicesRequest
     repeated string DeviceUUIDs = 2;
 
     // Session identifier.
-    string SessionId = 3;
+    string SessionId = 3; // deprecated
 
     // Disk id.
     string DiskId = 4;
@@ -598,7 +598,7 @@ message TAcquireDiskRequest
     string DiskId = 2;
 
     // Session identifier.
-    string SessionId = 3;
+    string SessionId = 3; // deprecated
 
     // Access mode.
     EVolumeAccessMode AccessMode = 4;
@@ -636,7 +636,7 @@ message TReleaseDiskRequest
     string DiskId = 2;
 
     // Session identifier.
-    string SessionId = 3;
+    string SessionId = 3; // deprecated
 
     // Volume generation.
     uint32 VolumeGeneration = 4;
@@ -716,7 +716,7 @@ message TReadDeviceBlocksRequest
     uint32 BlocksCount = 5;
 
     // Session identifier.
-    string SessionId = 6;
+    string SessionId = 6; // deprecated
 }
 
 message TReadDeviceBlocksResponse
@@ -749,7 +749,7 @@ message TWriteDeviceBlocksRequest
     TIOVector Blocks = 5;
 
     // Session identifier.
-    string SessionId = 6;
+    string SessionId = 6; // deprecated
 }
 
 message TWriteDeviceBlocksResponse
@@ -779,7 +779,7 @@ message TZeroDeviceBlocksRequest
     uint32 BlocksCount = 5;
 
     // Session identifier.
-    string SessionId = 6;
+    string SessionId = 6; // deprecated
 }
 
 message TZeroDeviceBlocksResponse
@@ -870,7 +870,7 @@ message TChecksumDeviceBlocksRequest
     uint32 BlocksCount = 5;
 
     // Session identifier.
-    string SessionId = 6;
+    string SessionId = 6; // deprecated
 }
 
 message TChecksumDeviceBlocksResponse

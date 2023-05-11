@@ -126,8 +126,7 @@ void TDiskAgentActor::HandleRegisterAgent(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     NCloud::Register<TRegisterActor>(
         ctx,

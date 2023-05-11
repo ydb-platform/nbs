@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	protos "a.yandex-team.ru/cloud/blockstore/public/api/protos"
+	storage_protos "a.yandex-team.ru/cloud/storage/core/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +51,19 @@ func requestSize(req request) uint32 {
 	return 0
 }
 
+func requestLogLevel(req request) LogLevel {
+	switch req.(type) {
+	case *protos.TReadBlocksRequest:
+		return LOG_DEBUG
+	case *protos.TWriteBlocksRequest:
+		return LOG_DEBUG
+	case *protos.TZeroBlocksRequest:
+		return LOG_DEBUG
+	default:
+		return LOG_INFO
+	}
+}
+
 func requestDetails(req request) string {
 	if readReq, ok := req.(*protos.TReadBlocksRequest); ok {
 		return fmt.Sprintf(
@@ -70,6 +84,117 @@ func requestDetails(req request) string {
 			" (offset: %d, count: %d)",
 			zeroReq.StartIndex,
 			zeroReq.BlocksCount)
+	}
+
+	if createVolumeReq, ok := req.(*protos.TCreateVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, project id: %s, block size: %d, blocks count: %d, channels count: %d, storage media kind %s, folder id: %s, cloud id: %s)",
+			createVolumeReq.DiskId,
+			createVolumeReq.ProjectId,
+			createVolumeReq.BlockSize,
+			createVolumeReq.BlocksCount,
+			createVolumeReq.ChannelsCount,
+			storage_protos.EStorageMediaKind_name[int32(createVolumeReq.StorageMediaKind)],
+			createVolumeReq.FolderId,
+			createVolumeReq.CloudId)
+	}
+
+	if destroyVolumeReq, ok := req.(*protos.TDestroyVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s)",
+			destroyVolumeReq.DiskId)
+	}
+
+	if resizeVolumeReq, ok := req.(*protos.TResizeVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, blocks count: %d, channels count: %d)",
+			resizeVolumeReq.DiskId,
+			resizeVolumeReq.BlocksCount,
+			resizeVolumeReq.ChannelsCount)
+	}
+
+	if alterVolumeReq, ok := req.(*protos.TAlterVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, project id: %s, folder id: %s, cloud id: %s)",
+			alterVolumeReq.DiskId,
+			alterVolumeReq.ProjectId,
+			alterVolumeReq.FolderId,
+			alterVolumeReq.CloudId)
+	}
+
+	if assignVolumeReq, ok := req.(*protos.TAssignVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, instance id: %s, host: %s)",
+			assignVolumeReq.DiskId,
+			assignVolumeReq.InstanceId,
+			assignVolumeReq.Host)
+	}
+
+	if mountVolumeReq, ok := req.(*protos.TMountVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, instance id: %s, volume access mode: %s, volume mount mode: %s, ipc type: %s, mount seq number: %d)",
+			mountVolumeReq.DiskId,
+			mountVolumeReq.InstanceId,
+			protos.EVolumeAccessMode_name[int32(mountVolumeReq.VolumeAccessMode)],
+			protos.EVolumeMountMode_name[int32(mountVolumeReq.VolumeMountMode)],
+			protos.EClientIpcType_name[int32(mountVolumeReq.IpcType)],
+			mountVolumeReq.MountSeqNumber)
+	}
+
+	if unmountVolumeReq, ok := req.(*protos.TUnmountVolumeRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, instance id: %s, session id: %s)",
+			unmountVolumeReq.DiskId,
+			unmountVolumeReq.InstanceId,
+			unmountVolumeReq.SessionId)
+	}
+
+	if createCheckpointReq, ok := req.(*protos.TCreateCheckpointRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, checkpoint id: %s)",
+			createCheckpointReq.DiskId,
+			createCheckpointReq.CheckpointId)
+	}
+
+	if deleteCheckpointReq, ok := req.(*protos.TDeleteCheckpointRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, checkpoint id: %s)",
+			deleteCheckpointReq.DiskId,
+			deleteCheckpointReq.CheckpointId)
+	}
+
+	if getChangedBlockReq, ok := req.(*protos.TGetChangedBlocksRequest); ok {
+		return fmt.Sprintf(
+			" (disk id: %s, start index: %d, blocks count: %d, low checkpoint id: %s, high checkpoint id: %s, ignore base disk: %t)",
+			getChangedBlockReq.DiskId,
+			getChangedBlockReq.StartIndex,
+			getChangedBlockReq.BlocksCount,
+			getChangedBlockReq.LowCheckpointId,
+			getChangedBlockReq.HighCheckpointId,
+			getChangedBlockReq.IgnoreBaseDisk)
+	}
+
+	if createPlacementGroupReq, ok := req.(*protos.TCreatePlacementGroupRequest); ok {
+		return fmt.Sprintf(
+			" (group id: %s, placement strategy: %s, placement partition count: %d)",
+			createPlacementGroupReq.GroupId,
+			protos.EPlacementStrategy_name[int32(createPlacementGroupReq.PlacementStrategy)],
+			createPlacementGroupReq.PlacementPartitionCount)
+	}
+
+	if destroyPlacementGroupReq, ok := req.(*protos.TDestroyPlacementGroupRequest); ok {
+		return fmt.Sprintf(
+			" (group id: %s)",
+			destroyPlacementGroupReq.GroupId)
+	}
+
+	if alterPlacementGroupMembershipReq, ok := req.(*protos.TAlterPlacementGroupMembershipRequest); ok {
+		return fmt.Sprintf(
+			" (group id: %s, number of disks to add: %d, number of disks to remove: %d, placement partition index: %d)",
+			alterPlacementGroupMembershipReq.GroupId,
+			len(alterPlacementGroupMembershipReq.DisksToAdd),
+			len(alterPlacementGroupMembershipReq.DisksToRemove),
+			alterPlacementGroupMembershipReq.PlacementPartitionIndex)
 	}
 
 	return ""

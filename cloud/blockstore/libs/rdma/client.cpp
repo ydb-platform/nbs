@@ -23,7 +23,6 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
-#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/system/datetime.h>
@@ -44,6 +43,7 @@ namespace {
 
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration RESOLVE_TIMEOUT = TDuration::Seconds(10);
+constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 
@@ -69,6 +69,13 @@ using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr int EVENT_MASK = 3;   // low bits unused because of alignment
+
+enum EPollerEvent
+{
+    Completion = 0,
+    Request = 1,
+    Disconnect = 2,
+};
 
 template <typename T>
 void* PtrEventTag(T* ptr, int event)
@@ -117,7 +124,6 @@ class TActiveRequests
 {
 private:
     THashMap<ui32, TRequestPtr> Requests;
-    THashSet<TRequest*> Pointers;
 
 public:
     ui32 CreateId()
@@ -133,15 +139,8 @@ public:
 
     void Push(TRequestPtr req)
     {
-        {
-            auto [_, inserted] = Pointers.emplace(req.get());
-            Y_VERIFY(inserted);
-        }
-
-        {
-            auto [_, inserted] = Requests.emplace(req->ReqId, std::move(req));
-            Y_VERIFY(inserted);
-        }
+        auto [_, inserted] = Requests.emplace(req->ReqId, std::move(req));
+        Y_VERIFY(inserted);
     }
 
     TRequestPtr Pop(ui32 reqId)
@@ -149,10 +148,7 @@ public:
         auto it = Requests.find(reqId);
         if (it != Requests.end()) {
             TRequestPtr req = std::move(it->second);
-
-            Pointers.erase(req.get());
             Requests.erase(it);
-
             return req;
         }
         return nullptr;
@@ -165,10 +161,7 @@ public:
         }
         auto it = std::begin(Requests);
         TRequestPtr req = std::move(it->second);
-
-        Pointers.erase(req.get());
         Requests.erase(it);
-
         return req;
     }
 
@@ -185,7 +178,6 @@ public:
         }
 
         for (const auto& x: requests) {
-            Pointers.erase(x.get());
             // TODO: keep tombstones to distinguish between timed out requests
             // and unknown reqIds
             Requests.erase(x->ReqId);
@@ -193,23 +185,18 @@ public:
 
         return requests;
     }
-
-    bool Contains(TRequest* ptr)
-    {
-        return Pointers.contains(ptr);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 enum class EEndpointState
 {
+    Disconnecting,
     Disconnected,
     ResolvingAddress,
     ResolvingRoute,
     Connecting,
     Connected,
-    Error,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -217,41 +204,18 @@ enum class EEndpointState
 const char* GetEndpointStateName(EEndpointState state)
 {
     static const char* names[] = {
+        "Disconnecting",
         "Disconnected",
         "ResolvingAddress",
         "ResolvingRoute",
         "Connecting",
         "Connected",
-        "Error",
     };
 
     if ((size_t)state < Y_ARRAY_SIZE(names)) {
         return names[(size_t)state];
-    } else {
-        return "Undefined";
     }
-}
-
-EEndpointState GetExpectedEndpointState(rdma_cm_event_type event)
-{
-    switch (event) {
-        case RDMA_CM_EVENT_ADDR_RESOLVED:
-        case RDMA_CM_EVENT_ADDR_ERROR:
-            return EEndpointState::ResolvingAddress;
-
-        case RDMA_CM_EVENT_ROUTE_RESOLVED:
-        case RDMA_CM_EVENT_ROUTE_ERROR:
-            return EEndpointState::ResolvingRoute;
-
-        case RDMA_CM_EVENT_UNREACHABLE:
-        case RDMA_CM_EVENT_ESTABLISHED:
-        case RDMA_CM_EVENT_REJECTED:
-            return EEndpointState::Connecting;
-
-        default:
-        case RDMA_CM_EVENT_DISCONNECTED:
-            return EEndpointState::Connected;
-    }
+    return "Undefined";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -349,6 +313,50 @@ struct TEndpointCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TReconnectTimer
+{
+    const TDuration MaxDelay;
+
+    TTimerHandle Timer;
+    TMaybe<TDuration> Delay;
+    TAtomic Error = E_REJECTED; // returned in transient states
+    TAdaptiveLock Lock;
+
+    TReconnectTimer(TDuration maxDelay)
+        : MaxDelay(maxDelay)
+    {
+    }
+
+    void Clear()
+    {
+        auto guard = Guard(Lock);
+
+        Timer.Clear();
+        Delay.Clear();
+
+        AtomicSet(Error, E_REJECTED);
+    }
+
+    void Set(TDuration minDelay)
+    {
+        auto guard = Guard(Lock);
+
+        if (Delay.Defined()) {
+            Delay = Min(*Delay * 2, MaxDelay);
+
+            if (Delay == MaxDelay) {
+                AtomicSet(Error, E_RDMA_CONNECT_FAILED);
+            }
+        } else {
+            Delay = Min(minDelay, MaxDelay);
+        }
+
+        Timer.Set(*Delay);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TClientEndpoint final
     : public IClientEndpoint
     , public NVerbs::ICompletionHandler
@@ -358,42 +366,6 @@ class TClientEndpoint final
     friend class TClient;
     friend class TCompletionPoller;
 
-    struct TReconnect
-    {
-        const TDuration MaxDelay;
-
-        TTimerHandle Timer;
-        TDuration Delay = MIN_RECONNECT_DELAY;
-
-        // returned in transient states
-        TAtomic Error = E_REJECTED;
-
-        TReconnect(const TDuration maxDelay)
-            : MaxDelay(maxDelay)
-        {
-        }
-
-        void Reset()
-        {
-            Timer.Clear();
-            AtomicSet(Error, E_REJECTED);
-            Delay = MIN_RECONNECT_DELAY;
-        }
-
-        void Schedule()
-        {
-            Timer.Set(Delay);
-
-            if (Delay != MaxDelay) {
-                Delay = Min(Delay * 2, MaxDelay);
-
-                if (Delay >= MaxDelay) {
-                    AtomicSet(Error, E_RDMA_CONNECT_FAILED);
-                }
-            }
-        }
-    };
-
 private:
     NVerbs::IVerbsPtr Verbs;
 
@@ -401,15 +373,15 @@ private:
     TString Host;
     ui32 Port;
     IClientHandlerPtr Handler;
-    TClientConfigPtr DefaultConfig;
+    const TClientConfigPtr DefaultConfig;
     TEndpointCountersPtr Counters;
     TLog Log;
 
-    TReconnect Reconnect;
+    TReconnectTimer ReconnectTimer;
     TClientConfig Config;
 
     TCompletionPoller* Poller = nullptr;
-    TAtomic State = intptr_t(EEndpointState::Disconnected);
+    std::atomic<EEndpointState> State = EEndpointState::Disconnected;
 
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
     NVerbs::TCompletionQueuePtr CompletionQueue = NVerbs::NullPtr;
@@ -431,6 +403,7 @@ private:
 
     TLockFreeList<TRequest> InputRequests;
     TEventHandle RequestEvent;
+    TEventHandle DisconnectEvent;
 
     TSimpleList<TRequest> QueuedRequests;
     TActiveRequests ActiveRequests;
@@ -455,17 +428,19 @@ public:
 
     bool CheckState(EEndpointState expectedState) const;
     void ChangeState(EEndpointState expectedState, EEndpointState newState);
+    void ChangeState(EEndpointState newState);
 
     // called in context of CM poller thread
     void InitCompletionQueue();
     void StartReceive();
-    void ResetConfig();
 
-    void AbortRequests(NVerbs::TConnectionEventPtr event);
+    void ResetConfig();
     void ResetConnection(NVerbs::TConnectionPtr conn);
 
     int ReconnectTimerHandle();
-    void ScheduleReconnect();
+    void SetReconnectTimer(TDuration minDelay);
+    void ClearReconnectTimer();
+    void Reconnect();
 
     // called in context of client thread
     TResultOrError<TClientRequestPtr> AllocateRequest(
@@ -480,6 +455,7 @@ public:
     // called in context of CQ poller thread
     bool HandleInputRequests();
     bool HandleCompletionEvents();
+    bool HandleDisconnect();
 
 private:
     void HandleQueuedRequests();
@@ -516,7 +492,7 @@ TClientEndpoint::TClientEndpoint(
     , DefaultConfig(std::move(config))
     , Counters(std::move(stats))
     , Log(log)
-    , Reconnect(DefaultConfig->MaxReconnectDelay)
+    , ReconnectTimer(DefaultConfig->MaxReconnectDelay)
 {
     Connection->context = this;
     Config = *DefaultConfig;
@@ -537,27 +513,38 @@ TClientEndpoint::~TClientEndpoint()
 
 ui32 TClientEndpoint::GetError() const
 {
-    return AtomicGet(Reconnect.Error);
+    return AtomicGet(ReconnectTimer.Error);
 }
 
 bool TClientEndpoint::CheckState(EEndpointState expectedState) const
 {
-    auto actualState = static_cast<EEndpointState>(AtomicGet(State));
-    return actualState == expectedState;
+    return State == expectedState;
 }
 
 void TClientEndpoint::ChangeState(
     EEndpointState expectedState,
     EEndpointState newState)
 {
-    do {
-        auto actualState = static_cast<EEndpointState>(AtomicGet(State));
-        Y_VERIFY(actualState == expectedState,
-            "invalid state transition (new: %s, expected: %s, actual: %s)",
-            GetEndpointStateName(newState),
-            GetEndpointStateName(expectedState),
-            GetEndpointStateName(actualState));
-    } while (!AtomicCas(&State, intptr_t(newState), intptr_t(expectedState)));
+    auto actualState = State.exchange(newState);
+
+    Y_VERIFY(actualState == expectedState,
+        "invalid state transition (new: %s, expected: %s, actual: %s)",
+        GetEndpointStateName(newState),
+        GetEndpointStateName(expectedState),
+        GetEndpointStateName(actualState));
+
+    STORAGE_DEBUG("change state %s to %s",
+        GetEndpointStateName(expectedState),
+        GetEndpointStateName(newState));
+}
+
+void TClientEndpoint::ChangeState(EEndpointState newState)
+{
+    auto currentState = State.exchange(newState);
+
+    STORAGE_DEBUG("change state %s to %s",
+        GetEndpointStateName(currentState),
+        GetEndpointStateName(newState));
 }
 
 void TClientEndpoint::InitCompletionQueue()
@@ -726,7 +713,10 @@ void TClientEndpoint::SendRequest(
         req->CallContext->RequestId);
 
     if (!CheckState(EEndpointState::Connected)) {
-        HandleError(std::move(req), GetError(), "endpoint is unavailable");
+        HandleError(
+            std::move(req),
+            GetError(),
+            "endpoint is unavailable");
         return;
     }
 
@@ -771,15 +761,18 @@ void TClientEndpoint::HandleQueuedRequests()
     }
 }
 
-void TClientEndpoint::AbortRequests(NVerbs::TConnectionEventPtr event)
+bool TClientEndpoint::HandleDisconnect()
 {
-    auto msg = TStringBuilder()
-        << "endpoint is unavailable: "
-        << NVerbs::GetEventName(event->event);
+    bool ret = false;
+
+    if (Config.WaitMode == EWaitMode::Poll) {
+        DisconnectEvent.Clear();
+    }
 
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
+        ret = true;
     }
 
     while (QueuedRequests) {
@@ -787,13 +780,16 @@ void TClientEndpoint::AbortRequests(NVerbs::TConnectionEventPtr event)
         Y_VERIFY(req);
 
         Counters->RequestDequeued();
-        HandleError(std::move(req), GetError(), msg);
+        HandleError(std::move(req), GetError(), "endpoint is unavilable");
     }
 
     while (auto req = ActiveRequests.Pop()) {
         Counters->RequestAborted();
-        HandleError(std::move(req), GetError(), msg);
+        HandleError(std::move(req), GetError(), "endpoint is unavailable");
+        ret = true;
     }
+
+    return ret;
 }
 
 void TClientEndpoint::HandleError(TRequestPtr req, ui32 err, const TString& msg)
@@ -889,20 +885,17 @@ void TClientEndpoint::SendRequestCompleted(
     // TODO
     Y_UNUSED(ts);
 
-    auto* req = static_cast<TRequest*>(send->context);
-
-    if (!ActiveRequests.Contains(req)) {
-        STORAGE_WARN("SEND #" << send->wr.wr_id
-            << ": request " << (void*)req << " not found");
-
-        Counters->SendRequestCompleted();
-        SendQueue.Push(send);
-
+    if (status == IBV_WC_WR_FLUSH_ERR) {
+        // note that recvs are also flushed as sends
+        Reconnect();
         return;
     }
 
+    auto* req = static_cast<TRequest*>(send->context);
+
     if (status != IBV_WC_SUCCESS) {
-        return SendRequestError(req->ReqId, send, status);
+        SendRequestError(req->ReqId, send, status);
+        return;
     }
 
     LWTRACK(
@@ -923,7 +916,7 @@ void TClientEndpoint::SendRequestError(
         << NVerbs::GetStatusString(status));
 
     if (auto req = ActiveRequests.Pop(reqId)) {
-        HandleError(std::move(req), E_FAIL, TStringBuilder()
+        HandleError(std::move(req), GetError(), TStringBuilder()
             << "send request error: " << NVerbs::GetStatusString(status));
     } else {
         STORAGE_WARN("SEND #" << send->wr.wr_id << ": request "
@@ -934,6 +927,7 @@ void TClientEndpoint::SendRequestError(
     Counters->SendRequestError();
 
     SendQueue.Push(send);
+    Reconnect();
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv)
@@ -953,7 +947,8 @@ void TClientEndpoint::RecvResponseCompleted(
     ui64 ts)
 {
     if (wc_status != IBV_WC_SUCCESS) {
-        return RecvResponseError(recv, wc_status);
+        RecvResponseError(recv, wc_status);
+        return;
     }
 
     // TODO
@@ -1011,8 +1006,8 @@ void TClientEndpoint::RecvResponseError(TRecvWr* recv, ibv_wc_status status)
     ReportRdmaError();
     Counters->RecvResponseError();
 
-    // should always be posted
-    RecvResponse(recv);
+    RecvQueue.Push(recv);
+    Reconnect();
 }
 
 void TClientEndpoint::ResetConnection(NVerbs::TConnectionPtr conn)
@@ -1027,40 +1022,51 @@ void TClientEndpoint::ResetConnection(NVerbs::TConnectionPtr conn)
     SendQueue.Clear();
     RecvQueue.Clear();
 
-    Counters->ResetActiveRecv();
-    Counters->ResetActiveSend();
-
     CompletionQueue.reset();
     CompletionChannel.reset();
 
     conn->context = this;
     Connection = std::move(conn);
 
-    ScheduleReconnect();
+    Counters->ResetActiveRecv();
+    Counters->ResetActiveSend();
 }
 
 int TClientEndpoint::ReconnectTimerHandle()
 {
-    return Reconnect.Timer.Handle();
+    return ReconnectTimer.Timer.Handle();
 }
 
-void TClientEndpoint::ScheduleReconnect()
+void TClientEndpoint::ClearReconnectTimer()
 {
-    Reconnect.Schedule();
+    ReconnectTimer.Clear();
+}
 
-    auto error = GetError();
+void TClientEndpoint::SetReconnectTimer(
+    TDuration minDelay = MIN_RECONNECT_DELAY)
+{
+    ReconnectTimer.Set(minDelay);
+}
 
-    if (!error || error == E_REJECTED) {
+void TClientEndpoint::Reconnect()
+{
+    if (CheckState(EEndpointState::Disconnecting)) {
         return;
     }
 
-    auto startResult = std::move(StartResult);
-    if (!startResult.Initialized()) {
-        return;
+    ChangeState(EEndpointState::Disconnecting);
+
+    struct ibv_qp_attr attr = {
+        .qp_state = IBV_QPS_ERR,
+    };
+
+    Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
+
+    if (Config.WaitMode == EWaitMode::Poll) {
+        DisconnectEvent.Set();
     }
 
-    startResult.SetException(std::make_exception_ptr(TServiceError(
-        MakeError(error, TStringBuilder() << "Reconnect timer hit"))));
+    SetReconnectTimer();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1247,12 +1253,17 @@ public:
             PollHandle.Attach(
                 endpoint->CompletionChannel->fd,
                 EPOLLIN,
-                PtrEventTag(endpoint, 0));
+                PtrEventTag(endpoint, EPollerEvent::Completion));
 
             PollHandle.Attach(
                 endpoint->RequestEvent.Handle(),
                 EPOLLIN,
-                PtrEventTag(endpoint, 1));
+                PtrEventTag(endpoint, EPollerEvent::Request));
+
+            PollHandle.Attach(
+                endpoint->DisconnectEvent.Handle(),
+                EPOLLIN,
+                PtrEventTag(endpoint, EPollerEvent::Disconnect));
 
             Verbs->RequestCompletionEvent(endpoint->CompletionQueue.get(), 0);
         }
@@ -1263,6 +1274,7 @@ public:
         if (Config->WaitMode == EWaitMode::Poll) {
             PollHandle.Detach(endpoint->CompletionChannel->fd);
             PollHandle.Detach(endpoint->RequestEvent.Handle());
+            PollHandle.Detach(endpoint->DisconnectEvent.Handle());
         }
     }
 
@@ -1294,6 +1306,77 @@ private:
         return nullptr;
     }
 
+    void HandlePollEvent(const epoll_event& event)
+    {
+        if (!event.events || !event.data.ptr) {
+            return;
+        }
+
+        auto* endpoint = PtrFromTag<TClientEndpoint>(event.data.ptr);
+
+        switch (EventFromTag(event.data.ptr)) {
+            case EPollerEvent::Completion:
+                endpoint->HandleCompletionEvents();
+                break;
+
+            case EPollerEvent::Request:
+                endpoint->HandleInputRequests();
+                break;
+
+            case EPollerEvent::Disconnect:
+                endpoint->HandleDisconnect();
+                endpoint->ChangeState(
+                    EEndpointState::Disconnecting,
+                    EEndpointState::Disconnected);
+                break;
+        }
+    }
+
+    bool HandleEvents()
+    {
+        auto endpoints = Endpoints.Get();
+        auto hasWork = false;
+
+        for (const auto& endpoint: *endpoints) {
+            if (endpoint->CheckState(EEndpointState::Connected)) {
+                hasWork |= endpoint->HandleInputRequests();
+                hasWork |= endpoint->HandleCompletionEvents();
+            }
+
+            if (endpoint->CheckState(EEndpointState::Disconnecting)) {
+                hasWork |= endpoint->HandleCompletionEvents();
+                hasWork |= endpoint->HandleDisconnect();
+
+                endpoint->ChangeState(
+                        EEndpointState::Disconnecting,
+                        EEndpointState::Disconnected);
+            }
+        }
+
+        return hasWork;
+    }
+
+    void DropTimedOutRequests()
+    {
+        auto endpoints = Endpoints.Get();
+
+        for (const auto& endpoint: *endpoints) {
+            if (!endpoint->CheckState(EEndpointState::Connected)) {
+                continue;
+            }
+
+            auto requests = endpoint->ActiveRequests.PopTimedOutRequests(
+                DurationToCyclesSafe(Config->MaxResponseDelay));
+
+            for (auto& request: requests) {
+                endpoint->HandleError(
+                    std::move(request),
+                    E_TIMEOUT,
+                    "timed out");
+            }
+        }
+    }
+
     template <EWaitMode WaitMode>
     void Execute()
     {
@@ -1304,33 +1387,14 @@ private:
             if (WaitMode == EWaitMode::Poll) {
                 // wait for completion events
                 size_t signaled = PollHandle.Wait(POLL_TIMEOUT);
+
                 for (size_t i = 0; i < signaled; ++i) {
-                    const auto& event = PollHandle.GetEvent(i);
-                    if (event.events && event.data.ptr) {
-                        auto* endpoint = PtrFromTag<TClientEndpoint>(event.data.ptr);
-                        if (EventFromTag(event.data.ptr)) {
-                            endpoint->HandleInputRequests();
-                        } else {
-                            endpoint->HandleCompletionEvents();
-                        }
-                    }
+                    HandlePollEvent(PollHandle.GetEvent(i));
                 }
             } else {
-                bool hasWork = false;
-                auto endpoints = Endpoints.Get();
+                auto hasWork = HandleEvents();
 
-                // just loop through all registered endpoints and do polling
-                for (const auto& endpoint: *endpoints) {
-                    if (endpoint->CheckState(EEndpointState::Connected)) {
-                        if (endpoint->HandleInputRequests()) {
-                            hasWork = true;
-                        }
-                        if (endpoint->HandleCompletionEvents()) {
-                            hasWork = true;
-                        }
-                    }
-                }
-
+                // FIXME (NBS-3568): replace sleep with poll
                 if (WaitMode == EWaitMode::AdaptiveWait) {
                     if (hasWork) {
                         // reset spin wait
@@ -1342,18 +1406,7 @@ private:
                 }
             }
 
-            auto endpoints = Endpoints.Get();
-            for (const auto& endpoint: *endpoints) {
-                auto requests = endpoint->ActiveRequests.PopTimedOutRequests(
-                    DurationToCyclesSafe(Config->MaxResponseDelay));
-
-                for (auto& request: requests) {
-                    endpoint->HandleError(
-                        std::move(request),
-                        E_TIMEOUT,
-                        "timed out");
-                }
-            }
+            DropTimedOutRequests();
         }
     }
 };
@@ -1399,6 +1452,7 @@ private:
     void BeginResolveAddress(TClientEndpoint* endpoint);
     void BeginResolveRoute(TClientEndpoint* endpoint);
     void BeginConnect(TClientEndpoint* endpoint);
+    void HandleDisconnected(TClientEndpoint* endpoint);
 
     void HandleConnected(
         TClientEndpoint* endpoint,
@@ -1408,15 +1462,9 @@ private:
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event);
 
-    void HandleDisconnected(
-        TClientEndpoint* endpoint,
-        NVerbs::TConnectionEventPtr event);
-
     void ResetConnection(
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event);
-
-    void ResetIncompleteConnection(TClientEndpoint* endpoint);
 
     TCompletionPoller& PickPoller();
 };
@@ -1507,7 +1555,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event)
 {
     STORAGE_DEBUG(NVerbs::GetEventName(event->event) << " received");
 
-    TClientEndpoint* endpoint = nullptr;
+    TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
 
     switch (event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -1528,20 +1576,18 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event)
             break;
 
         case RDMA_CM_EVENT_ADDR_RESOLVED:
-            BeginResolveRoute(TClientEndpoint::FromEvent(event.get()));
+            BeginResolveRoute(endpoint);
             break;
 
         case RDMA_CM_EVENT_ROUTE_RESOLVED:
-            BeginConnect(TClientEndpoint::FromEvent(event.get()));
+            BeginConnect(endpoint);
             break;
 
         case RDMA_CM_EVENT_ESTABLISHED:
-            endpoint = TClientEndpoint::FromEvent(event.get());
             HandleConnected(endpoint, std::move(event));
             break;
 
         case RDMA_CM_EVENT_REJECTED:
-            endpoint = TClientEndpoint::FromEvent(event.get());
             HandleRejected(endpoint, std::move(event));
             break;
 
@@ -1550,8 +1596,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event)
         case RDMA_CM_EVENT_CONNECT_ERROR:
         case RDMA_CM_EVENT_UNREACHABLE:
         case RDMA_CM_EVENT_DISCONNECTED:
-            endpoint = TClientEndpoint::FromEvent(event.get());
-            HandleDisconnected(endpoint, std::move(event));
+            HandleDisconnected(endpoint);
             break;
 
         case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -1563,24 +1608,37 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event)
 
 void TClient::Reconnect(TClientEndpoint* endpoint)
 {
-    // XXX a temporary hack, will fix this properly later
-    auto state = static_cast<EEndpointState>(AtomicGet(endpoint->State));
-
-    STORAGE_INFO("reconnect attempt in "
-        << GetEndpointStateName(state) << " state");
-
-    switch (state) {
-        case EEndpointState::Connecting:
-            ResetIncompleteConnection(endpoint);
-            [[fallthrough]];
-
-        case EEndpointState::Disconnected:
-            BeginResolveAddress(endpoint);
-            break;
-
-        default:
-            break;
+    auto error = endpoint->GetError();
+    if (error == E_RDMA_CONNECT_FAILED) {
+        // TODO move endpoint into error state and clean up
+        if (endpoint->StartResult.Initialized()) {
+            auto startResult = std::move(endpoint->StartResult);
+            startResult.SetException(std::make_exception_ptr(TServiceError(
+                MakeError(error, "connect timed out"))));
+        }
+        return;
     }
+
+    EEndpointState state = endpoint->State;
+    STORAGE_DEBUG("reconnect timer hit in %s state",
+        GetEndpointStateName(state));
+
+    if (state == EEndpointState::Disconnecting) {
+        STORAGE_DEBUG("wait for CQ to cancel requests");
+        endpoint->SetReconnectTimer();
+        return;
+    }
+
+    if (state == EEndpointState::Connecting) {
+        endpoint->ChangeState(
+            EEndpointState::Connecting,
+            EEndpointState::Disconnected);
+    }
+
+    endpoint->Poller->Detach(endpoint);
+    endpoint->ResetConnection(ConnectionPoller->CreateConnection());
+
+    BeginResolveAddress(endpoint);
 }
 
 void TClient::BeginResolveAddress(TClientEndpoint* endpoint)
@@ -1631,7 +1689,6 @@ void TClient::BeginConnect(TClientEndpoint* endpoint)
 {
     Y_VERIFY(endpoint);
     endpoint->InitCompletionQueue();
-
     endpoint->Poller->Attach(endpoint);
 
     TConnectMessage connectMsg = {
@@ -1658,8 +1715,7 @@ void TClient::BeginConnect(TClientEndpoint* endpoint)
         EEndpointState::ResolvingRoute,
         EEndpointState::Connecting);
 
-    endpoint->ScheduleReconnect();
-
+    endpoint->SetReconnectTimer(MIN_CONNECT_TIMEOUT);
     Verbs->Connect(endpoint->Connection.get(), &connectParams);
 }
 
@@ -1676,7 +1732,8 @@ void TClient::HandleConnected(
         acceptParams->private_data_len < sizeof(TAcceptMessage))
     {
         STORAGE_ERROR("CONNECT: unable to parse accept message");
-        return ResetConnection(endpoint, std::move(event));
+        endpoint->Reconnect();
+        return;
     }
 
     const auto* msg = static_cast<const TAcceptMessage*>(
@@ -1687,7 +1744,8 @@ void TClient::HandleConnected(
         STORAGE_ERROR("CONNECT: incompatible protocol version "
             << version << " != " << int(RDMA_PROTO_VERSION));
 
-        return ResetConnection(endpoint, std::move(event));
+        endpoint->Reconnect();
+        return;
     }
 
     const ui32 keepAliveTimeout = msg->KeepAliveTimeout;
@@ -1699,7 +1757,7 @@ void TClient::HandleConnected(
         EEndpointState::Connecting,
         EEndpointState::Connected);
 
-    endpoint->Reconnect.Reset();
+    endpoint->ClearReconnectTimer();
     endpoint->StartReceive();
 
     // only the first connect is passed up
@@ -1719,7 +1777,7 @@ void TClient::HandleRejected(
         params->private_data_len < sizeof(TRejectMessage) ||
         ParseMessageHeader(params->private_data) != RDMA_PROTO_VERSION)
     {
-        ResetConnection(endpoint, std::move(event));
+        endpoint->Reconnect();
         return;
     }
 
@@ -1746,40 +1804,13 @@ void TClient::HandleRejected(
         }
     }
 
-    ResetConnection(endpoint, std::move(event));
+    endpoint->Reconnect();
 }
 
-void TClient::HandleDisconnected(
-    TClientEndpoint* endpoint,
-    NVerbs::TConnectionEventPtr event)
+void TClient::HandleDisconnected(TClientEndpoint* endpoint)
 {
     endpoint->ResetConfig();
-    ResetConnection(endpoint, std::move(event));
-}
-
-void TClient::ResetConnection(
-    TClientEndpoint* endpoint,
-    NVerbs::TConnectionEventPtr event)
-{
-    endpoint->ChangeState(
-        GetExpectedEndpointState(event->event),
-        EEndpointState::Disconnected);
-
-    endpoint->Poller->Detach(endpoint);
-
-    // event must be freed before reset, otherwise it will block indefinitely
-    endpoint->AbortRequests(std::move(event));
-    endpoint->ResetConnection(ConnectionPoller->CreateConnection());
-}
-
-void TClient::ResetIncompleteConnection(TClientEndpoint* endpoint)
-{
-    endpoint->ChangeState(
-        EEndpointState::Connecting,
-        EEndpointState::Disconnected);
-
-    endpoint->Poller->Detach(endpoint);
-    endpoint->ResetConnection(ConnectionPoller->CreateConnection());
+    endpoint->Reconnect();
 }
 
 TCompletionPoller& TClient::PickPoller()

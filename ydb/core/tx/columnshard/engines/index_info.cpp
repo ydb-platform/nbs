@@ -2,8 +2,8 @@
 #include "insert_table.h"
 #include "column_engine.h"
 
-#include <ydb/core/formats/arrow_batch_builder.h>
-#include <ydb/core/formats/sort_cursor.h>
+#include <ydb/core/formats/arrow/arrow_batch_builder.h>
+#include <ydb/core/formats/arrow/sort_cursor.h>
 #include <ydb/core/sys_view/common/schema.h>
 
 namespace NKikimr::NOlap {
@@ -11,8 +11,8 @@ namespace NKikimr::NOlap {
 const TString TIndexInfo::STORE_INDEX_STATS_TABLE = TString("/") + NSysView::SysPathName + "/" + NSysView::StorePrimaryIndexStatsName;
 const TString TIndexInfo::TABLE_INDEX_STATS_TABLE = TString("/") + NSysView::SysPathName + "/" + NSysView::TablePrimaryIndexStatsName;
 
-static TVector<TString> NamesOnly(const TVector<TNameTypeInfo>& columns) {
-    TVector<TString> out;
+static std::vector<TString> NamesOnly(const std::vector<TNameTypeInfo>& columns) {
+    std::vector<TString> out;
     out.reserve(columns.size());
     for (const auto& [name, _] : columns) {
         out.push_back(name);
@@ -26,20 +26,16 @@ TIndexInfo::TIndexInfo(const TString& name, ui32 id)
     , Name(name)
 {}
 
-std::shared_ptr<arrow::RecordBatch> TIndexInfo::AddSpecialColumns(
-    const std::shared_ptr<arrow::RecordBatch>& batch,
-    const ui64 planStep,
-    const ui64 txId)
-{
+std::shared_ptr<arrow::RecordBatch> TIndexInfo::AddSpecialColumns(const std::shared_ptr<arrow::RecordBatch>& batch, const TSnapshot& snapshot) {
     Y_VERIFY(batch);
     i64 numColumns = batch->num_columns();
     i64 numRows = batch->num_rows();
 
     auto res = batch->AddColumn(numColumns, arrow::field(SPEC_COL_PLAN_STEP, arrow::uint64()),
-                                NArrow::MakeUI64Array(planStep, numRows));
+                                NArrow::MakeUI64Array(snapshot.GetPlanStep(), numRows));
     Y_VERIFY(res.ok());
     res = (*res)->AddColumn(numColumns + 1, arrow::field(SPEC_COL_TX_ID, arrow::uint64()),
-                            NArrow::MakeUI64Array(txId, numRows));
+                            NArrow::MakeUI64Array(snapshot.GetTxId(), numRows));
     Y_VERIFY(res.ok());
     Y_VERIFY((*res)->num_columns() == numColumns + 2);
     return *res;
@@ -54,11 +50,18 @@ std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchemaSnapshot() {
 }
 
 bool TIndexInfo::IsSpecialColumn(const arrow::Field& field) {
-    const auto& name = field.name();
-    return (name == SPEC_COL_PLAN_STEP)
-        || (name == SPEC_COL_TX_ID);
+    return IsSpecialColumn(field.name());
 }
 
+bool TIndexInfo::IsSpecialColumn(const std::string& fieldName) {
+    return fieldName == SPEC_COL_PLAN_STEP
+        || fieldName == SPEC_COL_TX_ID;
+}
+
+bool TIndexInfo::IsSpecialColumn(const ui32 fieldId) {
+    return fieldId == (ui32)ESpecialColumn::PLAN_STEP
+        || fieldId == (ui32)ESpecialColumn::TX_ID;
+}
 
 ui32 TIndexInfo::GetColumnId(const std::string& name) const {
     auto id = GetColumnIdOptional(name);
@@ -69,16 +72,15 @@ ui32 TIndexInfo::GetColumnId(const std::string& name) const {
 std::optional<ui32> TIndexInfo::GetColumnIdOptional(const std::string& name) const {
     const auto ni = ColumnNames.find(name);
 
-    if (ni == ColumnNames.end()) {
-        if (name == SPEC_COL_PLAN_STEP) {
-            return ui32(ESpecialColumn::PLAN_STEP);
-        } else if (name == SPEC_COL_TX_ID) {
-            return ui32(ESpecialColumn::TX_ID);
-        }
-        return {};
+    if (ni != ColumnNames.end()) {
+        return ni->second;
     }
-
-    return ni->second;
+    if (name == SPEC_COL_PLAN_STEP) {
+        return ui32(ESpecialColumn::PLAN_STEP);
+    } else if (name == SPEC_COL_TX_ID) {
+        return ui32(ESpecialColumn::TX_ID);
+    }
+    return {};
 }
 
 TString TIndexInfo::GetColumnName(ui32 id, bool required) const {
@@ -98,8 +100,8 @@ TString TIndexInfo::GetColumnName(ui32 id, bool required) const {
     }
 }
 
-TVector<TString> TIndexInfo::GetColumnNames(const TVector<ui32>& ids) const {
-    TVector<TString> out;
+std::vector<TString> TIndexInfo::GetColumnNames(const std::vector<ui32>& ids) const {
+    std::vector<TString> out;
     out.reserve(ids.size());
     for (ui32 id : ids) {
         const auto ci = Columns.find(id);
@@ -109,7 +111,7 @@ TVector<TString> TIndexInfo::GetColumnNames(const TVector<ui32>& ids) const {
     return out;
 }
 
-TVector<TNameTypeInfo> TIndexInfo::GetColumns(const TVector<ui32>& ids) const {
+std::vector<TNameTypeInfo> TIndexInfo::GetColumns(const std::vector<ui32>& ids) const {
     return NOlap::GetColumns(*this, ids);
 }
 
@@ -179,7 +181,7 @@ std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchema() const {
         return Schema;
     }
 
-    TVector<ui32> ids;
+    std::vector<ui32> ids;
     ids.reserve(Columns.size());
     for (const auto& [id, _] : Columns) {
         ids.push_back(id);
@@ -213,7 +215,7 @@ std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchemaWithSpecials() const {
 
 std::shared_ptr<arrow::Schema> TIndexInfo::AddColumns(
     const std::shared_ptr<arrow::Schema>& src,
-    const TVector<TString>& columns) const
+    const std::vector<TString>& columns) const
 {
     std::shared_ptr<arrow::Schema> all = ArrowSchemaWithSpecials();
     auto fields = src->fields();
@@ -231,22 +233,29 @@ std::shared_ptr<arrow::Schema> TIndexInfo::AddColumns(
     return std::make_shared<arrow::Schema>(std::move(fields));
 }
 
-std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchema(const TVector<ui32>& columnIds) const {
-    return MakeArrowSchema(Columns, columnIds);
+std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchema(const std::vector<ui32>& columnIds, bool withSpecials) const {
+    return MakeArrowSchema(Columns, columnIds, withSpecials);
 }
 
-std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchema(const TVector<TString>& names) const {
-    TVector<ui32> ids;
-    ids.reserve(names.size());
-    for (auto& name : names) {
-        auto it = ColumnNames.find(name);
-        if (it == ColumnNames.end()) {
+std::vector<ui32> TIndexInfo::GetColumnIds(const std::vector<TString>& columnNames) const {
+    std::vector<ui32> ids;
+    ids.reserve(columnNames.size());
+    for (auto& name : columnNames) {
+        auto columnId = GetColumnIdOptional(name);
+        if (!columnId) {
             return {};
         }
-        ids.emplace_back(it->second);
+        ids.emplace_back(*columnId);
     }
+    return ids;
+}
 
-    return MakeArrowSchema(Columns, ids);
+std::shared_ptr<arrow::Schema> TIndexInfo::ArrowSchema(const std::vector<TString>& names) const {
+    auto columnIds = GetColumnIds(names);
+    if (columnIds.empty()) {
+        return {};
+    }
+    return MakeArrowSchema(Columns, columnIds);
 }
 
 std::shared_ptr<arrow::Field> TIndexInfo::ArrowColumnField(ui32 columnId) const {
@@ -254,6 +263,9 @@ std::shared_ptr<arrow::Field> TIndexInfo::ArrowColumnField(ui32 columnId) const 
 }
 
 void TIndexInfo::SetAllKeys() {
+    /// @note Setting replace and sorting key to PK we are able to:
+    /// * apply REPLACE by MergeSort
+    /// * apply PK predicate before REPLACE
     const auto& primaryKeyNames = NamesOnly(GetPrimaryKey());
     // Update set of required columns with names from primary key.
     for (const auto& name: primaryKeyNames) {
@@ -314,45 +326,20 @@ bool TIndexInfo::AllowTtlOverColumn(const TString& name) const {
     return MinMaxIdxColumnsIds.contains(it->second);
 }
 
-void TIndexInfo::UpdatePathTiering(THashMap<ui64, NOlap::TTiering>& pathTiering) const {
-    auto schema = ArrowSchema(); // init Schema if not yet
-
-    for (auto& [pathId, tiering] : pathTiering) {
-        for (auto& [tierName, tierInfo] : tiering.TierByName) {
-            if (!tierInfo->EvictColumn) {
-                tierInfo->EvictColumn = schema->GetFieldByName(tierInfo->EvictColumnName);
-            }
-            // TODO: eviction with recompression is not supported yet
-            if (tierInfo->NeedExport) {
-                tierInfo->Compression = {};
-            }
-        }
-        if (tiering.Ttl && !tiering.Ttl->EvictColumn) {
-            tiering.Ttl->EvictColumn = schema->GetFieldByName(tiering.Ttl->EvictColumnName);
-        }
-    }
-}
-
-void TIndexInfo::SetPathTiering(THashMap<ui64, TTiering>&& pathTierings) {
-    PathTiering = std::move(pathTierings);
-}
-
-const TTiering* TIndexInfo::GetTiering(ui64 pathId) const {
-    auto it = PathTiering.find(pathId);
-    if (it != PathTiering.end()) {
-        return &it->second;
-    }
-    return nullptr;
-}
-
-std::shared_ptr<arrow::Schema> MakeArrowSchema(const NTable::TScheme::TTableSchema::TColumns& columns, const TVector<ui32>& ids) {
+std::shared_ptr<arrow::Schema> MakeArrowSchema(const NTable::TScheme::TTableSchema::TColumns& columns, const std::vector<ui32>& ids, bool withSpecials) {
     std::vector<std::shared_ptr<arrow::Field>> fields;
-    fields.reserve(ids.size());
+    fields.reserve(withSpecials ? ids.size() + 2 : ids.size());
+
+    if (withSpecials) {
+        // Place special fields at the beginning of the schema.
+        fields.push_back(arrow::field(TIndexInfo::SPEC_COL_PLAN_STEP, arrow::uint64()));
+        fields.push_back(arrow::field(TIndexInfo::SPEC_COL_TX_ID, arrow::uint64()));
+    }
 
     for (const ui32 id: ids) {
         auto it = columns.find(id);
         if (it == columns.end()) {
-            return {};
+            continue;
         }
 
         const auto& column = it->second;
@@ -363,8 +350,8 @@ std::shared_ptr<arrow::Schema> MakeArrowSchema(const NTable::TScheme::TTableSche
     return std::make_shared<arrow::Schema>(std::move(fields));
 }
 
-TVector<TNameTypeInfo> GetColumns(const NTable::TScheme::TTableSchema& tableSchema, const TVector<ui32>& ids) {
-    TVector<std::pair<TString, NScheme::TTypeInfo>> out;
+std::vector<TNameTypeInfo> GetColumns(const NTable::TScheme::TTableSchema& tableSchema, const std::vector<ui32>& ids) {
+    std::vector<std::pair<TString, NScheme::TTypeInfo>> out;
     out.reserve(ids.size());
     for (const ui32 id : ids) {
         const auto ci = tableSchema.Columns.find(id);

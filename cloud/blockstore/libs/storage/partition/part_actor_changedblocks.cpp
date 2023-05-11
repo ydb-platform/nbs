@@ -214,8 +214,6 @@ void TGetChangedBlocksActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -312,12 +310,9 @@ void TPartitionActor::HandleGetChangedBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TGetChangedBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -334,8 +329,6 @@ void TPartitionActor::HandleGetChangedBlocks(
     {
         auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(
             MakeError(statusCode, std::move(reason), flags));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -515,8 +508,6 @@ void TPartitionActor::CompleteGetChangedBlocks(
     }
 
     auto response = CreateGetChangedBlocksResponse(args.ChangedBlocks);
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

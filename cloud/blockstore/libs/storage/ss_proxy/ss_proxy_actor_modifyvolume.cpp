@@ -164,7 +164,6 @@ void TModifyVolumeActor::HandleModifySchemeResponse(
         status,
         reason);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -193,10 +192,7 @@ void TSSProxyActor::HandleModifyVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     NCloud::Register<TModifyVolumeActor>(
         ctx,

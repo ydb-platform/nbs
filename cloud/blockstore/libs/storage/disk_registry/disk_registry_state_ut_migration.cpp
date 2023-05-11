@@ -25,7 +25,7 @@ auto ChangeAgentState(
     const NProto::TAgentConfig& config,
     NProto::EAgentState newState)
 {
-    TVector<TDiskStateUpdate> affectedDisks;
+    TVector<TString> affectedDisks;
 
     auto error = state.UpdateAgentState(
         db,
@@ -117,11 +117,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     NProto::AGENT_STATE_WARNING);
 
                 UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL(diskIds[i], affectedDisks[0]);
 
-                auto& [d, seqNo] = affectedDisks[0];
+                UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+                const auto& update = state.GetDiskStateUpdates().back();
 
-                UNIT_ASSERT_VALUES_EQUAL(diskIds[i], d.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_MIGRATION, d.GetState());
+                UNIT_ASSERT_DISK_STATE(diskIds[i], DISK_STATE_MIGRATION, update);
             }
         });
 
@@ -189,17 +190,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         // finish migration for foo:uuid-1.1 -> uuid-3.1
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
             auto error = state.FinishDeviceMigration(
                 db,
                 "foo",
                 "uuid-1.1",
                 "uuid-3.1",
                 TInstant::Now(),
-                &affectedDisk);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(!affectedDisk.Defined());
+            UNIT_ASSERT(!updated);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -216,11 +217,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 NProto::AGENT_STATE_ONLINE);
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("foo", affectedDisks[0]);
 
-            auto& [d, seqNo] = affectedDisks[0];
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_VALUES_EQUAL("foo", d.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, d.GetState());
+            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_ONLINE, update);
         });
 
         // start migration for bar:uuid-2.1 -> uuid-4.X
@@ -258,11 +260,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 NProto::AGENT_STATE_WARNING);
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("foo", affectedDisks[0]);
 
-            auto& [d, seqNo] = affectedDisks[0];
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_VALUES_EQUAL("foo", d.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_MIGRATION, d.GetState());
+            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_MIGRATION, update)
         });
 
         {
@@ -282,17 +285,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
             auto error = state.FinishDeviceMigration(
                 db,
                 "foo",
                 "uuid-1.1",
                 "uuid-2.1",
                 TInstant::Now(),
-                &affectedDisk);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
+            UNIT_ASSERT(updated);
         });
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -357,7 +360,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
 
             auto error = state.UpdateAgentState(
                 db,
@@ -488,7 +491,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         // enable migrations
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            const TString diskIds[] { "foo", "bar" };
             auto affectedDisks = ChangeAgentState(
                 state,
                 db,
@@ -496,11 +498,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 NProto::AGENT_STATE_WARNING);
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(affectedReplica, affectedDisks[0]);
 
-            auto& [d, seqNo] = affectedDisks[0];
-
-            UNIT_ASSERT_VALUES_EQUAL(affectedReplica, d.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_MIGRATION, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                NProto::EDiskState_Name(NProto::DISK_STATE_MIGRATION),
+                NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
         });
 
         const auto source1 = agents[agentNo].GetDevices(0).GetDeviceUUID();
@@ -664,17 +667,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(affectedReplica, replicaId);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
             auto error = state.FinishDeviceMigration(
                 db,
                 affectedReplica,
                 source1,
                 target1,
                 TInstant::Now(),
-                &affectedDisk);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(!affectedDisk.Defined());
+            UNIT_ASSERT(!updated);
         });
 
         replicaId = state.FindReplicaByMigration("disk-1", source1, target1);
@@ -761,23 +764,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(affectedReplica, replicaId);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
             auto error = state.FinishDeviceMigration(
                 db,
                 affectedReplica,
                 source2,
                 target2,
                 TInstant::Now(),
-                &affectedDisk);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_VALUES_EQUAL(
-                affectedReplica,
-                affectedDisk->State.GetDiskId());
+            UNIT_ASSERT(updated);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
             UNIT_ASSERT_EQUAL(
-                NProto::DISK_STATE_ONLINE,
-                affectedDisk->State.GetState());
+                NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+                NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
         });
 
         replicaId = state.FindReplicaByMigration("disk-1", source1, target1);
@@ -876,6 +877,51 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             2,
             "|uuid-1|uuid-4|uuid-10|"
             "|uuid-2|uuid-5|uuid-11|");
+    }
+
+    Y_UNIT_TEST(ShouldntMigrateLocalDisks)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const auto agent = AgentConfig(1, {
+            Device("dev-1", "uuid-1.1"),
+            Device("dev-2", "uuid-1.2")
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({agent})
+            .WithDisks({
+                Disk("foo", {"uuid-1.1"}),
+                [] {
+                    auto config = Disk("bar", {"uuid-1.2"});
+                    config.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+                    return config;
+                }()
+            })
+            .Build();
+
+        UNIT_ASSERT(state.IsMigrationListEmpty());
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto affectedDisks = ChangeAgentState(
+                state,
+                db,
+                agent,
+                NProto::AGENT_STATE_WARNING);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
+        });
+
+        {
+            auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+
+            UNIT_ASSERT_VALUES_EQUAL("foo", migrations[0].DiskId);
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", migrations[0].SourceDeviceId);
+        }
     }
 }
 

@@ -27,12 +27,9 @@ void TPartitionActor::HandleAddUnconfirmedBlobs(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -84,8 +81,6 @@ void TPartitionActor::CompleteAddUnconfirmedBlobs(
     auto response =
         std::make_unique<TEvPartitionPrivate::TEvAddUnconfirmedBlobsResponse>();
     response->ExecCycles = args.RequestInfo->GetExecCycles();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

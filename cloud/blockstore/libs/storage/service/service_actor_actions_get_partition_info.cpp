@@ -92,8 +92,7 @@ void TGetPartitionInfoActionActor::GetPartitionInfo(const TActorContext& ctx)
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TGetPartitionInfoActionActor::HandleSuccess(

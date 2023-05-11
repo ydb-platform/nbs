@@ -400,8 +400,7 @@ void TVolumeActor::HandleUpdateDevices(
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)),
+            msg->CallContext),
         std::move(msg->Devices),
         std::move(msg->Migrations),
         std::move(msg->Replicas),

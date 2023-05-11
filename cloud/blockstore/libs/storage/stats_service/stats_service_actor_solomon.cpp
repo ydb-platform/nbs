@@ -92,6 +92,10 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         tc->TotalDiskCountLast15Min.Reset();
         tc->TotalDiskCountLastHour.Reset();
         tc->TotalPartitionCount.Reset();
+        tc->VolumeLoadTime1To5Sec.Reset();
+        tc->VolumeLoadTimeOver5Sec.Reset();
+        tc->VolumeStartTime1To5Sec.Reset();
+        tc->VolumeStartTimeOver5Sec.Reset();
     }
 
     NBlobMetrics::TBlobLoadMetrics tempBlobMetrics;
@@ -100,6 +104,32 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
 
     for (auto& p: State.GetVolumes()) {
         auto& vol = p.second;
+        auto& tc = State.GetCounters(vol.VolumeInfo);
+
+        const auto& selfSimple = vol.PerfCounters.VolumeSelfCounters.Simple;
+        const auto loadTime =
+            TDuration::MicroSeconds(selfSimple.LastVolumeLoadTime.Value);
+        if (loadTime >= TDuration::Seconds(1)) {
+            if (loadTime < TDuration::Seconds(5)) {
+                tc.VolumeLoadTime1To5Sec.Increment(1);
+                serviceTotal.VolumeLoadTime1To5Sec.Increment(1);
+            } else {
+                tc.VolumeLoadTimeOver5Sec.Increment(1);
+                serviceTotal.VolumeLoadTimeOver5Sec.Increment(1);
+            }
+        }
+
+        const auto startTime =
+            TDuration::MicroSeconds(selfSimple.LastVolumeStartTime.Value);
+        if (startTime >= TDuration::Seconds(1)) {
+            if (startTime < TDuration::Seconds(5)) {
+                tc.VolumeStartTime1To5Sec.Increment(1);
+                serviceTotal.VolumeStartTime1To5Sec.Increment(1);
+            } else {
+                tc.VolumeStartTimeOver5Sec.Increment(1);
+                serviceTotal.VolumeStartTimeOver5Sec.Increment(1);
+            }
+        }
 
         if (vol.PerfCounters.HasCheckpoint || vol.PerfCounters.HasClients) {
             if (!vol.PerfCounters.CountersRegistered) {
@@ -121,7 +151,6 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
                 vol);
         }
 
-        auto& tc = State.GetCounters(vol.VolumeInfo);
         tc.TotalDiskCount.Increment(1);
         tc.TotalDiskCountLast15Min.Increment(1);
         tc.TotalDiskCountLastHour.Increment(1);

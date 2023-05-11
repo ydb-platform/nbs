@@ -220,15 +220,10 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         std::move(BlobContent),
         false);  // async
 
-    auto traceId = Requests.front().RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         PartitionActorId,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
@@ -243,15 +238,10 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
         std::move(BlockRanges),
         std::move(WriteHandlers));
 
-    auto traceId = Requests.front().RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         PartitionActorId,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TWriteFreshBlocksActor::NotifyCompleted(
@@ -302,8 +292,6 @@ void TWriteFreshBlocksActor::ReplyAllAndDie(
     for (const auto& r: Requests) {
         auto response = CreateWriteBlocksResponse(r.ReplyLocal, error);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &r.RequestInfo->TraceId, this, response);
-
         LWTRACK(
             ResponseSent_Partition,
             r.RequestInfo->CallContext->LWOrbit,
@@ -325,13 +313,6 @@ void TWriteFreshBlocksActor::HandleWriteBlobResponse(
     auto* msg = ev->Get();
 
     for (const auto& r: Requests) {
-        BLOCKSTORE_TRACE_RECEIVED(
-            ctx,
-            &r.RequestInfo->TraceId,
-            this,
-            msg,
-            &ev->TraceId);
-
         r.RequestInfo->AddExecCycles(msg->ExecCycles);
     }
 
@@ -414,12 +395,6 @@ void TPartitionActor::WriteFreshBlocks(
                     E_REJECTED,
                     TStringBuilder() << "FreshByteCountHardLimit exceeded: "
                         << State->GetUnflushedFreshBlobByteCount()));
-
-            BLOCKSTORE_TRACE_SENT(
-                ctx,
-                &r.Data.RequestInfo->TraceId,
-                this,
-                response);
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -687,8 +662,6 @@ void TPartitionActor::CompleteWriteBlocks(
             }
 
             auto response = CreateWriteBlocksResponse(sr.ReplyLocal, error);
-
-            BLOCKSTORE_TRACE_SENT(ctx, &sr.RequestInfo->TraceId, this, response);
 
             LWTRACK(
                 ResponseSent_Partition,

@@ -6,6 +6,17 @@
 namespace NKikimr::NColumnShard {
 
 class TReadActor : public TActorBootstrapped<TReadActor> {
+private:
+    void BuildResult(const TActorContext& ctx) {
+        auto ready = IndexedData.GetReadyResults(Max<i64>());
+        LOG_S_TRACE("Ready results with " << ready.size() << " batches at tablet " << TabletId << " (read)");
+
+        size_t next = 1;
+        for (auto it = ready.begin(); it != ready.end(); ++it, ++next) {
+            bool lastOne = Finished() && (next == ready.size());
+            SendResult(ctx, it->ResultBatch, lastOne);
+        }
+    }
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::TX_COLUMNSHARD_READ_ACTOR;
@@ -23,7 +34,7 @@ public:
         , BlobCacheActorId(NBlobCache::MakeBlobCacheServiceId())
         , Result(std::move(event))
         , ReadMetadata(readMetadata)
-        , IndexedData(ReadMetadata, IndexedBlobsForFetch, true, counters)
+        , IndexedData(ReadMetadata, IndexedBlobsForFetch, true, counters, TDataTasksProcessorContainer())
         , Deadline(deadline)
         , ColumnShardActorId(columnShardActorId)
         , RequestCookie(requestCookie)
@@ -51,30 +62,22 @@ public:
                 return; // ignore duplicate parts
             }
             WaitIndexed.erase(event.BlobRange);
-            IndexedData.AddIndexed(event.BlobRange, event.Data, NColumnShard::TDataTasksProcessorContainer());
+            IndexedData.AddIndexed(event.BlobRange, event.Data);
         } else if (CommittedBlobs.contains(blobId)) {
-            auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{blobId, 0, 0});
+            auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{blobId, NOlap::TSnapshot::Zero()});
             if (cmt.empty()) {
                 return; // ignore duplicates
             }
             const NOlap::TCommittedBlob& cmtBlob = cmt.key();
             ui32 batchNo = cmt.mapped();
-            IndexedData.AddNotIndexed(batchNo, event.Data, cmtBlob.PlanStep, cmtBlob.TxId);
+            IndexedData.AddNotIndexed(batchNo, event.Data, cmtBlob.GetSnapshot());
         } else {
             LOG_S_ERROR("TEvReadBlobRangeResult returned unexpected blob at tablet "
                 << TabletId << " (read)");
             return;
         }
 
-        auto ready = IndexedData.GetReadyResults(Max<i64>());
-        LOG_S_TRACE("Ready results with " << ready.size() << " batches at tablet " << TabletId << " (read)");
-
-        size_t next = 1;
-        for (auto it = ready.begin(); it != ready.end(); ++it, ++next) {
-            bool lastOne = Finished() && (next == ready.size());
-            SendResult(ctx, it->ResultBatch, lastOne);
-        }
-
+        BuildResult(ctx);
         DieFinished(ctx);
     }
 
@@ -164,7 +167,7 @@ public:
         for (size_t i = 0; i < ReadMetadata->CommittedBlobs.size(); ++i, ++notIndexed) {
             const auto& cmtBlob = ReadMetadata->CommittedBlobs[i];
 
-            CommittedBlobs.emplace(cmtBlob.BlobId);
+            CommittedBlobs.emplace(cmtBlob.GetBlobId());
             WaitCommitted.emplace(cmtBlob, notIndexed);
         }
 
@@ -177,12 +180,12 @@ public:
 
         // Add cached batches without read
         for (auto& [blobId, batch] : ReadMetadata->CommittedBatches) {
-            auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{blobId, 0, 0});
+            auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{blobId, NOlap::TSnapshot::Zero()});
             Y_VERIFY(!cmt.empty());
 
             const NOlap::TCommittedBlob& cmtBlob = cmt.key();
             ui32 batchNo = cmt.mapped();
-            IndexedData.AddNotIndexed(batchNo, batch, cmtBlob.PlanStep, cmtBlob.TxId);
+            IndexedData.AddNotIndexed(batchNo, batch, cmtBlob.GetSnapshot());
         }
 
         LOG_S_DEBUG("Starting read (" << WaitIndexed.size() << " indexed, "
@@ -206,11 +209,14 @@ public:
         } else {
             // TODO: Keep inflight
             for (auto& [cmtBlob, batchNo] : WaitCommitted) {
-                auto& blobId = cmtBlob.BlobId;
+                auto& blobId = cmtBlob.GetBlobId();
                 SendReadRequest(ctx, NBlobCache::TBlobRange(blobId, 0, blobId.BlobSize()));
             }
             for (auto&& blobRange : IndexedBlobs) {
                 SendReadRequest(ctx, blobRange);
+            }
+            if (WaitCommitted.empty() && IndexedBlobs.empty()) {
+                BuildResult(ctx);
             }
         }
 
@@ -264,14 +270,15 @@ private:
     mutable TString SerializedSchema;
 
     TString GetSerializedSchema(const std::shared_ptr<arrow::RecordBatch>& batch) const {
-        Y_VERIFY(ReadMetadata->ResultSchema);
+        auto resultSchema = ReadMetadata->GetResultSchema();
+        Y_VERIFY(resultSchema);
 
         // TODO: make real ResultSchema with SSA effects
-        if (ReadMetadata->ResultSchema->Equals(batch->schema())) {
+        if (resultSchema->Equals(batch->schema())) {
             if (!SerializedSchema.empty()) {
                 return SerializedSchema;
             }
-            SerializedSchema = NArrow::SerializeSchema(*ReadMetadata->ResultSchema);
+            SerializedSchema = NArrow::SerializeSchema(*resultSchema);
             return SerializedSchema;
         }
 

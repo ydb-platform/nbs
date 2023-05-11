@@ -164,8 +164,7 @@ void TDiskRegistryActor::HandleReplaceDevice(
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)),
+            msg->CallContext),
         diskId,
         deviceId,
         Now());
@@ -185,8 +184,7 @@ void TDiskRegistryActor::HandleReplaceDiskDevice(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TReplaceDevice>(
         ctx,
@@ -215,6 +213,7 @@ void TDiskRegistryActor::ExecuteReplaceDevice(
 {
     Y_UNUSED(ctx);
 
+    bool updated = false;
     TDiskRegistryDatabase db(tx.DB);
     args.Error = State->ReplaceDevice(
         db,
@@ -222,7 +221,9 @@ void TDiskRegistryActor::ExecuteReplaceDevice(
         args.DeviceId,
         args.Timestamp,
         "replaced",
-        &args.DiskStateUpdate);
+        &updated);
+
+    Y_UNUSED(updated);
 }
 
 void TDiskRegistryActor::CompleteReplaceDevice(

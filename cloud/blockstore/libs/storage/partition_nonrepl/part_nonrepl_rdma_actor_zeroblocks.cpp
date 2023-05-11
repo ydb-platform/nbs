@@ -141,12 +141,9 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TZeroBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -205,7 +202,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        deviceRequest.SetSessionId(msg->Record.GetSessionId());
+        // TODO: remove after NBS-3886
+        deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
             &*dr,

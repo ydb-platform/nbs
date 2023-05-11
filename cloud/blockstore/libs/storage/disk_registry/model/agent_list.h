@@ -23,6 +23,14 @@ struct TAgentListConfig
     TDuration MinRejectAgentTimeout;
     TDuration MaxRejectAgentTimeout;
     TDuration DisconnectRecoveryInterval;
+    bool SerialNumberValidationEnabled = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TKnownAgent
+{
+    THashMap<TString, NProto::TDeviceConfig> Devices;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,6 +77,7 @@ public:
     NProto::TAgentConfig& RegisterAgent(
         NProto::TAgentConfig config,
         TInstant timestamp,
+        const TKnownAgent& knownAgent,
         THashSet<TDeviceId>* newDevices);
 
     bool RemoveAgent(TNodeId nodeId);
@@ -90,6 +99,7 @@ private:
     NProto::TAgentConfig& AddNewAgent(
         NProto::TAgentConfig config,
         TInstant timestamp,
+        const TKnownAgent& knownAgent,
         THashSet<TDeviceId>* newDevices);
 
     void TransferAgent(
@@ -97,6 +107,10 @@ private:
         TNodeId newNodeId);
 
     void RemoveAgentByIdx(size_t index);
+
+    bool ValidateSerialNumber(
+        const TKnownAgent& knownAgent,
+        const NProto::TDeviceConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

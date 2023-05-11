@@ -85,15 +85,10 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
                 tabletId,
                 request->Print(true).data());
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             SendToBSProxy(
                 ctx,
                 bsProxyId,
-                request.release(),
-                0,  // cookie
-                std::move(traceId));
+                request.release());
 
             ++RequestsInFlight;
         }
@@ -117,8 +112,6 @@ void TTrimFreshLogActor::ReplyAndDie(const TActorContext& ctx)
     using TResponse = TEvPartitionCommonPrivate::TEvTrimFreshLogResponse;
     auto response = std::make_unique<TResponse>(std::move(Error));
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -136,8 +129,6 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
         HasError(error))

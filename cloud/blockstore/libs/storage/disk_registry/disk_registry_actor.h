@@ -10,7 +10,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -222,17 +221,24 @@ private:
 
     void RenderHtmlInfo(TInstant now, IOutputStream& out) const;
     void RenderState(IOutputStream& out) const;
+    void RenderDisks(IOutputStream& out, ui32 limit) const;
     void RenderDiskList(IOutputStream& out) const;
     void RenderMigrationList(IOutputStream& out) const;
     void RenderBrokenDiskList(IOutputStream& out) const;
     void RenderDisksToNotify(IOutputStream& out) const;
     void RenderErrorNotifications(IOutputStream& out) const;
-    void RenderPlacementGroupList(IOutputStream& out) const;
-    void RenderRacks(IOutputStream& out) const;
-    void RenderAgentList(TInstant now, IOutputStream& out) const;
-    void RenderConfig(IOutputStream& out) const;
+    void RenderPlacementGroupList(IOutputStream& out, ui32 limit) const;
+    void RenderRacks(IOutputStream& out, ui32 limit) const;
+    void RenderAgentList(TInstant now, IOutputStream& out, ui32 limit) const;
+    void RenderConfig(IOutputStream& out, ui32 limit) const;
     void RenderDirtyDeviceList(IOutputStream& out) const;
     void RenderSuspendedDeviceList(IOutputStream& out) const;
+    template <typename TDevices>
+    void RenderDevicesWithDetails(
+        IOutputStream& out,
+        const TDevices& devices,
+        const TString& title) const;
+    void RenderBrokenDeviceList(IOutputStream& out, ui32 limit) const;
     void RenderDeviceHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderAgentHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderDiskHtmlInfo(IOutputStream& out, const TString& id) const;
@@ -279,6 +285,36 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_ReplaceDevice(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderDisks(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderBrokenDeviceList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderPlacementGroupList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderRacks(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderAgentList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderConfig(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

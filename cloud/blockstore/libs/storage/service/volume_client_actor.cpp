@@ -3,7 +3,6 @@
 #include "service_events_private.h"
 
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -251,7 +250,6 @@ void TVolumeClientActor::HandleRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(E_REJECTED, "Tablet is dead"));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -283,9 +281,8 @@ void TVolumeClientActor::HandleRequest(
         SelfId(),
         ev->ReleaseBase().Release(),
         0,          // flags
-        requestId,  // cookie
-        nullptr,    // forwardOnNondelivery
-        ev->TraceId.Clone());
+        requestId  // cookie
+    );
 
     ActiveRequests.emplace(
         requestId,
@@ -344,9 +341,7 @@ void TVolumeClientActor::HandleResponse(
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
-            it->second.Request->Cookie,
-            nullptr,    // undeliveredRequestActor
-            std::move(ev->TraceId));
+            it->second.Request->Cookie);
     } else {
         event = new IEventHandle(
             ev->Type,
@@ -354,9 +349,7 @@ void TVolumeClientActor::HandleResponse(
             it->second.Request->Sender,
             ev->Sender,
             ev->ReleaseChainBuffer(),
-            it->second.Request->Cookie,
-            nullptr,    // undeliveredRequestActor
-            std::move(ev->TraceId));
+            it->second.Request->Cookie);
     }
 
     ctx.Send(event);

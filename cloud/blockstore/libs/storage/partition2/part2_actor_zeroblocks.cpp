@@ -99,17 +99,12 @@ void TZeroBlocksActor::AddBlobs(const TActorContext& ctx)
         ADD_ZERO_RESULT,
         std::move(Blobs));
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     SafeToUseOrbit = false;
 
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TZeroBlocksActor::NotifyCompleted(
@@ -156,8 +151,6 @@ void TZeroBlocksActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     if (SafeToUseOrbit) {
         LWTRACK(
             ResponseSent_Partition,
@@ -179,8 +172,6 @@ void TZeroBlocksActor::HandleAddBlobsResponse(
     const auto* msg = ev->Get();
 
     SafeToUseOrbit = true;
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& error = msg->GetError();
     if (HandleError(ctx, error)) {
@@ -228,12 +219,9 @@ void TPartitionActor::HandleZeroBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TZeroBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -249,8 +237,6 @@ void TPartitionActor::HandleZeroBlocks(
     {
         auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -452,8 +438,6 @@ void TPartitionActor::CompleteZeroBlocks(
         args.CommitId);
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

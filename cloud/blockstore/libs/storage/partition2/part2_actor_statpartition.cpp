@@ -51,10 +51,7 @@ void TPartitionActor::HandleStatPartition(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -81,8 +78,6 @@ void TPartitionActor::HandleStatPartition(
 
     response->Record.MutableStats()->SetNonEmptyRangeCount(
         State->GetCompactionMap().GetNonEmptyRangeCount());
-
-    BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

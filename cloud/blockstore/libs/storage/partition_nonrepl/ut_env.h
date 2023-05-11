@@ -139,9 +139,7 @@ private:
                 false,
                 NBlobMetrics::TBlobLoadMetrics()),
             ev->Flags,
-            ev->Cookie,
-            nullptr,
-            std::move(ev->TraceId));
+            ev->Cookie);
         ctx.Send(event.release());
     }
 
@@ -214,9 +212,7 @@ public:
             Sender,
             request.release(),
             0,          // flags
-            cookie,
-            nullptr,    // forwardOnNondelivery
-            NWilson::TTraceId::NewTraceId());
+            cookie);
 
         Runtime.Send(ev, NodeIdx);
     }

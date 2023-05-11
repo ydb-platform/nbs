@@ -274,8 +274,7 @@ void TDiskRegistryActor::HandleNotifyDisks(
         CreateRequestInfo(
             SelfId(),
             0,
-            MakeIntrusive<TCallContext>(),
-            NWilson::TTraceId::NewTraceId()
+            MakeIntrusive<TCallContext>()
         ),
         Config,
         DisksBeingNotified
@@ -292,8 +291,7 @@ void TDiskRegistryActor::HandleNotifyDisksResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TNotifyDisksMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         ),
         ev->Get()->NotifiedDisks
     );

@@ -24,16 +24,13 @@ void TDiskRegistryActor::HandleChangeAgentState(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received ChangeAgentState request: AgentId=%s, State=%u",
         TabletID(),
         msg->Record.GetAgentId().c_str(),
         static_cast<ui32>(msg->Record.GetAgentState()));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TUpdateAgentState>(
         ctx,
@@ -58,8 +55,7 @@ void TDiskRegistryActor::HandleDisableAgent(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received DisableAgent request: AgentId=%s, DeviceUUIDs=%s",
@@ -75,8 +71,6 @@ void TDiskRegistryActor::HandleDisableAgent(
             }
             return out.Str();
         }().c_str());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     auto* agent = State->FindAgent(msg->Record.GetAgentId());
     if (!agent) {

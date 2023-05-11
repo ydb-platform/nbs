@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/diagnostics/user_counter.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>

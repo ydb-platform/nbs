@@ -794,4 +794,13 @@ message TStorageServiceConfig
 
     // Allow to start migration for mirrored SSD drives.
     optional bool MirroredMigrationStartAllowed = 301;
+
+    // Validate S/N
+    optional bool SerialNumberValidationEnabled = 302;
+
+    // List of FQDNs of known spare nodes.
+    repeated string KnownSpareNodes = 303;
+
+    // Probability (0 .. 100) of being the spare node.
+    optional uint32 SpareNodeProbability = 304;
 }

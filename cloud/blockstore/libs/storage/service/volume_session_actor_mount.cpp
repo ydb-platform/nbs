@@ -2,7 +2,6 @@
 
 #include "service_actor.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -451,8 +450,7 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         RequestInfo->Cookie,
-        RequestInfo->CallContext,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->CallContext);
 
     NCloud::Register(ctx, CreateAddClientActor(
         std::move(request),
@@ -476,8 +474,7 @@ void TMountRequestActor::WaitForVolume(const TActorContext& ctx, TDuration timeo
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         RequestInfo->Cookie,
-        RequestInfo->CallContext,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->CallContext);
 
     NCloud::Register(ctx, CreateWaitReadyActor(
         std::move(request),
@@ -561,8 +558,6 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
 {
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, ev->Get(), &ev->TraceId);
 
     Error = error;
     Volume = msg->Record.GetVolume();
@@ -917,7 +912,6 @@ void TVolumeSessionActor::SendInternalMountVolumeResponse(
         response->Record.SetServiceVersionInfo(Config->GetServiceVersionInfo());
     }
 
-    BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
@@ -928,8 +922,6 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     auto* msg = ev->Get();
     const auto& diskId = msg->Record.GetDiskId();
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
 
     if (MountRequestActor || UnmountRequestActor) {
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
@@ -944,8 +936,7 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        ev->TraceId.Clone());
+        msg->CallContext);
 
     auto tick = GetCycleCount();
     auto procResult = ProcessMountRequest(ctx, ev, tick);
@@ -1039,8 +1030,7 @@ void TVolumeSessionActor::PostponeMountVolume(
         const auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            ev->TraceId.Clone());
+            ev->Get()->CallContext);
 
         SendInternalMountVolumeResponse(
             ctx,

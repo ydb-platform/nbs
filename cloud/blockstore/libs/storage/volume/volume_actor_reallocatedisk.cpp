@@ -160,8 +160,7 @@ void TVolumeActor::HandleReallocateDisk(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     auto request = MakeAllocateDiskRequest();
 

@@ -1,5 +1,5 @@
 //
-// Copyright 2012-2022 Antony Polukhin.
+// Copyright 2012-2023 Antony Polukhin.
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -21,7 +21,7 @@
 #endif
 
 #if defined(BOOST_TYPE_INDEX_USER_TYPEINDEX)
-#   include BOOST_TYPE_INDEX_USER_TYPEINDEX
+#   error #include BOOST_TYPE_INDEX_USER_TYPEINDEX
 #   ifdef BOOST_HAS_PRAGMA_DETECT_MISMATCH
 #       pragma detect_mismatch( "boost__type_index__abi", "user defined type_index class is used: " BOOST_STRINGIZE(BOOST_TYPE_INDEX_USER_TYPEINDEX))
 #   endif

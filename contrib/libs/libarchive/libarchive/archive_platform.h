@@ -43,7 +43,7 @@
 
 #if defined(PLATFORM_CONFIG_H)
 /* Use hand-built config.h in environments that need it. */
-#include PLATFORM_CONFIG_H
+#error #include PLATFORM_CONFIG_H
 #elif defined(HAVE_CONFIG_H)
 /* Most POSIX platforms use the 'configure' script to build config.h */
 #include "config.h"

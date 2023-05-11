@@ -34,7 +34,6 @@ private:
     TPermissionList Permissions;
     TString AuthToken;
     TPromise<NProto::TError> Response;
-    NWilson::TTraceId TraceId;
     TCallContextPtr CallContext;
 
     const EBlockStoreRequest RequestType;
@@ -55,7 +54,6 @@ public:
         : Permissions(permissions)
         , AuthToken(std::move(authToken))
         , Response(std::move(response))
-        , TraceId(NWilson::TTraceId(callContext->RequestId))
         , CallContext(std::move(callContext))
         , RequestType(requestType)
         , RequestTimeout(requestTimeout)
@@ -99,9 +97,6 @@ private:
             std::move(AuthToken),
             std::move(Permissions));
 
-        auto traceId = TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         LWTRACK(
             AuthRequestSent_Proxy,
             CallContext->LWOrbit,
@@ -111,9 +106,7 @@ private:
         NCloud::Send(
             ctx,
             MakeAuthorizerServiceId(),
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
             ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
@@ -152,8 +145,6 @@ private:
         const TActorContext& ctx)
     {
         const auto* msg = ev->Get();
-
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &TraceId, this, msg, &ev->TraceId);
 
         LWTRACK(
             AuthResponseReceived_Proxy,

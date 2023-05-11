@@ -109,7 +109,6 @@ private:
         const NActors::TActorContext& ctx,
         TCallContextPtr callContext,
         const NProto::THeaders& headers,
-        const TString& sessionId,
         NRdma::IClientHandler* handler,
         const TVector<TDeviceRequest>& deviceRequests);
 

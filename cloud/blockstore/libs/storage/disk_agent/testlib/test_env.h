@@ -108,8 +108,7 @@ public:
             request.release(),
             0,          // flags
             cookie,
-            nullptr,    // forwardOnNondelivery
-            NWilson::TTraceId::NewTraceId());
+            nullptr);   // forwardOnNondelivery
 
         Runtime.Send(ev, NodeIdx);
     }

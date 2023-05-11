@@ -264,6 +264,9 @@ public:
 
     static const TUniqueConstraintNodeBase* Merge(const TUniqueConstraintNodeBase* one, const TUniqueConstraintNodeBase* two, TExprContext& ctx);
 
+    const TUniqueConstraintNodeBase* GetComplicatedForType(const TTypeAnnotationNode& type, TExprContext& ctx) const;
+    const TUniqueConstraintNodeBase* GetSimplifiedForType(const TTypeAnnotationNode& type, TExprContext& ctx) const;
+
     bool IsApplicableToType(const TTypeAnnotationNode& type) const override;
     const TConstraintNode* OnlySimpleColumns(TExprContext& ctx) const override;
 private:
@@ -374,6 +377,8 @@ public:
 
     static void UniqueMerge(TMapType& output, TMapType&& input);
     const TPassthroughConstraintNode* ExtractField(TExprContext& ctx, const std::string_view& field) const;
+    const TPassthroughConstraintNode* FilterFields(TExprContext& ctx, const TPathFilter& predicate) const;
+    const TPassthroughConstraintNode* RenameFields(TExprContext& ctx, const TPathReduce& reduce) const;
 
     static const TPassthroughConstraintNode* MakeCommon(const std::vector<const TConstraintSet*>& constraints, TExprContext& ctx);
     const TPassthroughConstraintNode* MakeCommon(const TPassthroughConstraintNode* other, TExprContext& ctx) const;

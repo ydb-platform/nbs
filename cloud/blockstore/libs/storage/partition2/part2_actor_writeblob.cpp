@@ -137,17 +137,12 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     RequestSent = ctx.Now();
 
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release(),
-        0,  // cookie
-        std::move(traceId));
+        request.release());
 }
 
 void TWriteBlobActor::NotifyCompleted(
@@ -169,8 +164,6 @@ void TWriteBlobActor::ReplyAndDie(
     std::unique_ptr<TResponse> response)
 {
     NotifyCompleted(ctx, response->GetError());
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     if (ResponseReceived) {
         LWTRACK(
@@ -208,8 +201,6 @@ void TWriteBlobActor::HandlePutResult(
     ResponseReceived = ctx.Now();
 
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     RequestInfo->CallContext->LWOrbit = std::move(msg->Orbit);
 
@@ -292,12 +283,9 @@ void TPartitionActor::HandleWriteBlob(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TWriteBlobMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,

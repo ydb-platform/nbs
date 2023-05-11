@@ -117,10 +117,8 @@ void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(BlockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
-        request->Record.SetSessionId(Request.GetSessionId());
-
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
+        // TODO: remove after NBS-3886
+        request->Record.SetSessionId(Request.GetHeaders().GetClientId());
 
         TAutoPtr<IEventHandle> event(
             new IEventHandle(
@@ -129,8 +127,7 @@ void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
                 request.get(),
                 IEventHandle::FlagForwardOnNondelivery,
                 cookie++,
-                &ctx.SelfID,    // forwardOnNondelivery
-                std::move(traceId)
+                &ctx.SelfID    // forwardOnNondelivery
             ));
         request.release();
 
@@ -161,8 +158,6 @@ void TDiskAgentZeroActor::Done(
     IEventBasePtr response,
     bool failed)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_VolumeWorker,
         RequestInfo->CallContext->LWOrbit,
@@ -186,9 +181,7 @@ void TDiskAgentZeroActor::Done(
     NCloud::Send(
         ctx,
         Part,
-        std::move(completion),
-        0,  // cookie
-        std::move(RequestInfo->TraceId));
+        std::move(completion));
 
     Die(ctx);
 }
@@ -227,8 +220,6 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -272,12 +263,9 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TZeroBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,

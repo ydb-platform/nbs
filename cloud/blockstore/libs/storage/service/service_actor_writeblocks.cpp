@@ -58,8 +58,6 @@ private:
         const auto& clientId = GetClientId(*msg);
         const auto& diskId = GetDiskId(*msg);
 
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &Request->TraceId, this, msg);
-
         const ui64 startIndex = msg->Record.GetStartIndex();
         ui32 blocksCount = msg->Record.BlocksCount;
 
@@ -85,8 +83,6 @@ private:
             clientId.Quote().data(),
             diskId.Quote().data());
 
-        BLOCKSTORE_TRACE_SENT(ctx, &Request->TraceId, this, request);
-
         auto undeliveredActor = SelfId();
 
         auto event = std::make_unique<IEventHandle>(
@@ -95,9 +91,8 @@ private:
             request.release(),
             Request->Flags | IEventHandle::FlagForwardOnNondelivery,  // flags
             Request->Cookie,  // cookie
-            &undeliveredActor,    // forwardOnNondelivery
-            Request->TraceId.Clone());
-
+            &undeliveredActor    // forwardOnNondelivery
+        );
         ctx.Send(event.release());
     }
 
@@ -127,7 +122,6 @@ private:
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &Request->TraceId, this, response);
         NCloud::Reply(ctx, *Request, std::move(response));
 
         Die(ctx);
@@ -148,13 +142,9 @@ private:
     }
 
     void HandleUndelivery(
-        const TEvService::TEvWriteBlocksRequest::TPtr& ev,
+        const TEvService::TEvWriteBlocksRequest::TPtr&,
         const TActorContext& ctx)
     {
-        const auto* msg = ev->Get();
-
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &Request->TraceId, this, msg, &ev->TraceId);
-
         ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
     }
 
@@ -164,12 +154,9 @@ private:
     {
         const auto* msg = ev->Get();
 
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &Request->TraceId, this, msg, &ev->TraceId);
-
         auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             msg->Record);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &Request->TraceId, this, response);
         NCloud::Reply(ctx, *Request, std::move(response));
 
         Die(ctx);

@@ -27,7 +27,7 @@ void TWaitDependentAndReply::FinishIfReady(const NActors::TActorContext& ctx)
         return;
     }
     Y_VERIFY_DEBUG(Response);
-    ctx.Send(Recipient, Response.release(), Flags, Cookie, std::move(TraceId));
+    ctx.Send(Recipient, Response.release(), Flags, Cookie);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

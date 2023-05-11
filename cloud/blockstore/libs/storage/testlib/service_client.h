@@ -57,11 +57,7 @@ public:
         auto* ev = new NActors::IEventHandle(
             recipient,
             Sender,
-            request.release(),
-            0,          // flags
-            0,          // cookie
-            nullptr,    // forwardOnNondelivery
-            NWilson::TTraceId::NewTraceId());
+            request.release());
 
         Runtime.Send(ev, NodeIdx);
     }

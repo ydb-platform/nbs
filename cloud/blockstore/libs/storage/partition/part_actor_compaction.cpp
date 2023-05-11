@@ -427,15 +427,11 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         ForkedReadCallContexts.emplace_back(request->CallContext);
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         NCloud::Send(
             ctx,
             Tablet,
             std::move(request),
-            batchIndex,
-            std::move(traceId));
+            batchIndex);
     }
 }
 
@@ -497,15 +493,10 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
             ForkedWriteAndPatchCallContexts.emplace_back(request->CallContext);
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             NCloud::Send(
                 ctx,
                 Tablet,
-                std::move(request),
-                0,  // cookie
-                std::move(traceId));
+                std::move(request));
         } else {
             auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 rc.DataBlobId,
@@ -522,15 +513,10 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
             ForkedWriteAndPatchCallContexts.emplace_back(request->CallContext);
 
-            auto traceId = RequestInfo->TraceId.Clone();
-            BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
             NCloud::Send(
                 ctx,
                 Tablet,
-                std::move(request),
-                0,  // cookie
-                std::move(traceId));
+                std::move(request));
         }
     }
 
@@ -658,17 +644,12 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         std::move(affectedBlocks),
         std::move(blobCompactionInfos));
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     SafeToUseOrbit = false;
 
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TCompactionActor::NotifyCompleted(
@@ -743,8 +724,6 @@ void TCompactionActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     if (SafeToUseOrbit) {
         LWTRACK(
             ResponseSent_Partition,
@@ -766,8 +745,6 @@ void TCompactionActor::HandleReadBlobResponse(
     auto* msg = ev->Get();
 
     MaxExecCyclesFromRead = Max(MaxExecCyclesFromRead, msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -804,8 +781,6 @@ void TCompactionActor::HandleWriteOrPatchBlobResponse(
     auto* msg = ev.Get();
 
     MaxExecCyclesFromWrite = Max(MaxExecCyclesFromWrite, msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev.TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -847,8 +822,6 @@ void TCompactionActor::HandleAddBlobsResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     SafeToUseOrbit = true;
 
@@ -1053,9 +1026,6 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         request->ForceFullCompaction = true;
     }
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     if (throttlingAllowed && Config->GetMaxCompactionDelay()) {
         auto execTime = State->GetCompactionExecTimeForLastSecond(ctx.Now());
         auto delay = Config->GetMinCompactionDelay();
@@ -1079,9 +1049,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             SelfId(),
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
     }
 }
 
@@ -1094,12 +1062,9 @@ void TPartitionActor::HandleCompaction(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCompactionMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -1117,8 +1082,6 @@ void TPartitionActor::HandleCompaction(
     {
         auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

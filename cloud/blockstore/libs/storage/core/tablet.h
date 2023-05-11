@@ -5,7 +5,6 @@
 #include "probes.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 
 #include <ydb/core/base/tablet.h>
 #include <ydb/core/tablet_flat/flat_database.h>
@@ -13,7 +12,6 @@
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/wilson/wilson_event.h>
 
 #include <type_traits>
 
@@ -48,7 +46,6 @@ constexpr bool combinedRequest<T, std::void_t<
         info->CallContext->LWOrbit,                                            \
         TTx::Name,                                                             \
         info->CallContext->RequestId);                                         \
-    BLOCKSTORE_TRACE_EVENT(ctx, #probe, &info->TraceId, Self, &Args, nullptr); \
 // TX_TRACK_HELPER
 
 #define TX_TRACK(probe)                                                        \
@@ -125,7 +122,7 @@ protected:
             return TTx::TxType;
         }
 
-        void Init(const NActors::TActorContext& ctx) override
+        void Init(const NActors::TActorContext&) override
         {
             TX_TRACK(TxInit);
             TX_FORK();

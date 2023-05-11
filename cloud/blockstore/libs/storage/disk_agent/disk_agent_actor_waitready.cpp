@@ -21,8 +21,7 @@ void TDiskAgentActor::HandleWaitReady(
         auto requestInfo = CreateRequestInfo<TEvDiskAgent::TWaitReadyMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            ev->TraceId.Clone());
+            ev->Get()->CallContext);
 
         PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
         return;

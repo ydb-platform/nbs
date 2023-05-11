@@ -117,8 +117,7 @@ void TDescribeBlocksActionActor::DescribeBlocks(const TActorContext& ctx)
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TDescribeBlocksActionActor::HandleSuccess(

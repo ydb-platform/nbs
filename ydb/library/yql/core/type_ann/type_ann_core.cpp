@@ -11550,8 +11550,9 @@ template <NKikimr::NUdf::EDataSlot DataSlot>
         Functions["ListZipAll"] = &ListZipAllWrapper;
         Functions["Sort"] = &SortWrapper;
         Functions["AssumeSorted"] = &SortWrapper;
-        Functions["AssumeUnique"] = &AssumeUniqueWrapper;
-        Functions["AssumeDistinct"] = &AssumeUniqueWrapper;
+        Functions["AssumeUnique"] = &AssumeConstraintWrapper;
+        Functions["AssumeDistinct"] = &AssumeConstraintWrapper;
+        Functions["AssumeChopped"] = &AssumeConstraintWrapper;
         Functions["AssumeAllMembersNullableAtOnce"] = &AssumeAllMembersNullableAtOnceWrapper;
         Functions["AssumeStrict"] = &AssumeStrictWrapper;
         Functions["Top"] = &TopWrapper;
@@ -11936,6 +11937,10 @@ template <NKikimr::NUdf::EDataSlot DataSlot>
         Functions["BlockJust"] = &BlockJustWrapper;
         Functions["BlockAsTuple"] = &BlockAsTupleWrapper;
         Functions["BlockNth"] = &BlockNthWrapper;
+        Functions["BlockToPg"] = &BlockToPgWrapper;
+        Functions["BlockFromPg"] = &BlockFromPgWrapper;
+        Functions["BlockPgResolvedOp"] = &BlockPgOpWrapper;
+        Functions["BlockPgResolvedCall"] = &BlockPgCallWrapper;
         ExtFunctions["BlockFunc"] = &BlockFuncWrapper;
         ExtFunctions["BlockBitCast"] = &BlockBitCastWrapper;
 
@@ -11960,6 +11965,7 @@ template <NKikimr::NUdf::EDataSlot DataSlot>
 
         Functions["FromPg"] = &FromPgWrapper;
         Functions["ToPg"] = &ToPgWrapper;
+        Functions["PgClone"] = &PgCloneWrapper;
         ExtFunctions["PgAgg"] = &PgAggWrapper;
         ExtFunctions["PgAggWindowCall"] = &PgAggWrapper;
         ExtFunctions["PgCall"] = &PgCallWrapper;

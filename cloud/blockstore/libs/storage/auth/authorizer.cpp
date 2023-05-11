@@ -336,7 +336,7 @@ private:
         }
 
         const auto* msg = ev->Get();
-        const auto requestId = GetRequestId(ev->TraceId);
+        const auto requestId = ev->TraceId.GetTraceId();
         const bool requireAuthorization =
             authMode == NProto::AUTHORIZATION_REQUIRE;
 

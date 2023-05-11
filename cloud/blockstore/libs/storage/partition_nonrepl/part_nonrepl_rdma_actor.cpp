@@ -125,8 +125,6 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
         auto response = std::make_unique<typename TMethod::TResponse>(
             std::move(error));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
-
         LWTRACK(
             ResponseSent_Partition,
             requestInfo.CallContext->LWOrbit,
@@ -235,7 +233,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     const NActors::TActorContext& ctx,
     TCallContextPtr callContext,
     const NProto::THeaders& headers,
-    const TString& sessionId,
     NRdma::IClientHandler* handler,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -268,7 +265,8 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
-        deviceRequest.SetSessionId(sessionId);
+        // TODO: remove after NBS-3886
+        deviceRequest.SetSessionId(headers.GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
             &*dr,
@@ -469,8 +467,7 @@ void TNonreplicatedPartitionRdmaActor::HandlePoisonPill(
     Poisoner = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>(),
-        std::move(ev->TraceId));
+        MakeIntrusive<TCallContext>());
 
     if (!RequestsInProgress.Empty()) {
         return;

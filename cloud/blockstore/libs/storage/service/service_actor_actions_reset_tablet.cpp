@@ -112,8 +112,7 @@ void TResetTabletActionActor::GetStorageInfo(const TActorContext& ctx)
         ctx,
         MakeHiveProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TResetTabletActionActor::ResetTablet(const TActorContext& ctx)

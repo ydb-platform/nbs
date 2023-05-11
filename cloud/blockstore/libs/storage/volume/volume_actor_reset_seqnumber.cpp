@@ -171,10 +171,7 @@ void TVolumeActor::HandleResetMountSeqNumber(
     auto requestInfo = CreateRequestInfo<TEvVolumePrivate::TResetMountSeqNumberMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     AddTransaction(*requestInfo);
 
@@ -251,7 +248,6 @@ void TVolumeActor::CompleteResetMountSeqNumber(
 {
     auto response = std::make_unique<TEvVolumePrivate::TEvResetMountSeqNumberResponse>();
 
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     RemoveTransaction(*args.RequestInfo);

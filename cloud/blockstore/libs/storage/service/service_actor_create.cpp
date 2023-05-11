@@ -227,10 +227,8 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     encryptionDesc.SetMode(encryptionSpec.GetMode());
     encryptionDesc.SetKeyHash(keyHashOrError.GetResult());
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    auto request =
-        std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(std::move(config));
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
+    auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+        std::move(config));
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Sending createvolume request for volume %s",
@@ -240,8 +238,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TCreateVolumeActor::HandleDescribeVolumeResponse(
@@ -284,8 +281,6 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Creation of volume %s failed: %s",
@@ -303,7 +298,6 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         "Sending WaitReady request to volume %s",
         Request.GetDiskId().Quote().c_str());
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
@@ -311,8 +305,7 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TCreateVolumeActor::HandleWaitReadyResponse(
@@ -321,8 +314,6 @@ void TCreateVolumeActor::HandleWaitReadyResponse(
 {
     const auto* msg = ev->Get();
     auto error = msg->GetError();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HasError(error)) {
         LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
@@ -344,7 +335,6 @@ void TCreateVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvCreateVolumeResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -488,8 +478,7 @@ void TServiceActor::HandleCreateVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     const auto error = ValidateCreateVolumeRequest(*Config, request);
     if (HasError(error)) {
@@ -507,8 +496,6 @@ void TServiceActor::HandleCreateVolume(
 
         return;
     }
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Creating volume: %s, %s, %s, %s, %s, %u, %llu, %u, %d",

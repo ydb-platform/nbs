@@ -33,7 +33,7 @@ private:
     const ui32 BlockSize;
     const TBlockRange64 Range;
     const TVector<TResyncReplica> Replicas;
-    const TString WriterSessionId;
+    const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
     THashMap<int, ui64> Checksums;
@@ -57,7 +57,7 @@ public:
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TResyncReplica> replicas,
-        TString writerSessionId,
+        TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator);
 
     void Bootstrap(const NActors::TActorContext& ctx);

@@ -43,10 +43,7 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     ExecuteTx<TBackupDiskRegistryState>(
         ctx,

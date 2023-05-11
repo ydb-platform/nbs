@@ -187,6 +187,24 @@ func (client *safeClient) StatVolume(
 	return resp.GetVolume(), resp.GetStats(), nil
 }
 
+func (client *safeClient) GetCheckpoints(
+	ctx context.Context,
+	diskId string,
+) ([]string, error) {
+
+	req := &protos.TStatVolumeRequest{
+		DiskId: diskId,
+		Flags:  uint32(0),
+	}
+
+	resp, err := client.Impl.StatVolume(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Checkpoints, nil
+}
+
 func (client *safeClient) QueryAvailableStorage(
 	ctx context.Context,
 	agentIds []string,

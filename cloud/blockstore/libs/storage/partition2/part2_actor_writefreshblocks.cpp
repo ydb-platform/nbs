@@ -245,15 +245,10 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         std::move(BlobContent),
         false);  // async
 
-    auto traceId = Requests.front().RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         PartitionActorId,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TWriteFreshBlocksActor::InitIndex(const TActorContext& ctx)
@@ -278,15 +273,10 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
         std::move(WriteHandlers),
         FirstRequestDeletionId);
 
-    auto traceId = Requests.front().RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         PartitionActorId,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TWriteFreshBlocksActor::NotifyCompleted(
@@ -346,8 +336,6 @@ void TWriteFreshBlocksActor::Reply(
     TRequestInfo& requestInfo,
     IEventBasePtr response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         requestInfo.CallContext->LWOrbit,
@@ -366,13 +354,6 @@ void TWriteFreshBlocksActor::HandleWriteBlobResponse(
     const auto* msg = ev->Get();
 
     for (const auto& r: Requests) {
-        BLOCKSTORE_TRACE_RECEIVED(
-            ctx,
-            &r.RequestInfo->TraceId,
-            this,
-            msg,
-            &ev->TraceId);
-
         r.RequestInfo->AddExecCycles(msg->ExecCycles);
     }
 
@@ -474,12 +455,6 @@ void TPartitionActor::WriteFreshBlocks(
                     E_REJECTED,
                     TStringBuilder() << "FreshByteCountHardLimit exceeded: "
                         << freshByteCount));
-
-            BLOCKSTORE_TRACE_SENT(
-                ctx,
-                &r.Data.RequestInfo->TraceId,
-                this,
-                response);
 
             LWTRACK(
                 ResponseSent_Partition,

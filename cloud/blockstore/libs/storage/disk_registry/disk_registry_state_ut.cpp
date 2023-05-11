@@ -850,8 +850,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             // lost dev-1 & dev-3
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
@@ -863,9 +863,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            const auto& diskState = affectedDisks[0].State;
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskState.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
 
             TVector<TDeviceConfig> devices;
             auto error = AllocateDisk(db, state, "disk-2", {}, {}, 10_GB, devices);
@@ -877,8 +879,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             // restore dev-1 & dev-3 but with error state
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
@@ -895,7 +897,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // restore dev-1 to online state
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                 db,
                 "uuid-1",
@@ -910,7 +912,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // restore dev-3 to online state
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                 db,
                 "uuid-3",
@@ -920,13 +922,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk));
 
             UNIT_ASSERT(affectedDisk);
-
-            const auto& diskState = affectedDisk->State;
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskState.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskState.GetState());
-            UNIT_ASSERT(diskState.GetStateMessage().empty());
-
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
+            UNIT_ASSERT_VALUES_EQUAL("", update.State.GetStateMessage());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -946,8 +947,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             // lost dev-1 & dev-3
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
@@ -959,13 +960,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            const auto& diskState = affectedDisks[0].State;
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskState.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
+
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
 
             UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
-
-            UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -980,7 +981,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, stage1));
 
             {
-                TMaybe<TDiskStateUpdate> affectedDisk;
+                TString affectedDisk;
                 UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                     db,
                     "uuid-1",
@@ -991,7 +992,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }
 
             {
-                TMaybe<TDiskStateUpdate> affectedDisk;
+                TString affectedDisk;
                 UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                     db,
                     "uuid-3",
@@ -1535,7 +1536,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(allocatedDisksInGroups->Val(), 1);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             auto error = state.UpdateDeviceState(
                 db,
                 deviceToBreak,
@@ -3306,7 +3307,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-1 : online -> migration
         // disk-3 : online -> migration
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -3318,21 +3319,27 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
+            Sort(affectedDisks);
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
 
-            UNIT_ASSERT_VALUES_UNEQUAL(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
-            lastSeqNo = std::max(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
+            auto updates = state.GetDiskStateUpdates();
+            UNIT_ASSERT_VALUES_EQUAL(2, updates.size());
 
-            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(updates[0].SeqNo, updates[1].SeqNo);
+            lastSeqNo = std::max(updates[0].SeqNo, updates[1].SeqNo);
         });
 
         UNIT_ASSERT_VALUES_EQUAL(1, lastSeqNo);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -3349,7 +3356,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-1 : online -> unavailable
         // disk-3 : online -> unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -3361,23 +3368,33 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
+            Sort(affectedDisks);
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_TEMPORARILY_UNAVAILABLE, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_TEMPORARILY_UNAVAILABLE, affectedDisks[1]);
-
-            UNIT_ASSERT_GT(affectedDisks[0].SeqNo, lastSeqNo);
-            UNIT_ASSERT_VALUES_UNEQUAL(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
-            lastSeqNo = std::max(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
 
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
+
+            TVector updates {
+                state.GetDiskStateUpdates()[2],
+                state.GetDiskStateUpdates()[3],
+            };
+
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_TEMPORARILY_UNAVAILABLE, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_TEMPORARILY_UNAVAILABLE, updates[1]);
+
+            UNIT_ASSERT_GT(updates[0].SeqNo, lastSeqNo);
+            UNIT_ASSERT_VALUES_UNEQUAL(updates[0].SeqNo, updates[1].SeqNo);
+            lastSeqNo = std::max(updates[0].SeqNo, updates[1].SeqNo);
         });
 
         UNIT_ASSERT_VALUES_EQUAL(3, lastSeqNo);
 
         // #3 : online -> unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent3.GetAgentId(),
@@ -3392,7 +3409,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // #2 : online -> online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3409,7 +3426,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-2 : online -> unavailable
         // disk-3 : already in unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3419,13 +3436,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_TEMPORARILY_UNAVAILABLE, affectedDisks[0]);
-            lastSeqNo = affectedDisks[0].SeqNo;
-
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
             UNIT_ASSERT_VALUES_EQUAL(5, state.GetDiskStateUpdates().size());
+
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_TEMPORARILY_UNAVAILABLE, update);
+            lastSeqNo = update.SeqNo;
         });
 
         UNIT_ASSERT_VALUES_EQUAL(4, lastSeqNo);
@@ -3434,7 +3452,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-1 : unavailable -> online
         // disk-3 : #2 still in unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -3445,11 +3463,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, affectedDisks[0]);
-            lastSeqNo = affectedDisks[0].SeqNo;
-
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
             UNIT_ASSERT_VALUES_EQUAL(6, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
+            lastSeqNo = update.SeqNo;
         });
 
         UNIT_ASSERT_VALUES_EQUAL(5, lastSeqNo);
@@ -3458,7 +3477,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-2 : unavailable -> online
         // disk-3 : unavailable -> online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3469,16 +3488,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
+            Sort(affectedDisks);
 
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_ONLINE, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, affectedDisks[1]);
-
-            UNIT_ASSERT_GT(affectedDisks[0].SeqNo, lastSeqNo);
-            UNIT_ASSERT_VALUES_UNEQUAL(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
-            lastSeqNo = std::max(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
 
             UNIT_ASSERT_VALUES_EQUAL(8, state.GetDiskStateUpdates().size());
+            TVector updates {
+                state.GetDiskStateUpdates()[6],
+                state.GetDiskStateUpdates()[7]
+            };
+
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_ONLINE, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, updates[1]);
+
+            UNIT_ASSERT_GT(updates[0].SeqNo, lastSeqNo);
+            UNIT_ASSERT_VALUES_UNEQUAL(updates[0].SeqNo, updates[1].SeqNo);
+            lastSeqNo = std::max(updates[0].SeqNo, updates[1].SeqNo);
         });
 
         UNIT_ASSERT_VALUES_EQUAL(7, lastSeqNo);
@@ -3554,7 +3582,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // uuid-1 : online -> warning
         // disk-1 : online -> migration
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1",
@@ -3564,16 +3592,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisk->SeqNo);
-
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_VALUES_EQUAL(0, update.SeqNo);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1",
@@ -3589,7 +3617,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // uuid-5 : online -> warning
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-5",
@@ -3605,7 +3633,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // uuid-7 : online -> warning
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-7",
@@ -3619,7 +3647,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-7",
@@ -3636,7 +3664,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-3 : online -> migration
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2",
@@ -3646,19 +3674,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisk->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_VALUES_EQUAL(1, update.SeqNo);
         });
 
         // uuid-4 : online -> warning
         // disk-3 : already in migration
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-4",
@@ -3675,7 +3704,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-3 : migration -> error
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-4",
@@ -3685,19 +3714,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(2, affectedDisk->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, update);
+            UNIT_ASSERT_VALUES_EQUAL(2, update.SeqNo);
         });
 
         // uuid-4 : error -> online
         // disk-3 : error -> migration
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-4",
@@ -3707,19 +3737,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(3, affectedDisk->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_VALUES_EQUAL(3, update.SeqNo);
         });
 
         // uuid-2 : warning -> online
         // disk-3 : migration -> online
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2",
@@ -3729,12 +3760,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(4, affectedDisk->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(5, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, update);
+            UNIT_ASSERT_VALUES_EQUAL(4, update.SeqNo);
         });
     }
 
@@ -3762,7 +3795,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // #2 : online -> warning
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3777,7 +3810,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // uuid-1 : online -> warning
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1",
@@ -3799,7 +3832,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // #2 : warning -> online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3830,7 +3863,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // uuid-1 : warning -> online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1",
@@ -3895,7 +3928,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-3 : online -> migration
         // disk-4 : online -> migration
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3906,17 +3939,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(3, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
+            Sort(affectedDisks);
 
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, affectedDisks[1]);
-            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_MIGRATION, affectedDisks[2]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisks[2]);
+
+            auto updates = state.GetDiskStateUpdates();
+            UNIT_ASSERT_VALUES_EQUAL(3, updates.size());
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_MIGRATION, updates[2]);
         });
 
         // uuid-2.2 : online -> error
         // disk-3 : migration -> error
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2.2",
@@ -3926,15 +3967,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, *affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, update);
         });
 
         // uuid-1.3 : online -> error
         // disk-4 : migration -> error
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1.3",
@@ -3944,9 +3988,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisk);
 
-            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_ERROR, *affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(5, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_ERROR, update);
         });
 
         // #2 : warning -> online
@@ -3954,7 +4001,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // disk-3 : still in error state
         // disk-4 : still in error state
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2.GetAgentId(),
@@ -3965,9 +4012,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_ONLINE, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL(6, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_ONLINE, update);
         });
     }
 
@@ -4031,8 +4082,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             // drop uuid-1.1
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
@@ -4044,14 +4095,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            const auto& diskState = affectedDisks[0].State;
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskState.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             // drop uuid-2.2 & uuid-2.3
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
@@ -4063,25 +4116,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ));
 
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            SortBy(affectedDisks, [] (const auto& update) {
-                return update.State.GetDiskId();
-            });
+            Sort(affectedDisks);
 
-            {
-                const auto& diskState = affectedDisks[0].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-3", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
-            }
-            {
-                const auto& diskState = affectedDisks[1].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-4", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
-            }
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisks[1]);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
+
+            TVector updates {
+                state.GetDiskStateUpdates()[1],
+                state.GetDiskStateUpdates()[2]
+            };
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_ERROR, updates[1]);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             // restore uuid-2.2 & uuid-2.3 but with error state
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
@@ -4097,7 +4151,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // restore uuid-2.2 to online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-                TMaybe<TDiskStateUpdate> affectedDisk;
+                TString affectedDisk;
 
                 UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                     db,
@@ -4108,16 +4162,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     affectedDisk));
 
                 UNIT_ASSERT(affectedDisk);
+                UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
+                UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
+                const auto& update = state.GetDiskStateUpdates().back();
 
-                const auto& diskState = affectedDisk->State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-3", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskState.GetState());
-                UNIT_ASSERT(diskState.GetStateMessage().empty());
+                UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, update);
+                UNIT_ASSERT_VALUES_EQUAL("", update.State.GetStateMessage());
         });
 
         // restore uuid-2.3 to online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
 
             UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                 db,
@@ -4127,15 +4182,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "test",
                 affectedDisk));
 
-            const auto& diskState = affectedDisk->State;
-            UNIT_ASSERT_VALUES_EQUAL("disk-4", diskState.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskState.GetState());
-            UNIT_ASSERT(diskState.GetStateMessage().empty());
+            UNIT_ASSERT(affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(5, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_ONLINE, update);
+            UNIT_ASSERT_VALUES_EQUAL("", update.State.GetStateMessage());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent3a,
@@ -4148,8 +4206,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent4a,
@@ -4164,7 +4222,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // agent2 -> unavailable
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agent2c.GetAgentId(),
@@ -4173,42 +4231,32 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "state message",
                 affectedDisks));
 
+            Sort(affectedDisks);
+
             UNIT_ASSERT_VALUES_EQUAL(3, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisks[2]);
 
-            SortBy(affectedDisks, [] (const auto& update) {
-                return update.State.GetDiskId();
-            });
+            UNIT_ASSERT_VALUES_EQUAL(8, state.GetDiskStateUpdates().size());
 
-            {
-                const auto& diskState = affectedDisks[0].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-2", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                    diskState.GetState());
-            }
+            TVector updates {
+                state.GetDiskStateUpdates()[5],
+                state.GetDiskStateUpdates()[6],
+                state.GetDiskStateUpdates()[7]
+            };
+            Sort(updates, TByDiskId());
 
-            {
-                const auto& diskState = affectedDisks[1].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-3", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                    diskState.GetState());
-            }
-
-            {
-                const auto& diskState = affectedDisks[2].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-4", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                    diskState.GetState());
-            }
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_TEMPORARILY_UNAVAILABLE, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_TEMPORARILY_UNAVAILABLE, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_TEMPORARILY_UNAVAILABLE, updates[2]);
         });
 
         // agent2 -> ...
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent2a,
@@ -4217,35 +4265,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 &disksToNotify
             ));
 
+            Sort(affectedDisks);
+
             UNIT_ASSERT_VALUES_EQUAL(3, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisks[2]);
 
-            SortBy(affectedDisks, [] (const auto& update) {
-                return update.State.GetDiskId();
-            });
+            UNIT_ASSERT_VALUES_EQUAL(11, state.GetDiskStateUpdates().size());
 
-            {
-                const auto& diskState = affectedDisks[0].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-2", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_MIGRATION,
-                    diskState.GetState());
-            }
+            TVector updates {
+                state.GetDiskStateUpdates()[8],
+                state.GetDiskStateUpdates()[9],
+                state.GetDiskStateUpdates()[10]
+            };
+            Sort(updates, TByDiskId());
 
-            {
-                const auto& diskState = affectedDisks[1].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-3", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_MIGRATION,
-                    diskState.GetState());
-            }
-
-            {
-                const auto& diskState = affectedDisks[2].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-4", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_MIGRATION,
-                    diskState.GetState());
-            }
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_MIGRATION, updates[2]);
         });
 
         {
@@ -4262,7 +4300,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // agent2 -> online
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent2a.GetAgentId(),
@@ -4274,30 +4312,24 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(3, affectedDisks.size());
 
-            SortBy(affectedDisks, [] (const auto& update) {
-                return update.State.GetDiskId();
-            });
+            Sort(affectedDisks);
 
-            {
-                const auto& diskState = affectedDisks[0].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-2", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskState.GetState());
-                UNIT_ASSERT(diskState.GetStateMessage().empty());
-            }
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisks[2]);
 
-            {
-                const auto& diskState = affectedDisks[1].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-3", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskState.GetState());
-                UNIT_ASSERT(diskState.GetStateMessage().empty());
-            }
+            UNIT_ASSERT_VALUES_EQUAL(14, state.GetDiskStateUpdates().size());
 
-            {
-                const auto& diskState = affectedDisks[2].State;
-                UNIT_ASSERT_VALUES_EQUAL("disk-4", diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskState.GetState());
-                UNIT_ASSERT(diskState.GetStateMessage().empty());
-            }
+            TVector updates {
+                state.GetDiskStateUpdates()[11],
+                state.GetDiskStateUpdates()[12],
+                state.GetDiskStateUpdates()[13]
+            };
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_ONLINE, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_ONLINE, updates[2]);
         });
 
         {
@@ -4351,8 +4383,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent1b,
@@ -4398,7 +4430,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agent.GetAgentId(),
@@ -4427,7 +4459,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent.GetAgentId(),
@@ -4530,8 +4562,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent1a,
@@ -4542,10 +4574,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(2, disksToNotify.size());
-            auto it = disksToNotify.begin();
-            UNIT_ASSERT_VALUES_EQUAL("disk-4", it->first);
-            ++it;
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", it->first);
+            Sort(disksToNotify);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", disksToNotify[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", disksToNotify[1]);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -4591,7 +4622,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2.1",
@@ -4601,27 +4632,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisk->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
+            UNIT_ASSERT_VALUES_EQUAL(0, update.SeqNo);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-1",
                 "uuid-2.1",
                 Now(),
                 "", // message
-                &update);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(update.Defined());
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", update->State.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, update->State.GetState());
-            UNIT_ASSERT_VALUES_EQUAL(1, update->SeqNo);
+            UNIT_ASSERT(updated);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", update.State.GetDiskId());
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, update.State.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(1, update.SeqNo);
         });
 
         {
@@ -4708,17 +4746,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-2",
                 device,
                 Now(),
                 "", // message
-                &update);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
-            UNIT_ASSERT(update.Empty());
+            UNIT_ASSERT(!updated);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
         });
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
@@ -4728,16 +4767,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agent3));
             CleanDevices(state, db);
 
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-2",
                 device,
                 Now(),
                 "", // message
-                &update);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT(!updated);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
         });
 
         {
@@ -4802,32 +4843,37 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1.2",
                 NProto::DEVICE_STATE_ERROR,
                 Now(),
                 "test",
-                update);
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(update.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, *update);
-            UNIT_ASSERT_VALUES_EQUAL(0, update->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates()[0];
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
+            UNIT_ASSERT_VALUES_EQUAL(0, update.SeqNo);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-1",
                 "uuid-1.2",
                 Now(),
                 "", // message
-                &update);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
+            UNIT_ASSERT(!updated);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
         });
     }
 
@@ -4857,17 +4903,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-1",
                 "uuid-1.2",
                 Now(),
                 "", // message
-                &update);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
-            UNIT_ASSERT(update.Empty());
+            UNIT_ASSERT(!updated);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
         });
     }
 
@@ -4961,7 +5008,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // uuid-1.2 -> warn
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1.2",
@@ -5027,7 +5074,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5158,7 +5205,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // uuid-1.1 : online -> error
         // disk-1   : online -> error
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                 db,
                 "uuid-1.1",
@@ -5167,8 +5214,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "test",
                 affectedDisk));
 
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, *affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
         });
 
         {
@@ -5264,17 +5313,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TMaybe<TDiskStateUpdate> update;
+            TString affectedDisk;
             UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                 db,
                 "uuid-1.1",
                 NProto::DEVICE_STATE_ERROR,
                 errorTs,
                 "test",
-                update));
+                affectedDisk));
 
-            UNIT_ASSERT(update.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, *update);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
         });
 
         ui64 seqNo1 = 0;
@@ -5289,19 +5340,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> updates;
-            THashMap<TString, ui64> notifiedDisks;
+            TVector<TString> affectedDisks;
+            TVector<TString> notifiedDisks;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent2b,
                 regTs,
-                &updates,
+                &affectedDisks,
                 &notifiedDisks));
 
-            UNIT_ASSERT_VALUES_EQUAL(0, updates.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(1, notifiedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToNotify().size());
 
-            seqNo2 = notifiedDisks["disk-1"];
+            seqNo2 = state.GetDisksToNotify().at("disk-1");
 
             UNIT_ASSERT_VALUES_UNEQUAL(0, seqNo2);
             UNIT_ASSERT_VALUES_UNEQUAL(seqNo1, seqNo2);
@@ -5367,7 +5419,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // agent-1: online -> warning
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5382,21 +5434,27 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 storageConfig->GetNonReplicatedInfraTimeout(),
                 cmsTimeout);
 
+            Sort(affectedDisks);
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            auto updates = state.GetDiskStateUpdates();
+            Sort(updates, TByDiskId());
 
-            UNIT_ASSERT_VALUES_UNEQUAL(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
-            lastSeqNo = std::max(affectedDisks[0].SeqNo, affectedDisks[1].SeqNo);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(updates[0].SeqNo, updates[1].SeqNo);
+            lastSeqNo = std::max(updates[0].SeqNo, updates[1].SeqNo);
         });
 
         UNIT_ASSERT_VALUES_EQUAL(1, lastSeqNo);
 
         // agent-1: warning -> warning
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5406,6 +5464,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
+
             {
                 auto res = state.GetAgentCmsTs(agent1.GetAgentId());
                 UNIT_ASSERT_VALUES_EQUAL(true, res.Defined());
@@ -5413,11 +5472,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
         });
 
         // agent-1: warning -> unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5432,13 +5492,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 UNIT_ASSERT_VALUES_EQUAL(true, res.Defined());
                 UNIT_ASSERT_VALUES_EQUAL(ts, *res);
             }
+
+            UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
 
         ts += storageConfig->GetNonReplicatedInfraUnavailableAgentTimeout() / 2;
 
         // cms comes and requests host removal
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -5455,13 +5518,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     - TDuration::Seconds(10),
                 timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
 
         ts += storageConfig->GetNonReplicatedInfraUnavailableAgentTimeout() / 2
             + TDuration::Seconds(1);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -5475,11 +5539,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration(), timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
 
         // mark agent as unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5496,11 +5561,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
 
         // mark agent as online
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5516,18 +5582,27 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 UNIT_ASSERT_VALUES_EQUAL(TInstant(), *res);
             }
 
+            Sort(affectedDisks);
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL(6, state.GetDiskStateUpdates().size());
+            TVector updates {
+                state.GetDiskStateUpdates()[4],
+                state.GetDiskStateUpdates()[5]
+            };
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ONLINE, updates[1]);
         });
 
         ts += TDuration::Seconds(40);
 
         // cms comes and requests host removal
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -5542,18 +5617,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 storageConfig->GetNonReplicatedInfraTimeout(),
                 timeout);
-            UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
-            Sort(affectedDisks, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, affectedDisks[1]);
+            Sort(affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
+
+            UNIT_ASSERT_VALUES_EQUAL(8, state.GetDiskStateUpdates().size());
+            TVector updates {
+                state.GetDiskStateUpdates()[6],
+                state.GetDiskStateUpdates()[7]
+            };
+            Sort(updates, TByDiskId());
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
         });
 
         ts += storageConfig->GetNonReplicatedInfraTimeout() / 2;
 
         // cms comes and requests host removal
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -5576,7 +5661,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // timer should be restarted
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -5623,7 +5708,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
@@ -5636,13 +5721,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(storageConfig->GetNonReplicatedInfraTimeout(), timeout);
-            UNIT_ASSERT(affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, *affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2",
@@ -5652,11 +5740,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2",
@@ -5666,16 +5754,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, *affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_ERROR, update);
         });
 
         ts = ts + storageConfig->GetNonReplicatedInfraTimeout();
 
         // cms comes and request host removal
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
@@ -5695,7 +5786,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // mark agent is unavailable
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2",
@@ -5709,7 +5800,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2",
@@ -5810,7 +5901,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5842,16 +5933,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> updates;
-            THashMap<TString, ui64> notifiedDisks;
+            TVector<TString> affectedDisks;
+            TVector<TString> notifiedDisks;
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
                 agent1,
                 regTs,
-                &updates,
+                &affectedDisks,
                 &notifiedDisks));
 
-            UNIT_ASSERT_VALUES_EQUAL(0, updates.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(0, notifiedDisks.size());
         });
 
@@ -5875,7 +5966,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -5943,8 +6034,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
@@ -5955,9 +6046,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            const auto& diskState = affectedDisks[0].State;
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskState.GetDiskId());
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
 
             UNIT_ASSERT_EQUAL(
                 NProto::DEVICE_STATE_ERROR,
@@ -6087,7 +6180,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
@@ -6100,11 +6193,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            UNIT_ASSERT(!affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
@@ -6117,7 +6210,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            UNIT_ASSERT(!affectedDisk.Defined());
+            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
         });
     }
 
@@ -6145,7 +6238,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -6158,11 +6251,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            UNIT_ASSERT(!affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsHostState(
                 db,
@@ -6175,7 +6268,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            UNIT_ASSERT(!affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
     }
 
@@ -6223,7 +6316,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 E_INVALID_STATE,
                 RegisterAgent(state, db, agent2).GetCode());
 
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(
                 state.UpdateAgentState(
                     db,
@@ -6351,9 +6444,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(2, snapshot.PlacementGroupsSize());
         UNIT_ASSERT_VALUES_EQUAL(4, snapshot.AgentsSize());
 
-        SortBy(*snapshot.MutableDisks(), [] (auto& x) {
-            return x.GetDiskId();
-        });
+        Sort(*snapshot.MutableDisks(), TByDiskId());
 
         SortBy(*snapshot.MutablePlacementGroups(), [] (auto& x) {
             return x.GetGroupId();
@@ -6443,7 +6534,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-2.1",
@@ -6452,9 +6543,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "test",
                 affectedDisk);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisk->SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_VALUES_EQUAL(0, update.SeqNo);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -6515,7 +6609,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
 
             const auto error = state.FinishDeviceMigration(
                 db,
@@ -6523,12 +6617,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "uuid-2.1",
                 "uuid-1.2",
                 Now(),
-                &affectedDisk);
+                &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisk->SeqNo);
+            UNIT_ASSERT(updated);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
+            UNIT_ASSERT_VALUES_EQUAL(1, update.SeqNo);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -6591,7 +6689,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
 
             const auto error = state.UpdateAgentState(
                 db,
@@ -6603,7 +6701,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             );
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
         });
 
         {
@@ -6616,7 +6718,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
 
             const auto error = state.UpdateAgentState(
                 db,
@@ -6628,7 +6730,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             );
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, update);
         });
 
         {
@@ -6658,14 +6765,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             TDiskInfo diskInfo;
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
             for (const auto& m: diskInfo.Migrations) {
-                TMaybe<TDiskStateUpdate> affectedDisk;
+                bool updated = false;
                 UNIT_ASSERT_SUCCESS(state.FinishDeviceMigration(
                     db,
                     "disk-1",
                     m.GetSourceDeviceId(),
                     m.GetTargetDevice().GetDeviceUUID(),
                     Now(),
-                    &affectedDisk));
+                    &updated));
             }
         });
 
@@ -6771,8 +6878,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
             .Build();
 
-        auto kickDevice = [&] (int i, TInstant timestamp, auto newState) {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+        auto kickDevice = [&] (
+            int i,
+            TInstant timestamp,
+            NProto::EDeviceState newState,
+            NProto::EDiskState expectedDiskState)
+        {
+            TString affectedDisk;
 
             executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
                 const auto error = state.UpdateDeviceState(
@@ -6783,25 +6895,29 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     "test",
                     affectedDisk);
                 UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
-                UNIT_ASSERT(affectedDisk.Defined());
             });
 
-            return *affectedDisk;
+            const auto expectedId = Sprintf("disk-%d", i);
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedId, affectedDisk);
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedId, update.State.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                NProto::EDiskState_Name(expectedDiskState),
+                NProto::EDiskState_Name(update.State.GetState()));
         };
 
         auto warnDevice = [&] (int i, TInstant timestamp) {
-            auto u = kickDevice(i, timestamp, NProto::DEVICE_STATE_WARNING);
-            UNIT_ASSERT_DISK_STATE(Sprintf("disk-%d", i), DISK_STATE_MIGRATION, u);
+            kickDevice(i, timestamp, NProto::DEVICE_STATE_WARNING, NProto::DISK_STATE_MIGRATION);
         };
 
         auto errorDevice = [&] (int i, TInstant timestamp) {
-            auto u = kickDevice(i, timestamp, NProto::DEVICE_STATE_ERROR);
-            UNIT_ASSERT_DISK_STATE(Sprintf("disk-%d", i), DISK_STATE_ERROR, u);
+            kickDevice(i, timestamp, NProto::DEVICE_STATE_ERROR, NProto::DISK_STATE_ERROR);
         };
 
         auto onlineDevice = [&] (int i, TInstant timestamp) {
-            auto u = kickDevice(i, timestamp, NProto::DEVICE_STATE_ONLINE);
-            UNIT_ASSERT_DISK_STATE(Sprintf("disk-%d", i), DISK_STATE_ONLINE, u);
+            kickDevice(i, timestamp, NProto::DEVICE_STATE_ONLINE, NProto::DISK_STATE_ONLINE);
         };
 
         state.PublishCounters(TInstant::Zero());
@@ -7007,21 +7123,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, totalSingle->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, totalTwoOrMore->Val());
 
-        auto breakDisk = [&] (int i, auto t) {
+        auto breakDisk = [&] (int i, auto ts) {
             executor.WriteTx([&] (TDiskRegistryDatabase db) {
-                TMaybe<TDiskStateUpdate> affectedDisk;
+                TString affectedDisk;
                 UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                     db,
                     Sprintf("uuid-%d", i),
                     NProto::DEVICE_STATE_ERROR,
-                    t,
+                    ts,
                     "test",
                     affectedDisk));
-                UNIT_ASSERT(affectedDisk);
 
-                const auto& diskState = affectedDisk->State;
-                UNIT_ASSERT_VALUES_EQUAL(Sprintf("disk-%d", i), diskState.GetDiskId());
-                UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, diskState.GetState());
+                const auto expectedId = Sprintf("disk-%d", i);
+
+                UNIT_ASSERT_VALUES_EQUAL(expectedId, affectedDisk);
+                UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+                const auto& update = state.GetDiskStateUpdates().back();
+                UNIT_ASSERT_DISK_STATE(expectedId, DISK_STATE_ERROR, update);
             });
         };
 
@@ -7122,7 +7240,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
                 db,
                 "uuid-2.2",
@@ -7138,7 +7256,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(10_GB * 4, freeBytes->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 "agent-3000",
@@ -7239,7 +7357,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state.UpdateAgentState(
                 db,
                 agents[0].GetAgentId(),
@@ -7250,7 +7368,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
         });
 
         // start migration
@@ -7267,14 +7389,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             TDiskInfo diskInfo;
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
             for (const auto& m: diskInfo.Migrations) {
-                TMaybe<TDiskStateUpdate> affectedDisk;
+                bool updated = false;
                 UNIT_ASSERT_SUCCESS(state.FinishDeviceMigration(
                     db,
                     "disk-1",
                     m.GetSourceDeviceId(),
                     m.GetTargetDevice().GetDeviceUUID(),
                     Now(),
-                    &affectedDisk));
+                    &updated));
             }
         });
 
@@ -7380,7 +7502,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agents[0].GetAgentId(),
@@ -7391,7 +7513,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0].State.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -7441,8 +7563,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL("uuid-2.2", targets[1]);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
@@ -7458,8 +7580,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
 
             UNIT_ASSERT_SUCCESS(state.RegisterAgent(
                 db,
@@ -7737,7 +7859,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             const auto error = state.UpdateDeviceState(
                 db,
                 "uuid-1.1",
@@ -7746,8 +7868,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "test",
                 affectedDisk);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, *affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -7900,7 +8026,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             const auto error = state.UpdateAgentState(
                 db,
                 "agent-1000",
@@ -7910,7 +8036,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisks);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8043,7 +8174,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisk;
+            TVector<TString> affectedDisk;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agents[0].GetAgentId(),
@@ -8128,7 +8259,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // migrate from uuid-1.1 to uuid-2.1
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agents[0].GetAgentId(),
@@ -8138,7 +8269,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisks));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8184,7 +8319,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
 
             UNIT_ASSERT_SUCCESS(state.FinishDeviceMigration(
                 db,
@@ -8192,11 +8327,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "uuid-1.1",
                 "uuid-2.1",
                 Now(),
-                &affectedDisk));
+                &updated));
 
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, *affectedDisk);
-            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisk->SeqNo);
+            UNIT_ASSERT(updated);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
+            UNIT_ASSERT_VALUES_EQUAL(1, update.SeqNo);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
         });
 
@@ -8228,7 +8367,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // migrate from uuid-2.1 to uuid-1.1
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agents[0].GetAgentId(),
@@ -8241,7 +8380,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agents[1].GetAgentId(),
@@ -8251,7 +8390,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisks));
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8269,7 +8412,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            bool updated = false;
 
             UNIT_ASSERT_SUCCESS(state.FinishDeviceMigration(
                 db,
@@ -8277,10 +8420,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "uuid-2.1",
                 "uuid-1.1",
                 Now(),
-                &affectedDisk));
+                &updated));
 
-            UNIT_ASSERT(affectedDisk.Defined());
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, *affectedDisk);
+            UNIT_ASSERT(updated);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8369,8 +8514,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         CheckDevices();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             auto error = state.RegisterAgent(
                 db,
                 agent1b,
@@ -8388,8 +8533,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         CheckDevices();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> disksToNotify;
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToNotify;
             auto error = state.RegisterAgent(
                 db,
                 agent1c,
@@ -8595,7 +8740,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         };
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -8612,7 +8757,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -8629,7 +8774,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             state.UpdateAgentState(
                 db,
                 agent1.GetAgentId(),
@@ -8646,7 +8791,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             state.UpdateDeviceState(
                 db,
                 "uuid-1",
@@ -8686,7 +8831,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         auto updateAgentState = [&] (auto db, const auto& agent, auto desiredState) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
                 agent.GetAgentId(),
@@ -8971,8 +9116,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             for (size_t i = 0; i != agents.size() - 1; ++i) {
-                TVector<TDiskStateUpdate> affectedDisks;
-                THashMap<TString, ui64> notifiedDisks;
+                TVector<TString> affectedDisks;
+                TVector<TString> notifiedDisks;
 
                 auto error = state->RegisterAgent(
                     db,
@@ -9044,7 +9189,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             auto error = state->UpdateAgentState(
                 db,
                 agentToAbuse.GetAgentId(),
@@ -9055,10 +9200,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL("foo", affectedDisks[0].State.GetDiskId());
-            UNIT_ASSERT_EQUAL(
-                NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                affectedDisks[0].State.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("foo", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state->GetDiskStateUpdates().size());
+            const auto& update = state->GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE(
+                "foo",
+                DISK_STATE_TEMPORARILY_UNAVAILABLE,
+                update);
         });
 
         {
@@ -9078,8 +9228,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // replace agent with new one
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> notifiedDisks;
+            TVector<TString> affectedDisks;
+            TVector<TString> notifiedDisks;
 
             auto agent = agents.back();
             agent.SetNodeId(agentToAbuse.GetNodeId());
@@ -9094,7 +9244,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
 
             UNIT_ASSERT_VALUES_EQUAL(1, notifiedDisks.size());
-            UNIT_ASSERT(notifiedDisks.contains("foo"));
+            UNIT_ASSERT_VALUES_EQUAL("foo", notifiedDisks[0]);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 agent.DevicesSize(),
@@ -9288,8 +9438,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             agentToAbuse.SetNodeId(100);
 
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> notifiedDisks;
+            TVector<TString> affectedDisks;
+            TVector<TString> notifiedDisks;
 
             auto error = state->RegisterAgent(
                 db,
@@ -9298,13 +9448,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 &affectedDisks,
                 &notifiedDisks);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-
-            UNIT_ASSERT_VALUES_EQUAL("foo", affectedDisks[0].State.GetDiskId());
-            UNIT_ASSERT_EQUAL(
-                NProto::DISK_STATE_MIGRATION,
-                affectedDisks[0].State.GetState());
-
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(1, notifiedDisks.size());
+
+            UNIT_ASSERT_VALUES_EQUAL("foo", affectedDisks[0]);
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, state->GetDiskStateUpdates().size());
+            const auto& update = state->GetDiskStateUpdates().back();
+
+            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_MIGRATION, update);
 
             UNIT_ASSERT_VALUES_EQUAL(0, state->GetDirtyDevices().size());
         });
@@ -9432,7 +9584,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         auto changeAgentState = [&] (const auto& newState, const auto& ts) {
             executor.WriteTx([&] (TDiskRegistryDatabase db) {
-                TVector<TDiskStateUpdate> affectedDisks;
+                TVector<TString> affectedDisks;
                 auto error = state.UpdateAgentState(
                     db,
                     agent.GetAgentId(),

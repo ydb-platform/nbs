@@ -24,12 +24,9 @@ void TPartitionActor::HandleGetUsedBlocks(
     auto requestInfo = CreateRequestInfo<TEvVolume::TGetUsedBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -83,8 +80,6 @@ void TPartitionActor::CompleteGetUsedBlocks(
     response->Record.MutableUsedBlocks()->Swap(&args.UsedBlocks);
 
     RemoveTransaction(*args.RequestInfo);
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

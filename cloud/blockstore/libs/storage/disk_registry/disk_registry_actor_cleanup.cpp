@@ -211,8 +211,7 @@ void TDiskRegistryActor::HandleCleanupDisks(
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         ),
         State->GetMasterDiskIds());
 

@@ -199,8 +199,7 @@ void TDiskRegistryActor::HandleNotifyDiskError(
      auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId)
+        msg->CallContext
     );
 
     TDiskInfo diskInfo;
@@ -270,9 +269,7 @@ void TDiskRegistryActor::HandleNotifyDiskError(
                 replyFrom,
                 response.release(),
                 0,          // flags
-                requestInfo->Cookie,
-                nullptr,    // forwardOnNondelivery
-                std::move(requestInfo->TraceId)));
+                requestInfo->Cookie));
     });
 }
 
@@ -297,9 +294,7 @@ void TDiskRegistryActor::HandleNotifyUsers(
         CreateRequestInfo(
             SelfId(),
             0,
-            MakeIntrusive<TCallContext>(),
-            NWilson::TTraceId::NewTraceId()
-        ),
+            MakeIntrusive<TCallContext>()),
         ErrorNotifications
     );
     Actors.insert(actor);
@@ -350,8 +345,7 @@ void TDiskRegistryActor::HandleNotifyUsersResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TNotifyUsersMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         ),
         std::move(disks));
 }

@@ -22,12 +22,9 @@ void TPartitionActor::HandleDeleteGarbage(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TDeleteGarbageMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -105,8 +102,6 @@ void TPartitionActor::CompleteDeleteGarbage(
     auto response =
         std::make_unique<TEvPartitionPrivate::TEvDeleteGarbageResponse>();
     response->ExecCycles = args.RequestInfo->GetExecCycles();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

@@ -26,8 +26,8 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
     struct TDisk
     {
         TVector<NProto::TDeviceConfig> Devices;
-        TString WriterSessionId;
-        TVector<TString> ReaderSessionIds;
+        TString WriterClientId;
+        TVector<TString> ReaderClientIds;
         NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
         TInstant IOModeTs;
         TMap<TString, NProto::TDeviceConfig> Migrations;

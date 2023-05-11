@@ -86,7 +86,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
+        clientConfig->MaxReconnectDelay = TDuration::Seconds(5);
 
         auto logging = CreateLoggingService(
             "console",
@@ -109,7 +109,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             std::make_shared<TClientHandler>());
 
         try {
-            clientEndpoint.GetValue(TDuration::Seconds(5));
+            clientEndpoint.GetValue(TDuration::Seconds(10));
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
             UNIT_ASSERT_VALUES_EQUAL_C(

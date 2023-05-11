@@ -1,7 +1,6 @@
 #include "volume_proxy.h"
 
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -115,7 +114,19 @@ private:
     THashMap<TString, TConnection> Connections;
     THashMap<ui64, TConnection*> ConnectionById;
     THashMap<ui64, TConnection*> ConnectionByTablet;
-    THashMap<TString, ui64> BaseDiskIdToTabletId;
+
+    struct TBaseTabletId
+    {
+        TBaseTabletId(ui64 tabletId, int refCount)
+            : TabletId(tabletId)
+            , RefCount(refCount)
+        {}
+
+        ui64 TabletId = 0;
+        int RefCount = 0;
+    };
+
+    THashMap<TString, TBaseTabletId> BaseDiskIdToTabletId;
 
     ui64 RequestId = 0;
     TActiveRequestMap ActiveRequests;
@@ -211,6 +222,10 @@ private:
 
     void HandleMapBaseDiskIdToTabletId(
         const TEvVolume::TEvMapBaseDiskIdToTabletId::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleClearBaseDiskIdToTabletIdMapping(
+        const TEvVolume::TEvClearBaseDiskIdToTabletIdMapping::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -367,9 +382,8 @@ void TVolumeProxyActor::ForwardRequest(
         SelfId(),
         ev->ReleaseBase().Release(),
         0,          // flags
-        requestId,  // cookie
-        nullptr,    // forwardOnNondelivery
-        ev->TraceId.Clone());
+        requestId  // cookie
+    );
 
     ActiveRequests.emplace(
         requestId,
@@ -558,7 +572,6 @@ void TVolumeProxyActor::HandleRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(E_REJECTED, "Tablet is dead"));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -578,7 +591,7 @@ void TVolumeProxyActor::HandleRequest(
                 StartConnection(
                     ctx,
                     conn,
-                    itr->second,
+                    itr->second.TabletId,
                     "PartitionConfig");
                 break;
             }
@@ -600,7 +613,6 @@ void TVolumeProxyActor::HandleRequest(
             auto response = std::make_unique<typename TMethod::TResponse>(
                 conn.Error);
 
-            BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
             NCloud::Reply(ctx, *ev, std::move(response));
             break;
         }
@@ -647,9 +659,7 @@ void TVolumeProxyActor::HandleResponse(
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
-            it->second.Request->Cookie,
-            nullptr,    // undeliveredRequestActor
-            std::move(ev->TraceId));
+            it->second.Request->Cookie);
     } else {
         event = new IEventHandle(
             ev->Type,
@@ -657,9 +667,7 @@ void TVolumeProxyActor::HandleResponse(
             it->second.Request->Sender,
             ev->Sender,
             ev->ReleaseChainBuffer(),
-            it->second.Request->Cookie,
-            nullptr,    // undeliveredRequestActor
-            std::move(ev->TraceId));
+            it->second.Request->Cookie);
     }
 
     auto* conn = ConnectionById[it->second.ConnectionId];
@@ -682,7 +690,26 @@ void TVolumeProxyActor::HandleMapBaseDiskIdToTabletId(
 {
     Y_UNUSED(ctx);
     const auto* msg = ev->Get();
-    BaseDiskIdToTabletId[msg->BaseDiskId] = msg->BaseTabletId;
+    auto [it, inserted] = BaseDiskIdToTabletId.try_emplace(
+        msg->BaseDiskId, msg->BaseTabletId, 1);
+    if (!inserted) {
+        ++it->second.RefCount;
+    }
+}
+
+void TVolumeProxyActor::HandleClearBaseDiskIdToTabletIdMapping(
+    const TEvVolume::TEvClearBaseDiskIdToTabletIdMapping::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    const auto* msg = ev->Get();
+    auto itr = BaseDiskIdToTabletId.find(msg->BaseDiskId);
+    if (itr != BaseDiskIdToTabletId.end()) {
+        --itr->second.RefCount;
+        if (itr->second.RefCount == 0) {
+            BaseDiskIdToTabletId.erase(itr);
+        }
+    }
 }
 
 void TVolumeProxyActor::HandlePoisonPill(
@@ -767,6 +794,9 @@ STFUNC(TVolumeProxyActor::StateWork)
         HFunc(
             TEvVolume::TEvMapBaseDiskIdToTabletId,
             HandleMapBaseDiskIdToTabletId);
+        HFunc(
+            TEvVolume::TEvClearBaseDiskIdToTabletIdMapping,
+            HandleClearBaseDiskIdToTabletIdMapping);
 
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeResponse);
 

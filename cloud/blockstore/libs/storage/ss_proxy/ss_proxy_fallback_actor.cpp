@@ -226,8 +226,7 @@ void TSSProxyFallbackActor::HandleDescribeScheme(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     NCloud::Register<TReadPathDescriptionCacheActor<TResponse>>(
         ctx,
@@ -255,8 +254,7 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TString dir = TStringBuilder() << Config->GetSchemeShardDir() << '/';
     TString path = TStringBuilder() << dir << DiskIdToPath(msg->DiskId);

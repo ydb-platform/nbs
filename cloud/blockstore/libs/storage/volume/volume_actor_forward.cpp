@@ -27,48 +27,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-void ChangeSessionId(T&, const TString&)
-{
-}
-
-void ChangeSessionId(
-    TEvService::TEvReadBlocksRequest& request,
-    const TString& newSessionId)
-{
-    request.Record.SetSessionId(newSessionId);
-}
-
-void ChangeSessionId(
-    TEvService::TEvWriteBlocksRequest& request,
-    const TString& newSessionId)
-{
-    request.Record.SetSessionId(newSessionId);
-}
-
-void ChangeSessionId(
-    TEvService::TEvZeroBlocksRequest& request,
-    const TString& newSessionId)
-{
-    request.Record.SetSessionId(newSessionId);
-}
-
-void ChangeSessionId(
-    TEvService::TEvReadBlocksLocalRequest& request,
-    const TString& newSessionId)
-{
-    request.Record.SetSessionId(newSessionId);
-}
-
-void ChangeSessionId(
-    TEvService::TEvWriteBlocksLocalRequest& request,
-    const TString& newSessionId)
-{
-    request.Record.SetSessionId(newSessionId);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TMethod>
 bool CanForwardToPartition(ui32 partitionCount)
 {
@@ -176,8 +134,7 @@ bool TVolumeActor::HandleRequest(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     for (const auto& partitionRequest: partitionRequests) {
         LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
@@ -289,8 +246,8 @@ void TVolumeActor::SendRequestToPartition(
         ev->ReleaseBase().Release(),
         IEventHandle::FlagForwardOnNondelivery, // flags
         VolumeRequestId,                        // cookie
-        &selfId,                                // forwardOnNondelivery
-        ev->TraceId.Clone());
+        &selfId                                 // forwardOnNondelivery
+    );
 
     VolumeRequests.emplace(
         VolumeRequestId,
@@ -404,9 +361,7 @@ void TVolumeActor::HandleResponse(
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
-            it->second.Request->Cookie,
-            nullptr,    // undeliveredRequestActor
-            std::move(ev->TraceId)
+            it->second.Request->Cookie
         );
 
         ctx.Send(event);
@@ -559,8 +514,6 @@ void TVolumeActor::ForwardRequest(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
-
     auto replyError = [&] (NProto::TError error)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
@@ -606,8 +559,7 @@ void TVolumeActor::ForwardRequest(
                 auto requestInfo = CreateRequestInfo<TMethod>(
                     ev->Sender,
                     ev->Cookie,
-                    ev->Get()->CallContext,
-                    ev->TraceId.Clone());
+                    ev->Get()->CallContext);
 
                 PendingRequests.emplace_back(
                     NActors::IEventHandlePtr(ev.Release()),
@@ -651,10 +603,6 @@ void TVolumeActor::ForwardRequest(
     {
         replyError(MakeError(E_REJECTED, "Writes blocked"));
         return;
-    }
-
-    if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
-        ChangeSessionId(*msg, clientId);
     }
 
     {

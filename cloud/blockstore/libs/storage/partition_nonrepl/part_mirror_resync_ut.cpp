@@ -867,6 +867,51 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectPostponedReadIfRangeResyncFailed)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.CatchEvents(TEvNonreplPartitionPrivate::EvChecksumBlocksResponse);
+
+        env.StartResync();
+
+        TBlockRange64 range(100, 199);
+
+        TPartitionClient client(runtime, env.ActorId);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        // Check ReadBlocks
+
+        {
+            client.SendReadBlocksRequest(range);
+            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+
+            for (auto& ev: env.Caught) {
+                if (ev->GetTypeRewrite()
+                        == TEvNonreplPartitionPrivate::EvChecksumBlocksResponse)
+                {
+                    using TEvent =
+                        TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse;
+                    auto* msg = ev->template Get<TEvent>();
+                    *msg->Record.MutableError() =
+                        MakeError(E_IO, "request failed");
+                }
+            }
+
+            env.ReleaseEvents();
+            env.ResyncController.WaitForResyncedRangeCount(1);
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
     Y_UNIT_TEST(ShouldPostponeLocalReadIfRangeNotResynced)
     {
         TTestBasicRuntime runtime;

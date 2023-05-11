@@ -397,8 +397,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("transport0", devices[0].GetTransportId());
 
         const auto& disk = state->Disks.at("vol0");
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
         UNIT_ASSERT_VALUES_EQUAL("", disk.PoolName);
 
         auto clientInfo = CreateVolumeClientInfo(
@@ -414,8 +414,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.GetDevices(0).GetTransportId()
             );
         }
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         auto clientInfo2 = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_ONLY,
@@ -423,9 +423,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volumeClient2.AddClient(clientInfo2);
 
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderSessionIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderSessionIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
         volumeClient1.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
         auto resp = volumeClient1.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
@@ -434,13 +434,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
 
         volume.RemoveClient(clientInfo.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderSessionIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderSessionIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
         volume.RemoveClient(clientInfo2.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
     }
 
     Y_UNIT_TEST(ShouldForwardRequestsToNonreplicatedPartitionDuringMigration)
@@ -484,8 +484,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         const auto& disk = state->Disks.at("vol0");
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
         UNIT_ASSERT_VALUES_EQUAL("", disk.PoolName);
 
         // registering a writer
@@ -510,8 +510,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.GetDevices(2).GetTransportId()
             );
         }
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         // writing some data whose migration we will test
         const TBlockRange64 range1(5);
@@ -597,9 +597,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         client2.AddClient(clientInfo2);
 
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderSessionIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderSessionIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
         UNIT_ASSERT(evRangeMigrated);
 
@@ -661,6 +661,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         UNIT_ASSERT_VALUES_EQUAL(
             clientInfo.GetClientId(),
+            writeBlocksRequests[0].GetHeaders().GetClientId()
+        );
+        // TODO: remove after NBS-3886
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientInfo.GetClientId(),
             writeBlocksRequests[0].GetSessionId()
         );
         UNIT_ASSERT_VALUES_EQUAL(
@@ -683,6 +688,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             "uuid0_migration",
             writeBlocksRequests[1].GetDeviceUUID()
         );
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientInfo.GetClientId(),
+            writeBlocksRequests[1].GetHeaders().GetClientId()
+        );
+        // TODO: remove after NBS-3886
         UNIT_ASSERT_VALUES_EQUAL(
             clientInfo.GetClientId(),
             writeBlocksRequests[1].GetSessionId()
@@ -718,6 +728,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         UNIT_ASSERT_VALUES_EQUAL(
             clientInfo.GetClientId(),
+            zeroBlocksRequests[0].GetHeaders().GetClientId()
+        );
+        // TODO: remove after NBS-3886
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientInfo.GetClientId(),
             zeroBlocksRequests[0].GetSessionId()
         );
         UNIT_ASSERT_VALUES_EQUAL(
@@ -736,6 +751,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             "uuid0_migration",
             zeroBlocksRequests[1].GetDeviceUUID()
         );
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientInfo.GetClientId(),
+            zeroBlocksRequests[1].GetHeaders().GetClientId()
+        );
+        // TODO: remove after NBS-3886
         UNIT_ASSERT_VALUES_EQUAL(
             clientInfo.GetClientId(),
             zeroBlocksRequests[1].GetSessionId()
@@ -827,13 +847,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         client1.ReconnectPipe(); // reconnect since pipe was closed when client2 started read/write
         client1.RemoveClient(clientInfo.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderSessionIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderSessionIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
         client2.RemoveClient(clientInfo2.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
     }
 
     Y_UNIT_TEST(ShouldProperlyHandleBadMigrationConfiguration)
@@ -1742,7 +1762,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto runtime = PrepareTestActorRuntime(config, state);
 
         bool intercept = true;
+        // TODO: remove after NBS-3886
         TString releaseSessionId;
+        TString releaseClientId;
         TAutoPtr<IEventHandle> writeDeviceBlocks;
 
         auto replyError = [&] () {
@@ -1776,8 +1798,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         auto* msg =
                             event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
                         UNIT_ASSERT(!releaseSessionId);
+                        UNIT_ASSERT(!releaseClientId);
 
                         releaseSessionId = msg->Record.GetSessionId();
+                        releaseClientId = msg->Record.GetHeaders().GetClientId();
 
                         break;
                     }
@@ -1807,6 +1831,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // timeout has not passed yet
         UNIT_ASSERT_VALUES_EQUAL("", releaseSessionId);
+        UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(5));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
@@ -1814,7 +1839,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         replyError();
 
         // timeout has passed, ReleaseDisk should've been sent
-        UNIT_ASSERT_VALUES_EQUAL(AnyWriterSessionId, releaseSessionId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseSessionId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
 
         intercept = false;
         UNIT_ASSERT(writeDeviceBlocks);
@@ -1848,8 +1874,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("transport0", devices[0].GetTransportId());
 
         const auto& disk = state->Disks.at("vol0");
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
         UNIT_ASSERT_VALUES_EQUAL("", disk.PoolName);
 
         auto clientInfo = CreateVolumeClientInfo(
@@ -1865,8 +1891,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.GetDevices(0).GetTransportId()
             );
         }
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
         auto resp = volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
@@ -1875,8 +1901,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
 
         volume.RemoveClient(clientInfo.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
     }
 
     Y_UNIT_TEST(ShouldForwardRequestsToNonreplicatedPartitionAfterResizeNoAcquire)
@@ -5008,6 +5034,79 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
 
+    void DoTestShouldCreateAndDeleteCheckpointsForDiskRegistryBased(
+        NProto::EStorageMediaKind mediaKind)
+    {
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const auto expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            mediaKind,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create the first checkpoint and delete it via DeleteCheckpointData
+        volume.CreateCheckpoint("c1");
+        {
+            auto stat = volume.StatVolume();
+            UNIT_ASSERT_VALUES_EQUAL(1, stat->Record.GetCheckpoints().size());
+            UNIT_ASSERT_VALUES_EQUAL("c1", stat->Record.GetCheckpoints()[0]);
+        }
+        volume.DeleteCheckpointData("c1");
+        {
+            auto stat = volume.StatVolume();
+            UNIT_ASSERT(stat->Record.GetCheckpoints().empty());
+        }
+
+        // Create the second checkpoint and delete it via DeleteCheckpoint
+        volume.CreateCheckpoint("c2");
+        {
+            auto stat = volume.StatVolume();
+            UNIT_ASSERT_VALUES_EQUAL(1, stat->Record.GetCheckpoints().size());
+            UNIT_ASSERT_VALUES_EQUAL("c2", stat->Record.GetCheckpoints()[0]);
+        }
+        volume.DeleteCheckpoint("c2");
+        {
+            auto stat = volume.StatVolume();
+            UNIT_ASSERT(stat->Record.GetCheckpoints().empty());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDeleteCheckpointsForDiskRegistryBasedVolumes)
+    {
+        DoTestShouldCreateAndDeleteCheckpointsForDiskRegistryBased(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDeleteCheckpointsForMirror2Volumes)
+    {
+        DoTestShouldCreateAndDeleteCheckpointsForDiskRegistryBased(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDeleteCheckpointsForMirror3Volumes)
+    {
+        DoTestShouldCreateAndDeleteCheckpointsForDiskRegistryBased(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
     void DoShouldDrainBeforeCheckpointCreation(
         NProto::EStorageMediaKind mediaKind,
         bool testWriteRequest)
@@ -5183,8 +5282,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         const auto& disk = state->Disks.at("vol0");
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
         UNIT_ASSERT_VALUES_EQUAL("", disk.PoolName);
 
         // registering a writer
@@ -5209,8 +5308,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.GetDevices(2).GetTransportId()
             );
         }
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         // writing some data whose migration we will test
         const TBlockRange64 range1(5);
@@ -5308,9 +5407,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         client2.AddClient(clientInfo2);
 
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderSessionIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderSessionIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
         UNIT_ASSERT(evRangeMigrated);
 
@@ -5370,13 +5469,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         client1.ReconnectPipe(); // reconnect since pipe was closed when client2 started read/write
         client1.RemoveClient(clientInfo.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderSessionIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderSessionIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
         client2.RemoveClient(clientInfo2.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterSessionId);
-        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderSessionIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
+        UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         return hasMorePlaceToCheck;
     }
@@ -5940,6 +6039,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 partStatsSaved = 0;
         ui64 channelHistorySize = 0;
         ui32 partitionCount = 0;
+        ui64 loadTime = 0;
+        ui64 startTime = 0;
 
         auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
@@ -5959,6 +6060,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
                 partitionCount =
                     msg->VolumeSelfCounters->Simple.PartitionCount.Value;
+                loadTime = msg->VolumeSelfCounters->Simple.LastVolumeLoadTime.Value;
+                startTime = msg->VolumeSelfCounters->Simple.LastVolumeStartTime.Value;
             }
 
 
@@ -5985,12 +6088,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
         UNIT_ASSERT_VALUES_EQUAL(6_MB, usedBytesCount);
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, loadTime);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, startTime);
         UNIT_ASSERT_VALUES_EQUAL(2, partitionCount);
 
         volume.RebootTablet();
         bytesCount = 0;
         usedBytesCount = 0;
         channelHistorySize = 0;
+        loadTime = 0;
+        startTime = 0;
         partitionCount = 0;
 
         runtime->SetObserverFunc(obs);
@@ -6002,12 +6109,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
         UNIT_ASSERT_VALUES_EQUAL(6_MB, usedBytesCount);
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, loadTime);
+        UNIT_ASSERT_VALUES_EQUAL(0, startTime);
         UNIT_ASSERT_VALUES_EQUAL(2, partitionCount);
 
         // partition stats should be sent not just once
         bytesCount = 0;
         usedBytesCount = 0;
         channelHistorySize = 0;
+        loadTime = 0;
+        startTime = 0;
         partitionCount = 0;
 
         volume.SendToPipe(
@@ -6018,6 +6129,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
         UNIT_ASSERT_VALUES_EQUAL(6_MB, usedBytesCount);
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, loadTime);
+        UNIT_ASSERT_VALUES_EQUAL(0, startTime);
         UNIT_ASSERT_VALUES_EQUAL(2, partitionCount);
     }
 

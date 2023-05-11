@@ -19,8 +19,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received UpdateCmsHostDeviceState request: host=%s, path=%s, State=%u",
@@ -28,8 +27,6 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
         msg->Host.c_str(),
         msg->Path.c_str(),
         static_cast<ui32>(msg->State));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TUpdateCmsHostDeviceState>(
         ctx,
@@ -106,7 +103,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     auto response = std::make_unique<TResponse>(std::move(args.Error));
     response->Timeout = args.Timeout;
     if (args.AffectedDisk) {
-        response->DependentDiskIds = {args.AffectedDisk->State.GetDiskId()};
+        response->DependentDiskIds = {args.AffectedDisk};
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

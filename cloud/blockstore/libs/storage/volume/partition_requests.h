@@ -940,8 +940,7 @@ void TPartitionRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ct
             partitionRequest.Event.release(),
             NActors::IEventHandle::FlagForwardOnNondelivery,
             cookie++,
-            &selfId,
-            RequestInfo->TraceId.Clone());
+            &selfId);
 
         ctx.Send(event.release());
     }
@@ -1020,7 +1019,6 @@ void TPartitionRequestActor<TMethod>::HandlePartitionResponse(
             TMethod::Name,
             RequestInfo->CallContext->RequestId);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
         NotifyCompleted(ctx);
@@ -1051,7 +1049,6 @@ void TPartitionRequestActor<TMethod>::HandleUndelivery(
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     NotifyCompleted(ctx);

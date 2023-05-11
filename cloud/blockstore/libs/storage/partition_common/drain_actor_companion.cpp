@@ -1,14 +1,14 @@
 #include "drain_actor_companion.h"
 
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
+
+#include <library/cpp/lwtrace/all.h>
 
 #include <util/generic/string.h>
 #include <util/string/builder.h>
-
-#include <cloud/blockstore/libs/kikimr/trace.h>
-#include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <library/cpp/lwtrace/all.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -38,8 +38,7 @@ void TDrainActorCompanion::HandleDrain(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,

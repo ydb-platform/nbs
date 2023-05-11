@@ -142,9 +142,6 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncRead
             : NKikimrBlobStorage::FastRead);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -152,9 +149,7 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release(),
-        0,  // cookie
-        std::move(traceId));
+        request.release());
 }
 
 void TReadBlobActor::NotifyCompleted(
@@ -176,8 +171,6 @@ void TReadBlobActor::ReplyAndDie(
     std::unique_ptr<TResponse> response)
 {
     NotifyCompleted(ctx, response->GetError());
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     if (ResponseReceived) {
         LWTRACK(
@@ -215,8 +208,6 @@ void TReadBlobActor::HandleGetResult(
     ResponseReceived = ctx.Now();
 
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     RequestInfo->CallContext->LWOrbit = std::move(msg->Orbit);
 
@@ -358,12 +349,9 @@ void TPartitionActor::HandleReadBlob(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TReadBlobMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,

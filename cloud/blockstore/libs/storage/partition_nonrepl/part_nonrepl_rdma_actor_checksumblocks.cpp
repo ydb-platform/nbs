@@ -170,12 +170,9 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     auto requestInfo = CreateRequestInfo<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -236,7 +233,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        deviceRequest.SetSessionId(msg->Record.GetSessionId());
+        // TODO: remove after NBS-3886
+        deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
             &*dc,

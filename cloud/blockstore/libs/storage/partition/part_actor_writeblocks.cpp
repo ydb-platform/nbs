@@ -108,12 +108,9 @@ void TPartitionActor::HandleWriteBlocksRequest(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -132,8 +129,6 @@ void TPartitionActor::HandleWriteBlocksRequest(
                     MakeError(E_ARGUMENT, TStringBuilder()
                         << "invalid buffer length: " << buffer.Size()));
 
-                BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
-
                 LWTRACK(
                     ResponseSent_Partition,
                     requestInfo->CallContext->LWOrbit,
@@ -149,8 +144,6 @@ void TPartitionActor::HandleWriteBlocksRequest(
     } else {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(E_REJECTED, "failed to acquire input buffer"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -177,8 +170,6 @@ void TPartitionActor::HandleWriteBlocksRequest(
                 << "index: " << msg->Record.GetStartIndex()
                 << ", count: " << blocksCount
                 << "]"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -218,8 +209,6 @@ void TPartitionActor::WriteBlocks(
             error.GetMessage().c_str());
 
         auto response = CreateWriteBlocksResponse(replyLocal, std::move(error));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

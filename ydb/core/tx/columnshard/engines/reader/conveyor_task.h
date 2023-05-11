@@ -2,13 +2,13 @@
 #include <ydb/core/tx/conveyor/usage/abstract.h>
 #include <ydb/library/accessor/accessor.h>
 
-namespace NKikimr::NOlap {
-class TIndexedReadData;
+namespace NKikimr::NOlap::NIndexedReader {
+class TGranulesFillingContext;
 }
 
 namespace NKikimr::NColumnShard {
 
-class IDataTasksProcessor;
+class TDataTasksProcessorContainer;
 
 class IDataTasksProcessor {
 private:
@@ -20,9 +20,10 @@ public:
     class ITask: public NConveyor::ITask {
     private:
         std::shared_ptr<IDataTasksProcessor> OwnerOperator;
-        YDB_READONLY_FLAG(DataProcessed, false);
+        bool DataProcessed = false;
     protected:
-        virtual bool DoApply(NOlap::TIndexedReadData& indexedDataRead) const = 0;
+        TDataTasksProcessorContainer GetTasksProcessorContainer() const;
+        virtual bool DoApply(NOlap::NIndexedReader::TGranulesFillingContext& indexedDataRead) const = 0;
         virtual bool DoExecuteImpl() = 0;
 
         virtual bool DoExecute() override final;
@@ -31,9 +32,16 @@ public:
             : OwnerOperator(ownerOperator) {
 
         }
+
+        bool IsSameProcessor(const TDataTasksProcessorContainer& receivedProcessor) const;
+
         using TPtr = std::shared_ptr<ITask>;
         virtual ~ITask() = default;
-        bool Apply(NOlap::TIndexedReadData& indexedDataRead) const;
+        bool Apply(NOlap::NIndexedReader::TGranulesFillingContext& indexedDataRead) const;
+
+        bool IsDataProcessed() const noexcept {
+            return DataProcessed;
+        }
     };
 protected:
     virtual bool DoAdd(ITask::TPtr task) = 0;
@@ -60,13 +68,17 @@ public:
 
 class TDataTasksProcessorContainer {
 private:
-    YDB_READONLY_DEF(IDataTasksProcessor::TPtr, Object);
+    IDataTasksProcessor::TPtr Object;
 public:
     TDataTasksProcessorContainer() = default;
     TDataTasksProcessorContainer(IDataTasksProcessor::TPtr object)
         : Object(object)
     {
 
+    }
+
+    bool IsSameProcessor(const TDataTasksProcessorContainer& container) const {
+        return (ui64)Object.get() == (ui64)container.Object.get();
     }
 
     void Stop() {
@@ -83,7 +95,11 @@ public:
         return Object && Object->IsStopped();
     }
 
-    void Add(NOlap::TIndexedReadData& indexedDataRead, IDataTasksProcessor::ITask::TPtr task);
+    IDataTasksProcessor::TPtr GetObject() const noexcept {
+        return Object;
+    }
+
+    void Add(NOlap::NIndexedReader::TGranulesFillingContext& context, IDataTasksProcessor::ITask::TPtr task);
 };
 
 }

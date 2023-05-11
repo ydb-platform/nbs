@@ -114,8 +114,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TDiskStateUpdate> affectedDisks;
-            THashMap<TString, ui64> notifiedDisks;
+            TVector<TString> affectedDisks;
+            TVector<TString> notifiedDisks;
 
             UNIT_ASSERT_SUCCESS(
                 state.RegisterAgent(

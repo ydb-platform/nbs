@@ -37,8 +37,7 @@ void TVolumeActor::HandleUpdateResyncState(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TUpdateResyncState>(
         ctx,
@@ -116,8 +115,7 @@ void TVolumeActor::HandleResyncFinished(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TToggleResync>(
         ctx,

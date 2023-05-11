@@ -69,9 +69,7 @@ void TNonreplicatedPartitionMigrationActor::MirrorRequest(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId)
-    );
+        msg->CallContext);
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

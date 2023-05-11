@@ -266,12 +266,9 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -288,8 +285,6 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
         auto response =
             std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>(
                 MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

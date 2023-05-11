@@ -58,17 +58,13 @@ void TDescribeDiskRegistryConfigActor::Bootstrap(const TActorContext& ctx)
 
 void TDescribeDiskRegistryConfigActor::DescribeConfig(const TActorContext& ctx)
 {
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeConfigRequest>();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TDescribeDiskRegistryConfigActor::HandleDescribeConfigResponse(
@@ -76,8 +72,6 @@ void TDescribeDiskRegistryConfigActor::HandleDescribeConfigResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -128,7 +122,6 @@ void TDescribeDiskRegistryConfigActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvDescribeDiskRegistryConfigResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -159,10 +152,7 @@ void TServiceActor::HandleDescribeDiskRegistryConfig(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Describe Disk Registry config");

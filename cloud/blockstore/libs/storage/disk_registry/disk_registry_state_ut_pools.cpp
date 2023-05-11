@@ -290,14 +290,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             UNIT_ASSERT_SUCCESS(state.ReplaceDevice(
                 db,
                 "disk-1",
                 "uuid-1.2",
                 TInstant::Zero(),
                 "", // message
-                &update));
+                &updated));
         });
 
         {
@@ -309,14 +309,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-1",
                 "uuid-1.1",
                 TInstant::Zero(),
                 "", // message
-                &update);
+                &updated);
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
         });
     }
@@ -362,14 +362,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> update;
+            bool updated = false;
             const auto error = state.ReplaceDevice(
                 db,
                 "disk-1",
                 "uuid-1.1",
                 TInstant::Zero(),
                 "", // message
-                &update);
+                &updated);
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
         });
     }

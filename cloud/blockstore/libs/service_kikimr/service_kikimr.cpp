@@ -4,7 +4,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -67,7 +66,6 @@ class TRequestActor final
 private:
     std::shared_ptr<TRequestProto> Request;
     TPromise<TResponseProto> Response;
-    NWilson::TTraceId TraceId;
     TCallContextPtr CallContext;
 
     const TDuration RequestTimeout;
@@ -79,12 +77,10 @@ public:
     TRequestActor(
             std::shared_ptr<TRequestProto> request,
             TPromise<TResponseProto> response,
-            NWilson::TTraceId traceId,
             TCallContextPtr callContext,
             TDuration requestTimeout)
         : Request(std::move(request))
         , Response(std::move(response))
-        , TraceId(std::move(traceId))
         , CallContext(std::move(callContext))
         , RequestTimeout(requestTimeout)
         , DiskId(GetDiskId(*Request))
@@ -128,9 +124,6 @@ private:
             CallContext,
             std::move(*Request));
 
-        auto traceId = TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         LWTRACK(
             RequestSent_Proxy,
             CallContext->LWOrbit,
@@ -140,9 +133,7 @@ private:
         NCloud::Send(
             ctx,
             MakeStorageServiceId(),
-            std::move(request),
-            0,  // cookie
-            std::move(TraceId));
+            std::move(request));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
             ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
@@ -180,8 +171,6 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &TraceId, this, msg, &ev->TraceId);
 
         LWTRACK(
             ResponseReceived_Proxy,
@@ -291,15 +280,12 @@ private:
         std::shared_ptr<typename T::TRequestProto> request,
         TPromise<typename T::TResponseProto> response)
     {
-        auto traceId = NWilson::TTraceId(ctx->RequestId);
-
         const auto& headers = request->GetHeaders();
         auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
 
         ActorSystem->Register(std::make_unique<TRequestActor<T>>(
             std::move(request),
             std::move(response),
-            std::move(traceId),
             std::move(ctx),
             timeout));
     }

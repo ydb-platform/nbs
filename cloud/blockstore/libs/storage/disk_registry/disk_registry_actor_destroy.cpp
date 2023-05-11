@@ -250,8 +250,7 @@ void TDiskRegistryActor::HandleDestroyBrokenDisks(
         CreateRequestInfo(
             SelfId(),
             0,
-            MakeIntrusive<TCallContext>(),
-            NWilson::TTraceId::NewTraceId()
+            MakeIntrusive<TCallContext>()
         ),
         Config,
         DisksBeingDestroyed
@@ -268,8 +267,7 @@ void TDiskRegistryActor::HandleDestroyBrokenDisksResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TDestroyBrokenDisksMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         )
     );
 }

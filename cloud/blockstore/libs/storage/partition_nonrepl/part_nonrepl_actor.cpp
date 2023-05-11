@@ -82,8 +82,6 @@ bool TNonreplicatedPartitionActor::InitRequests(
         auto response = std::make_unique<typename TMethod::TResponse>(
             std::move(error));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
-
         LWTRACK(
             ResponseSent_Partition,
             requestInfo.CallContext->LWOrbit,
@@ -330,8 +328,7 @@ void TNonreplicatedPartitionActor::HandlePoisonPill(
     Poisoner = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>(),
-        std::move(ev->TraceId));
+        MakeIntrusive<TCallContext>());
 
     if (!RequestsInProgress.Empty()) {
         return;

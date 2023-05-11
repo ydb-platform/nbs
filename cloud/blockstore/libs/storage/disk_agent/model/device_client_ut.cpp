@@ -453,7 +453,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterSessionId))
+                .SetSessionId(TString(AnyWriterClientId))
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -466,7 +466,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterSessionId))
+                .SetSessionId(TString(AnyWriterClientId))
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(2));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
@@ -509,7 +509,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterSessionId))
+                .SetSessionId(TString(AnyWriterClientId))
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(0));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
@@ -557,7 +557,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterSessionId))
+                .SetSessionId(TString(AnyWriterClientId))
                 .SetDiskId("vol2")
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());

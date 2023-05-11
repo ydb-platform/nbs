@@ -33,6 +33,18 @@ double UpdateRejectTimeoutMultiplier(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetInvalidSerialNumberError(
+    NProto::TDeviceConfig& device,
+    TInstant timestamp)
+{
+    device.SetState(NProto::DEVICE_STATE_ERROR);
+    device.SetStateTs(timestamp.MicroSeconds());
+    device.SetStateMessage(TStringBuilder()
+        << "invalid serial number: " << device.GetSerialNumber());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TByUUID
 {
     template <typename T, typename U>
@@ -146,6 +158,7 @@ NProto::TAgentConfig& TAgentList::AddAgent(NProto::TAgentConfig config)
 NProto::TAgentConfig& TAgentList::AddNewAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
+    const TKnownAgent& knownAgent,
     THashSet<TDeviceId>* newDevices)
 {
     Y_VERIFY(newDevices);
@@ -161,6 +174,12 @@ NProto::TAgentConfig& TAgentList::AddNewAgent(
     for (auto& device: *agentConfig.MutableDevices()) {
         device.SetStateTs(timestamp.MicroSeconds());
         device.SetUnadjustedBlockCount(device.GetBlocksCount());
+
+        if (device.GetState() != NProto::DEVICE_STATE_ERROR
+                && !ValidateSerialNumber(knownAgent, device))
+        {
+            SetInvalidSerialNumberError(device, timestamp);
+        }
 
         newDevices->insert(device.GetDeviceUUID());
     }
@@ -224,9 +243,23 @@ void TAgentList::TransferAgent(
     agent.SetNodeId(newNodeId);
 }
 
+bool TAgentList::ValidateSerialNumber(
+    const TKnownAgent& knownAgent,
+    const NProto::TDeviceConfig& config)
+{
+    if (!Config.SerialNumberValidationEnabled) {
+        return true;
+    }
+
+    auto* knownDevice = knownAgent.Devices.FindPtr(config.GetDeviceUUID());
+    return knownDevice
+        && knownDevice->GetSerialNumber() == config.GetSerialNumber();
+}
+
 NProto::TAgentConfig& TAgentList::RegisterAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
+    const TKnownAgent& knownAgent,
     THashSet<TDeviceId>* newDeviceIds)
 {
     Y_VERIFY(newDeviceIds);
@@ -234,7 +267,11 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
     auto* agent = FindAgent(agentConfig.GetAgentId());
 
     if (!agent) {
-        return AddNewAgent(std::move(agentConfig), timestamp, newDeviceIds);
+        return AddNewAgent(
+            std::move(agentConfig),
+            timestamp,
+            knownAgent,
+            newDeviceIds);
     }
 
     if (agent->GetNodeId() != agentConfig.GetNodeId()) {
@@ -278,14 +315,23 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
         device.SetRack(config.GetRack());
         device.MutableRdmaEndpoint()->CopyFrom(config.GetRdmaEndpoint());
 
-        // TODO: validate SN (NBS-3910)
-        device.SetSerialNumber(config.GetSerialNumber());
-
         if (config.GetState() == NProto::DEVICE_STATE_ERROR) {
             device.SetState(config.GetState());
             device.SetStateTs(config.GetStateTs());
             device.SetStateMessage(config.GetStateMessage());
-        } else if (device.GetBlockSize() != config.GetBlockSize()
+
+            continue;
+        }
+
+        if (!ValidateSerialNumber(knownAgent, config)) {
+            SetInvalidSerialNumberError(config, timestamp);
+
+            continue;
+        }
+
+        device.SetSerialNumber(config.GetSerialNumber());
+
+        if (device.GetBlockSize() != config.GetBlockSize()
             || device.GetUnadjustedBlockCount() != config.GetBlocksCount())
         {
             device.SetState(NProto::DEVICE_STATE_ERROR);
@@ -296,6 +342,8 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
                     << " -> "
                     << config.GetBlockSize() << "x" << config.GetBlocksCount()
             );
+
+            continue;
         }
     }
 
@@ -307,6 +355,12 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
 
         device.SetNodeId(agent->GetNodeId());
         device.SetAgentId(agent->GetAgentId());
+
+        if (device.GetState() != NProto::DEVICE_STATE_ERROR
+                && !ValidateSerialNumber(knownAgent, device))
+        {
+            SetInvalidSerialNumberError(device, timestamp);
+        }
 
         *agent->MutableDevices()->Add() = std::move(device);
     }

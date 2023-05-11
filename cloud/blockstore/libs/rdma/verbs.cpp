@@ -323,6 +323,14 @@ struct TVerbs
     {
         rdma_destroy_qp(id);
     }
+
+    void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override
+    {
+        int res = ibv_modify_qp(qp, attr, mask);
+        if (res < 0) {
+            RDMA_THROW_ERROR("rdma_modify_qp");
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -89,8 +89,7 @@ void TDrainNodeActionActor::DrainNode(const TActorContext& ctx, bool keepDown)
         ctx,
         MakeHiveProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 void TDrainNodeActionActor::HandleSuccess(const TActorContext& ctx)

@@ -28,8 +28,7 @@ void TDiskRegistryActor::HandleInitiateDiskReallocation(
         CreateRequestInfo<TEvDiskRegistryPrivate::TInitiateDiskReallocationMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         ),
         std::move(msg->DiskId)
     );

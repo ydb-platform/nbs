@@ -6,8 +6,6 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
-
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <util/generic/maybe.h>

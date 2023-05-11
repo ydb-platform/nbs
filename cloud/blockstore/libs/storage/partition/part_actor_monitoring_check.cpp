@@ -235,8 +235,6 @@ void TPartitionActor::CompleteCheckIndex(
 
     auto response = std::make_unique<NMon::TEvRemoteHttpInfoRes>(out.Str());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         args.RequestInfo->CallContext->LWOrbit,

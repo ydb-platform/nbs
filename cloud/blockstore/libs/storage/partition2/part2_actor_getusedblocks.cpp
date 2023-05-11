@@ -17,8 +17,7 @@ void TPartitionActor::HandleGetUsedBlocks(
     auto requestInfo = CreateRequestInfo<TEvVolume::TDescribeBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     // TODO(NBS-2364): support correct get used blocks for partition2
     auto response = std::make_unique<TEvVolume::TEvGetUsedBlocksResponse>();

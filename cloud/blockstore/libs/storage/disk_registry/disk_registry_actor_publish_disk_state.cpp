@@ -88,8 +88,7 @@ void TDiskRegistryActor::HandlePublishDiskStates(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId)
+        ev->Get()->CallContext
     );
 
     auto* actorSystem = ctx.ActorSystem();
@@ -122,9 +121,7 @@ void TDiskRegistryActor::HandlePublishDiskStates(
                     replyFrom,
                     response.release(),
                     0,          // flags
-                    requestInfo->Cookie,
-                    nullptr,    // forwardOnNondelivery
-                    std::move(requestInfo->TraceId)));
+                    requestInfo->Cookie));
         });
 }
 
@@ -157,8 +154,7 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TPublishDiskStatesMethod>(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)
+            msg->CallContext
         ),
         msg->MaxSeqNo
     );

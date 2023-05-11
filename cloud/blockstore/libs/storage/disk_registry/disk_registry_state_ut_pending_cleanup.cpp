@@ -75,7 +75,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
 
             auto error = state.UpdateCmsDeviceState(
@@ -88,7 +88,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
                 timeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), E_TRY_AGAIN, error);
-            UNIT_ASSERT_VALUES_EQUAL("vol0", affectedDisk->State.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", affectedDisk);
         });
 
         TString target;

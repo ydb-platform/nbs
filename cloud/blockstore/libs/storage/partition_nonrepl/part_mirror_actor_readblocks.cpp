@@ -143,8 +143,6 @@ void TRequestActor<TMethod>::HandleResponse(
 {
     auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     auto& record = msg->Record;
     if (HasError(record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
@@ -202,8 +200,7 @@ void TMirrorPartitionActor::ReadBlocks(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     if (HasError(Status)) {
         Reply(

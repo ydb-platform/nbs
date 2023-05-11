@@ -21,8 +21,7 @@ void TDiskRegistryActor::HandleMarkDiskForCleanup(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "mark disk %s for cleanup", diskId.Quote().data());

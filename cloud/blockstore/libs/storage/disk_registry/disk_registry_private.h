@@ -151,11 +151,11 @@ struct TEvDiskRegistryPrivate
     struct TStartAcquireDiskRequest
     {
         TString DiskId;
-        TString SessionId;
+        TString ClientId;
 
-        TStartAcquireDiskRequest(TString diskId, TString sessionId)
+        TStartAcquireDiskRequest(TString diskId, TString clientId)
             : DiskId(std::move(diskId))
-            , SessionId(std::move(sessionId))
+            , ClientId(std::move(clientId))
         {}
     };
 
@@ -181,11 +181,11 @@ struct TEvDiskRegistryPrivate
     struct TFinishAcquireDiskRequest
     {
         TString DiskId;
-        TString SessionId;
+        TString ClientId;
 
-        TFinishAcquireDiskRequest(TString diskId, TString sessionId)
+        TFinishAcquireDiskRequest(TString diskId, TString clientId)
             : DiskId(std::move(diskId))
-            , SessionId(std::move(sessionId))
+            , ClientId(std::move(clientId))
         {}
     };
 
@@ -199,13 +199,13 @@ struct TEvDiskRegistryPrivate
     struct TRemoveDiskSessionRequest
     {
         TString DiskId;
-        TString SessionId;
+        TString ClientId;
 
         TRemoveDiskSessionRequest(
                 TString diskId,
-                TString sessionId)
+                TString clientId)
             : DiskId(std::move(diskId))
-            , SessionId(std::move(sessionId))
+            , ClientId(std::move(clientId))
         {}
     };
 

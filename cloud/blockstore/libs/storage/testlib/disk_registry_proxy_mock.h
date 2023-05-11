@@ -314,6 +314,7 @@ private:
         const NActors::TActorContext& ctx)
     {
         const auto* msg = ev->Get();
+        const auto& clientId = msg->Record.GetHeaders().GetClientId();
         auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>();
 
         auto* disk = State->Disks.FindPtr(msg->Record.GetDiskId());
@@ -324,20 +325,19 @@ private:
             );
         } else if (!IsReadWriteMode(msg->Record.GetAccessMode())) {
             auto it = Find(
-                disk->ReaderSessionIds.begin(),
-                disk->ReaderSessionIds.end(),
-                msg->Record.GetSessionId()
+                disk->ReaderClientIds.begin(),
+                disk->ReaderClientIds.end(),
+                clientId
             );
 
-            if (it == disk->ReaderSessionIds.end()) {
-                disk->ReaderSessionIds.push_back(msg->Record.GetSessionId());
+            if (it == disk->ReaderClientIds.end()) {
+                disk->ReaderClientIds.push_back(clientId);
             }
 
             ToLogicalBlocks(*disk, response->Record);
-        } else if (!disk->WriterSessionId
-                || disk->WriterSessionId == msg->Record.GetSessionId())
+        } else if (!disk->WriterClientId || disk->WriterClientId == clientId)
         {
-            disk->WriterSessionId = msg->Record.GetSessionId();
+            disk->WriterClientId = clientId;
 
             ToLogicalBlocks(*disk, response->Record);
         } else {
@@ -354,6 +354,7 @@ private:
         const NActors::TActorContext& ctx)
     {
         const auto* msg = ev->Get();
+        const auto& clientId = msg->Record.GetHeaders().GetClientId();
         auto response = std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>();
 
         auto* disk = State->Disks.FindPtr(msg->Record.GetDiskId());
@@ -362,27 +363,27 @@ private:
             response->Record.MutableError()->CopyFrom(
                 MakeError(E_NOT_FOUND, "disk not found")
             );
-        } else if (msg->Record.GetSessionId() == disk->WriterSessionId) {
-            disk->WriterSessionId = "";
+        } else if (clientId == disk->WriterClientId) {
+            disk->WriterClientId = "";
         } else {
             auto it = Find(
-                disk->ReaderSessionIds.begin(),
-                disk->ReaderSessionIds.end(),
-                msg->Record.GetSessionId()
+                disk->ReaderClientIds.begin(),
+                disk->ReaderClientIds.end(),
+                clientId
             );
 
-            if (it == disk->ReaderSessionIds.end()) {
+            if (it == disk->ReaderClientIds.end()) {
                 response->Record.MutableError()->CopyFrom(
                     MakeError(
                         E_INVALID_STATE,
                         Sprintf(
-                            "disk not acquired by session %s",
-                            msg->Record.GetSessionId().c_str()
+                            "disk not acquired by client %s",
+                            clientId.c_str()
                         )
                     )
                 );
             } else {
-                disk->ReaderSessionIds.erase(it);
+                disk->ReaderClientIds.erase(it);
             }
         }
 

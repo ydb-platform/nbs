@@ -17,9 +17,10 @@
 
 #define UNIT_ASSERT_DISK_STATE(diskId, state, update)                          \
     UNIT_ASSERT_VALUES_EQUAL(diskId, (update).State.GetDiskId());              \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        static_cast<int>(NProto::state),                                       \
-        static_cast<int>((update).State.GetState())                            \
+    UNIT_ASSERT_VALUES_EQUAL_C(                                                \
+        NProto::EDiskState_Name(NProto::state),                                \
+        NProto::EDiskState_Name((update).State.GetState()),                    \
+        diskId                                                                 \
     );                                                                         \
 
 #define UNIT_ASSERT_SUCCESS(expr)                                              \
@@ -189,13 +190,13 @@ NProto::TError RegisterAgent(
 
 void CleanDevices(TDiskRegistryState& state, TDiskRegistryDatabase& db);
 
-TVector<TDiskStateUpdate> UpdateAgentState(
+TVector<TString> UpdateAgentState(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
     const TString& agentId,
     NProto::EAgentState desiredState);
 
-TVector<TDiskStateUpdate> UpdateAgentState(
+TVector<TString> UpdateAgentState(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
     const NProto::TAgentConfig& config,

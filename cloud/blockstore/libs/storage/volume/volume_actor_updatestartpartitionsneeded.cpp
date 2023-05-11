@@ -81,8 +81,7 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            MakeIntrusive<TCallContext>(),
-            std::move(ev->TraceId));
+            MakeIntrusive<TCallContext>());
 
         ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(
             requestInfo, partitionTabletId));

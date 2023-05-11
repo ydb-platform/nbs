@@ -6,7 +6,6 @@
 
 #include <cloud/blockstore/libs/common/block_buffer.h>
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>

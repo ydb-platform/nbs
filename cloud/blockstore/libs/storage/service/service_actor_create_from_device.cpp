@@ -127,7 +127,6 @@ void TCreateVolumeFromDeviceActor::ReplyAndDie(
     auto response =
         std::make_unique<TEvService::TEvCreateVolumeFromDeviceResponse>(error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -185,18 +184,14 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
         "Sending createvolume request for volume %s",
         volumeConfig.GetDiskId().Quote().c_str());
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
         std::move(volumeConfig));
-
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TCreateVolumeFromDeviceActor::HandleCreateVolumeResponse(
@@ -249,10 +244,7 @@ void TServiceActor::HandleCreateVolumeFromDevice(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Creating volume from device: %s, %s, %s, %s, %s, %s",

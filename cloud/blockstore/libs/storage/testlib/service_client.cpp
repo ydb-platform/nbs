@@ -1,6 +1,5 @@
 #include "service_client.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>

@@ -166,8 +166,7 @@ void TDiskRegistryActor::HandleFinishMigration(
     auto requestInfo = CreateRequestInfo<TEvDiskRegistry::TFinishMigrationMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     auto diskId = record.GetDiskId();
     auto migrations = record.GetMigrations();
@@ -248,13 +247,15 @@ void TDiskRegistryActor::ExecuteFinishMigration(
 {
     TDiskRegistryDatabase db(tx.DB);
     for (auto& x: args.Migrations) {
+        bool updated = false;
         auto error = State->FinishDeviceMigration(
             db,
             args.DiskId,
             x.GetSourceDeviceId(),
             x.GetTargetDeviceId(),
             args.Timestamp,
-            &args.AffectedDisk);
+            &updated);
+        Y_UNUSED(updated);
 
         if (HasError(error)) {
             LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
@@ -348,8 +349,7 @@ void TDiskRegistryActor::HandleStartMigration(
         CreateRequestInfo<TEvDiskRegistryPrivate::TStartMigrationMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         )
     );
 }
@@ -464,8 +464,7 @@ void TDiskRegistryActor::HandleStartForceMigration(
         CreateRequestInfo<TEvDiskRegistryPrivate::TStartMigrationMethod>(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)
+            msg->CallContext
         ),
         msg->Record.GetSourceDiskId(),
         msg->Record.GetSourceDeviceId(),

@@ -43,6 +43,8 @@ void TVolumeActor::AcquireDisk(
     auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
     request->Record.SetDiskId(State->GetDiskId());
+    request->Record.MutableHeaders()->SetClientId(clientId);
+    // TODO: remove after NBS-3886
     request->Record.SetSessionId(std::move(clientId));
     request->Record.SetAccessMode(accessMode);
     request->Record.SetMountSeqNumber(mountSeqNumber);
@@ -157,7 +159,7 @@ void TVolumeActor::HandleReacquireDisk(
             && ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
     {
         AcquireReleaseDiskRequests.emplace_back(
-            TString(AnyWriterSessionId),
+            TString(AnyWriterClientId),
             nullptr);
         if (AcquireReleaseDiskRequests.size() == 1) {
             ProcessNextAcquireReleaseDiskRequest(ctx);
@@ -207,12 +209,6 @@ void TVolumeActor::HandleAcquireDiskResponse(
             response->Record.SetClientId(cr->GetClientId());
             response->Record.SetTabletId(TabletID());
 
-            BLOCKSTORE_TRACE_SENT(
-                ctx,
-                &cr->RequestInfo->TraceId,
-                this,
-                response
-            );
             NCloud::Reply(ctx, *cr->RequestInfo, std::move(response));
 
             PendingClientRequests.pop_front();
@@ -259,10 +255,7 @@ void TVolumeActor::HandleAddClient(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     NProto::TVolumeClientInfo clientInfo;
     clientInfo.SetClientId(clientId);
@@ -470,7 +463,6 @@ void TVolumeActor::CompleteAddClient(
         response->Record.SetClientId(clientId);
         response->Record.SetTabletId(TabletID());
 
-        BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
@@ -492,8 +484,6 @@ void TVolumeActor::CompleteAddClient(
     VolumeConfigToVolume(volumeConfig, *volumeInfo);
     volumeInfo->SetInstanceId(config.GetInstanceId());  // XXX ???
     State->FillDeviceInfo(*volumeInfo);
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
@@ -560,10 +550,7 @@ void TVolumeActor::HandleUpdateReadWriteClientInfo(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     ExecuteTx<TUpdateClientInfo>(
         ctx,

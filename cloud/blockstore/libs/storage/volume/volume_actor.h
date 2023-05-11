@@ -12,7 +12,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/rdma/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -191,7 +190,10 @@ private:
 
     std::unique_ptr<TVolumeState> State;
     bool StateLoadFinished = false;
+    TInstant ExecutorActivationTimestamp;
     TInstant StateLoadTimestamp;
+    TInstant StartInitializationTimestamp;
+    TInstant StartCompletionTimestamp;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -469,7 +471,17 @@ private:
     void SendVolumeConfigUpdated(const NActors::TActorContext& ctx);
     void SendVolumeSelfCounters(const NActors::TActorContext& ctx);
 
-    void SendPendingRequests(const NActors::TActorContext& ctx);
+    TDuration GetLoadTime() const
+    {
+        return StateLoadTimestamp - ExecutorActivationTimestamp;
+    }
+
+    TDuration GetStartTime() const
+    {
+        return StartCompletionTimestamp - StartInitializationTimestamp;
+    }
+
+    void OnStarted(const NActors::TActorContext& ctx);
 
     void ProcessReadHistory(
         const NActors::TActorContext& ctx,

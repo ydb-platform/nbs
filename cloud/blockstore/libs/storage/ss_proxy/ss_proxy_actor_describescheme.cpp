@@ -112,7 +112,6 @@ void TDescribeSchemeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvSSProxy::TEvDescribeSchemeResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -194,10 +193,7 @@ void TSSProxyActor::HandleDescribeScheme(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     NCloud::Register<TDescribeSchemeActor>(
         ctx,

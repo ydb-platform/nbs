@@ -71,25 +71,20 @@ void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
         "Sending describe request for path %s",
         path.Quote().data());
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     RequestsScheduled++;
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TDescribeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvListVolumesResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -114,8 +109,6 @@ void TDescribeActor::HandleDescribeResponse(
     RequestsCompleted++;
 
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -173,10 +166,7 @@ void TServiceActor::HandleListVolumes(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     // TODO: filter?
     Y_UNUSED(request);

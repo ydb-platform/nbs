@@ -1,6 +1,5 @@
 #include "service_actor.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -104,8 +103,7 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::SendRequest(const TActorContext& c
         VolumeProxy,
         request.release(),
         0,
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 }
 
 template <typename TMethod>

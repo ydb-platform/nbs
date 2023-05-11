@@ -24,9 +24,7 @@ void TDiskAgentActor::HandleAcquireDevices(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId)
-    );
+        ev->Get()->CallContext);
 
     auto reply = [=] (auto error) {
         auto response = std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>(
@@ -38,9 +36,7 @@ void TDiskAgentActor::HandleAcquireDevices(
                 replyFrom,
                 response.release(),
                 0,          // flags
-                requestInfo->Cookie,
-                nullptr,    // forwardOnNondelivery
-                std::move(requestInfo->TraceId)));
+                requestInfo->Cookie));
     };
 
     const auto* msg = ev->Get();

@@ -203,8 +203,7 @@ void TServiceActor::HandleRunVolumesLivenessCheck(
     auto requestInfo = CreateRequestInfo(
         ev->Sender ? ev->Sender : MakeStorageServiceId(),
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     if (Config->GetDisableManuallyPreemptedVolumesTracking()) {
         auto response =

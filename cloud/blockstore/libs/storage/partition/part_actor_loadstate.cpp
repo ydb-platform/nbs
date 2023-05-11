@@ -194,25 +194,7 @@ void TPartitionActor::CompleteLoadState(
         Min(tabletChannelCount, configChannelCount),  // channelCount
         mixedIndexCacheSize);
 
-    if (State->GetBaseDiskTabletId() != 0) {
-        auto request = std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
-            State->GetBaseDiskId(),
-            State->GetBaseDiskTabletId());
-
-        TAutoPtr<IEventHandle> event = new IEventHandle(
-            MakeVolumeProxyServiceId(),
-            SelfId(),
-            request.release());
-
-        LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << " Sending mapping to VolumeProxy: BaseDiskId="
-            << State->GetBaseDiskId().Quote()
-            << " BaseTabletId="
-            << State->GetBaseDiskTabletId());
-
-        ctx.Send(event);
-    }
+    MapBaseDiskIdToTabletId(ctx);
 
     State->InitFreshBlocks(args.FreshBlocks);
     State->GetUsedBlocks() = std::move(args.UsedBlocks);

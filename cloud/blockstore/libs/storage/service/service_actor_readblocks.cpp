@@ -55,16 +55,12 @@ private:
         const auto& clientId = GetClientId(*msg);
         const auto& diskId = GetDiskId(*msg);
 
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &Request->TraceId, this, Request->Get());
-
         auto request = CreateRemoteRequest();
 
         LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
             "Converted Local to gRPC ReadBlocks request for client %s to volume %s",
             clientId.Quote().data(),
             diskId.Quote().data());
-
-        BLOCKSTORE_TRACE_SENT(ctx, &Request->TraceId, this, request);
 
         auto undeliveredActor = SelfId();
 
@@ -74,8 +70,8 @@ private:
             request.release(),
             Request->Flags | IEventHandle::FlagForwardOnNondelivery,  // flags
             Request->Cookie,  // cookie
-            &undeliveredActor,    // forwardOnNondelivery
-            Request->TraceId.Clone());
+            &undeliveredActor    // forwardOnNondelivery
+        );
 
         ctx.Send(event.release());
     }
@@ -107,19 +103,13 @@ private:
     }
 
     void HandleUndelivery(
-        const TEvService::TEvReadBlocksRequest::TPtr& ev,
+        const TEvService::TEvReadBlocksRequest::TPtr&,
         const TActorContext& ctx)
     {
-        const auto* msg = ev->Get();
-
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &Request->TraceId, this, msg, &ev->TraceId);
-
         auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
             MakeError(E_REJECTED, "Tablet is dead"));
 
-        BLOCKSTORE_TRACE_SENT(ctx, &Request->TraceId, this, response);
         NCloud::Reply(ctx, *Request, std::move(response));
-
         Die(ctx);
     }
 
@@ -128,8 +118,6 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-
-        BLOCKSTORE_TRACE_RECEIVED(ctx, &Request->TraceId, this, msg, &ev->TraceId);
 
         auto error = msg->GetError();
 
@@ -155,7 +143,6 @@ private:
         auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
             msg->Record);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &Request->TraceId, this, response);
         NCloud::Reply(ctx, *Request, std::move(response));
 
         Die(ctx);

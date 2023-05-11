@@ -578,7 +578,7 @@ public:
 
     auto CreateAcquireDiskRequest(
         const TString& diskId,
-        const TString& sessionId,
+        const TString& clientId,
         const NProto::EVolumeAccessMode accessMode = NProto::VOLUME_ACCESS_READ_WRITE,
         const ui64 mountSeqNumber = 0,
         const ui32 volumeGeneration = 0)
@@ -586,7 +586,9 @@ public:
         auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
         request->Record.SetDiskId(diskId);
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
+        // TODO: remove after NBS-3886
+        request->Record.SetSessionId(clientId);
         request->Record.SetAccessMode(accessMode);
         request->Record.SetMountSeqNumber(mountSeqNumber);
         request->Record.SetVolumeGeneration(volumeGeneration);
@@ -596,13 +598,15 @@ public:
 
     auto CreateReleaseDiskRequest(
         const TString& diskId,
-        const TString& sessionId,
+        const TString& clientId,
         const ui32 volumeGeneration = 0)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
         request->Record.SetDiskId(diskId);
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
+        // TODO: remove after NBS-3886
+        request->Record.SetSessionId(clientId);
         request->Record.SetVolumeGeneration(volumeGeneration);
 
         return request;
@@ -679,22 +683,22 @@ public:
             std::move(devices));
     }
 
-    auto CreateStartAcquireDiskRequest(TString diskId, TString sessionId)
+    auto CreateStartAcquireDiskRequest(TString diskId, TString clientId)
     {
         return std::make_unique<TEvDiskRegistryPrivate::TEvStartAcquireDiskRequest>(
-            std::move(diskId), std::move(sessionId));
+            std::move(diskId), std::move(clientId));
     }
 
-    auto CreateFinishAcquireDiskRequest(TString diskId, TString sessionId)
+    auto CreateFinishAcquireDiskRequest(TString diskId, TString clientId)
     {
         return std::make_unique<TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest>(
-            std::move(diskId), std::move(sessionId));
+            std::move(diskId), std::move(clientId));
     }
 
-    auto CreateRemoveDiskSessionRequest(TString diskId, TString sessionId)
+    auto CreateRemoveDiskSessionRequest(TString diskId, TString clientId)
     {
         return std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
-            std::move(diskId), std::move(sessionId));
+            std::move(diskId), std::move(clientId));
     }
 
     auto CreateUpdateAgentStatsRequest(NProto::TAgentStats stats)

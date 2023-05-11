@@ -842,32 +842,32 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             "dev-7",
             diskInfo.Replicas[1][0].GetDeviceName());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(diskInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
 
         TDiskInfo replicaInfo;
         error = state.GetDiskInfo("disk-1/0", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         replicaInfo = {};
         error = state.GetDiskInfo("disk-1/1", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         replicaInfo = {};
         error = state.GetDiskInfo("disk-1/2", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateAgentState(
                 db,
@@ -879,7 +879,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TDiskStateUpdate>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
         TVector<TString> disksToNotify;
@@ -932,8 +932,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             "dev-7",
             diskInfo.Replicas[1][0].GetDeviceName());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(diskInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
         ASSERT_VECTORS_EQUAL(
             TVector<TString>{"uuid-10"},
             diskInfo.DeviceReplacementIds);
@@ -1096,7 +1096,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             // mirrored disk replicas should not delay host/device maintenance
 
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
@@ -1109,7 +1109,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
         });
 
         TDiskInfo diskInfo;
@@ -1128,25 +1128,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             "dev-5",
             diskInfo.Replicas[0][1].GetDeviceName());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(diskInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
 
         TDiskInfo replicaInfo;
         error = state.GetDiskInfo("disk-1/0", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         replicaInfo = {};
         error = state.GetDiskInfo("disk-1/1", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TMaybe<TDiskStateUpdate> affectedDisk;
+            TString affectedDisk;
             TDuration timeout;
             auto error = state.UpdateDeviceState(
                 db,
@@ -1158,7 +1158,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
         });
 
         TVector<TString> disksToNotify;
@@ -1360,7 +1360,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateAgentState(
                 db,
@@ -1372,11 +1372,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TDiskStateUpdate>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TDiskStateUpdate> affectedDisks;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateAgentState(
                 db,
@@ -1389,10 +1389,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_DISK_STATE(
-                "disk-1/1",
-                DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1/1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                NProto::EDiskState_Name(NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE),
+                NProto::EDiskState_Name(state.GetDiskState(affectedDisks[0]))
+            );
         });
 
         // agent2 unavailability should not have caused device replacement
@@ -1413,15 +1415,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         error = state.GetDiskInfo("disk-1/0", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_ONLINE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         replicaInfo = {};
         error = state.GetDiskInfo("disk-1/1", replicaInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE),
-            static_cast<ui32>(replicaInfo.State));
+            NProto::EDiskState_Name(NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE),
+            NProto::EDiskState_Name(replicaInfo.State));
 
         TVector<TString> disksToNotify;
         for (const auto& x: state.GetDisksToNotify()) {

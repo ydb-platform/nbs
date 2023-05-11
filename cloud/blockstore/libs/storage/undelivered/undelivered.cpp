@@ -1,7 +1,6 @@
 #include "undelivered.h"
 
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
@@ -58,7 +57,6 @@ void TUndeliveredHandlerActor::CancelRequest(
    auto response = std::make_unique<typename TMethod::TResponse>(
         MakeError(E_REJECTED, "Tablet is dead"));
 
-    BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

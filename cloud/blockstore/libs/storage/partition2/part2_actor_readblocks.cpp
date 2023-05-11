@@ -531,15 +531,11 @@ void TReadBlocksActor::ReadBlocks(
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         NCloud::Send(
             ctx,
             Tablet,
             std::move(request),
-            batchIndex,  // cookie
-            std::move(traceId));
+            batchIndex);
     }
 }
 
@@ -578,8 +574,6 @@ void TReadBlocksActor::ReplyAndDie(
     const NProto::TError& error)
 {
     NotifyCompleted(ctx, error);
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -637,8 +631,6 @@ void TReadBlocksActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -859,12 +851,9 @@ void TPartitionActor::HandleReadBlocksRequest(
     auto requestInfo = CreateRequestInfo<TEvService::TReadBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -881,8 +870,6 @@ void TPartitionActor::HandleReadBlocksRequest(
     {
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>(
             MakeError(errorCode, std::move(errorReason), flags));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -1084,8 +1071,6 @@ void TPartitionActor::CompleteReadBlocks(
         args.BlockInfos,
         *args.ReadHandler
     );
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         args.RequestInfo->CallContext->LWOrbit,

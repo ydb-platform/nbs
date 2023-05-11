@@ -22,7 +22,6 @@ class TWaitDependentAndReply
     NActors::IEventBasePtr Response;
     ui32 Flags = 0;
     ui64 Cookie = 0;
-    NWilson::TTraceId TraceId;
 
     ui32 WaitCount = 0;
     TPrincipalTaskId PrincipalTaskId = INVALID_TASK_ID;
@@ -44,7 +43,6 @@ public:
         Response = std::move(response);
         Recipient = request.Sender;
         Cookie = request.Cookie;
-        TraceId = std::move(request.TraceId);
     }
 
     TPrincipalTaskId GetPrincipalTaskId() const

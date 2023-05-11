@@ -173,11 +173,6 @@ class TDiskRegistryState
         THashMap<TDeviceId, ui64> Device2BlockCount;
     };
 
-    struct TKnownAgent
-    {
-        THashMap<TDeviceId, NProto::TDeviceConfig> Devices;
-    };
-
     using TKnownAgents = THashMap<TAgentId, TKnownAgent>;
     using TDeviceOverrides = THashMap<TDeviceId, TVolumeDeviceOverrides>;
 
@@ -256,8 +251,8 @@ public:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig config,
         TInstant timestamp,
-        TVector<TDiskStateUpdate>* affectedDisks,
-        THashMap<TString, ui64>* notifiedDisks);
+        TVector<TDiskId>* affectedDisks,
+        TVector<TDiskId>* notifiedDisks);
 
     NProto::TError UnregisterAgent(
         TDiskRegistryDatabase& db,
@@ -309,6 +304,7 @@ public:
         TVector<NProto::TDeviceConfig>& devices) const;
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
+    NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
 
     bool FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const;
 
@@ -336,6 +332,7 @@ public:
 
     ui32 GetConfigVersion() const;
 
+    ui32 GetDiskCount() const;
     TVector<TString> GetDiskIds() const;
     TVector<TString> GetMasterDiskIds() const;
     bool IsMasterDisk(const TString& diskId) const;
@@ -347,6 +344,8 @@ public:
         const TString& agentId,
         const TString& path,
         TVector<TDiskId>* diskIds) const;
+
+    TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
 
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
     TString MarkDeviceAsClean(
@@ -430,7 +429,7 @@ public:
         NProto::EAgentState state,
         TInstant now,
         TString reason,
-        TVector<TDiskStateUpdate>& affectedDisks);
+        TVector<TDiskId>& affectedDisks);
 
     NProto::TError UpdateCmsHostState(
         TDiskRegistryDatabase& db,
@@ -438,7 +437,7 @@ public:
         NProto::EAgentState state,
         TInstant now,
         bool dryRun,
-        TVector<TDiskStateUpdate>& affectedDisks,
+        TVector<TDiskId>& affectedDisks,
         TDuration& timeout);
 
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
@@ -450,7 +449,7 @@ public:
         NProto::EDeviceState state,
         TInstant now,
         TString reason,
-        TMaybe<TDiskStateUpdate>& affectedDisk);
+        TDiskId& affectedDisk);
 
     NProto::TError UpdateCmsDeviceState(
         TDiskRegistryDatabase& db,
@@ -458,7 +457,7 @@ public:
         NProto::EDeviceState state,
         TInstant now,
         bool dryRun,
-        TMaybe<TDiskStateUpdate>& affectedDisk,
+        TDiskId& affectedDisk,
         TDuration& timeout);
 
     NProto::TError ReplaceDevice(
@@ -467,10 +466,11 @@ public:
         const TString& deviceId,
         TInstant timestamp,
         TString message,
-        TMaybe<TDiskStateUpdate>* update);
+        bool* diskStateUpdated);
 
     TString GetAgentId(TNodeId nodeId) const;
 
+    ui32 CalculateRackCount() const;
     TDeque<TRackInfo> GatherRacksInfo() const;
     THashMap<TString, TBrokenGroupInfo> GatherBrokenGroupsInfo(
         TInstant now,
@@ -509,7 +509,7 @@ public:
         const TDeviceId& sourceId,
         const TDeviceId& targetId,
         TInstant timestamp,
-        TMaybe<TDiskStateUpdate>* affectedDisk);
+        bool* diskStateUpdated);
 
     TDiskId FindReplicaByMigration(
         const TDiskId& masterDiskId,
@@ -642,8 +642,8 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskStateUpdate>* affectedDisks,
-        THashMap<TString, ui64>* notifiedDisks);
+        TVector<TDiskId>* affectedDisks,
+        TVector<TDiskId>* notifiedDisks);
 
     [[nodiscard]] NProto::TError GetDiskDevices(
         const TDiskId& diskId,
@@ -663,7 +663,7 @@ private:
         const TDiskState& disk,
         TDiskInfo& diskInfo) const;
 
-    void ValidateAgent(const NProto::TAgentConfig& agent);
+    auto ValidateAgent(const NProto::TAgentConfig& agent) -> const TKnownAgent&;
 
     bool IsKnownDevice(const TDeviceId& uuid) const;
 
@@ -686,12 +686,12 @@ private:
 
     NProto::EDiskState CalculateDiskState(const TDiskState& disk) const;
 
-    TMaybe<TDiskStateUpdate> TryUpdateDiskState(
+    bool TryUpdateDiskState(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TInstant timestamp);
 
-    TMaybe<TDiskStateUpdate> TryUpdateDiskState(
+    bool TryUpdateDiskState(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk,
@@ -734,7 +734,7 @@ private:
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskStateUpdate>& affectedDisks);
+        TVector<TDiskId>& affectedDisks);
 
     bool HasDependentDisks(const NProto::TAgentConfig& agent) const;
 
@@ -753,7 +753,7 @@ private:
         const NProto::TAgentConfig& agent,
         const NProto::TDeviceConfig& device,
         TInstant timestamp,
-        TMaybe<TDiskStateUpdate>& affectedDisk);
+        TDiskId& affectedDisk);
 
     bool RestartDeviceMigration(
         TDiskRegistryDatabase& db,

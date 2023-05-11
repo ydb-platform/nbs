@@ -4,7 +4,6 @@
 
 #include "volume_client_actor.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -254,7 +253,6 @@ void TVolumeSessionActor::SendUnmountVolumeResponse(
 {
     auto response = std::make_unique<TEvService::TEvUnmountVolumeResponse>(error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -265,8 +263,6 @@ void TVolumeSessionActor::HandleUnmountVolume(
     const auto* msg = ev->Get();
     const auto& diskId = GetDiskId(*msg);
     const auto& clientId = GetClientId(*msg);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
 
     if (MountRequestActor || UnmountRequestActor) {
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
@@ -286,8 +282,7 @@ void TVolumeSessionActor::HandleUnmountVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        ev->TraceId.Clone());
+        msg->CallContext);
 
     auto mountMode = NProto::VOLUME_MOUNT_REMOTE;
     auto* clientInfo = VolumeInfo->GetClientInfo(clientId);

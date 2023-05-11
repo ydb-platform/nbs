@@ -151,17 +151,14 @@ void TCreateVolumeActor::DescribeVolumeBeforeCreate(const TActorContext& ctx)
         diskId.Quote().data(),
         volumePath.data());
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request =
         std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
@@ -218,18 +215,15 @@ void TCreateVolumeActor::CreateNextDir(const TActorContext& ctx)
     auto* op = modifyScheme.MutableMkDir();
     op->SetName(itemName);
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request =
         std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
             std::move(modifyScheme));
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
@@ -243,17 +237,14 @@ void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
         VolumeConfig.GetDiskId().Quote().data(),
         volumePath.data());
 
-    auto traceId = RequestInfo->TraceId.Clone();
     auto request =
         std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 bool TCreateVolumeActor::VerifyVolume(
@@ -345,8 +336,6 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
 {
     const auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     const auto error = msg->GetError();
 
     // TODO: use E_NOT_FOUND instead of StatusPathDoesNotExist
@@ -415,8 +404,6 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     const auto& diskId = VolumeConfig.GetDiskId();
 
     if (FAILED(error.GetCode())) {
@@ -458,8 +445,6 @@ void TCreateVolumeActor::HandleMkDirResponse(
 {
     const auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
@@ -484,8 +469,6 @@ void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& diskId = VolumeConfig.GetDiskId();
 
@@ -545,7 +528,6 @@ void TCreateVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvSSProxy::TEvCreateVolumeResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -607,10 +589,7 @@ void TSSProxyActor::HandleCreateVolume(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     NCloud::Register<TCreateVolumeActor>(
         ctx,

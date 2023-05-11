@@ -108,12 +108,9 @@ void TPartitionActor::HandleWriteBlocksRequest(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -129,8 +126,6 @@ void TPartitionActor::HandleWriteBlocksRequest(
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] WriteBlocks error: %s",

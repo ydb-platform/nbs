@@ -19,16 +19,13 @@ void TDiskRegistryActor::HandleChangeDeviceState(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received ChangeDeviceState request: UUID=%s, State=%u",
         TabletID(),
         msg->Record.GetDeviceUUID().c_str(),
         static_cast<ui32>(msg->Record.GetDeviceState()));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TUpdateDeviceState>(
         ctx,
@@ -77,8 +74,9 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
 {
     if (HasError(args.Error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateDeviceState error: %s",
-            FormatError(args.Error).c_str());
+            "UpdateDeviceState error: %s, affected disk: %s",
+            FormatError(args.Error).c_str(),
+            args.AffectedDisk.c_str());
     }
 
     NotifyDisks(ctx);

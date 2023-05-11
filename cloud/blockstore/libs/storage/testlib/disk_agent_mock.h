@@ -74,9 +74,7 @@ private:
                     ctx.SelfID,
                     response.release(),
                     0,          // flags
-                    request.Cookie,
-                    nullptr,    // forwardOnNondelivery
-                    std::move(request.TraceId)
+                    request.Cookie
                 ));
 
             ctx.ExecutorThread.Schedule(State->ResponseDelay, event);

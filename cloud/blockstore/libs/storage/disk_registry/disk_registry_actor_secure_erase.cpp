@@ -397,8 +397,7 @@ void TDiskRegistryActor::HandleSecureErase(
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)
+            msg->CallContext
         ),
         msg->RequestTimeout,
         std::move(msg->DirtyDevices));
@@ -436,8 +435,7 @@ void TDiskRegistryActor::HandleCleanupDevices(
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)
+            msg->CallContext
         ),
         msg->Devices);
 }

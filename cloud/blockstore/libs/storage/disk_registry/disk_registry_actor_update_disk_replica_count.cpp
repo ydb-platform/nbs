@@ -55,8 +55,7 @@ void TDiskRegistryActor::HandleUpdateDiskReplicaCount(
         CreateRequestInfo<TEvDiskRegistry::TUpdateDiskReplicaCountMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId)
+            ev->Get()->CallContext
         ),
         record.GetMasterDiskId(),
         record.GetReplicaCount());

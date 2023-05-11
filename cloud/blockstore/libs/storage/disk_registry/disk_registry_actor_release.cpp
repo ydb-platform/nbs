@@ -21,7 +21,7 @@ private:
     const TActorId Owner;
     const TRequestInfoPtr RequestInfo;
     const TString DiskId;
-    const TString SessionId;
+    const TString ClientId;
     const ui32 VolumeGeneration;
     const TDuration RequestTimeout;
 
@@ -33,7 +33,7 @@ public:
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TString diskId,
-        TString sessionId,
+        TString clientId,
         ui32 volumeGeneration,
         TDuration requestTimeout,
         TVector<NProto::TDeviceConfig> devices);
@@ -79,14 +79,14 @@ TReleaseDiskActor::TReleaseDiskActor(
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TString diskId,
-        TString sessionId,
+        TString clientId,
         ui32 volumeGeneration,
         TDuration requestTimeout,
         TVector<NProto::TDeviceConfig> devices)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
-    , SessionId(std::move(sessionId))
+    , ClientId(std::move(clientId))
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
     , Devices(std::move(devices))
@@ -106,7 +106,9 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
     while (it != Devices.end()) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
-        request->Record.SetSessionId(SessionId);
+        request->Record.MutableHeaders()->SetClientId(ClientId);
+        // TODO: remove after NBS-3886
+        request->Record.SetSessionId(ClientId);
         request->Record.SetDiskId(DiskId);
         request->Record.SetVolumeGeneration(VolumeGeneration);
 
@@ -130,7 +132,7 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
 void TReleaseDiskActor::RemoveDiskSession(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
-        DiskId, SessionId);
+        DiskId, ClientId);
 
     NCloud::Send(ctx, Owner, std::move(request));
 }
@@ -209,7 +211,7 @@ void TReleaseDiskActor::HandleTimeout(
     const auto err = TStringBuilder()
         << "TReleaseDiskActor timeout."
         << " DiskId: " << DiskId
-        << " SessionId: " << SessionId
+        << " ClientId: " << ClientId
         << " VolumeGeneration: " << VolumeGeneration
         << " PendingRequests: " << PendingRequests;
 
@@ -256,19 +258,21 @@ void TDiskRegistryActor::HandleReleaseDisk(
 
     auto* msg = ev->Get();
     TString& diskId = *msg->Record.MutableDiskId();
-    TString& sessionId = *msg->Record.MutableSessionId();
+    TString& clientId = msg->Record.GetHeaders().GetClientId()
+        ? *msg->Record.MutableHeaders()->MutableClientId()
+        : *msg->Record.MutableSessionId();
     ui32 volumeGeneration = msg->Record.GetVolumeGeneration();
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ReleaseDisk request: DiskId=%s, SessionId=%s"
+        "[%lu] Received ReleaseDisk request: DiskId=%s, ClientId=%s"
         ", VolumeGeneration=%u",
         TabletID(),
         diskId.c_str(),
-        sessionId.c_str(),
+        clientId.c_str(),
         volumeGeneration);
 
-    if (!sessionId) {
-        replyWithError(MakeError(E_ARGUMENT, "empty session id"));
+    if (!clientId) {
+        replyWithError(MakeError(E_ARGUMENT, "empty client id"));
         return;
     }
 
@@ -311,17 +315,14 @@ void TDiskRegistryActor::HandleReleaseDisk(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     auto actor = NCloud::Register<TReleaseDiskActor>(
         ctx,
         ctx.SelfID,
         std::move(requestInfo),
         std::move(diskId),
-        std::move(sessionId),
+        std::move(clientId),
         volumeGeneration,
         Config->GetAgentRequestTimeout(),
         std::move(devices));
@@ -338,8 +339,7 @@ void TDiskRegistryActor::HandleRemoveDiskSession(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     State->FinishAcquireDisk(msg->DiskId);
     auto response =

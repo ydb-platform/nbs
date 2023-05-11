@@ -95,10 +95,6 @@ void TVolumeActor::ExecuteLoadState(
     for (const auto& o: args.OutdatedCheckpointRequestIds) {
         db.DeleteCheckpointEntry(o);
     }
-
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] State data loaded",
-        TabletID());
 }
 
 void TVolumeActor::CompleteLoadState(
@@ -190,6 +186,11 @@ void TVolumeActor::CompleteLoadState(
     StateLoadTimestamp = ctx.Now();
     NextVolumeConfigVersion = GetCurrentConfigVersion();
     LastHistoryCleanup = ctx.Now();
+
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] State data loaded, time: %lu",
+        TabletID(),
+        GetLoadTime().MicroSeconds());
 
     SignalTabletActive(ctx);
     ScheduleProcessUpdateVolumeConfig(ctx);

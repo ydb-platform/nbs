@@ -424,6 +424,11 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+
+    bool GetSerialNumberValidationEnabled() const;
+
+    TVector<TString> GetKnownSpareNodes() const;
+    ui32 GetSpareNodeProbability() const;
 };
 
 ui64 GetAllocationUnit(

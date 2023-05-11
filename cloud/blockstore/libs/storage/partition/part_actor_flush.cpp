@@ -195,9 +195,6 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
             req.BlobContent.GetGuardedSgList(),
             true);  // async
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
                 ForkFailed,
@@ -211,9 +208,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             Tablet,
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
     }
 }
 
@@ -235,15 +230,10 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
         ADD_FLUSH_RESULT
     );
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TFlushActor::NotifyCompleted(
@@ -301,8 +291,6 @@ void TFlushActor::ReplyAndDie(
 {
     NotifyCompleted(ctx, response->GetError());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -322,8 +310,6 @@ void TFlushActor::HandleWriteBlobResponse(
     auto* msg = ev->Get();
 
     MaxExecCyclesFromWrite = Max(MaxExecCyclesFromWrite, msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -362,8 +348,6 @@ void TFlushActor::HandleAddBlobsResponse(
     const auto* msg = ev->Get();
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -561,15 +545,10 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         SelfId(),
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TPartitionActor::HandleFlush(
@@ -581,12 +560,9 @@ void TPartitionActor::HandleFlush(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TFlushMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -599,8 +575,6 @@ void TPartitionActor::HandleFlush(
     if (State->GetFlushState().Status == EOperationStatus::Started) {
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(E_TRY_AGAIN, "flush already in progress"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -621,8 +595,6 @@ void TPartitionActor::HandleFlush(
 
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(S_ALREADY, "nothing to flush"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

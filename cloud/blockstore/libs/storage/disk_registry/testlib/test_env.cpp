@@ -270,11 +270,7 @@ void WaitForAgent(NActors::TTestActorRuntime& runtime, int nodeIdx)
     auto* ev = new NActors::IEventHandle(
         MakeDiskAgentServiceId(nodeId),
         sender,
-        request.release(),
-        0,          // flags
-        0,          // cookie
-        nullptr,    // forwardOnNondelivery
-        NWilson::TTraceId::NewTraceId());
+        request.release());
 
     runtime.Send(ev, nodeIdx);
 
@@ -347,11 +343,7 @@ void RegisterAndWaitForAgent(
     auto* ev = new NActors::IEventHandle(
         MakeDiskAgentServiceId(nodeId),
         sender,
-        request.release(),
-        0,          // flags
-        0,          // cookie
-        nullptr,    // forwardOnNondelivery
-        NWilson::TTraceId::NewTraceId());
+        request.release());
 
     runtime.Send(ev, nodeIdx);
 

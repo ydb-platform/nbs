@@ -20,8 +20,7 @@ void TPartitionActor::HandleWaitReady(
         auto requestInfo = CreateRequestInfo<TEvPartition::TWaitReadyMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            ev->TraceId.Clone());
+            ev->Get()->CallContext);
 
         PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
         return;

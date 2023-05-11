@@ -7,7 +7,7 @@ namespace NKikimr::NColumnShard {
 TColumnShardScanIterator::TColumnShardScanIterator(NOlap::TReadMetadata::TConstPtr readMetadata,
     NColumnShard::TDataTasksProcessorContainer processor, const NColumnShard::TScanCounters& scanCounters)
     : ReadMetadata(readMetadata)
-    , IndexedData(ReadMetadata, FetchBlobsQueue, false, scanCounters)
+    , IndexedData(ReadMetadata, FetchBlobsQueue, false, scanCounters, processor)
     , DataTasksProcessor(processor)
     , ScanCounters(scanCounters)
 {
@@ -16,20 +16,20 @@ TColumnShardScanIterator::TColumnShardScanIterator(NOlap::TReadMetadata::TConstP
         const auto& cmtBlob = ReadMetadata->CommittedBlobs[i];
         WaitCommitted.emplace(cmtBlob, batchNo);
     }
-    // Read all committed blobs
-    for (const auto& cmtBlob : ReadMetadata->CommittedBlobs) {
-        auto& blobId = cmtBlob.BlobId;
-        FetchBlobsQueue.emplace_back(TBlobRange(blobId, 0, blobId.BlobSize()));
-    }
-    IndexedData.InitRead(batchNo, true);
+    IndexedData.InitRead(batchNo);
     // Add cached batches without read
     for (auto& [blobId, batch] : ReadMetadata->CommittedBatches) {
-        auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{ blobId, 0, 0 });
+        auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{ blobId, NOlap::TSnapshot::Zero() });
         Y_VERIFY(!cmt.empty());
 
         const NOlap::TCommittedBlob& cmtBlob = cmt.key();
         ui32 batchNo = cmt.mapped();
-        IndexedData.AddNotIndexed(batchNo, batch, cmtBlob.PlanStep, cmtBlob.TxId);
+        IndexedData.AddNotIndexed(batchNo, batch, cmtBlob.GetSnapshot());
+    }
+    // Read all remained committed blobs
+    for (const auto& [cmtBlob, _] : WaitCommitted) {
+        auto& blobId = cmtBlob.GetBlobId();
+        FetchBlobsQueue.emplace_front(TBlobRange(blobId, 0, blobId.BlobSize()));
     }
 
     Y_VERIFY(ReadMetadata->IsSorted());
@@ -42,15 +42,13 @@ TColumnShardScanIterator::TColumnShardScanIterator(NOlap::TReadMetadata::TConstP
 void TColumnShardScanIterator::AddData(const TBlobRange& blobRange, TString data) {
     const auto& blobId = blobRange.BlobId;
     if (IndexedData.IsIndexedBlob(blobRange)) {
-        IndexedData.AddIndexed(blobRange, data, DataTasksProcessor);
+        IndexedData.AddIndexed(blobRange, data);
     } else {
-        auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{ blobId, 0, 0 });
-        if (cmt.empty()) {
-            return; // ignore duplicates
-        }
+        auto cmt = WaitCommitted.extract(NOlap::TCommittedBlob{ blobId, NOlap::TSnapshot::Zero() });
+        Y_VERIFY(!cmt.empty());
         const NOlap::TCommittedBlob& cmtBlob = cmt.key();
         ui32 batchNo = cmt.mapped();
-        IndexedData.AddNotIndexed(batchNo, data, cmtBlob.PlanStep, cmtBlob.TxId);
+        IndexedData.AddNotIndexed(batchNo, data, cmtBlob.GetSnapshot());
     }
 }
 
@@ -112,10 +110,10 @@ TColumnShardScanIterator::~TColumnShardScanIterator() {
 }
 
 void TColumnShardScanIterator::Apply(IDataTasksProcessor::ITask::TPtr task) {
-    if (!task->IsDataProcessed() || DataTasksProcessor.IsStopped()) {
+    if (!task->IsDataProcessed() || DataTasksProcessor.IsStopped() || !task->IsSameProcessor(DataTasksProcessor)) {
         return;
     }
-    Y_VERIFY(task->Apply(IndexedData));
+    Y_VERIFY(task->Apply(IndexedData.GetGranulesContext()));
 }
 
 }

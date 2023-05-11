@@ -1287,6 +1287,7 @@ STFUNC(TTestVolumeProxyActor::StateWork)
         HFunc(TEvVolume::TEvGetUsedBlocksRequest, HandleGetUsedBlocksRequest);
         HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocksRequest);
         IgnoreFunc(TEvVolume::TEvMapBaseDiskIdToTabletId);
+        IgnoreFunc(TEvVolume::TEvClearBaseDiskIdToTabletIdMapping);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME_PROXY);

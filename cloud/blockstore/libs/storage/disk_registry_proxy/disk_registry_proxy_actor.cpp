@@ -155,8 +155,6 @@ void TDiskRegistryProxyActor::ReplyWithErrorImpl(
     auto response = std::make_unique<typename TMethod::TResponse>(
         MakeError(E_REJECTED, "DiskRegistry tablet not available"));
 
-    BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
-
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -257,9 +255,7 @@ void TDiskRegistryProxyActor::HandleRequest(
         SelfId(),
         ev->ReleaseBase().Release(),
         0,          // flags
-        requestId,  // cookie
-        nullptr,    // forwardOnNondelivery
-        ev->TraceId.Clone());
+        requestId); // cookie
     NCloud::PipeSend(ctx, TabletClientId, std::move(event));
 
     ActiveRequests.emplace(requestId, IEventHandlePtr(ev.Release()));
@@ -289,9 +285,7 @@ void TDiskRegistryProxyActor::HandleResponse(
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
-            request.Cookie,
-            nullptr,        // undeliveredRequestActor
-            std::move(ev->TraceId));
+            request.Cookie);
     } else {
         event = new IEventHandle(
             ev->Type,
@@ -299,9 +293,7 @@ void TDiskRegistryProxyActor::HandleResponse(
             request.Sender,
             ev->Sender,
             ev->ReleaseChainBuffer(),
-            request.Cookie,
-            nullptr,    // undeliveredRequestActor
-            std::move(ev->TraceId));
+            request.Cookie);
     }
 
     ctx.Send(event);
@@ -501,8 +493,7 @@ void TDiskRegistryProxyActor::HandleReassign(
     ReassignRequestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     CreateTablet(ctx, TDiskRegistryChannelKinds {
         std::move(msg->SysKind),

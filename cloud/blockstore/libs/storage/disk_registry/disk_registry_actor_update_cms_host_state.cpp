@@ -20,16 +20,13 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received UpdateCmsHostState request: Host=%s, State=%u",
         TabletID(),
         msg->Host.c_str(),
         static_cast<ui32>(msg->State));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TUpdateCmsHostState>(
         ctx,
@@ -87,9 +84,9 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
         [&] {
             TStringStream out;
             out << "[";
-            for (const auto& [state, seqNo]: args.AffectedDisks) {
-                out << " " << state.GetDiskId()
-                    << ":" << static_cast<int>(state.GetState());
+            for (const auto& diskId: args.AffectedDisks) {
+                out << " " << diskId
+                    << ":" << NProto::EDiskState_Name(State->GetDiskState(diskId));
             }
             out << "]";
             return out.Str();
@@ -106,10 +103,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
 
     auto response = std::make_unique<TResponse>(std::move(args.Error));
     response->Timeout = args.Timeout;
-    response->DependentDiskIds.reserve(args.AffectedDisks.size());
-    for (const auto& ad: args.AffectedDisks) {
-        response->DependentDiskIds.push_back(ad.State.GetDiskId());
-    }
+    response->DependentDiskIds = std::move(args.AffectedDisks);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

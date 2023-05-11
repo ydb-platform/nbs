@@ -167,12 +167,9 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
     auto requestInfo = CreateRequestInfo<TEvService::TReadBlocksLocalMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -212,7 +209,6 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
-        msg->Record.GetSessionId(),
         &*requestContext,
         deviceRequests);
 

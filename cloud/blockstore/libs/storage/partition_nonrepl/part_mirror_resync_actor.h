@@ -93,6 +93,7 @@ public:
     }
 
 private:
+    void RejectPostponedRead(TPostponedRead& pr);
     void KillActors(const NActors::TActorContext& ctx);
     void SetupPartitions(const NActors::TActorContext& ctx);
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);

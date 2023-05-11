@@ -21,13 +21,13 @@ TResyncRangeActor::TResyncRangeActor(
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TResyncReplica> replicas,
-        TString writerSessionId,
+        TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
-    , WriterSessionId(std::move(writerSessionId))
+    , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
 {
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
@@ -61,11 +61,12 @@ void TResyncRangeActor::ChecksumReplicaBlocks(const TActorContext& ctx, int idx)
     auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.SetSessionId(TString(BackgroundOpsSessionId));
-    request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+    // TODO: remove after NBS-3886
+    request->Record.SetSessionId(TString(BackgroundOpsClientId));
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetIsBackgroundRequest(true);
+    headers->SetClientId(TString(BackgroundOpsClientId));
 
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
@@ -74,8 +75,7 @@ void TResyncRangeActor::ChecksumReplicaBlocks(const TActorContext& ctx, int idx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             idx,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     Y_UNUSED(request.release());
@@ -141,13 +141,14 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.SetSessionId(TString(BackgroundOpsSessionId));
+    // TODO: remove after NBS-3886
+    request->Record.SetSessionId(TString(BackgroundOpsClientId));
     request->Record.BlockSize = BlockSize;
     request->Record.Sglist = SgList;
-    request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetIsBackgroundRequest(true);
+    headers->SetClientId(TString(BackgroundOpsClientId));
 
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
@@ -156,8 +157,7 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             idx,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     Y_UNUSED(request.release());
@@ -179,12 +179,17 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
-    request->Record.SetSessionId(
-        WriterSessionId ? WriterSessionId : TString(BackgroundOpsSessionId));
+    auto clientId =
+        WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
+    // TODO: remove after NBS-3886
+    request->Record.SetSessionId(clientId);
     request->Record.BlocksCount = Range.Size();
     request->Record.BlockSize = BlockSize;
     request->Record.Sglist = SgList;
-    request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetIsBackgroundRequest(true);
+    headers->SetClientId(std::move(clientId));
 
     for (const auto blockIndex: xrange(Range)) {
         auto* data = Buffer.Get().Data() + (blockIndex - Range.Start) * BlockSize;
@@ -199,9 +204,6 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
         }
     }
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
             Replicas[idx].ActorId,
@@ -209,8 +211,7 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             idx,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     Y_UNUSED(request.release());
@@ -237,8 +238,6 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
         WriteDuration,
         std::move(AffectedBlockInfos)
     );
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -274,8 +273,6 @@ void TResyncRangeActor::HandleChecksumResponse(
 
     auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     Error = msg->Record.GetError();
 
     if (HasError(Error)) {
@@ -310,8 +307,6 @@ void TResyncRangeActor::HandleReadResponse(
 
     auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     Error = msg->Record.GetError();
 
     if (HasError(Error)) {
@@ -342,8 +337,6 @@ void TResyncRangeActor::HandleWriteResponse(
     WriteDuration = ctx.Now() - WriteStartTs;
 
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     Error = msg->Record.GetError();
 

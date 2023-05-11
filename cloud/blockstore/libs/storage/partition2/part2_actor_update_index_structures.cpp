@@ -36,9 +36,6 @@ void TPartitionActor::EnqueueUpdateIndexStructuresIfNeeded(
             TBlockRange32::WithLength(0, PartitionConfig.GetBlocksCount())
         );
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     LWTRACK(
         BackgroundTaskStarted_Partition,
         request->CallContext->LWOrbit,
@@ -50,9 +47,7 @@ void TPartitionActor::EnqueueUpdateIndexStructuresIfNeeded(
     NCloud::Send(
         ctx,
         SelfId(),
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TPartitionActor::HandleUpdateIndexStructures(
@@ -65,13 +60,9 @@ void TPartitionActor::HandleUpdateIndexStructures(
         CreateRequestInfo<TEvPartitionPrivate::TUpdateIndexStructuresMethod>(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)
-        );
+            msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -88,8 +79,6 @@ void TPartitionActor::HandleUpdateIndexStructures(
         using TResponse = TEvPartitionPrivate::TEvUpdateIndexStructuresResponse;
         auto response = std::make_unique<TResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

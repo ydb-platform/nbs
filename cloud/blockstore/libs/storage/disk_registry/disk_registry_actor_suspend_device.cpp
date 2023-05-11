@@ -28,15 +28,14 @@ void TDiskRegistryActor::HandleSuspendDevice(
             MakeError(E_ARGUMENT, "empty device id"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
-        
+
         return;
     }
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TSuspendDevice>(
         ctx,

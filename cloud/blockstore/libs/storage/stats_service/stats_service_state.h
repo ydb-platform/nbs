@@ -54,6 +54,10 @@ struct TTotalCounters
     TSimpleCounter TotalDiskCountLast15Min;
     TSimpleCounter TotalDiskCountLastHour;
     TSimpleCounter TotalPartitionCount;
+    TSimpleCounter VolumeLoadTime1To5Sec;
+    TSimpleCounter VolumeLoadTimeOver5Sec;
+    TSimpleCounter VolumeStartTime1To5Sec;
+    TSimpleCounter VolumeStartTimeOver5Sec;
 
     TTotalCounters(EPublishingPolicy policy)
         : PartAcc(policy)

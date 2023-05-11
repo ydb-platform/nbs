@@ -96,8 +96,7 @@ void TScanDiskActor::Bootstrap(const TActorContext& ctx)
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 
     Become(&TThis::StateWork);
 }
@@ -239,8 +238,7 @@ void TScanDiskStatusActor::Bootstrap(const TActorContext& ctx)
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        RequestInfo->TraceId.Clone());
+        RequestInfo->Cookie);
 
     Become(&TThis::StateWork);
 }

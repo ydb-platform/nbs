@@ -60,9 +60,6 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvCleanupRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     const auto throttlingAllowed = State->GetCleanupQueue().GetQueueBytes()
         < Config->GetCleanupQueueBytesLimitForThrottling();
 
@@ -90,9 +87,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             SelfId(),
-            std::move(request),
-            0,  // cookie
-            std::move(traceId));
+            std::move(request));
     }
 }
 
@@ -105,12 +100,9 @@ void TPartitionActor::HandleCleanup(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCleanupMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -128,8 +120,6 @@ void TPartitionActor::HandleCleanup(
     {
         auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>(
             MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -317,8 +307,6 @@ void TPartitionActor::CompleteCleanup(
         args.CommitId);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>();
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,

@@ -51,10 +51,7 @@ void TPartitionActor::HandleCreateCheckpoint(
     auto requestInfo = CreateRequestInfo<TEvService::TCreateCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -66,8 +63,6 @@ void TPartitionActor::HandleCreateCheckpoint(
     if (!checkpointId) {
         auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(
             MakeError(E_ARGUMENT, "missing checkpoint identifier"));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -146,8 +141,6 @@ void TPartitionActor::CompleteCreateCheckpoint(
 {
     auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         args.RequestInfo->CallContext->LWOrbit,
@@ -193,10 +186,7 @@ void TPartitionActor::DeleteCheckpoint(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -204,14 +194,12 @@ void TPartitionActor::DeleteCheckpoint(
         TMethod::Name,
         requestInfo->CallContext->RequestId);
 
-    auto reply = [this] (
+    auto reply = [] (
         const TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         const NProto::TError& error)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(error);
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

@@ -18,16 +18,13 @@ void TDiskRegistryActor::HandleGetDependentDisks(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received GetDependentDisks request: Host=%s, Path=%s",
         TabletID(),
         msg->Host.c_str(),
         msg->Path.c_str());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     using TResponse = TEvDiskRegistryPrivate::TEvGetDependentDisksResponse;
 

@@ -86,12 +86,9 @@ void TPartitionActor::HandleDescribeBlocks(
     auto requestInfo = CreateRequestInfo<TEvVolume::TDescribeBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -100,8 +97,6 @@ void TPartitionActor::HandleDescribeBlocks(
         requestInfo->CallContext->RequestId);
 
     auto reply = [&](auto response) {
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
-
         LWTRACK(
             ResponseSent_Partition,
             requestInfo->CallContext->LWOrbit,
@@ -219,8 +214,6 @@ void TPartitionActor::CompleteDescribeBlocks(
     FillDescribeBlocksResponse(args, response.get());
 
     RemoveTransaction(*args.RequestInfo);
-
-    BLOCKSTORE_TRACE_SENT(ctx, &args.RequestInfo->TraceId, this, response);
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] Complete describe blocks @%lu",

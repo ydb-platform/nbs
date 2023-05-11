@@ -21,7 +21,7 @@ private:
     const TActorId Owner;
     TRequestInfoPtr RequestInfo;
     const TString DiskId;
-    const TString SessionId;
+    const TString ClientId;
     const NProto::EVolumeAccessMode AccessMode;
     const ui64 MountSeqNumber;
     const ui32 VolumeGeneration;
@@ -38,7 +38,7 @@ public:
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TString diskId,
-        TString sessionId,
+        TString clientId,
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber,
         ui32 volumeGeneration,
@@ -110,7 +110,7 @@ TAcquireDiskActor::TAcquireDiskActor(
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TString diskId,
-        TString sessionId,
+        TString clientId,
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber,
         ui32 volumeGeneration,
@@ -118,7 +118,7 @@ TAcquireDiskActor::TAcquireDiskActor(
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
-    , SessionId(std::move(sessionId))
+    , ClientId(std::move(clientId))
     , AccessMode(accessMode)
     , MountSeqNumber(mountSeqNumber)
     , VolumeGeneration(volumeGeneration)
@@ -137,7 +137,7 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
 void TAcquireDiskActor::StartAcquireDisk(const TActorContext& ctx)
 {
     using TType = TEvDiskRegistryPrivate::TEvStartAcquireDiskRequest;
-    NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, SessionId));
+    NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, ClientId));
 }
 
 void TAcquireDiskActor::FinishAcquireDisk(const TActorContext& ctx)
@@ -145,12 +145,14 @@ void TAcquireDiskActor::FinishAcquireDisk(const TActorContext& ctx)
     Become(&TThis::StateFinish);
 
     using TType = TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest;
-    NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, SessionId));
+    NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, ClientId));
 }
 
 void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
 {
-    request.SetSessionId(SessionId);
+    request.MutableHeaders()->SetClientId(ClientId);
+    // TODO: remove after NBS-3886
+    request.SetSessionId(ClientId);
     request.SetAccessMode(AccessMode);
     request.SetMountSeqNumber(MountSeqNumber);
     request.SetDiskId(DiskId);
@@ -159,7 +161,9 @@ void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
 
 void TAcquireDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
 {
-    request.SetSessionId(SessionId);
+    request.MutableHeaders()->SetClientId(ClientId);
+    // TODO: remove after NBS-3886
+    request.SetSessionId(ClientId);
 }
 
 template <typename R>
@@ -179,9 +183,6 @@ void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
 
         ++PendingRequests;
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         TAutoPtr<IEventHandle> event(
             new IEventHandle(
                 MakeDiskAgentServiceId(nodeId),
@@ -189,8 +190,7 @@ void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
                 request.get(),
                 IEventHandle::FlagForwardOnNondelivery,
                 cookie++,
-                &ctx.SelfID, // forwardOnNondelivery
-                std::move(traceId)
+                &ctx.SelfID // forwardOnNondelivery
             ));
         request.release();
 
@@ -208,7 +208,7 @@ void TAcquireDiskActor::CancelAcquireOperation(
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
         "[%s] Canceling acquire operation for disk %s",
-        SessionId.c_str(),
+        ClientId.c_str(),
         DiskId.c_str());
 
     if (Devices.empty()) {
@@ -228,7 +228,7 @@ void TAcquireDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
     if (HasError(response->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%s] AcquireDisk %s error: %s",
-            SessionId.c_str(),
+            ClientId.c_str(),
             DiskId.c_str(),
             FormatError(response->GetError()).c_str());
     } else {
@@ -266,7 +266,7 @@ void TAcquireDiskActor::OnAcquireResponse(
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%s] AcquireDevices error: %s",
-            SessionId.c_str(),
+            ClientId.c_str(),
             FormatError(error).c_str());
 
         CancelAcquireOperation(ctx, std::move(error));
@@ -289,7 +289,7 @@ void TAcquireDiskActor::OnReleaseResponse(
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%s] ReleaseDevices error: %s, %llu",
-            SessionId.c_str(),
+            ClientId.c_str(),
             FormatError(error).c_str(),
             cookie);
     }
@@ -339,7 +339,7 @@ void TAcquireDiskActor::HandleWakeup(
 
     const auto err = Sprintf(
         "[%s] TAcquireDiskActor timeout, pending requests: %d",
-        SessionId.c_str(),
+        ClientId.c_str(),
         PendingRequests
     );
     LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, err);
@@ -376,7 +376,7 @@ void TAcquireDiskActor::HandleStartAcquireDiskResponse(
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
         "[%s] Sending acquire devices requests for disk %s, devices%s",
-        SessionId.c_str(),
+        ClientId.c_str(),
         DiskId.c_str(),
         [&] () {
             TStringBuilder sb;
@@ -398,7 +398,7 @@ void TAcquireDiskActor::HandleFinishAcquireDiskResponse(
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%s] FinishAcquireDisk error: %s",
-            SessionId.c_str(),
+            ClientId.c_str(),
             FormatError(msg->GetError()).c_str());
 
         CancelAcquireOperation(ctx, msg->GetError());
@@ -489,17 +489,22 @@ void TDiskRegistryActor::HandleAcquireDisk(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId)
+        msg->CallContext
     );
+
+    auto clientId = msg->Record.GetHeaders().GetClientId();
+    // TODO: remove after NBS-3886
+    if (!clientId) {
+        clientId = msg->Record.GetSessionId();
+    }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received AcquireDisk request: "
-        "DiskId=%s, SessionId=%s, AccessMode=%u, MountSeqNumber=%lu"
+        "DiskId=%s, ClientId=%s, AccessMode=%u, MountSeqNumber=%lu"
         ", VolumeGeneration=%u",
         TabletID(),
         msg->Record.GetDiskId().c_str(),
-        msg->Record.GetSessionId().c_str(),
+        clientId.c_str(),
         static_cast<ui32>(msg->Record.GetAccessMode()),
         msg->Record.GetMountSeqNumber(),
         msg->Record.GetVolumeGeneration());
@@ -509,7 +514,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
         ctx.SelfID,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
-        msg->Record.GetSessionId(),
+        std::move(clientId),
         msg->Record.GetAccessMode(),
         msg->Record.GetMountSeqNumber(),
         msg->Record.GetVolumeGeneration(),

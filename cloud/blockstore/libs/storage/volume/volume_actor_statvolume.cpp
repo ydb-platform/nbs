@@ -174,7 +174,6 @@ void TStatPartitionActor::HandleStatPartitionResponse(
             "StatVolume",
             RequestInfo->CallContext->RequestId);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
         Die(ctx);
@@ -209,10 +208,7 @@ void TVolumeActor::HandleStatVolume(
     auto requestInfo = CreateRequestInfo<TEvService::TStatVolumeMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        ev->TraceId.Clone());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LWTRACK(
         RequestReceived_Volume,
@@ -274,8 +270,6 @@ void TVolumeActor::HandleStatVolume(
         volume->SetResyncInProgress(State->IsMirrorResyncNeeded());
         FillCheckpoints(std::move(checkpoints), response->Record);
 
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
-
         LWTRACK(
             ResponseSent_Volume,
             requestInfo->CallContext->LWOrbit,
@@ -302,8 +296,7 @@ void TVolumeActor::HandleGetVolumeInfo(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }

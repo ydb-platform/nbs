@@ -85,9 +85,6 @@ void TAddConfirmedBlobsActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     for (auto& request: Requests) {
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         NCloud::Send(ctx, Tablet, std::move(request));
     }
 }
@@ -126,8 +123,6 @@ void TAddConfirmedBlobsActor::ReplyAndDie(
     using TResponse = TEvPartitionPrivate::TEvAddConfirmedBlobsResponse;
     auto response = std::make_unique<TResponse>(error);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -145,8 +140,6 @@ void TAddConfirmedBlobsActor::HandleAddBlobsResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
@@ -211,9 +204,6 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
             MakeIntrusive<TCallContext>(CreateRequestId())
         );
 
-    auto traceId = NWilson::TTraceId::NewTraceId();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] AddConfirmedBlobs request sent: %lu",
         TabletID(),
@@ -222,9 +212,7 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
     NCloud::Send(
         ctx,
         SelfId(),
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void TPartitionActor::HandleAddConfirmedBlobs(
@@ -237,12 +225,9 @@ void TPartitionActor::HandleAddConfirmedBlobs(
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -262,8 +247,6 @@ void TPartitionActor::HandleAddConfirmedBlobs(
         auto response = std::make_unique<TResponse>(
             MakeError(errorCode, std::move(errorReason))
         );
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,

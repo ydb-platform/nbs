@@ -119,8 +119,6 @@ auto TUpdateDiskRegistryConfigActor::CreateConfig() const
 
 void TUpdateDiskRegistryConfigActor::UpdateConfig(const TActorContext& ctx)
 {
-    auto traceId = RequestInfo->TraceId.Clone();
-
     auto [config, error] = CreateConfig();
     if (HasError(error)) {
         ReplyAndDie(
@@ -136,14 +134,11 @@ void TUpdateDiskRegistryConfigActor::UpdateConfig(const TActorContext& ctx)
     *request->Record.MutableConfig() = std::move(config);
     request->Record.SetIgnoreVersion(Request.GetIgnoreVersion());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie,
-        std::move(traceId));
+        RequestInfo->Cookie);
 }
 
 void TUpdateDiskRegistryConfigActor::HandleUpdateConfigResponse(
@@ -151,8 +146,6 @@ void TUpdateDiskRegistryConfigActor::HandleUpdateConfigResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -174,7 +167,6 @@ void TUpdateDiskRegistryConfigActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigResponse> response)
 {
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -205,10 +197,7 @@ void TServiceActor::HandleUpdateDiskRegistryConfig(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
+        msg->CallContext);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Update Disk Registry config");

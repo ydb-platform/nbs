@@ -211,6 +211,8 @@ void TVolumeActor::UpdateCounters(const TActorContext& ctx)
 
 void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
 {
+    ExecutorActivationTimestamp = ctx.Now();
+
     LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Activated executor",
         TabletID());
@@ -554,8 +556,7 @@ void TVolumeActor::HandleUpdateThrottlerState(
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId));
+            ev->Get()->CallContext);
 
         ExecuteTx<TWriteThrottlerState>(
             ctx,
@@ -583,8 +584,7 @@ void TVolumeActor::HandleUpdateCounters(
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            std::move(ev->TraceId));
+            ev->Get()->CallContext);
 
         ExecuteTx<TCleanupHistory>(
             ctx,

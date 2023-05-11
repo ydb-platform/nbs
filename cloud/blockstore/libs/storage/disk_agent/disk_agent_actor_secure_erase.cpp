@@ -70,8 +70,7 @@ void TDiskAgentActor::HandleSecureEraseDevice(
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext,
-            ev->TraceId.Clone()));
+            ev->Get()->CallContext));
 
     if (SecureErasePendingRequests.size() > 1 || pendingRequests.size() > 1) {
         LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,

@@ -2,7 +2,6 @@
 
 #include "service.h"
 
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
@@ -202,8 +201,7 @@ void TServiceActor::HandleChangeVolumeBinding(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        std::move(msg->CallContext),
-        std::move(ev->TraceId));
+        std::move(msg->CallContext));
 
     TDuration delayInterval;
     if (msg->Source == NProto::SOURCE_BALANCER) {

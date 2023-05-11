@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
 #include <ydb/core/base/tablet_pipe.h>
@@ -337,6 +338,7 @@ void TPartitionActor::OnTabletDead(
 
 void TPartitionActor::BeforeDie(const TActorContext& ctx)
 {
+    ClearBaseDiskIdToTabletIdMapping(ctx);
     TerminateTransactions(ctx);
     KillActors(ctx);
     ClearWriteQueue(ctx);
@@ -617,6 +619,53 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
         ReassignChannelsIfNeeded(ctx);
     }
 }
+
+void TPartitionActor::MapBaseDiskIdToTabletId(
+    const NActors::TActorContext& ctx)
+{
+    if (State && State->GetBaseDiskTabletId() != 0) {
+        auto request = std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+            State->GetBaseDiskId(),
+            State->GetBaseDiskTabletId());
+
+        TAutoPtr<IEventHandle> event = new IEventHandle(
+            MakeVolumeProxyServiceId(),
+            SelfId(),
+            request.release());
+
+        LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
+            "[" << TabletID() << "]"
+            << " Sending MapBaseDiskIdToTabletId to VolumeProxy: BaseDiskId="
+            << State->GetBaseDiskId().Quote()
+            << " BaseTabletId="
+            << State->GetBaseDiskTabletId());
+
+        ctx.Send(event);
+    }
+}
+
+void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
+    const NActors::TActorContext& ctx)
+{
+    if (State && State->GetBaseDiskTabletId() != 0) {
+        auto request = std::make_unique<
+            TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
+                State->GetBaseDiskId());
+
+        TAutoPtr<IEventHandle> event = new IEventHandle(
+            MakeVolumeProxyServiceId(),
+            SelfId(),
+            request.release());
+
+        LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
+            "[" << TabletID() << "]"
+            << " Sending ClearBaseDiskIdToTabletIdMapping to VolumeProxy: BaseDiskId="
+            << State->GetBaseDiskId().Quote());
+
+        ctx.Send(event);
+    }
+}
+
 
 void TPartitionActor::HandleReassignTabletResponse(
     const TEvHiveProxy::TEvReassignTabletResponse::TPtr& ev,

@@ -228,8 +228,7 @@ struct TTestEnv
         auto requestInfo = CreateRequestInfo(
             sender,
             0,
-            MakeIntrusive<TCallContext>(),
-            NWilson::TTraceId::NewTraceId()
+            MakeIntrusive<TCallContext>()
         );
 
         TVector<TResyncReplica> replicas;

@@ -116,15 +116,10 @@ void THttpReadBlockActor::ReadBlocks(const TActorContext& ctx)
     request->Record.CommitId = CommitId;
     request->Record.BlockSize = BufferHolder.Get().size();
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     NCloud::Send(
         ctx,
         Tablet,
-        std::move(request),
-        0,  // cookie
-        std::move(traceId));
+        std::move(request));
 }
 
 void THttpReadBlockActor::ReplyAndDie(
@@ -218,8 +213,6 @@ void THttpReadBlockActor::SendHttpResponse(
 
     auto response = std::make_unique<NMon::TEvRemoteHttpInfoRes>(out.Str());
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
-
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
@@ -236,8 +229,6 @@ void THttpReadBlockActor::HandleReadBlockResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (FAILED(msg->GetStatus())) {
         ReplyAndDie(ctx, msg->GetError());

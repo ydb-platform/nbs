@@ -125,9 +125,6 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
         Request->DiffCount,
         Request->Deadline);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -135,9 +132,7 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release(),
-        0,  // cookie
-        std::move(traceId));
+        request.release());
 }
 
 void TPatchBlobActor::NotifyCompleted(
@@ -160,8 +155,6 @@ void TPatchBlobActor::ReplyAndDie(
     std::unique_ptr<TResponse> response)
 {
     NotifyCompleted(ctx, response->GetError());
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -197,8 +190,6 @@ void TPatchBlobActor::HandlePatchResult(
     ResponseReceived = ctx.Now();
 
     const auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (msg->Status != NKikimrProto::OK) {
         ReplyError(ctx, *msg, msg->ErrorReason);
@@ -278,12 +269,9 @@ void TPartitionActor::HandlePatchBlob(
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TPatchBlobMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,

@@ -38,8 +38,7 @@ void TDiskRegistryActor::HandleResumeDevice(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     ExecuteTx<TResumeDevice>(
         ctx,

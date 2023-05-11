@@ -165,7 +165,6 @@ void TPathDescriptionCache::SyncCompleted(
         auto response =
             std::make_unique<TEvSSProxy::TEvSyncPathDescriptionCacheResponse>(
                 error);
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo->TraceId, this, response);
         NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
     SyncRequests.clear();
@@ -201,7 +200,6 @@ void TPathDescriptionCache::HandleReadPathDescriptionCache(
     using TResponse = TEvSSProxyPrivate::TEvReadPathDescriptionCacheResponse;
 
     auto* msg = ev->Get();
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
 
     bool found = false;
     NKikimrSchemeOp::TPathDescription pathDescription;
@@ -227,7 +225,6 @@ void TPathDescriptionCache::HandleReadPathDescriptionCache(
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
     }
 
-    BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -250,14 +247,12 @@ void TPathDescriptionCache::HandleSyncPathDescriptionCache(
     using TResponse = TEvSSProxy::TEvSyncPathDescriptionCacheResponse;
 
     auto* msg = ev->Get();
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &ev->TraceId, this, msg);
 
     if (SyncEnabled) {
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId)
+            msg->CallContext
         );
         SyncRequests.push_back(std::move(requestInfo));
 
@@ -268,7 +263,6 @@ void TPathDescriptionCache::HandleSyncPathDescriptionCache(
     auto error = MakeError(E_PRECONDITION_FAILED, "sync is disabled");
     auto response = std::make_unique<TResponse>(std::move(error));
 
-    BLOCKSTORE_TRACE_SENT(ctx, &ev->TraceId, this, response);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

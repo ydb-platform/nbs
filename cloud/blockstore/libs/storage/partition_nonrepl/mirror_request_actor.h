@@ -126,9 +126,6 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
         ForkedCallContexts.push_back(request->CallContext);
         request->Record = Request;
 
-        auto traceId = RequestInfo->TraceId.Clone();
-        BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
         TAutoPtr<NActors::IEventHandle> event(
             new NActors::IEventHandle(
                 actorId,
@@ -136,8 +133,7 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
                 request.release(),
                 NActors::IEventHandle::FlagForwardOnNondelivery,
                 0,  // cookie
-                &ctx.SelfID,    // forwardOnNondelivery
-                std::move(traceId)
+                &ctx.SelfID    // forwardOnNondelivery
             )
         );
 
@@ -155,8 +151,6 @@ void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
     for (auto& cc: ForkedCallContexts) {
         callContext.LWOrbit.Join(cc->LWOrbit);
     }
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -206,8 +200,6 @@ void TMirrorRequestActor<TMethod>::HandleResponse(
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HasError(msg->Record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,

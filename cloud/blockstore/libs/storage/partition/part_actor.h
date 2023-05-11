@@ -10,7 +10,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/kikimr/trace.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -597,6 +596,9 @@ private:
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,
         ui32 blobsPerBatch);
+
+    void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
+    void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);

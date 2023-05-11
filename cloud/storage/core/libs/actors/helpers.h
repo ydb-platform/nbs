@@ -13,6 +13,10 @@ void HandleUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,
     int component);
 
+void HandleUnexpectedEvent(
+    NActors::IEventHandlePtr& ev,
+    int component);
+
 void LogUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,
     int component);
@@ -53,23 +57,20 @@ inline void Send(
     const NActors::TActorContext& ctx,
     const NActors::TActorId& recipient,
     NActors::IEventBasePtr event,
-    ui64 cookie = 0,
-    NWilson::TTraceId traceId = {})
+    ui64 cookie = 0)
 {
     ctx.Send(
         recipient,
         event.release(),
         0,  // flags
-        cookie,
-        std::move(traceId));
+        cookie);
 }
 
 inline void SendWithUndeliveryTracking(
     const NActors::TActorContext& ctx,
     const NActors::TActorId& recipient,
     NActors::IEventBasePtr event,
-    ui64 cookie = 0,
-    NWilson::TTraceId traceId = {})
+    ui64 cookie = 0)
 {
     auto ev = std::make_unique<NActors::IEventHandle>(
         recipient,
@@ -77,8 +78,8 @@ inline void SendWithUndeliveryTracking(
         event.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,    // flags
         cookie,  // cookie
-        &ctx.SelfID,    // forwardOnNondelivery
-        traceId.Clone());
+        &ctx.SelfID    // forwardOnNondelivery
+    );
 
     ctx.Send(ev.release());
 }
@@ -87,10 +88,9 @@ template <typename T>
 inline void Send(
     const NActors::TActorContext& ctx,
     const NActors::TActorId& recipient,
-    ui64 cookie = 0,
-    NWilson::TTraceId traceId = {})
+    ui64 cookie = 0)
 {
-    Send(ctx, recipient, std::make_unique<T>(), cookie, std::move(traceId));
+    Send(ctx, recipient, std::make_unique<T>(), cookie);
 }
 
 template <typename T, typename ...TArgs>

@@ -32,7 +32,6 @@ target_link_libraries(libs-storage-core PUBLIC
   core-libs-diagnostics
   OpenSSL::OpenSSL
   cpp-actors-core
-  cpp-actors-wilson
   library-cpp-cgiparam
   cpp-containers-intrusive_rb_tree
   cpp-deprecated-atomic

@@ -112,7 +112,7 @@ private:
 
         auto* principalTask = TaskList.StartPrincipalTask();
 
-        TRequestInfo requestInfo{ev->Sender, 0, nullptr, {}};
+        TRequestInfo requestInfo{ev->Sender, 0, nullptr};
         // Prepare response. We will send it when receive all Pong responses
         // from the underlying actor.
         principalTask->ArmReply(

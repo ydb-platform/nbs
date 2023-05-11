@@ -133,9 +133,6 @@ void TWriteAndMarkUsedActor<TMethod>::WriteBlocks(const TActorContext& ctx)
     request->CallContext = RequestInfo->CallContext;
     request->Record = Request;
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
             PartActorId,
@@ -143,8 +140,7 @@ void TWriteAndMarkUsedActor<TMethod>::WriteBlocks(const TActorContext& ctx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             0,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     request.release();
@@ -162,9 +158,6 @@ void TWriteAndMarkUsedActor<TMethod>::MarkBlocksUsed(const TActorContext& ctx)
         Request, BlockSize));
     request->Record.SetUsed(true);
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
             VolumeActorId,
@@ -172,8 +165,7 @@ void TWriteAndMarkUsedActor<TMethod>::MarkBlocksUsed(const TActorContext& ctx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             0,              // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID     // forwardOnNondelivery
         ));
     request.release();
 
@@ -185,8 +177,6 @@ void TWriteAndMarkUsedActor<TMethod>::Done(const TActorContext& ctx)
 {
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Record);
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_VolumeWorker,
@@ -246,8 +236,6 @@ void TWriteAndMarkUsedActor<TMethod>::HandleResponse(
 {
     auto* msg = ev->Get();
 
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
-
     if (HasError(msg->Record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
             "[%lu] %s got error from partition: %s",
@@ -277,8 +265,6 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HasError(msg->Record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
@@ -458,9 +444,6 @@ void TReadActor<TMethod>::ReadBlocks(const TActorContext& ctx)
     request->CallContext = RequestInfo->CallContext;
     request->Record = Request;
 
-    auto traceId = RequestInfo->TraceId.Clone();
-    BLOCKSTORE_TRACE_SENT(ctx, &traceId, this, request);
-
     TAutoPtr<IEventHandle> event(
         new IEventHandle(
             PartActorId,
@@ -468,8 +451,7 @@ void TReadActor<TMethod>::ReadBlocks(const TActorContext& ctx)
             request.get(),
             IEventHandle::FlagForwardOnNondelivery,
             0,  // cookie
-            &ctx.SelfID,    // forwardOnNondelivery
-            std::move(traceId)
+            &ctx.SelfID    // forwardOnNondelivery
         )
     );
     request.release();
@@ -494,8 +476,6 @@ void TReadActor<TMethod>::Done(const TActorContext& ctx)
             GetStartIndex(Request),
             response->Record);
     }
-
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
 
     LWTRACK(
         ResponseSent_VolumeWorker,
@@ -534,8 +514,6 @@ void TReadActor<TMethod>::HandleResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &RequestInfo->TraceId, this, msg, &ev->TraceId);
 
     if (HasError(msg->Record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
@@ -601,8 +579,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext,
-            std::move(ev->TraceId));
+            msg->CallContext);
 
         NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
             ctx,
@@ -635,8 +612,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             auto requestInfo = CreateRequestInfo(
                 ev->Sender,
                 ev->Cookie,
-                msg->CallContext,
-                std::move(ev->TraceId));
+                msg->CallContext);
 
             NCloud::Register<TReadActor<TMethod>>(
                 ctx,

@@ -163,12 +163,9 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
     auto requestInfo = CreateRequestInfo<TEvService::TWriteBlocksMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -184,8 +181,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -259,7 +254,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        deviceRequest.SetSessionId(msg->Record.GetSessionId());
+        // TODO: remove after NBS-3886
+        deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
             &*dr,
@@ -319,12 +315,9 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     auto requestInfo = CreateRequestInfo<TEvService::TWriteBlocksLocalMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     TRequestScope timer(*requestInfo);
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -340,8 +333,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
-
-        BLOCKSTORE_TRACE_SENT(ctx, &requestInfo.TraceId, this, response);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -409,7 +400,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        deviceRequest.SetSessionId(msg->Record.GetSessionId());
+        // TODO: remove after NBS-3886
+        deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
             &*dr,

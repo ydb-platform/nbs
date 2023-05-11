@@ -26,8 +26,7 @@ IEventHandlePtr CreateRequestWithNondeliveryTracking(
             ev.ReleaseBase().Release(),
             ev.Flags | IEventHandle::FlagForwardOnNondelivery,
             ev.Cookie,
-            &undeliveredRequestActor,
-            std::move(ev.TraceId));
+            &undeliveredRequestActor);
     } else {
         return std::make_unique<IEventHandle>(
             ev.Type,
@@ -36,8 +35,7 @@ IEventHandlePtr CreateRequestWithNondeliveryTracking(
             ev.Sender,
             ev.ReleaseChainBuffer(),
             ev.Cookie,
-            &undeliveredRequestActor,
-            std::move(ev.TraceId));
+            &undeliveredRequestActor);
     }
 }
 

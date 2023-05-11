@@ -294,8 +294,8 @@ NProto::TError RegisterAgent(
     const NProto::TAgentConfig& config,
     TInstant timestamp)
 {
-    TVector<TDiskStateUpdate> affectedDisks;
-    THashMap<TString, ui64> disksToNotify;
+    TVector<TString> affectedDisks;
+    TVector<TString> disksToNotify;
 
     auto error = state.RegisterAgent(
         db,
@@ -305,6 +305,7 @@ NProto::TError RegisterAgent(
         &disksToNotify
     );
     UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+    Y_UNUSED(disksToNotify);
 
     return error;
 }
@@ -324,13 +325,13 @@ void CleanDevices(TDiskRegistryState& state, TDiskRegistryDatabase& db)
     }
 }
 
-TVector<TDiskStateUpdate> UpdateAgentState(
+TVector<TString> UpdateAgentState(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
     const TString& agentId,
     NProto::EAgentState desiredState)
 {
-    TVector<TDiskStateUpdate> affectedDisks;
+    TVector<TString> affectedDisks;
     const auto error = state.UpdateAgentState(
         db,
         agentId,
@@ -342,7 +343,7 @@ TVector<TDiskStateUpdate> UpdateAgentState(
     return affectedDisks;
 }
 
-TVector<TDiskStateUpdate> UpdateAgentState(
+TVector<TString> UpdateAgentState(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
     const NProto::TAgentConfig& config,

@@ -51,8 +51,7 @@ void TDiskRegistryActor::HandleAllocateDisk(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received AllocateDisk request: DiskId=%s, BlockSize=%u"
@@ -67,8 +66,6 @@ void TDiskRegistryActor::HandleAllocateDisk(
         msg->Record.GetFolderId().c_str(),
         msg->Record.GetPlacementGroupId().c_str(),
         msg->Record.GetPlacementPartitionIndex());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     Y_VERIFY_DEBUG(
         msg->Record.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT);
@@ -262,8 +259,7 @@ void TDiskRegistryActor::HandleDeallocateDisk(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received DeallocateDisk request: DiskId=%s Force=%d Sync=%d",
@@ -271,8 +267,6 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         msg->Record.GetDiskId().c_str(),
         msg->Record.GetForce(),
         msg->Record.GetSync());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     const auto& diskId = msg->Record.GetDiskId();
 

@@ -24,8 +24,7 @@ void TDiskRegistryActor::HandleRegisterAgent(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     auto getDeviceDecription = [] (const NProto::TDeviceConfig& config) {
         TStringStream out;
@@ -78,8 +77,6 @@ void TDiskRegistryActor::HandleRegisterAgent(
             }
             return out.Str();
         }().c_str());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TAddAgent>(
         ctx,
@@ -165,19 +162,18 @@ void TDiskRegistryActor::CompleteAddAgent(
             FormatError(args.Error).c_str());
     }
 
-    for (const auto& x: args.AffectedDisks) {
+    for (const auto& diskId: args.AffectedDisks) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] AffectedDiskID=%s",
             TabletID(),
-            x.State.GetDiskId().Quote().c_str());
+            diskId.Quote().c_str());
     }
 
-    for (const auto& [diskId, seqNo]: args.NotifiedDisks) {
+    for (const auto& diskId: args.NotifiedDisks) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] NotifiedDiskID=%s SeqNo=%lu",
+            "[%lu] NotifiedDiskID=%s",
             TabletID(),
-            diskId.Quote().c_str(),
-            seqNo);
+            diskId.Quote().c_str());
     }
 
     auto response = std::make_unique<TEvDiskRegistry::TEvRegisterAgentResponse>();
@@ -205,15 +201,12 @@ void TDiskRegistryActor::HandleUnregisterAgent(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received UnregisterAgent request: NodeId=%u",
         TabletID(),
         msg->Record.GetNodeId());
-
-    BLOCKSTORE_TRACE_RECEIVED(ctx, &requestInfo->TraceId, this, msg);
 
     ExecuteTx<TRemoveAgent>(
         ctx,

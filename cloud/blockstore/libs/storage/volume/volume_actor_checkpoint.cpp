@@ -167,8 +167,7 @@ void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
             cookie++,
-            &selfId,
-            RequestInfo->TraceId.Clone()
+            &selfId
         );
 
         ctx.Send(event.release());
@@ -191,8 +190,7 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
     auto requestInfo = CreateRequestInfo(
         selfId,
         0,  // cookie
-        RequestInfo->CallContext,
-        RequestInfo->TraceId.Clone()
+        RequestInfo->CallContext
     );
 
     auto request =
@@ -207,8 +205,7 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
         0,  // cookie
-        &selfId,
-        RequestInfo->TraceId.Clone()
+        &selfId
     );
 
     ctx.Send(event.release());
@@ -235,7 +232,6 @@ void TCheckpointActor<TMethod>::ReplyAndDie(const TActorContext& ctx)
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
 
-    BLOCKSTORE_TRACE_SENT(ctx, &RequestInfo->TraceId, this, response);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     TBase::Die(ctx);
@@ -469,12 +465,6 @@ void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
                     Error = MakeError(E_ARGUMENT, "empty checkpoint name");
                 }
             }
-            if constexpr (std::is_same_v<TMethod, TDeleteCheckpointDataMethod>)
-            {
-                // DeleteCheckpointData not supported.
-                okToExecute = false;
-                Error = MakeError(E_NOT_IMPLEMENTED);
-            }
             UpdateCheckpointRequest(ctx, okToExecute);
             return;
         }
@@ -497,8 +487,7 @@ void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
             cookie++,
-            &selfId,
-            RequestInfo->TraceId.Clone()
+            &selfId
         );
 
         ctx.Send(event.release());
@@ -543,8 +532,7 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     AddTransaction(*requestInfo);
 
@@ -571,8 +559,7 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     AddTransaction(*requestInfo);
 
@@ -596,13 +583,10 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
     bool isTraced,
     ui64 traceTs)
 {
-    Y_VERIFY_DEBUG(!State->GetNonreplicatedPartitionActor());
-
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointDataMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext,
-        std::move(ev->TraceId));
+        ev->Get()->CallContext);
 
     AddTransaction(*requestInfo);
 
@@ -883,8 +867,15 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
                 break;
             }
             case ECheckpointRequestType::DeleteData: {
-                State->GetActiveCheckpoints().DeleteData(
-                    currentRequest.CheckpointId);
+                if (State->GetNonreplicatedPartitionActor()) {
+                    // For disk-registry-based volumes delete entire checkpoint
+                    // instead of data
+                    State->GetActiveCheckpoints().Delete(
+                        currentRequest.CheckpointId);
+                } else {
+                    State->GetActiveCheckpoints().DeleteData(
+                        currentRequest.CheckpointId);
+                }
                 break;
             }
             default:

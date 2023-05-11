@@ -1,7 +1,8 @@
 #pragma once
+#include "common.h"
 #include "conveyor_task.h"
 
-#include <ydb/core/formats/arrow_filter.h>
+#include <ydb/core/formats/arrow/arrow_filter.h>
 #include <ydb/core/tx/columnshard/engines/portion_info.h>
 #include <ydb/core/tx/columnshard/engines/indexed_read_data.h>
 
@@ -16,20 +17,26 @@ namespace NKikimr::NOlap::NIndexedReader {
         std::shared_ptr<arrow::RecordBatch> FilteredBatch;
         NOlap::TReadMetadata::TConstPtr ReadMetadata;
         std::shared_ptr<NArrow::TColumnFilter> Filter;
-        const ui32 BatchNo;
+        std::shared_ptr<NArrow::TColumnFilter> EarlyFilter;
+        const TBatchAddress BatchAddress;
         ui32 OriginalCount = 0;
         bool AllowEarlyFilter = false;
+        std::set<ui32> FilterColumnIds;
+        IOrderPolicy::TPtr BatchesOrderPolicy;
     protected:
-        virtual bool DoApply(TIndexedReadData& owner) const override;
+        virtual bool DoApply(TGranulesFillingContext& owner) const override;
         virtual bool DoExecuteImpl() override;
     public:
         TAssembleFilter(TPortionInfo::TPreparedBatchData&& batchConstructor, NOlap::TReadMetadata::TConstPtr readMetadata,
-            TBatch& batch, const bool allowEarlyFilter, NColumnShard::IDataTasksProcessor::TPtr processor)
+            TBatch& batch, const std::set<ui32>& filterColumnIds, NColumnShard::IDataTasksProcessor::TPtr processor,
+            IOrderPolicy::TPtr batchesOrderPolicy)
             : TBase(processor)
             , BatchConstructor(batchConstructor)
             , ReadMetadata(readMetadata)
-            , BatchNo(batch.GetBatchNo())
-            , AllowEarlyFilter(allowEarlyFilter)
+            , BatchAddress(batch.GetBatchAddress())
+            , AllowEarlyFilter(batch.AllowEarlyFilter())
+            , FilterColumnIds(filterColumnIds)
+            , BatchesOrderPolicy(batchesOrderPolicy)
         {
             TBase::SetPriority(TBase::EPriority::Normal);
         }

@@ -361,8 +361,7 @@ void TVolumeActor::HandleHttpInfo(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>(),
-        std::move(ev->TraceId));
+        MakeIntrusive<TCallContext>());
 
     LWTRACK(
         RequestReceived_Volume,

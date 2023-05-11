@@ -232,8 +232,7 @@ void TPartitionActor::HandleCompactRange(
     auto requestInfo = CreateRequestInfo<TEvVolume::TCompactRangeMethod>(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext,
-        std::move(ev->TraceId));
+        msg->CallContext);
 
     auto replyError = [=] (
         const TActorContext& ctx,
