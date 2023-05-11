@@ -171,6 +171,7 @@ TPartitionState::TPartitionState(
         TFreeSpaceConfig freeSpaceConfig,
         TIndexCachingConfig indexCachingConfig,
         ui32 maxIORequestsInFlight,
+        ui32 reassignChannelsPercentageThreshold,
         ui32 lastStep)
     : Meta(std::move(meta))
     , TabletId(tabletId)
@@ -184,6 +185,7 @@ TPartitionState::TPartitionState(
     , Config(*Meta.MutableConfig())
     , LastStep(lastStep)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
+    , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
     , ChannelCount(channelCount)
     , FreshBlocks(GetAllocatorByTag(EAllocatorTag::FreshBlockMap))
     , Blobs(
@@ -459,6 +461,12 @@ TVector<ui32> TPartitionState::GetChannelsToReassign() const
         {
             channels.push_back(ch);
         }
+    }
+
+    const auto threshold =
+        (ReassignChannelsPercentageThreshold / 100.) * ChannelCount;
+    if (IsWriteAllowed(permissions) && channels.size() < threshold) {
+        return {};
     }
 
     return channels;

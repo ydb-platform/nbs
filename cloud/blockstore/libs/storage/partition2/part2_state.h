@@ -196,6 +196,7 @@ public:
         TFreeSpaceConfig freeSpaceConfig,
         TIndexCachingConfig indexCachingConfig,
         ui32 maxIORequestsInFlight = Max(),
+        ui32 reassignChannelsPercentageThreshold = 0,
         ui32 lastStep = 0);
 
 private:
@@ -285,6 +286,7 @@ public:
 
 private:
     const ui32 MaxIORequestsInFlight;
+    const ui32 ReassignChannelsPercentageThreshold;
 
     TVector<TChannelState> Channels;
     TVector<ui32> FreshChannels;

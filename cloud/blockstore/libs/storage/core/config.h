@@ -354,6 +354,7 @@ public:
 
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
     TDuration GetReassignRequestRetryTimeout() const;
+    ui32 GetReassignChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;

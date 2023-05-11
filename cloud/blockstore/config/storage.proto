@@ -803,4 +803,9 @@ message TStorageServiceConfig
 
     // Probability (0 .. 100) of being the spare node.
     optional uint32 SpareNodeProbability = 304;
+
+    // Min percentage of reassignable channels after which reassign requests
+    // are sent. Does not apply if writes are not allowed because of channel
+    // flags.
+    optional uint32 ReassignChannelsPercentageThreshold = 305;
 }

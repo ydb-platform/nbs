@@ -943,6 +943,81 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart + 2, channelsToReassign[2]);
     }
 
+    Y_UNIT_TEST(TestReassignedChannelsPercentageThreshold)
+    {
+        TPartitionState state(
+            DefaultConfig(1024, DefaultBlockSize, 96),
+            TestTabletId,
+            0,
+            100,  // channelCount
+            MaxBlobSize,
+            MaxRangesPerBlob,
+            EOptimizationMode::OptimizeForLongRanges,
+            BuildDefaultCompactionPolicy(5),
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            DefaultIndexCachingConfig(),
+            Max(),  // maxIORequestsInFlight
+            10  // reassignChannelsPercentageThreshold
+        );
+
+        UNIT_ASSERT(
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
+        );
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+        for (ui32 i = 0; i < 9; ++i) {
+            state.UpdatePermissions(
+                DataChannelStart + i,
+                EChannelPermission::SystemWritesAllowed
+            );
+        }
+
+        UNIT_ASSERT(
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
+        );
+        auto channelsToReassign = state.GetChannelsToReassign();
+        UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
+
+        state.UpdatePermissions(
+            DataChannelStart + 9,
+            EChannelPermission::SystemWritesAllowed
+        );
+
+        UNIT_ASSERT(
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
+        );
+        channelsToReassign = state.GetChannelsToReassign();
+        UNIT_ASSERT_VALUES_EQUAL(10, channelsToReassign.size());
+        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
+        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart + 9, channelsToReassign[9]);
+
+        for (ui32 i = 0; i < 10; ++i) {
+            state.UpdatePermissions(
+                DataChannelStart + i,
+                EChannelPermission::UserWritesAllowed
+                    | EChannelPermission::SystemWritesAllowed
+            );
+        }
+
+        UNIT_ASSERT(
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
+        );
+        channelsToReassign = state.GetChannelsToReassign();
+        UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
+
+        state.UpdatePermissions(
+            0,
+            EChannelPermission::SystemWritesAllowed
+        );
+        UNIT_ASSERT(
+            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
+        );
+        channelsToReassign = state.GetChannelsToReassign();
+        UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign[0]);
+    }
+
     Y_UNIT_TEST(UpdateChannelFreeSpaceShare)
     {
         const size_t maxChannelCount = 3;
@@ -1403,8 +1478,9 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
-            Max<ui32>(),
-            Max<ui32>()
+            Max<ui32>(),  // maxIORequestsInFlight
+            0,  // reassignChannelsPercentageThreshold
+            Max<ui32>()  // lastStep
         );
 
         UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);

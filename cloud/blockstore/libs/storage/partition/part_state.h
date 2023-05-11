@@ -315,17 +315,18 @@ private:
 
 public:
     TPartitionState(
-            NProto::TPartitionMeta meta,
-            ui32 generation,
-            ICompactionPolicyPtr compactionPolicy,
-            ui32 compactionScoreHistorySize,
-            ui32 cleanupScoreHistorySize,
-            const TBackpressureFeaturesConfig& bpConfig,
-            const TFreeSpaceConfig& freeSpaceConfig,
-            ui32 maxIORequestsInFlight,
-            ui32 lastCommitId,
-            ui32 channelCount,
-            ui32 mixedIndexCacheSize);
+        NProto::TPartitionMeta meta,
+        ui32 generation,
+        ICompactionPolicyPtr compactionPolicy,
+        ui32 compactionScoreHistorySize,
+        ui32 cleanupScoreHistorySize,
+        const TBackpressureFeaturesConfig& bpConfig,
+        const TFreeSpaceConfig& freeSpaceConfig,
+        ui32 maxIORequestsInFlight,
+        ui32 reassignChannelsPercentageThreshold,
+        ui32 lastCommitId,
+        ui32 channelCount,
+        ui32 mixedIndexCacheSize);
 
 private:
     bool LoadStateFinished = false;
@@ -416,6 +417,7 @@ private:
     ui32 AlmostFullChannelCount = 0;
 
     const ui32 MaxIORequestsInFlight;
+    const ui32 ReassignChannelsPercentageThreshold;
 
 public:
     ui32 GetChannelCount() const

@@ -114,6 +114,7 @@ TPartitionState::TPartitionState(
         const TBackpressureFeaturesConfig& bpConfig,
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
+        ui32 reassignChannelsPercentageThreshold,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize)
@@ -125,6 +126,7 @@ TPartitionState::TPartitionState(
     , Config(*Meta.MutableConfig())
     , ChannelCount(channelCount)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
+    , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
     , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
@@ -389,6 +391,12 @@ TVector<ui32> TPartitionState::GetChannelsToReassign() const
         {
             channels.push_back(ch);
         }
+    }
+
+    const auto threshold =
+        (ReassignChannelsPercentageThreshold / 100.) * ChannelCount;
+    if (IsWriteAllowed(permissions) && channels.size() < threshold) {
+        return {};
     }
 
     return channels;
