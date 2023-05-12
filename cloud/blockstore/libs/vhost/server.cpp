@@ -84,6 +84,25 @@ struct TRequest
         , CallContext(MakeIntrusive<TCallContext>(requestId))
         , MetricRequest(VhostRequest->Type)
     {}
+
+    ~TRequest()
+    {
+        // NBS-3662
+        bool empty = Empty();
+        bool completed = Completed.test();
+        Y_VERIFY(empty && completed, "Invalid request final state"
+            ", unlinked = %d, completed = %d", empty, completed);
+    }
+
+    bool Complete(TVhostRequest::EResult result)
+    {
+        if (Completed.test_and_set()) {
+            return false;
+        }
+
+        VhostRequest->Complete(result);
+        return true;
+    }
 };
 
 using TRequestPtr = TIntrusivePtr<TRequest>;
@@ -182,10 +201,10 @@ public:
             STORAGE_INFO("Stop endpoint " << SocketPath.Quote()
                 << " with " << RequestsInFlight.Size() << " inflight requests");
 
-            for (auto& request: RequestsInFlight) {
-                CompleteRequest(request, cancelError);
-            }
-            RequestsInFlight.Clear();
+            RequestsInFlight.ForEach([&] (TRequest* request) {
+                CompleteRequest(*request, cancelError);
+                request->Unlink();
+            });
         }
 
         if (deleteSocket) {
@@ -261,14 +280,7 @@ private:
             if (auto p = weakPtr.lock()) {
                 p->CompleteRequest(*req, response.GetError());
                 p->UnregisterRequest(*req);
-            } else {
-                // remove after NBS-3662
-                Cerr << "BLOCKSTORE_VHOST: Couldn't complete request"
-                    << ", disk=" << req->MetricRequest.DiskId.Quote()
-                    << ", error=" << FormatError(response.GetError())
-                    << ", completed=" << req->Completed.test() << Endl;
             }
-
             return f.GetValue();
         });
     }
@@ -303,21 +315,14 @@ private:
             request->MetricRequest,
             *request->CallContext);
 
-        bool stopped = false;
         with_lock (RequestsLock) {
             if (Stopped.test()) {
-                stopped = true;
-            } else {
-                RequestsInFlight.PushBack(request.Get());
+                auto error = MakeError(E_CANCELLED, "Vhost endpoint was stopped");
+                CompleteRequest(*request, error);
+                return nullptr;
             }
-        }
 
-        if (stopped) {
-            TLog& Log = AppCtx.Log;
-            STORAGE_INFO("Cancel new request, endpoint " << SocketPath.Quote());
-            auto error = MakeError(E_CANCELLED, "Vhost endpoint was stopped");
-            CompleteRequest(*request, error);
-            return nullptr;
+            RequestsInFlight.PushBack(request.Get());
         }
 
         return request;
@@ -325,19 +330,10 @@ private:
 
     void CompleteRequest(TRequest& request, const NProto::TError& error)
     {
-        if (request.Completed.test_and_set()) {
-            return;
-        }
-
         auto statsError = error;
         auto vhostResult = GetResult(statsError);
-
-        // remove after NBS-3662
-        if (vhostResult == TVhostRequest::CANCELLED) {
-            TLog& Log = AppCtx.Log;
-            STORAGE_INFO("Cancel request #" << request.CallContext->RequestId
-                << ", endpoint: " << SocketPath.Quote()
-                << ", error: " << FormatError(error));
+        if (!request.Complete(vhostResult)) {
+            return;
         }
 
         AppCtx.ServerStats->RequestCompleted(
@@ -345,8 +341,6 @@ private:
             request.MetricRequest,
             *request.CallContext,
             statsError);
-
-        request.VhostRequest->Complete(vhostResult);
     }
 
     void UnregisterRequest(TRequest& request)
