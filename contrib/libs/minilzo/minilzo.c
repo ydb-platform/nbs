@@ -3176,7 +3176,7 @@ LZO_COMPILE_TIME_ASSERT_HEADER(sizeof(lzo_int_fast64_t) == sizeof(lzo_uint_fast6
 #  define LZO_OS_FREESTANDING 1
 #endif
 #if defined(LZO_CFG_EXTRA_CONFIG_HEADER)
-#  include LZO_CFG_EXTRA_CONFIG_HEADER
+#  error #include LZO_CFG_EXTRA_CONFIG_HEADER
 #endif
 #if defined(__LZOCONF_H) || defined(__LZOCONF_H_INCLUDED)
 #  error "include this file first"
@@ -3193,7 +3193,7 @@ LZO_COMPILE_TIME_ASSERT_HEADER(sizeof(lzo_int_fast64_t) == sizeof(lzo_uint_fast6
 #endif
 #include "lzoconf.h"
 #if defined(LZO_CFG_EXTRA_CONFIG_HEADER2)
-#  include LZO_CFG_EXTRA_CONFIG_HEADER2
+#  error #include LZO_CFG_EXTRA_CONFIG_HEADER2
 #endif
 #endif
 
