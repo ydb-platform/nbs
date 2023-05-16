@@ -336,7 +336,7 @@ TDuration MSeconds(ui32 value)
     xxx(MultipartitionVolumesEnabled,              bool,      false           )\
     xxx(NonReplicatedInfraTimeout,                 TDuration, Days(1)         )\
     xxx(NonReplicatedInfraUnavailableAgentTimeout, TDuration, Hours(1)        )\
-    xxx(NonReplicatedMinRequestTimeout,            TDuration, MSeconds(100)   )\
+    xxx(NonReplicatedMinRequestTimeout,            TDuration, MSeconds(500)   )\
     xxx(NonReplicatedMaxRequestTimeout,            TDuration, Seconds(30)     )\
     xxx(ExpectedClientBackoffIncrement,            TDuration, MSeconds(500)   )\
     xxx(NonReplicatedMigrationStartAllowed,        bool,      false           )\
