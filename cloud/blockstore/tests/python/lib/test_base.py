@@ -361,25 +361,49 @@ def get_nbs_device_path(path=None):
     return path
 
 
-def get_sensor_by_name(sensors, component, name, def_value=None):
+def get_sensor(sensors, default_value, **kwargs):
     for sensor in sensors:
         labels = sensor['labels']
-        if labels.get('component') != component:
-            continue
-        if labels.get('sensor') != name:
-            continue
+        if all([labels.get(n) == v for n, v in kwargs.items()]):
+            return sensor.get('value', default_value)
+    return default_value
 
-        return sensor.get('value', def_value)
-    return def_value
+
+def get_sensor_by_name(sensors, component, name, def_value=None):
+    return get_sensor(
+        sensors,
+        default_value=def_value,
+        component=component,
+        sensor=name)
+
+
+def __get_free_bytes(sensors, pool, default_value=0):
+    bytes = get_sensor(
+        sensors,
+        default_value=default_value,
+        component='disk_registry',
+        sensor='FreeBytes',
+        pool=pool)
+
+    return bytes if bytes is not None else default_value
+
+
+def __get_dirty_devices(sensors, pool, default_value=0):
+    return get_sensor(
+        sensors,
+        default_value=default_value,
+        component='disk_registry',
+        sensor='DirtyDevices',
+        pool=pool)
 
 
 # wait for DiskAgent registration & secure erase
-def wait_for_free_bytes(mon_port):
+def wait_for_free_bytes(mon_port, pool='default'):
     while True:
         logging.info("Wait for agents...")
         time.sleep(1)
         sensors = get_nbs_counters(mon_port)['sensors']
-        bytes = get_sensor_by_name(sensors, 'disk_registry', 'FreeBytes', 0)
+        bytes = __get_free_bytes(sensors, pool)
 
         if bytes > 0:
             logging.info("Bytes: {}".format(bytes))
@@ -387,7 +411,7 @@ def wait_for_free_bytes(mon_port):
 
 
 # wait for DA & secure erase of all available devices
-def wait_for_secure_erase(mon_port):
+def wait_for_secure_erase(mon_port, pool='default'):
     while True:
         logging.info("Wait for agents ...")
         time.sleep(1)
@@ -398,11 +422,15 @@ def wait_for_secure_erase(mon_port):
 
         logging.info("Agents: {}".format(agents))
 
-        bytes = get_sensor_by_name(sensors, 'disk_registry', 'FreeBytes', 0)
-        dd = get_sensor_by_name(sensors, 'disk_registry', 'DirtyDevices', 0)
+        dd = __get_dirty_devices(sensors, pool)
         logging.info("Dirty devices: {}".format(dd))
-        if dd == 0:
-            logging.info("Bytes: {}".format(bytes))
 
-            assert(bytes != 0)
-            break
+        if dd:
+            continue
+
+        bytes = __get_free_bytes(sensors, pool)
+        logging.info("Bytes: {}".format(bytes))
+
+        assert bytes != 0
+
+        break
