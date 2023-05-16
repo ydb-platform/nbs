@@ -48,6 +48,13 @@ public:
     {
         return Server->StopEndpoint(socketPath);
     }
+
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        return Server->UpdateEndpoint(socketPath, volume.GetBlocksCount());
+    }
 };
 
 }   // namespace

@@ -241,6 +241,13 @@ service TBlockStoreService
         };
     }
 
+    rpc RefreshEndpoint(TRefreshEndpointRequest) returns (TRefreshEndpointResponse) {
+        option (google.api.http) = {
+            post: "/refresh_endpoint"
+            body: "*"
+        };
+    }
+
     //
     // Disk Registry config.
     //

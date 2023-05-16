@@ -26,6 +26,7 @@ type listEndpointsHandlerFunc func(ctx context.Context, req *protos.TListEndpoin
 type kickEndpointHandlerFunc func(ctx context.Context, req *protos.TKickEndpointRequest) (*protos.TKickEndpointResponse, error)
 type listKeyringsHandlerFunc func(ctx context.Context, req *protos.TListKeyringsRequest) (*protos.TListKeyringsResponse, error)
 type describeEndpointHandlerFunc func(ctx context.Context, req *protos.TDescribeEndpointRequest) (*protos.TDescribeEndpointResponse, error)
+type refreshEndpointHandlerFunc func(ctx context.Context, req *protos.TRefreshEndpointRequest) (*protos.TRefreshEndpointResponse, error)
 type createCheckpointHandlerFunc func(ctx context.Context, req *protos.TCreateCheckpointRequest) (*protos.TCreateCheckpointResponse, error)
 type deleteCheckpointHandlerFunc func(ctx context.Context, req *protos.TDeleteCheckpointRequest) (*protos.TDeleteCheckpointResponse, error)
 type getChangedBlocksHandlerFunc func(ctx context.Context, req *protos.TGetChangedBlocksRequest) (*protos.TGetChangedBlocksResponse, error)
@@ -66,6 +67,7 @@ type testClient struct {
 	KickEndpointHandler                  kickEndpointHandlerFunc
 	ListKeyringsHandler                  listKeyringsHandlerFunc
 	DescribeEndpointHandler              describeEndpointHandlerFunc
+	RefreshEndpointHandler               refreshEndpointHandlerFunc
 	CreateCheckpointHandler              createCheckpointHandlerFunc
 	DeleteCheckpointHandler              deleteCheckpointHandlerFunc
 	GetChangedBlocksHandler              getChangedBlocksHandlerFunc
@@ -344,6 +346,18 @@ func (client *testClient) DescribeEndpoint(
 	}
 
 	return &protos.TDescribeEndpointResponse{}, nil
+}
+
+func (client *testClient) RefreshEndpoint(
+	ctx context.Context,
+	req *protos.TRefreshEndpointRequest,
+) (*protos.TRefreshEndpointResponse, error) {
+
+	if client.RefreshEndpointHandler != nil {
+		return client.RefreshEndpointHandler(ctx, req)
+	}
+
+	return &protos.TRefreshEndpointResponse{}, nil
 }
 
 func (client *testClient) CreateCheckpoint(

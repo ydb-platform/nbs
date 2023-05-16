@@ -95,11 +95,22 @@ struct TTestSessionManager final
         return MakeFuture(NProto::TError());
     }
 
-    TFuture<NProto::TDescribeEndpointResponse> DescribeSession(
+    TFuture<TSessionOrError> GetSession(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(socketPath);
+        Y_UNUSED(headers);
+        return MakeFuture<TSessionOrError>(TSessionInfo());
+    }
+
+    TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override
     {
         Y_UNUSED(socketPath);
-        return MakeFuture(NProto::TDescribeEndpointResponse());
+        return NProto::TClientPerformanceProfile();
     }
 };
 
@@ -154,6 +165,15 @@ public:
         Endpoints.erase(socketPath);
 
         return Result;
+    }
+
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return {};
     }
 
     TMap<TString, TTestEndpoint> GetEndpoints() const

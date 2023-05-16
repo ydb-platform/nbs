@@ -221,6 +221,18 @@ func (client *Client) DescribeEndpoint(
 	return resp.GetPerformanceProfile(), nil
 }
 
+func (client *Client) RefreshEndpoint(
+	ctx context.Context,
+	unixSocketPath string,
+) error {
+	req := &protos.TRefreshEndpointRequest{
+		UnixSocketPath: unixSocketPath,
+	}
+
+	_, err := client.Impl.RefreshEndpoint(ctx, req)
+	return err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClient(

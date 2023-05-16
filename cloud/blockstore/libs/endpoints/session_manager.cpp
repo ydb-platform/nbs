@@ -45,6 +45,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IThrottlerProviderPtr ThrottlerProvider;
     const TString ClientId;
+    const TString DiskId;
 
 public:
     TEndpoint(
@@ -53,13 +54,15 @@ public:
             IBlockStorePtr dataClient,
             IVolumeStatsPtr volumeStats,
             IThrottlerProviderPtr throttlerProvider,
-            TString clientId)
+            TString clientId,
+            TString diskId)
         : Executor(executor)
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
         , VolumeStats(std::move(volumeStats))
         , ThrottlerProvider(std::move(throttlerProvider))
         , ClientId(std::move(clientId))
+        , DiskId(std::move(diskId))
     {}
 
     NProto::TError Start(TCallContextPtr callContext, NProto::THeaders headers)
@@ -108,6 +111,11 @@ public:
     ISessionPtr GetSession()
     {
         return Session;
+    }
+
+    TString GetDiskId()
+    {
+        return DiskId;
     }
 
     NProto::TClientPerformanceProfile GetPerformanceProfile()
@@ -337,7 +345,12 @@ public:
         ui64 mountSeqNumber,
         const NProto::THeaders& headers) override;
 
-    TFuture<NProto::TDescribeEndpointResponse> DescribeSession(
+    TFuture<TSessionOrError> GetSession(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers) override;
+
+    TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
 
 private:
@@ -358,12 +371,15 @@ private:
         ui64 mountSeqNumber,
         const NProto::THeaders& headers);
 
-    NProto::TDescribeEndpointResponse DescribeSessionImpl(
-        const TString& socketPath);
+    TSessionOrError GetSessionImpl(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers);
 
     NProto::TDescribeVolumeResponse DescribeVolume(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request);
+        const TString& diskId,
+        const NProto::THeaders& headers);
 
     TResultOrError<TEndpointPtr> CreateEndpoint(
         const NProto::TStartEndpointRequest& request,
@@ -391,7 +407,10 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
     const NProto::TStartEndpointRequest& request)
 {
-    auto describeResponse = DescribeVolume(callContext, request);
+    auto describeResponse = DescribeVolume(
+        callContext,
+        request.GetDiskId(),
+        request.GetHeaders());
     if (HasError(describeResponse)) {
         return TErrorResponse(describeResponse.GetError());
     }
@@ -426,11 +445,12 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
 
 NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& startRequest)
+    const TString& diskId,
+    const NProto::THeaders& headers)
 {
     auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
-    describeRequest->MutableHeaders()->CopyFrom(startRequest.GetHeaders());
-    describeRequest->SetDiskId(startRequest.GetDiskId());
+    describeRequest->MutableHeaders()->CopyFrom(headers);
+    describeRequest->SetDiskId(diskId);
 
     auto future = Service->DescribeVolume(
         std::move(callContext),
@@ -523,15 +543,53 @@ NProto::TError TSessionManager::AlterSessionImpl(
         headers);
 }
 
-TFuture<NProto::TDescribeEndpointResponse> TSessionManager::DescribeSession(
-    const TString& socketPath)
+TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
+    TCallContextPtr callContext,
+    const TString& socketPath,
+    const NProto::THeaders& headers)
 {
     return Executor->Execute([=] () mutable {
-        return DescribeSessionImpl(socketPath);
+        return GetSessionImpl(
+            std::move(callContext),
+            socketPath,
+            headers);
     });
 }
 
-NProto::TDescribeEndpointResponse TSessionManager::DescribeSessionImpl(
+TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
+    TCallContextPtr callContext,
+    const TString& socketPath,
+    const NProto::THeaders& headers)
+{
+    TEndpointPtr endpoint;
+
+    with_lock (EndpointLock) {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote()
+                    << " hasn't been started");
+        }
+        endpoint = it->second;
+    }
+
+    auto describeResponse = DescribeVolume(
+        std::move(callContext),
+        endpoint->GetDiskId(),
+        headers);
+    if (HasError(describeResponse)) {
+        return TErrorResponse(describeResponse.GetError());
+    }
+
+    return TSessionInfo {
+        .Volume = describeResponse.GetVolume(),
+        .Session = endpoint->GetSession()
+    };
+}
+
+TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
     const TString& socketPath)
 {
     TEndpointPtr endpoint;
@@ -548,10 +606,7 @@ NProto::TDescribeEndpointResponse TSessionManager::DescribeSessionImpl(
         endpoint = it->second;
     }
 
-    NProto::TDescribeEndpointResponse response;
-    response.MutablePerformanceProfile()->CopyFrom(
-        endpoint->GetPerformanceProfile());
-    return response;
+    return endpoint->GetPerformanceProfile();
 }
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
@@ -650,7 +705,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         std::move(client),
         VolumeStats,
         ThrottlerProvider,
-        clientId);
+        clientId,
+        volume.GetDiskId());
 }
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(

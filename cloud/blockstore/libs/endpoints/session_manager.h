@@ -51,7 +51,12 @@ struct ISessionManager
         ui64 mountSeqNumber,
         const NProto::THeaders& headers) = 0;
 
-    virtual NThreading::TFuture<NProto::TDescribeEndpointResponse> DescribeSession(
+    virtual NThreading::TFuture<TSessionOrError> GetSession(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers) = 0;
+
+    virtual TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) = 0;
 };
 

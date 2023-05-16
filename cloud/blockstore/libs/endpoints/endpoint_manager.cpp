@@ -166,6 +166,10 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TDescribeEndpointRequest> request) override;
 
+    TFuture<NProto::TRefreshEndpointResponse> RefreshEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TRefreshEndpointRequest> request) override;
+
 private:
     NProto::TStartEndpointResponse StartEndpointImpl(
         TCallContextPtr ctx,
@@ -179,6 +183,11 @@ private:
     NProto::TListEndpointsResponse ListEndpointsImpl(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TListEndpointsRequest> request);
+
+    NProto::TRefreshEndpointResponse RefreshEndpointImpl(
+        TCallContextPtr ctx,
+        const TString& socketPath,
+        const NProto::THeaders& headers);
 
     NProto::TStartEndpointResponse AlterEndpoint(
         TCallContextPtr ctx,
@@ -199,11 +208,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NProto::TStartEndpointResponse> TEndpointManager::StartEndpoint(
-    TCallContextPtr ctx,
+    TCallContextPtr callContext,
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
-    return Executor->Execute([=] () mutable {
-        return StartEndpointImpl(std::move(ctx), std::move(request));
+    return Executor->Execute([
+        ctx = std::move(callContext),
+        req = std::move(request),
+        this] () mutable
+    {
+        return StartEndpointImpl(std::move(ctx), std::move(req));
     });
 }
 
@@ -332,13 +345,18 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
 }
 
 TFuture<NProto::TStopEndpointResponse> TEndpointManager::StopEndpoint(
-    TCallContextPtr ctx,
+    TCallContextPtr callContext,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
-    return Executor->Execute([=] () mutable {
-        return StopEndpointImpl(std::move(ctx),
-            request->GetUnixSocketPath(),
-            request->GetHeaders());
+    return Executor->Execute([
+        ctx = std::move(callContext),
+        req = std::move(request),
+        this] () mutable
+    {
+        return StopEndpointImpl(
+            std::move(ctx),
+            req->GetUnixSocketPath(),
+            req->GetHeaders());
     });
 }
 
@@ -395,11 +413,15 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 }
 
 TFuture<NProto::TListEndpointsResponse> TEndpointManager::ListEndpoints(
-    TCallContextPtr ctx,
+    TCallContextPtr callContext,
     std::shared_ptr<NProto::TListEndpointsRequest> request)
 {
-    return Executor->Execute([=] () mutable {
-        return ListEndpointsImpl(std::move(ctx), std::move(request));
+    return Executor->Execute([
+        ctx = std::move(callContext),
+        req = std::move(request),
+        this] () mutable
+    {
+        return ListEndpointsImpl(std::move(ctx), std::move(req));
     });
 }
 
@@ -428,7 +450,65 @@ TFuture<NProto::TDescribeEndpointResponse> TEndpointManager::DescribeEndpoint(
 {
     Y_UNUSED(ctx);
 
-    return SessionManager->DescribeSession(request->GetUnixSocketPath());
+    NProto::TDescribeEndpointResponse response;
+
+    auto profile = SessionManager->GetProfile(request->GetUnixSocketPath());
+    if (HasError(profile)) {
+        response.MutableError()->CopyFrom(profile.GetError());
+    } else {
+        response.MutablePerformanceProfile()->CopyFrom(profile.GetResult());
+    }
+
+    return MakeFuture(response);
+}
+
+TFuture<NProto::TRefreshEndpointResponse> TEndpointManager::RefreshEndpoint(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TRefreshEndpointRequest> request)
+{
+    return Executor->Execute([
+        ctx = std::move(callContext),
+        req = std::move(request),
+        this] () mutable
+    {
+        return RefreshEndpointImpl(
+            std::move(ctx),
+            req->GetUnixSocketPath(),
+            req->GetHeaders());
+    });
+}
+
+NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
+    TCallContextPtr ctx,
+    const TString& socketPath,
+    const NProto::THeaders& headers)
+{
+    auto it = Requests.find(socketPath);
+    if (it == Requests.end()) {
+        return TErrorResponse(
+            S_FALSE,
+            TStringBuilder()
+                << "endpoint " << socketPath.Quote()
+                << " not started");
+    }
+
+    auto ipcType = it->second->GetIpcType();
+    auto listenerIt = EndpointListeners.find(ipcType);
+    STORAGE_VERIFY(
+        listenerIt != EndpointListeners.end(),
+        TWellKnownEntityTypes::ENDPOINT,
+        socketPath);
+    const auto& listener = listenerIt->second;
+
+    auto future = SessionManager->GetSession(ctx, socketPath, headers);
+    auto result = Executor->WaitFor(future);
+    if (HasError(result)) {
+        return TErrorResponse(result.GetError());
+    }
+
+    const auto& sessionInfo = result.GetResult();
+    auto error = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
+    return TErrorResponse(error);
 }
 
 NProto::TError TEndpointManager::OpenEndpointSocket(

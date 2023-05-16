@@ -730,6 +730,14 @@ func (client *discoveryClient) DescribeEndpoint(
 	panic("not implemented")
 }
 
+func (client *discoveryClient) RefreshEndpoint(
+	ctx context.Context,
+	req *protos.TRefreshEndpointRequest,
+) (*protos.TRefreshEndpointResponse, error) {
+
+	panic("not implemented")
+}
+
 func (client *discoveryClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

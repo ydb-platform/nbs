@@ -42,6 +42,7 @@ struct IVhostDevice
 
     virtual bool Start() = 0;
     virtual NThreading::TFuture<NProto::TError> Stop() = 0;
+    virtual void Update(ui64 blocksCount) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

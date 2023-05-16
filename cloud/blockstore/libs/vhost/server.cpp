@@ -217,6 +217,14 @@ public:
         return future;
     }
 
+    void Update(ui64 blocksCount)
+    {
+        TLog& Log = AppCtx.Log;
+        STORAGE_INFO("Update vhost endpoint " << SocketPath.Quote()
+            << " with blocks count = " << blocksCount);
+        VhostDevice->Update(blocksCount);
+    }
+
     ui32 GetVhostQueuesCount() const
     {
         return Options.VhostQueuesCount;
@@ -470,6 +478,16 @@ public:
         return endpoint;
     }
 
+    TEndpointPtr GetEndpoint(const TString& socketPath)
+    {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return nullptr;
+        }
+
+        return it->second;
+    }
+
     ui32 GetVhostQueuesCount() const
     {
         ui32 queuesCount = 0;
@@ -564,6 +582,10 @@ public:
         const TStorageOptions& options) override;
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override;
+
+    NProto::TError UpdateEndpoint(
+        const TString& socketPath,
+        ui64 blocksCount) override;
 
 private:
     void InitExecutors();
@@ -729,6 +751,40 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
             ptr->HandleStoppedEndpoint(socketPath, error);
             return error;
         });
+}
+
+NProto::TError TServer::UpdateEndpoint(
+    const TString& socketPath,
+    ui64 blocksCount)
+{
+    if (ShouldStop.test()) {
+        NProto::TError error;
+        error.SetCode(E_FAIL);
+        error.SetMessage("Vhost server is stopped");
+        return error;
+    }
+
+    TEndpointPtr endpoint;
+
+    with_lock (Lock) {
+        auto it = EndpointMap.find(socketPath);
+        if (it == EndpointMap.end()) {
+            NProto::TError error;
+            error.SetCode(S_FALSE);
+            error.SetMessage(TStringBuilder()
+                << "endpoint " << socketPath.Quote()
+                << " not started");
+            return error;
+        }
+
+        auto* executor = it->second;
+        endpoint = executor->GetEndpoint(socketPath);
+    }
+
+    if (endpoint) {
+        endpoint->Update(blocksCount);
+    }
+    return NProto::TError{};
 }
 
 void TServer::StopAllEndpoints()

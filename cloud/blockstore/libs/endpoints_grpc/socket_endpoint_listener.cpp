@@ -271,6 +271,15 @@ public:
         auto error = EndpointPoller->StopListenEndpoint(socketPath);
         return MakeFuture(std::move(error));
     }
+
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return {};
+    }
 };
 
 }   // namespace

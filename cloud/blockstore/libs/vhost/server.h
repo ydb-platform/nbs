@@ -39,6 +39,10 @@ struct IServer
 
     virtual NThreading::TFuture<NProto::TError> StopEndpoint(
         const TString& socketPath) = 0;
+
+    virtual NProto::TError UpdateEndpoint(
+        const TString& socketPath,
+        ui64 blocksCount) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

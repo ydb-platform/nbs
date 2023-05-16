@@ -55,10 +55,16 @@ struct TTestEndpointManager final
             std::shared_ptr<NProto::TDescribeEndpointRequest> request)
         >;
 
+    using TRefreshEndpointHandler = std::function<
+        NThreading::TFuture<NProto::TRefreshEndpointResponse>(
+            std::shared_ptr<NProto::TRefreshEndpointRequest> request)
+        >;
+
     TStartEndpointHandler StartEndpointHandler;
     TStopEndpointHandler StopEndpointHandler;
     TListEndpointsHandler ListEndpointsHandler;
     TDescribeEndpointHandler DescribeEndpointHandler;
+    TRefreshEndpointHandler RefreshEndpointHandler;
 
     TFuture<NProto::TStartEndpointResponse> StartEndpoint(
         TCallContextPtr ctx,
@@ -90,6 +96,14 @@ struct TTestEndpointManager final
     {
         Y_UNUSED(ctx);
         return DescribeEndpointHandler(std::move(request));
+    }
+
+    TFuture<NProto::TRefreshEndpointResponse> RefreshEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TRefreshEndpointRequest> request) override
+    {
+        Y_UNUSED(ctx);
+        return RefreshEndpointHandler(std::move(request));
     }
 };
 
@@ -235,6 +249,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         {
             Y_UNUSED(request);
             return NewPromise<NProto::TDescribeEndpointResponse>();
+        };
+        endpointManager->RefreshEndpointHandler = [&] (
+            std::shared_ptr<NProto::TRefreshEndpointRequest> request)
+        {
+            Y_UNUSED(request);
+            return NewPromise<NProto::TRefreshEndpointResponse>();
         };
 
         auto endpointService = CreateMultipleEndpointService(

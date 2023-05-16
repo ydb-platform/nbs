@@ -34,6 +34,10 @@ struct IEndpointManager
     virtual NThreading::TFuture<NProto::TDescribeEndpointResponse> DescribeEndpoint(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TDescribeEndpointRequest> request) = 0;
+
+    virtual NThreading::TFuture<NProto::TRefreshEndpointResponse> RefreshEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TRefreshEndpointRequest> request) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

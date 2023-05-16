@@ -197,3 +197,21 @@ message TDescribeEndpointResponse
     // Client performance profile.
     TClientPerformanceProfile PerformanceProfile = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Refresh endpoint
+
+message TRefreshEndpointRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Unix-socket path.
+    string UnixSocketPath = 2;
+}
+
+message TRefreshEndpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

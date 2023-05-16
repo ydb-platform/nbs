@@ -6,6 +6,7 @@
 #include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <util/generic/singleton.h>
+#include <util/system/mutex.h>
 
 namespace NCloud::NBlockStore::NVhost {
 
@@ -127,6 +128,8 @@ private:
     vhd_bdev_info VhdBdevInfo;
     vhd_vdev* VhdVdev = nullptr;
 
+    TMutex Lock;
+
 public:
     TVhostDevice(
             vhd_request_queue* vhdQueue,
@@ -187,13 +190,25 @@ public:
 
         auto completion = std::make_unique<TUnregisterCompletion>(result);
 
-        vhd_unregister_blockdev(
-            VhdVdev,
-            TUnregisterCompletion::Callback,
-            completion.release());
+        with_lock (Lock) {
+            vhd_unregister_blockdev(
+                VhdVdev,
+                TUnregisterCompletion::Callback,
+                completion.release());
+            VhdVdev = nullptr;
+        }
 
-        VhdVdev = nullptr;
         return result.GetFuture();
+    }
+
+    void Update(ui64 blocksCount) override
+    {
+        with_lock (Lock) {
+            if (!VhdVdev) {
+                return;
+            }
+            vhd_blockdev_set_total_blocks(VhdVdev, blocksCount);
+        }
     }
 };
 

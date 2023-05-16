@@ -296,6 +296,15 @@ public:
         });
     }
 
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return {};
+    }
+
 private:
     NProto::TError DoStartEndpoint(
         const NProto::TStartEndpointRequest& request,
@@ -441,6 +450,15 @@ public:
         return Executor->Execute([=] {
             return DoStopEndpoint(socketPath);
         });
+    }
+
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return {};
     }
 
 private:

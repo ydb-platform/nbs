@@ -119,6 +119,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
                 EPermission::Write});
         case EBlockStoreRequest::StopEndpoint:
         case EBlockStoreRequest::KickEndpoint:
+        case EBlockStoreRequest::RefreshEndpoint:
             return CreatePermissionList({EPermission::Update});
 
         case EBlockStoreRequest::ListEndpoints:

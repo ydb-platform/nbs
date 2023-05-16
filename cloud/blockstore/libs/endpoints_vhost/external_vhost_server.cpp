@@ -585,6 +585,16 @@ public:
         return future;
     }
 
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        // TODO: NBS-4151
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return {};
+    }
+
 private:
     bool TryStartExternalEndpoint(
         const NProto::TStartEndpointRequest& request,

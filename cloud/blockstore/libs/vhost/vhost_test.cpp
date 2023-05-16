@@ -91,6 +91,11 @@ public:
         });
     }
 
+    void Update(ui64 blocksCount) override
+    {
+        Y_UNUSED(blocksCount);
+    }
+
     bool IsStopped() override
     {
         return Stopped.test();

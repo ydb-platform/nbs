@@ -258,6 +258,14 @@ func (n nbsService) DescribeEndpoint(
 	panic("implement me")
 }
 
+func (n nbsService) RefreshEndpoint(
+	ctx context.Context,
+	request *protos.TRefreshEndpointRequest,
+) (*protos.TRefreshEndpointResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (n nbsService) UpdateDiskRegistryConfig(
 	ctx context.Context,
 	request *protos.TUpdateDiskRegistryConfigRequest,

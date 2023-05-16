@@ -67,6 +67,15 @@ public:
 
         return Server->StopEndpoint(address);
     }
+
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
+    {
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return {};
+    }
 };
 
 }   // namespace

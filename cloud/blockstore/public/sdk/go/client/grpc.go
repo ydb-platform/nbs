@@ -543,6 +543,24 @@ func (client *grpcClient) DescribeEndpoint(
 	return resp.(*protos.TDescribeEndpointResponse), err
 }
 
+func (client *grpcClient) RefreshEndpoint(
+	ctx context.Context,
+	req *protos.TRefreshEndpointRequest,
+) (*protos.TRefreshEndpointResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.RefreshEndpoint(ctx, req)
+		})
+
+	return resp.(*protos.TRefreshEndpointResponse), err
+}
+
 func (client *grpcClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

@@ -144,6 +144,11 @@ type ClientIface interface {
 		req *protos.TDescribeEndpointRequest,
 	) (*protos.TDescribeEndpointResponse, error)
 
+	RefreshEndpoint(
+		ctx context.Context,
+		req *protos.TRefreshEndpointRequest,
+	) (*protos.TRefreshEndpointResponse, error)
+
 	//
 	// Checkpoint operations.
 	//

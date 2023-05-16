@@ -27,6 +27,7 @@
 #include "ping.h"
 #include "query_available_storage.h"
 #include "read_blocks.h"
+#include "refresh_endpoint.h"
 #include "resize_volume.h"
 #include "resume_device.h"
 #include "start_endpoint.h"
@@ -77,6 +78,7 @@ struct THandlerFactory
         { "ping", NewPingCommand },
         { "queryavailablestorage", NewQueryAvailableStorageCommand },
         { "readblocks", NewReadBlocksCommand },
+        { "refreshendpoint", NewRefreshEndpointCommand },
         { "resizevolume", NewResizeVolumeCommand },
         { "restorevolume", NewRestoreVolumeCommand },
         { "resumedevice", NewResumeDeviceCommand },

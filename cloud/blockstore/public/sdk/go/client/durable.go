@@ -433,6 +433,22 @@ func (client *durableClient) DescribeEndpoint(
 	return resp.(*protos.TDescribeEndpointResponse), err
 }
 
+func (client *durableClient) RefreshEndpoint(
+	ctx context.Context,
+	req *protos.TRefreshEndpointRequest,
+) (*protos.TRefreshEndpointResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.RefreshEndpoint(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TRefreshEndpointResponse), err
+}
+
 func (client *durableClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,
