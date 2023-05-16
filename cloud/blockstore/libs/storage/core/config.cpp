@@ -235,13 +235,13 @@ TDuration MSeconds(ui32 value)
     xxx(Mirror2DiskReplicaCount,       ui32,      1                           )\
                                                                                \
     xxx(AllocationUnitMirror3SSD,      ui32,      93                          )\
-    xxx(Mirror3SSDUnitReadBandwidth,   ui32,      164                         )\
+    xxx(Mirror3SSDUnitReadBandwidth,   ui32,      246                         )\
     xxx(Mirror3SSDUnitWriteBandwidth,  ui32,      82                          )\
-    xxx(Mirror3SSDMaxReadBandwidth,    ui32,      2048                        )\
+    xxx(Mirror3SSDMaxReadBandwidth,    ui32,      3072                        )\
     xxx(Mirror3SSDMaxWriteBandwidth,   ui32,      1024                        )\
-    xxx(Mirror3SSDUnitReadIops,        ui32,      10000                       )\
+    xxx(Mirror3SSDUnitReadIops,        ui32,      15000                       )\
     xxx(Mirror3SSDUnitWriteIops,       ui32,      5000                        )\
-    xxx(Mirror3SSDMaxReadIops,         ui32,      80000                       )\
+    xxx(Mirror3SSDMaxReadIops,         ui32,      120000                      )\
     xxx(Mirror3SSDMaxWriteIops,        ui32,      40000                       )\
                                                                                \
     xxx(Mirror3DiskReplicaCount,       ui32,      2                           )\
