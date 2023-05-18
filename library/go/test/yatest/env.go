@@ -2,6 +2,7 @@
 package yatest
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -71,7 +72,37 @@ func initTestContext() {
 	if err != nil {
 		panic(err)
 	}
+	setupEnv()
 	context.Initialized = true
+}
+
+func setupEnv() {
+	file, err := os.Open(context.Internal.EnvFile)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		var objmap map[string]json.RawMessage
+		var val string
+		err := json.Unmarshal([]byte(line), &objmap)
+		if err != nil {
+			panic(err)
+		}
+		for k, v := range objmap {
+			err := json.Unmarshal(v, &val)
+			if err != nil {
+				panic(err)
+			}
+			err = os.Setenv(k, val)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 }
 
 func HasYaTestContext() bool {
