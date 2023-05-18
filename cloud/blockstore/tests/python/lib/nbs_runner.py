@@ -4,7 +4,6 @@ import logging
 import subprocess
 import ydb.tests.library.common.yatest_common as yatest_common
 
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
 from cloud.blockstore.config.features_pb2 import TFeaturesConfig
@@ -12,15 +11,17 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
+from google.protobuf.text_format import MessageToBytes, MessageToString
 from ydb.core.protos.auth_pb2 import TAuthConfig
 from ydb.core.protos.config_pb2 import TActorSystemConfig
+from ydb.core.protos.config_pb2 import TDomainsConfig
 from ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
 from ydb.core.protos.config_pb2 import TLogConfig
 from ydb.core.protos import console_config_pb2 as console
 from ydb.core.protos import msgbus_pb2 as msgbus
-from google.protobuf.text_format import MessageToBytes, MessageToString
-from ydb.tests.library.harness.param_constants import kikimr_driver_path
 from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from ydb.tests.library.harness.param_constants import kikimr_driver_path
 from .access_service import AccessService
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class LocalNbs(Daemon):
     def __init__(
             self,
             grpc_port,
-            domains_txt,
+            domains_txt=None,
             server_app_config=None,
             contract_validation=False,
             config_sub_folder=None,
@@ -109,7 +110,7 @@ class LocalNbs(Daemon):
 
         self.__proto_configs = {
             "diag.txt": self.__generate_diag_txt(),
-            "domains.txt": domains_txt,
+            "domains.txt": domains_txt if domains_txt is not None else TDomainsConfig(),
             "server-log.txt": self.__generate_server_log_txt(),
             "server-sys.txt": self.__generate_server_sys_txt(),
             "server.txt": self.__generate_server_txt(),
@@ -491,33 +492,69 @@ ModifyScheme {
         command = [self.__binary_path]
         command += [
             "--service", self.__service_type,
-            "--domain", "Root",
             "--server-port", str(self.__nbs_port),
             "--data-server-port", str(self.__nbs_data_port),
             "--secure-server-port", str(self.__nbs_secure_port),
+            "--mon-port", str(self.__mon_port),
+            "--load-configs-from-cms",
+        ]
+
+        command += [
+            "--profile-file",
+            os.path.join(self.__cwd, "profile-%s.log" % self.__ic_port)
+        ]
+
+        if self.__grpc_trace:
+            command += ["--grpc-trace"]
+
+        if not self.__load_configs_from_cms:
+            config_files = {
+                "--diag-file": "diag.txt",
+                "--server-file": "server.txt",
+                "--dr-proxy-file": "dr_proxy.txt",
+            }
+            if self.__use_discovery:
+                config_files["--discovery-file"] = "discovery.txt"
+
+            for option, filename in config_files.items():
+                append_conf_file_arg(command, self.config_path(), option,
+                                     filename)
+
+        if self.__service_type == 'local' or self.__service_type == 'null':
+            commands = []
+            commands.append(command)
+            logger.info(commands)
+            return commands
+
+        # fill command with args for kikimr service
+
+        command += [
+            "--domain", "Root",
             "--node-broker", "localhost:" + str(self.__grpc_port),
             "--ic-port", str(self.__ic_port),
-            "--mon-port", str(self.__mon_port),
             "--scheme-shard-dir", "nbs",
-            "--load-configs-from-cms",
         ]
 
         if not self.__use_ic_version_check:
             command.append("--suppress-version-check")
 
+        if self.ydbstats_config is not None:
+            command += [
+                "--ydbstats-file",
+                os.path.join(self.config_path(), "ydbstats.txt")
+            ]
+
+        append_conf_file_arg(command, self.config_path(),
+                             "--location-file", "location.txt")
+
         if not self.__load_configs_from_cms:
             config_files = {
-                "--diag-file": "diag.txt",
                 "--domains-file": "domains.txt",
                 "--log-file": "server-log.txt",
                 "--sys-file": "server-sys.txt",
-                "--server-file": "server.txt",
                 "--features-file": "features.txt",
                 "--dynamic-naming-file": "dyn_ns.txt",
-                "--dr-proxy-file": "dr_proxy.txt",
             }
-            if self.__use_discovery:
-                config_files["--discovery-file"] = "discovery.txt"
             if self.__access_service:
                 config_files["--auth-file"] = "auth.txt"
 
@@ -525,24 +562,7 @@ ModifyScheme {
                 append_conf_file_arg(command, self.config_path(), option,
                                      filename)
 
-        append_conf_file_arg(command, self.config_path(),
-                             "--location-file", "location.txt")
-
-        if self.__grpc_trace:
-            command += ["--grpc-trace"]
-
-        command += [
-            "--profile-file",
-            os.path.join(self.__cwd, "profile-%s.log" % self.__ic_port)
-        ]
-
         commands = []
-
-        if self.ydbstats_config is not None:
-            command += [
-                "--ydbstats-file",
-                os.path.join(self.config_path(), "ydbstats.txt")
-            ]
 
         if self.storage_config_patches is None or len(self.storage_config_patches) == 0:
             command += [

@@ -10,8 +10,6 @@ from cloud.blockstore.tests.python.lib.nbs_http_proxy import create_nbs_http_pro
 from cloud.blockstore.tests.python.lib.test_base import thread_count, \
     wait_for_nbs_server, wait_for_nbs_server_proxy, get_free_socket_path
 
-from ydb.core.protos.config_pb2 import TDomainsConfig
-
 import yatest.common as yatest_common
 
 
@@ -42,7 +40,15 @@ def start(argv):
 
     config_sub_folder = "nbs_configs_secure"
 
-    nbs = LocalNbs(0, TDomainsConfig(), server, config_sub_folder=config_sub_folder, enable_tls=True)
+    nbs_binary_path = yatest_common.binary_path(
+        "cloud/blockstore/daemon_lightweight/blockstore-server-lightweight")
+
+    nbs = LocalNbs(
+        0,
+        server_app_config=server,
+        config_sub_folder=config_sub_folder,
+        enable_tls=True,
+        nbs_binary_path=nbs_binary_path)
     nbs.start()
 
     set_env("LOCAL_NULL_SECURE_NBS_SERVER_PORT", str(nbs.nbs_secure_port))
