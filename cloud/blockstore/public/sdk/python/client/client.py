@@ -499,6 +499,44 @@ class Client(_SafeClient):
             request_timeout)
 
     @_handle_errors
+    def refresh_endpoint_async(
+            self,
+            unix_socket_path,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        request = protos.TRefreshEndpointRequest(
+            UnixSocketPath=unix_socket_path,
+        )
+        return self._impl.refresh_endpoint_async(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def refresh_endpoint(
+            self,
+            unix_socket_path,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        request = protos.TRefreshEndpointRequest(
+            UnixSocketPath=unix_socket_path,
+        )
+        self._impl.refresh_endpoint(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
     def list_endpoints_async(
             self,
             idempotence_id=None,

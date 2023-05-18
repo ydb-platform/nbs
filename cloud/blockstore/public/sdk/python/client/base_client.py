@@ -37,6 +37,7 @@ NBS_CLIENT_METHODS = [
     "resume_device",
     "start_endpoint",
     "stop_endpoint",
+    "refresh_endpoint",
     "execute_action",
     "kick_endpoint",
     "cms_action",

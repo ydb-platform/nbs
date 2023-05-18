@@ -193,6 +193,11 @@ public:
     void ResizeVolume(const TString& diskId, ui64 blocksCount)
     {
         auto volume = DescribeVolume(diskId);
+        volume.SetBlocksCount(blocksCount);
+
+        TFile fileMeta(MakeMetaPath(diskId), EOpenModeFlag::CreateAlways);
+        TFileOutput out(fileMeta);
+        SerializeToTextFormat(volume, out);
 
         TFile fileData(MakeDataPath(diskId), EOpenModeFlag::OpenExisting);
         fileData.Resize(volume.GetBlockSize() * blocksCount);
