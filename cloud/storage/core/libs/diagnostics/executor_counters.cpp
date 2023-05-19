@@ -6,7 +6,7 @@
 #include <util/generic/intrlist.h>
 #include <util/system/spinlock.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 using namespace NMonitoring;
 
@@ -91,11 +91,10 @@ struct TExecutorCounters::TImpl
 ////////////////////////////////////////////////////////////////////////////////
 
 TExecutorCounters::TExecutorCounters()
-    : Impl(new TImpl())
+    : Impl(std::make_unique<TExecutorCounters::TImpl>())
 {}
 
-TExecutorCounters::~TExecutorCounters()
-{}
+TExecutorCounters::~TExecutorCounters() = default;
 
 void TExecutorCounters::Register(TDynamicCounters& counters)
 {
@@ -118,12 +117,11 @@ void TExecutorCounters::UpdateStats()
 
 TExecutorCounters::TExecutor* TExecutorCounters::AllocExecutor()
 {
-    auto* executor = new TExecutor();
+    auto executor = std::make_unique<TExecutor>();
     with_lock (Impl->Lock) {
-        Impl->Executors.PushBack(executor);
+        Impl->Executors.PushBack(executor.release());
+        return Impl->Executors.Back();
     }
-
-    return executor;
 }
 
 void TExecutorCounters::ReleaseExecutor(TExecutor* executor)
@@ -151,4 +149,4 @@ void TExecutorCounters::ActivityCompleted(TExecutor* executor, int index)
     Impl->Activities[index].Completed();
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

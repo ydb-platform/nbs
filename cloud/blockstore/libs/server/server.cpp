@@ -23,6 +23,7 @@
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/keepalive.h>
 #include <cloud/storage/core/libs/grpc/time.h>
+#include <cloud/storage/core/libs/requests/executor.h>
 
 #include <library/cpp/actors/prof/tag.h>
 
@@ -178,7 +179,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestHandlerBase
+struct TServerRequestHandlerBase
+    : public NStorage::NRequests::TRequestHandlerBase
 {
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
 
@@ -193,50 +195,23 @@ struct TRequestHandlerBase
         RequestCompleted = 5,
     };
 
-    TAtomic RefCount = 0;
     TAtomic RequestState = WaitingForRequest;
 
     NProto::TError Error;
 
-    TRequestHandlerBase(EBlockStoreRequest requestType)
+    TServerRequestHandlerBase(EBlockStoreRequest requestType)
         : MetricRequest(requestType)
     {}
-
-    virtual ~TRequestHandlerBase() = default;
-
-    virtual void Process(bool ok) = 0;
-    virtual void Cancel() = 0;
-
-    void* AcquireCompletionTag()
-    {
-        AtomicIncrement(RefCount);
-        return this;
-    }
-
-    bool ReleaseCompletionTag()
-    {
-        return AtomicDecrement(RefCount) == 0;
-    }
 };
 
-using TRequestHandlerPtr = std::unique_ptr<TRequestHandlerBase>;
+using TRequestHandlerPtr = std::unique_ptr<TServerRequestHandlerBase>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestsInFlight
+    : public NStorage::NRequests::TRequestsInFlight<TServerRequestHandlerBase>
 {
-private:
-    THashSet<TRequestHandlerBase*> Requests;
-    TAdaptiveLock RequestsLock;
-
 public:
-    size_t GetCount() const
-    {
-        with_lock (RequestsLock) {
-            return Requests.size();
-        }
-    }
-
     size_t CollectRequests(const TIncompleteRequestsCollector& collector) const
     {
         with_lock (RequestsLock) {
@@ -249,37 +224,9 @@ public:
                         handler->MetricRequest.MediaKind,
                         handler->MetricRequest.RequestType,
                         requestTime);
-
                 }
             }
             return Requests.size();
-        }
-    }
-
-    void Register(TRequestHandlerBase* handler)
-    {
-        with_lock (RequestsLock) {
-            auto res = Requests.emplace(handler);
-            Y_VERIFY(res.second);
-        }
-    }
-
-    void Unregister(TRequestHandlerBase* handler)
-    {
-        with_lock (RequestsLock) {
-            auto it = Requests.find(handler);
-            Y_VERIFY(it != Requests.end());
-
-            Requests.erase(it);
-        }
-    }
-
-    void CancelAll()
-    {
-        with_lock (RequestsLock) {
-            for (auto* handler: Requests) {
-                handler->Cancel();
-            }
         }
     }
 };
@@ -307,11 +254,13 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TExecutorContext
-{
-    std::unique_ptr<grpc::ServerCompletionQueue> CompletionQueue;
-    TRequestsInFlight RequestsInFlight;
-};
+using TExecutorContext = NStorage::NRequests::
+    TExecutorContext<grpc::ServerCompletionQueue, TRequestsInFlight>;
+
+using TExecutor = NStorage::NRequests::TExecutor<
+    grpc::ServerCompletionQueue,
+    TRequestsInFlight,
+    TExecutorCounters::TExecutorScope>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -504,7 +453,7 @@ struct TRequestDataHolder<TAlterVolumeMethod>
 
 template <typename TService, typename TMethod>
 class TRequestHandler final
-    : public TRequestHandlerBase
+    : public TServerRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -531,7 +480,7 @@ public:
             TAppContext& appCtx,
             TExecutorContext& execCtx,
             TService& service)
-        : TRequestHandlerBase(TMethod::Request)
+        : TServerRequestHandlerBase(TMethod::Request)
         , AppCtx(appCtx)
         , ExecCtx(execCtx)
         , Service(service)
@@ -1027,8 +976,6 @@ class TServer final
     : public TAppContext
     , public IServer
 {
-    class TExecutor;
-
 private:
     TGrpcInitializer GrpcInitializer;
 
@@ -1066,93 +1013,6 @@ private:
 
     void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog);
     void StopListenUnixSocket();
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TServer::TExecutor final
-    : public ISimpleThread
-    , public TExecutorContext
-{
-private:
-    TString Name;
-    TExecutorCounters::TExecutorScope ExecutorScope;
-    TAppContext& AppContext;
-
-    TAtomic ShutdownCalled = false;
-
-public:
-    TExecutor(
-            TAppContext& appCtx,
-            TString name,
-            std::unique_ptr<grpc::ServerCompletionQueue> completionQueue)
-        : Name(std::move(name))
-        , ExecutorScope(appCtx.ServerStats->StartExecutor())
-        , AppContext(appCtx)
-    {
-        CompletionQueue = std::move(completionQueue);
-    }
-
-    void Shutdown()
-    {
-        AtomicSet(ShutdownCalled, true);
-
-        auto& Log = AppContext.Log;
-        STORAGE_TRACE(Name << " executor's shutdown() started");
-        if (CompletionQueue) {
-            CompletionQueue->Shutdown();
-        }
-
-        Join();
-
-        CompletionQueue.reset();
-    }
-
-private:
-    void* ThreadProc() override
-    {
-        ::NCloud::SetCurrentThreadName(Name);
-
-        auto tagName = TStringBuilder() << "BLOCKSTORE_THREAD_" << Name;
-        NProfiling::TMemoryTagScope tagScope(tagName.data());
-
-        void* tag;
-        bool ok;
-        while (WaitRequest(&tag, &ok)) {
-            ProcessRequest(tag, ok);
-        }
-
-        return nullptr;
-    }
-
-    bool WaitRequest(void** tag, bool* ok)
-    {
-        auto activity = ExecutorScope.StartWait();
-
-        return CompletionQueue->Next(tag, ok);
-    }
-
-    void ProcessRequest(void* tag, bool ok)
-    {
-        auto activity = ExecutorScope.StartExecute();
-
-        TRequestHandlerPtr handler(static_cast<TRequestHandlerBase*>(tag));
-
-        if (!AtomicGet(ShutdownCalled)) {
-            handler->Process(ok);
-        } else {
-            // once Shutdown() is being called, no new requests can be processed
-            // However, we still must drain completion queue and release
-            // handlers, that is why we are not breaking out of the loop
-            auto& Log = AppContext.Log;
-            STORAGE_TRACE(Name << " executor's shutdown() is being called"
-                                    ", new requests are being dropped");
-        }
-
-        if (!handler->ReleaseCompletionTag()) {
-            Y_UNUSED(handler.release());   // ownership transferred to CompletionQueue
-        }
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1272,9 +1132,10 @@ void TServer::Start()
     ui32 threadsCount = Config->GetThreadsCount();
     for (size_t i = 1; i <= threadsCount; ++i) {
         auto executor = std::make_unique<TExecutor>(
-            *this,
             TStringBuilder() << "SRV" << i,
-            builder.AddCompletionQueue());
+            builder.AddCompletionQueue(),
+            Log,
+            ServerStats->StartExecutor());
         executor->Start();
         Executors.push_back(std::move(executor));
     }

@@ -19,6 +19,7 @@ target_link_libraries(blockstore-libs-client PUBLIC
   blockstore-libs-service
   blockstore-libs-throttling
   core-libs-grpc
+  core-libs-requests
   core-libs-throttling
   library-cpp-lwtrace
   cpp-monlib-dynamic_counters

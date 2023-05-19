@@ -5,7 +5,6 @@
 #include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
 
 #include <cloud/blockstore/libs/common/iovector.h>
-#include <cloud/blockstore/libs/diagnostics/executor_counters.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -19,12 +18,15 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
+#include <cloud/storage/core/libs/diagnostics/executor_counters.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <cloud/storage/core/libs/grpc/completion.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/time.h>
+
+#include <cloud/storage/core/libs/requests/executor.h>
 
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 
@@ -163,7 +165,8 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestHandlerBase
+struct TClientRequestHandlerBase
+    : public NStorage::NRequests::TRequestHandlerBase
 {
     const EBlockStoreRequest RequestType;
     ui64 RequestId = 0;
@@ -175,44 +178,27 @@ struct TRequestHandlerBase
         RequestCompleted = 2,
     };
 
-    TAtomic RefCount = 0;
     TAtomic RequestState = WaitingForRequest;
 
     NProto::TError Error;
 
-    TRequestHandlerBase(EBlockStoreRequest requestType)
+    TClientRequestHandlerBase(EBlockStoreRequest requestType)
         : RequestType(requestType)
     {}
-
-    virtual ~TRequestHandlerBase() = default;
-
-    virtual void Process(bool ok) = 0;
-    virtual void Cancel() = 0;
-
-    void* AcquireCompletionTag()
-    {
-        AtomicIncrement(RefCount);
-        return this;
-    }
-
-    bool ReleaseCompletionTag()
-    {
-        return AtomicDecrement(RefCount) == 0;
-    }
 };
 
-using TRequestHandlerPtr = std::unique_ptr<TRequestHandlerBase>;
+using TRequestHandlerPtr = std::unique_ptr<TClientRequestHandlerBase>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestsInFlight
 {
 private:
-    THashSet<TRequestHandlerBase*> Requests;
+    THashSet<TClientRequestHandlerBase*> Requests;
     TAdaptiveLock RequestsLock;
 
 public:
-    void Register(TRequestHandlerBase* handler)
+    void Register(TClientRequestHandlerBase* handler)
     {
         with_lock (RequestsLock) {
             auto res = Requests.emplace(handler);
@@ -223,7 +209,7 @@ public:
         }
     }
 
-    void Unregister(TRequestHandlerBase* handler)
+    void Unregister(TClientRequestHandlerBase* handler)
     {
         with_lock (RequestsLock) {
             auto it = Requests.find(handler);
@@ -263,11 +249,12 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TExecutorContext
-{
-    std::unique_ptr<grpc::CompletionQueue> CompletionQueue;
-    TRequestsInFlight RequestsInFlight;
-};
+using TExecutorContext = NStorage::NRequests::
+    TExecutorContext<grpc::CompletionQueue, TRequestsInFlight>;
+using TExecutor = NStorage::NRequests::TExecutor<
+    grpc::CompletionQueue,
+    TRequestsInFlight,
+    TExecutorCounters::TExecutorScope>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -309,7 +296,7 @@ BLOCKSTORE_LOCAL_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 template <typename TService, typename TMethod>
 class TRequestHandler final
-    : public TRequestHandlerBase
+    : public TClientRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -337,7 +324,7 @@ public:
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
             const TPromise<TResponse>& promise)
-        : TRequestHandlerBase(TMethod::Request)
+        : TClientRequestHandlerBase(TMethod::Request)
         , AppCtx(appCtx)
         , ExecCtx(execCtx)
         , Service(service)
@@ -364,8 +351,13 @@ public:
 
         execCtx.RequestsInFlight.Register(handler.get());
 
-        if (EnqueueCompletion(execCtx.CompletionQueue.get(), handler->AcquireCompletionTag())) {
-            handler.release();   // ownership transferred to CompletionQueue
+        if (!execCtx.ShutdownCalled.load() &&
+            EnqueueCompletion(
+                execCtx.CompletionQueue.get(),
+                handler->AcquireCompletionTag()))
+        {
+            // ownership transferred to CompletionQueue
+            Y_UNUSED(handler.release());
             return;
         }
 
@@ -414,6 +406,7 @@ public:
 
     void Cancel() override
     {
+        ReportError(grpc::Status::CANCELLED);
         Context.TryCancel();
     }
 
@@ -545,8 +538,6 @@ class TClient
     , public IClient
     , public std::enable_shared_from_this<TClient>
 {
-    class TExecutor;
-
 private:
     TGrpcInitializer GrpcInitializer;
 
@@ -609,70 +600,6 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClient::TExecutor final
-    : public ISimpleThread
-    , public TExecutorContext
-{
-private:
-    TString Name;
-    TExecutorCounters::TExecutorScope ExecutorScope;
-
-public:
-    TExecutor(
-            TAppContext& appCtx,
-            TString name,
-            std::unique_ptr<grpc::CompletionQueue> completionQueue)
-        : Name(std::move(name))
-        , ExecutorScope(appCtx.ClientStats->StartExecutor())
-    {
-        CompletionQueue = std::move(completionQueue);
-    }
-
-    void Shutdown()
-    {
-        if (CompletionQueue) {
-            CompletionQueue->Shutdown();
-        }
-
-        Join();
-    }
-
-private:
-    void* ThreadProc() override
-    {
-        ::NCloud::SetCurrentThreadName(Name);
-
-        void* tag;
-        bool ok;
-        while (WaitRequest(&tag, &ok)) {
-            ProcessRequest(tag, ok);
-        }
-
-        return nullptr;
-    }
-
-    bool WaitRequest(void** tag, bool* ok)
-    {
-        auto activity = ExecutorScope.StartWait();
-
-        return CompletionQueue->Next(tag, ok);
-    }
-
-    void ProcessRequest(void* tag, bool ok)
-    {
-        auto activity = ExecutorScope.StartExecute();
-
-        TRequestHandlerPtr handler(static_cast<TRequestHandlerBase*>(tag));
-        handler->Process(ok);
-
-        if (!handler->ReleaseCompletionTag()) {
-            handler.release();   // ownership transferred to CompletionQueue
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 TClient::TClient(
     TClientAppConfigPtr config,
     ITimerPtr timer,
@@ -696,9 +623,10 @@ void TClient::Start()
     ui32 threadsCount = Config->GetThreadsCount();
     for (size_t i = 1; i <= threadsCount; ++i) {
         auto executor = std::make_unique<TExecutor>(
-            *this,
             TStringBuilder() << "CLI" << i,
-            std::make_unique<grpc::CompletionQueue>());
+            std::make_unique<grpc::CompletionQueue>(),
+            Log,
+            ClientStats->StartExecutor());
         executor->Start();
         Executors.push_back(std::move(executor));
     }

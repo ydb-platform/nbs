@@ -4,7 +4,7 @@
 
 #include <util/generic/noncopyable.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -67,8 +67,12 @@ public:
         : private TNonCopyable
     {
     private:
-        TExecutorCounters* const Counters;
-        TExecutor* const Executor;
+        // TExecutorCounters* const Counters;
+        // TExecutor* const Executor;
+        // TODO(umed): make members const once deprecated move constructor is
+        // removed
+        TExecutorCounters* Counters;
+        TExecutor* Executor;
 
     public:
         TExecutorScope(TExecutorCounters* counters, TExecutor* executor)
@@ -76,9 +80,20 @@ public:
             , Executor(executor)
         {}
 
+        // TODO(umed): don't use it. It is workaround to make possible single
+        // TExecutor for both filestore & blockstore, should be removed
+        TExecutorScope(TExecutorScope&& other)
+            : TExecutorScope(
+                  std::exchange(other.Counters, nullptr),
+                  std::exchange(other.Executor, nullptr))
+        {}
+        TExecutorScope& operator=(TExecutorScope&& other) = delete;
+
         ~TExecutorScope()
         {
-            Counters->ReleaseExecutor(Executor);
+            if (Counters) {
+                Counters->ReleaseExecutor(Executor);
+            }
         }
 
         TActivityScope StartWait()

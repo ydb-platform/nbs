@@ -40,7 +40,6 @@ target_sources(blockstore-libs-diagnostics PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/critical_events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/dumpable.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/executor_counters.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/fault_injection.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/incomplete_request_processor.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/incomplete_requests.cpp
