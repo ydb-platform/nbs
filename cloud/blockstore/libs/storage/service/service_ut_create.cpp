@@ -1336,6 +1336,62 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotDestroyDisksWithInstanceClients)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        NProto::TVolumeClient client;
+        client.SetClientId("c");
+        client.SetInstanceId("i");
+
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvStatVolumeRequest: {
+                        auto response =
+                            std::make_unique<TEvService::TEvStatVolumeResponse>();
+                        response->Record.MutableClients()->Add()->CopyFrom(client);
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0, // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        service.SendDestroyVolumeRequest(DefaultDiskId);
+        {
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+        }
+
+        service.DescribeVolume();
+
+        client.SetInstanceId("");
+
+        service.SendDestroyVolumeRequest(DefaultDiskId);
+        {
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        service.SendDescribeVolumeRequest();
+        {
+            auto response = service.RecvDescribeVolumeResponse();
+            UNIT_ASSERT_C(S_OK != response->GetStatus(), response->GetErrorReason());
+        }
+    }
 
     Y_UNIT_TEST(ShouldAllowTokenVersionInAssignVolume)
     {

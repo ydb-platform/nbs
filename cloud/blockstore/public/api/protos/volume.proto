@@ -275,6 +275,17 @@ message TVolume
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+message TVolumeClient
+{
+    // Client id.
+    string ClientId = 1;
+
+    // Instance id.
+    string InstanceId = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // I/O counters.
 
 message TIOCounters
@@ -624,6 +635,9 @@ message TStatVolumeResponse
 
     // List of checkpoints.
     repeated string Checkpoints = 6;
+
+    // List of volume clients.
+    repeated TVolumeClient Clients = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

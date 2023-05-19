@@ -434,6 +434,7 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
 {
     const auto& diskId = Request.GetDiskId();
     const auto& clientId = Request.GetHeaders().GetClientId();
+    const auto& instanceId = Request.GetInstanceId();
     const auto accessMode = Request.GetVolumeAccessMode();
     const auto mountMode = Request.GetVolumeMountMode();
     const auto mountSeqNumber = Request.GetMountSeqNumber();
@@ -441,6 +442,7 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
     auto request = std::make_unique<TEvVolume::TEvAddClientRequest>();
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetDiskId(diskId);
+    request->Record.SetInstanceId(instanceId);
     request->Record.SetVolumeAccessMode(accessMode);
     request->Record.SetVolumeMountMode(mountMode);
     request->Record.SetMountFlags(Request.GetMountFlags());
@@ -744,6 +746,7 @@ void TVolumeSessionActor::LogNewClient(
     const auto* msg = ev->Get();
     const auto& diskId = msg->Record.GetDiskId();
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
+    const auto& instanceId = msg->Record.GetInstanceId();
     const auto& accessMode = msg->Record.GetVolumeAccessMode();
     const auto& mountMode = msg->Record.GetVolumeMountMode();
     const auto& mountSeqNumber = msg->Record.GetMountSeqNumber();
@@ -754,6 +757,7 @@ void TVolumeSessionActor::LogNewClient(
     LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
         "Mounting volume: " << diskId.Quote() <<
         " (client: " << clientId.Quote() <<
+        " instance: " << instanceId.Quote() <<
         " access: " << AccessModeToString(accessMode) <<
         " mount mode: " << EVolumeMountMode_Name(mountMode) <<
         " throttling: " << throttlingStr <<

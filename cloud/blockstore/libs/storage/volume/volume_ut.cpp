@@ -9203,6 +9203,41 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // All partitions sent gc report => partitions should stop
         UNIT_ASSERT(partitionsStopped);
     }
+
+    Y_UNIT_TEST(ShouldReturnClientsInStatVolumeResponse)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+
+        {
+            NProto::TVolumeClientInfo info;
+            info.SetClientId("c1");
+            info.SetInstanceId("i1");
+            info.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_WRITE);
+            info.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
+            volume.AddClient(info);
+        }
+
+        {
+            NProto::TVolumeClientInfo info;
+            info.SetClientId("c2");
+            info.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_ONLY);
+            info.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
+            volume.AddClient(info);
+        }
+
+        volume.WaitReady();
+
+        auto stat = volume.StatVolume();
+        const auto& clients = stat->Record.GetClients();
+        UNIT_ASSERT_VALUES_EQUAL(2, clients.size());
+        UNIT_ASSERT_VALUES_EQUAL("c1", clients[0].GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL("i1", clients[0].GetInstanceId());
+        UNIT_ASSERT_VALUES_EQUAL("c2", clients[1].GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -243,6 +243,16 @@ void TVolumeActor::HandleStatVolume(
         stats->SetVolumeUsedBlocksCount(State->GetUsedBlocks()->Count());
     }
 
+    auto* clients = record.MutableClients();
+    for (const auto& x: State->GetClients()) {
+        auto* client = clients->Add();
+        client->SetClientId(x.second.GetVolumeClientInfo().GetClientId());
+        client->SetInstanceId(x.second.GetVolumeClientInfo().GetInstanceId());
+    }
+    SortBy(clients->begin(), clients->end(), [] (const auto& x) {
+        return x.GetClientId();
+    });
+
     if (const auto& partConfig = State->GetNonreplicatedPartitionConfig()) {
         stats->SetMaxTimedOutDeviceStateDuration(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());

@@ -239,6 +239,7 @@ void TVolumeActor::HandleAddClient(
     const auto* msg = ev->Get();
     const auto& diskId = msg->Record.GetDiskId();
     const auto& clientId = GetClientId(*msg);
+    const auto& instanceId = msg->Record.GetInstanceId();
     const auto accessMode = msg->Record.GetVolumeAccessMode();
     const auto mountMode = msg->Record.GetVolumeMountMode();
     const auto mountFlags = msg->Record.GetMountFlags();
@@ -259,6 +260,7 @@ void TVolumeActor::HandleAddClient(
 
     NProto::TVolumeClientInfo clientInfo;
     clientInfo.SetClientId(clientId);
+    clientInfo.SetInstanceId(instanceId);
     clientInfo.SetVolumeAccessMode(accessMode);
     clientInfo.SetVolumeMountMode(mountMode);
     clientInfo.SetMountFlags(mountFlags);
@@ -368,10 +370,11 @@ void TVolumeActor::ExecuteAddClient(
     args.WriterLastActivityTimestamp = State->GetLastActivityTimestamp(prevWriter);
 
     LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Volume %s received add client %s request; pipe server %s, sender %s",
+        "[%lu] Volume %s received add client %s:%s request; pipe server %s, sender %s",
         TabletID(),
         args.DiskId.Quote().c_str(),
         args.Info.GetClientId().Quote().c_str(),
+        args.Info.GetInstanceId().Quote().c_str(),
         ToString(args.PipeServerActorId).c_str(),
         ToString(args.RequestInfo->Sender).c_str());
 
@@ -478,11 +481,10 @@ void TVolumeActor::CompleteAddClient(
     response->Record.SetTabletId(TabletID());
     response->Record.SetClientId(clientId);
 
-    auto& config = State->GetMeta().GetConfig();
     auto& volumeConfig = State->GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();
     VolumeConfigToVolume(volumeConfig, *volumeInfo);
-    volumeInfo->SetInstanceId(config.GetInstanceId());  // XXX ???
+    volumeInfo->SetInstanceId(args.Info.GetInstanceId());
     State->FillDeviceInfo(*volumeInfo);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

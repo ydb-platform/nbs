@@ -48,7 +48,7 @@ private:
     void WaitReady(const TActorContext& ctx);
     void DestroyVolume(const TActorContext& ctx);
     void NotifyDiskRegistry(const TActorContext& ctx);
-    void DescribeVolume(const TActorContext& ctx);
+    void StatVolume(const TActorContext& ctx);
     void DeallocateDisk(const TActorContext& ctx);
 
     void HandleModifyResponse(
@@ -59,8 +59,8 @@ private:
         const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleDescribeVolumeResponse(
-        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    void HandleStatVolumeResponse(
+        const TEvService::TEvStatVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleMarkDiskForCleanupResponse(
@@ -103,7 +103,7 @@ void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
     if (DestroyIfBroken) {
         WaitReady(ctx);
     } else {
-        DescribeVolume(ctx);
+        StatVolume(ctx);
     }
 
     Become(&TThis::StateWork);
@@ -156,14 +156,17 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TDestroyVolumeActor::DescribeVolume(const TActorContext& ctx)
+void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "describe volume");
+    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "stat volume");
+
+    auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
+    request->Record.SetDiskId(DiskId);
 
     NCloud::Send(
         ctx,
-        MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+        MakeVolumeProxyServiceId(),
+        std::move(request));
 }
 
 void TDestroyVolumeActor::HandleModifyResponse(
@@ -280,11 +283,11 @@ void TDestroyVolumeActor::HandleDeallocateDiskResponse(
     DestroyVolume(ctx);
 }
 
-void TDestroyVolumeActor::HandleDescribeVolumeResponse(
-    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+void TDestroyVolumeActor::HandleStatVolumeResponse(
+    const TEvService::TEvStatVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "handle describe response");
+    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "handle stat response");
 
     const auto* msg = ev->Get();
 
@@ -302,7 +305,7 @@ void TDestroyVolumeActor::HandleDescribeVolumeResponse(
 
     if (FAILED(error.GetCode())) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: unable to determine disk media kind: %s",
+            "Volume %s: unable to stat volume: %s",
             DiskId.Quote().data(),
             FormatError(error).data());
 
@@ -312,11 +315,27 @@ void TDestroyVolumeActor::HandleDescribeVolumeResponse(
         return;
     }
 
-    auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
-        msg->PathDescription
-            .GetBlockStoreVolumeDescription()
-            .GetVolumeConfig()
-            .GetStorageMediaKind());
+    for (const auto& client: msg->Record.GetClients()) {
+        if (client.GetInstanceId()) {
+            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+                "Volume %s is attached to instance: %s",
+                DiskId.Quote().data(),
+                client.GetInstanceId().Quote().data());
+
+            auto e = MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "attached to instance: "
+                    << client.GetInstanceId());
+
+            ReplyAndDie(
+                ctx,
+                std::make_unique<TEvService::TEvDestroyVolumeResponse>(
+                    std::move(e)));
+            return;
+        }
+    }
+
+    auto mediaKind = msg->Record.GetVolume().GetStorageMediaKind();
 
     if (IsDiskRegistryMediaKind(mediaKind)) {
         if (Sync || Force) {
@@ -352,8 +371,8 @@ STFUNC(TDestroyVolumeActor::StateWork)
             HandleDeallocateDiskResponse);
 
         HFunc(
-            TEvSSProxy::TEvDescribeVolumeResponse,
-            HandleDescribeVolumeResponse);
+            TEvService::TEvStatVolumeResponse,
+            HandleStatVolumeResponse);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);

@@ -59,9 +59,10 @@ private:
 public:
     TVolumeClientState() = default;
 
-    TVolumeClientState(TString clientId)
+    TVolumeClientState(TString clientId, TString instanceId)
     {
         VolumeClientInfo.SetClientId(std::move(clientId));
+        VolumeClientInfo.SetInstanceId(std::move(instanceId));
     }
 
     TVolumeClientState(NProto::TVolumeClientInfo info)

@@ -422,8 +422,6 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         LocalMountClientId = clientId;
     }
 
-    bool insert = ClientInfosByClientId.count(clientId) == 0;
-
     auto range = ClientIdsByPipeServerId.equal_range(pipeServerActorId);
     auto it = find_if(range.first, range.second, [&] (const auto& p) {
         return p.second == clientId;
@@ -432,7 +430,13 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         ClientIdsByPipeServerId.emplace(pipeServerActorId, clientId);
     }
 
-    auto [newIt, added] = ClientInfosByClientId.emplace(clientId, clientId);
+    auto [newIt, added] = ClientInfosByClientId.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(clientId),
+        std::forward_as_tuple(
+            clientId,
+            info.GetInstanceId()
+        ));
     auto pipeRes = newIt->second.AddPipe(
         pipeServerActorId,
         senderActorId.NodeId(),
@@ -448,7 +452,7 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         StorageAccessMode = EStorageAccessMode::Repair;
     }
 
-    if (insert) {
+    if (added) {
         return res;
     }
 

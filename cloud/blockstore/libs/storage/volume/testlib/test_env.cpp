@@ -215,6 +215,7 @@ std::unique_ptr<TEvVolume::TEvAddClientRequest> TVolumeClient::CreateAddClientRe
 {
     auto request = std::make_unique<TEvVolume::TEvAddClientRequest>();
     request->Record.MutableHeaders()->SetClientId(info.GetClientId());
+    request->Record.SetInstanceId(info.GetInstanceId());
     request->Record.SetVolumeAccessMode(info.GetVolumeAccessMode());
     request->Record.SetVolumeMountMode(info.GetVolumeMountMode());
     request->Record.SetMountFlags(info.GetMountFlags());

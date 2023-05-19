@@ -42,6 +42,9 @@ message TVolumeClientInfo
 
     // Last activity timestamp. Valid only for resyncable volumes.
     uint64 LastActivityTimestamp = 9;
+
+    // Instance id (if this client is a VM).
+    string InstanceId = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,6 +75,9 @@ message TAddClientRequest
 
     // Mount flags.
     uint32 MountFlags = 8;
+
+    // Instance id (if this client is a VM).
+    string InstanceId = 9;
 }
 
 message TAddClientResponse
