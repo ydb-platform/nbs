@@ -3,7 +3,6 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
-#include <util/system/align.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -16,8 +15,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeFromDeviceTest)
     Y_UNIT_TEST(ShouldCreateVolumeFromDevice)
     {
         constexpr ui32 blockSize = 512;
-        const ui64 blockCount =
-            AlignUp<ui64>(100'000'000'000, DefaultBlockSize) / blockSize;
+        const ui64 blockCount = 100'000'000'000 / blockSize;
         const TString agentId = "agent.yandex.cloud.net";
         const TString diskId = "local0";
 

@@ -132,8 +132,8 @@ private:
             auto& dst = *proto.AddDevices();
             dst = device;
             dst.SetBlocksCount(
-                device.GetBlocksCount() * device.GetBlockSize() / DefaultBlockSize);
-            dst.SetBlockSize(DefaultBlockSize);
+                device.GetBlocksCount() * device.GetBlockSize() / disk.BlockSize);
+            dst.SetBlockSize(disk.BlockSize);
         }
 
         for (const auto& x: disk.Migrations) {
@@ -141,8 +141,8 @@ private:
             auto& dst = *migration.MutableTargetDevice();
             dst = x.second;
             dst.SetBlocksCount(
-                x.second.GetBlocksCount() * x.second.GetBlockSize() / DefaultBlockSize);
-            dst.SetBlockSize(DefaultBlockSize);
+                x.second.GetBlocksCount() * x.second.GetBlockSize() / disk.BlockSize);
+            dst.SetBlockSize(disk.BlockSize);
             migration.SetSourceDeviceId(x.first);
         }
 
@@ -152,8 +152,8 @@ private:
                 auto& dst = *r.AddDevices();
                 dst = device;
                 dst.SetBlocksCount(
-                    device.GetBlocksCount() * device.GetBlockSize() / DefaultBlockSize);
-                dst.SetBlockSize(DefaultBlockSize);
+                    device.GetBlocksCount() * device.GetBlockSize() / disk.BlockSize);
+                dst.SetBlockSize(disk.BlockSize);
             }
         }
     }
