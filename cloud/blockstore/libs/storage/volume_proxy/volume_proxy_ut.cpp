@@ -156,7 +156,9 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvStatVolumeRequest: {
-                        if (event->GetRecipientRewrite() == volumeActorId) {
+                        if (!droppedStatVolumeRequest
+                                && event->GetRecipientRewrite() == volumeActorId)
+                        {
                             droppedStatVolumeRequest = true;
                             return TTestActorRuntime::EEventAction::DROP;
                         }
@@ -200,6 +202,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
+        droppedStatVolumeRequest = false;
         service.SendStatVolumeRequest();
         auto response = service.RecvStatVolumeResponse();
         UNIT_ASSERT(FAILED(response->GetStatus()));
