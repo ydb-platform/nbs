@@ -19,12 +19,17 @@ class TReallocateActor final
 private:
     const TActorId Owner;
     const TRequestInfoPtr Request;
+    const ui64 TabletId;
+    const TString DiskId;
+
     NProto::TAllocateDiskRequest Record;
 
 public:
     TReallocateActor(
         const TActorId& owner,
         TRequestInfoPtr request,
+        ui64 tabletId,
+        TString diskId,
         NProto::TAllocateDiskRequest record);
 
     void Bootstrap(const TActorContext& ctx);
@@ -49,9 +54,13 @@ private:
 TReallocateActor::TReallocateActor(
         const TActorId& owner,
         TRequestInfoPtr request,
+        ui64 tabletId,
+        TString diskId,
         NProto::TAllocateDiskRequest record)
     : Owner(owner)
     , Request(std::move(request))
+    , TabletId(tabletId)
+    , DiskId(std::move(diskId))
     , Record(std::move(record))
 {
     ActivityType = TBlockStoreActivities::VOLUME;
@@ -86,9 +95,22 @@ void TReallocateActor::HandleAllocateDiskResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
+        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] Disk reallocation failed with error: %s. DiskId=%s",
+            TabletId,
+            FormatError(msg->GetError()).c_str(),
+            DiskId.Quote().c_str());
+
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
+
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] Disk reallocation success. DiskId=%s, %s",
+        TabletId,
+        DiskId.Quote().c_str(),
+        DescribeAllocation(msg->Record).c_str()
+    );
 
     TVector<TDevices> replicas;
     for (auto& msgReplica: *msg->Record.MutableReplicas()) {
@@ -173,6 +195,8 @@ void TVolumeActor::HandleReallocateDisk(
         ctx,
         ctx.SelfID,
         std::move(requestInfo),
+        TabletID(),
+        GetNewestConfig().GetDiskId(),
         std::move(request));
 }
 

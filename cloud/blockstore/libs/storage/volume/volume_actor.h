@@ -896,4 +896,6 @@ private:
     }                                                                          \
 // BLOCKSTORE_VOLUME_COUNTER
 
+TString DescribeAllocation(const NProto::TAllocateDiskResponse& record);
+
 }   // namespace NCloud::NBlockStore::NStorage

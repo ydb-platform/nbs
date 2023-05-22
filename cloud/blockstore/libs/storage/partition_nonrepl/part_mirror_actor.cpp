@@ -205,7 +205,7 @@ void TMirrorPartitionActor::HandleRWClientIdChanged(
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
-    void TMirrorPartitionActor::Handle##name(                           \
+    void TMirrorPartitionActor::Handle##name(                                  \
         const ns::TEv##name##Request::TPtr& ev,                                \
         const TActorContext& ctx)                                              \
     {                                                                          \

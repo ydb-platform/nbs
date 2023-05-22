@@ -37,63 +37,6 @@ ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
     return config.GetPartitions(0).GetBlockCount();
 }
 
-TString DescribeAllocation(const NProto::TAllocateDiskResponse& record)
-{
-    auto outputDevice = [] (const auto& device, TStringBuilder& out) {
-        out << "("
-            << device.GetDeviceUUID() << " "
-            << device.GetBlocksCount() << " "
-            << device.GetBlockSize()
-        << ") ";
-    };
-
-    auto outputDevices = [=] (const auto& devices, TStringBuilder& out) {
-        out << "[";
-        if (devices.size() != 0) {
-            out << " ";
-        }
-        for (const auto& device: devices) {
-            outputDevice(device, out);
-        }
-        out << "]";
-    };
-
-    TStringBuilder result;
-    result << "Devices ";
-    outputDevices(record.GetDevices(), result);
-
-    result << " Migrations [";
-    if (record.MigrationsSize() != 0) {
-        result << " ";
-    }
-    for (const auto& m: record.GetMigrations()) {
-        result << m.GetSourceDeviceId() << " -> ";
-        outputDevice(m.GetTargetDevice(), result);
-    }
-    result << "]";
-
-    result << " Replicas [";
-    if (record.ReplicasSize() != 0) {
-        result << " ";
-    }
-    for (const auto& replica: record.GetReplicas()) {
-        outputDevices(replica.GetDevices(), result);
-        result << " ";
-    }
-    result << "]";
-
-    result << " FreshDeviceIds [";
-    if (record.DeviceReplacementUUIDsSize() != 0) {
-        result << " ";
-    }
-    for (const auto& deviceId: record.GetDeviceReplacementUUIDs()) {
-        result << deviceId << " ";
-    }
-    result << "]";
-
-    return result;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 bool ValidateDevices(
