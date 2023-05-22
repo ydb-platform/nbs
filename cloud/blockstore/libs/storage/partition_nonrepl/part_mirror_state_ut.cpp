@@ -1,11 +1,13 @@
 #include "part_mirror_state.h"
 
 #include <cloud/blockstore/config/storage.pb.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <library/cpp/actors/core/actorid.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -237,7 +239,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             auto* device = m->MutableTargetDevice();
             device->SetAgentId("5");
             device->SetBlocksCount(1024);
-            device->SetDeviceUUID("5_1");
+            device->SetDeviceUUID("5_4");
         }
         {
             auto* m = env.Migrations.Add();
@@ -349,7 +351,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             auto* device = m->MutableTargetDevice();
             device->SetAgentId("5");
             device->SetBlocksCount(1024);
-            device->SetDeviceUUID("5_1");
+            device->SetDeviceUUID("5_2");
         }
         env.Init();
 
@@ -433,6 +435,52 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& migrations1 = replica1.Migrations;
         UNIT_ASSERT_VALUES_EQUAL(0, migrations1.size());
+    }
+
+    Y_UNIT_TEST(ShouldPrepareMigrationConfigForSecondReplica)
+    {
+        using namespace NMonitoring;
+
+        TEnv env;
+        {
+            auto* m = env.Migrations.Add();
+            m->SetSourceDeviceId("3_1");
+            auto* device = m->MutableTargetDevice();
+            device->SetAgentId("5");
+            device->SetBlocksCount(1024);
+            device->SetDeviceUUID("5_2");
+        }
+        env.Init();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto migrationSourceNotFound =
+            counters->GetCounter("AppCriticalEvents/MigrationSourceNotFound", true);
+
+        TMirrorPartitionState state(
+            std::make_shared<TStorageConfig>(
+                NProto::TStorageServiceConfig(),
+                nullptr),
+            "xxx",      // rwClientId
+            env.Config,
+            env.Migrations,
+            {env.ReplicaDevices}
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
+
+        auto error = state.PrepareMigrationConfig();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
+
+        const auto& replica1 = state.GetReplicaInfos()[1];
+        UNIT_ASSERT_VALUES_EQUAL(1, replica1.Migrations.size());
+
+        const auto& m = replica1.Migrations[0];
+
+        UNIT_ASSERT_VALUES_EQUAL("3_1", m.GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL("5_2", m.GetTargetDevice().GetDeviceUUID());
     }
 
     // TODO: test config validation / migration config preparation failures

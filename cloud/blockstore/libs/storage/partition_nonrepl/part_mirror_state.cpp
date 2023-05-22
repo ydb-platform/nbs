@@ -97,13 +97,12 @@ NProto::TError TMirrorPartitionState::PrepareMigrationConfig()
                 MigrationConfigPrepared = true;
 
                 return {};
-            } else {
-                ReportMigrationSourceNotFound();
-
-                // TODO: log details
             }
-
         }
+
+        ReportMigrationSourceNotFound();
+
+        // TODO: log details
     }
 
     // nothing to migrate, let's look for something to replicate
