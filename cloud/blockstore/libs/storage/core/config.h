@@ -59,6 +59,7 @@ public:
     ui32 GetCompactionRangeCountPerRun() const;
     bool GetBatchCompactionEnabled() const;
     bool GetBlobPatchingEnabled() const;
+    ui32 GetMaxDiffPercentageForBlobPatching() const;
 
     ui32 GetCleanupThreshold() const;
     ui32 GetUpdateBlobsThreshold() const;

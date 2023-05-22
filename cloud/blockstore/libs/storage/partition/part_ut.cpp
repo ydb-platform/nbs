@@ -8413,6 +8413,88 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(evPatchObserved);
     }
 
+    Y_UNIT_TEST(WritingBlobsInsteadOfPatchingIfDiffIsGreaterThanThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetBlobPatchingEnabled(true);
+        config.SetCompactionThreshold(999);
+        config.SetCompactionGarbageThreshold(999);
+        config.SetCompactionRangeGarbageThreshold(999);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MaxPartitionBlocksCount
+        );
+
+        bool evPatchObserved = false;
+        bool evWriteObserved = false;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPatch: {
+                        evPatchObserved = true;
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvWriteBlobRequest: {
+                        evWriteObserved = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto blockRange1 = TBlockRange32::WithLength(0, 1024);
+        const auto blockRange2 = TBlockRange32::WithLength(0, 512 + 256 + 64);
+        const auto blockRange3 = TBlockRange32::WithLength(0, 512);
+
+        partition.WriteBlocks(blockRange1, 1);
+        partition.WriteBlocks(blockRange2, 2);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(256))
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(512 + 256 + 63))
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(1),
+            GetBlockContent(partition.ReadBlocks(900))
+        );
+
+        UNIT_ASSERT(!evPatchObserved);
+        UNIT_ASSERT(evWriteObserved);
+
+        evWriteObserved = false;
+        partition.WriteBlocks(blockRange3, 3);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(511))
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(512))
+        );
+
+        UNIT_ASSERT(evPatchObserved);
+        UNIT_ASSERT(evWriteObserved);
+    }
+
     Y_UNIT_TEST(ShouldPatchBlobsDuringIncrementalCompaction)
     {
         auto config = DefaultConfig();

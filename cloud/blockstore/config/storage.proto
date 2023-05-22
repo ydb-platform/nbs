@@ -808,4 +808,7 @@ message TStorageServiceConfig
     // are sent. Does not apply if writes are not allowed because of channel
     // flags.
     optional uint32 ReassignChannelsPercentageThreshold = 305;
+
+    // Max diff percentage for blob patching
+    optional uint32 MaxDiffPercentageForBlobPatching = 306;
 }

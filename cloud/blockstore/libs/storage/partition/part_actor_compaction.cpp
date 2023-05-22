@@ -1455,7 +1455,8 @@ void CompleteRangeCompaction(
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
     TVector<TCompactionActor::TRequest>& requests,
-    TVector<TRangeCompactionInfo>& result)
+    TVector<TRangeCompactionInfo>& result,
+    ui32 maxDiffPercentageForBlobPatching)
 {
     const EChannelPermissions compactionPermissions =
         EChannelPermission::SystemWritesAllowed;
@@ -1516,6 +1517,7 @@ void CompleteRangeCompaction(
 
     ui32 blockIndex = args.BlockRange.Start;
     TPartialBlobId patchingCandidate;
+    ui32 patchingCandidateChangedBlockCount = 0;
     for (auto& mark: args.BlockMarks) {
         if (mark.CommitId) {
             if (mark.BlockContent) {
@@ -1566,6 +1568,9 @@ void CompleteRangeCompaction(
                         && mark.BlobId.BlobSize() == dataBlobId.BlobSize())
                 {
                     patchingCandidate = mark.BlobId;
+                    ++patchingCandidateChangedBlockCount;
+                } else if (patchingCandidate == mark.BlobId) {
+                    ++patchingCandidateChangedBlockCount;
                 }
             } else {
                 dataBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
@@ -1615,7 +1620,12 @@ void CompleteRangeCompaction(
             originalGroup,
             patchedGroup);
 
-        if (found) {
+        ui32 blockCount = patchingCandidate.BlobSize() / state.GetBlockSize();
+        ui32 patchingBlockCount =
+            dataBlocksCount - patchingCandidateChangedBlockCount;
+        ui32 changedPercentage = 100 * patchingBlockCount / blockCount;
+
+        if (found && changedPercentage <= maxDiffPercentageForBlobPatching) {
             dataBlobId = TPartialBlobId(
                 dataBlobId.Generation(),
                 dataBlobId.Step(),
@@ -1730,7 +1740,8 @@ void TPartitionActor::CompleteCompaction(
             *State,
             rangeCompaction,
             requests,
-            rangeCompactionInfos);
+            rangeCompactionInfos,
+            Config->GetMaxDiffPercentageForBlobPatching());
 
         if (rangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
