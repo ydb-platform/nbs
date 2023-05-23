@@ -105,7 +105,9 @@ void vhd_blockdev_set_total_blocks(struct vhd_vdev *vdev, uint64_t total_blocks)
 
 static bool blockdev_validate_features(const struct vhd_bdev_info *bdev)
 {
-    const uint64_t valid_features = VHD_BDEV_F_READONLY;
+    const uint64_t valid_features = VHD_BDEV_F_READONLY |
+                                    VHD_BDEV_F_DISCARD |
+                                    VHD_BDEV_F_WRITE_ZEROES;
     return (bdev->features & valid_features) == bdev->features;
 }
 

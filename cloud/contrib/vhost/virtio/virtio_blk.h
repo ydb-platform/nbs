@@ -21,6 +21,23 @@ extern "C" {
      * (1UL << VIRTIO_BLK_F_SIZE_MAX) | \
      */
 
+/*
+ * Same as QEMU:
+ * We support only one segment per request since multiple segments
+ * are not widely used and there are no userspace APIs that allow
+ * applications to submit multiple segments in a single call.
+*/
+#define VIRTIO_BLK_MAX_DISCARD_SEGMENTS 1
+#define VIRTIO_BLK_MAX_WRITE_ZEROES_SEGMENTS 1
+
+/*
+ * The config field is an 'le32', we just set it to the maximum
+ * possible value as we don't really have any reasons to limit
+ * it to a lower number here.
+ */
+#define VIRTIO_BLK_MAX_DISCARD_SECTORS UINT32_MAX
+#define VIRTIO_BLK_MAX_WRITE_ZEROES_SECTORS UINT32_MAX
+
 struct vhd_bdev_info;
 struct vhd_io;
 

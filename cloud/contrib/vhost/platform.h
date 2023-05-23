@@ -101,6 +101,7 @@ static inline void VHD_NORETURN _vhd_verify_helper(
 }
 
 #define VHD_ASSERT(cond) assert(cond)
+#define VHD_UNREACHABLE() __builtin_unreachable()
 
 /* Verify is not compiled out in release builds */
 #define VHD_VERIFY(cond)                                  \

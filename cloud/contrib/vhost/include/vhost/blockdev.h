@@ -15,7 +15,9 @@ struct vhd_vdev;
 #define VHD_SECTOR_SHIFT    (9)
 #define VHD_SECTOR_SIZE     (1ull << VHD_SECTOR_SHIFT)
 
-#define VHD_BDEV_F_READONLY (1ull << 0)
+#define VHD_BDEV_F_READONLY     (1ull << 0)
+#define VHD_BDEV_F_DISCARD      (1ull << 1)
+#define VHD_BDEV_F_WRITE_ZEROES (1ull << 2)
 
 /**
  * Client-supplied block device backend definition
@@ -48,7 +50,18 @@ struct vhd_bdev_info {
 
 static inline bool vhd_blockdev_is_readonly(const struct vhd_bdev_info *bdev)
 {
-    return (bdev->features & VHD_BDEV_F_READONLY) == VHD_BDEV_F_READONLY;
+    return bdev->features & VHD_BDEV_F_READONLY;
+}
+
+static inline bool vhd_blockdev_has_discard(const struct vhd_bdev_info *bdev)
+{
+    return bdev->features & VHD_BDEV_F_DISCARD;
+}
+
+static inline bool vhd_blockdev_has_write_zeroes(
+        const struct vhd_bdev_info *bdev)
+{
+    return bdev->features & VHD_BDEV_F_WRITE_ZEROES;
 }
 
 /**
@@ -56,7 +69,9 @@ static inline bool vhd_blockdev_is_readonly(const struct vhd_bdev_info *bdev)
  */
 enum vhd_bdev_io_type {
     VHD_BDEV_READ,
-    VHD_BDEV_WRITE
+    VHD_BDEV_WRITE,
+    VHD_BDEV_DISCARD,
+    VHD_BDEV_WRITE_ZEROES,
 };
 
 /**

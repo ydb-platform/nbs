@@ -74,6 +74,19 @@ static void complete_io(struct vhd_io *io)
     vhd_free(bio);
 }
 
+static bool is_valid_block_range_req(uint64_t sector, size_t nsectors,
+                                     uint64_t capacity)
+{
+    if (nsectors > capacity || sector > capacity - nsectors) {
+        VHD_LOG_ERROR("Request (%" PRIu64 "s, +%zus) spans"
+                      " beyond device capacity %" PRIu64,
+                      sector, nsectors, capacity);
+        return false;
+    }
+
+    return true;
+}
+
 static bool is_valid_req(uint64_t sector, size_t len, uint64_t capacity)
 {
     size_t nsectors = len / VIRTIO_BLK_SECTOR_SIZE;
@@ -88,12 +101,19 @@ static bool is_valid_req(uint64_t sector, size_t len, uint64_t capacity)
                       len, VIRTIO_BLK_SECTOR_SIZE);
         return false;
     }
-    if (sector > capacity || sector > capacity - nsectors) {
-        VHD_LOG_ERROR("Request (%" PRIu64 "s, +%zus) spans"
-                      " beyond device capacity %" PRIu64,
-                      sector, nsectors, capacity);
+
+    return is_valid_block_range_req(sector, nsectors, capacity);
+}
+
+static bool bio_submit(struct virtio_blk_io *bio)
+{
+    int res = virtio_blk_handle_request(bio->vq, &bio->io);
+    if (res != 0) {
+        VHD_LOG_ERROR("bdev request submission failed with %d", res);
+        vhd_free(bio);
         return false;
     }
+
     return true;
 }
 
@@ -102,7 +122,6 @@ static void handle_inout(struct virtio_blk_dev *dev,
                          struct virtio_virtq *vq,
                          struct virtio_iov *iov)
 {
-    uint8_t status = VIRTIO_BLK_S_IOERR;
     size_t len;
     uint16_t ndatabufs;
     struct vhd_buffer *pdata;
@@ -115,7 +134,7 @@ static void handle_inout(struct virtio_blk_dev *dev,
     } else {
         if (virtio_blk_is_readonly(dev)) {
             VHD_LOG_ERROR("Write request to readonly device");
-            goto complete;
+            goto fail_request;
         }
         io_type = VHD_BDEV_WRITE;
         pdata = &iov->iov_out[1];
@@ -125,7 +144,7 @@ static void handle_inout(struct virtio_blk_dev *dev,
     len = iov_size(pdata, ndatabufs);
 
     if (!is_valid_req(req->sector, len, dev->config.capacity)) {
-        goto complete;
+        goto fail_request;
     }
 
     struct virtio_blk_io *bio = vhd_zalloc(sizeof(*bio));
@@ -139,18 +158,107 @@ static void handle_inout(struct virtio_blk_dev *dev,
     bio->bdev_io.sglist.nbuffers = ndatabufs;
     bio->bdev_io.sglist.buffers = pdata;
 
-    int res = virtio_blk_handle_request(bio->vq, &bio->io);
-    if (res != 0) {
-        VHD_LOG_ERROR("bdev request submission failed with %d", res);
-        vhd_free(bio);
-        goto complete;
+    if (!bio_submit(bio)) {
+        goto fail_request;
     }
 
     /* request will be completed asynchronously */
     return;
 
-complete:
-    complete_req(vq, iov, status);
+fail_request:
+    complete_req(vq, iov, VIRTIO_BLK_S_IOERR);
+}
+
+static void handle_discard_or_write_zeroes(struct virtio_blk_dev *dev,
+                                           le32 type,
+                                           struct virtio_virtq *vq,
+                                           struct virtio_iov *iov)
+{
+    struct virtio_blk_discard_write_zeroes seg;
+    struct virtio_blk_io *bio;
+    enum vhd_bdev_io_type io_type;
+    le32 max_sectors;
+    bool is_discard = type == VIRTIO_BLK_T_DISCARD;
+    const char *type_str = is_discard ? "discard" : "write-zeroes";
+    VHD_ASSERT(is_discard || type == VIRTIO_BLK_T_WRITE_ZEROES);
+
+    if (virtio_blk_is_readonly(dev)) {
+        VHD_LOG_ERROR("%s request to readonly device", type_str);
+        goto fail_request;
+    }
+
+    /*
+     * The data used for discard, secure erase or write zeroes commands
+     * consists of one or more segments. We support only one at the moment.
+     */
+    if (iov->niov_out != 2) {
+        VHD_LOG_ERROR("Invalid number of segments for a "
+                      "%s request %"PRIu16,
+                      type_str, iov->niov_out);
+        goto fail_request;
+    }
+
+    if (iov->iov_out[1].len != sizeof(seg)) {
+        VHD_LOG_ERROR("Invalid %s segment size: "
+                      "expected %zu, got %zu!", type_str,
+                      sizeof(seg), iov->iov_out[1].len);
+        goto fail_request;
+    }
+
+    memcpy(&seg, iov->iov_out[1].base, sizeof(seg));
+    if (!is_valid_block_range_req(seg.sector, seg.num_sectors,
+                                  dev->config.capacity)) {
+        goto fail_request;
+    }
+
+    if (is_discard) {
+        le32 alignment = dev->config.discard_sector_alignment;
+
+        if (!VHD_IS_ALIGNED(seg.num_sectors, alignment)) {
+            VHD_LOG_ERROR("Discard request sector count %"PRIu32
+                          " not aligned to %"PRIu32,
+                          seg.num_sectors, alignment);
+            goto fail_request;
+        }
+
+        if (!VHD_IS_ALIGNED(seg.sector, alignment)) {
+            VHD_LOG_ERROR("Discard request sector %"PRIu64
+                          " not aligned to %"PRIu32,
+                          seg.sector, alignment);
+            goto fail_request;
+        }
+
+        io_type = VHD_BDEV_DISCARD;
+        max_sectors = dev->config.max_discard_sectors;
+    } else {
+        io_type = VHD_BDEV_WRITE_ZEROES;
+        max_sectors = dev->config.max_write_zeroes_sectors;
+    }
+
+    if (seg.num_sectors > max_sectors) {
+        VHD_LOG_ERROR("%s request too large: "
+                      "%"PRIu32" (max is %"PRIu32")",
+                      type_str, seg.num_sectors, max_sectors);
+        goto fail_request;
+    }
+
+    bio = vhd_zalloc(sizeof(*bio));
+    bio->vq = vq;
+    bio->iov = iov;
+    bio->io.completion_handler = complete_io;
+    bio->bdev_io.type = io_type;
+    bio->bdev_io.first_sector = seg.sector;
+    bio->bdev_io.total_sectors = seg.num_sectors;
+
+    if (!bio_submit(bio)) {
+        goto fail_request;
+    }
+
+    /* request will be completed asynchronously */
+    return;
+
+fail_request:
+    complete_req(vq, iov, VIRTIO_BLK_S_IOERR);
 }
 
 static uint8_t handle_getid(struct virtio_blk_dev *dev,
@@ -177,12 +285,35 @@ static uint8_t handle_getid(struct virtio_blk_dev *dev,
     return VIRTIO_BLK_S_OK;
 }
 
+static bool dev_supports_req(struct virtio_blk_dev *dev, le32 type)
+{
+    int feature;
+
+    switch (type) {
+    case VIRTIO_BLK_T_IN:
+    case VIRTIO_BLK_T_OUT:
+    case VIRTIO_BLK_T_GET_ID:
+        return true;
+    case VIRTIO_BLK_T_DISCARD:
+        feature = VIRTIO_BLK_F_DISCARD;
+        break;
+    case VIRTIO_BLK_T_WRITE_ZEROES:
+        feature = VIRTIO_BLK_F_WRITE_ZEROES;
+        break;
+    default:
+        return false;
+    }
+
+    return virtio_blk_has_feature(dev, feature);
+}
+
 static void handle_buffers(void *arg, struct virtio_virtq *vq,
                            struct virtio_iov *iov)
 {
     uint8_t status;
     struct virtio_blk_dev *dev = arg;
     struct virtio_blk_req_hdr *req;
+    le32 type;
 
     /*
      * Assume legacy message framing without VIRTIO_F_ANY_LAYOUT:
@@ -205,8 +336,15 @@ static void handle_buffers(void *arg, struct virtio_virtq *vq,
     }
 
     req = iov->iov_out[0].base;
+    type = req->type;
 
-    switch (req->type) {
+    if (!dev_supports_req(dev, type)) {
+        VHD_LOG_WARN("Unknown or unsupported request type %"PRIu32, type);
+        status = VIRTIO_BLK_S_UNSUPP;
+        goto out;
+    }
+
+    switch (type) {
     case VIRTIO_BLK_T_IN:
     case VIRTIO_BLK_T_OUT:
         handle_inout(dev, req, vq, iov);
@@ -214,12 +352,15 @@ static void handle_buffers(void *arg, struct virtio_virtq *vq,
     case VIRTIO_BLK_T_GET_ID:
         status = handle_getid(dev, iov);
         break;
-    default:
-        VHD_LOG_WARN("unknown request type %d", req->type);
-        status = VIRTIO_BLK_S_UNSUPP;
-        break;
+    case VIRTIO_BLK_T_DISCARD:
+    case VIRTIO_BLK_T_WRITE_ZEROES:
+        handle_discard_or_write_zeroes(dev, type, vq, iov);
+        return;         /* async completion */
+    default:  /* unreachable because of dev_supports_req() */
+        VHD_UNREACHABLE();
     };
 
+out:
     complete_req(vq, iov, status);
 }
 
@@ -326,6 +467,12 @@ void virtio_blk_init_dev(
     if (vhd_blockdev_is_readonly(bdev)) {
         dev->features |= (1ull << VIRTIO_BLK_F_RO);
     }
+    if (vhd_blockdev_has_discard(bdev)) {
+        dev->features |= (1ull << VIRTIO_BLK_F_DISCARD);
+    }
+    if (vhd_blockdev_has_write_zeroes(bdev)) {
+        dev->features |= (1ull << VIRTIO_BLK_F_WRITE_ZEROES);
+    }
 
     /*
      * Both virtio and block backend use the same sector size of 512.  Don't
@@ -341,6 +488,23 @@ void virtio_blk_init_dev(
     /* TODO: can get that from bdev info */
     dev->config.topology.min_io_size = 1;
     dev->config.topology.opt_io_size = 0;
+
+    /*
+     * Guarded by the assertion above:
+     * VHD_SECTOR_SIZE == VIRTIO_BLK_SECTOR_SIZE
+     */
+    dev->config.discard_sector_alignment = 1;
+    dev->config.max_discard_sectors = VIRTIO_BLK_MAX_DISCARD_SECTORS;
+    dev->config.max_discard_seg = VIRTIO_BLK_MAX_DISCARD_SEGMENTS;
+
+    dev->config.max_write_zeroes_sectors = VIRTIO_BLK_MAX_WRITE_ZEROES_SECTORS;
+    dev->config.max_write_zeroes_seg = VIRTIO_BLK_MAX_WRITE_ZEROES_SEGMENTS;
+    /*
+     * Since we don't know anything about the user of the library beforehand
+     * assume we _may_ unmap the sectors on write-zeroes.
+     * TODO: maybe propagate this value from blockdev config at creation time?
+     */
+    dev->config.write_zeroes_may_unmap = 1;
 
     /*
      * Hardcode seg_max to 126. The same way like it's done for virtio-blk in
