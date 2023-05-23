@@ -393,6 +393,14 @@ message TDiskRegistryStateBackup
     }
 
     repeated TDirtyDevice DirtyDevices = 14;
+
+    message TAutomaticallyReplacedDeviceInfo
+    {
+        string DeviceId = 1;
+        uint64 ReplacementTs = 2;
+    }
+
+    repeated TAutomaticallyReplacedDeviceInfo AutomaticallyReplacedDevices = 15;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -234,7 +234,8 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<TString> disksToCleanup,
         TVector<TString> errorNotifications,
         TVector<TString> outdatedVolumeConfigs,
-        TVector<TDeviceId> suspendedDevices)
+        TVector<TDeviceId> suspendedDevices,
+        TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices)
     : StorageConfig(std::move(storageConfig))
     , Counters(counters)
     , AgentList({
@@ -255,10 +256,15 @@ TDiskRegistryState::TDiskRegistryState(
         return uuids;
     }(), std::move(suspendedDevices))
     , BrokenDisks(std::move(brokenDisks))
+    , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
     , DiskStateUpdates(std::move(diskStateUpdates))
     , DiskStateSeqNo(diskStateSeqNo)
 {
+    for (const auto& x: AutomaticallyReplacedDevices) {
+        AutomaticallyReplacedDeviceIds.insert(x.DeviceId);
+    }
+
     if (Counters) {
         SelfCounters.Init(Counters);
     }
@@ -859,6 +865,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     const TString& deviceId,
     TInstant timestamp,
     TString message,
+    bool manual,
     bool* diskStateUpdated)
 {
     try {
@@ -943,7 +950,14 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             }
         }
 
-        devicePtr->SetState(NProto::DEVICE_STATE_ERROR);
+        if (manual) {
+            devicePtr->SetState(NProto::DEVICE_STATE_ERROR);
+        } else {
+            TAutomaticallyReplacedDeviceInfo deviceInfo{deviceId, timestamp};
+            AutomaticallyReplacedDevices.push_back(deviceInfo);
+            AutomaticallyReplacedDeviceIds.insert(deviceId);
+            db.AddAutomaticallyReplacedDevice(deviceInfo);
+        }
         devicePtr->SetStateMessage(std::move(message));
         devicePtr->SetStateTs(timestamp.MicroSeconds());
 
@@ -3821,6 +3835,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                         MakeMirroredDiskDeviceReplacementMessage(
                             disk.MasterDiskId,
                             "agent unavailable"),
+                        false,  // manual
                         &updated);
 
                     if (updated) {
@@ -4291,6 +4306,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
                 MakeMirroredDiskDeviceReplacementMessage(
                     disk->MasterDiskId,
                     "device failure"),
+                false,  // manual
                 &updated);
             if (updated) {
                 affectedDisk = diskId;
@@ -4555,7 +4571,7 @@ TString TDiskRegistryState::GetAgentId(TNodeId nodeId) const
 NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 {
     static_assert(
-        TTableCount<TDiskRegistrySchema::TTables>::value == 13,
+        TTableCount<TDiskRegistrySchema::TTables>::value == 14,
         "not all fields are processed"
     );
 
@@ -4626,6 +4642,17 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
     });
 
     copy(GetSuspendedDevices(), backup.MutableSuspendedDevices());
+
+    transform(
+        GetAutomaticallyReplacedDevices(),
+        backup.MutableAutomaticallyReplacedDevices(),
+        [] (auto& x) {
+            NProto::TDiskRegistryStateBackup::TAutomaticallyReplacedDeviceInfo info;
+            info.SetDeviceId(x.DeviceId);
+            info.SetReplacementTs(x.ReplacementTs.MicroSeconds());
+
+            return info;
+        });
 
     auto config = GetConfig();
     config.SetLastDiskStateSeqNo(DiskStateSeqNo);
@@ -5225,6 +5252,21 @@ bool TDiskRegistryState::IsSuspendedDevice(const TDeviceId& id) const
 auto TDiskRegistryState::GetSuspendedDevices() const -> TVector<TDeviceId>
 {
     return DeviceList.GetSuspendedDevices();
+}
+
+void TDiskRegistryState::DeleteAutomaticallyReplacedDevices(
+    TDiskRegistryDatabase& db,
+    const TInstant until)
+{
+    auto it = AutomaticallyReplacedDevices.begin();
+    while (it != AutomaticallyReplacedDevices.end()
+            && it->ReplacementTs <= until)
+    {
+        db.DeleteAutomaticallyReplacedDevice(it->DeviceId);
+        AutomaticallyReplacedDeviceIds.erase(it->DeviceId);
+        ++it;
+    }
+    AutomaticallyReplacedDevices.erase(AutomaticallyReplacedDevices.begin(), it);
 }
 
 NProto::TError TDiskRegistryState::CreateDiskFromDevices(

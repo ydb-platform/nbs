@@ -71,6 +71,12 @@ struct TDirtyDevice
     TString DiskId;
 };
 
+struct TAutomaticallyReplacedDeviceInfo
+{
+    TString DeviceId;
+    TInstant ReplacementTs;
+};
+
 struct TDiskRegistryStateSnapshot
 {
     NProto::TDiskRegistryConfig Config;
@@ -88,6 +94,7 @@ struct TDiskRegistryStateSnapshot
     TVector<TString> ErrorNotifications;
     TVector<TString> OutdatedVolumeConfigs;
     TVector<TString> SuspendedDevices;
+    TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
 
     void Clear()
     {
@@ -106,6 +113,7 @@ struct TDiskRegistryStateSnapshot
         ErrorNotifications.clear();
         OutdatedVolumeConfigs.clear();
         SuspendedDevices.clear();
+        AutomaticallyReplacedDevices.clear();
     }
 };
 

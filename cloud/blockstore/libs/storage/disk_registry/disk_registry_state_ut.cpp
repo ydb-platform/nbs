@@ -4648,7 +4648,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "disk-1",
                 "uuid-2.1",
                 Now(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
@@ -4752,7 +4753,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "disk-2",
                 device,
                 Now(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
@@ -4773,7 +4775,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "disk-2",
                 device,
                 Now(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
@@ -4868,7 +4871,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "disk-1",
                 "uuid-1.2",
                 Now(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
@@ -4909,7 +4913,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "disk-1",
                 "uuid-1.2",
                 Now(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
 
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
@@ -9408,6 +9413,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT(db.ReadSuspendedDevices(suspendedDevices));
             UNIT_ASSERT_VALUES_EQUAL(0, suspendedDevices.size());
 
+            TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices;
+            UNIT_ASSERT(db.ReadAutomaticallyReplacedDevices(
+                automaticallyReplacedDevices));
+            UNIT_ASSERT_VALUES_EQUAL(0, automaticallyReplacedDevices.size());
+
             state.emplace(TDiskRegistryState {
                 CreateStorageConfig([] {
                     auto proto = CreateDefaultStorageConfigProto();
@@ -9427,7 +9437,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 std::move(disksToCleanup),
                 std::move(errorNotifications),
                 std::move(outdatedVolumeConfigs),
-                std::move(suspendedDevices)
+                std::move(suspendedDevices),
+                std::move(automaticallyReplacedDevices)
             });
         });
 

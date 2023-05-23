@@ -636,4 +636,57 @@ void TDiskRegistryDatabase::WriteLastBackupTs(TInstant time)
         .Update<TTable::Config>(config);
 }
 
+void TDiskRegistryDatabase::AddAutomaticallyReplacedDevice(
+    const TAutomaticallyReplacedDeviceInfo& deviceInfo)
+{
+    using TTable = TDiskRegistrySchema::AutomaticallyReplacedDevices;
+    Table<TTable>()
+        .Key(deviceInfo.DeviceId)
+        .Update<TTable::ReplacementTs>(deviceInfo.ReplacementTs.MicroSeconds());
+}
+
+bool TDiskRegistryDatabase::ReadAutomaticallyReplacedDevices(
+    TDeque<TAutomaticallyReplacedDeviceInfo>& deviceInfos)
+{
+    using TTable = TDiskRegistrySchema::AutomaticallyReplacedDevices;
+
+    auto it = Table<TTable>()
+        .Range()
+        .template Select<typename TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        deviceInfos.push_back({
+            it.GetValue<TTable::Id>(),
+            TInstant::MicroSeconds(it.GetValue<TTable::ReplacementTs>())
+        });
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    Sort(
+        deviceInfos.begin(),
+        deviceInfos.end(),
+        [] (const auto& l, const auto& r) {
+            return l.ReplacementTs < r.ReplacementTs;
+        }
+    );
+
+    return true;
+}
+
+void TDiskRegistryDatabase::DeleteAutomaticallyReplacedDevice(
+    const TString& deviceId)
+{
+    using TTable = TDiskRegistrySchema::AutomaticallyReplacedDevices;
+    Table<TTable>()
+        .Key(deviceId)
+        .Delete();
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

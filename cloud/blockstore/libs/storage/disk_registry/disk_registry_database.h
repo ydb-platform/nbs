@@ -109,6 +109,12 @@ public:
     bool ReadLastBackupTs(TInstant& time);
     void WriteLastBackupTs(TInstant time);
 
+    void AddAutomaticallyReplacedDevice(
+        const TAutomaticallyReplacedDeviceInfo& deviceInfo);
+    bool ReadAutomaticallyReplacedDevices(
+        TDeque<TAutomaticallyReplacedDeviceInfo>& deviceInfos);
+    void DeleteAutomaticallyReplacedDevice(const TString& deviceId);
+
 private:
     template <typename TTable>
     bool LoadConfigs(TVector<typename TTable::Config::Type>& configs);

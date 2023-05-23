@@ -63,12 +63,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         agentConfig.SetAgentId("Agent-2");
         snapshot.Agents.push_back(agentConfig);
 
-        TActorId EdgeActor = runtime->AllocateEdgeActor();
+        TActorId edgeActor = runtime->AllocateEdgeActor();
         auto validatorResponse = std::make_unique<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>(
                 MakeError(S_OK),
                 CreateRequestInfo(
-                    EdgeActor,
+                    edgeActor,
                     0,
                     MakeIntrusive<TCallContext>(),
                     {}),
@@ -87,6 +87,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL("Agent-1", backup.GetAgents()[0].GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL("Agent-2", backup.GetAgents()[1].GetAgentId());
         }
+
+        // TODO: test other fields - BrokenDisks, SuspendedDevices, etc.
     }
 }
 

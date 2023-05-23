@@ -14,45 +14,46 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(xxx, ...)                        \
-    xxx(InitSchema,                     __VA_ARGS__)                           \
-    xxx(LoadState,                      __VA_ARGS__)                           \
-    xxx(AddDisk,                        __VA_ARGS__)                           \
-    xxx(RemoveDisk,                     __VA_ARGS__)                           \
-    xxx(AddAgent,                       __VA_ARGS__)                           \
-    xxx(RemoveAgent,                    __VA_ARGS__)                           \
-    xxx(UpdateConfig,                   __VA_ARGS__)                           \
-    xxx(CleanupDevices,                 __VA_ARGS__)                           \
-    xxx(CreatePlacementGroup,           __VA_ARGS__)                           \
-    xxx(DestroyPlacementGroup,          __VA_ARGS__)                           \
-    xxx(AlterPlacementGroupMembership,  __VA_ARGS__)                           \
-    xxx(DeleteBrokenDisks,              __VA_ARGS__)                           \
-    xxx(AddNotifiedDisks,               __VA_ARGS__)                           \
-    xxx(DeleteNotifiedDisks,            __VA_ARGS__)                           \
-    xxx(UpdateAgentState,               __VA_ARGS__)                           \
-    xxx(UpdateDeviceState,              __VA_ARGS__)                           \
-    xxx(ReplaceDevice,                  __VA_ARGS__)                           \
-    xxx(UpdateCmsHostDeviceState,       __VA_ARGS__)                           \
-    xxx(UpdateCmsHostState,             __VA_ARGS__)                           \
-    xxx(DeleteDiskStateUpdates,         __VA_ARGS__)                           \
-    xxx(WritableState,                  __VA_ARGS__)                           \
-    xxx(StartMigration,                 __VA_ARGS__)                           \
-    xxx(StartForceMigration,            __VA_ARGS__)                           \
-    xxx(FinishMigration,                __VA_ARGS__)                           \
-    xxx(MarkDiskForCleanup,             __VA_ARGS__)                           \
-    xxx(BackupDiskRegistryState,        __VA_ARGS__)                           \
-    xxx(DeleteErrorNotifications,       __VA_ARGS__)                           \
-    xxx(SetUserId,                      __VA_ARGS__)                           \
-    xxx(FinishVolumeConfigUpdate,       __VA_ARGS__)                           \
-    xxx(UpdateDiskBlockSize,            __VA_ARGS__)                           \
-    xxx(UpdateDiskReplicaCount,         __VA_ARGS__)                           \
-    xxx(MarkReplacementDevice,          __VA_ARGS__)                           \
-    xxx(SuspendDevice,                  __VA_ARGS__)                           \
-    xxx(ResumeDevice,                   __VA_ARGS__)                           \
-    xxx(UpdatePlacementGroupSettings,   __VA_ARGS__)                           \
-    xxx(RestoreDiskRegistryState,       __VA_ARGS__)                           \
-    xxx(CreateDiskFromDevices,          __VA_ARGS__)                           \
-    xxx(ChangeDiskDevice,               __VA_ARGS__)                           \
-    xxx(RestoreDiskRegistryPart,        __VA_ARGS__)                           \
+    xxx(InitSchema,                         __VA_ARGS__)                       \
+    xxx(LoadState,                          __VA_ARGS__)                       \
+    xxx(AddDisk,                            __VA_ARGS__)                       \
+    xxx(RemoveDisk,                         __VA_ARGS__)                       \
+    xxx(AddAgent,                           __VA_ARGS__)                       \
+    xxx(RemoveAgent,                        __VA_ARGS__)                       \
+    xxx(UpdateConfig,                       __VA_ARGS__)                       \
+    xxx(CleanupDevices,                     __VA_ARGS__)                       \
+    xxx(CreatePlacementGroup,               __VA_ARGS__)                       \
+    xxx(DestroyPlacementGroup,              __VA_ARGS__)                       \
+    xxx(AlterPlacementGroupMembership,      __VA_ARGS__)                       \
+    xxx(DeleteBrokenDisks,                  __VA_ARGS__)                       \
+    xxx(AddNotifiedDisks,                   __VA_ARGS__)                       \
+    xxx(DeleteNotifiedDisks,                __VA_ARGS__)                       \
+    xxx(UpdateAgentState,                   __VA_ARGS__)                       \
+    xxx(UpdateDeviceState,                  __VA_ARGS__)                       \
+    xxx(ReplaceDevice,                      __VA_ARGS__)                       \
+    xxx(UpdateCmsHostDeviceState,           __VA_ARGS__)                       \
+    xxx(UpdateCmsHostState,                 __VA_ARGS__)                       \
+    xxx(DeleteDiskStateUpdates,             __VA_ARGS__)                       \
+    xxx(WritableState,                      __VA_ARGS__)                       \
+    xxx(StartMigration,                     __VA_ARGS__)                       \
+    xxx(StartForceMigration,                __VA_ARGS__)                       \
+    xxx(FinishMigration,                    __VA_ARGS__)                       \
+    xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
+    xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
+    xxx(DeleteErrorNotifications,           __VA_ARGS__)                       \
+    xxx(SetUserId,                          __VA_ARGS__)                       \
+    xxx(FinishVolumeConfigUpdate,           __VA_ARGS__)                       \
+    xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
+    xxx(UpdateDiskReplicaCount,             __VA_ARGS__)                       \
+    xxx(MarkReplacementDevice,              __VA_ARGS__)                       \
+    xxx(SuspendDevice,                      __VA_ARGS__)                       \
+    xxx(ResumeDevice,                       __VA_ARGS__)                       \
+    xxx(UpdatePlacementGroupSettings,       __VA_ARGS__)                       \
+    xxx(RestoreDiskRegistryState,           __VA_ARGS__)                       \
+    xxx(CreateDiskFromDevices,              __VA_ARGS__)                       \
+    xxx(ChangeDiskDevice,                   __VA_ARGS__)                       \
+    xxx(RestoreDiskRegistryPart,            __VA_ARGS__)                       \
+    xxx(ProcessAutomaticallyReplacedDevices,__VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1204,6 +1205,28 @@ struct TTxDiskRegistry
         void Clear()
         {
             Error.Clear();
+        }
+    };
+
+    //
+    // ProcessAutomaticallyReplacedDevices
+    //
+
+    struct TProcessAutomaticallyReplacedDevices
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TInstant Until;
+
+        explicit TProcessAutomaticallyReplacedDevices(
+                TRequestInfoPtr requestInfo,
+                TInstant until)
+            : RequestInfo(std::move(requestInfo))
+            , Until(until)
+        {}
+
+        void Clear()
+        {
+            // nothing to do
         }
     };
 };

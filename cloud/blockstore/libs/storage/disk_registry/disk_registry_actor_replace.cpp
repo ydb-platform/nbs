@@ -221,6 +221,7 @@ void TDiskRegistryActor::ExecuteReplaceDevice(
         args.DeviceId,
         args.Timestamp,
         "replaced",
+        true,   // manual
         &updated);
 
     Y_UNUSED(updated);

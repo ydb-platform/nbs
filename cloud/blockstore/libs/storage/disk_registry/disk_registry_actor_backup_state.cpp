@@ -101,7 +101,8 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         disksToCleanup,
         errorNotifications,
         outdatedVolumeConfigs,
-        suspendedDevices
+        suspendedDevices,
+        automaticallyReplacedDevices
     ] = args.Snapshot;
 
     auto copy = [] (auto& src, auto* dst) {
@@ -153,6 +154,14 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         dst.MutableState()->Swap(&src.State);
         dst.SetSeqNo(src.SeqNo);
     });
+
+    transform(
+        automaticallyReplacedDevices,
+        backup.MutableAutomaticallyReplacedDevices(),
+        [] (auto& src, auto& dst) {
+            dst.SetDeviceId(src.DeviceId);
+            dst.SetReplacementTs(src.ReplacementTs.MicroSeconds());
+        });
 
     backup.MutableConfig()->Swap(&config);
     backup.MutableConfig()->SetLastDiskStateSeqNo(lastDiskStateSeqNo);

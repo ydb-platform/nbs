@@ -1580,6 +1580,39 @@ void TDiskRegistryActor::RenderSuspendedDeviceList(IOutputStream& out) const
     }
 }
 
+void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
+    IOutputStream& out) const
+{
+    const auto& deviceInfos = State->GetAutomaticallyReplacedDevices();
+    if (deviceInfos.empty()) {
+        return;
+    }
+
+    HTML(out) {
+        TAG(TH3) { out << "Automatically replaced devices"; }
+
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "DeviceId"; }
+                    TABLEH() { out << "ReplacementTs"; }
+                }
+
+                for (const auto& deviceInfo: deviceInfos) {
+                    TABLER() {
+                        TABLED() {
+                            DumpDeviceLink(out, TabletID(), deviceInfo.DeviceId);
+                        }
+                        TABLED() {
+                            out << deviceInfo.ReplacementTs;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 void TDiskRegistryActor::RenderHtmlInfo(TInstant now, IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
@@ -1605,6 +1638,8 @@ void TDiskRegistryActor::RenderHtmlInfo(TInstant now, IOutputStream& out) const
             RenderBrokenDeviceList(out, 30);
 
             RenderSuspendedDeviceList(out);
+
+            RenderAutomaticallyReplacedDeviceList(out);
         } else {
             TAG(TH3) { out << "Initialization in progress..."; }
         }

@@ -80,6 +80,7 @@ private:
     bool DisksNotificationInProgress = false;
     bool UsersNotificationInProgress = false;
     bool DiskStatesPublicationInProgress = false;
+    bool AutomaticallyReplacedDevicesDeletionInProgress = false;
     bool SecureEraseInProgress = false;
     bool StartMigrationInProgress = false;
 
@@ -152,7 +153,7 @@ private:
     void BeforeDie(const NActors::TActorContext& ctx);
 
     void RegisterCounters(const NActors::TActorContext& ctx);
-    void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
+    void ScheduleWakeup(const NActors::TActorContext& ctx);
     void UpdateCounters(const NActors::TActorContext& ctx);
 
     void UpdateActorStats(const NActors::TActorContext& ctx);
@@ -219,6 +220,8 @@ private:
         TVector<TRequestInfoPtr>& requestInfos,
         NProto::TError error);
 
+    void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
+
     void RenderHtmlInfo(TInstant now, IOutputStream& out) const;
     void RenderState(IOutputStream& out) const;
     void RenderDisks(IOutputStream& out, ui32 limit) const;
@@ -233,6 +236,7 @@ private:
     void RenderConfig(IOutputStream& out, ui32 limit) const;
     void RenderDirtyDeviceList(IOutputStream& out) const;
     void RenderSuspendedDeviceList(IOutputStream& out) const;
+    void RenderAutomaticallyReplacedDeviceList(IOutputStream& out) const;
     template <typename TDevices>
     void RenderDevicesWithDetails(
         IOutputStream& out,
@@ -272,6 +276,10 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWakeupReadOnly(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 

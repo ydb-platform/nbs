@@ -194,6 +194,8 @@ private:
     TVector<TBrokenDiskInfo> BrokenDisks;
     THashMap<TString, ui64> DisksToNotify;
     ui64 DisksToNotifySeqNo = 1;
+    TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
+    THashSet<TDeviceId> AutomaticallyReplacedDeviceIds;
 
     NProto::TDiskRegistryConfig CurrentConfig;
 
@@ -244,7 +246,8 @@ public:
         TVector<TString> disksToCleanup,
         TVector<TDiskId> errorNotifications,
         TVector<TString> outdatedVolumeConfigs,
-        TVector<TDeviceId> suspendedDevices);
+        TVector<TDeviceId> suspendedDevices,
+        TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices);
 
 public:
     NProto::TError RegisterAgent(
@@ -466,6 +469,7 @@ public:
         const TString& deviceId,
         TInstant timestamp,
         TString message,
+        bool manual,
         bool* diskStateUpdated);
 
     TString GetAgentId(TNodeId nodeId) const;
@@ -577,6 +581,20 @@ public:
         const TDeviceId& id);
     bool IsSuspendedDevice(const TDeviceId& id) const;
     TVector<TDeviceId> GetSuspendedDevices() const;
+
+    const TDeque<TAutomaticallyReplacedDeviceInfo>& GetAutomaticallyReplacedDevices() const
+    {
+        return AutomaticallyReplacedDevices;
+    }
+
+    bool IsAutomaticallyReplaced(const TDeviceId& deviceId) const
+    {
+        return AutomaticallyReplacedDeviceIds.contains(deviceId);
+    }
+
+    void DeleteAutomaticallyReplacedDevices(
+        TDiskRegistryDatabase& db,
+        const TInstant until);
 
     NProto::TError CreateDiskFromDevices(
         TInstant now,

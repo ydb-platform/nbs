@@ -296,7 +296,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 "disk-1",
                 "uuid-1.2",
                 TInstant::Zero(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated));
         });
 
@@ -315,7 +316,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 "disk-1",
                 "uuid-1.1",
                 TInstant::Zero(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
         });
@@ -368,7 +370,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 "disk-1",
                 "uuid-1.1",
                 TInstant::Zero(),
-                "", // message
+                "",     // message
+                true,   // manual
                 &updated);
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
         });

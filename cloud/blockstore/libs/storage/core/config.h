@@ -299,6 +299,8 @@ public:
 
     TDuration GetBrokenDiskDestructionDelay() const;
 
+    TDuration GetAutomaticallyReplacedDevicesFreezePeriod() const;
+
     TDuration GetVolumeHistoryDuration() const;
     ui32 GetVolumeHistoryCacheSize() const;
 

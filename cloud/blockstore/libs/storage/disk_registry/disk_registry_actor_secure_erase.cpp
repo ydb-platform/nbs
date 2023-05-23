@@ -318,10 +318,22 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             return true;
         }
 
+        if (State->IsAutomaticallyReplaced(d.GetDeviceUUID())) {
+            LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                "[%lu] Skip SecureErase for device '%s'."
+                " Device was automatically replaced recently.",
+                TabletID(),
+                d.GetDeviceUUID().c_str(),
+                d.GetNodeId());
+
+            return true;
+        }
+
         auto* agent = State->FindAgent(d.GetNodeId());
         if (!agent) {
             LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'. Agent for node id %d not found",
+                "[%lu] Skip SecureErase for device '%s'."
+                " Agent for node id %d not found",
                 TabletID(),
                 d.GetDeviceUUID().c_str(),
                 d.GetNodeId());
@@ -331,7 +343,8 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 
         if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
             LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'. Agent is unavailable",
+                "[%lu] Skip SecureErase for device '%s'."
+                " Agent is unavailable",
                 TabletID(),
                 d.GetDeviceUUID().c_str());
 

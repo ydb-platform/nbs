@@ -57,7 +57,8 @@ bool NormalizeLoadState(
         disksToCleanup,
         errorNotifications,
         outdatedVolumeConfigs,
-        suspendedDevices
+        suspendedDevices,
+        automaticallyReplacedDevices
     ] = state;
 
     Y_UNUSED(oldAgents);
@@ -147,6 +148,12 @@ bool NormalizeLoadState(
         suspendedDevices,
         [] (const auto& device) {
             return device;
+        });
+
+    result &= sortAndTestUnique(
+        automaticallyReplacedDevices,
+        [] (const auto& device) {
+            return device.DeviceId;
         });
 
     return result;

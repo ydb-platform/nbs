@@ -231,6 +231,21 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<Id>;
     };
 
+    struct AutomaticallyReplacedDevices
+        : public TTableSchema<15>
+    {
+        struct Id
+            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {};
+
+        struct ReplacementTs
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {};
+
+        using TKey = TableKey<Id>;
+        using TColumns = TableColumns<Id, ReplacementTs>;
+    };
+
     /* deprecated
     struct NonreplMetricsCache
         : public TTableSchema<15>
@@ -269,7 +284,8 @@ struct TDiskRegistrySchema
         ErrorNotifications,
         OutdatedVolumeConfigs,
         AgentById,
-        SuspendedDevices
+        SuspendedDevices,
+        AutomaticallyReplacedDevices
     >;
 };
 

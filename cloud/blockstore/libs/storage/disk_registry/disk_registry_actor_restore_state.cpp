@@ -52,7 +52,8 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         disksToCleanup,
         errorNotifications,
         outdatedVolumeConfigs,
-        suspendedDevices
+        suspendedDevices,
+        automaticallyReplacedDevices
     ] = newLoadState;
 
     if (backup.DirtyDevicesSize()) {
@@ -96,6 +97,13 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
                 dst.State.Swap(src.MutableState());
             }
             dst.SeqNo = src.GetSeqNo();
+        });
+    transform(
+        *backup.MutableAutomaticallyReplacedDevices(),
+        automaticallyReplacedDevices,
+        [] (auto& src, auto& dst) {
+            dst.DeviceId = src.GetDeviceId();
+            dst.ReplacementTs = TInstant::MicroSeconds(src.GetReplacementTs());
         });
 
     if (backup.HasConfig()) {
@@ -371,6 +379,25 @@ void RestoreSuspendedDevices(
     }
 }
 
+void RestoreAutomaticallyReplacedDevices(
+    TDeque<TAutomaticallyReplacedDeviceInfo> newAutomaticallyReplacedDevices,
+    TDeque<TAutomaticallyReplacedDeviceInfo> currentAutomaticallyReplacedDevices,
+    TOperations& operations)
+{
+    for (auto&& device: currentAutomaticallyReplacedDevices) {
+        operations.push(
+            [device = std::move(device)](TDiskRegistryDatabase& db) {
+                db.DeleteAutomaticallyReplacedDevice(device.DeviceId);
+            });
+    }
+    for (auto&& device: newAutomaticallyReplacedDevices) {
+        operations.push(
+            [device = std::move(device)](TDiskRegistryDatabase& db) {
+                db.AddAutomaticallyReplacedDevice(device);
+            });
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -475,7 +502,8 @@ void TDiskRegistryActor::ExecuteRestoreDiskRegistryState(
         args.NewState.DisksToCleanup,
         args.NewState.ErrorNotifications,
         args.NewState.OutdatedVolumeConfigs,
-        args.NewState.SuspendedDevices
+        args.NewState.SuspendedDevices,
+        args.NewState.AutomaticallyReplacedDevices
     ));
 }
 
@@ -500,7 +528,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newDisksToCleanup,
         newErrorNotifications,
         newOutdatedVolumeConfigs,
-        newSuspendedDevices
+        newSuspendedDevices,
+        newAutomaticallyReplacedDevices
     ] = std::move(args.NewState);
 
     auto&& [
@@ -518,7 +547,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         currentDisksToCleanup,
         currentErrorNotifications,
         currentOutdatedVolumeConfigs,
-        currentSuspendedDevices
+        currentSuspendedDevices,
+        currentAutomaticallyReplacedDevices
     ] = std::move(args.CurrentState);
 
     RestoreConfig(
@@ -580,6 +610,10 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
     RestoreSuspendedDevices(
         std::move(newSuspendedDevices),
         std::move(currentSuspendedDevices),
+        operations);
+    RestoreAutomaticallyReplacedDevices(
+        std::move(newAutomaticallyReplacedDevices),
+        std::move(currentAutomaticallyReplacedDevices),
         operations);
 
     auto request = std::make_unique<

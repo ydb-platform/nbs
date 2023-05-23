@@ -866,6 +866,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
             NProto::EDiskState_Name(replicaInfo.State));
 
+        const auto changeStateTs = Now();
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
@@ -873,7 +875,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 db,
                 agentConfig1.GetAgentId(),
                 NProto::AGENT_STATE_UNAVAILABLE,
-                Now(),
+                changeStateTs,
                 "unreachable",
                 affectedDisks);
 
@@ -937,6 +939,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         ASSERT_VECTORS_EQUAL(
             TVector<TString>{"uuid-10"},
             diskInfo.DeviceReplacementIds);
+
+        auto dirtyDevices = state.GetDirtyDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", dirtyDevices[0].GetDeviceUUID());
+
+        const auto& device = state.GetDevice("uuid-1");
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ONLINE,
+            device.GetState());
+
+        auto replaced = state.GetAutomaticallyReplacedDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, replaced.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", replaced[0].DeviceId);
+        UNIT_ASSERT_VALUES_EQUAL(changeStateTs, replaced[0].ReplacementTs);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            state.DeleteAutomaticallyReplacedDevices(db, changeStateTs);
+            replaced = state.GetAutomaticallyReplacedDevices();
+            UNIT_ASSERT_VALUES_EQUAL(0, replaced.size());
+        });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1095,6 +1117,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             // mirrored disk replicas should not delay host/device maintenance
+            // FIXME NBS-4169
 
             TString affectedDisk;
             TDuration timeout;
@@ -1145,6 +1168,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
             NProto::EDiskState_Name(replicaInfo.State));
 
+        const auto changeStateTs = Now();
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TString affectedDisk;
             TDuration timeout;
@@ -1152,7 +1177,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 db,
                 "uuid-4",
                 NProto::DEVICE_STATE_ERROR,
-                Now(),
+                changeStateTs,
                 "io error",
                 affectedDisk);
 
@@ -1194,6 +1219,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
+
+        auto dirtyDevices = state.GetDirtyDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-4", dirtyDevices[0].GetDeviceUUID());
+
+        const auto& device = state.GetDevice("uuid-4");
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ERROR,
+            device.GetState());
+
+        auto replaced = state.GetAutomaticallyReplacedDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, replaced.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-4", replaced[0].DeviceId);
+        UNIT_ASSERT_VALUES_EQUAL(changeStateTs, replaced[0].ReplacementTs);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            state.DeleteAutomaticallyReplacedDevices(db, changeStateTs);
+            replaced = state.GetAutomaticallyReplacedDevices();
+            UNIT_ASSERT_VALUES_EQUAL(0, replaced.size());
+        });
 
         diskInfo = {};
         error = state.GetDiskInfo("disk-1", diskInfo);
@@ -1525,6 +1570,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             "|uuid-3|uuid-6*|uuid-9|",
             rt);
     }
+
+    // TODO: test autoreplacement of many devices and their proper cleanup
 }
 
 bool operator==(const TDiskStateUpdate& l, const TDiskStateUpdate& r)

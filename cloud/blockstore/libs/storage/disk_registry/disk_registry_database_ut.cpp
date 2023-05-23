@@ -581,6 +581,61 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL("disk-2", diskIds[0]);
         });
     }
+
+    Y_UNIT_TEST(ShouldStoreAutomaticallyReplacedDevices)
+    {
+        TTestExecutor executor;
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            db.AddAutomaticallyReplacedDevice(
+                {"device-1", TInstant::Seconds(100)});
+            db.AddAutomaticallyReplacedDevice(
+                {"device-2", TInstant::Seconds(200)});
+            db.AddAutomaticallyReplacedDevice(
+                {"device-0", TInstant::Seconds(300)});
+        });
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) mutable {
+            TDeque<TAutomaticallyReplacedDeviceInfo> deviceInfos;
+            UNIT_ASSERT(db.ReadAutomaticallyReplacedDevices(deviceInfos));
+            UNIT_ASSERT_VALUES_EQUAL(3, deviceInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL("device-1", deviceInfos[0].DeviceId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(100),
+                deviceInfos[0].ReplacementTs
+            );
+            UNIT_ASSERT_VALUES_EQUAL("device-2", deviceInfos[1].DeviceId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(200),
+                deviceInfos[1].ReplacementTs
+            );
+            UNIT_ASSERT_VALUES_EQUAL("device-0", deviceInfos[2].DeviceId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(300),
+                deviceInfos[2].ReplacementTs
+            );
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            db.DeleteAutomaticallyReplacedDevice("device-1");
+            db.DeleteAutomaticallyReplacedDevice("device-0");
+        });
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) mutable {
+            TDeque<TAutomaticallyReplacedDeviceInfo> deviceInfos;
+            UNIT_ASSERT(db.ReadAutomaticallyReplacedDevices(deviceInfos));
+            UNIT_ASSERT_VALUES_EQUAL(1, deviceInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL("device-2", deviceInfos[0].DeviceId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(200),
+                deviceInfos[0].ReplacementTs
+            );
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

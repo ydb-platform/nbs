@@ -227,6 +227,7 @@ struct TDiskRegistryStateBuilder
     TVector<TString> DisksToCleanup;
     TVector<TString> OutdatedVolumeConfigs;
     TVector<TString> SuspendedDevices;
+    TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
 
     TDiskRegistryState Build();
 

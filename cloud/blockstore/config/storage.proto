@@ -811,4 +811,8 @@ message TStorageServiceConfig
 
     // Max diff percentage for blob patching
     optional uint32 MaxDiffPercentageForBlobPatching = 306;
+
+    // DiskRegistry allows usage of automatically replaced devices after this
+    // period of time.
+    optional uint32 AutomaticallyReplacedDevicesFreezePeriod = 307; // in ms
 }

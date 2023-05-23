@@ -48,6 +48,7 @@ bool TDiskRegistryActor::LoadState(
         db.ReadDisksToCleanup(args.DisksToCleanup),
         db.ReadOutdatedVolumeConfigs(args.OutdatedVolumeConfigs),
         db.ReadSuspendedDevices(args.SuspendedDevices),
+        db.ReadAutomaticallyReplacedDevices(args.AutomaticallyReplacedDevices),
     });
 }
 
@@ -141,7 +142,8 @@ void TDiskRegistryActor::CompleteLoadState(
         std::move(args.Snapshot.DisksToCleanup),
         std::move(args.Snapshot.ErrorNotifications),
         std::move(args.Snapshot.OutdatedVolumeConfigs),
-        std::move(args.Snapshot.SuspendedDevices)));
+        std::move(args.Snapshot.SuspendedDevices),
+        std::move(args.Snapshot.AutomaticallyReplacedDevices)));
 
     SecureErase(ctx);
 
@@ -160,6 +162,8 @@ void TDiskRegistryActor::CompleteLoadState(
     StartMigration(ctx);
 
     UpdateVolumeConfigs(ctx);
+
+    ProcessAutomaticallyReplacedDevices(ctx);
 
     ScheduleMakeBackup(ctx, args.LastBackupTime);
 }

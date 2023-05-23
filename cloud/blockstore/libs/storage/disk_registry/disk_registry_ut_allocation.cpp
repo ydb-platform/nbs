@@ -1768,6 +1768,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 0,
                 msg.GetReplicas(0).GetDevices(0).GetNodeId());
         }
+
+        // TODO: check that automatically replaced devices don't get erased
+        // TODO: check that they are cleaned up after some time
     }
 
     Y_UNIT_TEST(ShouldDeallocateDiskSync)

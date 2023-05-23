@@ -211,7 +211,7 @@ void TDiskRegistryActor::RegisterCounters(const TActorContext& ctx)
         // (you can always turn on per-tablet statistics on monitoring page)
         // TabletCountersAddTablet(TabletID(), ctx);
 
-        ScheduleCountersUpdate(ctx);
+        ScheduleWakeup(ctx);
     }
 
     if (auto counters = AppData(ctx)->Counters) {
@@ -227,7 +227,7 @@ void TDiskRegistryActor::RegisterCounters(const TActorContext& ctx)
     }
 }
 
-void TDiskRegistryActor::ScheduleCountersUpdate(const TActorContext& ctx)
+void TDiskRegistryActor::ScheduleWakeup(const TActorContext& ctx)
 {
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
 }
@@ -285,10 +285,18 @@ void TDiskRegistryActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
+    ProcessAutomaticallyReplacedDevices(ctx);
+    HandleWakeupReadOnly(ev, ctx);
+}
+
+void TDiskRegistryActor::HandleWakeupReadOnly(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
     Y_UNUSED(ev);
 
     UpdateCounters(ctx);
-    ScheduleCountersUpdate(ctx);
+    ScheduleWakeup(ctx);
 }
 
 bool TDiskRegistryActor::HandleRequests(STFUNC_SIG)
@@ -609,7 +617,7 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvents::TEvWakeup, HandleWakeupReadOnly);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
