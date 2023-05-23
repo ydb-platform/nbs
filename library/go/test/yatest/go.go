@@ -1,7 +1,6 @@
 package yatest
 
 import (
-	"io/ioutil"
 	"os"
 )
 
@@ -14,7 +13,7 @@ func PrepareGOCACHE() error {
 }
 
 func preparePath(name string) error {
-	p, err := ioutil.TempDir(WorkPath(""), "name")
+	p, err := os.MkdirTemp(WorkPath(""), "name")
 	if err != nil {
 		return err
 	}

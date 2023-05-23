@@ -3,7 +3,6 @@ package canon
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,7 +70,7 @@ func saveObject(t *testing.T, item interface{}) {
 		t.Fatalf("failed to create canon directory: %v", err)
 	}
 
-	if err = ioutil.WriteFile(pathToCanonFile, jsonData, 0666); err != nil {
+	if err = os.WriteFile(pathToCanonFile, jsonData, 0666); err != nil {
 		t.Fatalf("failed to write canon data to file: %v", err)
 	}
 }
@@ -87,7 +86,7 @@ func getCanonDestination(t *testing.T, canonFilename string) string {
 		t.Fatalf("file: %s does not exists", canonFilename)
 	}
 
-	tmpDir, err := ioutil.TempDir(yatest.BuildPath(""), "canon_tmp")
+	tmpDir, err := os.MkdirTemp(yatest.BuildPath(""), "canon_tmp")
 	if err != nil {
 		t.Fatalf("failed to create tmp directory: %v", err)
 	}

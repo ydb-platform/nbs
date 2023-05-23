@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -63,7 +62,7 @@ func verifyContext() {
 }
 
 func initTestContext() {
-	data, err := ioutil.ReadFile(getenv("YA_TEST_CONTEXT_FILE"))
+	data, err := os.ReadFile(getenv("YA_TEST_CONTEXT_FILE"))
 	if err != nil {
 		panic(err)
 	}
