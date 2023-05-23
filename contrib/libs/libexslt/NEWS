@@ -1,5 +1,112 @@
 NEWS file for libxslt
 
+v1.1.38: not yet released
+
+### Major changes
+
+About 40 memory errors in code paths handling malloc failures have been fixed.
+While these issues shouldn't impact security, this improves robustness under
+memory pressure.
+
+The result of generate-id() is now deterministic across multiple
+transformations fixing many issues with reproducible builds.
+
+Most of the test suite has been ported to C.
+
+### Bug fixes
+
+- Fix memory errors in code handling malloc failures
+- imports: Fix import/include cycle check
+- xsltlocale: Fix xsltNewLocale on macOS
+- Make xsl:sort thread-safe
+- Make generate-id() deterministic
+
+### Improvements
+
+- Stop using xmlStringCurrentChar
+- attributes.h needs to include xsltInternals.h (David Kilzer)
+- transform: Avoid null deref on documents without root node
+- numbers: Fix floating point overflows
+- date: Fix integer overflow in exsltDateFormatDuration
+- numbers: Fix harmless integer sign change
+- date: Add more overflow checks to formatting code (David Kilzer)
+- date: Fix rounding to make Windows tests pass
+- date: Rewrite duration and seconds formatting
+- xsltlocale: Make API platform-independent
+- Also accept application/xslt+xml media type in stylesheet PIs
+- warnings: Fix strict prototypes warning
+- xsltEvalUserParams() and xsltQuoteUserParams() are susceptible to integer
+  overflow when iterating through const char** array (David Kilzer)
+- xslt: Return NULL stylesheet on attribute set errors
+- xsltproc: Fix unused variable warning
+- xslt: Remove declaration for old libxml2
+- Fix various compiler warnings
+- Fix compiler warnings in xsltGenerateIdFunction
+- Disable Python bindings for debugger
+- Don't declare disabled functions
+- Migrate from PyEval_ to PyObject_
+
+### Build system
+
+- cmake: Use version script
+- autotools: Link with --undefined-version
+- win32: Remove broken libxslt.def.src
+- Stop updating version script
+- add support for Windows time functions (Rosen Penev)
+- cmake: link against libm on UNIX systems (Alex Richardson)
+- build: Add a distutils-based build system for the Python bits (Chun-wei Fan)
+- CMake: Relax check for Python 3.x support on Windows (Chun-wei Fan)
+- python/types.c: Fix building against older libxml2 (Chun-wei Fan)
+- python/libxslt.c: Replace ssize_t with Py_ssize_t (Chun-wei Fan)
+- cmake: Fix build with libxslt and libxml2 as subprojects
+- cmake: Set SOVERSION
+- cmake: Extract version from configure.ac
+- Fix classic Windows configuration for libexslt (Christoph M. Becker)
+- autotools: Fix Python tests in VPATH builds
+- autotools: Disable parallel Python build
+- autotools: Use AM_CFLAGS consistently
+- autotools: Link with -no-undefined
+- cmake: Fix Python installation
+- cmake: Don't check for Python 2
+- python: Don't output missing generators during build
+- python: Create .pyd on Windows
+- python: Fix build on Windows
+- python: Support Python 3 on Windows
+- cmake: Enable GCC compiler warnings
+- Update GCC compiler warnings
+
+### Tests
+
+- python: Remove temp file when running tests/basic.py
+- fuzz: Improve fuzzers
+- xsltlocale: Add test
+- gitlab-ci: Reenable MSan and LeakSanitizer
+- tests: Remove unused files
+- tests: Enable runtest.exe under MSVC
+- tests: Fix LIBXSLT_PLUGINS_PATH for multi-config CMake
+- tests: Remove unused leak statistics
+- tests: Skip some tests if iconv/ICU is disabled
+- gitlab-ci: Run Autotools tests with out-of-tree (VPATH) builds
+- tests: Port most of the test suite to C
+- tests: Fix out-of-tree Python tests
+- tests: Fix source directory for reports tests
+- gitlab-ci: Consolidate CMake test scripts
+- gitlab-ci: Only install cmake MinGW package if needed
+- gitlab-ci: Install 7-Zip using the .msi
+- gitlab-ci: Add CI job for MinGW/Autotools
+- gitlab-ci: Disable MSan for now
+- Run CI tests with -fsanitize=integer
+- Fix EXSLT functions tests when libxml2 is built --without-debug
+- Make CI tests exit on failure
+- Run Python 3 CI job with minimal configuration
+- Set library path when running Python tests
+
+### Documentation
+
+- doc: Remove unused cross-reference data
+- doc: Update apibuild.py
+
+
 v1.1.37: Aug 29 2022
 
 ### Improvements
