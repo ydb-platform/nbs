@@ -1305,8 +1305,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             Device("dev-3", "uuid-9", "rack-3", 10_GB),
         });
 
+        const auto replaceFreezePeriod = TDuration::Days(1);
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetAutomaticallyReplacedDevicesFreezePeriod(
+            replaceFreezePeriod.MilliSeconds());
+
         auto runtime = TTestRuntimeBuilder()
             .WithAgents({ agent1, agent2, agent3 })
+            .With(std::move(config))
             .Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
@@ -1535,9 +1542,33 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 msg.GetReplicas(0).GetDevices(2).GetBlocksCount());
         }
 
+        TVector<NProto::TDeviceConfig> dirtyDevices;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() ==
+                        TEvDiskRegistryPrivate::EvSecureEraseRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+                    dirtyDevices.insert(
+                        dirtyDevices.end(),
+                        msg->DirtyDevices.begin(),
+                        msg->DirtyDevices.end());
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        // triggering device replacements
         diskRegistry.ChangeAgentState(
             "agent-1",
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+        // changing state back to online to allow erasing for this agent's devices
+        diskRegistry.ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_ONLINE);
 
         {
             auto response = diskRegistry.AllocateDisk(
@@ -1769,8 +1800,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 msg.GetReplicas(0).GetDevices(0).GetNodeId());
         }
 
-        // TODO: check that automatically replaced devices don't get erased
-        // TODO: check that they are cleaned up after some time
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices.size());
+
+        runtime->AdvanceCurrentTime(replaceFreezePeriod);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        // replaced devices should be deleted from AutomaticallyReplacedDevices
+        // and thus they are allowed to be erased now
+
+        UNIT_ASSERT_VALUES_EQUAL(3, dirtyDevices.size());
+        SortBy(dirtyDevices, [] (const auto& d) {
+            return d.GetDeviceUUID();
+        });
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", dirtyDevices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-2", dirtyDevices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-3", dirtyDevices[2].GetDeviceUUID());
     }
 
     Y_UNIT_TEST(ShouldDeallocateDiskSync)

@@ -592,7 +592,7 @@ public:
         return AutomaticallyReplacedDeviceIds.contains(deviceId);
     }
 
-    void DeleteAutomaticallyReplacedDevices(
+    ui32 DeleteAutomaticallyReplacedDevices(
         TDiskRegistryDatabase& db,
         const TInstant until);
 

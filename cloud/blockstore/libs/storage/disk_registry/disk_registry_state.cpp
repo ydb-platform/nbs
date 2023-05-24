@@ -3794,6 +3794,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
             continue;
         }
 
+        bool isAffected = true;
+
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
             if (disk.MigrationSource2Target.contains(deviceId)) {
                 // migration already started
@@ -3838,8 +3840,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
                         false,  // manual
                         &updated);
 
-                    if (updated) {
-                        affectedDisks.push_back(diskId);
+                    if (!updated) {
+                        isAffected = false;
                     }
                 } else {
                     ReportMirroredDiskDeviceReplacementForbidden();
@@ -3849,7 +3851,9 @@ void TDiskRegistryState::ApplyAgentStateChange(
             CancelDeviceMigration(db, diskId, disk, deviceId);
         }
 
-        diskIds.emplace(std::move(diskId));
+        if (isAffected) {
+            diskIds.emplace(std::move(diskId));
+        }
     }
 
     for (auto& id: diskIds) {
@@ -5254,19 +5258,23 @@ auto TDiskRegistryState::GetSuspendedDevices() const -> TVector<TDeviceId>
     return DeviceList.GetSuspendedDevices();
 }
 
-void TDiskRegistryState::DeleteAutomaticallyReplacedDevices(
+ui32 TDiskRegistryState::DeleteAutomaticallyReplacedDevices(
     TDiskRegistryDatabase& db,
     const TInstant until)
 {
     auto it = AutomaticallyReplacedDevices.begin();
+    ui32 cnt = 0;
     while (it != AutomaticallyReplacedDevices.end()
             && it->ReplacementTs <= until)
     {
         db.DeleteAutomaticallyReplacedDevice(it->DeviceId);
         AutomaticallyReplacedDeviceIds.erase(it->DeviceId);
         ++it;
+        ++cnt;
     }
     AutomaticallyReplacedDevices.erase(AutomaticallyReplacedDevices.begin(), it);
+
+    return cnt;
 }
 
 NProto::TError TDiskRegistryState::CreateDiskFromDevices(

@@ -22,6 +22,11 @@ void TDiskRegistryActor::ProcessAutomaticallyReplacedDevices(
     }
 
     const auto until = ctx.Now() - delay;
+    AutomaticallyReplacedDevicesDeletionInProgress = true;
+
+    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "Processing AutomaticallyReplacedDevices, count: "
+        << State->GetAutomaticallyReplacedDevices().size());
 
     ExecuteTx<TProcessAutomaticallyReplacedDevices>(
         ctx,
@@ -52,17 +57,18 @@ void TDiskRegistryActor::ExecuteProcessAutomaticallyReplacedDevices(
     Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
-    State->DeleteAutomaticallyReplacedDevices(db, args.Until);
+    args.ProcessedCount =
+        State->DeleteAutomaticallyReplacedDevices(db, args.Until);
 }
 
 void TDiskRegistryActor::CompleteProcessAutomaticallyReplacedDevices(
     const TActorContext& ctx,
     TTxDiskRegistry::TProcessAutomaticallyReplacedDevices& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(args);
-
     AutomaticallyReplacedDevicesDeletionInProgress = false;
+    if (args.ProcessedCount) {
+        SecureErase(ctx);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

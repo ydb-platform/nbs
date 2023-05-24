@@ -1216,6 +1216,7 @@ struct TTxDiskRegistry
     {
         const TRequestInfoPtr RequestInfo;
         const TInstant Until;
+        ui32 ProcessedCount = 0;
 
         explicit TProcessAutomaticallyReplacedDevices(
                 TRequestInfoPtr requestInfo,
@@ -1226,7 +1227,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            // nothing to do
+            ProcessedCount = 0;
         }
     };
 };
