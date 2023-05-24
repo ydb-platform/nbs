@@ -96,12 +96,12 @@ func (pm *PortManager) acquirePort(port int) error {
 	lockPath := filepath.Join(pm.portSyncDir, fmt.Sprint(port))
 	file, err := os.Create(lockPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("create lockfile: %w", err)
 	}
 
 	if err := tryLockFile(file); err != nil {
 		_ = file.Close()
-		return err
+		return fmt.Errorf("try lock file: %w", err)
 	}
 
 	pm.lockedPorts[port] = file
