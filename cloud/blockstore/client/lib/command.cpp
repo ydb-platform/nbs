@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
+#include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -520,13 +521,9 @@ void TCommand::Init()
                 std::move(ClientEndpoint),
                 CreateThrottler(
                     CreateClientThrottlerLogger(RequestStats, Logging),
-                    CreateClientThrottlerMetrics(
+                    CreateThrottlerMetrics(
                         Timer,
                         rootGroup,
-                        Logging,
-                        ClientConfig->GetInstanceId().empty()
-                            ? ClientConfig->GetClientId()
-                            : ClientConfig->GetInstanceId(),
                         "client"),
                     CreateClientThrottlerPolicy(performanceProfile),
                     CreateClientThrottlerTracker(),

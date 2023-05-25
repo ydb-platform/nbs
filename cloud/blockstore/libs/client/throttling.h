@@ -45,13 +45,6 @@ bool PreparePerformanceProfile(
 IThrottlerPolicyPtr CreateClientThrottlerPolicy(
     NProto::TClientPerformanceProfile performanceProfile);
 
-IThrottlerMetricsPtr CreateClientThrottlerMetrics(
-    ITimerPtr timer,
-    NMonitoring::TDynamicCountersPtr rootGroup,
-    ILoggingServicePtr logging,
-    const TString& clientId,
-    const TString& componentLabel);
-
 IThrottlerTrackerPtr CreateClientThrottlerTracker();
 
 IThrottlerLoggerPtr CreateClientThrottlerLogger(

@@ -438,21 +438,21 @@ private:
     void FinalizeRequest(
         const TMountVolumeMethod::TResponse& response,
         const TString& diskId,
-        const TString& clientId)
+        const TString& instanceId)
     {
         if (response.HasVolume()) {
-            ThrottlerMetrics->Register(diskId, clientId);
+            ThrottlerMetrics->Register(diskId, instanceId);
         }
     }
 
     void FinalizeRequest(
         const TUnmountVolumeMethod::TResponse& response,
         const TString& diskId,
-        const TString& clientId)
+        const TString& instanceId)
     {
         Y_UNUSED(response);
 
-        ThrottlerMetrics->Unregister(diskId, clientId);
+        ThrottlerMetrics->Unregister(diskId, instanceId);
     }
 
     template <typename T>

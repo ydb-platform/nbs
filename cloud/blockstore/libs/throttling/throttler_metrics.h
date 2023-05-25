@@ -25,5 +25,9 @@ struct IThrottlerMetrics
 ////////////////////////////////////////////////////////////////////////////////
 
 IThrottlerMetricsPtr CreateThrottlerMetricsStub();
+IThrottlerMetricsPtr CreateThrottlerMetrics(
+    ITimerPtr timer,
+    NMonitoring::TDynamicCountersPtr rootGroup,
+    const TString& componentLabel);
 
 }   // namespace NCloud::NBlockStore

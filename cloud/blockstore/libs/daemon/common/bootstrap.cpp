@@ -55,7 +55,6 @@
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/libs/service_local/storage_spdk.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_logger.h>
-#include <cloud/blockstore/libs/service_throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
@@ -68,8 +67,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
-#include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
+#include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/blockstore/libs/vhost/vhost.h>

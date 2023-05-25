@@ -13,6 +13,7 @@ namespace NCloud::NBlockStore {
 
 struct TUsedQuotaMetrics::TImpl
 {
+    NMonitoring::TDynamicCountersPtr Group;
     NMonitoring::TDynamicCounters::TCounterPtr UsedQuota;
     NMonitoring::TDynamicCounters::TCounterPtr MaxUsedQuota;
 
@@ -29,10 +30,9 @@ struct TUsedQuotaMetrics::TImpl
     {
         auto guard = TWriteGuard(Mutex);
         if (!AtomicGet(IsInitialized) && counters) {
-            UsedQuota =
-                counters->GetExpiringCounter("UsedQuota");
-            MaxUsedQuota =
-                counters->GetExpiringCounter("MaxUsedQuota");
+            Group = std::move(counters);
+            UsedQuota = Group->GetCounter("UsedQuota");
+            MaxUsedQuota = Group->GetCounter("MaxUsedQuota");
             AtomicSet(IsInitialized, 1);
         }
     }
@@ -41,6 +41,8 @@ struct TUsedQuotaMetrics::TImpl
     {
         auto guard = TWriteGuard(Mutex);
         if (AtomicGet(IsInitialized)) {
+            Group->RemoveCounter("UsedQuota");
+            Group->RemoveCounter("MaxUsedQuota");
             UsedQuota.Drop();
             MaxUsedQuota.Drop();
             for (ui32 i = 0; i < DEFAULT_BUCKET_COUNT + 1; ++i) {

@@ -321,17 +321,14 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
                 totalCounters->FindCounter("MaxUsedQuota");
 
             UNIT_ASSERT_C(
-                usedQuotaCounter,
-                "usedQuotaCounter should be initialized");
+                !usedQuotaCounter,
+                "usedQuotaCounter should not be initialized");
             UNIT_ASSERT_C(
-                maxUsedQuotaCounter,
-                "maxUsedQuotaCounter should be initialized");
-
-            UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(10, maxUsedQuotaCounter->Val());
+                !maxUsedQuotaCounter,
+                "maxUsedQuotaCounter should not be initialized");
         }
 
-        totalCounters->ReadSnapshot(); 
+        totalCounters->ReadSnapshot();
 
         {
             auto usedQuotaCounter =

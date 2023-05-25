@@ -11,7 +11,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
-#include <cloud/blockstore/libs/throttling/throttler_metrics_base.h>
+#include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/throttling/throttler_tracker.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -132,68 +132,6 @@ public:
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TQuotaKey = TString;
-
-class TThrottlerMetrics final
-    : public TThrottlerMetricsBase<TThrottlerMetrics, TQuotaKey>
-{
-private:
-    TLog Log;
-
-    const TString ClientId;
-
-public:
-    TThrottlerMetrics(
-            ITimerPtr timer,
-            NMonitoring::TDynamicCountersPtr rootGroup,
-            ILoggingServicePtr logging,
-            const TString& clientId,
-            const TString& componentLabel)
-        : TThrottlerMetricsBase(
-            std::move(timer),
-            rootGroup->GetSubgroup("component", componentLabel),
-            rootGroup
-                ->GetSubgroup("component", componentLabel + "_volume")
-                ->GetSubgroup("host", "cluster"))
-        , Log(logging->CreateLog("BLOCKSTORE_" + to_upper(componentLabel)))
-        , ClientId(clientId.empty() ? "none" : clientId)
-    {}
-
-    void Register(
-        const TString& diskId,
-        const TString& clientId) override
-    {
-        Y_UNUSED(clientId);
-
-        RegisterQuota(MakeQuotaKey(diskId));
-    }
-
-    void Unregister(
-        const TString& diskId,
-        const TString& clientId) override
-    {
-        Y_UNUSED(clientId);
-
-        UnregisterQuota(MakeQuotaKey(diskId));
-    }
-
-    std::pair<TString, TString> GetMetricsPath(const TQuotaKey& diskId) const
-    {
-        return std::make_pair(diskId, ClientId);
-    }
-
-    TQuotaKey MakeQuotaKey(const TString& diskId) const
-    {
-        if (diskId.empty()) {
-            STORAGE_ERROR("Disk id is empty");
-        }
-
-        return diskId.empty() ? "none" : diskId;
     }
 };
 
@@ -448,9 +386,7 @@ public:
         }
 
         if (clientConfig.GetClientId().empty()) {
-            return CreateClientThrottler(
-                clientConfig,
-                performanceProfile);
+            return CreateClientThrottler(performanceProfile);
         }
 
         with_lock (ThrottlerLock) {
@@ -467,9 +403,7 @@ public:
                 return info.Throttler;
             }
 
-            auto throttler = CreateClientThrottler(
-                clientConfig,
-                performanceProfile);
+            auto throttler = CreateClientThrottler(performanceProfile);
 
             TThrottlerInfo info = {
                 .Throttler = throttler,
@@ -524,7 +458,6 @@ private:
     }
 
     IThrottlerPtr CreateClientThrottler(
-        const NProto::TClientConfig& clientConfig,
         NProto::TClientPerformanceProfile performanceProfile) const
     {
         auto throttlerPolicy = CreateClientThrottlerPolicy(
@@ -532,13 +465,9 @@ private:
         auto throttlerLogger = CreateClientThrottlerLogger(
             RequestStats,
             Logging);
-        auto throttlerMetrics = CreateClientThrottlerMetrics(
+        auto throttlerMetrics = CreateThrottlerMetrics(
             Timer,
             RootGroup,
-            Logging,
-            clientConfig.GetInstanceId().empty()
-                ? clientConfig.GetClientId()
-                : clientConfig.GetInstanceId(),
             "server");
         auto throttlerTracker = CreateClientThrottlerTracker();
 
@@ -797,21 +726,6 @@ IThrottlerPolicyPtr CreateClientThrottlerPolicy(
     NProto::TClientPerformanceProfile performanceProfile)
 {
     return std::make_shared<TThrottlerPolicy>(std::move(performanceProfile));
-}
-
-IThrottlerMetricsPtr CreateClientThrottlerMetrics(
-    ITimerPtr timer,
-    NMonitoring::TDynamicCountersPtr rootGroup,
-    ILoggingServicePtr logging,
-    const TString& clientId,
-    const TString& componentLabel)
-{
-    return std::make_shared<TThrottlerMetrics>(
-        std::move(timer),
-        std::move(rootGroup),
-        std::move(logging),
-        clientId,
-        componentLabel);
 }
 
 IThrottlerTrackerPtr CreateClientThrottlerTracker()

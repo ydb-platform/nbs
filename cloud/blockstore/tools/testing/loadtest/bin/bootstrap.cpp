@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/spdk/config.h>
 #include <cloud/blockstore/libs/spdk/env.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
+#include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -517,11 +518,9 @@ IBlockStorePtr TBootstrap::CreateThrottlingClient(
 {
     auto throttler = CreateThrottler(
         CreateClientThrottlerLogger(RequestStats, Logging),
-        CreateClientThrottlerMetrics(
+        CreateThrottlerMetrics(
             Timer,
             Monitoring->GetCounters()->GetSubgroup("counters", "blockstore"),
-            Logging,
-            TestInstanceId,
             "client"),
         CreateClientThrottlerPolicy(std::move(performanceProfile)),
         CreateClientThrottlerTracker(),

@@ -1,5 +1,3 @@
-#include "throttler_metrics.h"
-
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -157,15 +155,13 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto policy = std::make_shared<TThrottlerPolicy>();
 
         auto requestStats = CreateRequestStatsStub();
-        auto logging = CreateLoggingService("console");
-
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateServiceThrottlerMetrics(
+        auto metrics = CreateThrottlerMetrics(
             timer,
             totalCounters,
-            logging);
+            "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -249,15 +245,15 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             mountRequest);
 
         UNIT_ASSERT_C(
-            !totalCounters
+            totalCounters
                 ->GetSubgroup("component", "server")
                 ->FindCounter(usedQuota),
-            "UsedQuota should not be initialized");
+            "UsedQuota should be initialized");
         UNIT_ASSERT_C(
-            !totalCounters
+            totalCounters
                 ->GetSubgroup("component", "server")
                 ->FindCounter(maxUsedQuota),
-            "MaxUsedQuota should not be initialized");
+            "MaxUsedQuota should be initialized");
 
         metrics->UpdateUsedQuota(0);
         metrics->UpdateMaxUsedQuota();
@@ -366,15 +362,13 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto policy = std::make_shared<TThrottlerPolicy>();
 
         auto requestStats = CreateRequestStatsStub();
-        auto logging = CreateLoggingService("console");
-
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateServiceThrottlerMetrics(
+        auto metrics = CreateThrottlerMetrics(
             timer,
             totalCounters,
-            logging);
+            "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -485,6 +479,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
+
+        throttler->MountVolume(
+            client,
+            MakeIntrusive<TCallContext>(),
+            mountRequest);
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
         metrics->Trim(timer->Now());
@@ -575,15 +574,13 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto policy = std::make_shared<TThrottlerPolicy>();
 
         auto requestStats = CreateRequestStatsStub();
-        auto logging = CreateLoggingService("console");
-
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateServiceThrottlerMetrics(
+        auto metrics = CreateThrottlerMetrics(
             timer,
             totalCounters,
-            logging);
+            "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -694,6 +691,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
 
+        throttler->MountVolume(
+            client,
+            MakeIntrusive<TCallContext>(),
+            mountRequest);
+
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
         metrics->UpdateUsedQuota(0);
@@ -734,20 +736,6 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             UNIT_ASSERT_VALUES_EQUAL(0, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
-
-        timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
-        metrics->Trim(timer->Now());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            12,
-            totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota)->Val());
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
         metrics->Trim(timer->Now());
@@ -799,15 +787,13 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto policy = std::make_shared<TThrottlerPolicy>();
 
         auto requestStats = CreateRequestStatsStub();
-        auto logging = CreateLoggingService("console");
-
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateServiceThrottlerMetrics(
+        auto metrics = CreateThrottlerMetrics(
             timer,
             totalCounters,
-            logging);
+            "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
