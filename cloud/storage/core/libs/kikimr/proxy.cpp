@@ -30,7 +30,7 @@ NMonitoring::IMonPagePtr TMonitoringProxy::RegisterIndexPage(
 void TMonitoringProxy::RegisterMonPage(IMonPagePtr page)
 {
     Y_VERIFY(ActorSystem);
-    ActorSystem->RegisterMonPage(page);
+    ActorSystem->RegisterMonPage(std::move(page));
 }
 
 IMonPagePtr TMonitoringProxy::GetMonPage(const TString& path)
