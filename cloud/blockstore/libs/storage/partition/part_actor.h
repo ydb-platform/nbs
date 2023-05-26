@@ -615,4 +615,12 @@ private:
     BLOCKSTORE_PARTITION_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxPartition)
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+void SetCounters(
+    NProto::TIOCounters& counters,
+    const TDuration execTime,
+    const TDuration waitTime,
+    ui64 blocksCount);
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -9382,6 +9382,166 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         DoTestCompression(Max<ui32>(), 4107, 43);
     }
+
+    class TStatsChecker
+    {
+    private:
+        ui64 RealWriteBlocksCount = 0;
+        ui64 RealReadBlocksCount = 0;
+        ui64 WriteBlocksCount = 0;
+        ui64 ReadBlocksCount = 0;
+
+    public:
+        TStatsChecker() = default;
+
+        void CheckStats(
+            const NProto::TVolumeStats& stats,
+            const ui64 realReadBlocksCount,
+            const ui64 realWriteBlocksCount,
+            const ui64 readBlocksCount,
+            const ui64 writeBlocksCount)
+        {
+            RealReadBlocksCount += realReadBlocksCount;
+            RealWriteBlocksCount += realWriteBlocksCount;
+            ReadBlocksCount += readBlocksCount;
+            WriteBlocksCount += writeBlocksCount;
+            UNIT_ASSERT_VALUES_EQUAL(
+                ReadBlocksCount, stats.GetSysReadCounters().GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                WriteBlocksCount, stats.GetSysWriteCounters().GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                RealReadBlocksCount,
+                stats.GetRealSysReadCounters().GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                RealWriteBlocksCount,
+                stats.GetRealSysWriteCounters().GetBlocksCount());
+        }
+    };
+
+    Y_UNIT_TEST(CheckRealSysCountersDuringCompaction)
+    {
+        TStatsChecker statsChecker;
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetBlobPatchingEnabled(true);
+        config.SetCompactionThreshold(999);
+        config.SetCompactionGarbageThreshold(999);
+        config.SetCompactionRangeGarbageThreshold(999);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MaxPartitionBlocksCount
+        );
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32(0, 1023), 1);
+        partition.WriteBlocks(TBlockRange32(0, 300), 2);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Sys counter increased by "reading" 1024 - 301 UnchangedBlocks
+            // Both counters increased by reading and writing 301 ChangedBlocks
+            // from blobstorage
+            statsChecker.CheckStats(stats, 301, 301, 1024, 1024);
+        }
+
+        partition.WriteBlocks(TBlockRange32(0, 255), 3);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Sys counter increased by "reading" 768 UnchangedBlocks
+            // Both counters increased by "reading" 256 ChangedBlocks
+            // from blobstorage
+            statsChecker.CheckStats(stats, 256, 256, 1024, 1024);
+        }
+
+        partition.WriteBlocks(TBlockRange32(5, 14), 4);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Blob wasn't written to BlobStorage, so counters don't change
+            statsChecker.CheckStats(stats, 0, 0, 0, 0);
+        }
+
+        partition.Flush();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Flush writes to BlobStorage blocks from FreshBlocks,
+            // so all counters increase by blocks count
+            statsChecker.CheckStats(stats, 0, 10, 0, 10);
+        }
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Sys counter increased by writing and reading whole blob of size
+            // 1024. Real counter increased by 10 patchong blocks
+            statsChecker.CheckStats(stats, 10, 10, 1024, 1024);
+        }
+    }
+
+    Y_UNIT_TEST(CheckRealSysCountersDuringIncrementalCompaction)
+    {
+        TStatsChecker statsChecker;
+        auto config = DefaultConfig();
+        config.SetBlobPatchingEnabled(true);
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetIncrementalCompactionEnabled(true);
+        config.SetCompactionThreshold(4);
+        config.SetMaxSkippedBlobsDuringCompaction(1);
+        config.SetTargetCompactionBytesPerOp(64_KB);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MaxPartitionBlocksCount
+        );
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32(0, 1023), 1);
+        partition.WriteBlocks(TBlockRange32(2, 12), 2);
+        partition.WriteBlocks(TBlockRange32(10, 20), 3);
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Incremental compaction divided data into two parts,
+            // and compacted to one blob only small of them
+            statsChecker.CheckStats(stats, 19, 19, 19, 19);
+        }
+
+        partition.WriteBlocks(TBlockRange32(7, 15), 4);
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Sys counters count whole blob, real sys counters count only
+            // patches. Incremental compaction doesn't read the biggest blob.
+            statsChecker.CheckStats(stats, 9, 9, 19, 19);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

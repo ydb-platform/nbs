@@ -129,6 +129,8 @@ NYdbStats::TYdbRow BuildStatsForUpload(
     out.Read_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(BytesRead);
     out.SysWrite_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(SysBytesWritten);
     out.SysRead_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(SysBytesRead);
+    out.RealSysWrite_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(RealSysBytesWritten);
+    out.RealSysRead_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(RealSysBytesRead);
     out.UncompressedWrite_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(UncompressedBytesWritten);
     out.CompressedWrite_Throughput =

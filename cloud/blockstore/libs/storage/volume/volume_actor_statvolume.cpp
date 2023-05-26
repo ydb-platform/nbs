@@ -66,6 +66,14 @@ void Merge(const NProto::TVolumeStats& source, NProto::TVolumeStats& target)
         source.GetSysWriteCounters(),
         *target.MutableSysWriteCounters()
     );
+    MergeIOCounters(
+        source.GetRealSysReadCounters(),
+        *target.MutableRealSysReadCounters()
+    );
+    MergeIOCounters(
+        source.GetRealSysWriteCounters(),
+        *target.MutableRealSysWriteCounters()
+    );
 
     MERGE_FIELD(MixedBlobsCount);
     MERGE_FIELD(MergedBlobsCount);

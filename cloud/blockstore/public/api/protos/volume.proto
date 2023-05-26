@@ -370,6 +370,10 @@ message TVolumeStats
     // starts to return E_IO errors.
     uint64 MaxTimedOutDeviceStateDuration = 23;
 
+    // Background I/O operations (system overhead).
+    TIOCounters RealSysReadCounters = 24;
+    TIOCounters RealSysWriteCounters = 25;
+
     // TODO: current max device timeout
 }
 

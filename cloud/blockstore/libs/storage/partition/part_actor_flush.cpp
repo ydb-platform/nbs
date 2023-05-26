@@ -257,10 +257,10 @@ void TFlushActor::NotifyCompleted(
         auto waitTime = CyclesToDurationSafe(RequestInfo->GetWaitCycles());
 
         auto& counters = *ev->Stats.MutableSysWriteCounters();
-        counters.SetRequestsCount(1);
-        counters.SetBlocksCount(BlocksCount);
-        counters.SetExecTime(execTime.MicroSeconds());
-        counters.SetWaitTime(waitTime.MicroSeconds());
+        SetCounters(counters, execTime, waitTime, BlocksCount);
+
+        auto& realCounters = *ev->Stats.MutableRealSysWriteCounters();
+        SetCounters(realCounters, execTime, waitTime, BlocksCount);
     }
 
     ev->AffectedRanges = std::move(AffectedRanges);

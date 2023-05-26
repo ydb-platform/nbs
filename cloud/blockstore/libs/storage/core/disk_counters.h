@@ -60,6 +60,8 @@ enum class EPublishingPolicy
     xxx(BytesRead,                  Generic, Permanent,            __VA_ARGS__)\
     xxx(SysBytesWritten,            Generic, Permanent,            __VA_ARGS__)\
     xxx(SysBytesRead,               Generic, Permanent,            __VA_ARGS__)\
+    xxx(RealSysBytesWritten,        Generic, Permanent,            __VA_ARGS__)\
+    xxx(RealSysBytesRead,           Generic, Permanent,            __VA_ARGS__)\
     xxx(BatchCount,                 Generic, Permanent,            __VA_ARGS__)\
     xxx(UncompressedBytesWritten,   Generic, Permanent,            __VA_ARGS__)\
     xxx(CompressedBytesWritten,     Generic, Permanent,            __VA_ARGS__)\

@@ -154,6 +154,7 @@ private:
 
     TVector<TBatchRequest> BatchRequests;
     size_t ReadRequestsCompleted = 0;
+    size_t RealReadRequestsCompleted = 0;
     size_t WriteAndPatchBlobRequestsCompleted = 0;
 
     ui64 ReadExecCycles = 0;
@@ -667,11 +668,16 @@ void TCompactionActor::NotifyCompleted(
         auto execTime = CyclesToDurationSafe(ReadExecCycles);
         auto waitTime = CyclesToDurationSafe(ReadWaitCycles);
 
-        auto& counters = *request->Stats.MutableSysReadCounters();
-        counters.SetRequestsCount(1);
-        counters.SetBlocksCount(Requests.size());
-        counters.SetExecTime(execTime.MicroSeconds());
-        counters.SetWaitTime(waitTime.MicroSeconds());
+        SetCounters(
+            *request->Stats.MutableSysReadCounters(),
+            execTime,
+            waitTime,
+            ReadRequestsCompleted);
+        SetCounters(
+            *request->Stats.MutableRealSysReadCounters(),
+            execTime,
+            waitTime,
+            RealReadRequestsCompleted);
     }
 
     {
@@ -684,14 +690,23 @@ void TCompactionActor::NotifyCompleted(
         }
 
         ui64 blocksCount = 0;
+        ui64 realBlocksCount = 0;
         for (auto& rc: RangeCompactionInfos) {
-            blocksCount += rc.DataBlobId.BlobSize() / BlockSize;
+            const auto curBlocksCount = rc.DataBlobId.BlobSize() / BlockSize;
+            blocksCount += curBlocksCount;
+            realBlocksCount += rc.OriginalBlobId ? rc.DiffCount : curBlocksCount;
         }
-        auto& counters = *request->Stats.MutableSysWriteCounters();
-        counters.SetRequestsCount(1);
-        counters.SetBlocksCount(blocksCount);
-        counters.SetExecTime(execTime.MicroSeconds());
-        counters.SetWaitTime(waitTime.MicroSeconds());
+
+        SetCounters(
+            *request->Stats.MutableSysWriteCounters(),
+            execTime,
+            waitTime,
+            blocksCount);
+        SetCounters(
+            *request->Stats.MutableRealSysWriteCounters(),
+            execTime,
+            waitTime,
+            realBlocksCount);
     }
 
     for (const auto& rc: RangeCompactionInfos) {
@@ -755,6 +770,7 @@ void TCompactionActor::HandleReadBlobResponse(
     Y_VERIFY(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
+    RealReadRequestsCompleted += batch.Requests.size();
     ReadRequestsCompleted += batch.Requests.size();
     Y_VERIFY(ReadRequestsCompleted <= Requests.size());
     if (ReadRequestsCompleted < Requests.size()) {

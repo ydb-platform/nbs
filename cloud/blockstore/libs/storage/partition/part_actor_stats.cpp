@@ -33,6 +33,12 @@ void TPartitionActor::UpdateStats(const NProto::TPartitionStats& update)
     PartCounters->Cumulative.SysBytesRead.Increment(
         update.GetSysReadCounters().GetBlocksCount() * blockSize);
 
+    PartCounters->Cumulative.RealSysBytesWritten.Increment(
+        update.GetRealSysWriteCounters().GetBlocksCount() * blockSize);
+
+    PartCounters->Cumulative.RealSysBytesRead.Increment(
+        update.GetRealSysReadCounters().GetBlocksCount() * blockSize);
+
     PartCounters->Cumulative.BatchCount.Increment(
         update.GetUserWriteCounters().GetBatchCount());
 }

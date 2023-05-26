@@ -109,6 +109,11 @@ message TPartitionStats
     // Number of blocks used from user's point of view.
     // Includes the blocks used at the base disk (for overlay disks).
     uint64 LogicalUsedBlocksCount = 13;
+
+    // Background I/O operations (system overhead).
+    TIOCounters RealSysReadCounters = 15;
+    TIOCounters RealSysWriteCounters = 16;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////

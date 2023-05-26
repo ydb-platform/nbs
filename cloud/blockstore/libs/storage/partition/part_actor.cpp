@@ -901,4 +901,16 @@ void TPartitionActor::HandleGetPartitionInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetCounters(
+    NProto::TIOCounters& counters,
+    const TDuration execTime,
+    const TDuration waitTime,
+    ui64 blocksCount)
+{
+    counters.SetRequestsCount(1);
+    counters.SetExecTime(execTime.MicroSeconds());
+    counters.SetWaitTime(waitTime.MicroSeconds());
+    counters.SetBlocksCount(blocksCount);
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

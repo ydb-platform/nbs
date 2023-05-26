@@ -62,6 +62,8 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(Read_Throughput,             __VA_ARGS__)                              \
     xxx(SysWrite_Throughput,         __VA_ARGS__)                              \
     xxx(SysRead_Throughput,          __VA_ARGS__)                              \
+    xxx(RealSysWrite_Throughput,     __VA_ARGS__)                              \
+    xxx(RealSysRead_Throughput,      __VA_ARGS__)                              \
     xxx(ThrottlerRejectedRequests,   __VA_ARGS__)                              \
     xxx(ThrottlerPostponedRequests,  __VA_ARGS__)                              \
     xxx(ThrottlerSkippedRequests,    __VA_ARGS__)                              \
