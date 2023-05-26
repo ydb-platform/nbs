@@ -936,8 +936,7 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
         options.ClientId,
         options.BlockSize,
         NBD_MAX_BUFFER_SIZE / options.BlockSize,
-        options.UnalignedRequestsDisabled,
-        serverStats->GetUnalignedRequestCounter());
+        options.UnalignedRequestsDisabled);
 
     return std::make_shared<TServerHandlerFactory>(
         std::move(logging),

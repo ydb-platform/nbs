@@ -46,9 +46,6 @@ struct IServerStats
     virtual TExecutorCounters::TExecutorScope StartExecutor() = 0;
 
     virtual NMonitoring::TDynamicCounters::TCounterPtr
-        GetUnalignedRequestCounter() = 0;
-
-    virtual NMonitoring::TDynamicCounters::TCounterPtr
         GetEndpointCounter(NProto::EClientIpcType ipcType) = 0;
 
     virtual bool MountVolume(

@@ -9,6 +9,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <array>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -116,8 +118,7 @@ public:
             "testClientId",
             BlockSize,
             1024,
-            false,
-            MakeIntrusive<NMonitoring::TCounterForPtr>());
+            false);
     }
 
     TCallContextPtr WriteSectors(ui64 firstSector, ui64 totalSectors, char data)
@@ -297,8 +298,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             blocksCountLimit,
-            false,
-            MakeIntrusive<NMonitoring::TCounterForPtr>());
+            false);
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
         for (auto& zeroBlock: zeroBlocks) {
@@ -361,8 +361,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             1024,
-            true,
-            nullptr);
+            true);
 
         ui32 startIndex = 42;
         ui32 blocksCount = 17;
@@ -449,8 +448,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             1024,
-            true,
-            nullptr);
+            true);
 
         {
             auto future = device->Read(
@@ -506,8 +504,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             blocksCountLimit,
-            false,
-            MakeIntrusive<NMonitoring::TCounterForPtr>());
+            false);
 
         storage->ZeroBlocksHandler = [&] (
             TCallContextPtr callContext,
@@ -610,8 +607,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             1024,
-            false,
-            MakeIntrusive<NMonitoring::TCounterForPtr>());
+            false);
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -675,8 +671,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             1024,
-            false,
-            MakeIntrusive<NMonitoring::TCounterForPtr>());
+            false);
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,

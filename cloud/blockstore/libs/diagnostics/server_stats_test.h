@@ -125,12 +125,6 @@ public:
     }
 
     NMonitoring::TDynamicCounters::TCounterPtr
-        GetUnalignedRequestCounter() override
-    {
-        return Stub->GetUnalignedRequestCounter();
-    }
-
-    NMonitoring::TDynamicCounters::TCounterPtr
         GetEndpointCounter(NProto::EClientIpcType ipcType) override
     {
         return GetEndpointCounterHandler(ipcType);

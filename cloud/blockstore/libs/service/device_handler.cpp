@@ -15,7 +15,6 @@
 
 namespace NCloud::NBlockStore {
 
-using namespace NMonitoring;
 using namespace NThreading;
 
 namespace {
@@ -141,7 +140,6 @@ private:
     const TString ClientId;
     const ui32 BlockSize;
     const ui32 ZeroBlocksCountLimit;
-    TDynamicCounters::TCounterPtr UnalignedRequestCounter;
 
     TList<TModifyRequestPtr> AlignedRequests;
     TList<TModifyRequestPtr> UnalignedRequests;
@@ -152,8 +150,7 @@ public:
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 zeroBlocksCountLimit,
-        TDynamicCounters::TCounterPtr unalignedRequestCounter);
+        ui32 zeroBlocksCountLimit);
 
     TReadBlocksResponseFuture Read(
         TCallContextPtr ctx,
@@ -388,13 +385,11 @@ TDeviceHandler::TDeviceHandler(
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 zeroBlocksCountLimit,
-        TDynamicCounters::TCounterPtr unalignedRequestCounter)
+        ui32 zeroBlocksCountLimit)
     : Storage(std::move(storage))
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , ZeroBlocksCountLimit(zeroBlocksCountLimit)
-    , UnalignedRequestCounter(std::move(unalignedRequestCounter))
 {
     Y_VERIFY(ZeroBlocksCountLimit > 0);
 }
@@ -549,8 +544,6 @@ TFuture<TResponse> TDeviceHandler::ExecuteModifyRequest(
     TFuture<TResponse> future;
 
     if (!request->IsAligned()) {
-        UnalignedRequestCounter->Inc();
-
         auto error = ExecuteUnalignedModifyRequest(request);
         future = CreateResponseFuture<TResponse>(error);
     } else {
@@ -641,8 +634,6 @@ TReadBlocksResponseFuture TDeviceHandler::ExecuteUnalignedReadRequest(
     TGuardedSgList guardedSgList,
     const TString& checkpointId)
 {
-    UnalignedRequestCounter->Inc();
-
     if (blocksInfo.Range.Size() > MaxUnalignedRequestSize / BlockSize) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
             TErrorResponse(E_ARGUMENT, TStringBuilder()
@@ -973,8 +964,7 @@ struct TDefaultDeviceHandlerFactory final
         TString clientId,
         ui32 blockSize,
         ui32 zeroBlocksCountLimit,
-        bool unalignedRequestsDisabled,
-        NMonitoring::TDynamicCounters::TCounterPtr unalignedRequestCounter) \
+        bool unalignedRequestsDisabled) \
             override
     {
         if (unalignedRequestsDisabled) {
@@ -989,8 +979,7 @@ struct TDefaultDeviceHandlerFactory final
             std::move(storage),
             std::move(clientId),
             blockSize,
-            zeroBlocksCountLimit,
-            std::move(unalignedRequestCounter));
+            zeroBlocksCountLimit);
     }
 };
 

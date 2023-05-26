@@ -218,6 +218,7 @@ struct TRequestCounters::TStatCounters
 
     TDynamicCounters::TCounterPtr Count;
     TDynamicCounters::TCounterPtr MaxCount;
+    TDynamicCounters::TCounterPtr UnalignedCount;
     TDynamicCounters::TCounterPtr Time;
     TDynamicCounters::TCounterPtr MaxTime;
     TDynamicCounters::TCounterPtr MaxTotalTime;
@@ -326,6 +327,8 @@ struct TRequestCounters::TStatCounters
 
             InProgressBytes = counters.GetCounter("InProgressBytes");
             MaxInProgressBytes = counters.GetCounter("MaxInProgressBytes");
+
+            UnalignedCount = counters.GetCounter("UnalignedCount", true);
 
             if (ReportDataPlaneHistogram) {
                 auto unalignedClassGroup = counters.GetSubgroup("sizeclass", "Unaligned");
@@ -460,6 +463,7 @@ struct TRequestCounters::TStatCounters
             MaxSizeCalc.Add(requestBytes);
 
             if (unaligned) {
+                UnalignedCount->Inc();
                 TimeHistUnaligned.Increment(requestTime);
                 ExecutionTimeHistUnaligned.Increment(execTime);
             }
@@ -494,6 +498,11 @@ struct TRequestCounters::TStatCounters
             for (auto [size, count]: sizeHist) {
                 SizeHist.Increment(size, count);
                 MaxSizeCalc.Add(size);
+            }
+
+            if (unaligned) {
+                UnalignedCount->Add(requestCount);
+                UnalignedCount->Add(errors);
             }
 
             for (auto [dt, count]: timeHist) {

@@ -437,8 +437,7 @@ public:
             options.ClientId,
             options.BlockSize,
             MaxZeroRequestSize / options.BlockSize,
-            options.UnalignedRequestsDisabled,
-            AppCtx.ServerStats->GetUnalignedRequestCounter());
+            options.UnalignedRequestsDisabled);
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,

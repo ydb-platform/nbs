@@ -6,8 +6,6 @@
 
 #include <cloud/blockstore/libs/common/guarded_sglist.h>
 
-#include <library/cpp/monlib/dynamic_counters/counters.h>
-
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,8 +46,7 @@ struct IDeviceHandlerFactory
         TString clientId,
         ui32 blockSize,
         ui32 zeroBlocksCountLimit,
-        bool unalignedRequestsDisabled,
-        NMonitoring::TDynamicCounters::TCounterPtr unalignedRequestCounter) = 0;
+        bool unalignedRequestsDisabled) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

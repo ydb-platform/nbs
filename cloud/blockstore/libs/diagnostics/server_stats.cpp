@@ -56,7 +56,6 @@ private:
 
     TDynamicCountersPtr Counters;
     TExecutorCounters ExecutorCounters;
-    TDynamicCounters::TCounterPtr UnalignedRequestCounter;
     TDynamicCounters::TCounterPtr EndpointCounters[NProto::EClientIpcType_ARRAYSIZE];
 
 public:
@@ -71,8 +70,6 @@ public:
         TString instanceId);
 
     TExecutorCounters::TExecutorScope StartExecutor() override;
-
-    TDynamicCounters::TCounterPtr GetUnalignedRequestCounter() override;
 
     TDynamicCounters::TCounterPtr GetEndpointCounter(NProto::EClientIpcType ipcType) override;
 
@@ -156,8 +153,6 @@ public:
 
     void UpdateStats(bool updateIntervalFinished) override;
 
-    void InitUnalignedRequestCounter();
-
     void InitEndpointCounters();
 
 private:
@@ -207,7 +202,6 @@ TServerStats::TServerStats(
     Counters = rootGroup->GetSubgroup("component", componentName);
     ExecutorCounters.Register(*Counters);
 
-    UnalignedRequestCounter = MakeIntrusive<NMonitoring::TCounterForPtr>();
     for (ui32 i = 0; i < NProto::EClientIpcType_ARRAYSIZE; ++i) {
         auto ipcType = static_cast<NProto::EClientIpcType>(i);
         EndpointCounters[ipcType] = MakeIntrusive<NMonitoring::TCounterForPtr>();
@@ -216,13 +210,6 @@ TServerStats::TServerStats(
     auto rootPage = monitoring->RegisterIndexPage("blockstore", "BlockStore");
     static_cast<TIndexMonPage&>(*rootPage).Register(
         new TMonPage(*this, componentName));
-}
-
-void TServerStats::InitUnalignedRequestCounter()
-{
-    UnalignedRequestCounter = Counters->GetSubgroup(
-        "vhost",
-        "UnalignedRequest")->GetCounter("Count", true);
 }
 
 void TServerStats::InitEndpointCounters()
@@ -237,11 +224,6 @@ void TServerStats::InitEndpointCounters()
 TExecutorCounters::TExecutorScope TServerStats::StartExecutor()
 {
     return ExecutorCounters.StartExecutor();
-}
-
-TDynamicCounters::TCounterPtr TServerStats::GetUnalignedRequestCounter()
-{
-    return UnalignedRequestCounter;
 }
 
 TDynamicCounters::TCounterPtr TServerStats::GetEndpointCounter(
@@ -528,6 +510,7 @@ void TServerStats::RequestCompleted(
         << ", predicted: " << FormatDuration(predictedTime)
         << ", backoff: " << FormatDuration(backoffTime)
         << ", size: " << FormatByteSize(req.RequestBytes)
+        << ", unaligned: " << req.Unaligned
         << ", error: " << FormatError(error)
         << ")");
 }
@@ -670,11 +653,6 @@ public:
     TExecutorCounters::TExecutorScope StartExecutor() override
     {
         return ExecutorCounters.StartExecutor();
-    }
-
-    TDynamicCounters::TCounterPtr GetUnalignedRequestCounter() override
-    {
-        return CounterStub;
     }
 
     TDynamicCounters::TCounterPtr GetEndpointCounter(
@@ -873,7 +851,6 @@ IServerStatsPtr CreateServerStats(
         "server",
         TString{});
 
-    serverStats->InitUnalignedRequestCounter();
     serverStats->InitEndpointCounters();
 
     return serverStats;
