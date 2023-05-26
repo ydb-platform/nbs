@@ -80,7 +80,7 @@ TThrottlerMetrics::TThrottlerMetrics(
     , TotalGroup(std::move(totalGroup))
     , VolumeGroup(std::move(volumeGroup))
     , MaxCalc(Timer)
-    , Total(std::move(totalGroup), Timer)
+    , Total(TotalGroup, Timer)
 {}
 
 void TThrottlerMetrics::Register(
