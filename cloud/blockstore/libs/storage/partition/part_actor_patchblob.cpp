@@ -357,10 +357,11 @@ void TPartitionActor::HandlePatchBlobCompleted(
     UpdateNetworkStat(ctx.Now(), msg->PatchedBlobId.BlobSize());
     UpdateExecutorStats(ctx);
 
-    // TODO: PatchBlob counters
-    PartCounters->RequestCounters.WriteBlob.AddRequest(
+    PartCounters->RequestCounters.PatchBlob.AddRequest(
         msg->RequestTime.MicroSeconds(),
-        msg->PatchedBlobId.BlobSize());
+        msg->PatchedBlobId.BlobSize(),
+        1,
+        State->GetChannelDataKind(patchedChannel));
 
     State->CompleteIORequest(patchedChannel);
 

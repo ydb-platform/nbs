@@ -98,6 +98,7 @@ enum class EPublishingPolicy
 #define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(xxx, ...)     \
     xxx(WriteBlob,                                                 __VA_ARGS__)\
     xxx(ReadBlob,                                                  __VA_ARGS__)\
+    xxx(PatchBlob,                                                 __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE
 
 
