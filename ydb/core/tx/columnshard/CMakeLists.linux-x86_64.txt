@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(counters)
 add_subdirectory(engines)
 get_built_tool_path(
   TOOL_enum_parser_bin
@@ -34,6 +35,7 @@ target_link_libraries(core-tx-columnshard PUBLIC
   ydb-core-tablet
   ydb-core-tablet_flat
   tx-columnshard-engines
+  tx-columnshard-counters
   core-tx-tiering
   tx-conveyor-usage
   tx-long_tx_service-public
