@@ -89,7 +89,8 @@ TTestEnv::TTestEnv(
         ui32 dynamicNodes,
         ui32 nchannels,
         ui32 ngroups,
-        TTestEnvState state)
+        TTestEnvState state,
+        NKikimr::NFake::TCaches cachesConfig)
     : DomainUid(1)
     , DomainName("local")
     , StaticNodeCount(staticNodes)
@@ -107,7 +108,7 @@ TTestEnv::TTestEnv(
     SetupDomain(app);
     app.AddHive(DomainUid, ChangeDomain(Tests::Hive, DomainUid));
     SetupChannelProfiles(app, nchannels);
-    SetupTabletServices(Runtime, &app);
+    SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
     BootTablets();
     SetupStorage(ngroups);
     SetupLocalServices();
@@ -416,6 +417,26 @@ ui32 TTestEnv::CreateBlockStoreNode(
         nodeIdx);
 
     return nodeIdx;
+}
+
+ui64 TTestEnv::GetPrivateCacheSize(ui64 tabletId) {
+    return GetExecutorCacheSize(Runtime, tabletId);
+}
+
+TString TTestEnv::UpdatePrivateCacheSize(ui64 tabletId, ui64 cacheSize)
+{
+    NTabletFlatScheme::TSchemeChanges scheme;
+    TString err;
+    TString change =  Sprintf(R"___(
+    Delta {
+        DeltaType: UpdateExecutorInfo
+        ExecutorCacheSize: %lu
+    }
+    )___", cacheSize);
+
+    LocalSchemeTx(Runtime, tabletId, change, false, scheme, err);
+
+    return err;
 }
 
 void TTestEnv::SetupLogging()

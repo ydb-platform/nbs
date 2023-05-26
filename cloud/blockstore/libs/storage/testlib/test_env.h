@@ -14,6 +14,7 @@
 #include <ydb/core/testlib/basics/runtime.h>
 #include <ydb/core/testlib/basics/appdata.h>
 #include <ydb/core/testlib/test_client.h>
+#include <ydb/core/testlib/tx_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -45,7 +46,8 @@ public:
         ui32 dynamicNodes = 1,
         ui32 nchannels = 4,
         ui32 ngroups = 1,
-        TTestEnvState state = {});
+        TTestEnvState state = {},
+        NKikimr::NFake::TCaches cachesConfig = {});
 
     ~TTestEnv();
 
@@ -88,6 +90,9 @@ public:
         TDiagnosticsConfigPtr diagnosticsConfig,
         NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader,
         TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes);
+
+    TString UpdatePrivateCacheSize(ui64 tabletId, ui64 cacheSize);
+    ui64 GetPrivateCacheSize(ui64 tabletId);
 
 private:
     void SetupLogging();
