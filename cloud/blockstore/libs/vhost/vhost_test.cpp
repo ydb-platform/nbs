@@ -121,6 +121,10 @@ public:
         auto future = promise.GetFuture();
 
         with_lock (Lock) {
+            if (Stopped.test()) {
+                promise.SetValue(TVhostRequest::CANCELLED);
+                return future;
+            }
             Futures.push_back(future);
         }
 
