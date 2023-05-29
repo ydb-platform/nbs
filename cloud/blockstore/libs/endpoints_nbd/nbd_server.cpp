@@ -61,6 +61,16 @@ public:
         return Server->StartEndpoint(address, std::move(requestFactory));
     }
 
+    TFuture<NProto::TError> AlterEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        Y_UNUSED(request, volume, session);
+
+        return MakeFuture<NProto::TError>();
+    }
+
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
         auto address = TNetworkAddress(TUnixSocketPath(socketPath));

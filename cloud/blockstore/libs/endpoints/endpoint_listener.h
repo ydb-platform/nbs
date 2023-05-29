@@ -25,6 +25,11 @@ struct IEndpointListener
         const NProto::TVolume& volume,
         NClient::ISessionPtr session) = 0;
 
+    virtual NThreading::TFuture<NProto::TError> AlterEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) = 0;
+
     virtual NThreading::TFuture<NProto::TError> StopEndpoint(
         const TString& socketPath) = 0;
 

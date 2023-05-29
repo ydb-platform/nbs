@@ -333,15 +333,40 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
     }
 
     auto future = SessionManager->AlterSession(
-        std::move(ctx),
+        ctx,
         socketPath,
         newRequest.GetVolumeAccessMode(),
         newRequest.GetVolumeMountMode(),
         newRequest.GetMountSeqNumber(),
         newRequest.GetHeaders());
-    auto error = Executor->WaitFor(future);
 
-    return TErrorResponse(error);
+    if (auto error = Executor->WaitFor(future); HasError(error)) {
+        return TErrorResponse(error);
+    }
+
+    auto [sessionInfo, error] = Executor->WaitFor(SessionManager->GetSession(
+        ctx,
+        socketPath,
+        newRequest.GetHeaders()));
+
+    if (HasError(error)) {
+        return TErrorResponse(error);
+    }
+
+    auto listenerIt = EndpointListeners.find(startedEndpoint.GetIpcType());
+    STORAGE_VERIFY(
+        listenerIt != EndpointListeners.end(),
+        TWellKnownEntityTypes::ENDPOINT,
+        socketPath);
+
+    auto& listener = listenerIt->second;
+
+    auto alterFuture = listener->AlterEndpoint(
+        startedEndpoint,
+        sessionInfo.Volume,
+        sessionInfo.Session);
+
+    return TErrorResponse(Executor->WaitFor(alterFuture));
 }
 
 TFuture<NProto::TStopEndpointResponse> TEndpointManager::StopEndpoint(

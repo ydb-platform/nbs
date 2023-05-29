@@ -133,6 +133,9 @@ private:
     TMap<TString, TTestEndpoint> Endpoints;
 
 public:
+    ui32 AlterEndpointCounter = 0;
+
+public:
     TTestEndpointListener(
             TFuture<NProto::TError> result = MakeFuture<NProto::TError>())
         : Result(std::move(result))
@@ -158,6 +161,18 @@ public:
             });
 
         return Result;
+    }
+
+    TFuture<NProto::TError> AlterEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        Y_UNUSED(request, volume, session);
+
+        ++AlterEndpointCounter;
+
+        return MakeFuture<NProto::TError>();
     }
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
@@ -451,11 +466,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         TBootstrap bootstrap(CreateTestService(mountedVolumes));
 
+        auto listener = std::make_shared<TTestEndpointListener>();
         auto manager = CreateEndpointManager(
             bootstrap,
-            {{ ipcType, std::make_shared<TTestEndpointListener>() }});
+            {{ ipcType, listener }});
 
         bootstrap.Start();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listener->AlterEndpointCounter);
 
         auto accessMode = NProto::VOLUME_ACCESS_READ_ONLY;
         auto mountMode = NProto::VOLUME_MOUNT_REMOTE;
@@ -475,6 +493,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto future = StartEndpoint(*manager, request);
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
+
+            UNIT_ASSERT_VALUES_EQUAL(0, listener->AlterEndpointCounter);
 
             const auto& mountRequest = mountedVolumes.find(diskId)->second;
             UNIT_ASSERT(mountRequest.GetVolumeAccessMode() == accessMode);
@@ -501,6 +521,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
 
+            UNIT_ASSERT_VALUES_EQUAL(1, listener->AlterEndpointCounter);
+
             const auto& mountRequest = mountedVolumes.find(diskId)->second;
             UNIT_ASSERT(mountRequest.GetVolumeAccessMode() == accessMode);
             UNIT_ASSERT(mountRequest.GetVolumeMountMode() == mountMode);
@@ -514,6 +536,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
             UNIT_ASSERT(mountedVolumes.empty());
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listener->AlterEndpointCounter);
     }
 
     Y_UNIT_TEST(ShouldHandleListEndpoints)

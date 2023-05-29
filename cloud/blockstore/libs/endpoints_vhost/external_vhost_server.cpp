@@ -17,6 +17,7 @@
 
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
+#include <util/generic/hash.h>
 #include <util/generic/scope.h>
 #include <util/generic/strbuf.h>
 #include <util/string/builder.h>
@@ -373,7 +374,8 @@ void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEndpoint final
-    : public TThrRefBase
+    : public IExternalEndpoint
+    , public std::enable_shared_from_this<TEndpoint>
     , public ISimpleThread  // XXX: pidfd_open is not implemented for Linux 4.14
 {                           // so we are forced to use a thread for waitpid.
 private:
@@ -419,14 +421,14 @@ public:
         Y_VERIFY_DEBUG(ShouldStop);
     }
 
-    void Run()
+    void Start() override
     {
         Process = StartProcess();
 
         ISimpleThread::Start();
     }
 
-    TFuture<NProto::TError> Stop()
+    TFuture<NProto::TError> Stop() override
     {
         with_lock (Mutex) {
             Y_VERIFY_DEBUG(Process);
@@ -438,9 +440,10 @@ public:
         return StopPromise;
     }
 
+private:
     void* ThreadProc() override
     {
-        TIntrusivePtr<TEndpoint> holder {this};
+        auto holder = shared_from_this();
 
         Detach();   // don't call Join in the same thread
 
@@ -518,39 +521,38 @@ public:
     }
 };
 
-using TEndpointPtr = TIntrusivePtr<TEndpoint>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TExternalVhostEndpointListener final
-    : public IEndpointListener
+    : public std::enable_shared_from_this<TExternalVhostEndpointListener>
+    , public IEndpointListener
 {
 private:
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const TExecutorPtr Executor;
-    const TString BinaryPath;
     const TString LocalAgentId;
     const IEndpointListenerPtr FallbackListener;
+    const TExternalEndpointFactory EndpointFactory;
 
     TLog Log;
 
-    THashMap<TString, TEndpointPtr> Endpoints;
+    THashMap<TString, IExternalEndpointPtr> Endpoints;
 
 public:
     TExternalVhostEndpointListener(
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             TExecutorPtr executor,
-            TString binaryPath,
             TString localAgentId,
-            IEndpointListenerPtr fallbackListener)
+            IEndpointListenerPtr fallbackListener,
+            TExternalEndpointFactory endpointFactory)
         : Logging {std::move(logging)}
         , ServerStats {std::move(serverStats)}
         , Executor {std::move(executor)}
-        , BinaryPath {std::move(binaryPath)}
         , LocalAgentId {std::move(localAgentId)}
         , FallbackListener {std::move(fallbackListener)}
+        , EndpointFactory {std::move(endpointFactory)}
         , Log {Logging->CreateLog("BLOCKSTORE_SERVER")}
     {}
 
@@ -559,7 +561,17 @@ public:
         const NProto::TVolume& volume,
         NClient::ISessionPtr session) override
     {
+        const auto& socketPath = request.GetUnixSocketPath();
+
+        if (Endpoints.contains(socketPath)) {
+            return MakeFuture(MakeError(E_ARGUMENT, TStringBuilder()
+                << "endpoint " << socketPath.Quote()
+                << " has already been started"));
+        }
+
         if (!TryStartExternalEndpoint(request, volume)) {
+            Endpoints.emplace(socketPath, nullptr);
+
             return FallbackListener->StartEndpoint(
                 request,
                 volume,
@@ -569,45 +581,99 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
+    TFuture<NProto::TError> AlterEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        const auto& socketPath = request.GetUnixSocketPath();
+
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return MakeFuture(MakeError(E_NOT_FOUND, TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not found"));
+        }
+
+        if (!it->second && !CanStartExternalEndpoint(request, volume)) {
+            return FallbackListener->AlterEndpoint(request, volume, std::move(session));
+        }
+
+        auto self = weak_from_this();
+
+        return StopEndpoint(socketPath)
+            .Apply([=] (const auto& future) {
+                if (future.HasException() || HasError(future.GetValue())) {
+                    return future;
+                }
+
+                if (auto p = self.lock()) {
+                    return p->StartEndpoint(request, volume, session);
+                }
+
+                return MakeFuture(MakeError(E_REJECTED, "Cancelled"));
+            });
+    }
+
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return FallbackListener->StopEndpoint(socketPath);
+            return MakeFuture(MakeError(S_ALREADY, TStringBuilder()
+                << "endpoint " << socketPath.Quote()
+                << " has already been stopped"));
         }
 
         auto ep = std::move(it->second);
-
-        auto future = ep->Stop();
-
         Endpoints.erase(it);
 
-        return future;
+        if (ep) {
+            return ep->Stop();
+        }
+
+        return FallbackListener->StopEndpoint(socketPath);
     }
 
     NProto::TError RefreshEndpoint(
         const TString& socketPath,
         const NProto::TVolume& volume) override
     {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return MakeError(E_NOT_FOUND, TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not found");
+        }
+
+        if (!it->second) {
+            return FallbackListener->RefreshEndpoint(socketPath, volume);
+        }
+
         // TODO: NBS-4151
-        Y_UNUSED(socketPath);
-        Y_UNUSED(volume);
+
         return {};
     }
 
 private:
+    bool IsLocalMode(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume) const
+    {
+        return volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL
+            && request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL
+            && request.GetIpcType() == NProto::IPC_VHOST;
+    }
+
+    bool CanStartExternalEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume) const
+    {
+        return IsLocalMode(request, volume) && IsOnLocalAgent(volume);
+    }
+
     bool TryStartExternalEndpoint(
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume)
     {
-        if (volume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL
-                || request.GetVolumeMountMode() != NProto::VOLUME_MOUNT_LOCAL
-                || request.GetIpcType() != NProto::IPC_VHOST)
-        {
-            return false;
-        }
-
-        if (!ValidateLocation(volume)) {
+        if (!IsLocalMode(request, volume) || !ValidateLocation(volume)) {
             return false;
         }
 
@@ -659,23 +725,25 @@ private:
             ? request.GetClientId()
             : request.GetInstanceId();
 
-        auto ep = MakeIntrusive<TEndpoint>(
+        auto ep = EndpointFactory(
             clientId,
-            Logging,
-            Executor,
-            TEndpointStats {
-                .ClientId = clientId,
-                .DiskId = request.GetDiskId(),
-                .ServerStats = ServerStats
-            },
-            BinaryPath,
+            request.GetDiskId(),
             std::move(args),
             std::move(cgroups)
         );
 
-        ep->Run();
+        ep->Start();
 
         Endpoints[socketPath] = std::move(ep);
+    }
+
+    bool IsOnLocalAgent(const NProto::TVolume& volume) const
+    {
+        return LocalAgentId.empty() || AllOf(
+            volume.GetDevices(),
+            [&] (const auto& d) {
+                return d.GetAgentId() == LocalAgentId;
+            });
     }
 
     bool ValidateLocation(const NProto::TVolume& volume) const
@@ -711,13 +779,51 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString localAgentId,
     IEndpointListenerPtr fallbackListener)
 {
+    auto defaultFactory = [=] (
+        const TString& clientId,
+        const TString& diskId,
+        TVector<TString> args,
+        TVector<TString> cgroups)
+    {
+        return std::make_shared<TEndpoint>(
+            clientId,
+            logging,
+            executor,
+            TEndpointStats {
+                .ClientId = clientId,
+                .DiskId = diskId,
+                .ServerStats = serverStats
+            },
+            binaryPath,
+            std::move(args),
+            std::move(cgroups)
+        );
+    };
+
     return std::make_shared<TExternalVhostEndpointListener>(
         std::move(logging),
         std::move(serverStats),
         std::move(executor),
-        std::move(binaryPath),
         std::move(localAgentId),
-        std::move(fallbackListener));
+        std::move(fallbackListener),
+        std::move(defaultFactory));
+}
+
+IEndpointListenerPtr CreateExternalVhostEndpointListener(
+    ILoggingServicePtr logging,
+    IServerStatsPtr serverStats,
+    TExecutorPtr executor,
+    TString localAgentId,
+    IEndpointListenerPtr fallbackListener,
+    TExternalEndpointFactory factory)
+{
+    return std::make_shared<TExternalVhostEndpointListener>(
+        std::move(logging),
+        std::move(serverStats),
+        std::move(executor),
+        std::move(localAgentId),
+        std::move(fallbackListener),
+        std::move(factory));
 }
 
 }   // namespace NCloud::NBlockStore::NServer
