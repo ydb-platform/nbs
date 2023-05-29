@@ -77,13 +77,19 @@ void TActorSystem::Stop()
 
 TActorId TActorSystem::Register(IActorPtr actor, TStringBuf executorName)
 {
-    // TODO
-    Y_UNUSED(executorName);
+    ui32 id = AppData->UserPoolId;
+    if (executorName) {
+        if (auto it = AppData->ServicePools.find(executorName);
+            it != AppData->ServicePools.end())
+        {
+            id = it->second;
+        }
+    }
 
     return ActorSystem->Register(
         actor.release(),
         TMailboxType::Simple,
-        AppData->UserPoolId);
+        id);
 }
 
 bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
