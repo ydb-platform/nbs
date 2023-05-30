@@ -689,7 +689,7 @@ TRequestThresholds ConvertRequestThresholds(const TProtoRequestThresholds& value
         }
         const auto mediaKind = threshold.GetMediaKind();
         Y_VERIFY_DEBUG(!requestThresholds.count(mediaKind));
-        requestThresholds[mediaKind] = requestThreshold;
+        requestThresholds[mediaKind] = std::move(requestThreshold);
     }
     return requestThresholds;
 }
