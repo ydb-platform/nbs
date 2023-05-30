@@ -390,6 +390,10 @@ void RegisterServerVolumeInstance(
     const TString& instanceId,
     TDynamicCounterPtr src)
 {
+    if (instanceId.empty()) {
+        return;
+    }
+
     auto commonLabels =
         MakeVolumeInstanceLabels(cloudId, folderId, diskId, instanceId);
 
@@ -509,6 +513,10 @@ void UnregisterServerVolumeInstance(
     const TString& diskId,
     const TString& instanceId)
 {
+    if (instanceId.empty()) {
+        return;
+    }
+
     const auto commonLabels =
         MakeVolumeInstanceLabels(cloudId, folderId, diskId, instanceId);
 

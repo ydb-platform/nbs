@@ -281,6 +281,56 @@ struct TVolumeInfoBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TRealInstanceId
+{
+private:
+    const TString ClientId;
+    const TString InstanceId;
+    const TString RealInstanceId;
+
+public:
+    TRealInstanceId(TString clientId, TString instanceId)
+        : ClientId(std::move(clientId))
+        , InstanceId(std::move(instanceId))
+        // in case of multi mount for empty instance, centers override itself
+        // to avoid it use client ID for subgroup
+        , RealInstanceId(InstanceId.empty()
+            ? ClientId
+            : InstanceId)
+    {}
+
+    const TString& GetClientId() const
+    {
+        return ClientId;
+    }
+
+    const TString& GetInstanceId() const
+    {
+        return InstanceId;
+    }
+
+    const TString& GetRealInstanceId() const
+    {
+        return RealInstanceId;
+    }
+};
+
+struct TRealInstanceKeyHash
+{
+    std::size_t operator()(const TRealInstanceId& instance) const
+    {
+        return std::hash<TString>{}(instance.GetRealInstanceId());
+    }
+};
+
+struct TRealInstanceKeyEqual
+{
+    bool operator()(const TRealInstanceId& lhs, const TRealInstanceId& rhs) const
+    {
+       return lhs.GetRealInstanceId() == rhs.GetRealInstanceId();
+    }
+};
+
 class TVolumeInfo final
     : public IVolumeInfo
 {
@@ -288,7 +338,7 @@ class TVolumeInfo final
 
 private:
     const std::shared_ptr<TVolumeInfoBase> VolumeBase;
-    const TString RealInstanceId;
+    const TRealInstanceId RealInstanceId;
 
     TRequestCounters RequestCounters;
 
@@ -313,7 +363,7 @@ public:
     TVolumeInfo(
             std::shared_ptr<TVolumeInfoBase> volumeBase,
             ITimerPtr timer,
-            TString realInstanceId)
+            TRealInstanceId realInstanceId)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
@@ -463,7 +513,11 @@ class TVolumeStats final
 {
     using TVolumeBasePtr = std::shared_ptr<TVolumeInfoBase>;
     using TVolumeInfoPtr = std::shared_ptr<TVolumeInfo>;
-    using TVolumeMap = std::unordered_map<TString, TVolumeInfoPtr>;
+    using TVolumeMap = std::unordered_map<
+        TRealInstanceId,
+        TVolumeInfoPtr,
+        TRealInstanceKeyHash,
+        TRealInstanceKeyEqual>;
 
     struct TVolumeInfoHolder
     {
@@ -484,7 +538,7 @@ private:
     std::shared_ptr<NUserCounter::TUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
 
-    std::unordered_map<TString, TString> ClientToRealInstance;
+    std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
     TVolumeHolderMap Volumes;
     TRWMutex Lock;
 
@@ -513,7 +567,7 @@ public:
 
     bool MountVolumeImpl(
         const NProto::TVolume& volume,
-        const TString& realInstanceId)
+        const TRealInstanceId& realInstanceId)
     {
         bool inserted = false;
 
@@ -558,7 +612,8 @@ public:
 
         auto [itr, result] = ClientToRealInstance.try_emplace(
             clientId,
-            SelectInstanceId(clientId, instanceId));
+            clientId,
+            instanceId);
 
         return MountVolumeImpl(volume, itr->second);
     }
@@ -659,7 +714,9 @@ public:
                     info.VolumeBase,
                     info.RealInstanceId);
                 std::erase_if(ClientToRealInstance, [&info](const auto& client){
-                    return client.second == info.RealInstanceId;
+                    return TRealInstanceKeyEqual().operator()(
+                        client.second,
+                        info.RealInstanceId);
                 });
                 return true;
             }
@@ -790,7 +847,7 @@ private:
 
     TVolumeInfoPtr RegisterInstance(
         TVolumeBasePtr volumeBase,
-        const TString& realInstanceId)
+        const TRealInstanceId& realInstanceId)
     {
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
@@ -808,7 +865,7 @@ private:
             volumeConfig.GetDiskId());
         auto countersGroup = volumeGroup->GetSubgroup(
             "instance",
-            realInstanceId);
+            realInstanceId.GetRealInstanceId());
         info->RequestCounters.Register(*countersGroup);
 
         NUserCounter::RegisterServerVolumeInstance(
@@ -816,7 +873,7 @@ private:
             volumeConfig.GetCloudId(),
             volumeConfig.GetFolderId(),
             volumeConfig.GetDiskId(),
-            realInstanceId,
+            realInstanceId.GetInstanceId(),
             countersGroup);
 
         return info;
@@ -824,21 +881,21 @@ private:
 
     void UnregisterInstance(
         TVolumeBasePtr volumeBase,
-        const TString& realInstanceId)
+        const TRealInstanceId& realInstanceId)
     {
         if (!Counters) {
             InitCounters();
         }
 
         Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
-            RemoveSubgroup("instance", realInstanceId);
+            RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
         NUserCounter::UnregisterServerVolumeInstance(
             *UserCounters,
             volumeBase->Volume.GetCloudId(),
             volumeBase->Volume.GetFolderId(),
             volumeBase->Volume.GetDiskId(),
-            realInstanceId);
+            realInstanceId.GetInstanceId());
     }
 
     void UnregisterVolume(TVolumeBasePtr volumeBase)
