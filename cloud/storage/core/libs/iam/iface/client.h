@@ -47,11 +47,9 @@ struct IIamTokenClient
 {
     using TResponse = TResultOrError<TTokenInfo>;
 
-    // ignoreCached flag makes client not to use possibly cached token.
-    virtual TResponse GetToken(bool ignoreCached = false) = 0;
+    virtual TResponse GetToken() = 0;
 
-    virtual NThreading::TFuture<TResponse> GetTokenAsync(
-        bool ignoreCached = false) = 0;
+    virtual NThreading::TFuture<TResponse> GetTokenAsync() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

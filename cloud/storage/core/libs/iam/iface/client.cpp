@@ -12,15 +12,13 @@ class TIamTokenClientStub final
     : public IIamTokenClient
 {
 public:
-    TResultOrError<TTokenInfo> GetToken(bool ignoreCached) override
+    TResultOrError<TTokenInfo> GetToken() override
     {
-        Y_UNUSED(ignoreCached);
         return TTokenInfo{"", TInstant::Zero()};
     }
 
-    TFuture<TResultOrError<TTokenInfo>> GetTokenAsync(bool ignoreCached) override
+    TFuture<TResultOrError<TTokenInfo>> GetTokenAsync() override
     {
-        Y_UNUSED(ignoreCached);
         return MakeFuture(TResultOrError(TTokenInfo{"", TInstant::Zero()}));
     }
 

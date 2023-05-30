@@ -9,7 +9,6 @@ namespace NCloud {
 #define STORAGE_CRITICAL_EVENTS(xxx)                                           \
     xxx(HiveProxyConcurrentLockError)                                          \
     xxx(TabletBootInfoCacheSyncFailure)                                        \
-    xxx(OutdatedIamToken)                                                      \
     xxx(MlockFailed)                                                           \
 // STORAGE_CRITICAL_EVENTS
 
