@@ -166,7 +166,7 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
 void TServiceActor::RenderVolumeList(IOutputStream& out) const
 {
     auto status = VolumeStats->GatherVolumePerfStatuses();
-    THashMap<TString, bool> statusMap(status.begin(), status.end());
+    THashMap<TString, ui32> statusMap(status.begin(), status.end());
 
     HTML(out) {
         TABLE_SORTABLE_CLASS("table table-bordered") {
@@ -265,7 +265,10 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                                 statusText = "Yes";
                                 cssClass = "label-success";
                             } else {
-                                statusText = "No";
+                                statusText = TStringBuilder() <<
+                                    "No(" <<
+                                    it->second
+                                    << " s)";
                                 cssClass = "label-warning";
                             }
                         }
