@@ -121,7 +121,7 @@ public:
                 Postpone(
                     ctx,
                     requestInfo,
-                    callContext,
+                    std::move(callContext),
                     eventReleaser());
 
                 return ETabletThrottlerStatus::POSTPONED;
@@ -148,7 +148,7 @@ public:
                     Postpone(
                         ctx,
                         requestInfo,
-                        callContext,
+                        std::move(callContext),
                         eventReleaser());
 
                     Y_VERIFY_DEBUG(!PostponedQueueFlushScheduled);
@@ -196,7 +196,7 @@ private:
             callContext->SetPostponeCycles(ctx.Now().MicroSeconds());
             PostponedRequests.push_back({
                 requestInfo,
-                callContext,
+                std::move(callContext),
                 std::move(ev)});
        }
     }
