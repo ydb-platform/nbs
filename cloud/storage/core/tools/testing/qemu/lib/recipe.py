@@ -8,11 +8,11 @@ import retrying
 import pipes
 import tarfile
 
-import core.config
 import library.python.fs as fs
 import library.python.testing.recipe
 
 from .qemu import Qemu
+from .common import get_mount_paths
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def start(argv):
                      port=port_manager.get_port(),
                      key=_get_ssh_key(args))
     virtio = _get_vm_virtio(args)
-    mount_paths = _get_mount_paths()
+    mount_paths = get_mount_paths()
 
     vhost_socket = ""
     if virtio == "fs":
@@ -283,25 +283,6 @@ def _get_ssh_key(args):
     fs.copy_file(ssh_key, new_ssh_key)
     os.chmod(new_ssh_key, 0o0600)
     return new_ssh_key
-
-
-def _get_mount_paths():
-    if "TEST_TOOL" in os.environ:
-        test_tool_dir = os.path.dirname(os.environ["TEST_TOOL"])
-    else:
-        test_tool_dir = core.config.tool_root()
-
-    if 'ASAN_SYMBOLIZER_PATH' in os.environ:
-        toolchain = os.path.dirname(os.path.dirname(
-            os.environ['ASAN_SYMBOLIZER_PATH']))
-
-    mounts = [("source_path", yatest.common.source_path(), os.getenv("VIRTIOFS_SOCKET_{}".format("source_path"))),  # need to mound original source root as test environment has links into it
-              ("build_path", yatest.common.build_path(), os.getenv("VIRTIOFS_SOCKET_{}".format("build_path"))),
-              ("test_tool", test_tool_dir, os.getenv("VIRTIOFS_SOCKET_{}".format("test_tool"))),
-              ("toolchain", toolchain, os.getenv("VIRTIOFS_SOCKET_{}".format("toolchain")))]
-    if yatest.common.ram_drive_path():
-        mounts.append(tuple(("tmpfs_path", yatest.common.ram_drive_path(), None)))
-    return mounts
 
 
 def _prepare_test_environment(ssh, virtio):
