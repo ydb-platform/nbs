@@ -26,8 +26,11 @@ namespace {
 using TTraceKey = std::pair<TStringBuf, TStringBuf>;
 using TTraceLog = std::pair<TStringBuf, TEntry>;
 
-constexpr TTraceKey TRACE_TYPE_SLOW{"slow", "st_slow_requests_filter"};
-constexpr TTraceKey TRACE_TYPE_RANDOM{"random", "st_trace_logger"};
+const TStringBuf slowName = "slow";
+const TStringBuf randomName = "random";
+
+const TTraceKey TRACE_TYPE_SLOW{slowName, "st_slow_requests_filter"};
+const TTraceKey TRACE_TYPE_RANDOM{randomName, "st_trace_logger"};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -491,8 +494,8 @@ public:
 
         auto rootPage = monitoring->RegisterIndexPage("tracelogs", "Traces Logs");
         auto& index = static_cast<TIndexMonPage&>(*rootPage);
-        index.Register(new TMonPageHtml(*this, "random", "Random samples"));
-        index.Register(new TMonPageHtml(*this, "slow", "Slow samples"));
+        index.Register(new TMonPageHtml(*this, randomName.Data(), "Random samples"));
+        index.Register(new TMonPageHtml(*this, slowName.Data(), "Slow samples"));
         index.Register(new TMonPageJson(*this, "json"));
     }
 
@@ -553,7 +556,10 @@ private:
 
     void OutputJson(IOutputStream& out, IMonHttpRequest& request) {
         const TString traceType = request.GetParams().Get("traceType");
-        if (traceType != "slow" && traceType != "random" && !traceType.empty()) {
+        if (slowName != traceType &&
+            randomName != traceType &&
+            !traceType.empty())
+        {
             DisplayJsonErrorMessage(
                 out, "Invalid traceType set '" + traceType + "'"
             );
