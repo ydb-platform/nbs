@@ -9,9 +9,6 @@
 add_subdirectory(model)
 
 add_library(libs-storage-disk_agent)
-target_include_directories(libs-storage-disk_agent PRIVATE
-  ${CMAKE_SOURCE_DIR}/contrib/libs/spdk/include
-)
 target_link_libraries(libs-storage-disk_agent PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
