@@ -4452,6 +4452,90 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service.AlterVolume(DefaultDiskId, "project2", "folder2", "cloud2");
         }
     }
+
+    Y_UNIT_TEST(ShouldRemountEncryptedVolumesByBalancer)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto projectId = "project";
+        auto folderId = "folder";
+        auto cloudId = "cloud";
+
+        auto req = service.CreateCreateVolumeRequest(
+            DefaultDiskId,
+            DefaultBlocksCount,
+            DefaultBlockSize,
+            folderId,
+            cloudId);
+        req->Record.MutableEncryptionSpec()->SetMode(NProto::ENCRYPTION_AES_XTS);
+        req->Record.SetProjectId(projectId);
+        service.SendRequest(MakeStorageServiceId(), std::move(req));
+        auto resp = service.RecvResponse<TEvService::TEvCreateVolumeResponse>();
+        UNIT_ASSERT_C(SUCCEEDED(resp->GetStatus()), resp->GetErrorReason());
+
+        service.AssignVolume();
+
+        auto encryptionKeyHash = "encryptionkeyhash";
+
+        auto validateVolume = [&](const NProto::TMountVolumeResponse& response) {
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            const auto& volume = response.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(projectId, volume.GetProjectId());
+            UNIT_ASSERT_VALUES_EQUAL(folderId, volume.GetFolderId());
+            UNIT_ASSERT_VALUES_EQUAL(cloudId, volume.GetCloudId());
+        };
+
+        TString sessionId;
+
+        // set keyhash using mount
+        {
+            auto response = service.MountVolume(
+                DefaultDiskId,
+                "",
+                "",
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0,
+                0,
+                encryptionKeyHash);
+            validateVolume(response->Record);
+            sessionId = response->Record.GetSessionId();
+        }
+
+        TVector<NProto::EPreemptionSource> sources {
+            NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT,
+            NProto::EPreemptionSource::SOURCE_BALANCER,
+            NProto::EPreemptionSource::SOURCE_MANUAL};
+
+        for (auto s: sources) {
+            {
+                auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    s);
+                service.SendRequest(MakeStorageServiceId(), std::move(request));
+                auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            }
+
+            service.WaitForVolume(DefaultDiskId);
+            service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+            {
+                auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    s);
+                service.SendRequest(MakeStorageServiceId(), std::move(request));
+                auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            }
+
+            service.WaitForVolume(DefaultDiskId);
+            service.ReadBlocks(DefaultDiskId, 0, sessionId);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
