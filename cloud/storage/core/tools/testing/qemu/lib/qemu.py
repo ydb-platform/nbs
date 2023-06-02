@@ -281,3 +281,20 @@ class Qemu:
         self.qmp = QmpClient(self.qmp_socket)
 
         return self.qemu_bin.daemon.process.pid
+
+    def get_ssh_port(self):
+        if self.ssh_port != 0:
+            return self.ssh_port
+
+        ssh_port = None
+        usernet_info = self.qmp.command("human-monitor-command",
+                                        **{"command-line": "info usernet"})
+        for line in usernet_info.splitlines():
+            fields = line.split()
+            if fields[0] == "TCP[HOST_FORWARD]" and fields[5] == "22":
+                if ssh_port is not None:
+                    raise Exception("Guest has multiple 22 ports")
+                ssh_port = int(fields[3])
+
+        self.ssh_port = ssh_port
+        return self.ssh_port

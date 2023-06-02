@@ -33,10 +33,6 @@ class QemuKvmRecipeException(Exception):
 def start(argv):
     args = _parse_args(argv)
 
-    port_manager = yatest.common.network.PortManager()
-    ssh = SshToGuest(user=_get_ssh_user(args),
-                     port=port_manager.get_port(),
-                     key=_get_ssh_key(args))
     virtio = _get_vm_virtio(args)
     mount_paths = get_mount_paths()
 
@@ -59,9 +55,12 @@ def start(argv):
                 vhost_socket=vhost_socket,
                 enable_kvm=_get_vm_enable_kvm(args))
 
-    qemu.set_ssh_port(ssh.port)
     qemu.set_mount_paths(mount_paths)
     qemu.start()
+
+    ssh = SshToGuest(user=_get_ssh_user(args),
+                     port=qemu.get_ssh_port(),
+                     key=_get_ssh_key(args))
 
     library.python.testing.recipe.set_env(
         "QEMU_FORWARDING_PORT", str(ssh.port))
