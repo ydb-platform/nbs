@@ -28,19 +28,20 @@ public:
     void check_peer(
         tsi_peer peer,
         grpc_endpoint* endpoint,
+        const grpc_core::ChannelArgs& /* args */,
         grpc_core::RefCountedPtr<grpc_auth_context>* authContext,
         grpc_closure* onPeerChecked) override
     {
         Y_UNUSED(endpoint);
 
         *authContext = grpc_core::MakeRefCounted<grpc_auth_context>(nullptr);
-        grpc_error* error = GRPC_ERROR_NONE;
+        grpc_error_handle error = GRPC_ERROR_NONE;
         grpc_core::ExecCtx::Run(DEBUG_LOCATION, onPeerChecked, error);
         tsi_peer_destruct(&peer);
     }
 
     void add_handshakers(
-        const grpc_channel_args* args,
+        const grpc_core::ChannelArgs& args,
         grpc_pollset_set* interestedParties,
         grpc_core::HandshakeManager* handshakeManager) override
     {
@@ -81,12 +82,14 @@ class TInsecureServerCredentials final
     : public grpc_server_credentials
 {
 public:
-    TInsecureServerCredentials()
-        : grpc_server_credentials("InsecureServerCredentials")
-    {}
+    // see conrib/libs/grpc/src/core/lib/gprpp/unique_type_name.h for details
+    grpc_core::UniqueTypeName type() const override {
+        static grpc_core::UniqueTypeName::Factory kFactory("InsecureServerCredentials");
+        return kFactory.Create();
+  }
 
     grpc_core::RefCountedPtr<grpc_server_security_connector>
-    create_security_connector(const grpc_channel_args* /*args*/) override
+    create_security_connector(const grpc_core::ChannelArgs& /*args*/) override
     {
         return grpc_core::MakeRefCounted<TInsecureConnector>(Ref());
     }
