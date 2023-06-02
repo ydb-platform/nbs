@@ -25,7 +25,6 @@ target_link_libraries(blockstore-loadtest PUBLIC
   blockstore-libs-nbd
   blockstore-libs-rdma
   libs-spdk-iface
-  libs-spdk-impl
   core-libs-grpc
   core-libs-version
   cpp-deprecated-atomic
