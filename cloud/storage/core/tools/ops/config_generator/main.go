@@ -45,7 +45,6 @@ func getNbsConfigMap() configurator.ConfigMap {
 		"nbs-notify.txt":              {Proto: &nbsProto.TNotifyConfig{}, FileName: "notify.txt"},
 		"nbs-disk-registry-proxy.txt": {Proto: &nbsProto.TDiskRegistryProxyConfig{}, FileName: "disk-registry.txt"},
 		"nbs-http-proxy.txt":          {Proto: &nbsProto.THttpProxyConfig{}, FileName: "http-proxy.txt"},
-		"nbs-local-storage.txt":       {Proto: &nbsProto.TLocalStorageConfig{}, FileName: "local-storage.txt"},
 		"nbs-disk-agent.txt":          {Proto: &nbsProto.TDiskAgentConfig{}, FileName: "disk-agent.txt"},
 		"nbs-disk-registry.txt":       {Proto: &nbsApiProto.TUpdateDiskRegistryConfigRequest{}, FileName: "update-disk-registry.txt"},
 		"nbs-iam.txt":                 {Proto: &coreProto.TIamClientConfig{}, FileName: "iam.txt"},

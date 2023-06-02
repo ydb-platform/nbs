@@ -35,9 +35,11 @@ TOptionsCommon::TOptionsCommon()
         .RequiredArgument("FILE")
         .StoreResult(&DiskAgentConfig);
 
+    TString localStorageConfig;
     Opts.AddLongOption("local-storage-file")
         .RequiredArgument("FILE")
-        .StoreResult(&LocalStorageConfig);
+        .StoreResult(&localStorageConfig);
+    Y_UNUSED(localStorageConfig);
 
     Opts.AddLongOption("dr-proxy-file")
         .RequiredArgument("FILE")

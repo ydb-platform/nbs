@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/notify/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/config.h>
-#include <cloud/blockstore/libs/storage_local/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -273,14 +272,6 @@ void TConfigInitializerYdb::ApplyDiskAgentConfig(const TString& text)
         Rack);
 }
 
-void TConfigInitializerYdb::ApplyLocalStorageConfig(const TString& text)
-{
-    NProto::TLocalStorageConfig config;
-    ParseProtoTextFromStringRobust(text, config);
-
-    LocalStorageConfig = std::make_shared<TLocalStorageConfig>(std::move(config));
-}
-
 void TConfigInitializerYdb::ApplyDiskRegistryProxyConfig(const TString& text)
 {
     NProto::TDiskRegistryProxyConfig config;
@@ -313,7 +304,6 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "DiskRegistryProxyConfig", &TSelf::ApplyDiskRegistryProxyConfig },
         { "FeaturesConfig",          &TSelf::ApplyFeaturesConfig          },
         { "InterconnectConfig",      &TSelf::ApplyInterconnectConfig      },
-        { "LocalStorageConfig",      &TSelf::ApplyLocalStorageConfig      },
         { "LogbrokerConfig",         &TSelf::ApplyLogbrokerConfig         },
         { "LogConfig",               &TSelf::ApplyLogConfig               },
         { "MonitoringConfig",        &TSelf::ApplyMonitoringConfig        },

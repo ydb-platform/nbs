@@ -28,7 +28,6 @@
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/env.h>
-#include <cloud/blockstore/libs/storage_local/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -162,7 +161,6 @@ void TBootstrapYdb::InitKikimrService()
         Configs->Rack = location.GetRack();
     }
 
-    Configs->InitLocalStorageConfig();
     Configs->InitDiskAgentConfig();
 
     STORAGE_INFO("Configs initialized");
@@ -310,47 +308,6 @@ void TBootstrapYdb::InitKikimrService()
     InitSpdk();
 
     FileIOService = CreateAIOService();
-
-    if (auto& config = *Configs->LocalStorageConfig; config.GetEnabled()) {
-        const TString submissionQueueName = config.GetSingleQueue()
-            ? "IO/Q"
-            : "IO/SQ";
-
-        SubmissionQueue = config.GetSubmissionQueueThreadCount() > 0
-            ? CreateThreadPool(
-                submissionQueueName,
-                config.GetSubmissionQueueThreadCount())
-            : CreateTaskQueueStub();
-
-        ITaskQueuePtr completionQueue = SubmissionQueue;
-
-        if (!config.GetSingleQueue()) {
-            CompletionQueue = config.GetCompletionQueueThreadCount() > 0
-                ? CreateThreadPool("IO/CQ", config.GetCompletionQueueThreadCount())
-                : CreateTaskQueueStub();
-            completionQueue = CompletionQueue;
-        }
-
-         IFileIOServicePtr fileIO;
-
-        if (config.GetBackend() == NProto::LOCAL_STORAGE_BACKEND_AIO) {
-            fileIO = FileIOService;
-            NvmeManager = CreateNvmeManager(
-                Configs->DiskAgentConfig->GetSecureEraseTimeout());
-        } else {
-            fileIO = CreateFileIOServiceStub();
-            NvmeManager = CreateNvmeManagerStub();
-        }
-
-        AioStorageProvider = CreateAioStorageProvider(
-            std::move(fileIO),
-            SubmissionQueue,
-            completionQueue,
-            NvmeManager,
-            !config.GetDirectIoDisabled());
-
-        STORAGE_INFO("AioStorageProvider initialized");
-    }
 
     if (Configs->DiskAgentConfig->GetEnabled() &&
         Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&

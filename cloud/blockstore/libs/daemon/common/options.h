@@ -28,7 +28,6 @@ public:
     TString DiskAgentConfig;
     TString DiskRegistryProxyConfig;
     TString EndpointConfig;
-    TString LocalStorageConfig;
 
     enum class EServiceKind {
         Null   /* "null"   */ ,

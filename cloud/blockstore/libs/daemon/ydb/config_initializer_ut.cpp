@@ -156,7 +156,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         options->StorageConfig = nbsComponentConfigPath.GetPath();
         options->DiskRegistryProxyConfig = nbsComponentConfigPath.GetPath();
         options->DiskAgentConfig = nbsComponentConfigPath.GetPath();
-        options->LocalStorageConfig = nbsComponentConfigPath.GetPath();
         options->ServerConfig = nbsComponentConfigPath.GetPath();
         options->EndpointConfig = nbsComponentConfigPath.GetPath();
         options->FeaturesConfig = nbsComponentConfigPath.GetPath();
@@ -172,7 +171,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitStorageConfig();
         ci.InitDiskRegistryProxyConfig();
         ci.InitDiskAgentConfig();
-        ci.InitLocalStorageConfig();
         ci.InitEndpointConfig();
         ci.InitFeaturesConfig();
         ci.InitLogbrokerConfig();

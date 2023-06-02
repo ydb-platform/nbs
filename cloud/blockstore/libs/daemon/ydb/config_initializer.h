@@ -20,7 +20,6 @@
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
-#include <cloud/blockstore/libs/storage_local/public.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
 #include <cloud/storage/core/libs/coroutine/public.h>
@@ -79,7 +78,6 @@ private:
     void ApplyDiskAgentConfig(const TString& text);
     void ApplyDiskRegistryProxyConfig(const TString& text);
     void ApplyFeaturesConfig(const TString& text);
-    void ApplyLocalStorageConfig(const TString& text);
     void ApplyLogbrokerConfig(const TString& text);
     void ApplyNotifyConfig(const TString& text);
     void ApplyServerAppConfig(const TString& text);

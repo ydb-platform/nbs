@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/spdk/public.h>
-#include <cloud/blockstore/libs/storage_local/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 
@@ -31,7 +30,6 @@ struct TConfigInitializerCommon
     TServerAppConfigPtr ServerConfig;
     NClient::TClientAppConfigPtr EndpointConfig;
     NStorage::TDiskAgentConfigPtr DiskAgentConfig;
-    TLocalStorageConfigPtr LocalStorageConfig;
     NStorage::TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
@@ -49,7 +47,6 @@ struct TConfigInitializerCommon
     void InitDiskRegistryProxyConfig();
     void InitEndpointConfig();
     void InitHostPerformanceProfile();
-    void InitLocalStorageConfig();
     void InitServerConfig();
     void InitSpdkEnvConfig();
 

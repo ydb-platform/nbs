@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/config.h>
-#include <cloud/blockstore/libs/storage_local/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 
@@ -81,16 +80,6 @@ void TConfigInitializerCommon::InitDiskAgentConfig()
         std::move(diskAgentConfig),
         Rack
     );
-}
-
-void TConfigInitializerCommon::InitLocalStorageConfig()
-{
-    NProto::TLocalStorageConfig config;
-    if (Options->LocalStorageConfig) {
-        ParseProtoTextFromFileRobust(Options->LocalStorageConfig, config);
-    }
-
-    LocalStorageConfig = std::make_shared<TLocalStorageConfig>(std::move(config));
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()

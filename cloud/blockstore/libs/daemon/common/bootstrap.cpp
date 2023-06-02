@@ -61,8 +61,6 @@
 #include <cloud/blockstore/libs/spdk/config.h>
 #include <cloud/blockstore/libs/spdk/env.h>
 #include <cloud/blockstore/libs/spdk/memory.h>
-#include <cloud/blockstore/libs/storage_local/config.h>
-#include <cloud/blockstore/libs/storage_local/storage_local.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
@@ -321,16 +319,6 @@ void TBootstrapBase::Init()
     STORAGE_INFO("Stats initialized");
 
     TVector<IStorageProviderPtr> storageProviders;
-
-    if (Configs->LocalStorageConfig->GetEnabled()) {
-        STORAGE_INFO("Initialize Local Storage Provider");
-
-        storageProviders.push_back(NServer::CreateLocalStorageProvider(
-            FQDNHostName(),
-            AioStorageProvider,
-            Logging,
-            ServerStats));
-    }
 
     if (Configs->ServerConfig->GetNvmfInitiatorEnabled()) {
         Y_VERIFY(Spdk);
@@ -706,7 +694,6 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitServerConfig();
     Configs->InitEndpointConfig();
     Configs->InitHostPerformanceProfile();
-    Configs->InitLocalStorageConfig();
     Configs->InitDiskAgentConfig();
     Configs->InitDiskRegistryProxyConfig();
     Configs->InitDiagnosticsConfig();
