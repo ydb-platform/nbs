@@ -1,7 +1,8 @@
 #include "device_wrapper.h"
 
-#include "device.h"
 #include "spdk.h"
+
+#include <cloud/blockstore/libs/spdk/iface/device.h>
 
 namespace NCloud::NBlockStore::NSpdk {
 

@@ -16,7 +16,7 @@ target_link_libraries(blockstore-libs-endpoints_spdk PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-endpoints
   blockstore-libs-service
-  blockstore-libs-spdk
+  libs-spdk-iface
   core-libs-coroutine
 )
 target_sources(blockstore-libs-endpoints_spdk PRIVATE

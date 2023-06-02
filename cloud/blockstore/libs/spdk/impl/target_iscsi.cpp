@@ -1,8 +1,8 @@
-#include "target.h"
-
-#include "device.h"
 #include "env_impl.h"
 #include "spdk.h"
+
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/target.h>
 
 #include <util/generic/map.h>
 #include <util/string/cast.h>

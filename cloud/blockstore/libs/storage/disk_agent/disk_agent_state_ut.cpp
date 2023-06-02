@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/spdk/env_stub.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/storage/core/libs/common/error.h>
 

@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 
 #include <cloud/storage/core/libs/coroutine/public.h>
 

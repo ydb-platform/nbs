@@ -36,7 +36,8 @@ target_link_libraries(libs-daemon-common PUBLIC
   blockstore-libs-service
   blockstore-libs-service_local
   blockstore-libs-service_throttling
-  blockstore-libs-spdk
+  libs-spdk-iface
+  libs-spdk-impl
   storage-disk_agent-model
   storage-disk_registry_proxy-model
   blockstore-libs-throttling

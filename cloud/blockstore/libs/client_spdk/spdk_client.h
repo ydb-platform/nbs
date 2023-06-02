@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 
 #include <util/generic/string.h>
 

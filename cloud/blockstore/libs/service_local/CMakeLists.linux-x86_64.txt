@@ -17,7 +17,7 @@ target_link_libraries(blockstore-libs-service_local PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-nvme
   blockstore-libs-service
-  blockstore-libs-spdk
+  libs-spdk-iface
   libs-storage-protos
   core-libs-common
   library-cpp-aio

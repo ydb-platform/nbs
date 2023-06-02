@@ -19,8 +19,8 @@
 #include <cloud/blockstore/libs/nbd/client_handler.h>
 #include <cloud/blockstore/libs/rdma/client.h>
 #include <cloud/blockstore/libs/rdma/verbs.h>
-#include <cloud/blockstore/libs/spdk/config.h>
-#include <cloud/blockstore/libs/spdk/env.h>
+#include <cloud/blockstore/libs/spdk/iface/config.h>
+#include <cloud/blockstore/libs/spdk/impl/env.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/validation/validation.h>

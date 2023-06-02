@@ -21,9 +21,9 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
-#include <cloud/blockstore/libs/spdk/config.h>
-#include <cloud/blockstore/libs/spdk/env.h>
-#include <cloud/blockstore/libs/spdk/memory.h>
+#include <cloud/blockstore/libs/spdk/iface/config.h>
+#include <cloud/blockstore/libs/spdk/impl/env.h>
+#include <cloud/blockstore/libs/spdk/impl/memory.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>

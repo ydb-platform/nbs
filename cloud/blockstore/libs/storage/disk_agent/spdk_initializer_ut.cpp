@@ -2,9 +2,9 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
-#include <cloud/blockstore/libs/spdk/env_stub.h>
-#include <cloud/blockstore/libs/spdk/env_test.h>
-#include <cloud/blockstore/libs/spdk/target.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/libs/spdk/iface/env_test.h>
+#include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 
 #include <library/cpp/testing/unittest/registar.h>

@@ -9,8 +9,8 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/spdk/device.h>
-#include <cloud/blockstore/libs/spdk/env.h>
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>

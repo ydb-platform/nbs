@@ -1,11 +1,10 @@
-#include "device.h"
-
-#include "config.h"
-
 #include "address.h"
 #include "alloc.h"
 #include "env.h"
-#include "env_test.h"
+
+#include <cloud/blockstore/libs/spdk/iface/config.h>
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/env_test.h>
 
 #include <cloud/blockstore/libs/common/sglist_test.h>
 

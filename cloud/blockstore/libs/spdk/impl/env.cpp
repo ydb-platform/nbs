@@ -1,8 +1,9 @@
 #include "env.h"
 
-#include "config.h"
 #include "env_impl.h"
 #include "spdk.h"
+
+#include <cloud/blockstore/libs/spdk/iface/config.h>
 
 #include <library/cpp/logger/log.h>
 

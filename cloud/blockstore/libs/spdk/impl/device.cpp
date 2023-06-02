@@ -1,12 +1,12 @@
-#include "device.h"
-
 #include "address.h"
 #include "device_proxy.h"
 #include "device_wrapper.h"
 #include "env_impl.h"
 #include "histogram.h"
 #include "spdk.h"
-#include "target.h"
+
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/target.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/vector.h>

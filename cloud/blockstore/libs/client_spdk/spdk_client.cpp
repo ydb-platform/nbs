@@ -3,8 +3,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
-#include <cloud/blockstore/libs/spdk/device.h>
-#include <cloud/blockstore/libs/spdk/env.h>
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

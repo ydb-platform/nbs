@@ -12,8 +12,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/spdk/env_stub.h>
-#include <cloud/blockstore/libs/spdk/env_test.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/libs/spdk/iface/env_test.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -496,7 +496,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
                 *storage,
                 10,
                 10,
-		blockContent.size(),
+                blockContent.size(),
                 TGuardedSgList(sglist)
             );
 

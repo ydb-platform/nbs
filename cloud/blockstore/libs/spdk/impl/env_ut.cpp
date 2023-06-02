@@ -1,6 +1,6 @@
-#include "config.h"
-
 #include "env_impl.h"
+
+#include <cloud/blockstore/libs/spdk/iface/config.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 

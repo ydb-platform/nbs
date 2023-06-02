@@ -13,8 +13,8 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/spdk/env.h>
-#include <cloud/blockstore/libs/spdk/target.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
+#include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/storage/core/libs/common/error.h>

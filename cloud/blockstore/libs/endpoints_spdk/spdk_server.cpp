@@ -5,9 +5,9 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
-#include <cloud/blockstore/libs/spdk/device.h>
-#include <cloud/blockstore/libs/spdk/env.h>
-#include <cloud/blockstore/libs/spdk/target.h>
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
+#include <cloud/blockstore/libs/spdk/iface/target.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>

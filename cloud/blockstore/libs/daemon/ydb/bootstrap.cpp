@@ -27,7 +27,7 @@
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
-#include <cloud/blockstore/libs/spdk/env.h>
+#include <cloud/blockstore/libs/spdk/impl/env.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>

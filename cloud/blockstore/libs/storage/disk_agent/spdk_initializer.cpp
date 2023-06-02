@@ -4,9 +4,9 @@
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/service_local/storage_spdk.h>
-#include <cloud/blockstore/libs/spdk/device.h>
-#include <cloud/blockstore/libs/spdk/env.h>
-#include <cloud/blockstore/libs/spdk/target.h>
+#include <cloud/blockstore/libs/spdk/iface/device.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
+#include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 
 #include <library/cpp/iterator/zip.h>

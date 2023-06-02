@@ -5,7 +5,7 @@
 #include "storage_with_stats.h"
 
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/blockstore/libs/kikimr/components.h>

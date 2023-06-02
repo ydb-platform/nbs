@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/vector.h>

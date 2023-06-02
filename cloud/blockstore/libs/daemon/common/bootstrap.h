@@ -13,7 +13,7 @@
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/vhost/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>

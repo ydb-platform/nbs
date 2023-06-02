@@ -7,7 +7,7 @@
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
-#include <cloud/blockstore/libs/spdk/config.h>
+#include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>

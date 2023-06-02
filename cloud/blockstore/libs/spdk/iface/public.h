@@ -4,9 +4,6 @@
 
 #include <memory>
 
-struct spdk_bdev;
-struct spdk_histogram_data;
-
 namespace NCloud::NBlockStore::NSpdk {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,7 +50,5 @@ struct ISpdkTarget;
 using ISpdkTargetPtr = std::shared_ptr<ISpdkTarget>;
 
 using TSpdkBuffer = std::shared_ptr<char>;
-
-using THistogramPtr = std::shared_ptr<spdk_histogram_data>;
 
 }   // namespace NCloud::NBlockStore::NSpdk

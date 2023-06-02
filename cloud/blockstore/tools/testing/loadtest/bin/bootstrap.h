@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/rdma/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/validation/public.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>

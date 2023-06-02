@@ -1,7 +1,7 @@
 import yatest.common as common
 
 
-tests_bin = "cloud/blockstore/libs/spdk/ut/cloud-blockstore-libs-spdk-ut"
+tests_bin = "cloud/blockstore/libs/spdk/impl/ut/cloud-blockstore-libs-spdk-impl-ut"
 
 
 def test_qemu_spdk_ut():

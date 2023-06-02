@@ -19,7 +19,8 @@ target_link_libraries(blockstore-libs-disk_agent PUBLIC
   blockstore-libs-kikimr
   blockstore-libs-server
   blockstore-libs-service
-  blockstore-libs-spdk
+  libs-spdk-iface
+  libs-spdk-impl
   libs-storage-core
   storage-init-disk_agent
   core-libs-common

@@ -7,19 +7,19 @@
 
 
 
-add_library(blockstore-libs-spdk)
-target_include_directories(blockstore-libs-spdk PRIVATE
+add_library(libs-spdk-impl)
+target_include_directories(libs-spdk-impl PRIVATE
   ${CMAKE_SOURCE_DIR}/contrib/libs/libaio
   ${CMAKE_SOURCE_DIR}/contrib/libs/spdk/include
   ${CMAKE_SOURCE_DIR}/contrib/libs/spdk/lib
   ${CMAKE_SOURCE_DIR}/contrib/libs/spdk/module
 )
-target_link_libraries(blockstore-libs-spdk PUBLIC
+target_link_libraries(libs-spdk-impl PUBLIC
   contrib-libs-cxxsupp
   yutil
   blockstore-libs-common
   blockstore-libs-diagnostics
-  blockstore-libs-rdma
+  libs-spdk-iface
   core-libs-diagnostics
   spdk-lib-bdev
   spdk-lib-conf
@@ -49,19 +49,15 @@ target_link_libraries(blockstore-libs-spdk PUBLIC
   event-subsystems-nvmf
   module-sock-posix
 )
-target_sources(blockstore-libs-spdk PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/address.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/alloc.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/config.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/device.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/device_proxy.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/device_wrapper.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/env.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/env_stub.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/env_test.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/histogram.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/memory.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/target.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/target_iscsi.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/target_nvmf.cpp
+target_sources(libs-spdk-impl PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/address.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/alloc.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/device.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/device_proxy.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/device_wrapper.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/env.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/histogram.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/memory.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/target_iscsi.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/spdk/impl/target_nvmf.cpp
 )

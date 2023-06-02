@@ -58,9 +58,9 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
-#include <cloud/blockstore/libs/spdk/config.h>
-#include <cloud/blockstore/libs/spdk/env.h>
-#include <cloud/blockstore/libs/spdk/memory.h>
+#include <cloud/blockstore/libs/spdk/iface/config.h>
+#include <cloud/blockstore/libs/spdk/impl/env.h>
+#include <cloud/blockstore/libs/spdk/impl/memory.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>

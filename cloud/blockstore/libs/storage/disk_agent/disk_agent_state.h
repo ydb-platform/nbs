@@ -11,7 +11,7 @@
 #include <cloud/blockstore/libs/rdma/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>

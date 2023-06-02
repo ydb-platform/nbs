@@ -15,7 +15,7 @@ target_link_libraries(blockstore-libs-client_spdk PUBLIC
   blockstore-libs-common
   blockstore-libs-diagnostics
   blockstore-libs-service
-  blockstore-libs-spdk
+  libs-spdk-iface
   core-libs-diagnostics
 )
 target_sources(blockstore-libs-client_spdk PRIVATE

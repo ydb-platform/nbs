@@ -145,10 +145,4 @@ struct ISpdkEnv
         const TVector<TGroupMapping>& groups) = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-void InitLogging(const TLog& log);
-
-ISpdkEnvPtr CreateEnv(TSpdkEnvConfigPtr config);
-
 }   // namespace NCloud::NBlockStore::NSpdk

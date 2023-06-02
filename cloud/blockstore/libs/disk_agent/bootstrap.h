@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/rdma/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
-#include <cloud/blockstore/libs/spdk/public.h>
+#include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 
 #include <ydb/core/driver_lib/run/factories.h>
