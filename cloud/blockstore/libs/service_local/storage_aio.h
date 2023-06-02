@@ -16,11 +16,4 @@ IStorageProviderPtr CreateAioStorageProvider(
     NNvme::INvmeManagerPtr nvmeManager,
     bool directIO);
 
-IStorageProviderPtr CreateAioStorageProvider(
-    IFileIOServicePtr fileIO,
-    ITaskQueuePtr submissionQueue,
-    ITaskQueuePtr completionQueue,
-    NNvme::INvmeManagerPtr nvmeManager,
-    bool directIO);
-
 }   // namespace NCloud::NBlockStore::NServer

@@ -10,7 +10,6 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
-#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
 
 #include <util/generic/array_ref.h>
@@ -162,12 +161,8 @@ struct TStorageContext
     : TNonCopyable
     , std::enable_shared_from_this<TStorageContext>
 {
-    IFileIOServicePtr FileIOService;
-
-    ITaskQueuePtr SubmissionQueue;
-    ITaskQueuePtr CompletionQueue;
-
-    INvmeManagerPtr NvmeManager;
+    const IFileIOServicePtr FileIOService;
+    const INvmeManagerPtr NvmeManager;
 
     const ui32 BlockSize;
     const ui64 StorageStartIndex;
@@ -177,16 +172,12 @@ struct TStorageContext
 
     TStorageContext(
             IFileIOServicePtr fileIO,
-            ITaskQueuePtr submissionQueue,
-            ITaskQueuePtr completionQueue,
             INvmeManagerPtr nvmeManager,
             ui32 blockSize,
             ui64 startIndex,
             ui64 blockCount,
             TFile file)
         : FileIOService(std::move(fileIO))
-        , SubmissionQueue(std::move(submissionQueue))
-        , CompletionQueue(std::move(completionQueue))
         , NvmeManager(std::move(nvmeManager))
         , BlockSize(blockSize)
         , StorageStartIndex(startIndex)
@@ -252,18 +243,6 @@ static void Complete(
 }
 
 template <typename TRequest>
-void ScheduleRequest(std::unique_ptr<TRequest> request)
-{
-    if (auto context = request->Context.lock()) {
-        auto& sq = *context->SubmissionQueue;
-
-        sq.ExecuteSimple([request = std::move(request)] () mutable {
-            ProcessRequest(std::move(request));
-        });
-    }
-}
-
-template <typename TRequest>
 void ProcessRequest(std::unique_ptr<TRequest> request)
 {
     Y_UNUSED(request->CallContext);  // TODO
@@ -294,38 +273,33 @@ void ProcessResponse(
     ui32 bytesTransferred)
 {
     if (HasError(error)) {
-        ScheduleResponse(std::move(request), error);
+        CompleteRequest(std::move(request), error);
         return;
     }
 
     request->BytesTransferred += bytesTransferred;
     if (request->BytesTransferred < request->TotalByteCount) {
-        return ScheduleRequest(std::move(request));
+        ProcessRequest(std::move(request));
+        return;
     }
 
     Y_VERIFY(request->BytesTransferred == request->TotalByteCount);
 
-    ScheduleResponse(std::move(request), {});
+    CompleteRequest(std::move(request));
 }
 
 template <typename TRequest>
-void ScheduleResponse(
+void CompleteRequest(
     std::unique_ptr<TRequest> request,
-    const NProto::TError& error)
+    const NProto::TError& error = {})
 {
-    if (auto context = request->Context.lock()) {
-        auto& cq = *context->CompletionQueue;
+    auto p = std::move(request->Response);
+    request.reset();
 
-        cq.ExecuteSimple([error, request = std::move(request)] () mutable {
-            auto p = std::move(request->Response);
-            request.reset();
+    typename TRequest::TResponse response;
+    *response.MutableError() = error;
 
-            typename TRequest::TResponse response;
-            *response.MutableError() = std::move(error);
-
-            p.SetValue(std::move(response));
-        });
-    }
+    p.SetValue(std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -460,7 +434,7 @@ auto SendAsyncRequest(
             "failed to acquire sglist in AioStorage");
         response.SetValue(std::move(proto));
     } else {
-        ScheduleRequest(std::move(request));
+        ProcessRequest(std::move(request));
     }
 
     return response;
@@ -478,7 +452,7 @@ TFuture<NProto::TZeroBlocksResponse> WriteZeroes(
 
     auto response = NewPromise<NProto::TZeroBlocksResponse>();
 
-    ScheduleRequest(std::make_unique<TWriteZeroes>(
+    ProcessRequest(std::make_unique<TWriteZeroes>(
         std::move(context),
         std::move(callContext),
         fileOffset,
@@ -700,21 +674,15 @@ class TAioStorageProvider final
 {
 private:
     IFileIOServicePtr FileIOService;
-    ITaskQueuePtr SubmissionQueue;
-    ITaskQueuePtr CompletionQueue;
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
 
 public:
     explicit TAioStorageProvider(
             IFileIOServicePtr fileIO,
-            ITaskQueuePtr submissionQueue,
-            ITaskQueuePtr completionQueue,
             INvmeManagerPtr nvmeManager,
             bool directIO)
         : FileIOService(std::move(fileIO))
-        , SubmissionQueue(std::move(submissionQueue))
-        , CompletionQueue(std::move(completionQueue))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
     {}
@@ -744,8 +712,6 @@ public:
 
         auto storage = std::make_shared<TAioStorage>(
             FileIOService,
-            SubmissionQueue,
-            CompletionQueue,
             NvmeManager,
             blockSize,
             volume.GetStartIndex(),
@@ -765,28 +731,8 @@ IStorageProviderPtr CreateAioStorageProvider(
     INvmeManagerPtr nvmeManager,
     bool directIO)
 {
-    auto taskQueue = CreateTaskQueueStub();
-
-    return CreateAioStorageProvider(
-        std::move(fileIO),
-        taskQueue,
-        taskQueue,
-        std::move(nvmeManager),
-        directIO
-    );
-}
-
-IStorageProviderPtr CreateAioStorageProvider(
-    IFileIOServicePtr fileIO,
-    ITaskQueuePtr submissionQueue,
-    ITaskQueuePtr completionQueue,
-    INvmeManagerPtr nvmeManager,
-    bool directIO)
-{
     return std::make_shared<TAioStorageProvider>(
         std::move(fileIO),
-        std::move(submissionQueue),
-        std::move(completionQueue),
         std::move(nvmeManager),
         directIO);
 }

@@ -865,8 +865,6 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_KIKIMR_COMPONENT(ActorSystem);
-    START_KIKIMR_COMPONENT(SubmissionQueue);
-    START_KIKIMR_COMPONENT(CompletionQueue);
     START_COMMON_COMPONENT(FileIOService);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
@@ -927,8 +925,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(VhostServer);
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(FileIOService);
-    STOP_KIKIMR_COMPONENT(CompletionQueue);
-    STOP_KIKIMR_COMPONENT(SubmissionQueue);
     STOP_KIKIMR_COMPONENT(ActorSystem);
     STOP_COMMON_COMPONENT(Spdk);
     STOP_KIKIMR_COMPONENT(StatsUploader);

@@ -39,8 +39,6 @@ private:
 
     TConfigInitializerYdbPtr Configs;
 
-    ITaskQueuePtr SubmissionQueue;
-    ITaskQueuePtr CompletionQueue;
     IActorSystemPtr ActorSystem;
     IAsyncLoggerPtr AsyncLogger;
     IStatsAggregatorPtr StatsAggregator;
@@ -65,8 +63,6 @@ public:
 protected:
     TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
 
-    IStartable* GetSubmissionQueue() override;
-    IStartable* GetCompletionQueue() override;
     IStartable* GetActorSystem() override;
     IStartable* GetAsyncLogger() override;
     IStartable* GetStatsAggregator() override;

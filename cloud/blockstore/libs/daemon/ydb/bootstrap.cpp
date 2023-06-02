@@ -97,8 +97,6 @@ TProgramShouldContinue& TBootstrapYdb::GetShouldContinue()
         : ShouldContinue;
 }
 
-IStartable* TBootstrapYdb::GetSubmissionQueue()    { return SubmissionQueue.get(); }
-IStartable* TBootstrapYdb::GetCompletionQueue()    { return CompletionQueue.get(); }
 IStartable* TBootstrapYdb::GetActorSystem()        { return ActorSystem.Get(); }
 IStartable* TBootstrapYdb::GetAsyncLogger()        { return AsyncLogger.get(); }
 IStartable* TBootstrapYdb::GetStatsAggregator()    { return StatsAggregator.get(); }

@@ -93,8 +93,6 @@ public:
 protected:
     virtual TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) = 0;
 
-    virtual IStartable* GetSubmissionQueue() = 0;
-    virtual IStartable* GetCompletionQueue() = 0;
     virtual IStartable* GetActorSystem() = 0;
     virtual IStartable* GetAsyncLogger() = 0;
     virtual IStartable* GetStatsAggregator() = 0;

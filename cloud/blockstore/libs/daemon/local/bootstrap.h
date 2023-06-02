@@ -23,8 +23,6 @@ public:
 protected:
     TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
 
-    IStartable* GetSubmissionQueue() override    { return nullptr; }
-    IStartable* GetCompletionQueue() override    { return nullptr; }
     IStartable* GetActorSystem() override        { return nullptr; }
     IStartable* GetAsyncLogger() override        { return nullptr; }
     IStartable* GetStatsAggregator() override    { return nullptr; }
