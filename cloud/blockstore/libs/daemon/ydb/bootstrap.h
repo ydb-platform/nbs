@@ -14,6 +14,13 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSpdkParts
+{
+    NSpdk::ISpdkEnvPtr Env;
+    NVhost::TVhostCallbacks VhostCallbacks;
+    std::function<void(TLog& log)> LogInitializer;
+};
+
 struct TServerModuleFactories
 {
     std::function<NLogbroker::IServicePtr(
@@ -26,6 +33,7 @@ struct TServerModuleFactories
         ISchedulerPtr scheduler,
         ITimerPtr timer)> IamClientFactory;
 
+    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +58,7 @@ private:
     NNotify::IServicePtr NotifyService;
     ICgroupStatsFetcherPtr CgroupStatsFetcher;
     NIamClient::IIamTokenClientPtr IamTokenClient;
+    std::function<void(TLog& log)> SpdkLogInitializer;
 
 public:
     TBootstrapYdb(
@@ -75,6 +84,7 @@ protected:
     IStartable* GetCgroupStatsFetcher() override;
     IStartable* GetIamTokenClient() override;
 
+    void InitSpdk() override;
     void InitKikimrService() override;
     void InitAuthService() override;
 

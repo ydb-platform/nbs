@@ -27,7 +27,7 @@
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
-#include <cloud/blockstore/libs/spdk/impl/env.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -125,6 +125,30 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitLogbrokerConfig();
     Configs->InitNotifyConfig();
     Configs->InitIamClientConfig();
+}
+
+void TBootstrapYdb::InitSpdk()
+{
+    const bool needSpdkForInitiator =
+        Configs->ServerConfig->GetNvmfInitiatorEnabled();
+
+    const bool needSpdkForTarget =
+        Configs->ServerConfig->GetNVMeEndpointEnabled() ||
+        Configs->ServerConfig->GetSCSIEndpointEnabled();
+
+    const bool needSpdkForDiskAgent =
+        Configs->DiskAgentConfig->GetEnabled() &&
+        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK;
+
+    if (needSpdkForInitiator || needSpdkForTarget || needSpdkForDiskAgent) {
+        auto spdkParts =
+            ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
+        Spdk = std::move(spdkParts.Env);
+        VhostCallbacks = std::move(spdkParts.VhostCallbacks);
+        SpdkLogInitializer = std::move(spdkParts.LogInitializer);
+
+        STORAGE_INFO("Spdk initialized");
+    }
 }
 
 void TBootstrapYdb::InitKikimrService()
@@ -424,7 +448,9 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("LWTrace initialized");
 
     SpdkLog = Logging->CreateLog("BLOCKSTORE_SPDK");
-    NSpdk::InitLogging(SpdkLog);
+    if (SpdkLogInitializer) {
+        SpdkLogInitializer(SpdkLog);
+    }
 
     const auto& config = Configs->ServerConfig->GetKikimrServiceConfig()
         ? *Configs->ServerConfig->GetKikimrServiceConfig()

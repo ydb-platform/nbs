@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/daemon/ydb/bootstrap.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
 #include <cloud/storage/core/libs/daemon/app.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -40,6 +41,17 @@ int main(int argc, char** argv)
         Y_UNUSED(scheduler);
         Y_UNUSED(timer);
         return NCloud::NIamClient::CreateIamTokenClientStub();
+    };
+
+    serverModuleFactories->SpdkFactory = [] (
+        NSpdk::TSpdkEnvConfigPtr config)
+    {
+        Y_UNUSED(config);
+        return NServer::TSpdkParts {
+            .Env = NSpdk::CreateEnvStub(),
+            .VhostCallbacks = {},
+            .LogInitializer = {},
+        };
     };
 
     NServer::TBootstrapYdb bootstrap(

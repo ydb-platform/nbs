@@ -35,6 +35,7 @@ protected:
     IStartable* GetCgroupStatsFetcher() override { return nullptr; }
     IStartable* GetIamTokenClient() override     { return nullptr; }
 
+    void InitSpdk() override;
     void InitKikimrService() override;
     void InitAuthService() override;
 };

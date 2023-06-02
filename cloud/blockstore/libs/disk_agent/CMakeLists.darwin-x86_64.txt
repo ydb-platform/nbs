@@ -20,7 +20,6 @@ target_link_libraries(blockstore-libs-disk_agent PUBLIC
   blockstore-libs-server
   blockstore-libs-service
   libs-spdk-iface
-  libs-spdk-impl
   libs-storage-core
   storage-init-disk_agent
   core-libs-common

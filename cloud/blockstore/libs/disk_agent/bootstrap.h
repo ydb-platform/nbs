@@ -25,10 +25,24 @@ struct TConfigInitializer;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSpdkParts
+{
+    NSpdk::ISpdkEnvPtr Env;
+    std::function<void(TLog& log)> LogInitializer;
+};
+
+struct TServerModuleFactories
+{
+    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TBootstrap
 {
 private:
     std::shared_ptr<NKikimr::TModuleFactories> ModuleFactories;
+    std::shared_ptr<TServerModuleFactories> ServerModuleFactories;
 
     std::unique_ptr<TConfigInitializer> Configs;
 
@@ -47,6 +61,7 @@ private:
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IFileIOServicePtr FileIOService;
     NSpdk::ISpdkEnvPtr Spdk;
+    std::function<void(TLog& log)> SpdkLogInitializer;
     ICachingAllocatorPtr Allocator;
     IStorageProviderPtr AioStorageProvider;
     NNvme::INvmeManagerPtr NvmeManager;
@@ -56,7 +71,9 @@ private:
     TVector<TString> PostponedCriticalEvents;
 
 public:
-    TBootstrap(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories);
+    TBootstrap(
+        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
+        std::shared_ptr<TServerModuleFactories> serverModuleFactories);
     ~TBootstrap();
 
     void ParseOptions(int argc, char** argv);

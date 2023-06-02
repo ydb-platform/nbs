@@ -105,12 +105,12 @@ protected:
     virtual IStartable* GetCgroupStatsFetcher() = 0;
     virtual IStartable* GetIamTokenClient() = 0;
 
+    virtual void InitSpdk() = 0;
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
 
     void InitLWTrace();
     void InitRdmaClient();
-    void InitSpdk();
     void InitProfileLog();
 
 private:

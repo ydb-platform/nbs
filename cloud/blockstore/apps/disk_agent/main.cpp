@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/disk_agent/bootstrap.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
 #include <cloud/storage/core/libs/daemon/app.h>
 
@@ -16,6 +17,20 @@ int main(int argc, char** argv)
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;
 
-    NServer::TBootstrap bootstrap(std::move(moduleFactories));
+    auto serverModuleFactories =
+        std::make_shared<NServer::TServerModuleFactories>();
+    serverModuleFactories->SpdkFactory = [] (
+        NSpdk::TSpdkEnvConfigPtr config)
+    {
+        Y_UNUSED(config);
+        return NServer::TSpdkParts {
+            .Env = NSpdk::CreateEnvStub(),
+            .LogInitializer = {},
+        };
+    };
+
+    NServer::TBootstrap bootstrap(
+        std::move(moduleFactories),
+        std::move(serverModuleFactories));
     return NCloud::DoMain(bootstrap, argc, argv);
 }

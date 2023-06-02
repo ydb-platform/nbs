@@ -22,6 +22,11 @@ TConfigInitializerCommonPtr TBootstrapLocal::InitConfigs(int argc, char** argv)
     return Configs;
 }
 
+void TBootstrapLocal::InitSpdk()
+{
+    // do nothing
+}
+
 void TBootstrapLocal::InitKikimrService()
 {
     Y_FAIL("Not implemented");

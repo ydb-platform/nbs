@@ -22,8 +22,7 @@
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
-#include <cloud/blockstore/libs/spdk/impl/env.h>
-#include <cloud/blockstore/libs/spdk/impl/memory.h>
+#include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -185,8 +184,10 @@ NRdma::TServerConfigPtr CreateRdmaServerConfig(
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrap::TBootstrap(
-        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories)
+        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
+        std::shared_ptr<TServerModuleFactories> serverModuleFactories)
     : ModuleFactories(std::move(moduleFactories))
+    , ServerModuleFactories(std::move(serverModuleFactories))
 {}
 
 TBootstrap::~TBootstrap()
@@ -350,11 +351,15 @@ void TBootstrap::InitKikimrService()
 
     if (auto& config = *Configs->DiskAgentConfig; config.GetEnabled()) {
         switch (config.GetBackend()) {
-            case NProto::DISK_AGENT_BACKEND_SPDK:
-                Spdk = NSpdk::CreateEnv(Configs->SpdkEnvConfig);
+            case NProto::DISK_AGENT_BACKEND_SPDK: {
+                auto spdkParts =
+                    ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
+                Spdk = std::move(spdkParts.Env);
+                SpdkLogInitializer = std::move(spdkParts.LogInitializer);
 
                 STORAGE_INFO("Spdk backend initialized");
                 break;
+            }
 
             case NProto::DISK_AGENT_BACKEND_AIO:
                 FileIOService = CreateAIOService();
@@ -427,7 +432,10 @@ void TBootstrap::InitKikimrService()
 
     STORAGE_INFO("LWTrace initialized");
 
-    NSpdk::InitLogging(Logging->CreateLog("BLOCKSTORE_SPDK"));
+    auto spdkLog = Logging->CreateLog("BLOCKSTORE_SPDK");
+    if (SpdkLogInitializer) {
+        SpdkLogInitializer(spdkLog);
+    }
 }
 
 void TBootstrap::InitLWTrace()
