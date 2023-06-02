@@ -8421,6 +8421,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCompactionThreshold(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetCompactionRangeGarbageThreshold(999);
+        config.SetMaxDiffPercentageForBlobPatching(75);
         auto runtime = PrepareTestActorRuntime(
             config,
             MaxPartitionBlocksCount

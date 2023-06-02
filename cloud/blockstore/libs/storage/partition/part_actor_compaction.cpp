@@ -1641,7 +1641,10 @@ void CompleteRangeCompaction(
             dataBlocksCount - patchingCandidateChangedBlockCount;
         ui32 changedPercentage = 100 * patchingBlockCount / blockCount;
 
-        if (found && changedPercentage <= maxDiffPercentageForBlobPatching) {
+        if (found &&
+            (!maxDiffPercentageForBlobPatching ||
+            changedPercentage <= maxDiffPercentageForBlobPatching))
+        {
             dataBlobId = TPartialBlobId(
                 dataBlobId.Generation(),
                 dataBlobId.Step(),

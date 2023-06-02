@@ -135,7 +135,8 @@ TDuration MSeconds(ui32 value)
     xxx(CompactionRangeCountPerRun,             ui32,   10                    )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
-    xxx(MaxDiffPercentageForBlobPatching,       ui32,   75                    )\
+    /* If threshold is not 0, use it */                                        \
+    xxx(MaxDiffPercentageForBlobPatching,       ui32,   0                     )\
                                                                                \
     xxx(CleanupThreshold,                       ui32,      10                 )\
     xxx(MaxCleanupDelay,                        TDuration, TDuration::Zero()  )\
