@@ -97,13 +97,13 @@
 #include <ripemd.h>
 #endif
 #if defined(ARCHIVE_CRYPTO_SHA1_LIBMD)
-#include <sha.h>
+#error #include <sha.h>
 #endif
 #if defined(ARCHIVE_CRYPTO_SHA256_LIBMD)
-#include <sha256.h>
+#error #include <sha256.h>
 #endif
 #if defined(ARCHIVE_CRYPTO_SHA512_LIBMD)
-#include <sha512.h>
+#error #include <sha512.h>
 #endif
 
 /* libSystem crypto headers */
