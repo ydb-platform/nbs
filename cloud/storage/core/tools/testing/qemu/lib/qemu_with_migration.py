@@ -6,8 +6,6 @@ import tarfile
 
 from .common import get_mount_paths
 from .qemu import Qemu
-from cloud.filestore.tests.python.lib.client import NfsCliClient, create_endpoint
-
 
 EMU_NET = "10.0.2.0/24"
 QEMU_HOST = "10.0.2.2"
@@ -44,7 +42,7 @@ def _get_qemu_firmware():
 
 
 class QemuWithMigration:
-    def __init__(self):
+    def __init__(self, socket_generator):
         self.qemu = Qemu(
             qemu_kmv=_get_qemu_kvm(),
             qemu_firmware=_get_qemu_firmware(),
@@ -59,28 +57,10 @@ class QemuWithMigration:
             vhost_socket="",
             enable_kvm=True)
 
-        self.port = os.getenv("NFS_SERVER_PORT")
-        self.vhost_port = os.getenv("NFS_VHOST_PORT")
-
-        client_path = common.binary_path(
-            "cloud/filestore/client/filestore-client")
-
-        self.client = NfsCliClient(
-            client_path,
-            self.port,
-            vhost_port=self.vhost_port,
-            verbose=True,
-            cwd=common.output_path())
+        self.socket_generator = socket_generator
 
     def start(self):
-        self.socket = create_endpoint(
-            self.client,
-            "nfs_test",
-            "/tmp",
-            "test.vhost",
-            os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR", None),
-            0,
-            False)
+        self.socket = self.socket_generator(0, False)
 
         self.qemu.set_mount_paths(get_mount_paths())
         self.qemu.set_vhost_socket(self.socket)
@@ -89,14 +69,6 @@ class QemuWithMigration:
 
     def migrate(self, count, timeout):
         for migration in range(0, count):
-            self.socket = create_endpoint(
-                self.client,
-                "nfs_test",
-                "/tmp",
-                "test.vhost",
-                os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR", None),
-                0,
-                False)
-
+            self.socket = self.socket_generator(migration, False)
             self.qemu.migrate(migration, self.socket)
             time.sleep(timeout)
