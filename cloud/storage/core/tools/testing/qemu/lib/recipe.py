@@ -355,7 +355,7 @@ def _should_retry(exception):
     return not isinstance(exception, QemuKvmRecipeException)
 
 
-@retrying.retry(stop_max_delay=180000, wait_fixed=1000, retry_on_exception=_should_retry)
+@retrying.retry(stop_max_delay=360000, wait_fixed=1000, retry_on_exception=_should_retry)
 def _wait_ssh(daemon, ssh):
     if not daemon.qemu_bin.is_alive():
         raise QemuKvmRecipeException("qemu is dead")
