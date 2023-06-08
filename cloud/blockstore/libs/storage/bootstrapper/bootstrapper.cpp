@@ -375,6 +375,7 @@ STFUNC(TBootstrapperActor::StateBoot)
 
         HFunc(TEvTablet::TEvRestored, HandleRestored);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead_Unexpected);
+        HFunc(TEvTablet::TEvReady, IgnoreEvent);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::BOOTSTRAPPER);
@@ -389,6 +390,7 @@ STFUNC(TBootstrapperActor::StateWork)
         HFunc(TEvBootstrapper::TEvStop, HandleStop);
 
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead_Unexpected);
+        HFunc(TEvTablet::TEvReady, IgnoreEvent);
 
         default:
             Forward(ev);
@@ -417,6 +419,7 @@ STFUNC(TBootstrapperActor::StateZombie)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
         HFunc(TEvents::TEvWakeup, IgnoreEvent);
+        HFunc(TEvTablet::TEvReady, IgnoreEvent);
 
         default:
             Forward(ev);

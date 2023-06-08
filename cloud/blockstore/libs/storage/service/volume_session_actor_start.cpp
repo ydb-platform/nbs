@@ -824,6 +824,7 @@ STFUNC(TStartVolumeActor::StateWork)
 
         HFunc(TEvTablet::TEvRestored, HandleTabletRestored);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
+        IgnoreFunc(TEvTablet::TEvReady);
 
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
 
