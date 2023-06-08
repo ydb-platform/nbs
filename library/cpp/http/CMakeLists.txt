@@ -6,9 +6,7 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(client)
 add_subdirectory(fetch)
-add_subdirectory(fetch_gpl)
 add_subdirectory(io)
 add_subdirectory(misc)
 add_subdirectory(push_parser)

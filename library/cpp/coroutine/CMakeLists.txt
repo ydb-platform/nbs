@@ -6,7 +6,5 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(dns)
 add_subdirectory(engine)
 add_subdirectory(listener)
-add_subdirectory(util)

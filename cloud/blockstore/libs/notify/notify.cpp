@@ -1,12 +1,10 @@
 #include "notify.h"
 
 #include "config.h"
+#include "https.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/http/client/client.h>
-#include <library/cpp/http/client/fetch/codes.h>
-#include <library/cpp/http/client/ssl/sslsock.h>
 #include <library/cpp/json/writer/json_value.h>
 
 #include <util/string/printf.h>
@@ -83,6 +81,7 @@ class TService final
 {
 private:
     const TNotifyConfigPtr Config;
+    THttpsClient HttpsClient;
 
 public:
     explicit TService(TNotifyConfigPtr config)
@@ -92,7 +91,7 @@ public:
     void Start() override
     {
         if (auto path = Config->GetCaCertFilename()) {
-            NHttpFetcher::TSslSocketBase::LoadCaCerts(path, {});
+            HttpsClient.LoadCaCerts(path);
         }
     }
 
@@ -119,35 +118,29 @@ public:
 
         auto p = NewPromise<NProto::TError>();
 
-        auto query = NHttp::TFetchQuery(
+        HttpsClient.Post(
             Config->GetEndpoint(),
-            NHttp::TFetchOptions()
-                .SetPostData(v.GetStringRobust())
-                .SetContentType("application/json")
-        );
+            v.GetStringRobust(),
+            "application/json",
+            [p, diskId = data.DiskId] (int code, const TString& data) mutable {
+                const bool isSuccess = code >= 200 && code < 300;
 
-        FetchAsync(std::move(query), [p, diskId = data.DiskId] (NHttpFetcher::TResultRef rr) mutable {
-            if (!rr) {
-                p.SetValue(MakeError(E_INVALID_STATE, "unexpected result"));
-                return;
-            }
+                if (isSuccess) {
+                    p.SetValue(MakeError(S_OK, Sprintf("HTTP code: %d", code)));
+                    return;
+                }
 
-            if (NHttpFetcher::IsSuccessCode(rr->Code)) {
-                p.SetValue(MakeError(S_OK, Sprintf("HTTP code: %d", rr->Code)));
-                return;
-            }
-
-            p.SetValue(MakeError(
-                E_REJECTED,
-                Sprintf(
-                    "[%s] can't notify about %s. HTTP error: %d %s",
-                    TMPL_TYPE_NBS_NONREPL_ERROR.Quote().c_str(),
-                    diskId.Quote().c_str(),
-                    rr->Code,
-                    rr->Data.c_str()
-                )
-            ));
-        });
+                p.SetValue(MakeError(
+                    E_REJECTED,
+                    Sprintf(
+                        "[%s] can't notify about %s. HTTP error: %d %s",
+                        TMPL_TYPE_NBS_NONREPL_ERROR.Quote().c_str(),
+                        diskId.Quote().c_str(),
+                        code,
+                        data.c_str()
+                    )
+                ));
+            });
 
         return p.GetFuture();
     }
