@@ -179,11 +179,11 @@ protected:
                 Generation,
                 Step);
 
+            TX_JOIN();
+
             TTx::Complete(*Self, ctx, Args);
 
             TX_TRACK(TxCompleteDone);
-
-            TX_JOIN();
         }
     };
 
