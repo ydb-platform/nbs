@@ -101,7 +101,7 @@ private:
     {
         TRequestState removedState;
         while (!PostponedBySecond.IsEmpty()) {
-            const auto& latest = PostponedBySecond.GetFront();
+            const auto& latest = PostponedBySecond.Front();
             if (current - latest.Timestamp
                     < TDuration::Seconds(PostponedBySecond.Capacity())) {
                 break;
@@ -122,7 +122,7 @@ private:
         }
 
         while (!PostponedBySecond.IsEmpty()) {
-            const auto& freshest = PostponedBySecond.GetBack();
+            const auto& freshest = PostponedBySecond.Back();
             if (current - freshest.Timestamp < TDuration::Seconds(1)) {
                 break;
             }
@@ -141,10 +141,10 @@ private:
         }
 
         const auto newData = TPostponeData{
-            .Timestamp = PostponedBySecond.GetBack().Timestamp,
+            .Timestamp = PostponedBySecond.Back().Timestamp,
             .RequestState = SumStates(
                 addedState,
-                PostponedBySecond.GetBack().RequestState)};
+                PostponedBySecond.Back().RequestState)};
         PostponedBySecond.PopBack();
         PostponedBySecond.PushBack(newData);
 

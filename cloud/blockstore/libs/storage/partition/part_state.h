@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/core/ring_buffer.h>
+#include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
@@ -23,7 +23,6 @@
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/unconfirmed_blob.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
-
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
@@ -782,7 +781,7 @@ public:
 private:
     TOperationState CompactionState;
     TCompactionMap CompactionMap;
-    TRingBuffer<TCompactionScores> CompactionScoreHistory;
+    TTsRingBuffer<TCompactionScores> CompactionScoreHistory;
     TCompressedBitmap UsedBlocks;
     TCompressedBitmap LogicalUsedBlocks;
     TDuration LastCompactionExecTime;
@@ -800,7 +799,7 @@ public:
         return CompactionMap;
     }
 
-    TRingBuffer<TCompactionScores>& GetCompactionScoreHistory()
+    TTsRingBuffer<TCompactionScores>& GetCompactionScoreHistory()
     {
         return CompactionScoreHistory;
     }
@@ -1014,7 +1013,7 @@ private:
     TCheckpointStore Checkpoints;
     TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
-    TRingBuffer<ui32> CleanupScoreHistory;
+    TTsRingBuffer<ui32> CleanupScoreHistory;
 
     mutable ui32 BlobCountToCleanup = 0;
     mutable ui64 BlobCountToCleanupCommitId = 0;
@@ -1058,7 +1057,7 @@ public:
         }
     }
 
-    TRingBuffer<ui32>& GetCleanupScoreHistory()
+    TTsRingBuffer<ui32>& GetCleanupScoreHistory()
     {
         return CleanupScoreHistory;
     }

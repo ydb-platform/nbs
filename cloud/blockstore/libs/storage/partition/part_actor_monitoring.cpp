@@ -296,7 +296,7 @@ void DumpScanDiskInfo(IOutputStream& out, ui64 current, ui64 total)
 
 void DumpCompactionScoreHistory(
     IOutputStream& out,
-    const TRingBuffer<TCompactionScores>& scoreHistory)
+    const TTsRingBuffer<TCompactionScores>& scoreHistory)
 {
     HTML(out) {
         TABLE_SORTABLE() {
@@ -324,7 +324,7 @@ void DumpCompactionScoreHistory(
 
 void DumpCleanupScoreHistory(
     IOutputStream& out,
-    const TRingBuffer<ui32>& scoreHistory)
+    const TTsRingBuffer<ui32>& scoreHistory)
 {
     HTML(out) {
         TABLE_SORTABLE() {

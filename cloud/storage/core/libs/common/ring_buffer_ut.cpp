@@ -130,49 +130,49 @@ Y_UNIT_TEST_SUITE(TRingBufferTest)
 
         ringBuffer.PushBack(1);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(2);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(3);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(4);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PopBack();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PopBack();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PushBack(5);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PopBack();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PopBack();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 0);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyPushPopFrontiFront)
+    Y_UNIT_TEST(ShouldCorrectlyPushPopFrontFront)
     {
         auto ringBuffer = TRingBuffer<int>(3);
 
@@ -181,202 +181,248 @@ Y_UNIT_TEST_SUITE(TRingBufferTest)
 
         ringBuffer.PushFront(1);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(2);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(3);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(4);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PopFront();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PopFront();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PushFront(5);
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PopFront();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PopFront();
         UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 0);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyGetBack)
+    Y_UNIT_TEST(ShouldCorrectlyBack)
     {
         auto ringBuffer = TRingBuffer<int>(3);
 
         ringBuffer.PushBack(1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushBack(2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PushBack(3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 3);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PushBack(4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 4);
 
         ringBuffer.PushBack(5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 5);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 4);
 
         ringBuffer.Clear();
 
         ringBuffer.PushFront(1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.Clear();
 
         ringBuffer.PushBack(1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushFront(2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PushBack(3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 3);
 
         ringBuffer.PushFront(4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 1);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PushFront(5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PushBack(6);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 6);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 6);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 2);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetBack(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Back(), 4);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyGetFront)
+    Y_UNIT_TEST(ShouldCorrectlyFront)
     {
         auto ringBuffer = TRingBuffer<int>(3);
 
         ringBuffer.PushFront(1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushFront(2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PushFront(3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 3);
 
         ringBuffer.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PushFront(4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 4);
 
         ringBuffer.PushFront(5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 5);
 
         ringBuffer.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 4);
 
         ringBuffer.Clear();
 
         ringBuffer.PushBack(1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
 
         ringBuffer.Clear();
 
         ringBuffer.PushFront(1);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(2);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushFront(3);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 3);
 
         ringBuffer.PushBack(4);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PopBack();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushBack(5);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PushFront(6);
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 6);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 6);
 
         ringBuffer.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 1);
 
         ringBuffer.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.GetFront(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Front(), 2);
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyReturnPoppedValue)
+    {
+        auto ringBuffer = TRingBuffer<int>(3);
+
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushFront(1));
+        UNIT_ASSERT_EQUAL(1,  ringBuffer.PopFront());
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PopFront());
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PopBack());
+
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushFront(2));
+        UNIT_ASSERT_EQUAL(2, *ringBuffer.PopBack());
+
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushBack(3));
+        UNIT_ASSERT_EQUAL(3, *ringBuffer.PopFront());
+
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushBack(4));
+        UNIT_ASSERT_EQUAL(4, *ringBuffer.PopBack());
+
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushBack(5));
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushBack(6));
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushFront(7));
+        UNIT_ASSERT_EQUAL(6, *ringBuffer.PushFront(8));
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Size(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(5, *ringBuffer.PopBack());
+        UNIT_ASSERT_VALUES_EQUAL(7, *ringBuffer.PopBack());
+        UNIT_ASSERT_VALUES_EQUAL(8, *ringBuffer.PopBack());
+        UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PopBack());
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyGetWithOffset)
+    {
+        auto ringBuffer = TRingBuffer<int>(5);
+
+        ringBuffer.PushBack(1);
+        ringBuffer.PushBack(2);
+        ringBuffer.PushBack(3);
+        ringBuffer.PushBack(4);
+        ringBuffer.PushBack(5);
+
+        UNIT_ASSERT_EQUAL(5, ringBuffer.Back());
+        UNIT_ASSERT_EQUAL(1, ringBuffer.Back(4));
+
+        UNIT_ASSERT_EQUAL(1, ringBuffer.Front());
+        UNIT_ASSERT_EQUAL(5, ringBuffer.Front(4));
     }
 }
 

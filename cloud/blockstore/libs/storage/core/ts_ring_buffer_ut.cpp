@@ -1,4 +1,4 @@
-#include "ring_buffer.h"
+#include "ts_ring_buffer.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -6,13 +6,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TRingBufferTest)
+Y_UNIT_TEST_SUITE(TTsRingBufferTest)
 {
     Y_UNIT_TEST(TestZeroSizeBuffer)
     {
-        TRingBuffer<ui32> buffer(0);
+        TTsRingBuffer<ui32> buffer(0);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, buffer.Size());
+        UNIT_ASSERT_VALUES_EQUAL(0, buffer.Capacity());
 
         UNIT_ASSERT(!buffer.Ready());
         UNIT_ASSERT(!buffer.LastTs().GetValue());
@@ -26,9 +26,9 @@ Y_UNIT_TEST_SUITE(TRingBufferTest)
 
     Y_UNIT_TEST(TestNonZeroSizeBuffer)
     {
-        TRingBuffer<ui32> buffer(3);
+        TTsRingBuffer<ui32> buffer(3);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, buffer.Size());
+        UNIT_ASSERT_VALUES_EQUAL(3, buffer.Capacity());
 
         UNIT_ASSERT(!buffer.Ready());
         UNIT_ASSERT(!buffer.LastTs().GetValue());

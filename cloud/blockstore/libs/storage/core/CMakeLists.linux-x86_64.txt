@@ -69,11 +69,11 @@ target_sources(libs-storage-core PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/proto_helpers.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/request_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/request_info.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/ring_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/storage_request_counters.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/tablet.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/tablet_counters.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/tablet_schema.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/ts_ring_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/unimplemented.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/volume_label.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/volume_model.cpp

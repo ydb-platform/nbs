@@ -4,6 +4,7 @@
 #include <util/system/yassert.h>
 
 #include <cstddef>
+#include <optional>
 
 namespace NCloud {
 
@@ -13,123 +14,168 @@ template <typename T>
 class TRingBuffer
 {
 public:
-    TRingBuffer(size_t capacity)
-        : Buffer(capacity)
+    TRingBuffer(size_t capacity, std::optional<T> defaultValue = std::nullopt)
+        : DefaultValue(std::move(defaultValue))
+        , Buffer(capacity)
     {}
 
-    void PopFront()
+    std::optional<T> PopFront()
     {
         if (IsEmpty()) {
-            return;
+            return std::nullopt;
         }
-
-        Begin = GetNext(Begin);
-        DecreaseSize();
+        std::optional<T> result = std::move(Buffer[BeginIndex]);
+        if (BeginIndex == EndIndex) {
+            Clear();
+        } else {
+            BeginIndex = GetNext(BeginIndex);
+        }
+        return result;
     }
 
-    void PopBack()
+    std::optional<T> PopBack()
     {
         if (IsEmpty()) {
-            return;
+            return std::nullopt;
         }
-
-        End = GetPrevious(End);
-        DecreaseSize();
-    }
-
-    void PushFront(const T& val)
-    {
-        Begin = GetPrevious(Begin);
-        Buffer[Begin] = std::move(val);
-
-        if (IsFull()) {
-            End = GetPrevious(End);
+        std::optional<T> result = std::move(Buffer[EndIndex]);
+        if (BeginIndex == EndIndex) {
+            Clear();
         } else {
-            IncreaseSize();
+            EndIndex = GetPrevious(EndIndex);
         }
+        return result;
     }
 
-    void PushBack(const T& val)
+    std::optional<T> PushFront(T val)
     {
-        Buffer[End] = std::move(val);
-        End = GetNext(End);
-
-        if (IsFull()) {
-            Begin = GetNext(Begin);
-        } else {
-            IncreaseSize();
+        if (Capacity() == 0) {
+            return std::nullopt;
         }
+
+        if (EndIndex == InvalidIndex) {
+            BeginIndex = EndIndex = 0;
+            Buffer[EndIndex] = std::move(val);
+            return std::nullopt;
+        }
+
+        Y_VERIFY_DEBUG(EndIndex != InvalidIndex);
+        Y_VERIFY_DEBUG(BeginIndex != InvalidIndex);
+
+        BeginIndex = GetPrevious(BeginIndex);
+        std::optional<T> result = std::nullopt;
+        if (BeginIndex == EndIndex) {
+            result = std::move(Buffer[EndIndex]);
+            EndIndex = GetPrevious(EndIndex);
+        }
+        Buffer[BeginIndex] = std::move(val);
+        return result;
     }
 
-    const T& GetFront() const
+    std::optional<T> PushBack(T val)
     {
-        Y_VERIFY(!IsEmpty());
-        return Buffer[Begin];
+        if (Capacity() == 0) {
+            return std::nullopt;
+        }
+
+        if (EndIndex == InvalidIndex) {
+            BeginIndex = EndIndex = 0;
+            Buffer[EndIndex] = std::move(val);
+            return std::nullopt;
+        }
+
+        Y_VERIFY_DEBUG(EndIndex != InvalidIndex);
+        Y_VERIFY_DEBUG(BeginIndex != InvalidIndex);
+
+        EndIndex = GetNext(EndIndex);
+        std::optional<T> result = std::nullopt;
+        if (BeginIndex == EndIndex) {
+            result = std::move(Buffer[BeginIndex]);
+            BeginIndex = GetNext(BeginIndex);
+        }
+        Buffer[EndIndex] = std::move(val);
+        return result;
     }
 
-    const T& GetBack() const
+    [[nodiscard]] const T& Front(size_t offset = 0) const
     {
-        Y_VERIFY(!IsEmpty());
-        return Buffer[GetPrevious(End)];
+        if (IsEmpty() || offset >= Size()) {
+            if (!DefaultValue) {
+                Y_FAIL();
+            }
+            return *DefaultValue;
+        }
+        return Buffer[RealIndex(BeginIndex + offset)];
+    }
+
+    [[nodiscard]] const T& Back(size_t offset = 0) const
+    {
+        if (IsEmpty() || offset >= Size()) {
+            if (!DefaultValue) {
+                Y_FAIL();
+            }
+            return *DefaultValue;
+        }
+        return Buffer[RealIndex(EndIndex + Capacity() - offset)];
     }
 
     void Clear()
     {
-        Begin = End = CurrentSize = 0;
+        BeginIndex = EndIndex = InvalidIndex;
     }
 
-    bool IsEmpty() const
+    [[nodiscard]] bool IsEmpty() const
     {
-        return Size() == 0;
+        return EndIndex == InvalidIndex;
     }
 
-    bool IsFull() const
+    [[nodiscard]] bool IsFull() const
     {
         return Size() == Capacity();
     }
 
-    size_t Size() const
+    [[nodiscard]] size_t Size() const
     {
-        return CurrentSize;
+        if (EndIndex == InvalidIndex) {
+            return 0;
+        }
+
+        Y_VERIFY_DEBUG(BeginIndex != InvalidIndex);
+
+        if (EndIndex >= BeginIndex) {
+            return EndIndex - BeginIndex + 1;
+        } else {
+            return (Capacity() - BeginIndex) + (EndIndex + 1);
+        }
     }
 
-    size_t Capacity() const
+    [[nodiscard]] size_t Capacity() const
     {
         return Buffer.size();
     }
 
 private:
-    size_t GetRealIndex(size_t index) const
+    static constexpr size_t InvalidIndex = std::numeric_limits<size_t>::max();
+
+    size_t RealIndex(size_t index) const
     {
         return index % Capacity();
     }
 
     size_t GetNext(size_t index) const
     {
-        return GetRealIndex(index + 1);
+        return RealIndex(index + 1);
     }
 
     size_t GetPrevious(size_t index) const
     {
-        return GetRealIndex(index + Capacity() - 1);
+        return RealIndex(index + Capacity() - 1);
     }
 
-    void DecreaseSize()
-    {
-        Y_VERIFY(!IsEmpty());
-        --CurrentSize;
-    }
-
-    void IncreaseSize()
-    {
-        Y_VERIFY(!IsFull());
-        ++CurrentSize;
-    }
-
+    std::optional<T> DefaultValue;
     TVector<T> Buffer;
-    size_t Begin = 0;
-    size_t End = 0;
-    size_t CurrentSize = 0;
+    size_t BeginIndex = InvalidIndex;
+    size_t EndIndex = InvalidIndex;
 };
 
 }   // namespace NCloud
