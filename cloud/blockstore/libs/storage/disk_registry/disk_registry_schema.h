@@ -232,7 +232,7 @@ struct TDiskRegistrySchema
     };
 
     struct AutomaticallyReplacedDevices
-        : public TTableSchema<15>
+        : public TTableSchema<16>
     {
         struct Id
             : public Column<1, NKikimr::NScheme::NTypeIds::String>
