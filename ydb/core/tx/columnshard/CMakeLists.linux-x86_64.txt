@@ -8,6 +8,7 @@
 
 add_subdirectory(counters)
 add_subdirectory(engines)
+add_subdirectory(testlib)
 get_built_tool_path(
   TOOL_enum_parser_bin
   TOOL_enum_parser_dependency
