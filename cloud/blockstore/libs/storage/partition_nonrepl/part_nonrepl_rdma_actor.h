@@ -5,7 +5,7 @@
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 
-#include <cloud/blockstore/libs/rdma/client.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>

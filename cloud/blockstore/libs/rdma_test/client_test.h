@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/rdma/client.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

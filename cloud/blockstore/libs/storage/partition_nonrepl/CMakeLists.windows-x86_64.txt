@@ -15,7 +15,7 @@ target_link_libraries(libs-storage-partition_nonrepl PUBLIC
   cloud-blockstore-config
   blockstore-libs-common
   blockstore-libs-kikimr
-  blockstore-libs-rdma
+  libs-rdma-iface
   blockstore-libs-service_local
   libs-storage-api
   libs-storage-core

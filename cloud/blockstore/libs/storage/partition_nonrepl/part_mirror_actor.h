@@ -7,7 +7,7 @@
 #include "part_mirror_state.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/rdma/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>

@@ -5,8 +5,8 @@
 #include <cloud/blockstore/libs/common/sglist.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-#include <cloud/blockstore/libs/rdma/protobuf.h>
-#include <cloud/blockstore/libs/rdma/server.h>
+#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>

@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/rdma/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
 namespace NCloud::NBlockStore::NStorage {

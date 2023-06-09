@@ -16,7 +16,7 @@ target_link_libraries(blockstore-libs-endpoints_rdma PUBLIC
   blockstore-libs-common
   blockstore-libs-diagnostics
   blockstore-libs-endpoints
-  blockstore-libs-rdma
+  libs-rdma-iface
   blockstore-libs-service
   core-libs-coroutine
 )

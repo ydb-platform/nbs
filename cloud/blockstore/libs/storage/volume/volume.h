@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
-#include <cloud/blockstore/libs/rdma/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 
 #include <library/cpp/actors/core/actorid.h>

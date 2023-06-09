@@ -20,7 +20,7 @@
 #include <cloud/blockstore/libs/notify/config.h>
 #include <cloud/blockstore/libs/notify/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/probes.h>
+#include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/service_auth.h>
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>

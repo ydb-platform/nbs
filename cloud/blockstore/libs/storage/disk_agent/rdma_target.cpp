@@ -1,8 +1,8 @@
 #include "rdma_target.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/rdma/protobuf.h>
-#include <cloud/blockstore/libs/rdma/server.h>
+#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>

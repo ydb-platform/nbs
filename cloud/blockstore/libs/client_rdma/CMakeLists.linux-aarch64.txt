@@ -14,7 +14,7 @@ target_link_libraries(blockstore-libs-client_rdma PUBLIC
   yutil
   blockstore-libs-common
   blockstore-libs-diagnostics
-  blockstore-libs-rdma
+  libs-rdma-iface
   blockstore-libs-service
   core-libs-common
   core-libs-diagnostics

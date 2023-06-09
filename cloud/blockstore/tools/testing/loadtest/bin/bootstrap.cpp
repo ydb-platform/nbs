@@ -17,8 +17,8 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
-#include <cloud/blockstore/libs/rdma/client.h>
-#include <cloud/blockstore/libs/rdma/verbs.h>
+#include <cloud/blockstore/libs/rdma/impl/client.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>

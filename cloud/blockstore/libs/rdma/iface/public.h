@@ -42,11 +42,4 @@ using TProtoMessagePtr = std::unique_ptr<TProtoMessage>;
 
 class TProtoMessageSerializer;
 
-namespace NVerbs {
-
-struct IVerbs;
-using IVerbsPtr = std::shared_ptr<IVerbs>;
-
-}   // namespace NVerbs
-
 }   // namespace NCloud::NBlockStore::NRdma

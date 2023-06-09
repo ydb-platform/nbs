@@ -17,7 +17,7 @@ target_link_libraries(storage-init-server PUBLIC
   blockstore-libs-common
   blockstore-libs-diagnostics
   blockstore-libs-kikimr
-  blockstore-libs-rdma
+  libs-rdma-iface
   libs-spdk-iface
   libs-storage-api
   libs-storage-auth

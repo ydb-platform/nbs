@@ -70,12 +70,4 @@ struct IServer
         IServerHandlerPtr handler) = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-IServerPtr CreateServer(
-    NVerbs::IVerbsPtr verbs,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    TServerConfigPtr config);
-
 }   // namespace NCloud::NBlockStore::NRdma

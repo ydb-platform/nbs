@@ -84,12 +84,4 @@ struct IClient
         IClientHandlerPtr handler) = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-IClientPtr CreateClient(
-    NVerbs::IVerbsPtr verbs,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    TClientConfigPtr config);
-
 }   // namespace NCloud::NBlockStore::NRdma

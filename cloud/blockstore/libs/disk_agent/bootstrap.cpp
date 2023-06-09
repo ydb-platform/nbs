@@ -15,9 +15,9 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/probes.h>
-#include <cloud/blockstore/libs/rdma/server.h>
-#include <cloud/blockstore/libs/rdma/verbs.h>
+#include <cloud/blockstore/libs/rdma/iface/probes.h>
+#include <cloud/blockstore/libs/rdma/impl/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>

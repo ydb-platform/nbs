@@ -2,8 +2,9 @@
 
 #include "public.h"
 
-#include "protocol.h"
 #include "verbs.h"
+
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 
 namespace NCloud::NBlockStore::NRdma {
 

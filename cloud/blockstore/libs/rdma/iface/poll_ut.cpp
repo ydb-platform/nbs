@@ -10,7 +10,7 @@ Y_UNIT_TEST_SUITE(TTimerHandleTest)
 {
     Y_UNIT_TEST(ShouldTrigger)
     {
-        TPollHandle pollHandle; 
+        TPollHandle pollHandle;
         TTimerHandle timerHandle;
 
         pollHandle.Attach(
@@ -30,7 +30,7 @@ Y_UNIT_TEST_SUITE(TTimerHandleTest)
 
     Y_UNIT_TEST(ShouldCancel)
     {
-        TPollHandle pollHandle; 
+        TPollHandle pollHandle;
         TTimerHandle timerHandle;
         pollHandle.Attach(timerHandle.Handle(), EPOLLIN, &timerHandle);
 

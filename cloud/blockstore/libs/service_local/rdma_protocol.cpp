@@ -1,6 +1,6 @@
 #include "rdma_protocol.h"
 
-#include <cloud/blockstore/libs/rdma/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/singleton.h>

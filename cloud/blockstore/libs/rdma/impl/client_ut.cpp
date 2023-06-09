@@ -1,7 +1,7 @@
 #include "client.h"
-#include "protocol.h"
 #include "test_verbs.h"
 
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>

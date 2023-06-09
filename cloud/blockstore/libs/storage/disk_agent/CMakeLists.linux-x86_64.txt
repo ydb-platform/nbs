@@ -15,7 +15,7 @@ target_link_libraries(libs-storage-disk_agent PUBLIC
   yutil
   cloud-blockstore-config
   blockstore-libs-kikimr
-  blockstore-libs-rdma
+  libs-rdma-iface
   blockstore-libs-service_local
   libs-spdk-iface
   libs-storage-api

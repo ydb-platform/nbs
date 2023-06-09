@@ -2,14 +2,16 @@
 
 #include "buffer.h"
 #include "error.h"
-#include "list.h"
-#include "poll.h"
-#include "probes.h"
-#include "protocol.h"
-#include "rcu.h"
-#include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
+
+#include <cloud/blockstore/libs/rdma/iface/error.h>
+#include <cloud/blockstore/libs/rdma/iface/list.h>
+#include <cloud/blockstore/libs/rdma/iface/poll.h>
+#include <cloud/blockstore/libs/rdma/iface/probes.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/blockstore/libs/rdma/iface/rcu.h>
+#include <cloud/blockstore/libs/rdma/iface/utils.h>
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -83,25 +85,6 @@ TClientEndpoint* EndpointFromTag(void* tag)
 int EventFromTag(void* tag)
 {
     return reinterpret_cast<uintptr_t>(tag) & EVENT_MASK;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-NRdma::EWaitMode Convert(NProto::EWaitMode mode)
-{
-    switch (mode) {
-        case NProto::WAIT_MODE_POLL:
-            return NRdma::EWaitMode::Poll;
-
-        case NProto::WAIT_MODE_BUSY_WAIT:
-            return NRdma::EWaitMode::BusyWait;
-
-        case NProto::WAIT_MODE_ADAPTIVE_WAIT:
-            return NRdma::EWaitMode::AdaptiveWait;;
-
-        default:
-            Y_FAIL("unsupported wait mode %d", mode);
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1723,26 +1706,6 @@ TCompletionPoller& TServer::PickPoller()
 }
 
 }   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-#define SET(param, ...) \
-    if (const auto& value = config.Get##param()) { \
-        param = __VA_ARGS__(value); \
-    }
-
-TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
-{
-    SET(Backlog);
-    SET(QueueSize);
-    SET(MaxBufferSize);
-    SET(KeepAliveTimeout, TDuration::MilliSeconds);
-    SET(WaitMode, Convert);
-    SET(PollerThreads);
-    SET(MaxInflightBytes);
-}
-
-#undef SET
 
 ////////////////////////////////////////////////////////////////////////////////
 

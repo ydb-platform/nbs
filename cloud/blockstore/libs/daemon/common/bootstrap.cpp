@@ -37,9 +37,9 @@
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/client.h>
-#include <cloud/blockstore/libs/rdma/server.h>
-#include <cloud/blockstore/libs/rdma/verbs.h>
+#include <cloud/blockstore/libs/rdma/impl/client.h>
+#include <cloud/blockstore/libs/rdma/impl/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>

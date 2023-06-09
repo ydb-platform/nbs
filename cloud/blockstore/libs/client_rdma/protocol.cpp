@@ -1,6 +1,6 @@
 #include "protocol.h"
 
-#include <cloud/blockstore/libs/rdma/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
 
 #include <util/generic/singleton.h>

@@ -22,7 +22,8 @@ target_link_libraries(blockstore-loadtest PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-encryption
   blockstore-libs-nbd
-  blockstore-libs-rdma
+  libs-rdma-iface
+  libs-rdma-impl
   libs-spdk-iface
   core-libs-grpc
   core-libs-version
