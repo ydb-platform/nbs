@@ -91,6 +91,9 @@ void TPartitionActor::HandleStatPartition(
     response->Record.MutableStats()->SetCleanupDelay(
         State->GetCleanupDelay().MilliSeconds());
 
+    response->Record.MutableStats()->SetCleanupQueueBytes(
+        State->GetCleanupQueue().GetQueueBytes());
+
     LWTRACK(
         ResponseSent_Partition,
         requestInfo->CallContext->LWOrbit,

@@ -374,6 +374,9 @@ message TVolumeStats
     TIOCounters RealSysReadCounters = 24;
     TIOCounters RealSysWriteCounters = 25;
 
+    // Number of bytes in cleanup queue.
+    uint64 CleanupQueueBytes = 26;
+
     // TODO: current max device timeout
 }
 
