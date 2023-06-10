@@ -59,4 +59,4 @@ Y_UNIT_TEST_SUITE(SHA){
 
         UNIT_ASSERT_VALUES_EQUAL(memcmp(fragmentedDigest.data(), notFragmentedDigest.data(), notFragmentedDigest.size()), 0);
     }
-}; // UNITTEST_SIMPLE_SUITE(SHA)
+} // UNITTEST_SIMPLE_SUITE(SHA)

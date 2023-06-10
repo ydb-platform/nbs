@@ -30,5 +30,5 @@ namespace NOpenSsl {
         private:
             rsa_st* Key_ = nullptr;
         };
-    };
+    }
 }

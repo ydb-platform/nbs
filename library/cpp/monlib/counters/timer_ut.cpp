@@ -8,10 +8,10 @@ using namespace std::literals::chrono_literals;
 class TCallback {
 public:
     explicit TCallback(int value)
-        : Value_(value){};
+        : Value_(value){}
     void operator()(std::chrono::high_resolution_clock::duration duration) {
         Value_ = duration.count();
-    };
+    }
 
     int Value_;
 };

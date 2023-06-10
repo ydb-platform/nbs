@@ -25,4 +25,4 @@ Y_UNIT_TEST_SUITE(Rsa) {
         UNIT_ASSERT_VALUES_EQUAL(n, TBigInteger::FromULong(3));
         UNIT_ASSERT_VALUES_EQUAL(e, TBigInteger::FromULong(9173503));
     }
-};
+}
