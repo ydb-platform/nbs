@@ -27,6 +27,16 @@ void TBootstrapLocal::InitSpdk()
     // do nothing
 }
 
+void TBootstrapLocal::InitRdmaClient()
+{
+    // do nothing
+}
+
+void TBootstrapLocal::InitRdmaServer()
+{
+    // do nothing
+}
+
 void TBootstrapLocal::InitKikimrService()
 {
     Y_FAIL("Not implemented");

@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/rdma/impl/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
@@ -67,7 +67,6 @@ protected:
     ICachingAllocatorPtr Allocator;
     IStorageProviderPtr AioStorageProvider;
     IEndpointServicePtr EndpointService;
-    NRdma::NVerbs::IVerbsPtr Verbs;
     NRdma::IServerPtr RdmaServer;
     NRdma::IClientPtr RdmaClient;
     ITaskQueuePtr RdmaThreadPool;
@@ -106,11 +105,12 @@ protected:
     virtual IStartable* GetIamTokenClient() = 0;
 
     virtual void InitSpdk() = 0;
+    virtual void InitRdmaClient() = 0;
+    virtual void InitRdmaServer() = 0;
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
 
     void InitLWTrace();
-    void InitRdmaClient();
     void InitProfileLog();
 
 private:

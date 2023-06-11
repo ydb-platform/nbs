@@ -1,5 +1,7 @@
 #include <cloud/blockstore/libs/daemon/ydb/bootstrap.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
@@ -52,6 +54,30 @@ int main(int argc, char** argv)
             .VhostCallbacks = {},
             .LogInitializer = {},
         };
+    };
+
+    serverModuleFactories->RdmaClientFactory = [] (
+        NCloud::ILoggingServicePtr logging,
+        NCloud::IMonitoringServicePtr monitoring,
+        NRdma::TClientConfigPtr config)
+    {
+        Y_UNUSED(logging);
+        Y_UNUSED(monitoring);
+        Y_UNUSED(config);
+
+        return NRdma::IClientPtr();
+    };
+
+    serverModuleFactories->RdmaServerFactory = [] (
+        NCloud::ILoggingServicePtr logging,
+        NCloud::IMonitoringServicePtr monitoring,
+        NRdma::TServerConfigPtr config)
+    {
+        Y_UNUSED(logging);
+        Y_UNUSED(monitoring);
+        Y_UNUSED(config);
+
+        return NRdma::IServerPtr();
     };
 
     NServer::TBootstrapYdb bootstrap(

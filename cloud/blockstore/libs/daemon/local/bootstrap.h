@@ -36,6 +36,8 @@ protected:
     IStartable* GetIamTokenClient() override     { return nullptr; }
 
     void InitSpdk() override;
+    void InitRdmaClient() override;
+    void InitRdmaServer() override;
     void InitKikimrService() override;
     void InitAuthService() override;
 };

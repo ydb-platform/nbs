@@ -18,7 +18,6 @@ target_link_libraries(blockstore-libs-disk_agent PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-kikimr
   libs-rdma-iface
-  libs-rdma-impl
   blockstore-libs-server
   blockstore-libs-service
   libs-spdk-iface

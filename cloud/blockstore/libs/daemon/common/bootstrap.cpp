@@ -37,9 +37,8 @@
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -169,40 +168,6 @@ TThrottlingServiceConfig CreateThrottlingServicePolicyConfig(
         config.GetMaxWriteIops(),
         config.GetMaxBurstTime()
     );
-}
-
-NRdma::EWaitMode ConvertWaitMode(NProto::EWaitMode mode)
-{
-    switch (mode) {
-        case NProto::WAIT_MODE_POLL:
-            return NRdma::EWaitMode::Poll;
-
-        case NProto::WAIT_MODE_BUSY_WAIT:
-            return NRdma::EWaitMode::BusyWait;
-
-        case NProto::WAIT_MODE_ADAPTIVE_WAIT:
-            return NRdma::EWaitMode::AdaptiveWait;;
-
-        default:
-            Y_FAIL("unsupported wait mode %d", mode);
-    }
-}
-
-NRdma::TClientConfigPtr CreateRdmaClientConfig(const TServerAppConfigPtr app)
-{
-    auto server = app->GetServerConfig();
-    auto config = std::make_shared<NRdma::TClientConfig>();
-
-    if (server->HasRdmaClientConfig()) {
-        auto client = server->GetRdmaClientConfig();
-
-        config->QueueSize = client.GetQueueSize();
-        config->MaxBufferSize = client.GetMaxBufferSize();
-        config->WaitMode = ConvertWaitMode(client.GetWaitMode());
-        config->PollerThreads = client.GetPollerThreads();
-    };
-
-    return config;
 }
 
 }   // namespace
@@ -475,18 +440,7 @@ void TBootstrapBase::Init()
     }
 
     if (Configs->ServerConfig->GetRdmaEndpointEnabled()) {
-        // TODO: read config
-        auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
-
-        if (Verbs == nullptr) {
-            Verbs = NRdma::NVerbs::CreateVerbs();
-        }
-
-        RdmaServer = NRdma::CreateServer(
-            Verbs,
-            Logging,
-            Monitoring,
-            std::move(rdmaConfig));
+        InitRdmaServer();
 
         STORAGE_INFO("RDMA Server initialized");
 
@@ -638,31 +592,6 @@ void TBootstrapBase::InitProfileLog()
         );
     } else {
         ProfileLog = CreateProfileLogStub();
-    }
-}
-
-void TBootstrapBase::InitRdmaClient()
-{
-    try {
-        if (Configs->ServerConfig->GetRdmaClientEnabled()) {
-            if (Verbs == nullptr) {
-                Verbs = NRdma::NVerbs::CreateVerbs();
-            }
-
-            RdmaClient = NRdma::CreateClient(
-                Verbs,
-                Logging,
-                Monitoring,
-                CreateRdmaClientConfig(Configs->ServerConfig));
-
-            STORAGE_INFO("RDMA client initialized");
-        }
-    } catch (...) {
-        STORAGE_ERROR("Failed to initialize RDMA client: "
-            << CurrentExceptionMessage().c_str());
-
-        RdmaClient = nullptr;
-        PostponedCriticalEvents.push_back(GetCriticalEventForRdmaError());
     }
 }
 

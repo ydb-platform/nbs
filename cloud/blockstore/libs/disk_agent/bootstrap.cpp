@@ -16,8 +16,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
@@ -272,8 +271,7 @@ void TBootstrap::InitRdmaServer(NStorage::TDiskAgentConfig& config)
 {
     try {
         if (config.HasRdmaTarget()) {
-            RdmaServer = NRdma::CreateServer(
-                NRdma::NVerbs::CreateVerbs(),
+            RdmaServer = ServerModuleFactories->RdmaServerFactory(
                 Logging,
                 Monitoring,
                 CreateRdmaServerConfig(config));

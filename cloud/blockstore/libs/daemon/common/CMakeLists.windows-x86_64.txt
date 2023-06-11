@@ -31,7 +31,6 @@ target_link_libraries(libs-daemon-common PUBLIC
   blockstore-libs-nbd
   blockstore-libs-nvme
   libs-rdma-iface
-  libs-rdma-impl
   blockstore-libs-server
   blockstore-libs-service
   blockstore-libs-service_local

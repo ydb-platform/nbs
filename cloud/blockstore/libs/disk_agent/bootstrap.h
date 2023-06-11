@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/rdma/impl/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
@@ -34,6 +34,10 @@ struct TSpdkParts
 struct TServerModuleFactories
 {
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
+    std::function<NRdma::IServerPtr(
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        NRdma::TServerConfigPtr config)> RdmaServerFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

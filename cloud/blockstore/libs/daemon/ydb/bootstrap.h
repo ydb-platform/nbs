@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/libs/actors/public.h>
@@ -34,6 +35,16 @@ struct TServerModuleFactories
         ITimerPtr timer)> IamClientFactory;
 
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
+
+    std::function<NRdma::IServerPtr(
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        NRdma::TServerConfigPtr config)> RdmaServerFactory;
+
+    std::function<NRdma::IClientPtr(
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        NRdma::TClientConfigPtr config)> RdmaClientFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +96,8 @@ protected:
     IStartable* GetIamTokenClient() override;
 
     void InitSpdk() override;
+    void InitRdmaClient() override;
+    void InitRdmaServer() override;
     void InitKikimrService() override;
     void InitAuthService() override;
 
