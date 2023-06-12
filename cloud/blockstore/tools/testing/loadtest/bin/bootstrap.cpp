@@ -17,12 +17,15 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
+#if NBS_INTERNAL_BUILD
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/spdk/impl/env.h>
+#endif
+#include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
-//#include <cloud/blockstore/libs/spdk/impl/env.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/validation/validation.h>
@@ -219,8 +222,7 @@ void TBootstrap::Init()
         Timer);
 
     if (Options->SpdkConfig) {
-#if 0
-        // TODO: create a separate build target with spdk-capable loadtest
+#if NBS_INTERNAL_BUILD
         NSpdk::InitLogging(Logging->CreateLog("BLOCKSTORE_SPDK"));
 
         NProto::TSpdkEnvConfig config;
@@ -349,6 +351,7 @@ NBD::IClientPtr TBootstrap::CreateAndStartNbdClient(TString clientId)
 
 NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
 {
+#if NBS_INTERNAL_BUILD
     auto config = CreateClientConfig(ClientConfig, std::move(clientId));
 
     auto clientStats = CreateClientStats(
@@ -369,6 +372,10 @@ NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
         Logging,
         Monitoring,
         std::move(rdmaConfig));
+#else
+    Y_UNUSED(clientId);
+    auto client = std::make_shared<NStorage::TRdmaClientTest>();
+#endif
 
     client->Start();
     Clients.Enqueue(client);
