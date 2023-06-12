@@ -203,6 +203,24 @@ enum class EHttpMethod
     Post,
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+void EasySetOpt(CURL* handle, CURLoption opt, T val)
+{
+    auto code = curl_easy_setopt(handle, opt, val);
+    Y_ENSURE_EX(
+        code == CURLE_OK,
+        yexception() << "failed to set easy option " << static_cast<int>(opt));
+}
+
+template <typename T>
+void MultiSetOpt(CURLM* handle, CURLMoption opt, T val)
+{
+    auto code = curl_multi_setopt(handle, opt, val);
+    Y_VERIFY_DEBUG(code == CURLM_OK);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -360,57 +378,57 @@ public:
             PostDataInfo.Current = Data.begin();
             PostDataInfo.End = Data.end();
 
-            curl_easy_setopt(Handle, CURLOPT_HTTPHEADER, Headers);
+            EasySetOpt(Handle, CURLOPT_HTTPHEADER, Headers);
 
-            curl_easy_setopt(Handle, CURLOPT_ACCEPT_ENCODING, "");
+            EasySetOpt(Handle, CURLOPT_ACCEPT_ENCODING, "");
 
-            curl_easy_setopt(
+            EasySetOpt(
                 Handle,
                 CURLOPT_WRITEFUNCTION,
                 &TCurlRequestHandle::WriteFunction);
-            curl_easy_setopt(Handle, CURLOPT_WRITEDATA, &WriteDataInfo);
+            EasySetOpt(Handle, CURLOPT_WRITEDATA, &WriteDataInfo);
 
-            curl_easy_setopt(
+            EasySetOpt(
                 Handle,
                 CURLOPT_HEADERFUNCTION,
                 &TCurlRequestHandle::HeaderFunction);
-            curl_easy_setopt(Handle, CURLOPT_HEADERDATA, &WriteDataInfo);
+            EasySetOpt(Handle, CURLOPT_HEADERDATA, &WriteDataInfo);
 
-            curl_easy_setopt(
+            EasySetOpt(
                 Handle,
                 CURLOPT_OPENSOCKETFUNCTION,
                 &TCurlRequestHandle::OpenSocketFunction);
-            curl_easy_setopt(
+            EasySetOpt(
                 Handle,
                 CURLOPT_CLOSESOCKETFUNCTION,
                 &TCurlRequestHandle::CloseSocketFunction);
 
             if (Impl.CaPath) {
-                curl_easy_setopt(Handle, CURLOPT_CAPATH, Impl.CaPath.c_str());
+                EasySetOpt(Handle, CURLOPT_CAPATH, Impl.CaPath.c_str());
             }
 
-            curl_easy_setopt(Handle, CURLOPT_SSL_VERIFYPEER, 0);    // XXX
-            curl_easy_setopt(Handle, CURLOPT_SSL_VERIFYHOST, Impl.VerifyHost);
+            EasySetOpt(Handle, CURLOPT_SSL_VERIFYPEER, 0);    // XXX
+            EasySetOpt(Handle, CURLOPT_SSL_VERIFYHOST, Impl.VerifyHost);
 
-            curl_easy_setopt(Handle, CURLOPT_VERBOSE, 0);
+            EasySetOpt(Handle, CURLOPT_VERBOSE, 0);
 
-            curl_easy_setopt(Handle, CURLOPT_PRIVATE, this);
-            curl_easy_setopt(Handle, CURLOPT_ERRORBUFFER, &ErrorString);
+            EasySetOpt(Handle, CURLOPT_PRIVATE, this);
+            EasySetOpt(Handle, CURLOPT_ERRORBUFFER, &ErrorString);
 
-            curl_easy_setopt(Handle, CURLOPT_URL, Url.c_str());
+            EasySetOpt(Handle, CURLOPT_URL, Url.c_str());
 
-            curl_easy_setopt(Handle, CURLOPT_KEEP_SENDING_ON_ERROR, 1);
+            EasySetOpt(Handle, CURLOPT_KEEP_SENDING_ON_ERROR, 1);
 
             switch (HttpMethod) {
                 case EHttpMethod::Get:
                     break;
                 case EHttpMethod::Post:
-                    curl_easy_setopt(Handle, CURLOPT_POST, 1);
-                    curl_easy_setopt(
+                    EasySetOpt(Handle, CURLOPT_POST, 1);
+                    EasySetOpt(
                         Handle,
                         CURLOPT_POSTFIELDSIZE,
                         static_cast<long>(Data.size()));
-                    curl_easy_setopt(Handle, CURLOPT_POSTFIELDS, Data.data());
+                    EasySetOpt(Handle, CURLOPT_POSTFIELDS, Data.data());
                     break;
             }
         }
@@ -430,7 +448,7 @@ public:
             if (PostDataInfo.Cancelled.compare_exchange_strong(expected, true)) {
                 return;
             }
-            SetError("canceled");
+            SetError("cancelled");
         }
 
         bool IsCancelled() const
@@ -493,7 +511,7 @@ public:
 
     void SetCaCerts(const TString& caPath);
     void SetVerifyHost(bool verifyHost);
-    TCurlRequestHandlePtr SendRequest(
+    void SendRequest(
         EHttpMethod httpMethod,
         const TString& endpoint,
         const TString& data,
@@ -534,26 +552,23 @@ void THttpsClient::TImpl::InitMultiHolder()
     UserData.push_back(TUserData{this});
     auto ud = &UserData.back();
 
-    curl_multi_setopt(MultiHolder.Handle, CURLMOPT_MAXCONNECTS, MaxConnections);
-    curl_multi_setopt(
+    MultiSetOpt(MultiHolder.Handle, CURLMOPT_MAXCONNECTS, MaxConnections);
+    MultiSetOpt(
         MultiHolder.Handle,
         CURLMOPT_MAX_HOST_CONNECTIONS,
         MaxHostConnections);
 
-    curl_multi_setopt(
+    MultiSetOpt(
         MultiHolder.Handle,
         CURLMOPT_SOCKETFUNCTION,
         &TImpl::SocketFunction);
-    curl_multi_setopt(MultiHolder.Handle, CURLMOPT_SOCKETDATA, ud);
+    MultiSetOpt(MultiHolder.Handle, CURLMOPT_SOCKETDATA, ud);
 
-    curl_multi_setopt(
+    MultiSetOpt(
         MultiHolder.Handle,
         CURLMOPT_TIMERFUNCTION,
         &TImpl::TimerFunction);
-    curl_multi_setopt(
-        MultiHolder.Handle,
-        CURLMOPT_TIMERDATA,
-        &MultiHolder.Deadline);
+    MultiSetOpt(MultiHolder.Handle, CURLMOPT_TIMERDATA, &MultiHolder.Deadline);
 }
 
 void THttpsClient::TImpl::ProcessAddQueue() {
@@ -607,7 +622,8 @@ void THttpsClient::TImpl::ProcessRemoveQueue()
     auto releaseReq = [this] (TCurlRequestHandle* req) {
         auto* e = req->Handle;
 
-        curl_multi_remove_handle(MultiHolder.Handle, e);
+        auto code = curl_multi_remove_handle(MultiHolder.Handle, e);
+        Y_VERIFY_DEBUG(code == CURLM_OK);
         Singleton<TEasyPool>()->Return(e);
         if (--MultiHolder.Size == 0) {
             MultiHolder.Started = false;
@@ -649,7 +665,8 @@ void THttpsClient::TImpl::ResetSignalled()
 {
     if (AddVector.empty() && Signalled.load()) {
         char buf[1];
-        read(SignalSockets[0], buf, sizeof(buf));
+        auto bytes = read(SignalSockets[0], buf, sizeof(buf));
+        Y_VERIFY_DEBUG(bytes == sizeof(buf));
         Signalled.store(false);
     }
 }
@@ -681,11 +698,12 @@ void THttpsClient::TImpl::Perform()
         }
         for (auto& e: sockets) {
             auto fd = e.first.Socket;
-            curl_multi_socket_action(
+            auto code = curl_multi_socket_action(
                 MultiHolder.Handle,
                 fd,
                 e.second,
                 &MultiHolder.StillRunning);
+            Y_VERIFY_DEBUG(code == CURLM_OK);
             Process();
         }
     } else {
@@ -693,11 +711,12 @@ void THttpsClient::TImpl::Perform()
         if (MultiHolder.Deadline < now) {
             MultiHolder.Deadline = TInstant::Max();
             if (MultiHolder.Size) {
-                curl_multi_socket_action(
+                auto code = curl_multi_socket_action(
                     MultiHolder.Handle,
                     CURL_SOCKET_TIMEOUT,
                     0,
                     &MultiHolder.StillRunning);
+                Y_VERIFY_DEBUG(code == CURLM_OK);
                 Process();
             }
         }
@@ -721,22 +740,28 @@ void THttpsClient::TImpl::Process()
             auto result = curlMsg->data.result;
             if (result == CURLE_OK) {
                 curl_off_t totaltime = 0;
-                curl_easy_getinfo(
+                auto code = curl_easy_getinfo(
                     curlMsg->easy_handle,
                     CURLINFO_TOTAL_TIME_T,
                     &totaltime);
+                Y_VERIFY_DEBUG(code == CURLE_OK);
                 long retCode = 0;
-                curl_easy_getinfo(
+                code = curl_easy_getinfo(
                     curlMsg->easy_handle,
                     CURLINFO_RESPONSE_CODE,
                     &retCode);
+                Y_VERIFY_DEBUG(code == CURLE_OK);
                 req->Callback(retCode, req->WriteDataInfo.Data.Str());
             } else if ((result == CURLE_SEND_ERROR || result == CURLE_RECV_ERROR)
                     && req->RetryCount < MaxRetryCount)
             {
-                curl_multi_remove_handle(MultiHolder.Handle, curlMsg->easy_handle);
+                auto code = curl_multi_remove_handle(
+                    MultiHolder.Handle,
+                    curlMsg->easy_handle);
+                Y_VERIFY_DEBUG(code == CURLM_OK);
                 req->Retry();
-                curl_multi_add_handle(MultiHolder.Handle, req->Handle);
+                code = curl_multi_add_handle(MultiHolder.Handle, req->Handle);
+                Y_VERIFY_DEBUG(code == CURLM_OK);
                 continue;
             } else {
                 req->SetError(req->ErrorString);
@@ -775,7 +800,8 @@ int THttpsClient::TImpl::SocketFunction(
         e = nullptr;
     } else if (!e) {
         e = new TEvent(sock);
-        curl_multi_assign(impl->MultiHolder.Handle, sock, e);
+        auto code = curl_multi_assign(impl->MultiHolder.Handle, sock, e);
+        Y_VERIFY_DEBUG(code == CURLM_OK);
     }
 
     impl->SocketPoller->AddWait(sock, what, e);
@@ -859,25 +885,27 @@ void THttpsClient::TImpl::SetVerifyHost(bool verifyHost)
     VerifyHost = verifyHost;
 }
 
-THttpsClient::TImpl::TCurlRequestHandlePtr THttpsClient::TImpl::SendRequest(
+void THttpsClient::TImpl::SendRequest(
     EHttpMethod httpMethod,
     const TString& endpoint,
     const TString& data,
     const THttpHeaders& headers,
     const THttpsCallback& callback)
 {
-    TCurlRequestHandlePtr ret = new TCurlRequestHandle(
-        RequestId.fetch_add(1),
-        *this,
-        endpoint,
-        data,
-        httpMethod,
-        headers,
-        callback);
-    ret->Ref();
-    Enqueue(&*ret);
-
-    return ret;
+    try {
+        TCurlRequestHandlePtr ret = new TCurlRequestHandle(
+            RequestId.fetch_add(1),
+            *this,
+            endpoint,
+            data,
+            httpMethod,
+            headers,
+            callback);
+        ret->Ref();
+        Enqueue(&*ret);
+    } catch (const yexception& e) {
+        callback(0, e.what());
+    }
 }
 
 void THttpsClient::TImpl::Signal()
@@ -885,7 +913,8 @@ void THttpsClient::TImpl::Signal()
     bool expected = false;
     if (Signalled.compare_exchange_strong(expected, true)) {
         static const char buf[1] = {0};
-        write(SignalSockets[1], buf, 1);
+        auto bytes = write(SignalSockets[1], buf, 1);
+        Y_VERIFY_DEBUG(bytes == sizeof(buf));
     }
 }
 
