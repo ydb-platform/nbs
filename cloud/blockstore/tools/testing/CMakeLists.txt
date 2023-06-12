@@ -7,4 +7,3 @@
 
 
 add_subdirectory(eternal-tests)
-add_subdirectory(loadtest)
