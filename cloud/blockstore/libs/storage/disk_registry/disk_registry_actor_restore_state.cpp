@@ -428,7 +428,7 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryState(
             std::move(requestInfo),
             std::move(snapshot));
     } else {
-        auto actor = NCloud::Register<DiskRegistry::TRestoreValidationActor>(
+        auto actor = NCloud::Register<NDiskRegistry::TRestoreValidationActor>(
             ctx,
             SelfId(),
             std::move(requestInfo),

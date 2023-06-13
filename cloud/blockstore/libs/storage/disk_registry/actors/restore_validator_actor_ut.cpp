@@ -24,7 +24,7 @@ NActors::TActorId MakeVolumeProxyServiceId()
     return EdgeActor;
 }
 
-namespace DiskRegistry {
+namespace NDiskRegistry {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -63,10 +63,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckSingleDiskId, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 1");
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 1");
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
 
         ActorSystem.Register(
             new TRestoreValidationActor(
@@ -75,7 +73,6 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                 0,
                 backup
             ));
-
 
         auto response = ActorSystem.GrabEdgeEvent<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
@@ -86,12 +83,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckSingleGroupId, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.PlacementGroups.insert(
-            backup.PlacementGroups.end(),
-            NProto::TPlacementGroupConfig{})->SetGroupId("Group 1");
-        backup.PlacementGroups.insert(
-            backup.PlacementGroups.end(),
-            NProto::TPlacementGroupConfig{})->SetGroupId("Group 1");
+        backup.PlacementGroups.emplace_back().SetGroupId("Group 1");
+        backup.PlacementGroups.emplace_back().SetGroupId("Group 1");
 
         ActorSystem.Register(
             new TRestoreValidationActor(
@@ -110,10 +103,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckSingleAgentId, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.Agents.insert(
-            backup.Agents.end(), NProto::TAgentConfig{})->SetAgentId("Agent 1");
-        backup.Agents.insert(
-            backup.Agents.end(), NProto::TAgentConfig{})->SetAgentId("Agent 1");
+        backup.Agents.emplace_back().SetAgentId("Agent 1");
+        backup.Agents.emplace_back().SetAgentId("Agent 1");
 
         ActorSystem.Register(
             new TRestoreValidationActor(
@@ -132,12 +123,9 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckNewDisksInBackup, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 1");
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 3");
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 2");
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
+        backup.Disks.emplace_back().SetDiskId("Disk 3");
+        backup.Disks.emplace_back().SetDiskId("Disk 2");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -172,10 +160,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckNewDisksInSS, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 3");
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 1");
+        backup.Disks.emplace_back().SetDiskId("Disk 3");
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -243,10 +229,9 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckAnotherFolder, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        auto config = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        config->SetDiskId("Disk 1");
-        config->SetFolderId("Folder 1");
+        auto& config = backup.Disks.emplace_back();
+        config.SetDiskId("Disk 1");
+        config.SetFolderId("Folder 1");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -291,10 +276,9 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckAnotherCloud, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        auto config = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        config->SetDiskId("Disk 1");
-        config->SetCloudId("Cloud 1");
+        auto& config = backup.Disks.emplace_back();
+        config.SetDiskId("Disk 1");
+        config.SetCloudId("Cloud 1");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -339,10 +323,9 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckAnotherBlockSize, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        auto config = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        config->SetDiskId("Disk 1");
-        config->SetBlockSize(42);
+        auto& config = backup.Disks.emplace_back();
+        config.SetDiskId("Disk 1");
+        config.SetBlockSize(42);
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -387,25 +370,20 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckPlacementGroups, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 1");
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 2");
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
+        backup.Disks.emplace_back().SetDiskId("Disk 2");
 
-        auto placementGroup1 = backup.PlacementGroups.insert(
-            backup.PlacementGroups.end(), NProto::TPlacementGroupConfig{});
-        placementGroup1->SetGroupId("Group 1");
-        placementGroup1->AddDisks()->SetDiskId("Disk 1");
-        placementGroup1->AddDisks()->SetDiskId("Disk 2");
+        auto& placementGroup1 = backup.PlacementGroups.emplace_back();
+        placementGroup1.SetGroupId("Group 1");
+        placementGroup1.AddDisks()->SetDiskId("Disk 1");
+        placementGroup1.AddDisks()->SetDiskId("Disk 2");
 
-        auto placementGroup2 = backup.PlacementGroups.insert(
-            backup.PlacementGroups.end(), NProto::TPlacementGroupConfig{});
-        placementGroup2->SetGroupId("Group 2");
-        placementGroup2->AddDisks()->SetDiskId("Disk 2");
+        auto& placementGroup2 = backup.PlacementGroups.emplace_back();
+        placementGroup2.SetGroupId("Group 2");
+        placementGroup2.AddDisks()->SetDiskId("Disk 2");
 
-        auto placementGroup3 = backup.PlacementGroups.insert(
-            backup.PlacementGroups.end(), NProto::TPlacementGroupConfig{});
-        placementGroup3->SetGroupId("Group 3");
+        auto& placementGroup3 = backup.PlacementGroups.emplace_back();
+        placementGroup3.SetGroupId("Group 3");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -470,12 +448,10 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckDevices, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{})->SetDiskId("Disk 1");
-        auto disk = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        disk->SetDiskId("Disk 2");
-        disk->AddDeviceUUIDs("Device 2");
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
+        auto& disk = backup.Disks.emplace_back();
+        disk.SetDiskId("Disk 2");
+        disk.AddDeviceUUIDs("Device 2");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -536,37 +512,33 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     Y_UNIT_TEST_F(CheckValidation, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
-        auto diskConfig = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        diskConfig->SetDiskId("Disk 1");
-        diskConfig->SetFolderId("Folder 1");
-        diskConfig->SetCloudId("Cloud 1");
-        diskConfig->SetBlockSize(42);
+        auto& diskConfig = backup.Disks.emplace_back();
+        diskConfig.SetDiskId("Disk 1");
+        diskConfig.SetFolderId("Folder 1");
+        diskConfig.SetCloudId("Cloud 1");
+        diskConfig.SetBlockSize(42);
 
-        auto diskConfigRepl2 = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        diskConfigRepl2->SetDiskId("Disk 1/1");
-        diskConfigRepl2->SetFolderId("Folder 1");
-        diskConfigRepl2->SetCloudId("Cloud 1");
-        diskConfigRepl2->SetBlockSize(42);
-        diskConfigRepl2->AddDeviceUUIDs("Device 1");
-        diskConfigRepl2->AddDeviceUUIDs("Device 2");
+        auto& diskConfigRepl2 = backup.Disks.emplace_back();
+        diskConfigRepl2.SetDiskId("Disk 1/1");
+        diskConfigRepl2.SetFolderId("Folder 1");
+        diskConfigRepl2.SetCloudId("Cloud 1");
+        diskConfigRepl2.SetBlockSize(42);
+        diskConfigRepl2.AddDeviceUUIDs("Device 1");
+        diskConfigRepl2.AddDeviceUUIDs("Device 2");
 
-        auto diskConfigRepl1 = backup.Disks.insert(
-            backup.Disks.end(), NProto::TDiskConfig{});
-        diskConfigRepl1->SetDiskId("Disk 1/0");
-        diskConfigRepl1->SetFolderId("Folder 1");
-        diskConfigRepl1->SetCloudId("Cloud 1");
-        diskConfigRepl1->SetBlockSize(42);
-        diskConfigRepl1->AddDeviceUUIDs("Device 3");
-        diskConfigRepl1->AddDeviceUUIDs("Device 4");
+        auto& diskConfigRepl1 = backup.Disks.emplace_back();
+        diskConfigRepl1.SetDiskId("Disk 1/0");
+        diskConfigRepl1.SetFolderId("Folder 1");
+        diskConfigRepl1.SetCloudId("Cloud 1");
+        diskConfigRepl1.SetBlockSize(42);
+        diskConfigRepl1.AddDeviceUUIDs("Device 3");
+        diskConfigRepl1.AddDeviceUUIDs("Device 4");
 
-        auto placementGroup = backup.PlacementGroups.insert(
-            backup.PlacementGroups.end(), NProto::TPlacementGroupConfig{});
-        placementGroup->SetGroupId("Group 1");
-        placementGroup->AddDisks()->SetDiskId("Disk 1");
-        placementGroup->AddDisks()->SetDiskId("Disk 1/0");
-        placementGroup->AddDisks()->SetDiskId("Disk 1/1");
+        auto& placementGroup = backup.PlacementGroups.emplace_back();
+        placementGroup.SetGroupId("Group 1");
+        placementGroup.AddDisks()->SetDiskId("Disk 1");
+        placementGroup.AddDisks()->SetDiskId("Disk 1/0");
+        placementGroup.AddDisks()->SetDiskId("Disk 1/1");
 
         auto validatorId = ActorSystem.Register(
             new TRestoreValidationActor(
@@ -666,36 +638,32 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     {
         TDiskRegistryStateSnapshot backup;
         {
-            auto diskConfig = backup.Disks.insert(
-                backup.Disks.end(), NProto::TDiskConfig{});
-            diskConfig->SetDiskId("Disk 1");
-            diskConfig->SetFolderId("Folder 1");
-            diskConfig->SetCloudId("Cloud 1");
-            diskConfig->SetBlockSize(41);
+            auto& diskConfig = backup.Disks.emplace_back();
+            diskConfig.SetDiskId("Disk 1");
+            diskConfig.SetFolderId("Folder 1");
+            diskConfig.SetCloudId("Cloud 1");
+            diskConfig.SetBlockSize(41);
         }
         {
-            auto diskConfig = backup.Disks.insert(
-                backup.Disks.end(), NProto::TDiskConfig{});
-            diskConfig->SetDiskId("Disk 2");
-            diskConfig->SetFolderId("Folder 2");
-            diskConfig->SetCloudId("Cloud 2");
-            diskConfig->SetBlockSize(42);
+            auto& diskConfig = backup.Disks.emplace_back();
+            diskConfig.SetDiskId("Disk 2");
+            diskConfig.SetFolderId("Folder 2");
+            diskConfig.SetCloudId("Cloud 2");
+            diskConfig.SetBlockSize(42);
         }
         {
-            auto diskConfig = backup.Disks.insert(
-                backup.Disks.end(), NProto::TDiskConfig{});
-            diskConfig->SetDiskId("Disk 3");
-            diskConfig->SetFolderId("Folder 3");
-            diskConfig->SetCloudId("Cloud 3");
-            diskConfig->SetBlockSize(43);
+            auto& diskConfig = backup.Disks.emplace_back();
+            diskConfig.SetDiskId("Disk 3");
+            diskConfig.SetFolderId("Folder 3");
+            diskConfig.SetCloudId("Cloud 3");
+            diskConfig.SetBlockSize(43);
         }
         {
-            auto diskConfig = backup.Disks.insert(
-                backup.Disks.end(), NProto::TDiskConfig{});
-            diskConfig->SetDiskId("Disk 4");
-            diskConfig->SetFolderId("Folder 4");
-            diskConfig->SetCloudId("Cloud 4");
-            diskConfig->SetBlockSize(44);
+            auto& diskConfig = backup.Disks.emplace_back();
+            diskConfig.SetDiskId("Disk 4");
+            diskConfig.SetFolderId("Folder 4");
+            diskConfig.SetCloudId("Cloud 4");
+            diskConfig.SetBlockSize(44);
         }
 
         backup.DisksToCleanup.push_back("Disk 4");
@@ -806,6 +774,5 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
     }
 }
 
-}   // namespace DiskRegistry
-
+}   // namespace NDiskRegistry
 }   // namespace NCloud::NBlockStore::NStorage

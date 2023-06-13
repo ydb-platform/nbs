@@ -6,7 +6,35 @@
 
 #include <util/generic/algorithm.h>
 
-namespace NCloud::NBlockStore::NStorage::DiskRegistry {
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+void Out<NCloud::NBlockStore::NStorage::TDirtyDevice>(
+    IOutputStream& o,
+    const NCloud::NBlockStore::NStorage::TDirtyDevice& d)
+{
+    o << "dirty device { " << d.DiskId << " " << d.Id << " }";
+}
+
+template <>
+void Out<NCloud::NBlockStore::NStorage::TAutomaticallyReplacedDeviceInfo>(
+    IOutputStream& o,
+    const NCloud::NBlockStore::NStorage::TAutomaticallyReplacedDeviceInfo& info)
+{
+    o << "replaced device { " << info.DeviceId << " }";
+}
+
+template <>
+void Out<NCloud::NBlockStore::NStorage::TBrokenDiskInfo>(
+    IOutputStream& o,
+    const NCloud::NBlockStore::NStorage::TBrokenDiskInfo& info)
+{
+    o << "broken disk { " << info.DiskId << " }";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace NCloud::NBlockStore::NStorage::NDiskRegistry {
 
 namespace {
 
@@ -33,7 +61,7 @@ bool NormalizeLoadState(
             LOG_WARN_S(
                 ctx,
                 component,
-                RESTORE_PREFIX << " Not unique: " << getKeyFunction(*itr));
+                RESTORE_PREFIX << " Not unique: " << *itr);
             return false;
         }
 
@@ -653,4 +681,4 @@ STFUNC(TRestoreValidationActor::StateWork)
     }
 }
 
-}   // NCloud::NBlockStore::NStorage::DiskRegistry
+}   // NCloud::NBlockStore::NStorage::NDiskRegistry

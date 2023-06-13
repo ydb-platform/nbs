@@ -12,7 +12,7 @@
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
 
-namespace NCloud::NBlockStore::NStorage::DiskRegistry {
+namespace NCloud::NBlockStore::NStorage::NDiskRegistry {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -84,4 +84,4 @@ private:
         const NActors::TActorContext& ctx);
 };
 
-}   // NCloud::NBlockStore::NStorage::DiskRegistry
+}   // NCloud::NBlockStore::NStorage::NDiskRegistry
