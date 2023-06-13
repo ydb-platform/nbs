@@ -4,12 +4,12 @@
 
 #include "storage_with_stats.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-
-#include <cloud/blockstore/libs/kikimr/components.h>
-#include <cloud/blockstore/libs/kikimr/events.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -91,6 +91,29 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // TWriteOrZeroCompleted
+    //
+
+    struct TWriteOrZeroCompleted
+    {
+        ui64 RequestId = 0;
+        TBlockRange64 Range;
+        TString DeviceUUID;
+        bool Success = false;
+
+        TWriteOrZeroCompleted(
+            ui64 requestId,
+            TBlockRange64 range,
+            TString deviceUUID,
+            bool success)
+            : RequestId(requestId)
+            , Range(range)
+            , DeviceUUID(std::move(deviceUUID))
+            , Success(success)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -102,6 +125,7 @@ struct TEvDiskAgentPrivate
 
         EvInitAgentCompleted,
         EvSecureEraseCompleted,
+        EvWriteOrZeroCompleted,
 
         EvEnd
     };
@@ -118,6 +142,10 @@ struct TEvDiskAgentPrivate
     using TEvSecureEraseCompleted = TResponseEvent<
         TSecureEraseCompleted,
         EvSecureEraseCompleted>;
+
+    using TEvWriteOrZeroCompleted = TResponseEvent<
+        TWriteOrZeroCompleted,
+        EvWriteOrZeroCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

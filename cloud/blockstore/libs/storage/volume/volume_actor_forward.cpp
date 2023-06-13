@@ -670,7 +670,7 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    if (RequiresReadWriteAccess<TMethod>()) {
+    if constexpr (RequiresReadWriteAccess<TMethod>()) {
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());

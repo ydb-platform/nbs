@@ -72,9 +72,11 @@ void TDiskAgentActor::RegisterCounters(const TActorContext& ctx)
     if (counters) {
         auto rootGroup = counters->GetSubgroup("counters", "blockstore");
         auto totalCounters = rootGroup->GetSubgroup("component", "disk_agent");
+        auto outOfOrderCounters = totalCounters->GetSubgroup("utils", "old_requests");
 
-        // TODO
-        Y_UNUSED(totalCounters);
+        DelayedRequestCount = outOfOrderCounters->GetCounter("Delayed");
+        RejectedRequestCount = outOfOrderCounters->GetCounter("Rejected");
+        AlreadyExecutedRequestCount = outOfOrderCounters->GetCounter("Already");
 
         UpdateCounters(ctx);
         ScheduleCountersUpdate(ctx);
@@ -200,6 +202,8 @@ STFUNC(TDiskAgentActor::StateWork)
 
         HFunc(TEvDiskRegistryProxy::TEvSubscribeResponse, HandleSubscribeResponse);
         HFunc(TEvDiskRegistryProxy::TEvConnectionLost, HandleConnectionLost);
+
+        HFunc(TEvDiskAgentPrivate::TEvWriteOrZeroCompleted, HandleWriteOrZeroCompleted);
 
         default:
             if (!HandleRequests(ev)) {

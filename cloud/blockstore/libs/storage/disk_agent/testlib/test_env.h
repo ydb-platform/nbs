@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/config/disk.pb.h>
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/common/sglist_test.h>
@@ -433,6 +434,7 @@ struct TTestEnvBuilder
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
     NSpdk::ISpdkEnvPtr Spdk;
+    NProto::TStorageServiceConfig StorageServiceConfig;
 
     explicit TTestEnvBuilder(NActors::TTestActorRuntime& runtime);
 
@@ -441,6 +443,7 @@ struct TTestEnvBuilder
     TTestEnvBuilder& With(IFileIOServicePtr fileIO);
     TTestEnvBuilder& With(NNvme::INvmeManagerPtr nvmeManager);
     TTestEnvBuilder& With(NProto::TDiskAgentConfig config);
+    TTestEnvBuilder& With(NProto::TStorageServiceConfig storageServiceConfig);
 
     TTestEnv Build();
 };

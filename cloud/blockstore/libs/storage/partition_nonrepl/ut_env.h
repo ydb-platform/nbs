@@ -275,7 +275,8 @@ public:
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.SetStartIndex(range.Start);
         request->Record.BlocksCount = range.Size();
-        request->Record.BlockSize = content.size() / range.Size();
+        request->Record.BlockSize = DefaultBlockSize;
+        Y_VERIFY(DefaultBlockSize == content.size());
 
         return request;
     }

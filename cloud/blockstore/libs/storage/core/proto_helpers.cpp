@@ -312,57 +312,85 @@ bool CompareVolumeConfigs(
             == newConfig.GetPerformanceProfileBoostPercentage();
 }
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-template<typename T>
-TBlockRange64 BuildRequestBlockRangeImpl(const T& request, const ui32 blockSize)
-{
-    ui64 totalSize = CalculateBytesCount(request.Record, blockSize);
-    Y_VERIFY(totalSize % blockSize == 0);
-
-    return TBlockRange64::WithLength(
-        request.Record.GetStartIndex(),
-        totalSize / blockSize
-    );
-}
-
-}   // namespace
-
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvReadBlocksRequest& request,
     const ui32 blockSize)
 {
-    return BuildRequestBlockRangeImpl(request, blockSize);
+    Y_UNUSED(blockSize);
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.Record.GetBlocksCount());
 }
 
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvReadBlocksLocalRequest& request,
     const ui32 blockSize)
 {
-    return BuildRequestBlockRangeImpl(request, blockSize);
+    Y_UNUSED(blockSize);
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.Record.GetBlocksCount());
 }
 
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvWriteBlocksRequest& request,
     const ui32 blockSize)
 {
-    return BuildRequestBlockRangeImpl(request, blockSize);
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        CalculateWriteRequestBlockCount(request.Record, blockSize));
 }
 
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvWriteBlocksLocalRequest& request,
     const ui32 blockSize)
 {
-    return BuildRequestBlockRangeImpl(request, blockSize);
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        CalculateWriteRequestBlockCount(request.Record, blockSize));
 }
 
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvZeroBlocksRequest& request,
     const ui32 blockSize)
 {
-    return BuildRequestBlockRangeImpl(request, blockSize);
+    Y_UNUSED(blockSize);
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        CalculateWriteRequestBlockCount(request.Record, blockSize));
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request)
+{
+    ui64 totalSize = 0;
+    for (const auto& buffers : request.Record.GetBlocks().GetBuffers()) {
+        totalSize += buffers.length();
+    }
+    Y_VERIFY(totalSize % request.Record.GetBlockSize() == 0);
+
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        totalSize / request.Record.GetBlockSize());
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)
+{
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.Record.GetBlocksCount());
+}
+
+ui64 GetVolumeRequestId(
+    const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request)
+{
+    return request.Record.GetVolumeRequestId();
+}
+
+ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)
+{
+    return request.Record.GetVolumeRequestId();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

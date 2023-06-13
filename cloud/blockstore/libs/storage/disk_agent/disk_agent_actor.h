@@ -7,7 +7,6 @@
 #include "disk_agent_state.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -17,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/model/recently_written_blocks.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
@@ -34,6 +34,13 @@ namespace NCloud::NBlockStore::NStorage {
 class TDiskAgentActor final
     : public NActors::TActorBootstrapped<TDiskAgentActor>
 {
+    struct TPostponedRequest
+    {
+        ui64 VolumeRequestId = 0;
+        TBlockRange64 Range;
+        NActors::IEventHandlePtr Event;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -57,8 +64,17 @@ private:
     bool RegistrationInProgress = false;
 
     NActors::TActorId StatsActor;
+    NMonitoring::TDynamicCounters::TCounterPtr DelayedRequestCount;
+    NMonitoring::TDynamicCounters::TCounterPtr RejectedRequestCount;
+    NMonitoring::TDynamicCounters::TCounterPtr AlreadyExecutedRequestCount;
 
     THashMap<TString, TDeque<TRequestInfoPtr>> SecureErasePendingRequests;
+
+    const bool RejectLateRequestsAtDiskAgentEnabled =
+        Config->GetRejectLateRequestsAtDiskAgentEnabled();
+    TInflightBlocks InFlightWriteBlocks;
+    TRecentlyWrittenBlocks RecentlyWrittenBlocks;
+    TList<TPostponedRequest> PostponedRequests;
 
 public:
     TDiskAgentActor(
@@ -73,7 +89,7 @@ public:
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager);
 
-    ~TDiskAgentActor();
+    ~TDiskAgentActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -105,6 +121,11 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         TOp operation);
+
+    template <typename TMethod, typename TRequestPtr>
+    bool CheckIntersection(
+        const NActors::TActorContext& ctx,
+        const TRequestPtr& ev);
 
     void RenderDevices(IOutputStream& out) const;
 
@@ -146,6 +167,10 @@ private:
 
     void HandleConnectionLost(
         const TEvDiskRegistryProxy::TEvConnectionLost::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWriteOrZeroCompleted(
+        const TEvDiskAgentPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

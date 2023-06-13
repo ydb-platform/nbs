@@ -21,6 +21,7 @@ target_link_libraries(libs-storage-disk_agent PUBLIC
   libs-storage-core
   storage-disk_agent-model
   libs-storage-disk_common
+  libs-storage-model
   cpp-actors-core
   cpp-containers-stack_vector
   ydb-core-base

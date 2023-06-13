@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
+#include <cloud/blockstore/libs/storage/model/composite_id.h>
 
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -476,6 +477,393 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDenyOverlappedRequests)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                           "MemoryDevice3",
+                       }))
+                       .With([] {
+                           NProto::TStorageServiceConfig config;
+                           config.SetRejectLateRequestsAtDiskAgentEnabled(true);
+                           return config;
+                       }())
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
+
+        const TString sessionId = "session-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        auto writeRequest = [&](ui64 volumeRequestId,
+                                ui64 blockStart,
+                                ui32 blockCount,
+                                EWellKnownResultCodes expected) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(uuids[0]);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            auto sgList =
+                ResizeIOVector(*request->Record.MutableBlocks(), 1, blockCount * DefaultBlockSize);
+
+            for (auto& buffer : sgList) {
+                memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
+            }
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            runtime.DispatchEvents(NActors::TDispatchOptions());
+            auto response = diskAgent.RecvWriteDeviceBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(expected, response->GetStatus());
+        };
+
+        auto zeroRequest = [&](ui64 volumeRequestId,
+                               ui64 blockStart,
+                               ui32 blockCount,
+                               EWellKnownResultCodes expected) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(uuids[0]);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(blockCount);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            runtime.DispatchEvents(NActors::TDispatchOptions());
+            auto response = diskAgent.RecvZeroDeviceBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(expected, response->GetStatus());
+        };
+        {
+            auto requestId = TCompositeId::FromGeneration(2);
+            writeRequest(requestId.GetValue(), 1024, 10, S_OK);
+
+            // Same requestId rejected.
+            writeRequest(requestId.GetValue(), 1024, 10, E_REJECTED);
+
+            // Next requestId accepted.
+            writeRequest(requestId.Advance(), 1024, 10, S_OK);
+
+            // Fill zeros block started at 64k
+            zeroRequest(requestId.Advance(), 2048, 1024, S_OK);
+        }
+
+        {
+            // requestId from past (previous generation) with full overlap should return S_ALREADY.
+            auto requestId = TCompositeId::FromGeneration(1);
+            writeRequest(requestId.Advance(), 1024, 10, S_ALREADY);
+            writeRequest(requestId.Advance(), 2048, 10, S_ALREADY);
+
+            zeroRequest(requestId.Advance(), 1024, 8, S_ALREADY);
+            zeroRequest(requestId.Advance(), 2048, 8, S_ALREADY);
+
+            // partial overlapped request should return E_REJECTED.
+            writeRequest(requestId.Advance(), 1000, 30, E_REJECTED);
+            zeroRequest(requestId.Advance(), 2000, 50, E_REJECTED);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDelayOverlappedRequests)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                           "MemoryDevice3",
+                       }))
+                       .With([] {
+                           NProto::TStorageServiceConfig config;
+                           config.SetRejectLateRequestsAtDiskAgentEnabled(true);
+                           return config;
+                       }())
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
+
+        const TString sessionId = "session-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        // Steal TEvWriteOrZeroCompleted message.
+        // We will return it later to start the execution of the next overlapped
+        // request.
+        std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
+        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
+                                           TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
+            {
+                stolenWriteCompletedRequests.push_back(
+                    std::unique_ptr<IEventHandle>{event.Release()});
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
+
+        auto sendWriteRequest = [&](ui64 volumeRequestId,
+                                    ui64 blockStart,
+                                    ui32 blockCount) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(uuids[0]);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            auto sgList = ResizeIOVector(
+                *request->Record.MutableBlocks(),
+                1,
+                blockCount * DefaultBlockSize);
+
+            for (auto& buffer : sgList) {
+                memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
+            }
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        auto sendZeroRequest = [&](ui64 volumeRequestId,
+                                   ui64 blockStart,
+                                   ui32 blockCount) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(uuids[0]);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(blockCount);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        // Send write and zero requests. Their messages TWriteOrZeroCompleted will be stolen.
+        sendWriteRequest(100, 1024, 10);
+        sendZeroRequest(101, 2048, 10);
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!stolenWriteCompletedRequests.empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            diskAgent.RecvWriteDeviceBlocksResponse()->GetStatus());
+
+        // Turning off the theft of TWriteOrZeroCompleted messages.
+        runtime.SetObserverFunc(oldObserverFunc);
+
+        {
+            // Send new write request (from past) with range NOT overlapped with
+            // delayed request. New request is executed immediately.
+            sendWriteRequest(90, 3072, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                diskAgent.RecvWriteDeviceBlocksResponse()->GetStatus());
+        }
+        {
+            // Send new zero request (from past) with range NOT overlapped with
+            // delayed request. New request is executed immediately.
+            sendZeroRequest(91, 4096, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
+        }
+        {
+            // Send new write request (from past) with range overlapped with
+            // delayed request. New request will be delayed untill overlapped
+            // request completed. Request will be completed with E_ALREADY as it
+            // fits into the already completed request.
+            sendWriteRequest(98, 1024, 5);
+            TAutoPtr<IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<
+                TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
+                handle,
+                TDuration::Seconds(1));
+            UNIT_ASSERT_EQUAL(nullptr, handle);
+        }
+        {
+            // Send new zero request (from past) with range partial overlapped
+            // with delayed request. New request will be delayed untill
+            // overlapped request completed and comleted with E_REJECTED since
+            // it partially intersects with the already completed request.
+            sendZeroRequest(99, 2048, 15);
+            TAutoPtr<IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<
+                TEvDiskAgent::TEvZeroDeviceBlocksResponse>(
+                handle,
+                TDuration::Seconds(1));
+            UNIT_ASSERT_EQUAL(nullptr, handle);
+        }
+        {
+            // Send new write request (from future) with range overlapped with
+            // delayed request. New request is executed immediately.
+            sendWriteRequest(110, 1024, 5);
+            auto response =
+                diskAgent.RecvWriteDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+        {
+            // Send new zero request (from future) with range overlapped with
+            // delayed request. New request is executed immediately.
+            sendWriteRequest(111, 2048, 3);
+            auto response =
+                diskAgent.RecvWriteDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Return all stolen request - write/zero request will be completed
+        // after this
+        for (auto& request : stolenWriteCompletedRequests) {
+            runtime.Send(request.release());
+        }
+
+        {
+            // Get reponse for delayed write request
+            auto response =
+                diskAgent.RecvWriteDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        }
+        {
+            // Get reponse for delayed zero request
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectMultideviceOverlappedRequests)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                           "MemoryDevice3",
+                       }))
+                       .With([] {
+                           NProto::TStorageServiceConfig config;
+                           config.SetRejectLateRequestsAtDiskAgentEnabled(true);
+                           return config;
+                       }())
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
+
+        const TString sessionId = "session-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        // Steal TEvWriteOrZeroCompleted request.
+        // We will return it later to start the execution of the next overlapped
+        // request.
+        std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
+        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
+                                           TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
+            {
+                stolenWriteCompletedRequests.push_back(
+                    std::unique_ptr<IEventHandle>{event.Release()});
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
+
+        auto sendZeroRequest = [&](ui64 volumeRequestId,
+                                   ui64 blockStart,
+                                   ui32 blockCount) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(uuids[0]);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(blockCount);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+            request->Record.SetMultideviceRequest(
+                true); // This will lead to E_REJECT
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        // Send zero request. The TWriteOrZeroCompleted message from this request will
+        // be stolen.
+        sendZeroRequest(100, 2048, 16);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!stolenWriteCompletedRequests.empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
+
+        // Turning off the theft of responses.
+        runtime.SetObserverFunc(oldObserverFunc);
+
+        {
+            // Send new zero request (from past) with range coverred by delayed
+            // request. This request will be delayed untill overlapped request
+            // completed.
+            sendZeroRequest(98, 2048, 8);
+            TAutoPtr<IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<
+                TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
+                handle,
+                TDuration::Seconds(1));
+            UNIT_ASSERT_EQUAL(nullptr, handle);
+        }
+
+        // Return all stolen request - write/zero request will be completed
+        // after this
+        for (auto& request : stolenWriteCompletedRequests) {
+            runtime.Send(request.release());
+        }
+        {
+            // Get reponse for delayed zero request. It will rejected
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
     }
 

@@ -433,6 +433,8 @@ public:
 
     TVector<TString> GetKnownSpareNodes() const;
     ui32 GetSpareNodeProbability() const;
+
+    bool GetRejectLateRequestsAtDiskAgentEnabled() const;
 };
 
 ui64 GetAllocationUnit(

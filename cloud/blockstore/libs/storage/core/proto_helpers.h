@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
@@ -172,12 +173,6 @@ inline bool RequiresCheckpointSupport(const NProto::TChecksumDeviceBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-TBlockRange64 BuildRequestBlockRange(const T&, const ui32)
-{
-    Y_VERIFY(0);
-}
-
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvReadBlocksRequest& request,
     const ui32 blockSize);
@@ -197,5 +192,14 @@ TBlockRange64 BuildRequestBlockRange(
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvZeroBlocksRequest& request,
     const ui32 blockSize);
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
+
+ui64 GetVolumeRequestId(const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
+ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
 }   // namespace NCloud::NBlockStore::NStorage

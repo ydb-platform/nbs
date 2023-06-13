@@ -1,6 +1,5 @@
 #include "test_env.h"
 
-#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
@@ -286,6 +285,12 @@ TTestEnvBuilder& TTestEnvBuilder::With(INvmeManagerPtr nvmeManager)
     return *this;
 }
 
+TTestEnvBuilder& TTestEnvBuilder::With(NProto::TStorageServiceConfig storageServiceConfig)
+{
+    StorageServiceConfig = std::move(storageServiceConfig);
+    return *this;
+}
+
 TTestEnv TTestEnvBuilder::Build()
 {
     Runtime.AppendToLogSettings(
@@ -311,12 +316,10 @@ TTestEnv TTestEnvBuilder::Build()
         MakeDiskRegistryProxyServiceId(),
         TActorSetupCmd(new TDiskRegistryMock(diskRegistryState), TMailboxType::Simple, 0));
 
-    NProto::TStorageServiceConfig storageConfig;
-
     auto allocator = CreateCachingAllocator(
         TDefaultAllocator::Instance(), 0, 0, 0);
     auto config = std::make_shared<TStorageConfig>(
-        std::move(storageConfig),
+        std::move(StorageServiceConfig),
         std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
     );
     auto agentConfig = std::make_shared<TDiskAgentConfig>(

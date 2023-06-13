@@ -7,15 +7,24 @@
 #include <util/generic/vector.h>
 #include <util/generic/xrange.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Range [start, end]. End value included to range.
 template <typename TBlockIndex>
 struct TBlockRange
 {
+    struct TDifference
+    {
+        std::optional<TBlockRange> First;
+        std::optional<TBlockRange> Second;
+    };
+
     TBlockIndex Start = 0;
-    TBlockIndex End = 0;
+    TBlockIndex End = 0;   // End value included.
 
     static constexpr TBlockIndex MaxIndex = ::Max<TBlockIndex>();
 
@@ -56,7 +65,32 @@ struct TBlockRange
     {
         auto start = ::Max(Start, other.Start);
         auto end = ::Min(End, other.End);
-        return { start, end };
+        return {start, end};
+    }
+
+    // Subtract |other| from |*this|
+    TDifference Difference(const TBlockRange& other) const
+    {
+        if (!Overlaps(other)) {
+            // Ranges not overlapped, do not cut.
+            return {*this, std::nullopt};
+        }
+        if (Start < other.Start && End > other.End) {
+            // cut out from the middle
+            return {
+                TBlockRange(Start, other.Start - 1),
+                TBlockRange(other.End + 1, End)};
+        }
+        if (Start < other.Start) {
+            // cut off on the right
+            return {TBlockRange(Start, other.Start - 1), std::nullopt};
+        }
+        if (End > other.End) {
+            // cut off on the left
+            return {TBlockRange(other.End + 1, End), std::nullopt};
+        }
+        // completely clear range
+        return {};
     }
 
     TBlockRange Union(const TBlockRange& other) const
@@ -64,21 +98,21 @@ struct TBlockRange
         auto start = ::Min(Start, other.Start);
         auto end = ::Max(End, other.End);
         Y_VERIFY_DEBUG(Size() + other.Size() >= end - start + 1);
-        return { start, end };
+        return {start, end};
     }
 
     static TBlockRange Max()
     {
-        return { 0, MaxIndex };
+        return {0, MaxIndex};
     }
 
     static TBlockRange WithLength(TBlockIndex start, TBlockIndex count)
     {
         Y_VERIFY_DEBUG(count);
         if (start < MaxIndex - (count - 1)) {
-            return { start, start + (count - 1) };
+            return {start, start + (count - 1)};
         } else {
-            return { start, MaxIndex };
+            return {start, MaxIndex};
         }
     }
 
@@ -122,8 +156,7 @@ private:
 public:
     TBlockRangeBuilder(TVector<TBlockRange<TBlockIndex>>& ranges)
         : Ranges(ranges)
-    {
-    }
+    {}
 
 public:
     void OnBlock(TBlockIndex blockIndex)

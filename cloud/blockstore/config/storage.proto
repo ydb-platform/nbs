@@ -815,4 +815,7 @@ message TStorageServiceConfig
     // DiskRegistry allows usage of automatically replaced devices after this
     // period of time.
     optional uint32 AutomaticallyReplacedDevicesFreezePeriod = 307; // in ms
+
+    // Defines the rejection behavior for overlapped requests from the past.
+    optional bool RejectLateRequestsAtDiskAgentEnabled = 308;
 }
