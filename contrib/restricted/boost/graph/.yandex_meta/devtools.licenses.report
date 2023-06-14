@@ -61,7 +61,6 @@ BELONGS ya.make
         include/boost/graph/rmat_graph_generator.hpp [3:5]
         include/boost/graph/ssca_graph_generator.hpp [3:5]
         include/boost/graph/st_connected.hpp [3:5]
-        include/boost/graph/use_mpi.hpp [3:5]
         include/boost/graph/vertex_and_edge_range.hpp [3:5]
         include/boost/pending/relaxed_heap.hpp [3:5]
         src/graphml.cpp [4:6]

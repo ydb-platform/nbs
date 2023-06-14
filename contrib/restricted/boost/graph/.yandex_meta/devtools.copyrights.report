@@ -455,17 +455,6 @@ BELONGS ya.make
     Files with this license:
         include/boost/graph/adj_list_serialize.hpp [2:3]
 
-KEEP     COPYRIGHT_SERVICE_LABEL 59f7375811a04f7a1af214791e9e2591
-BELONGS ya.make
-    License text:
-        // Copyright (C) 2004-2009 The Trustees of Indiana University.
-    Scancode info:
-        Original SPDX id: COPYRIGHT_SERVICE_LABEL
-        Score           : 100.00
-        Match type      : COPYRIGHT
-    Files with this license:
-        include/boost/graph/use_mpi.hpp [1:1]
-
 KEEP     COPYRIGHT_SERVICE_LABEL 5bb192a3ec0466664f95da7b439ee5e7
 BELONGS ya.make
     License text:
