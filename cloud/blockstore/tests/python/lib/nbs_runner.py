@@ -496,7 +496,6 @@ ModifyScheme {
             "--data-server-port", str(self.__nbs_data_port),
             "--secure-server-port", str(self.__nbs_secure_port),
             "--mon-port", str(self.__mon_port),
-            "--load-configs-from-cms",
         ]
 
         command += [
@@ -533,6 +532,7 @@ ModifyScheme {
             "--node-broker", "localhost:" + str(self.__grpc_port),
             "--ic-port", str(self.__ic_port),
             "--scheme-shard-dir", "nbs",
+            "--load-configs-from-cms",
         ]
 
         if not self.__use_ic_version_check:

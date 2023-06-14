@@ -103,10 +103,6 @@ void TConfigInitializerCommon::InitServerConfig()
     auto& serverConfig = *appConfig.MutableServerConfig();
     SetupServerPorts(serverConfig);
 
-    if (Options->LoadCmsConfigs) {
-        serverConfig.SetLoadCmsConfigs(true);
-    }
-
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
     SetupGrpcThreadsLimit();
 }

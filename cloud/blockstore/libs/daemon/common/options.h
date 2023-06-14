@@ -16,8 +16,6 @@ struct TOptionsCommon
     : public virtual TOptionsBase
 {
 public:
-    bool LoadCmsConfigs = false;
-
     ui32 DataServerPort = 0;
     TString UnixSocketPath;
 

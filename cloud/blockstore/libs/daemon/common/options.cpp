@@ -47,10 +47,6 @@ TOptionsCommon::TOptionsCommon()
         .RequiredArgument("FILE")
         .StoreResult(&DiscoveryConfig);
 
-    Opts.AddLongOption("load-configs-from-cms", "load configs from CMS")
-        .NoArgument()
-        .StoreTrue(&LoadCmsConfigs);
-
     Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
         .NoArgument()
         .StoreTrue(&TemporaryServer);

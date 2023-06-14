@@ -28,10 +28,6 @@ TOptions::TOptions()
         .RequiredArgument("STR")
         .StoreResult(&SysLogService);
 
-    Opts.AddLongOption("load-configs-from-cms", "load configs from CMS")
-        .NoArgument()
-        .StoreTrue(&LoadCmsConfigs);
-
     Opts.AddLongOption("node-type")
         .RequiredArgument("STR")
         .DefaultValue("disk-agent")

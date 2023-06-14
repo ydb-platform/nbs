@@ -182,12 +182,6 @@ void TConfigInitializer::InitServerConfig()
         ParseProtoTextFromFileRobust(Options->ServerConfig, appConfig);
     }
 
-    auto& serverConfig = *appConfig.MutableServerConfig();
-
-    if (Options->LoadCmsConfigs) {
-        serverConfig.SetLoadCmsConfigs(true);
-    }
-
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
 }
 

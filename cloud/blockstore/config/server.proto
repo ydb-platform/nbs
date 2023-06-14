@@ -75,7 +75,7 @@ message TServerConfig
     optional bool StrictContractValidation = 17;
 
     // Load configs from cms.
-    optional bool LoadCmsConfigs = 18;
+    optional bool LoadCmsConfigs = 18 [deprecated = true];
 
     // Shutdown timeout (in milliseconds).
     optional uint32 ShutdownTimeout = 19;

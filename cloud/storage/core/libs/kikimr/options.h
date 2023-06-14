@@ -36,6 +36,8 @@ struct TOptionsYdbBase
     TString RestartsCountFile;
     bool SuppressVersionCheck = false;
 
+    bool LoadCmsConfigs = false;
+
     TOptionsYdbBase();
     virtual ~TOptionsYdbBase() = default;
 };

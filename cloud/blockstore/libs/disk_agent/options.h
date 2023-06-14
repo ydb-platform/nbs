@@ -15,8 +15,6 @@ struct TOptions
     : virtual TOptionsBase
     , NCloud::NStorage::TOptionsYdbBase
 {
-    bool LoadCmsConfigs = false;
-
     TString StorageConfig;
     TString DiskAgentConfig;
     TString DiskRegistryProxyConfig;

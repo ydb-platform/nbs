@@ -241,7 +241,7 @@ void TBootstrapYdb::InitKikimrService()
     registerOpts.NodeBrokerAddress = Configs->Options->NodeBrokerAddress;
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
-    registerOpts.LoadCmsConfigs = Configs->ServerConfig->GetLoadCmsConfigs();
+    registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
     registerOpts.MaxAttempts =
         Configs->ServerConfig->GetNodeRegistrationMaxAttempts();
     registerOpts.RegistrationTimeout =

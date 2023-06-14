@@ -77,6 +77,10 @@ TOptionsYdbBase::TOptionsYdbBase()
     Opts.AddLongOption("location-file")
         .RequiredArgument("PATH")
         .StoreResult(&LocationFile);
+
+    Opts.AddLongOption("load-configs-from-cms", "load configs from CMS")
+        .NoArgument()
+        .StoreTrue(&LoadCmsConfigs);
 }
 
 }   // namespace NCloud::NStorage
