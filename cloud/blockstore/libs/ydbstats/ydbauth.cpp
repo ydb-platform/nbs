@@ -37,26 +37,40 @@ class TYdbTokenProvider final
     : public ICredentialsProvider
 {
 private:
-    const TStringType Token;
-    const TInstant ExpiresAt;
+    const IIamTokenClientPtr Client;
+    mutable TStringType Token;
+    mutable TInstant ExpiresAt;
 
 public:
-    TYdbTokenProvider() = default;
-
-    TYdbTokenProvider(TStringType token, TInstant expiresAt)
-        : Token(std::move(token))
-        , ExpiresAt(expiresAt)
+    TYdbTokenProvider(IIamTokenClientPtr client)
+        : Client(std::move(client))
     {
     }
 
     TStringType GetAuthInfo() const override
     {
+        if (Now() >= ExpiresAt) {
+            GetToken();
+        }
         return Token;
     }
 
     bool IsValid() const override
     {
-        return Token && Now() < ExpiresAt;
+        return true;
+    }
+
+private:
+
+    void GetToken() const
+    {
+        auto result = Client->GetToken();
+        if (HasError(result)) {
+            return;
+        }
+        auto tokenInfo = result.GetResult();
+        Token = std::move(tokenInfo.Token);
+        ExpiresAt = tokenInfo.ExpiresAt;
     }
 };
 
@@ -73,14 +87,7 @@ public:
     {}
 
     TCredentialsProviderPtr CreateProvider() const {
-        const auto result = Client->GetToken();
-        if (HasError(result)) {
-            return std::make_shared<TYdbTokenProvider>();
-        }
-        const auto tokenInfo = result.GetResult();
-        return make_shared<TYdbTokenProvider>(
-            tokenInfo.Token,
-            tokenInfo.ExpiresAt);
+        return make_shared<TYdbTokenProvider>(Client);
     }
 
 private:
