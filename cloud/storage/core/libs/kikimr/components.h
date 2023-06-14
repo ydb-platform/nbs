@@ -56,6 +56,9 @@ struct TStoragePrivateEvents
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
 
+        USER_STATS_START,
+        USER_STATS_END = USER_STATS_START + 100,
+
 #undef STORAGE_DECLARE_COMPONENT
 
         END
@@ -77,6 +80,7 @@ struct TStorageActivities
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
 
+        USER_STATS = NKikimrServices::TActivity::BLOCKSTORE_USER_STATS
 #undef STORAGE_DECLARE_COMPONENT
     };
 };

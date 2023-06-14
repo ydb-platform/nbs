@@ -7,8 +7,9 @@
 
 
 
-add_library(libs-storage-user_stats)
-target_link_libraries(libs-storage-user_stats PUBLIC
+add_library(core-libs-user_stats)
+target_link_libraries(core-libs-user_stats PUBLIC
+  contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   libs-storage-protos
@@ -17,7 +18,7 @@ target_link_libraries(libs-storage-user_stats PUBLIC
   ydb-core-base
   ydb-core-mon
 )
-target_sources(libs-storage-user_stats PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/user_stats/user_stats.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/user_stats/user_stats_actor.cpp
+target_sources(core-libs-user_stats PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/user_stats/user_stats.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/user_stats/user_stats_actor.cpp
 )

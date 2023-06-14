@@ -1,8 +1,6 @@
 #include "mon_page_wrapper.h"
 #include "user_stats_actor.h"
 
-#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <ydb/core/base/appdata.h>
@@ -16,12 +14,17 @@
 #include <library/cpp/monlib/encode/spack/spack_v1.h>
 #include <library/cpp/monlib/encode/text/text.h>
 
-namespace NCloud::NBlockStore::NStorage::NUserStats {
+namespace NCloud::NStorage::NUserStats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TUserStatsActor::TUserStatsActor(TVector<IUserMetricsSupplierPtr> providers)
+TUserStatsActor::TUserStatsActor(
+        TString path,
+        TString title,
+        TVector<IUserMetricsSupplierPtr> providers)
     : Providers(std::move(providers))
+    , Path(std::move(path))
+    , Title(std::move(title))
 {}
 
 void TUserStatsActor::Bootstrap(const NActors::TActorContext& ctx)
@@ -34,18 +37,18 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
 {
     auto mon = NKikimr::AppData(ctx)->Mon;
     if (mon) {
-        auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
+        auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
         mon->RegisterActorPage(rootPage, "user_stats/human", "UserStats",
             true, ctx.ExecutorThread.ActorSystem, SelfId());
 
         mon->Register(new TMonPageWrapper(
-            "blockstore/user_stats/json",
+            Path + "/user_stats/json",
             [this] (IOutputStream& out) {
                 return OutputJsonPage(out);
             }));
         mon->Register(new TMonPageWrapper(
-            "blockstore/user_stats/spack",
+            Path + "/user_stats/spack",
             [this] (IOutputStream& out) {
                 return OutputSpackPage(out);
             }));
@@ -141,8 +144,8 @@ STFUNC(TUserStatsActor::StateWork)
         HFunc(TEvUserStats::TEvUserStatsProviderCreate, HandleUserStatsProviderCreate);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::USER_STATS);
+            HandleUnexpectedEvent(ev, TStorageActivities::USER_STATS);
     }
 }
 
-}   // NCloud::NBlockStore::NStorage::NUserStats
+}   // NCloud::NStorage::NUserStats

@@ -1,6 +1,6 @@
 #include "user_stats.h"
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -9,4 +9,4 @@ NActors::TActorId MakeStorageUserStatsId()
     return NActors::TActorId(0, "blk-user-st");
 }
 
-}   // NCloud::NBlockStore::NStorage
+}   // NCloud::NStorage

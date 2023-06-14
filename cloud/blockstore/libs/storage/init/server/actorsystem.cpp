@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
-#include <cloud/blockstore/libs/storage/api/user_stats.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/auth/authorizer.h>
@@ -27,17 +26,18 @@
 #include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
-#include <cloud/blockstore/libs/storage/user_stats/user_stats.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
 #include <cloud/blockstore/libs/storage/volume/volume_actor.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/api/user_stats.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/user_stats/user_stats.h>
 
 #include <ydb/core/base/blobstorage.h>
 #include <ydb/core/driver_lib/run/kikimr_services_initializers.h>
@@ -226,8 +226,11 @@ public:
         // StorageUserStats
         //
 
-        auto storageUserStats = NUserStats::CreateStorageUserStats(
-            Args.VolumeStats);
+        auto storageUserStats =
+            NCloud::NStorage::NUserStats::CreateStorageUserStats(
+                "blockstore",
+                "BlockStore",
+                Args.UserCounterProviders);
 
         setup->LocalServices.emplace_back(
             MakeStorageUserStatsId(),

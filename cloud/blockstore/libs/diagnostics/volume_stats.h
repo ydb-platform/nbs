@@ -108,7 +108,10 @@ struct IVolumeStats
 
     virtual TVolumePerfStatuses GatherVolumePerfStatuses() = 0;
 
-    virtual IUserMetricsSupplierPtr GetUserCounters() const { return nullptr; }
+    virtual NCloud::NStorage::IUserMetricsSupplierPtr GetUserCounters() const
+    {
+        return nullptr;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

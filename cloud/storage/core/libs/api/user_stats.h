@@ -1,9 +1,11 @@
 #pragma once
 
-#include <cloud/blockstore/libs/kikimr/components.h>
-#include <cloud/blockstore/libs/kikimr/events.h>
+#include "public.h"
 
-namespace NCloud::NBlockStore::NStorage {
+#include <cloud/storage/core/libs/kikimr/components.h>
+#include <cloud/storage/core/libs/kikimr/events.h>
+
+namespace NCloud::NStorage {
 
 struct TEvUserStats
 {
@@ -18,7 +20,7 @@ struct TEvUserStats
 
     enum EEvents
     {
-        EvBegin = TBlockStoreEvents::USER_STATS_START,
+        EvBegin = TStoragePrivateEvents::USER_STATS_START,
 
         EvUserStatsProviderCreate,
 
@@ -26,8 +28,8 @@ struct TEvUserStats
     };
 
     static_assert(
-        EvEnd < (int)TBlockStoreEvents::USER_STATS_END,
-        "EvEnd expected to be < TBlockStoreEvents::USER_STATS_END");
+        EvEnd < (int)TStoragePrivateEvents::USER_STATS_END,
+        "EvEnd expected to be < TStoragePrivateEvents::USER_STATS_END");
 
     using TEvUserStatsProviderCreate = TRequestEvent<
         TUserStatsProviderCreate,
@@ -39,4 +41,4 @@ struct TEvUserStats
 
 NActors::TActorId MakeStorageUserStatsId();
 
-}   // NCloud::NBlockStore::NStorage
+}   // NCloud::NStorage

@@ -1,13 +1,13 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/api/user_stats.h>
+#include <cloud/storage/core/libs/api/user_stats.h>
 
 #include <ydb/core/mon/mon.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
-namespace NCloud::NBlockStore::NStorage::NUserStats {
+namespace NCloud::NStorage::NUserStats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -18,8 +18,14 @@ private:
     TRWMutex Lock;
     TVector<IUserMetricsSupplierPtr> Providers;
 
+    const TString Path;
+    const TString Title;
+
 public:
-    TUserStatsActor(TVector<IUserMetricsSupplierPtr> providers);
+    TUserStatsActor(
+        TString path,
+        TString title,
+        TVector<IUserMetricsSupplierPtr> providers);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -43,4 +49,4 @@ private:
         const NActors::TActorContext& ctx);
 };
 
-}   // NCloud::NBlockStore::NStorage::NUserStats
+}   // NCloud::NStorage::NUserStats

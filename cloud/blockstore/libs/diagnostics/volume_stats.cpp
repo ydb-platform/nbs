@@ -804,7 +804,7 @@ public:
         return ans;
     }
 
-    IUserMetricsSupplierPtr GetUserCounters() const override
+    NCloud::NStorage::IUserMetricsSupplierPtr GetUserCounters() const override
     {
         return UserCounters;
     }

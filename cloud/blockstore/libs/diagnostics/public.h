@@ -14,6 +14,14 @@ class IMetricSupplier;
 
 }   // NMonitoring
 
+namespace NCloud::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using IUserMetricsSupplierPtr = std::shared_ptr<NMonitoring::IMetricSupplier>;
+
+}   // NCloud::NStorage
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,8 +65,6 @@ using IProfileLogPtr = std::shared_ptr<IProfileLog>;
 
 struct IBlockDigestGenerator;
 using IBlockDigestGeneratorPtr = std::shared_ptr<IBlockDigestGenerator>;
-
-using IUserMetricsSupplierPtr = std::shared_ptr<NMonitoring::IMetricSupplier>;
 
 struct ICgroupStatsFetcher;
 using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;

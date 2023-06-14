@@ -1,7 +1,8 @@
 #include "stats_service_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/storage/api/user_stats.h>
+
+#include <cloud/storage/core/libs/api/user_stats.h>
 
 #include <ydb/core/base/appdata.h>
 #include <ydb/core/mon/mon.h>
@@ -78,11 +79,14 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     ScheduleCountersUpdate(ctx);
     ScheduleStatsUpload(ctx);
 
-    auto request = std::make_unique<TEvUserStats::TEvUserStatsProviderCreate>(
-        UserCounters
-    );
+    auto request = std::make_unique<
+        NCloud::NStorage::TEvUserStats::TEvUserStatsProviderCreate>(
+            UserCounters);
 
-    NCloud::Send(ctx, MakeStorageUserStatsId(), std::move(request));
+    NCloud::Send(
+        ctx,
+        NCloud::NStorage::MakeStorageUserStatsId(),
+        std::move(request));
 }
 
 void TStatsServiceActor::ScheduleCountersUpdate(const TActorContext& ctx)

@@ -504,6 +504,7 @@ void TBootstrapYdb::InitKikimrService()
     args.Logging = logging;
     args.PreemptedVolumes = std::move(preemptedVolumes);
     args.NvmeManager = NvmeManager;
+    args.UserCounterProviders = {VolumeStats->GetUserCounters()};
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

@@ -61,6 +61,8 @@ struct TServerActorSystemArgs
     ICgroupStatsFetcherPtr CgroupStatsFetcher;
     TManuallyPreemptedVolumesPtr PreemptedVolumes;
     NNvme::INvmeManagerPtr NvmeManager;
+
+    TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

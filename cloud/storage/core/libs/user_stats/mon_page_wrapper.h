@@ -2,7 +2,7 @@
 
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
-namespace NCloud::NBlockStore::NStorage::NUserStats {
+namespace NCloud::NStorage::NUserStats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,4 +26,4 @@ private:
     TFunction Function;
 };
 
-}   // NCloud::NBlockStore::NStorage::NUserStats
+}   // NCloud::NStorage::NUserStats
