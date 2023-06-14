@@ -99,10 +99,11 @@ class TYdbNativeStorage final
 private:
     const TYdbStatsConfigPtr Config;
     const ILoggingServicePtr Logging;
+    const IIamTokenClientPtr IamClient;
 
-    TDriver Driver;
-    TTableClient Client;
-    TSchemeClient SchemeClient;
+    std::unique_ptr<TDriver> Driver;
+    std::unique_ptr<TTableClient> Client;
+    std::unique_ptr<TSchemeClient> SchemeClient;
 
     TLog Log;
 
@@ -113,9 +114,7 @@ public:
             IIamTokenClientPtr iamClient)
         : Config(std::move(config))
         , Logging(std::move(logging))
-        , Driver(BuildDriverConfig(*Config, std::move(iamClient)))
-        , Client(Driver)
-        , SchemeClient(Driver)
+        , IamClient(std::move(iamClient))
     {}
 
     TFuture<NProto::TError> CreateTable(
@@ -138,12 +137,20 @@ public:
 
     void Start() override
     {
+        Driver = std::make_unique<TDriver>(
+            BuildDriverConfig(*Config, IamClient));
+        Client = std::make_unique<TTableClient>(*Driver);
+        SchemeClient = std::make_unique<TSchemeClient>(*Driver);
+
         Log = Logging->CreateLog("BLOCKSTORE_YDBSTATS");
     }
 
     void Stop() override
     {
-        Driver.Stop(true);
+        SchemeClient.reset();
+        Client.reset();
+        Driver->Stop(true);
+        Driver.reset();
     }
 
 private:
@@ -163,7 +170,7 @@ TFuture<NProto::TError> TYdbNativeStorage::CreateTable(
     const TTableDescription& description)
 {
     auto tableName = GetFullTableName(table);
-    auto future = Client.RetryOperation(
+    auto future = Client->RetryOperation(
         [=] (TSession session) {
             return session.CreateTable(tableName, TTableDescription(description));
         });
@@ -185,7 +192,7 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
     const TAlterTableSettings& settings)
 {
     auto tableName = GetFullTableName(table);
-    auto future = Client.RetryOperation(
+    auto future = Client->RetryOperation(
         [=] (TSession session) {
             return session.AlterTable(tableName, settings);
         });
@@ -205,7 +212,7 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
 TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
 {
     auto tableName = GetFullTableName(table);
-    auto future = Client.RetryOperation(
+    auto future = Client->RetryOperation(
         [=] (TSession session) {
             return session.DropTable(tableName);
         });
@@ -240,7 +247,7 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
         });
     };
 
-    Client.RetryOperation(describe).Subscribe([=] (const auto& future) mutable {
+    Client->RetryOperation(describe).Subscribe([=] (const auto& future) mutable {
         auto status = ExtractStatus(future);
         if (status.IsSuccess()) {
             // promise result is already set
@@ -264,7 +271,7 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
 TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
 {
     auto database = Config->GetDatabaseName();
-    auto future = SchemeClient.ListDirectory(database);
+    auto future = SchemeClient->ListDirectory(database);
 
     return future.Apply(
         [=] (const auto& future) {
@@ -321,7 +328,7 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
     TParams params)
 {
     auto response = NewPromise<NProto::TError>();
-    auto future = Client.RetryOperation(
+    auto future = Client->RetryOperation(
         [=, params=std::move(params)] (TSession session) {
             return session.PrepareDataQuery(query).Apply([=](const auto& future) mutable {
                 auto status = ExtractStatus(future);

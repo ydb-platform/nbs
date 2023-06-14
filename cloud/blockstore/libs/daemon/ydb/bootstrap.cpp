@@ -313,7 +313,7 @@ void TBootstrapYdb::InitKikimrService()
         Timer);
 
     auto statsConfig = Configs->StatsConfig;
-    if (statsConfig->IsValid()) {
+    if (statsConfig->IsValid() && !Configs->Options->TemporaryServer) {
         YdbStorage = NYdbStats::CreateYdbStorage(
             statsConfig,
             logging,
