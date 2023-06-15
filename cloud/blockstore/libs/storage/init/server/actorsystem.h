@@ -67,6 +67,6 @@ struct TServerActorSystemArgs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& args);
+IActorSystemPtr CreateActorSystem(TLog log, const TServerActorSystemArgs& args);
 
 }   // namespace NCloud::NBlockStore::NStorage

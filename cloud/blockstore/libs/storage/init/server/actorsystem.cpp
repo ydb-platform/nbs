@@ -332,6 +332,8 @@ class TCustomLocalServiceInitializer final
     : public IServiceInitializer
 {
 private:
+    TLog Log;
+
     const NKikimrConfig::TAppConfig& AppConfig;
     const TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -344,6 +346,7 @@ private:
 
 public:
     TCustomLocalServiceInitializer(
+            TLog log,
             const NKikimrConfig::TAppConfig& appConfig,
             TStorageConfigPtr storageConfig,
             TDiagnosticsConfigPtr diagnosticsConfig,
@@ -353,7 +356,8 @@ public:
             NLogbroker::IServicePtr logbrokerService,
             NNotify::IServicePtr notifyService,
             NRdma::IClientPtr rdmaClient)
-        : AppConfig(appConfig)
+        : Log(std::move(log))
+        , AppConfig(appConfig)
         , StorageConfig(std::move(storageConfig))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , ProfileLog(std::move(profileLog))
@@ -415,6 +419,10 @@ public:
                 return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
             }();
 
+        if (isSpareNode) {
+            STORAGE_INFO("The host configured as a spare node for Disk Registry");
+        }
+
         if (enableLocal || isSpareNode) {
             auto localConfig = MakeIntrusive<TLocalConfig>();
 
@@ -465,7 +473,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
+IActorSystemPtr CreateActorSystem(TLog log, const TServerActorSystemArgs& sArgs)
 {
     auto onInitialize = [&] (
         TKikimrRunConfig& runConfig,
@@ -478,6 +486,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         initializers.AddServiceInitializer(new TStorageServicesInitializer(
             sArgs));
         initializers.AddServiceInitializer(new TCustomLocalServiceInitializer(
+            log,
             *sArgs.AppConfig,
             sArgs.StorageConfig,
             sArgs.DiagnosticsConfig,

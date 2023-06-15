@@ -506,7 +506,7 @@ void TBootstrapYdb::InitKikimrService()
     args.NvmeManager = NvmeManager;
     args.UserCounterProviders = {VolumeStats->GetUserCounters()};
 
-    ActorSystem = NStorage::CreateActorSystem(args);
+    ActorSystem = NStorage::CreateActorSystem(Log, args);
 
     STORAGE_INFO("ActorSystem initialized");
 
