@@ -6,8 +6,9 @@ SERVER_PORT=${SERVER_PORT:-9766}
 DATA_SERVER_PORT=${DATA_SERVER_PORT:-9767}
 SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9768}
 MON_PORT=${MON_PORT:-8766}
+NBSD="./nbsd"
 
-./nbsd \
+$NBSD \
     --domain             Root \
     --node-broker        localhost:$GRPC_PORT \
     --ic-port            $IC_PORT \
