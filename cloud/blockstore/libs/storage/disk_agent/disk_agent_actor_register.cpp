@@ -64,7 +64,8 @@ void TRegisterActor::Bootstrap(const TActorContext& ctx)
             for (const auto& config: Config.GetDevices()) {
                 out << config.GetDeviceUUID()
                     << " ("
-                    << config.GetDeviceName() << " "
+                    << config.GetDeviceName() << ", PhysicalOffset="
+                    << config.GetPhysicalOffset() << ", Size="
                     << config.GetBlocksCount() << " x "
                     << config.GetBlockSize() << ", Rack="
                     << config.GetRack() << ", SN="

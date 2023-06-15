@@ -307,7 +307,7 @@ TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevices() const
     TVector<NProto::TDeviceConfig> devices;
     devices.reserve(Devices.size());
 
-    for (auto& kv : Devices) {
+    for (auto& kv: Devices) {
         devices.push_back(kv.second.Config);
     }
 

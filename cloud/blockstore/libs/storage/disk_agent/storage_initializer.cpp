@@ -290,6 +290,7 @@ NProto::TDeviceConfig TInitializer::CreateConfig(
     config.SetRack(AgentConfig->GetRack());
     config.SetPoolName(device.GetPoolName());
     config.SetSerialNumber(device.GetSerialNumber());
+    config.SetPhysicalOffset(device.GetOffset());
 
     if (!config.GetSerialNumber()) {
         auto [sn, error] = NvmeManager->GetSerialNumber(path);

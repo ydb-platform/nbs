@@ -1519,12 +1519,36 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TTestBasicRuntime runtime;
 
+        NProto::TAgentConfig registeredAgent;
+
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistry::EvRegisterAgentRequest: {
+                        auto& msg = *event->Get<TEvDiskRegistry::TEvRegisterAgentRequest>();
+
+                        registeredAgent = msg.Record.GetAgentConfig();
+                    }
+                    break;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
         auto env = TTestEnvBuilder(runtime)
             .With(agentConfig)
             .Build();
 
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, registeredAgent.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1_MB,
+            registeredAgent.GetDevices(0).GetPhysicalOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5_MB,
+            registeredAgent.GetDevices(1).GetPhysicalOffset());
 
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 

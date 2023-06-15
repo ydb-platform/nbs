@@ -182,6 +182,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     TABLEH() { out << "Block size"; }
                     TABLEH() { out << "Block count"; }
                     TABLEH() { out << "Size"; }
+                    TABLEH() { out << "PhysicalOffset"; }
                     TABLEH() { out << "Transport id"; }
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "DiskId"; }
@@ -210,6 +211,9 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                         const auto bytes =
                             device.GetBlockSize() * device.GetBlocksCount();
                         out << FormatByteSize(bytes);
+                    }
+                    TABLED() {
+                        out << FormatByteSize(device.GetPhysicalOffset());
                     }
                     TABLED() { out << device.GetTransportId(); }
                     TABLED() {

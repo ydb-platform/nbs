@@ -152,6 +152,9 @@ message TDeviceConfig
 
     // Serial number.
     string SerialNumber = 18;
+
+    // Physical offset in bytes.
+    uint64 PhysicalOffset = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
