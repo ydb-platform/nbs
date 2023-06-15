@@ -482,7 +482,10 @@ void TServerStats::RequestCompleted(
     ELogPriority logPriority;
     TString message;
 
-    if (requestTime >= RequestTimeWarnThreshold) {
+    if (execTime >= RequestTimeWarnThreshold) {
+        logPriority = TLOG_WARNING;
+        message = "request execution too slow";
+    } else if (requestTime >= RequestTimeWarnThreshold) {
         logPriority = TLOG_WARNING;
         message = "request too slow";
     } else if (errorKind == EDiagnosticsErrorKind::ErrorFatal ||
