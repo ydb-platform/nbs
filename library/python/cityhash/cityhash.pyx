@@ -11,8 +11,8 @@ cdef extern from "util/digest/city.h":
 
 
 cdef extern from "library/python/cityhash/hash.h":
-    ui64 FileCityHash128WithSeedHigh64(const char* fpath) nogil
-    ui64 FileCityHash64(const char* fpath) nogil
+    ui64 FileCityHash128WithSeedHigh64(const char* fpath) nogil except+
+    ui64 FileCityHash64(const char* fpath) nogil except+
 
 
 def hash64(content):
