@@ -963,10 +963,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
             UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
 
-            const auto& update = state.GetDiskStateUpdates().back();
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
-
             UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {

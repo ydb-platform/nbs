@@ -86,5 +86,6 @@ target_sources(libs-storage-disk_registry PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_schema.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_self_counters.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_state.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_state_notification.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry.cpp
 )

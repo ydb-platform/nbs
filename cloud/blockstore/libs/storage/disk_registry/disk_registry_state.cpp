@@ -28,9 +28,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static const TString DISK_STATE_MIGRATION_MESSAGE =
-    "data migration in progress, slight performance decrease may be experienced";
-
 constexpr TDuration CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT = TDuration::Minutes(5);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,8 +255,13 @@ TDiskRegistryState::TDiskRegistryState(
     , BrokenDisks(std::move(brokenDisks))
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
-    , DiskStateUpdates(std::move(diskStateUpdates))
-    , DiskStateSeqNo(diskStateSeqNo)
+    , NotificationSystem {
+        std::move(errorNotifications),
+        std::move(disksToNotify),
+        std::move(diskStateUpdates),
+        diskStateSeqNo,
+        std::move(outdatedVolumeConfigs)
+    }
 {
     for (const auto& x: AutomaticallyReplacedDevices) {
         AutomaticallyReplacedDeviceIds.insert(x.DeviceId);
@@ -269,30 +271,31 @@ TDiskRegistryState::TDiskRegistryState(
         SelfCounters.Init(Counters);
     }
 
-    ProcessDisksToNotify(std::move(disksToNotify));
-    ProcessErrorNotifications(std::move(errorNotifications));
     ProcessConfig(CurrentConfig);
     ProcessDisks(std::move(disks));
     ProcessPlacementGroups(std::move(placementGroups));
     ProcessAgents();
     ProcessDisksToCleanup(std::move(disksToCleanup));
-    ProcessOutdatedVolumeConfigs(std::move(outdatedVolumeConfigs));
     ProcessDirtyDevices(std::move(dirtyDevices));
 
     FillMigrations();
 }
 
-void TDiskRegistryState::ProcessDisksToNotify(TVector<TString> disksToNotify)
+void TDiskRegistryState::AllowNotifications(
+    const TDiskId& diskId,
+    const TDiskState& disk)
 {
-    for (auto& diskId: disksToNotify) {
-        DisksToNotify.emplace(std::move(diskId), DisksToNotifySeqNo++);
-    }
-}
+    // currently we don't want to notify mirrored disks since they are not
+    // supposed to break
 
-void TDiskRegistryState::ProcessErrorNotifications(TVector<TDiskId> errorNotifications)
-{
-    for (auto& diskId: errorNotifications) {
-        ErrorNotifications.insert(std::move(diskId));
+    if (disk.MasterDiskId) {
+        return;
+    }
+
+    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_NONREPLICATED ||
+        disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL)
+    {
+        NotificationSystem.AllowNotifications(diskId);
     }
 }
 
@@ -326,6 +329,8 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             );
         }
 
+        AllowNotifications(diskId, disk);
+
         for (const auto& uuid: config.GetDeviceUUIDs()) {
             disk.Devices.push_back(uuid);
 
@@ -357,12 +362,14 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         if (!config.GetFinishedMigrations().empty()) {
-            ui64 seqNo = DisksToNotify[diskId];
-            if (seqNo == 0) {
+            ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskId);
+            if (!seqNo) {
                 ReportDiskRegistryNoScheduledNotification(TStringBuilder()
                     << "No scheduled notification for disk " << diskId.Quote());
 
-                seqNo = AddDiskToNotify(diskId, disk);
+                seqNo = NotificationSystem.AddDiskToNotify(disk.MasterDiskId
+                    ? disk.MasterDiskId
+                    : diskId);
             }
 
             for (auto& m: config.GetFinishedMigrations()) {
@@ -516,13 +523,6 @@ void TDiskRegistryState::ProcessDisksToCleanup(TVector<TString> disksToCleanup)
 {
     for (auto& diskId: disksToCleanup) {
         DisksToCleanup.emplace(std::move(diskId));
-    }
-}
-
-void TDiskRegistryState::ProcessOutdatedVolumeConfigs(TVector<TString> diskIds)
-{
-    for (auto& diskId: diskIds) {
-        OutdatedVolumeConfigs.emplace(std::move(diskId), VolumeConfigSeqNo++);
     }
 }
 
@@ -2100,6 +2100,8 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
 
     UpdateDiskPlacementInfo(db, params.DiskId, placementInfo);
 
+    AllowNotifications(params.DiskId, disk);
+
     return {};
 }
 
@@ -2234,13 +2236,11 @@ void TDiskRegistryState::DeleteDisk(
 {
     Disks.erase(diskId);
     DisksToCleanup.erase(diskId);
-    DisksToNotify.erase(diskId);
-    OutdatedVolumeConfigs.erase(diskId);
+
+    NotificationSystem.DeleteDisk(db, diskId);
 
     db.DeleteDisk(diskId);
     db.DeleteDiskToCleanup(diskId);
-    db.DeleteDiskToNotify(diskId);
-    db.DeleteOutdatedVolumeConfig(diskId);
 }
 
 void TDiskRegistryState::AddToBrokenDisks(
@@ -3311,8 +3311,8 @@ NProto::TError TDiskRegistryState::DestroyPlacementGroup(
 
         d->PlacementGroupId.clear();
 
-        OutdatedVolumeConfigs[diskId] = VolumeConfigSeqNo++;
-        db.AddOutdatedVolumeConfig(diskId);
+        NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
+
         affectedDisks.emplace_back(diskId);
     }
 
@@ -3473,25 +3473,19 @@ NProto::TError TDiskRegistryState::AlterPlacementGroupMembership(
         d->PlacementGroupId = groupId;
         d->PlacementPartitionIndex = placementPartitionIndex;
 
-        OutdatedVolumeConfigs[diskId] = VolumeConfigSeqNo++;
-        db.AddOutdatedVolumeConfig(diskId);
+        NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
     }
 
     for (const auto& diskId: disksToRemove) {
-        const auto it = Find(
-            disksToAdd.begin(),
-            disksToAdd.end(),
-            diskId
-        );
+        if (FindPtr(disksToAdd, diskId)) {
+            continue;
+        }
 
-        if (it == disksToAdd.end()) {
-            if (auto* d = Disks.FindPtr(diskId)) {
-                d->PlacementGroupId.clear();
-                d->PlacementPartitionIndex = 0;
+        if (auto* d = Disks.FindPtr(diskId)) {
+            d->PlacementGroupId.clear();
+            d->PlacementPartitionIndex = 0;
 
-                OutdatedVolumeConfigs[diskId] = VolumeConfigSeqNo++;
-                db.AddOutdatedVolumeConfig(diskId);
-            }
+            NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
         }
     }
 
@@ -3539,26 +3533,12 @@ ui64 TDiskRegistryState::AddDiskToNotify(
         diskId = disk->MasterDiskId;
     }
 
-    db.AddDiskToNotify(diskId);
-
-    const auto seqNo = DisksToNotifySeqNo++;
-
-    DisksToNotify[diskId] = seqNo;
-
-    return seqNo;
+    return NotificationSystem.AddDiskToNotify(db, diskId);
 }
 
-ui64 TDiskRegistryState::AddDiskToNotify(TString diskId, TDiskState& disk)
+const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToNotify() const
 {
-    if (disk.MasterDiskId) {
-        diskId = disk.MasterDiskId;
-    }
-
-    const auto seqNo = DisksToNotifySeqNo++;
-
-    DisksToNotify[diskId] = seqNo;
-
-    return seqNo;
+    return NotificationSystem.GetDisksToNotify();
 }
 
 auto TDiskRegistryState::FindDiskState(const TDiskId& diskId) -> TDiskState*
@@ -3620,12 +3600,7 @@ void TDiskRegistryState::DeleteDiskToNotify(
     const TString& diskId,
     ui64 seqNo)
 {
-    auto it = DisksToNotify.find(diskId);
-    if (it != DisksToNotify.end() && it->second == seqNo) {
-        DisksToNotify.erase(it);
-        db.DeleteDiskToNotify(diskId);
-    }
-
+    NotificationSystem.DeleteDiskToNotify(db, diskId, seqNo);
     RemoveFinishedMigrations(db, diskId, seqNo);
 }
 
@@ -3633,27 +3608,19 @@ void TDiskRegistryState::AddErrorNotification(
     TDiskRegistryDatabase& db,
     TString diskId)
 {
-    const auto* disk = Disks.FindPtr(diskId);
-    Y_VERIFY_DEBUG(disk, "unknown disk: %s", diskId.c_str());
-
-    if (disk && disk->MasterDiskId) {
-        // currently we don't want to notify mirrored disks since they are not
-        // supposed to break
-
-        return;
-    }
-
-    db.AddErrorNotification(diskId);
-
-    ErrorNotifications.emplace(std::move(diskId));
+    NotificationSystem.AddErrorNotification(db, diskId);
 }
 
 void TDiskRegistryState::DeleteErrorNotification(
     TDiskRegistryDatabase& db,
     const TString& diskId)
 {
-    ErrorNotifications.erase(diskId);
-    db.DeleteErrorNotification(diskId);
+    NotificationSystem.DeleteErrorNotification(db, diskId);
+}
+
+auto TDiskRegistryState::GetErrorNotifications() const -> const THashSet<TDiskId>&
+{
+    return NotificationSystem.GetErrorNotifications();
 }
 
 NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
@@ -4034,31 +4001,9 @@ bool TDiskRegistryState::TryUpdateDiskState(
     disk.State = newState;
     disk.StateTs = timestamp;
 
-    NProto::TDiskState diskState;
-    diskState.SetDiskId(diskId);
-    diskState.SetState(disk.State);
-
-    if (newState == NProto::DISK_STATE_MIGRATION) {
-        diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
-    }
-
     UpdateAndNotifyDisk(db, diskId, disk);
 
-    if (newState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
-        AddErrorNotification(db, diskId);
-    }
-
-    if (!disk.MasterDiskId) {
-        // currently we don't want to report mirrored disk state updates since
-        // they are not supposed to break
-
-        const auto seqNo = DiskStateSeqNo++;
-
-        db.UpdateDiskState(diskState, seqNo);
-        db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
-
-        DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
-    }
+    NotificationSystem.OnDiskStateChanged(db, diskId, newState);
 
     return true;
 }
@@ -4067,18 +4012,7 @@ void TDiskRegistryState::DeleteDiskStateUpdate(
     TDiskRegistryDatabase& db,
     ui64 maxSeqNo)
 {
-    auto begin = DiskStateUpdates.cbegin();
-    auto it = begin;
-
-    for (; it != DiskStateUpdates.cend(); ++it) {
-        if (it->SeqNo > maxSeqNo) {
-            break;
-        }
-
-        db.DeleteDiskStateChanges(it->State.GetDiskId(), it->SeqNo);
-    }
-
-    DiskStateUpdates.erase(begin, it);
+    NotificationSystem.DeleteDiskStateUpdate(db, maxSeqNo);
 }
 
 NProto::EDiskState TDiskRegistryState::CalculateDiskState(
@@ -4624,11 +4558,11 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
         return info;
     });
 
-    transform(DisksToNotify, backup.MutableDisksToNotify(), [] (auto& kv) {
+    transform(GetDisksToNotify(), backup.MutableDisksToNotify(), [] (auto& kv) {
         return kv.first;
     });
 
-    transform(DiskStateUpdates, backup.MutableDiskStateChanges(), [] (auto& x) {
+    transform(GetDiskStateUpdates(), backup.MutableDiskStateChanges(), [] (auto& x) {
         NProto::TDiskRegistryStateBackup::TDiskStateUpdate update;
 
         update.MutableState()->CopyFrom(x.State);
@@ -4639,11 +4573,15 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 
     copy(AgentList.GetAgents(), backup.MutableAgents());
     copy(DisksToCleanup, backup.MutableDisksToCleanup());
-    copy(ErrorNotifications, backup.MutableErrorNotifications());
+    copy(GetErrorNotifications(), backup.MutableErrorNotifications());
 
-    transform(OutdatedVolumeConfigs, backup.MutableOutdatedVolumeConfigs(), [] (auto& kv) {
-        return kv.first;
-    });
+    {
+        auto outdatedVolumes = GetOutdatedVolumeConfigs();
+
+        backup.MutableOutdatedVolumeConfigs()->Assign(
+            std::make_move_iterator(outdatedVolumes.begin()),
+            std::make_move_iterator(outdatedVolumes.end()));
+    }
 
     copy(GetSuspendedDevices(), backup.MutableSuspendedDevices());
 
@@ -4659,7 +4597,7 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
         });
 
     auto config = GetConfig();
-    config.SetLastDiskStateSeqNo(DiskStateSeqNo);
+    config.SetLastDiskStateSeqNo(NotificationSystem.GetDiskStateSeqNo());
 
     backup.MutableConfig()->Swap(&config);
 
@@ -4674,39 +4612,35 @@ bool TDiskRegistryState::IsReadyForCleanup(const TDiskId& diskId) const
 std::pair<TVolumeConfig, ui64> TDiskRegistryState::GetVolumeConfigUpdate(
     const TDiskId& diskId) const
 {
-    std::pair<TVolumeConfig, ui64> result;
-    auto& [config, seqNo] = result;
-
-    auto update = OutdatedVolumeConfigs.find(diskId);
-    auto disk = Disks.find(diskId);
-
-    if (update != OutdatedVolumeConfigs.end() && disk != Disks.end()) {
-        config.SetDiskId(diskId);
-        config.SetPlacementGroupId(disk->second.PlacementGroupId);
-        config.SetPlacementPartitionIndex(disk->second.PlacementPartitionIndex);
-        seqNo = update->second;
+    auto seqNo = NotificationSystem.GetOutdatedVolumeSeqNo(diskId);
+    if (!seqNo) {
+        return {};
     }
 
-    return result;
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return {};
+    }
+
+    TVolumeConfig config;
+
+    config.SetDiskId(diskId);
+    config.SetPlacementGroupId(disk->PlacementGroupId);
+    config.SetPlacementPartitionIndex(disk->PlacementPartitionIndex);
+
+    return {std::move(config), *seqNo};
 }
 
 auto TDiskRegistryState::GetOutdatedVolumeConfigs() const -> TVector<TDiskId>
 {
-    TVector<TDiskId> diskIds;
-
-    for (auto& kv: OutdatedVolumeConfigs) {
-        diskIds.emplace_back(kv.first);
-    }
-
-    return diskIds;
+    return NotificationSystem.GetOutdatedVolumeConfigs();
 }
 
 void TDiskRegistryState::DeleteOutdatedVolumeConfig(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId)
 {
-    db.DeleteOutdatedVolumeConfig(diskId);
-    OutdatedVolumeConfigs.erase(diskId);
+    NotificationSystem.DeleteOutdatedVolumeConfig(db, diskId);
 }
 
 NProto::TError TDiskRegistryState::SetUserId(
@@ -5491,6 +5425,11 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     AddDiskToNotify(db, diskId);
 
     return {};
+}
+
+const TVector<TDiskStateUpdate>& TDiskRegistryState::GetDiskStateUpdates() const
+{
+    return NotificationSystem.GetDiskStateUpdates();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

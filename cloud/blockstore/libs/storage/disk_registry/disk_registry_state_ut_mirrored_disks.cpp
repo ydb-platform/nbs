@@ -1485,7 +1485,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         TVector<TString> diskIdsWithErrorNotifications(
             state.GetErrorNotifications().begin(),
             state.GetErrorNotifications().end());
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, diskIdsWithErrorNotifications.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;

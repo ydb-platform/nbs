@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "disk_registry_state_notification.h"
+
 #include "disk_registry_database.h"
 #include "disk_registry_private.h"
 #include "disk_registry_self_counters.h"
@@ -192,18 +194,11 @@ private:
     TDeviceOverrides DeviceOverrides;
     TPlacementGroups PlacementGroups;
     TVector<TBrokenDiskInfo> BrokenDisks;
-    THashMap<TString, ui64> DisksToNotify;
-    ui64 DisksToNotifySeqNo = 1;
+
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashSet<TDeviceId> AutomaticallyReplacedDeviceIds;
 
     NProto::TDiskRegistryConfig CurrentConfig;
-
-    TVector<TDiskStateUpdate> DiskStateUpdates;
-    ui64 DiskStateSeqNo = 0;
-
-    THashMap<TDiskId, ui64> OutdatedVolumeConfigs;
-    ui64 VolumeConfigSeqNo = 0;
 
     struct TDeviceMigrationCompare
     {
@@ -222,13 +217,13 @@ private:
 
     TReplicaTable ReplicaTable;
 
-    THashSet<TDiskId> ErrorNotifications;
-
     THashMap<TString, NProto::TDevicePoolConfig> DevicePoolConfigs;
 
     TPendingCleanup PendingCleanup;
 
     NProto::TMeanTimeBetweenFailures TimeBetweenFailures;
+
+    NDiskRegistry::TNotificationSystem NotificationSystem;
 
 public:
     TDiskRegistryState(
@@ -391,11 +386,7 @@ public:
 
     void DeleteBrokenDisks(TDiskRegistryDatabase& db);
 
-    const THashMap<TString, ui64>& GetDisksToNotify() const
-    {
-        return DisksToNotify;
-    }
-
+    const THashMap<TString, ui64>& GetDisksToNotify() const;
     ui64 AddDiskToNotify(TDiskRegistryDatabase& db, TString diskId);
 
     void DeleteDiskToNotify(
@@ -403,19 +394,13 @@ public:
         const TString& diskId,
         ui64 seqNo);
 
-    const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const
-    {
-        return DiskStateUpdates;
-    }
+    const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
     void AddErrorNotification(TDiskRegistryDatabase& db, TDiskId diskId);
     void DeleteErrorNotification(TDiskRegistryDatabase& db, const TDiskId& diskId);
-    const THashSet<TDiskId>& GetErrorNotifications() const
-    {
-        return ErrorNotifications;
-    }
+    const THashSet<TDiskId>& GetErrorNotifications() const;
 
     TVector<TString> CollectBrokenDevices(const NProto::TAgentStats& stats) const;
     NProto::TError UpdateAgentCounters(const NProto::TAgentStats& source);
@@ -629,14 +614,11 @@ public:
     }
 
 private:
-    void ProcessDisksToNotify(TVector<TString> disksToNotify);
-    void ProcessErrorNotifications(TVector<TDiskId> errorNotifications);
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
     void ProcessPlacementGroups(TVector<NProto::TPlacementGroupConfig> placementGroups);
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
-    void ProcessOutdatedVolumeConfigs(TVector<TString> diskIds);
     void ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
 
     void AddMigration(
@@ -918,8 +900,6 @@ private:
         TInstant now,
         TString stateMessage);
 
-    ui64 AddDiskToNotify(TString diskId, TDiskState& disk);
-
     bool IsMirroredDiskAlreadyAllocated(const TAllocateDiskParams& params) const;
     void UpdateReplicaTable(const TDiskId& diskId, const TAllocateDiskResult& r);
     void CleanupMirroredDisk(
@@ -941,6 +921,8 @@ private:
     NProto::TError CreateMirroredDiskPlacementGroup(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId);
+
+    void AllowNotifications(const TDiskId& diskId, const TDiskState& disk);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
