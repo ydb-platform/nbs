@@ -138,12 +138,10 @@ public:
     CURL* Create()
     {
         CURL* ret = nullptr;
-        if (!Pool.empty()) {
-            with_lock (Lock) {
-                if (!Pool.empty()) {
-                    ret = Pool.back();
-                    Pool.pop_back();
-                }
+        with_lock (Lock) {
+            if (!Pool.empty()) {
+                ret = Pool.back();
+                Pool.pop_back();
             }
         }
         if (ret == nullptr) {
