@@ -204,33 +204,6 @@ struct TServerRequestHandlerBase
     {}
 };
 
-using TRequestHandlerPtr = std::unique_ptr<TServerRequestHandlerBase>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TRequestsInFlight
-    : public NStorage::NRequests::TRequestsInFlight<TServerRequestHandlerBase>
-{
-public:
-    size_t CollectRequests(const TIncompleteRequestsCollector& collector) const
-    {
-        with_lock (RequestsLock) {
-            ui64 now = GetCycleCount();
-            for (auto* handler: Requests) {
-                auto requestTime = handler->CallContext->CalcRequestTime(now);
-                if (requestTime) {
-                    collector(
-                        handler->MetricRequest.VolumeInfo,
-                        handler->MetricRequest.MediaKind,
-                        handler->MetricRequest.RequestType,
-                        requestTime);
-                }
-            }
-            return Requests.size();
-        }
-    }
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSessionStorage;
@@ -253,6 +226,9 @@ struct TAppContext
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TRequestsInFlight =
+    NStorage::NRequests::TRequestsInFlight<TServerRequestHandlerBase>;
 
 using TExecutorContext = NStorage::NRequests::
     TExecutorContext<grpc::ServerCompletionQueue, TRequestsInFlight>;
@@ -477,8 +453,8 @@ private:
 
 public:
     TRequestHandler(
-            TAppContext& appCtx,
             TExecutorContext& execCtx,
+            TAppContext& appCtx,
             TService& service)
         : TServerRequestHandlerBase(TMethod::Request)
         , AppCtx(appCtx)
@@ -488,19 +464,12 @@ public:
     {}
 
     static void Start(
-        TAppContext& appCtx,
         TExecutorContext& execCtx,
+        TAppContext& appCtx,
         TService& service)
     {
-        auto handler = std::make_unique<TRequestHandler<TService, TMethod>>(
-            appCtx,
-            execCtx,
-            service);
-
-        execCtx.RequestsInFlight.Register(handler.get());
-
-        handler->PrepareRequest();
-        handler.release();   // ownership transferred to CompletionQueue
+        using THandler = TRequestHandler<TService, TMethod>;
+        execCtx.StartRequestHandler<THandler>(appCtx, service);
     }
 
     void Process(bool ok) override
@@ -510,7 +479,7 @@ public:
         {
             // There always should be handler waiting for request.
             // Spawn new request only when handling request from server queue.
-            Start(AppCtx, ExecCtx, Service);
+            Start(ExecCtx, AppCtx, Service);
         }
 
         if (!ok) {
@@ -606,7 +575,6 @@ public:
         }
     }
 
-private:
     void PrepareRequest()
     {
         TMethod::Prepare(
@@ -616,9 +584,10 @@ private:
             &Writer,
             ExecCtx.CompletionQueue.get(),
             ExecCtx.CompletionQueue.get(),
-            AcquireCompletionTag());
+            this);
     }
 
+private:
     void PrepareRequestContext()
     {
         auto& headers = *Request->MutableHeaders();
@@ -817,10 +786,7 @@ private:
                     return;
                 }
 
-                if (ReleaseCompletionTag()) {
-                    // request completed and could be safely destroyed
-                    delete this;
-                }
+                ReleaseCompletionTag();
             });
     }
 
@@ -1233,10 +1199,6 @@ void TServer::Stop()
 
     StopListenUnixSocket();
 
-    for (auto& executor: Executors) {
-        executor->RequestsInFlight.CancelAll();
-    }
-
     auto deadline = Config->GetShutdownTimeout().ToDeadLine();
 
     if (Server) {
@@ -1279,7 +1241,7 @@ void TServer::StartRequest(TService& service)
     ui32 preparedRequestsCount = Config->GetPreparedRequestsCount();
     for (auto& executor: Executors) {
         for (size_t i = 0; i < preparedRequestsCount; ++i) {
-            TRequestHandler<TService, TMethod>::Start(*this, *executor, service);
+            TRequestHandler<TService, TMethod>::Start(*executor, *this, service);
         }
     }
 }
@@ -1300,7 +1262,18 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
 {
     size_t count = 0;
     for (auto& executor: Executors) {
-        count += executor->RequestsInFlight.CollectRequests(collector);
+        const auto now = GetCycleCount();
+        executor->RequestsInFlight.ForEach([&](const auto* handler) {
+            auto requestTime = handler->CallContext->CalcRequestTime(now);
+            if (requestTime) {
+                collector(
+                    handler->MetricRequest.VolumeInfo,
+                    handler->MetricRequest.MediaKind,
+                    handler->MetricRequest.RequestType,
+                    requestTime);
+            }
+            ++count;
+        });
     }
     return count;
 }

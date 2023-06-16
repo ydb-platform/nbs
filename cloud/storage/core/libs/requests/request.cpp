@@ -1,22 +1,20 @@
 #include "request.h"
 
-#include <library/cpp/actors/prof/tag.h>
-
-#include <util/datetime/cputimer.h>
-
 namespace NCloud::NStorage::NRequests {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void* TRequestHandlerBase::AcquireCompletionTag()
 {
-    AtomicIncrement(RefCount);
+    ++RefCount;
     return this;
 }
 
-bool TRequestHandlerBase::ReleaseCompletionTag()
+void TRequestHandlerBase::ReleaseCompletionTag()
 {
-    return AtomicDecrement(RefCount) == 0;
+    if (--RefCount == 0) {
+        delete this;
+    }
 }
 
 }   // namespace NCloud::NStorage::NRequests

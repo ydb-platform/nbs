@@ -1,17 +1,15 @@
 #pragma once
 
-#include "request.h"
+#include <cloud/storage/core/libs/requests/request.h>
 
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/executor_counters.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
-#include <contrib/libs/grpc/include/grpcpp/server.h>
-
 #include <library/cpp/actors/prof/tag.h>
 
 #include <util/generic/maybe.h>
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 #include <util/system/thread.h>
 
@@ -22,7 +20,7 @@ namespace NInternal {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TDummyExecutorScope
-    {
+{
     int StartWait()
     {
         return {};
@@ -44,7 +42,44 @@ struct TExecutorContext
     std::unique_ptr<TCompletionQueue> CompletionQueue;
     TRequestsInFlight RequestsInFlight;
 
-    std::atomic_bool ShutdownCalled = false;
+    template <typename T>
+    std::unique_ptr<T> EnqueueRequestHandler(std::unique_ptr<T> handler)
+    {
+        if (!RequestsInFlight.Register(handler.get())) {
+            return handler;
+        }
+        Y_DEFER {
+            if (handler) {
+                RequestsInFlight.Unregister(handler.get());
+            }
+        };
+
+        if (EnqueueCompletion(CompletionQueue.get(), handler.get())) {
+            // ownership transferred to CompletionQueue
+            Y_UNUSED(handler.release());
+        }
+
+        return handler;
+    }
+
+    template <typename THandler, typename... TArgs>
+    void StartRequestHandler(TArgs&&... args)
+    {
+
+        auto handler = std::make_unique<THandler>(*this, std::forward<TArgs>(args)...);
+        if (!this->RequestsInFlight.Register(handler.get())) {
+            return;
+        }
+        Y_DEFER {
+            if (handler) {
+                this->RequestsInFlight.Unregister(handler.get());
+            }
+        };
+
+        handler->PrepareRequest();
+        // ownership transferred to CompletionQueue
+        Y_UNUSED(handler.release());
+    }
 };
 
 template <
@@ -75,9 +110,9 @@ public:
 
     void Shutdown()
     {
-        this->ShutdownCalled.store(true);
-
         STORAGE_TRACE(Name << " executor's shutdown() started");
+
+        this->RequestsInFlight.Shutdown();
 
         if (this->CompletionQueue) {
             this->CompletionQueue->Shutdown();
@@ -116,23 +151,11 @@ private:
     {
         [[maybe_unused]] auto activity = ExecutorScope.StartExecute();
 
-        TRequestHandlerPtr handler(static_cast<TRequestHandlerBase*>(tag));
-
-        if (!this->ShutdownCalled.load()) {
-            handler->Process(ok);
-        } else {
-            // once Shutdown() is being called, no new requests can be processed
-            // However, we still must drain completion queue and release
-            // handlers, that is why we are not breaking out of the loop
-            STORAGE_TRACE(
-                Name << " executor's shutdown() is being called"
-                        ", new requests are being dropped");
-        }
-
-        if (!handler->ReleaseCompletionTag()) {
-            // ownership transferred to CompletionQueue
-            Y_UNUSED(handler.release());
-        }
+        auto handler = static_cast<TRequestHandlerBase*>(tag);
+        Y_DEFER {
+            handler->ReleaseCompletionTag();
+        };
+        handler->Process(ok);
     }
 };
 

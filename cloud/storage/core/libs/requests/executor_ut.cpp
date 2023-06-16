@@ -32,8 +32,11 @@ struct TCompletionQueueMock
     MOCK_METHOD(bool, Next, (void** tag, bool* ok));
 };
 
-struct RequestsInFlightPlaceHolder
-{};
+struct TRequestsInFlightPlaceHolder
+{
+    using TRequestHanlder = TRequestHandlerMock;
+    MOCK_METHOD(void, Shutdown, ());
+};
 
 }   // namespace
 
@@ -46,7 +49,7 @@ Y_UNIT_TEST_SUITE(TExecutorTest)
         ILoggingServicePtr logging = CreateLoggingService("console");
         auto Log = logging->CreateLog("NFS_SERVER");
 
-        TExecutor<TCompletionQueueMock, RequestsInFlightPlaceHolder> executor(
+        TExecutor<TCompletionQueueMock, TRequestsInFlightPlaceHolder> executor(
             "executor test",
             std::make_unique<TCompletionQueueMock>(),
             Log);
@@ -63,6 +66,8 @@ Y_UNIT_TEST_SUITE(TExecutorTest)
                 std::lock_guard lock(processMutex);
                 isProcessCalled = true;
             }
+            // to avoid removal after processing is complete
+            handler.AcquireCompletionTag();
             processCV.notify_one();
         });
 
@@ -82,6 +87,7 @@ Y_UNIT_TEST_SUITE(TExecutorTest)
         EXPECT_CALL(cq, Next(_, _))
             .WillOnce(Return(false));
 
+        EXPECT_CALL(executor.RequestsInFlight, Shutdown());
         executor.Shutdown();
     }
 }

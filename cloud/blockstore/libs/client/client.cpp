@@ -187,29 +187,37 @@ struct TClientRequestHandlerBase
     {}
 };
 
-using TRequestHandlerPtr = std::unique_ptr<TClientRequestHandlerBase>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestsInFlight
 {
+public:
+    using TRequestHandler = TClientRequestHandlerBase;
+
 private:
-    THashSet<TClientRequestHandlerBase*> Requests;
+    THashSet<TRequestHandler*> Requests;
     TAdaptiveLock RequestsLock;
+    bool ShouldStop = false;
 
 public:
-    void Register(TClientRequestHandlerBase* handler)
+    bool Register(TRequestHandler* handler)
     {
         with_lock (RequestsLock) {
+            if (ShouldStop) {
+                return false;
+            }
+
             auto res = Requests.emplace(handler);
             STORAGE_VERIFY(
                 res.second,
                 TWellKnownEntityTypes::DISK,
                 handler->DiskId);
         }
+
+        return true;
     }
 
-    void Unregister(TClientRequestHandlerBase* handler)
+    void Unregister(TRequestHandler* handler)
     {
         with_lock (RequestsLock) {
             auto it = Requests.find(handler);
@@ -222,9 +230,10 @@ public:
         }
     }
 
-    void CancelAll()
+    void Shutdown()
     {
         with_lock (RequestsLock) {
+            ShouldStop = true;
             for (auto* handler: Requests) {
                 handler->Cancel();
             }
@@ -349,21 +358,11 @@ public:
             std::move(request),
             promise);
 
-        execCtx.RequestsInFlight.Register(handler.get());
+        handler = execCtx.EnqueueRequestHandler(std::move(handler));
 
-        if (!execCtx.ShutdownCalled.load() &&
-            EnqueueCompletion(
-                execCtx.CompletionQueue.get(),
-                handler->AcquireCompletionTag()))
-        {
-            // ownership transferred to CompletionQueue
-            Y_UNUSED(handler.release());
-            return;
+        if (handler) {
+            handler->ReportError(grpc::Status::CANCELLED);
         }
-
-        execCtx.RequestsInFlight.Unregister(handler.get());
-
-        handler->ReportError(grpc::Status::CANCELLED);
     }
 
     void Process(bool ok) override
@@ -653,10 +652,6 @@ void TClient::Stop()
     }
 
     STORAGE_INFO("Shutting down");
-
-    for (auto& executor: Executors) {
-        executor->RequestsInFlight.CancelAll();
-    }
 
     for (auto& executor: Executors) {
         executor->Shutdown();
