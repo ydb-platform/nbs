@@ -52,9 +52,6 @@
 #include <ydb/core/tablet/node_tablet_monitor.h>
 #include <ydb/core/tablet/tablet_list_renderer.h>
 
-#include <util/digest/city.h>
-#include <util/system/hostname.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -332,8 +329,6 @@ class TCustomLocalServiceInitializer final
     : public IServiceInitializer
 {
 private:
-    TLog Log;
-
     const NKikimrConfig::TAppConfig& AppConfig;
     const TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -343,10 +338,10 @@ private:
     const NLogbroker::IServicePtr LogbrokerService;
     const NNotify::IServicePtr NotifyService;
     const NRdma::IClientPtr RdmaClient;
+    const bool IsDiskRegistrySpareNode;
 
 public:
     TCustomLocalServiceInitializer(
-            TLog log,
             const NKikimrConfig::TAppConfig& appConfig,
             TStorageConfigPtr storageConfig,
             TDiagnosticsConfigPtr diagnosticsConfig,
@@ -355,9 +350,9 @@ public:
             ITraceSerializerPtr traceSerializer,
             NLogbroker::IServicePtr logbrokerService,
             NNotify::IServicePtr notifyService,
-            NRdma::IClientPtr rdmaClient)
-        : Log(std::move(log))
-        , AppConfig(appConfig)
+            NRdma::IClientPtr rdmaClient,
+            bool isDiskRegistrySpareNode)
+        : AppConfig(appConfig)
         , StorageConfig(std::move(storageConfig))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , ProfileLog(std::move(profileLog))
@@ -366,6 +361,7 @@ public:
         , LogbrokerService(std::move(logbrokerService))
         , NotifyService(std::move(notifyService))
         , RdmaClient(std::move(rdmaClient))
+        , IsDiskRegistrySpareNode(isDiskRegistrySpareNode)
     {}
 
     void InitializeServices(
@@ -411,19 +407,8 @@ public:
         };
 
         const bool enableLocal = !StorageConfig->GetDisableLocalService();
-        const bool isSpareNode = !enableLocal && [&] {
-                const auto& nodes = StorageConfig->GetKnownSpareNodes();
-                const auto& fqdn = FQDNHostName();
-                const ui32 p = StorageConfig->GetSpareNodeProbability();
 
-                return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
-            }();
-
-        if (isSpareNode) {
-            STORAGE_INFO("The host configured as a spare node for Disk Registry");
-        }
-
-        if (enableLocal || isSpareNode) {
+        if (enableLocal || IsDiskRegistrySpareNode) {
             auto localConfig = MakeIntrusive<TLocalConfig>();
 
             if (enableLocal) {
@@ -437,7 +422,7 @@ public:
                             appData->SystemPoolId));
             }
 
-            const i32 priority { isSpareNode ? -1 : 0 };
+            const i32 priority { IsDiskRegistrySpareNode ? -1 : 0 };
 
             localConfig->TabletClassInfo[TTabletTypes::BlockStoreDiskRegistry] =
                 TLocalConfig::TTabletClassInfo(
@@ -473,7 +458,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateActorSystem(TLog log, const TServerActorSystemArgs& sArgs)
+IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
     auto onInitialize = [&] (
         TKikimrRunConfig& runConfig,
@@ -486,7 +471,6 @@ IActorSystemPtr CreateActorSystem(TLog log, const TServerActorSystemArgs& sArgs)
         initializers.AddServiceInitializer(new TStorageServicesInitializer(
             sArgs));
         initializers.AddServiceInitializer(new TCustomLocalServiceInitializer(
-            log,
             *sArgs.AppConfig,
             sArgs.StorageConfig,
             sArgs.DiagnosticsConfig,
@@ -495,7 +479,8 @@ IActorSystemPtr CreateActorSystem(TLog log, const TServerActorSystemArgs& sArgs)
             sArgs.TraceSerializer,
             sArgs.LogbrokerService,
             sArgs.NotifyService,
-            sArgs.RdmaClient));
+            sArgs.RdmaClient,
+            sArgs.IsDiskRegistrySpareNode));
     };
 
     TBasicKikimrServicesMask servicesMask;

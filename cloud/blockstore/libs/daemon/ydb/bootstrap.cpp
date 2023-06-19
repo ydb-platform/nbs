@@ -58,6 +58,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
+#include <util/digest/city.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -234,20 +235,19 @@ void TBootstrapYdb::InitKikimrService()
         Log,
         PostponedCriticalEvents);
 
-    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts;
-    registerOpts.Domain = Configs->Options->Domain;
-    registerOpts.SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir();
-    registerOpts.NodeType = Configs->ServerConfig->GetNodeType();
-    registerOpts.NodeBrokerAddress = Configs->Options->NodeBrokerAddress;
-    registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
-    registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
-    registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    registerOpts.MaxAttempts =
-        Configs->ServerConfig->GetNodeRegistrationMaxAttempts();
-    registerOpts.RegistrationTimeout =
-        Configs->ServerConfig->GetNodeRegistrationTimeout();
-    registerOpts.ErrorTimeout =
-        Configs->ServerConfig->GetNodeRegistrationErrorTimeout();
+    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
+        .Domain = Configs->Options->Domain,
+        .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
+        .NodeType = Configs->ServerConfig->GetNodeType(),
+        .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
+        .NodeBrokerPort = Configs->Options->NodeBrokerPort,
+        .InterconnectPort = Configs->Options->InterconnectPort,
+        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
+        .MaxAttempts = static_cast<int>(
+            Configs->ServerConfig->GetNodeRegistrationMaxAttempts()),
+        .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
+        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout()
+    };
 
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;
@@ -505,13 +505,37 @@ void TBootstrapYdb::InitKikimrService()
     args.PreemptedVolumes = std::move(preemptedVolumes);
     args.NvmeManager = NvmeManager;
     args.UserCounterProviders = {VolumeStats->GetUserCounters()};
+    args.IsDiskRegistrySpareNode = [&] {
+            if (!Configs->StorageConfig->GetDisableLocalService()) {
+                return false;
+            }
 
-    ActorSystem = NStorage::CreateActorSystem(Log, args);
+            const auto& nodes = Configs->StorageConfig->GetKnownSpareNodes();
+            const auto& fqdn = FQDNHostName();
+            const ui32 p = Configs->StorageConfig->GetSpareNodeProbability();
+
+            return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
+        }();
+
+    ActorSystem = NStorage::CreateActorSystem(args);
+
+    if (args.IsDiskRegistrySpareNode) {
+        STORAGE_INFO("The host configured as a spare node for Disk Registry");
+    }
 
     STORAGE_INFO("ActorSystem initialized");
 
     logging->Init(ActorSystem);
     monitoring->Init(ActorSystem);
+
+    if (args.IsDiskRegistrySpareNode) {
+        auto rootGroup = Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        auto isSpareNode = serverGroup->GetCounter("IsSpareNode", false);
+        *isSpareNode = 1;
+    }
 
     auto& probes = NLwTraceMonPage::ProbeRegistry();
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));

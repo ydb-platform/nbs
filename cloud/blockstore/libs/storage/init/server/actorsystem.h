@@ -63,10 +63,12 @@ struct TServerActorSystemArgs
     NNvme::INvmeManagerPtr NvmeManager;
 
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
+
+    bool IsDiskRegistrySpareNode = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateActorSystem(TLog log, const TServerActorSystemArgs& args);
+IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& args);
 
 }   // namespace NCloud::NBlockStore::NStorage
