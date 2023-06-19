@@ -99,9 +99,11 @@ struct vhd_request_queue {
     struct vhd_event_loop *evloop;
 
     TAILQ_HEAD(, vhd_io) submission;
-
+    TAILQ_HEAD(, vhd_io) inflight;
     vhd_io_list completion;
+
     struct vhd_bh *completion_bh;
+    struct vhd_rq_metrics metrics;
 };
 
 void vhd_run_in_rq(struct vhd_request_queue *rq, void (*cb)(void *),
@@ -144,8 +146,13 @@ static void rq_complete_bh(void *opaque)
             break;
         }
         SLIST_REMOVE_HEAD(&io_list, completion_link);
+        TAILQ_REMOVE(&rq->inflight, io, inflight_link);
         req_complete(io);
+        ++rq->metrics.completed;
     }
+
+    struct vhd_io *io = TAILQ_FIRST(&rq->inflight);
+    rq->metrics.oldest_inflight_ts = io ? io->ts : 0;
 }
 
 struct vhd_request_queue *vhd_create_request_queue(void)
@@ -159,7 +166,7 @@ struct vhd_request_queue *vhd_create_request_queue(void)
     }
 
     TAILQ_INIT(&rq->submission);
-
+    TAILQ_INIT(&rq->inflight);
     SLIST_INIT(&rq->completion);
     rq->completion_bh = vhd_bh_new(rq->evloop, rq_complete_bh, rq);
     return rq;
@@ -168,6 +175,7 @@ struct vhd_request_queue *vhd_create_request_queue(void)
 void vhd_release_request_queue(struct vhd_request_queue *rq)
 {
     assert(TAILQ_EMPTY(&rq->submission));
+    assert(TAILQ_EMPTY(&rq->inflight));
     assert(SLIST_EMPTY(&rq->completion));
     vhd_bh_delete(rq->completion_bh);
     vhd_free_event_loop(rq->evloop);
@@ -202,9 +210,17 @@ bool vhd_dequeue_request(struct vhd_request_queue *rq,
 
     TAILQ_REMOVE(&rq->submission, io, submission_link);
 
+    time_t now = time(NULL);
+    io->ts = now;
+    TAILQ_INSERT_TAIL(&rq->inflight, io, inflight_link);
+    if (!rq->metrics.oldest_inflight_ts) {
+        rq->metrics.oldest_inflight_ts = now;
+    }
+
     out_req->vdev = io->vring->vdev;
     out_req->io = io;
 
+    ++rq->metrics.dequeued;
     return true;
 }
 
@@ -213,6 +229,7 @@ int vhd_enqueue_request(struct vhd_request_queue *rq, struct vhd_io *io)
     vhd_vring_inc_in_flight(io->vring);
 
     TAILQ_INSERT_TAIL(&rq->submission, io, submission_link);
+    ++rq->metrics.enqueued;
     return 0;
 }
 
@@ -227,6 +244,7 @@ void vhd_cancel_queued_requests(struct vhd_request_queue *rq,
             TAILQ_REMOVE(&rq->submission, io, submission_link);
             io->status = VHD_BDEV_CANCELED;
             req_complete(io);
+            ++rq->metrics.cancelled;
         }
         io = next;
     }
@@ -250,4 +268,11 @@ void vhd_complete_bio(struct vhd_io *io, enum vhd_bdev_io_result status)
     if (!SLIST_INSERT_HEAD_ATOMIC(&rq->completion, io, completion_link)) {
         vhd_bh_schedule(rq->completion_bh);
     }
+    ++rq->metrics.completions_received;
+}
+
+void vhd_get_rq_stat(struct vhd_request_queue *rq,
+                     struct vhd_rq_metrics *metrics)
+{
+    *metrics = rq->metrics;
 }
