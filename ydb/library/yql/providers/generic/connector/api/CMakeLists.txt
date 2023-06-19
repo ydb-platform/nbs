@@ -6,4 +6,4 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(protos)
+add_subdirectory(common)

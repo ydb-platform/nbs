@@ -18,18 +18,30 @@ get_built_tool_path(
   contrib/tools/protoc/plugins/cpp_styleguide
   cpp_styleguide
 )
+get_built_tool_path(
+  TOOL_protoc_bin
+  TOOL_protoc_dependency
+  contrib/tools/protoc/bin
+  protoc
+)
+get_built_tool_path(
+  TOOL_cpp_styleguide_bin
+  TOOL_cpp_styleguide_dependency
+  contrib/tools/protoc/plugins/cpp_styleguide
+  cpp_styleguide
+)
 
-add_library(connector-api-protos)
-target_link_libraries(connector-api-protos PUBLIC
+add_library(connector-api-common)
+target_link_libraries(connector-api-common PUBLIC
   contrib-libs-cxxsupp
   yutil
-  api-protos
   contrib-libs-protobuf
 )
-target_proto_messages(connector-api-protos PRIVATE
-  ${CMAKE_SOURCE_DIR}/ydb/library/yql/providers/generic/connector/api/protos/connector.proto
+target_proto_messages(connector-api-common PRIVATE
+  ${CMAKE_SOURCE_DIR}/ydb/library/yql/providers/generic/connector/api/common/data_source.proto
+  ${CMAKE_SOURCE_DIR}/ydb/library/yql/providers/generic/connector/api/common/endpoint.proto
 )
-target_proto_addincls(connector-api-protos
+target_proto_addincls(connector-api-common
   ./
   ${CMAKE_SOURCE_DIR}/
   ${CMAKE_BINARY_DIR}
@@ -38,7 +50,7 @@ target_proto_addincls(connector-api-protos
   ${CMAKE_BINARY_DIR}
   ${CMAKE_SOURCE_DIR}/contrib/libs/protobuf/src
 )
-target_proto_outs(connector-api-protos
+target_proto_outs(connector-api-common
   --cpp_out=${CMAKE_BINARY_DIR}/
   --cpp_styleguide_out=${CMAKE_BINARY_DIR}/
 )
