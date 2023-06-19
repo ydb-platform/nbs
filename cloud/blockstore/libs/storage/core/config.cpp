@@ -250,7 +250,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
     xxx(ThrottlingEnabledSSD,          bool,      false                       )\
-    xxx(ThrottlingBurstPercentage,     ui32,      10                          )\
+    xxx(ThrottlingBurstPercentage,     ui32,      100                         )\
     xxx(ThrottlingMaxPostponedWeight,  ui32,      128_MB                      )\
     xxx(DefaultPostponedRequestWeight, ui32,      1_KB                        )\
     xxx(ThrottlingBoostTime,           TDuration, Minutes(30)                 )\
