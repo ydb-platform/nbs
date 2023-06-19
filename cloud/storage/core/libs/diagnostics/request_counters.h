@@ -13,6 +13,14 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECalcMaxTime
+{
+    ENABLE,
+    DISABLE
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TRequestCounters
 {
     struct TSpecialCounters;
@@ -57,6 +65,7 @@ public:
         TRequestType requestType,
         ui32 requestBytes);
 
+    //TODO: rollback commit after NBS-4239 is fixed
     TDuration RequestCompleted(
         TRequestType requestType,
         ui64 requestStarted,
@@ -64,7 +73,8 @@ public:
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned);
+        bool unaligned,
+        ECalcMaxTime calMaxTime = ECalcMaxTime::ENABLE);
 
     void AddRetryStats(
         TRequestType requestType,
@@ -77,10 +87,12 @@ public:
     void RequestAdvancedServer(TRequestType requestType);
     void RequestFastPathHit(TRequestType requestType);
 
+    //TODO: rollback commit after NBS-4239 is fixed
     void AddIncompleteStats(
         TRequestType requestType,
         TDuration executionTime,
-        TDuration totalTime);
+        TDuration totalTime,
+        ECalcMaxTime calcMaxTime = ECalcMaxTime::ENABLE);
 
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;
@@ -108,7 +120,8 @@ private:
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned);
+        bool unaligned,
+        ECalcMaxTime calMaxTime = ECalcMaxTime::ENABLE);
 
     bool ShouldReport(TRequestType requestType) const;
 

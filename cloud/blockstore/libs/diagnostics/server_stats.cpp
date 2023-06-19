@@ -400,6 +400,9 @@ void TServerStats::RequestCompleted(
         errorKind = EDiagnosticsErrorKind::ErrorSilent;
     }
 
+    auto calcMaxTime = req.VolumeInfo && req.VolumeInfo->HasThrottlerRejects() ?
+        ECalcMaxTime::DISABLE: ECalcMaxTime::ENABLE;
+
     const auto requestTime = RequestStats->RequestCompleted(
         req.MediaKind,
         req.RequestType,
@@ -408,7 +411,8 @@ void TServerStats::RequestCompleted(
         req.RequestBytes,
         errorKind,
         errorFlags,
-        req.Unaligned);
+        req.Unaligned,
+        calcMaxTime);
 
     ui32 blockSize = DefaultBlockSize;
 
@@ -585,10 +589,14 @@ void TServerStats::AddIncompleteRequest(
     EBlockStoreRequest requestType,
     TRequestTime time)
 {
+    auto calcMaxTime = volumeInfo && volumeInfo->HasThrottlerRejects() ?
+        ECalcMaxTime::DISABLE: ECalcMaxTime::ENABLE;
+
     RequestStats->AddIncompleteStats(
         mediaKind,
         requestType,
-        time);
+        time,
+        calcMaxTime);
 
     if (volumeInfo) {
         volumeInfo->AddIncompleteStats(

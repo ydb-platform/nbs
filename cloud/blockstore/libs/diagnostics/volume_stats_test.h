@@ -140,6 +140,11 @@ public:
         Y_UNUSED(timeHist);
         Y_UNUSED(sizeHist);
     }
+
+    bool HasThrottlerRejects() override
+    {
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

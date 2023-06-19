@@ -63,6 +63,7 @@ struct IVolumeInfo
     virtual void RequestAdvanced(EBlockStoreRequest requestType) = 0;
     virtual void RequestAdvancedServer(EBlockStoreRequest requestType) = 0;
     virtual void RequestFastPathHit(EBlockStoreRequest requestType) = 0;
+    virtual bool HasThrottlerRejects() = 0;
 
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;

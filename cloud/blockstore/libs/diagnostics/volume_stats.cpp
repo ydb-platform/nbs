@@ -261,6 +261,8 @@ struct TVolumeInfoBase
     IPostponeTimePredictorPtr PostponeTimePredictor;
     TPostponeTimePredictorStats PostponeTimePredictorStats;
     TDowntimeCalculator DowntimeCalculator;
+    TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
+    TAtomic ThrottlerRejectsCounter = 0;
 
     TVolumeInfoBase(
             NProto::TVolume volume,
@@ -273,6 +275,7 @@ struct TVolumeInfoBase
         , PostponeTimePredictor(std::move(postponeTimePredictor))
         , PostponeTimePredictorStats(volumeGroup, timer)
         , DowntimeCalculator(diagnosticsConfig, Volume, timer)
+        , ThrottlerRejects(timer)
     {
         BusyIdleCalc.Register(*volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
@@ -415,6 +418,11 @@ public:
             TranslateLocalRequestType(requestType),
             requestStarted,
             postponedTime);
+
+        if (errorKind == EDiagnosticsErrorKind::ErrorThrottling && VolumeBase) {
+            VolumeBase->ThrottlerRejects.Add(1);
+        }
+
         return RequestCounters.RequestCompleted(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),
@@ -503,6 +511,14 @@ public:
             errors,
             timeHist,
             sizeHist);
+    }
+
+    bool HasThrottlerRejects() override
+    {
+        if (VolumeBase) {
+            return VolumeBase->ThrottlerRejectsCounter;
+        }
+        return false;
     }
 };
 
@@ -755,6 +771,7 @@ public:
             volumeBase.PostponeTimePredictorStats.OnUpdateStats();
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
+            volumeBase.ThrottlerRejectsCounter = volumeBase.ThrottlerRejects.NextValue();
             if (volumeBase.DowntimeCalculator.OnUpdateStats()) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];

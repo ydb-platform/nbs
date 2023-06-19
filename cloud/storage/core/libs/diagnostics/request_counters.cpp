@@ -411,7 +411,8 @@ struct TRequestCounters::TStatCounters
         TDuration postponedTime,
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
-        bool unaligned)
+        bool unaligned,
+        ECalcMaxTime calcMaxTime)
     {
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
@@ -451,7 +452,9 @@ struct TRequestCounters::TStatCounters
         auto execTime = requestTime - postponedTime;
         Time->Add(requestTime.MicroSeconds());
         TimeHist.Increment(requestTime);
-        MaxTimeCalc.Add(execTime.MicroSeconds());
+        if (calcMaxTime == ECalcMaxTime::ENABLE) {
+            MaxTimeCalc.Add(execTime.MicroSeconds());
+        }
         MaxTotalTimeCalc.Add(requestTime.MicroSeconds());
 
         if (IsReadWriteRequest) {
@@ -577,9 +580,14 @@ struct TRequestCounters::TStatCounters
         }
     }
 
-    void AddIncompleteStats(TDuration executionTime, TDuration totalTime)
+    void AddIncompleteStats(
+        TDuration executionTime,
+        TDuration totalTime,
+        ECalcMaxTime calcMaxTime = ECalcMaxTime::ENABLE)
     {
-        MaxTimeCalc.Add(executionTime.MicroSeconds());
+        if (calcMaxTime == ECalcMaxTime::ENABLE) {
+            MaxTimeCalc.Add(executionTime.MicroSeconds());
+        }
         MaxTotalTimeCalc.Add(totalTime.MicroSeconds());
     }
 
@@ -674,7 +682,8 @@ TDuration TRequestCounters::RequestCompleted(
     ui32 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
-    bool unaligned)
+    bool unaligned,
+    ECalcMaxTime calcMaxTime)
 {
     auto requestTime = CyclesToDurationSafe(GetCycleCount() - requestStarted);
     RequestCompletedImpl(
@@ -684,7 +693,8 @@ TDuration TRequestCounters::RequestCompleted(
         requestBytes,
         errorKind,
         errorFlags,
-        unaligned);
+        unaligned,
+        calcMaxTime);
     return requestTime;
 }
 
@@ -760,18 +770,21 @@ void TRequestCounters::RequestAdvancedServer(TRequestType requestType)
 void TRequestCounters::AddIncompleteStats(
     TRequestType requestType,
     TDuration executionTime,
-    TDuration totalTime)
+    TDuration totalTime,
+    ECalcMaxTime calcMaxTime)
 {
     if (ShouldReport(requestType)) {
         CountersByRequest[requestType].AddIncompleteStats(
             executionTime,
-            totalTime);
+            totalTime,
+            calcMaxTime);
     }
     NotifySubscribers(
         &TRequestCounters::AddIncompleteStats,
         requestType,
         executionTime,
-        totalTime);
+        totalTime,
+        calcMaxTime);
 }
 
 void TRequestCounters::BatchCompleted(
@@ -831,7 +844,8 @@ void TRequestCounters::RequestCompletedImpl(
     ui32 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
-    bool unaligned)
+    bool unaligned,
+    ECalcMaxTime calcMaxTime)
 {
     if (SpecialCounters) {
         SpecialCounters->AddStats(errorKind, errorFlags);
@@ -844,7 +858,8 @@ void TRequestCounters::RequestCompletedImpl(
             postponedTime,
             requestBytes,
             errorKind,
-            unaligned);
+            unaligned,
+            calcMaxTime);
     }
     NotifySubscribers(
         &TRequestCounters::RequestCompletedImpl,
@@ -854,7 +869,8 @@ void TRequestCounters::RequestCompletedImpl(
         requestBytes,
         errorKind,
         errorFlags,
-        unaligned);
+        unaligned,
+        calcMaxTime);
 }
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const

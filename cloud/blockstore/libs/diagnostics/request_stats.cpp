@@ -278,7 +278,8 @@ public:
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned) override
+        bool unaligned,
+        ECalcMaxTime calcMaxTime) override
     {
         auto requestTime = Total.RequestCompleted(
             static_cast<TRequestCounters::TRequestType>(
@@ -288,7 +289,8 @@ public:
             requestBytes,
             errorKind,
             errorFlags,
-            unaligned);
+            unaligned,
+            calcMaxTime);
 
         if (IsReadWriteRequest(requestType)) {
             GetRequestCounters(mediaKind).RequestCompleted(
@@ -299,7 +301,8 @@ public:
                 requestBytes,
                 errorKind,
                 errorFlags,
-                unaligned);
+                unaligned,
+                calcMaxTime);
 
             if (IsServerSide) {
                 HdrTotal.AddStats(
@@ -320,20 +323,23 @@ public:
     void AddIncompleteStats(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        TRequestTime requestTime) override
+        TRequestTime requestTime,
+        ECalcMaxTime calcMaxTime) override
     {
         Total.AddIncompleteStats(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),
             requestTime.ExecutionTime,
-            requestTime.TotalTime);
+            requestTime.TotalTime,
+            calcMaxTime);
 
         if (IsReadWriteRequest(requestType)) {
             GetRequestCounters(mediaKind).AddIncompleteStats(
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
                 requestTime.ExecutionTime,
-                requestTime.TotalTime);
+                requestTime.TotalTime,
+                calcMaxTime);
         }
     }
 
@@ -520,7 +526,8 @@ struct TRequestStatsStub final
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned) override
+        bool unaligned,
+        ECalcMaxTime calcMaxTime) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
@@ -529,17 +536,20 @@ struct TRequestStatsStub final
         Y_UNUSED(errorKind);
         Y_UNUSED(errorFlags);
         Y_UNUSED(unaligned);
+        Y_UNUSED(calcMaxTime);
         return CyclesToDurationSafe(GetCycleCount() - requestStarted);
     }
 
     void AddIncompleteStats(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        TRequestTime requestTime) override
+        TRequestTime requestTime,
+        ECalcMaxTime calcMaxTime) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
         Y_UNUSED(requestTime);
+        Y_UNUSED(calcMaxTime);
     }
 
     void AddRetryStats(
