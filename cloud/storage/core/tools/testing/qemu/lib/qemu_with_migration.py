@@ -64,7 +64,6 @@ class QemuWithMigration:
 
         self.qemu.set_mount_paths(get_mount_paths())
         self.qemu.set_vhost_socket(self.socket)
-        self.qemu.set_enable_migration(True)
         self.qemu.start()
 
     def migrate(self, count, timeout):

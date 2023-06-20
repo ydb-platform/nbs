@@ -78,7 +78,6 @@ class Qemu:
         self.ssh_port = 0
         self.qmp = None
         self.mount_paths = None
-        self.enable_migration = False
         self.seqno = 0
         self.qemu_bin = None
 
@@ -95,15 +94,10 @@ class Qemu:
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
 
-    def prepare_mount_paths(self, ssh, enable_migration):
+    def prepare_mount_paths(self, ssh):
         for tag, path, _ in self.mount_paths:
-            if enable_migration:
-                ssh("sudo mkdir -p {path}".format(path=path))
-                ssh("sudo mount -t virtiofs {tag} {path}".format(tag=tag, path=path))
-            else:
-                ssh("sudo mkdir -p {path}".format(path=path))
-                ssh("sudo mount -t  {tag} {path} -o trans=virtio,version=9p2000.L,cache=loose,rw".format(
-                    tag=tag, path=path))
+            ssh("sudo mkdir -p {path}".format(path=path))
+            ssh("sudo mount -t virtiofs {tag} {path}".format(tag=tag, path=path))
 
             # the code below fixes situation where /home is a link to /place/home and source and build roots can come
             # in both ways, e.g. build root can be in a form of /place/home/... and source root /home/...
@@ -151,9 +145,6 @@ class Qemu:
 
     def set_vhost_socket(self, socket):
         self.virtio_options = self._get_virtio_options(self.virtio, socket)
-
-    def set_enable_migration(self, enable):
-        self.enable_migration = enable
 
     def set_mount_paths(self, mount_paths):
         self.mount_paths = mount_paths
@@ -238,14 +229,10 @@ class Qemu:
             cmd += self.virtio_options
 
         for tag, path, vhost_socket in self.mount_paths:
-            if self.enable_migration:
-                cmd += ["-chardev",
-                        "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
-                cmd += ["-device",
-                        "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},queue-size=512,migration=external".format(tag, tag, tag)]
-            else:
-                cmd += ["-virtfs",
-                        "local,path={path},mount_tag={tag},security_model=none".format(tag=tag, path=path)]
+            cmd += ["-chardev",
+                    "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
+            cmd += ["-device",
+                    "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},queue-size=512,migration=external".format(tag, tag, tag)]
 
         if self.kernel:
             cmd += ["-kernel", self.kernel]

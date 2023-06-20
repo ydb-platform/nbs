@@ -69,8 +69,7 @@ def start(argv):
 
     for tag, path, _ in mount_paths:
         ssh("sudo mkdir -p {path}".format(path=path))
-        ssh("sudo mount -t 9p {tag} {path} -o trans=virtio,version=9p2000.L,cache=loose,rw".format(
-            tag=tag, path=path))
+        ssh("sudo mount -t virtiofs {tag} {path}".format(tag=tag, path=path))
 
         # the code below fixes situation where /home is a link to /place/home and source and build roots can come
         # in both ways, e.g. build root can be in a form of /place/home/... and source root /home/...
