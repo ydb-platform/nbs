@@ -148,7 +148,7 @@ bool TVolumeActor::HandleRequest(
         );
     }
 
-    if (RequiresReadWriteAccess<TMethod>()) {
+    if constexpr (RequiresReadWriteAccess<TMethod>) {
         ++MultipartitionWriteAndZeroRequestsInProgress;
     }
 
@@ -542,7 +542,7 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
-    if (IsReadWriteRequest<TMethod>() && HasError(State->GetReadWriteError())) {
+    if (IsReadOrWriteMethod<TMethod> && HasError(State->GetReadWriteError())) {
         replyError(State->GetReadWriteError());
         return;
     }
@@ -560,7 +560,7 @@ void TVolumeActor::ForwardRequest(
         StartPartitionsIfNeeded(ctx);
 
         if (!State->Ready()) {
-            if (RejectRequestIfNotReady<TMethod>()) {
+            if constexpr (RejectRequestIfNotReady<TMethod>) {
                 replyError(MakeError(E_REJECTED, TStringBuilder()
                     << "Volume not ready: " << State->GetDiskId().Quote()));
             } else {
@@ -588,7 +588,7 @@ void TVolumeActor::ForwardRequest(
 
     bool throttlingDisabled = false;
     bool forceWrite = false;
-    if (RequiresMount<TMethod>()) {
+    if constexpr (RequiresMount<TMethod>) {
         it = clients.find(clientId);
         if (it == clients.end()) {
             replyError(MakeError(E_BS_INVALID_SESSION, "Invalid session"));
@@ -601,7 +601,7 @@ void TVolumeActor::ForwardRequest(
             clientInfo.GetVolumeClientInfo().GetMountFlags(),
             NProto::MF_THROTTLING_DISABLED);
 
-        if (RequiresThrottling<TMethod>() && throttlingDisabled) {
+        if (RequiresThrottling<TMethod> && throttlingDisabled) {
             VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests.Increment(1);
         }
 
@@ -610,7 +610,7 @@ void TVolumeActor::ForwardRequest(
             NProto::MF_FORCE_WRITE);
     }
 
-    if (RequiresReadWriteAccess<TMethod>()
+    if (RequiresReadWriteAccess<TMethod>
             && State->GetRejectWrite()
             && !forceWrite)
     {
@@ -632,7 +632,7 @@ void TVolumeActor::ForwardRequest(
     /*
      *  Mount-related validation.
      */
-    if (RequiresMount<TMethod>()) {
+    if constexpr (RequiresMount<TMethod>) {
         Y_VERIFY(it != clients.end());
 
         auto& clientInfo = it->second;
@@ -641,13 +641,13 @@ void TVolumeActor::ForwardRequest(
         if (ev->Recipient != ev->GetRecipientRewrite()) {
             error = clientInfo.CheckPipeRequest(
                 ev->Recipient,
-                RequiresReadWriteAccess<TMethod>(),
+                RequiresReadWriteAccess<TMethod>,
                 TMethod::Name,
                 State->GetDiskId());
         } else {
             error = clientInfo.CheckLocalRequest(
                 ev->Sender.NodeId(),
-                RequiresReadWriteAccess<TMethod>(),
+                RequiresReadWriteAccess<TMethod>,
                 TMethod::Name,
                 State->GetDiskId());
         }
@@ -657,7 +657,7 @@ void TVolumeActor::ForwardRequest(
             return;
         }
 
-        if (RequiresReadWriteAccess<TMethod>() && !CanExecuteWriteRequest()) {
+        if (RequiresReadWriteAccess<TMethod> && !CanExecuteWriteRequest()) {
             replyError(MakeError(
                 E_REJECTED,
                 TStringBuilder()
@@ -683,7 +683,7 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    if constexpr (RequiresReadWriteAccess<TMethod>()) {
+    if constexpr (RequiresReadWriteAccess<TMethod>) {
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());

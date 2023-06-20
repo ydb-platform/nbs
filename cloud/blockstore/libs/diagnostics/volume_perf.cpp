@@ -19,11 +19,6 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr bool TVolumePerformanceCalculator::IsRwRequest(EBlockStoreRequest requestType) const
-{
-    return IsReadRequest(requestType) || IsWriteRequest(requestType);
-}
-
 TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
     TDiagnosticsConfigPtr diagnosticsConfig) const
 {

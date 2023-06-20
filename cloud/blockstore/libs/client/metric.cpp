@@ -106,16 +106,32 @@ public:
         : TRequestHandler(TMethod::Request, std::move(callContext))
         , AppCtx(appCtx)
     {
+        auto calculateBytesCount = [](const TRequest& request,
+                                      ui32 blockSize) -> ui64 {
+            if constexpr (requires { CalculateBytesCount(request, blockSize); })
+            {
+                return CalculateBytesCount(request, blockSize);
+            } else {
+                return 0;
+            }
+        };
+        auto getStartIndex = [](const TRequest& request) -> ui64 {
+            if constexpr (requires { GetStartIndex(request); }) {
+                return GetStartIndex(request);
+            } else {
+                return 0;
+            }
+        };
+
         AppCtx.ServerStats->PrepareMetricRequest(
             MetricRequest,
             GetClientId(request),
             GetDiskId(request),
-            GetStartIndex(request),
-            CalculateBytesCount(
+            getStartIndex(request),
+            calculateBytesCount(
                 request,
-                AppCtx.ServerStats->GetBlockSize(GetDiskId(request))
-            ),
-            false // unaligned
+                AppCtx.ServerStats->GetBlockSize(GetDiskId(request))),
+            false   // unaligned
         );
 
         AppCtx.ServerStats->RequestStarted(

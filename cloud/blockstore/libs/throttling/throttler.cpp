@@ -293,6 +293,8 @@ private:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
+        Y_UNUSED(TMethod::Request);
+
         auto volumeInfo = VolumeStats->GetVolumeInfo(
             GetDiskId(*request),
             GetClientId(*request));
@@ -301,13 +303,26 @@ private:
             volumeInfo.get(),
             *request);
 
-        if constexpr (!ShouldBeThrottled<typename TMethod::TRequest>()) {
-            return TMethod::Execute(
-                *client,
-                std::move(callContext),
-                std::move(request));
+        if constexpr (ShouldBeThrottled<typename TMethod::TRequest>()) {
+            return this->HandleThrottledRequest<TMethod>(
+                client,
+                callContext,
+                std::move(request),
+                std::move(volumeInfo));
         }
+        return TMethod::Execute(
+            *client,
+            std::move(callContext),
+            std::move(request));
+    }
 
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> HandleThrottledRequest(
+        const IBlockStorePtr& client,
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request,
+        IVolumeInfoPtr volumeInfo)
+    {
         TRequestStatePtr<TMethod> state;
 
         TDuration delay;

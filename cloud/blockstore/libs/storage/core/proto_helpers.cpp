@@ -364,8 +364,8 @@ TBlockRange64 BuildRequestBlockRange(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request)
 {
     ui64 totalSize = 0;
-    for (const auto& buffers : request.Record.GetBlocks().GetBuffers()) {
-        totalSize += buffers.length();
+    for (const auto& buffer: request.Record.GetBlocks().GetBuffers()) {
+        totalSize += buffer.length();
     }
     Y_VERIFY(totalSize % request.Record.GetBlockSize() == 0);
 

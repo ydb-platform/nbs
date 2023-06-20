@@ -649,7 +649,7 @@ private:
         ui64 startIndex = 0;
         ui64 requestBytes = 0;
 
-        if (IsReadWriteRequest(MetricRequest.RequestType)) {
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
             startIndex = GetStartIndex(*Request);
             requestBytes = CalculateBytesCount(
                 *Request,

@@ -973,7 +973,7 @@ void TPartitionRequestActor<TEvVolume::TGetCompactionStatusMethod>::Prepare(
 template <typename TMethod>
 void TPartitionRequestActor<TMethod>::NotifyCompleted(const NActors::TActorContext& ctx)
 {
-    if (RequiresReadWriteAccess<TMethod>()) {
+    if constexpr (RequiresReadWriteAccess<TMethod>) {
         using TEvent = TEvVolumePrivate::TEvMultipartitionWriteOrZeroCompleted;
         auto ev = std::make_unique<TEvent>(
             VolumeRequestId,

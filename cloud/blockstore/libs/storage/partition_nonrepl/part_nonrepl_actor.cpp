@@ -112,7 +112,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
     }
 
     if (!msg.Record.GetHeaders().GetIsBackgroundRequest()
-            && RequiresReadWriteAccess<TMethod>())
+            && RequiresReadWriteAccess<TMethod>)
     {
         TString errorMessage;
         bool cooldownPassed = true;

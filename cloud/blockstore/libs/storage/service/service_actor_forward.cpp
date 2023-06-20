@@ -91,7 +91,7 @@ void TServiceActor::ForwardRequest(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!RequiresMount<TMethod>()) {
+    if constexpr (!RequiresMount<TMethod>) {
         auto volume = State.GetVolume(diskId);
         if (volume) {
             auto* clientInfo = volume->GetClientInfo(clientId);
@@ -160,7 +160,7 @@ void TServiceActor::ForwardRequest(
         }
     }
 
-    if (IsReadWriteRequest<TMethod>()) {
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
         if (volume->VolumeInfo.Defined()) {
             ReadWriteCounters.Update(
                 ctx.Now(),

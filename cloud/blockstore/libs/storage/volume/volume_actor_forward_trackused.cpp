@@ -462,16 +462,21 @@ void TReadActor<TMethod>::Done(const TActorContext& ctx)
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Record);
 
-    if (MaskUnusedBlocks) {
-        ApplyMask(UnusedBlockIndices, GetStartIndex(Request), Request);
-        ApplyMask(UnusedBlockIndices, GetStartIndex(Request), response->Record);
-    }
+    if constexpr (IsReadMethod<TMethod>) {
+        if (MaskUnusedBlocks) {
+            ApplyMask(UnusedBlockIndices, GetStartIndex(Request), Request);
+            ApplyMask(
+                UnusedBlockIndices,
+                GetStartIndex(Request),
+                response->Record);
+        }
 
-    if (ReplyUnencryptedBlockMask) {
-        FillUnencryptedBlockMask(
-            UnusedBlockIndices,
-            GetStartIndex(Request),
-            response->Record);
+        if (ReplyUnencryptedBlockMask) {
+            FillUnencryptedBlockMask(
+                UnusedBlockIndices,
+                GetStartIndex(Request),
+                response->Record);
+        }
     }
 
     LWTRACK(
@@ -571,60 +576,54 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind()) &&
         volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
 
-    if (IsWriteRequest<TMethod>()
-        && State->GetTrackUsedBlocks())
-    {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext);
+    if constexpr (IsWriteMethod<TMethod>) {
+        if (State->GetTrackUsedBlocks()) {
+            auto requestInfo =
+                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-        NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
-            ctx,
-            std::move(requestInfo),
-            std::move(msg->Record),
-            State->GetBlockSize(),
-            encryptedNonreplicatedVolume,
-            volumeRequestId,
-            partActorId,
-            TabletID(),
-            SelfId()
-        );
-
-        return true;
-    }
-
-    if (IsReadRequest<TMethod>()
-        && (State->GetMaskUnusedBlocks() && State->GetUsedBlocks()
-            || encryptedNonreplicatedVolume))
-    {
-        THashSet<ui64> unusedIndices;
-
-        FillUnusedIndices(
-            msg->Record,
-            State->GetUsedBlocks(),
-            &unusedIndices
-        );
-
-        if (unusedIndices) {
-            auto requestInfo = CreateRequestInfo(
-                ev->Sender,
-                ev->Cookie,
-                msg->CallContext);
-
-            NCloud::Register<TReadActor<TMethod>>(
+            NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),
                 std::move(msg->Record),
-                std::move(unusedIndices),
-                State->GetMaskUnusedBlocks(),
+                State->GetBlockSize(),
                 encryptedNonreplicatedVolume,
+                volumeRequestId,
                 partActorId,
                 TabletID(),
-                SelfId()
-            );
+                SelfId());
 
             return true;
+        }
+    }
+
+    if constexpr (IsReadMethod<TMethod>) {
+        if (State->GetMaskUnusedBlocks() && State->GetUsedBlocks() ||
+            encryptedNonreplicatedVolume)
+        {
+            THashSet<ui64> unusedIndices;
+
+            FillUnusedIndices(
+                msg->Record,
+                State->GetUsedBlocks(),
+                &unusedIndices);
+
+            if (unusedIndices) {
+                auto requestInfo =
+                    CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+                NCloud::Register<TReadActor<TMethod>>(
+                    ctx,
+                    std::move(requestInfo),
+                    std::move(msg->Record),
+                    std::move(unusedIndices),
+                    State->GetMaskUnusedBlocks(),
+                    encryptedNonreplicatedVolume,
+                    partActorId,
+                    TabletID(),
+                    SelfId());
+
+                return true;
+            }
         }
     }
 

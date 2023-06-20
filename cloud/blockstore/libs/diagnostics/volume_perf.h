@@ -40,8 +40,6 @@ private:
     TAtomic SufferCount = 0;
 
 private:
-    constexpr bool IsRwRequest(EBlockStoreRequest requestType) const;
-
     TVolumePerfSettings GetConfigSettings(TDiagnosticsConfigPtr diagnosticsConfig) const;
 
 public:
