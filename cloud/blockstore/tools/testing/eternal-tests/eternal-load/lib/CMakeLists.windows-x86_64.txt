@@ -11,10 +11,11 @@ add_library(eternal-tests-eternal-load-lib)
 target_link_libraries(eternal-tests-eternal-load-lib PUBLIC
   contrib-libs-cxxsupp
   yutil
-  blockstore-libs-diagnostics
-  library-cpp-config
+  core-libs-diagnostics
   library-cpp-aio
+  library-cpp-config
   cpp-deprecated-atomic
+  cpp-digest-crc32c
 )
 target_sources(eternal-tests-eternal-load-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/config.cpp

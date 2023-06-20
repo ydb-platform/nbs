@@ -13,8 +13,8 @@ target_link_libraries(eternal-load PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
-  blockstore-libs-diagnostics
   eternal-tests-eternal-load-lib
+  core-libs-diagnostics
   library-cpp-getopt
   cpp-threading-future
   library-cpp-json
