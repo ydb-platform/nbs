@@ -111,7 +111,7 @@ void TDiskRegistryActor::CompleteUpdateDiskBlockSize(
         "UpdateDiskBlockSize complete. %s",
         CreateInputDescription(args).c_str());
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
 
     auto response =
         std::make_unique<TEvDiskRegistry::TEvUpdateDiskBlockSizeResponse>(

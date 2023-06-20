@@ -38,7 +38,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void NotifyDisks(const TActorContext& ctx);
+    void ReallocateDisks(const TActorContext& ctx);
     void ReplyAndDie(const TActorContext& ctx);
 
 private:
@@ -78,7 +78,7 @@ void TNotifyActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
 
     if (PendingOperations) {
         ctx.Schedule(
@@ -107,7 +107,7 @@ void TNotifyActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
-void TNotifyActor::NotifyDisks(const TActorContext& ctx)
+void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
 {
     PendingOperations = DiskIds.size();
 
@@ -209,10 +209,10 @@ void TDiskRegistryActor::HandleListDisksToNotify(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(ListDisksToNotify);
 
-    const auto& disksToNotify = State->GetDisksToNotify();
+    const auto& disksToReallocate = State->GetDisksToReallocate();
 
-    TVector<TString> diskIds(Reserve(disksToNotify.size()));
-    for (const auto& [diskId, seqNo]: disksToNotify) {
+    TVector<TString> diskIds(Reserve(disksToReallocate.size()));
+    for (const auto& [diskId, seqNo]: disksToReallocate) {
         diskIds.push_back(diskId);
     }
 
@@ -224,9 +224,9 @@ void TDiskRegistryActor::HandleListDisksToNotify(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::NotifyDisks(const TActorContext& ctx)
+void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
 {
-    if (DisksNotificationInProgress || State->GetDisksToNotify().empty()) {
+    if (DisksNotificationInProgress || State->GetDisksToReallocate().empty()) {
         return;
     }
 
@@ -262,8 +262,8 @@ void TDiskRegistryActor::HandleNotifyDisks(
 
     DisksNotificationStartTs = ctx.Now();
 
-    DisksBeingNotified.reserve(State->GetDisksToNotify().size());
-    for (const auto& [diskId, seqNo]: State->GetDisksToNotify()) {
+    DisksBeingNotified.reserve(State->GetDisksToReallocate().size());
+    for (const auto& [diskId, seqNo]: State->GetDisksToReallocate()) {
         DisksBeingNotified.emplace_back(diskId, seqNo);
     }
 
@@ -320,7 +320,7 @@ void TDiskRegistryActor::ExecuteDeleteNotifiedDisks(
 
     TDiskRegistryDatabase db(tx.DB);
     for (const auto& x: args.DiskIds) {
-        State->DeleteDiskToNotify(db, x.DiskId, x.SeqNo);
+        State->DeleteDiskToReallocate(db, x.DiskId, x.SeqNo);
     }
 }
 
@@ -332,7 +332,7 @@ void TDiskRegistryActor::CompleteDeleteNotifiedDisks(
 
     DisksNotificationInProgress = false;
     DisksBeingNotified.clear();
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     SecureErase(ctx);
 }
 

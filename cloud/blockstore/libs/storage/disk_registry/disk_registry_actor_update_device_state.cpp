@@ -79,7 +79,7 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
             args.AffectedDisk.c_str());
     }
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
     SecureErase(ctx);

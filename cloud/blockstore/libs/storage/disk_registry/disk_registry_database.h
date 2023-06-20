@@ -80,9 +80,9 @@ public:
     bool ReadBrokenDisks(TVector<TBrokenDiskInfo>& diskInfos);
     void DeleteBrokenDisk(const TString& diskId);
 
-    void AddDiskToNotify(const TString& diskId);
-    bool ReadDisksToNotify(TVector<TString>& diskIds);
-    void DeleteDiskToNotify(const TString& diskId);
+    void AddDiskToReallocate(const TString& diskId);
+    bool ReadDisksToReallocate(TVector<TString>& diskIds);
+    void DeleteDiskToReallocate(const TString& diskId);
 
     void AddDiskToCleanup(const TString& diskId);
     bool ReadDisksToCleanup(TVector<TString>& diskIds);

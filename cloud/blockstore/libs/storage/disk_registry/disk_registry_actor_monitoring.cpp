@@ -776,8 +776,8 @@ void TDiskRegistryActor::RenderDisksToNotify(IOutputStream& out) const
 {
     HTML(out) {
         TAG(TH3) {
-            out << "DisksToNotify";
-            DumpSize(out, State->GetDisksToNotify());
+            out << "Disks to reallocate";
+            DumpSize(out, State->GetDisksToReallocate());
         }
 
         TABLE_SORTABLE_CLASS("table table-bordered") {
@@ -788,7 +788,7 @@ void TDiskRegistryActor::RenderDisksToNotify(IOutputStream& out) const
                 }
             }
 
-            for (const auto& p: State->GetDisksToNotify()) {
+            for (const auto& p: State->GetDisksToReallocate()) {
                 const auto& diskId = p.first;
 
                 TABLER() {

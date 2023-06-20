@@ -82,7 +82,7 @@ void TDiskRegistryActor::CompleteMarkReplacementDevice(
         "MarkReplacementDevice %s complete",
         args.ToString().c_str());
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
 
     auto response =
         std::make_unique<TEvDiskRegistry::TEvMarkReplacementDeviceResponse>(

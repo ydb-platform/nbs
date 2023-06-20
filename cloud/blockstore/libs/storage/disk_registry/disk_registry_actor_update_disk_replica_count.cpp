@@ -104,7 +104,7 @@ void TDiskRegistryActor::CompleteUpdateDiskReplicaCount(
         "UpdateDiskReplicaCount complete. %s",
         CreateInputDescription(args).c_str());
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
 
     auto response =
         std::make_unique<TEvDiskRegistry::TEvUpdateDiskReplicaCountResponse>(

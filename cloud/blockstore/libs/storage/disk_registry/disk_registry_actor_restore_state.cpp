@@ -45,7 +45,7 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         disks,
         placementGroups,
         brokenDisks,
-        disksToNotify,
+        disksToReallocate,
         diskStateChanges,
         lastDiskStateSeqNo,
         writableState,
@@ -76,7 +76,7 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     move(*backup.MutableAgents(), agents);
     move(*backup.MutableDisks(), disks);
     move(*backup.MutablePlacementGroups(), placementGroups);
-    move(*backup.MutableDisksToNotify(), disksToNotify);
+    move(*backup.MutableDisksToNotify(), disksToReallocate);
     move(*backup.MutableDisksToCleanup(), disksToCleanup);
     move(*backup.MutableErrorNotifications(), errorNotifications);
     move(*backup.MutableOutdatedVolumeConfigs(), outdatedVolumeConfigs);
@@ -247,13 +247,13 @@ void RestoreDisksToNotify(
     for (auto&& disk: currentDisksToNotify) {
         operations.push(
             [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteDiskToNotify(disk);
+                db.DeleteDiskToReallocate(disk);
             });
     }
     for (auto&& disk: newDisksToNotify) {
         operations.push(
             [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddDiskToNotify(disk);
+                db.AddDiskToReallocate(disk);
             });
     }
 }
@@ -495,7 +495,7 @@ void TDiskRegistryActor::ExecuteRestoreDiskRegistryState(
         args.NewState.Disks,
         args.NewState.PlacementGroups,
         args.NewState.BrokenDisks,
-        args.NewState.DisksToNotify,
+        args.NewState.DisksToReallocate,
         args.NewState.DiskStateChanges,
         args.NewState.LastDiskStateSeqNo,
         args.NewState.DirtyDevices,

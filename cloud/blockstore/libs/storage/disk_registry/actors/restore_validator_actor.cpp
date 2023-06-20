@@ -78,7 +78,7 @@ bool NormalizeLoadState(
         disks,
         placementGroups,
         brokenDisks,
-        disksToNotify,
+        disksToReallocate,
         diskStateChanges,
         lastDiskStateSeqNo,
         diskAllocationAllowed,
@@ -149,7 +149,7 @@ bool NormalizeLoadState(
         });
 
     result &= sortAndTestUnique(
-        disksToNotify,
+        disksToReallocate,
         [] (const auto& disk) {
             return disk;
         });

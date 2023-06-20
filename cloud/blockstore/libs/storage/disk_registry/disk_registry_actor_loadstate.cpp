@@ -40,7 +40,7 @@ bool TDiskRegistryActor::LoadState(
         db.ReadDisks(args.Disks),
         db.ReadPlacementGroups(args.PlacementGroups),
         db.ReadBrokenDisks(args.BrokenDisks),
-        db.ReadDisksToNotify(args.DisksToNotify),
+        db.ReadDisksToReallocate(args.DisksToReallocate),
         db.ReadErrorNotifications(args.ErrorNotifications),
         db.ReadDiskStateChanges(args.DiskStateChanges),
         db.ReadLastDiskStateSeqNo(args.LastDiskStateSeqNo),
@@ -135,7 +135,7 @@ void TDiskRegistryActor::CompleteLoadState(
         std::move(args.Snapshot.Disks),
         std::move(args.Snapshot.PlacementGroups),
         std::move(args.Snapshot.BrokenDisks),
-        std::move(args.Snapshot.DisksToNotify),
+        std::move(args.Snapshot.DisksToReallocate),
         std::move(args.Snapshot.DiskStateChanges),
         args.Snapshot.LastDiskStateSeqNo,
         std::move(args.Snapshot.DirtyDevices),
@@ -151,7 +151,7 @@ void TDiskRegistryActor::CompleteLoadState(
 
     DestroyBrokenDisks(ctx);
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
 
     NotifyUsers(ctx);
 

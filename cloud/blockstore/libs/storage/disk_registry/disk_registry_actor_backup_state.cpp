@@ -94,7 +94,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         disks,
         placementGroups,
         brokenDisks,
-        disksToNotify,
+        disksToReallocate,
         diskStateChanges,
         lastDiskStateSeqNo,
         writableState,
@@ -140,7 +140,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     copy(agents, backup.MutableAgents());
 
     copy(placementGroups, backup.MutablePlacementGroups());
-    copy(disksToNotify, backup.MutableDisksToNotify());
+    copy(disksToReallocate, backup.MutableDisksToNotify());
     copy(disksToCleanup, backup.MutableDisksToCleanup());
     copy(errorNotifications, backup.MutableErrorNotifications());
     copy(outdatedVolumeConfigs, backup.MutableOutdatedVolumeConfigs());

@@ -287,7 +287,7 @@ void TDiskRegistryActor::CompleteFinishMigration(
         args.DiskId.c_str(),
         args.Migrations.size());
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
     SecureErase(ctx);
@@ -408,7 +408,7 @@ void TDiskRegistryActor::CompleteStartMigration(
     const TActorContext& ctx,
     TTxDiskRegistry::TStartMigration& args)
 {
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
 
     NCloud::Reply(
@@ -529,7 +529,7 @@ void TDiskRegistryActor::CompleteStartForceMigration(
     const TActorContext& ctx,
     TTxDiskRegistry::TStartForceMigration& args)
 {
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
 
     NCloud::Reply(

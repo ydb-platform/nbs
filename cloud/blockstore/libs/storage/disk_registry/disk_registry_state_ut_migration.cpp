@@ -546,9 +546,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(target2, device.GetDeviceUUID());
         });
 
-        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToNotify().size());
-        auto notification = state.GetDisksToNotify().find("disk-1");
-        UNIT_ASSERT(notification != state.GetDisksToNotify().end());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToReallocate().size());
+        auto notification = state.GetDisksToReallocate().find("disk-1");
+        UNIT_ASSERT(notification != state.GetDisksToReallocate().end());
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TDeviceConfig> devices;
             TVector<TVector<TDeviceConfig>> replicas;
@@ -602,7 +602,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 migrations[1].GetTargetDevice().GetDeviceUUID());
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
 
-            state.DeleteDiskToNotify(db, "disk-1", notification->second);
+            state.DeleteDiskToReallocate(db, "disk-1", notification->second);
         });
 
         auto checkDiskInfo = [&] (const TDiskInfo& diskInfo) {
@@ -685,9 +685,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         expectedDevices[agentNo * 2] = target1;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToNotify().size());
-        notification = state.GetDisksToNotify().find("disk-1");
-        UNIT_ASSERT(notification != state.GetDisksToNotify().end());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToReallocate().size());
+        notification = state.GetDisksToReallocate().find("disk-1");
+        UNIT_ASSERT(notification != state.GetDisksToReallocate().end());
 
         {
             TDiskInfo diskInfo;
@@ -746,7 +746,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 migrations[0].GetTargetDevice().GetDeviceUUID());
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
 
-            state.DeleteDiskToNotify(db, "disk-1", notification->second);
+            state.DeleteDiskToReallocate(db, "disk-1", notification->second);
         });
 
         {
@@ -786,9 +786,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         expectedDevices[agentNo * 2 + 1] = target2;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToNotify().size());
-        notification = state.GetDisksToNotify().find("disk-1");
-        UNIT_ASSERT(notification != state.GetDisksToNotify().end());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToReallocate().size());
+        notification = state.GetDisksToReallocate().find("disk-1");
+        UNIT_ASSERT(notification != state.GetDisksToReallocate().end());
 
         {
             TDiskInfo diskInfo;
@@ -841,7 +841,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
 
-            state.DeleteDiskToNotify(db, "disk-1", notification->second);
+            state.DeleteDiskToReallocate(db, "disk-1", notification->second);
         });
 
         {

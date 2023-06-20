@@ -86,7 +86,7 @@ struct TDiskRegistryStateSnapshot
     TVector<NProto::TDiskConfig> Disks;
     TVector<NProto::TPlacementGroupConfig> PlacementGroups;
     TVector<TBrokenDiskInfo> BrokenDisks;
-    TVector<TString> DisksToNotify;
+    TVector<TString> DisksToReallocate;
     TVector<TDiskStateUpdate> DiskStateChanges;
     ui64 LastDiskStateSeqNo = 0;
     bool WritableState = false;
@@ -105,7 +105,7 @@ struct TDiskRegistryStateSnapshot
         Disks.clear();
         PlacementGroups.clear();
         BrokenDisks.clear();
-        DisksToNotify.clear();
+        DisksToReallocate.clear();
         DiskStateChanges.clear();
         LastDiskStateSeqNo = 0;
         WritableState = false;

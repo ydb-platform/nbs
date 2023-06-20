@@ -181,7 +181,7 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
     SecureErase(ctx);

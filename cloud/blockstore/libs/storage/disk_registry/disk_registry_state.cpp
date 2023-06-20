@@ -224,7 +224,7 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<NProto::TDiskConfig> disks,
         TVector<NProto::TPlacementGroupConfig> placementGroups,
         TVector<TBrokenDiskInfo> brokenDisks,
-        TVector<TString> disksToNotify,
+        TVector<TString> disksToReallocate,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDirtyDevice> dirtyDevices,
@@ -257,7 +257,7 @@ TDiskRegistryState::TDiskRegistryState(
     , CurrentConfig(std::move(config))
     , NotificationSystem {
         std::move(errorNotifications),
-        std::move(disksToNotify),
+        std::move(disksToReallocate),
         std::move(diskStateUpdates),
         diskStateSeqNo,
         std::move(outdatedVolumeConfigs)
@@ -285,7 +285,7 @@ void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)
 {
-    // currently we don't want to notify mirrored disks since they are not
+    // currently we don't want to notify users about mirrored disks since they are not
     // supposed to break
 
     if (disk.MasterDiskId) {
@@ -367,7 +367,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 ReportDiskRegistryNoScheduledNotification(TStringBuilder()
                     << "No scheduled notification for disk " << diskId.Quote());
 
-                seqNo = NotificationSystem.AddDiskToNotify(disk.MasterDiskId
+                seqNo = NotificationSystem.AddReallocateRequest(disk.MasterDiskId
                     ? disk.MasterDiskId
                     : diskId);
             }
@@ -668,7 +668,7 @@ void TDiskRegistryState::RemoveAgentFromNode(
     NProto::TAgentConfig& agent,
     TInstant timestamp,
     TVector<TDiskId>* affectedDisks,
-    TVector<TDiskId>* notifiedDisks)
+    TVector<TDiskId>* disksToReallocate)
 {
     Y_VERIFY_DEBUG(agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE);
 
@@ -697,8 +697,8 @@ void TDiskRegistryState::RemoveAgentFromNode(
     DeviceList.UpdateDevices(agent, nodeId);
 
     for (const auto& id: diskIds) {
-        AddDiskToNotify(db, id);
-        notifiedDisks->push_back(id);
+        AddReallocateRequest(db, id);
+        disksToReallocate->push_back(id);
     }
 
     db.UpdateAgent(agent);
@@ -712,7 +712,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
     NProto::TAgentConfig config,
     TInstant timestamp,
     TVector<TDiskId>* affectedDisks,
-    TVector<TDiskId>* notifiedDisks)
+    TVector<TDiskId>* disksToReallocate)
 {
     try {
         const TKnownAgent& knownAgent = ValidateAgent(config);
@@ -725,7 +725,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                 *buddy,
                 timestamp,
                 affectedDisks,
-                notifiedDisks);
+                disksToReallocate);
         }
 
         const auto prevNodeId = AgentList.FindNodeId(config.GetAgentId());
@@ -791,8 +791,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             db.DeleteOldAgent(prevNodeId);
 
             for (const auto& id: diskIds) {
-                AddDiskToNotify(db, id);
-                notifiedDisks->push_back(id);
+                AddReallocateRequest(db, id);
+                disksToReallocate->push_back(id);
             }
         }
 
@@ -975,7 +975,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
         UpdateAgent(db, *agentPtr);
 
         UpdatePlacementGroup(db, diskId, disk, "ReplaceDevice");
-        UpdateAndNotifyDisk(db, diskId, disk);
+        UpdateAndReallocateDisk(db, diskId, disk);
 
         PendingCleanup.Insert(diskId, deviceId);
 
@@ -1167,7 +1167,7 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
     DeleteDeviceMigration(sourceDiskId, sourceDeviceId);
 
     UpdatePlacementGroup(db, sourceDiskId, disk, "StartDeviceMigration");
-    UpdateAndNotifyDisk(db, sourceDiskId, disk);
+    UpdateAndReallocateDisk(db, sourceDiskId, disk);
 
     DeviceList.MarkDeviceAllocated(sourceDiskId, targetDevice.GetDeviceUUID());
 
@@ -3513,16 +3513,16 @@ void TDiskRegistryState::DeleteBrokenDisks(TDiskRegistryDatabase& db)
     BrokenDisks.clear();
 }
 
-void TDiskRegistryState::UpdateAndNotifyDisk(
+void TDiskRegistryState::UpdateAndReallocateDisk(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     TDiskState& disk)
 {
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
-    AddDiskToNotify(db, diskId);
+    AddReallocateRequest(db, diskId);
 }
 
-ui64 TDiskRegistryState::AddDiskToNotify(
+ui64 TDiskRegistryState::AddReallocateRequest(
     TDiskRegistryDatabase& db,
     TString diskId)
 {
@@ -3533,12 +3533,12 @@ ui64 TDiskRegistryState::AddDiskToNotify(
         diskId = disk->MasterDiskId;
     }
 
-    return NotificationSystem.AddDiskToNotify(db, diskId);
+    return NotificationSystem.AddReallocateRequest(db, diskId);
 }
 
-const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToNotify() const
+const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToReallocate() const
 {
-    return NotificationSystem.GetDisksToNotify();
+    return NotificationSystem.GetDisksToReallocate();
 }
 
 auto TDiskRegistryState::FindDiskState(const TDiskId& diskId) -> TDiskState*
@@ -3595,12 +3595,12 @@ void TDiskRegistryState::RemoveFinishedMigrations(
     }
 }
 
-void TDiskRegistryState::DeleteDiskToNotify(
+void TDiskRegistryState::DeleteDiskToReallocate(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     ui64 seqNo)
 {
-    NotificationSystem.DeleteDiskToNotify(db, diskId, seqNo);
+    NotificationSystem.DeleteDiskToReallocate(db, diskId, seqNo);
     RemoveFinishedMigrations(db, diskId, seqNo);
 }
 
@@ -4001,7 +4001,7 @@ bool TDiskRegistryState::TryUpdateDiskState(
     disk.State = newState;
     disk.StateTs = timestamp;
 
-    UpdateAndNotifyDisk(db, diskId, disk);
+    UpdateAndReallocateDisk(db, diskId, disk);
 
     NotificationSystem.OnDiskStateChanged(db, diskId, newState);
 
@@ -4327,7 +4327,7 @@ void TDiskRegistryState::CancelDeviceMigration(
     disk.MigrationSource2Target.erase(it);
     --DeviceMigrationsInProgress;
 
-    const ui64 seqNo = AddDiskToNotify(db, diskId);
+    const ui64 seqNo = AddReallocateRequest(db, diskId);
 
     disk.FinishedMigrations.push_back({
         .DeviceId = targetId,
@@ -4372,7 +4372,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
         --DeviceMigrationsInProgress;
     }
 
-    const ui64 seqNo = AddDiskToNotify(db, diskId);
+    const ui64 seqNo = AddReallocateRequest(db, diskId);
     // this condition is needed because of NBS-3726
     if (devIt != disk.Devices.end()) {
         *devIt = targetId;
@@ -4558,7 +4558,7 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
         return info;
     });
 
-    transform(GetDisksToNotify(), backup.MutableDisksToNotify(), [] (auto& kv) {
+    transform(GetDisksToReallocate(), backup.MutableDisksToNotify(), [] (auto& kv) {
         return kv.first;
     });
 
@@ -4800,7 +4800,7 @@ NProto::TError TDiskRegistryState::UpdateDiskBlockSize(
     }
 
     disk.LogicalBlockSize = blockSize;
-    UpdateAndNotifyDisk(db, diskId, disk);
+    UpdateAndReallocateDisk(db, diskId, disk);
 
     return {};
 }
@@ -4959,7 +4959,7 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
     }
 
     masterDisk->ReplicaCount = newReplicaCount;
-    UpdateAndNotifyDisk(db, masterDiskId, *masterDisk);
+    UpdateAndReallocateDisk(db, masterDiskId, *masterDisk);
 
     return {};
 }
@@ -5008,7 +5008,7 @@ NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
     }
 
     masterDisk->ReplicaCount = newReplicaCount;
-    UpdateAndNotifyDisk(db, masterDiskId, *masterDisk);
+    UpdateAndReallocateDisk(db, masterDiskId, *masterDisk);
 
     return {};
 }
@@ -5111,7 +5111,7 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
         disk->DeviceReplacementIds.erase(it);
     }
 
-    UpdateAndNotifyDisk(db, diskId, *disk);
+    UpdateAndReallocateDisk(db, diskId, *disk);
     ReplicaTable.MarkReplacementDevice(diskId, deviceId, isReplacement);
 
     return {};
@@ -5422,7 +5422,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     diskState->State = CalculateDiskState(*diskState);
     db.UpdateDisk(BuildDiskConfig(diskId, *diskState));
 
-    AddDiskToNotify(db, diskId);
+    AddReallocateRequest(db, diskId);
 
     return {};
 }

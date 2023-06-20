@@ -234,7 +234,7 @@ public:
         TVector<NProto::TDiskConfig> disks,
         TVector<NProto::TPlacementGroupConfig> placementGroups,
         TVector<TBrokenDiskInfo> brokenDisks,
-        TVector<TString> disksToNotify,
+        TVector<TString> disksToReallocate,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDirtyDevice> dirtyDevices,
@@ -250,7 +250,7 @@ public:
         NProto::TAgentConfig config,
         TInstant timestamp,
         TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* notifiedDisks);
+        TVector<TDiskId>* disksToReallocate);
 
     NProto::TError UnregisterAgent(
         TDiskRegistryDatabase& db,
@@ -386,10 +386,10 @@ public:
 
     void DeleteBrokenDisks(TDiskRegistryDatabase& db);
 
-    const THashMap<TString, ui64>& GetDisksToNotify() const;
-    ui64 AddDiskToNotify(TDiskRegistryDatabase& db, TString diskId);
+    const THashMap<TString, ui64>& GetDisksToReallocate() const;
+    ui64 AddReallocateRequest(TDiskRegistryDatabase& db, TString diskId);
 
-    void DeleteDiskToNotify(
+    void DeleteDiskToReallocate(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);
@@ -643,7 +643,7 @@ private:
         NProto::TAgentConfig& agent,
         TInstant timestamp,
         TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* notifiedDisks);
+        TVector<TDiskId>* disksToReallocate);
 
     [[nodiscard]] NProto::TError GetDiskDevices(
         const TDiskId& diskId,
@@ -773,7 +773,7 @@ private:
 
     void DeleteAllDeviceMigrations(const TDiskId& diskId);
 
-    void UpdateAndNotifyDisk(
+    void UpdateAndReallocateDisk(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk);

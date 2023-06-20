@@ -555,14 +555,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            db.AddDiskToNotify("disk-1");
-            db.AddDiskToNotify("disk-2");
-            db.AddDiskToNotify("disk-3");
+            db.AddDiskToReallocate("disk-1");
+            db.AddDiskToReallocate("disk-2");
+            db.AddDiskToReallocate("disk-3");
         });
 
         executor.ReadTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> diskIds;
-            UNIT_ASSERT(db.ReadDisksToNotify(diskIds));
+            UNIT_ASSERT(db.ReadDisksToReallocate(diskIds));
             UNIT_ASSERT_VALUES_EQUAL(3, diskIds.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", diskIds[0]);
             UNIT_ASSERT_VALUES_EQUAL("disk-2", diskIds[1]);
@@ -570,13 +570,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            db.DeleteDiskToNotify("disk-1");
-            db.DeleteDiskToNotify("disk-3");
+            db.DeleteDiskToReallocate("disk-1");
+            db.DeleteDiskToReallocate("disk-3");
         });
 
         executor.ReadTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> diskIds;
-            UNIT_ASSERT(db.ReadDisksToNotify(diskIds));
+            UNIT_ASSERT(db.ReadDisksToReallocate(diskIds));
             UNIT_ASSERT_VALUES_EQUAL(1, diskIds.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-2", diskIds[0]);
         });

@@ -342,7 +342,7 @@ void TDiskRegistryDatabase::DeleteBrokenDisk(const TString& diskId)
         .Delete();
 }
 
-void TDiskRegistryDatabase::AddDiskToNotify(const TString& diskId)
+void TDiskRegistryDatabase::AddDiskToReallocate(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
     Table<TTable>()
@@ -350,7 +350,7 @@ void TDiskRegistryDatabase::AddDiskToNotify(const TString& diskId)
         .Update();
 }
 
-bool TDiskRegistryDatabase::ReadDisksToNotify(TVector<TString>& diskIds)
+bool TDiskRegistryDatabase::ReadDisksToReallocate(TVector<TString>& diskIds)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
 
@@ -373,7 +373,7 @@ bool TDiskRegistryDatabase::ReadDisksToNotify(TVector<TString>& diskIds)
     return true;
 }
 
-void TDiskRegistryDatabase::DeleteDiskToNotify(const TString& diskId)
+void TDiskRegistryDatabase::DeleteDiskToReallocate(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
     Table<TTable>()

@@ -91,7 +91,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
         FormatError(args.Error).c_str(),
         args.Timeout.Seconds());
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
 

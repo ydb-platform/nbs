@@ -884,12 +884,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
-        TVector<TString> disksToNotify;
+        TVector<TString> disksToReallocate;
         TVector<TString> diskIdsWithUpdatedStates;
         TVector<TString> diskIdsWithErrorNotifications;
         auto fetchDisksToNotify = [&] () {
-            for (const auto& x: state.GetDisksToNotify()) {
-                disksToNotify.push_back(x.first);
+            for (const auto& x: state.GetDisksToReallocate()) {
+                disksToReallocate.push_back(x.first);
             }
 
             for (const auto& x: state.GetDiskStateUpdates()) {
@@ -904,16 +904,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         auto deleteDisksToNotify = [&] () {
             executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
                 // copying needed to avoid use-after-free upon deletion
-                const auto disks = state.GetDisksToNotify();
+                const auto disks = state.GetDisksToReallocate();
                 for (const auto& x: disks) {
-                    state.DeleteDiskToNotify(db, x.first, x.second);
+                    state.DeleteDiskToReallocate(db, x.first, x.second);
                 }
             });
-            disksToNotify.clear();
+            disksToReallocate.clear();
         };
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
@@ -989,7 +989,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
@@ -1018,7 +1018,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
@@ -1186,12 +1186,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
         });
 
-        TVector<TString> disksToNotify;
+        TVector<TString> disksToReallocate;
         TVector<TString> diskIdsWithUpdatedStates;
         TVector<TString> diskIdsWithErrorNotifications;
         auto fetchDisksToNotify = [&] () {
-            for (const auto& x: state.GetDisksToNotify()) {
-                disksToNotify.push_back(x.first);
+            for (const auto& x: state.GetDisksToReallocate()) {
+                disksToReallocate.push_back(x.first);
             }
 
             for (const auto& x: state.GetDiskStateUpdates()) {
@@ -1206,16 +1206,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         auto deleteDisksToNotify = [&] () {
             executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
                 // copying needed to avoid use-after-free upon deletion
-                const auto disks = state.GetDisksToNotify();
+                const auto disks = state.GetDisksToReallocate();
                 for (const auto& x: disks) {
-                    state.DeleteDiskToNotify(db, x.first, x.second);
+                    state.DeleteDiskToReallocate(db, x.first, x.second);
                 }
             });
-            disksToNotify.clear();
+            disksToReallocate.clear();
         };
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
@@ -1288,7 +1288,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
@@ -1300,7 +1300,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
@@ -1470,11 +1470,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             NProto::EDiskState_Name(NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE),
             NProto::EDiskState_Name(replicaInfo.State));
 
-        TVector<TString> disksToNotify;
-        for (const auto& x: state.GetDisksToNotify()) {
-            disksToNotify.push_back(x.first);
+        TVector<TString> disksToReallocate;
+        for (const auto& x: state.GetDisksToReallocate()) {
+            disksToReallocate.push_back(x.first);
         }
-        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToNotify);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
 
         TVector<TString> diskIdsWithUpdatedStates;
         for (const auto& x: state.GetDiskStateUpdates()) {
@@ -1959,7 +1959,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
             ASSERT_VECTORS_EQUAL(TVector<TString>(), deviceReplacementIds);
 
-            state.DeleteDiskToNotify(db, "disk-1", 3);
+            state.DeleteDiskToReallocate(db, "disk-1", 3);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {

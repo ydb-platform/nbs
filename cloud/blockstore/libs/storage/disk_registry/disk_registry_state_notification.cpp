@@ -15,7 +15,7 @@ static const TString DISK_STATE_MIGRATION_MESSAGE =
 
 TNotificationSystem::TNotificationSystem(
         TVector<TDiskId> errorNotifications,
-        TVector<TDiskId> disksToNotify,
+        TVector<TDiskId> disksToReallocate,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes)
@@ -26,8 +26,8 @@ TNotificationSystem::TNotificationSystem(
         ErrorNotifications.insert(std::move(diskId));
     }
 
-    for (auto& diskId: disksToNotify) {
-        DisksToNotify.emplace(std::move(diskId), DisksToNotifySeqNo++);
+    for (auto& diskId: disksToReallocate) {
+        DisksToReallocate.emplace(std::move(diskId), DisksToReallocateSeqNo++);
     }
 
     for (auto& diskId: outdatedVolumes) {
@@ -47,8 +47,8 @@ void TNotificationSystem::DeleteDisk(
     SupportsNotifications.erase(diskId);
     ErrorNotifications.erase(diskId);
 
-    DisksToNotify.erase(diskId);
-    db.DeleteDiskToNotify(diskId);
+    DisksToReallocate.erase(diskId);
+    db.DeleteDiskToReallocate(diskId);
 
     OutdatedVolumeConfigs.erase(diskId);
 
@@ -85,45 +85,45 @@ auto TNotificationSystem::GetErrorNotifications() const
     return ErrorNotifications;
 }
 
-ui64 TNotificationSystem::AddDiskToNotify(
+ui64 TNotificationSystem::AddReallocateRequest(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId)
 {
-    db.AddDiskToNotify(diskId);
-    return AddDiskToNotify(diskId);
+    db.AddDiskToReallocate(diskId);
+    return AddReallocateRequest(diskId);
 }
 
-ui64 TNotificationSystem::AddDiskToNotify(const TDiskId& diskId)
+ui64 TNotificationSystem::AddReallocateRequest(const TDiskId& diskId)
 {
-    const auto seqNo = DisksToNotifySeqNo++;
+    const auto seqNo = DisksToReallocateSeqNo++;
 
-    DisksToNotify[diskId] = seqNo;
+    DisksToReallocate[diskId] = seqNo;
 
     return seqNo;
 }
 
 ui64 TNotificationSystem::GetDiskSeqNo(const TDiskId& diskId) const
 {
-    const ui64* seqNo = DisksToNotify.FindPtr(diskId);
+    const ui64* seqNo = DisksToReallocate.FindPtr(diskId);
 
     return seqNo ? *seqNo : 0;
 }
 
-auto TNotificationSystem::GetDisksToNotify() const
+auto TNotificationSystem::GetDisksToReallocate() const
     -> const THashMap<TDiskId, ui64>&
 {
-    return DisksToNotify;
+    return DisksToReallocate;
 }
 
-void TNotificationSystem::DeleteDiskToNotify(
+void TNotificationSystem::DeleteDiskToReallocate(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     ui64 seqNo)
 {
-    auto it = DisksToNotify.find(diskId);
-    if (it != DisksToNotify.end() && it->second == seqNo) {
-        DisksToNotify.erase(it);
-        db.DeleteDiskToNotify(diskId);
+    auto it = DisksToReallocate.find(diskId);
+    if (it != DisksToReallocate.end() && it->second == seqNo) {
+        DisksToReallocate.erase(it);
+        db.DeleteDiskToReallocate(diskId);
     }
 }
 

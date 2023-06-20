@@ -237,7 +237,7 @@ void TDiskRegistryActor::CompleteReplaceDevice(
             FormatError(args.Error).c_str());
     }
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
 

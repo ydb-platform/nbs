@@ -57,7 +57,7 @@ void TDiskRegistryActor::ExecuteAddNotifiedDisks(
 
     TDiskRegistryDatabase db(tx.DB);
     for (const auto& diskId: args.DiskIds) {
-        State->AddDiskToNotify(db, diskId);
+        State->AddReallocateRequest(db, diskId);
     }
 }
 
@@ -69,7 +69,7 @@ void TDiskRegistryActor::CompleteAddNotifiedDisks(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
 }
 

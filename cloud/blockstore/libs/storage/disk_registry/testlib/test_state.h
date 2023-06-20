@@ -219,7 +219,7 @@ struct TDiskRegistryStateBuilder
     TVector<NProto::TDiskConfig> Disks;
     TVector<NProto::TPlacementGroupConfig> PlacementGroups;
     TVector<TBrokenDiskInfo> BrokenDisks;
-    TVector<TString> DisksToNotify;
+    TVector<TString> DisksToReallocate;
     TVector<TString> ErrorNotifications;
     TVector<TDiskStateUpdate> DiskStateUpdates;
     ui64 DiskStateSeqNo = 0;
@@ -233,7 +233,7 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& With(TStorageConfigPtr config);
 
-    TDiskRegistryStateBuilder& WithDisksToNotify(TVector<TString> ids);
+    TDiskRegistryStateBuilder& WithDisksToReallocate(TVector<TString> ids);
 
     TDiskRegistryStateBuilder& WithStorageConfig(
         NProto::TStorageServiceConfig proto);

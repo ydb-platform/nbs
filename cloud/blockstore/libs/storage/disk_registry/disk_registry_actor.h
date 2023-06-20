@@ -173,7 +173,7 @@ private:
 
     void DestroyBrokenDisks(const NActors::TActorContext& ctx);
 
-    void NotifyDisks(const NActors::TActorContext& ctx);
+    void ReallocateDisks(const NActors::TActorContext& ctx);
     void NotifyUsers(const NActors::TActorContext& ctx);
 
     void UpdateVolumeConfigs(

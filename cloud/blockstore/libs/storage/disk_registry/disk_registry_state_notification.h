@@ -17,8 +17,8 @@ private:
     THashSet<TDiskId> ErrorNotifications;
 
     // notify volumes (reallocate)
-    THashMap<TDiskId, ui64> DisksToNotify;
-    ui64 DisksToNotifySeqNo = 1;
+    THashMap<TDiskId, ui64> DisksToReallocate;
+    ui64 DisksToReallocateSeqNo = 1;
 
     // notify Compute (write events to Logbroker)
     TVector<TDiskStateUpdate> DiskStateUpdates;
@@ -31,7 +31,7 @@ private:
 public:
     TNotificationSystem(
         TVector<TDiskId> errorNotifications,
-        TVector<TDiskId> disksToNotify,
+        TVector<TDiskId> disksToReallocate,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes);
@@ -49,14 +49,14 @@ public:
 
     auto GetErrorNotifications() const -> const THashSet<TDiskId>&;
 
-    ui64 AddDiskToNotify(TDiskRegistryDatabase& db, const TDiskId& diskId);
-    ui64 AddDiskToNotify(const TDiskId& diskId);
+    ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TDiskId& diskId);
+    ui64 AddReallocateRequest(const TDiskId& diskId);
 
     ui64 GetDiskSeqNo(const TDiskId& diskId) const;
 
-    auto GetDisksToNotify() const -> const THashMap<TDiskId, ui64>&;
+    auto GetDisksToReallocate() const -> const THashMap<TDiskId, ui64>&;
 
-    void DeleteDiskToNotify(
+    void DeleteDiskToReallocate(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         ui64 seqNo);

@@ -295,17 +295,17 @@ NProto::TError RegisterAgent(
     TInstant timestamp)
 {
     TVector<TString> affectedDisks;
-    TVector<TString> disksToNotify;
+    TVector<TString> disksToReallocate;
 
     auto error = state.RegisterAgent(
         db,
         config,
         timestamp,
         &affectedDisks,
-        &disksToNotify
+        &disksToReallocate
     );
     UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-    Y_UNUSED(disksToNotify);
+    Y_UNUSED(disksToReallocate);
 
     return error;
 }
@@ -387,7 +387,7 @@ TDiskRegistryState TDiskRegistryStateBuilder::Build()
         std::move(Disks),
         std::move(PlacementGroups),
         std::move(BrokenDisks),
-        std::move(DisksToNotify),
+        std::move(DisksToReallocate),
         std::move(DiskStateUpdates),
         std::move(DiskStateSeqNo),
         std::move(DirtyDevices),
@@ -406,10 +406,10 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::With(
     return *this;
 }
 
-TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithDisksToNotify(
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithDisksToReallocate(
     TVector<TString> ids)
 {
-    DisksToNotify = std::move(ids);
+    DisksToReallocate = std::move(ids);
 
     return *this;
 }

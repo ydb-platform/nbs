@@ -92,7 +92,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
             return out.Str();
         }().c_str());
 
-    NotifyDisks(ctx);
+    ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
 
