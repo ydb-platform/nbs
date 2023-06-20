@@ -341,29 +341,43 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
 
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
     VolumeTabletId = volumeDescription.GetVolumeTabletId();
-    const auto& requestKeyHash = Request.GetEncryptionKeyHash();
+    const auto& requestEncryption = Request.GetEncryptionSpec();
+    const auto& volumeEncryption = volumeConfig.GetEncryptionDesc();
 
-    if (NeedToSetEncryptionKeyHash(volumeConfig, requestKeyHash)) {
-        const auto& clientId = Request.GetHeaders().GetClientId();
-        auto request = std::make_unique<TEvService::TEvAlterVolumeRequest>();
-        request->Record.MutableHeaders()->SetClientId(clientId);
-        request->Record.SetDiskId(volumeConfig.GetDiskId());
-        request->Record.SetProjectId(volumeConfig.GetProjectId());
-        request->Record.SetFolderId(volumeConfig.GetFolderId());
-        request->Record.SetCloudId(volumeConfig.GetCloudId());
-        request->Record.SetConfigVersion(volumeConfig.GetVersion());
-        request->Record.SetEncryptionKeyHash(requestKeyHash);
+    // if request has encryption mode then check volume encryption
+    if (requestEncryption.GetMode() != NProto::NO_ENCRYPTION) {
+        auto requestMode = static_cast<ui32>(requestEncryption.GetMode());
+        if (requestMode != volumeEncryption.GetMode()) {
+            HandleDescribeVolumeError(ctx, MakeError(E_ARGUMENT, TStringBuilder()
+                << "Different encryption modes"
+                << " in request (" << requestMode << ")"
+                << " and in volume (" << volumeEncryption.GetMode() << ")"));
+            return;
+        }
 
-        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
-        return;
-    }
+        const auto& requestKeyHash = requestEncryption.GetKeyHash();
+        if (NeedToSetEncryptionKeyHash(volumeConfig, requestKeyHash)) {
+            const auto& clientId = Request.GetHeaders().GetClientId();
+            auto request = std::make_unique<TEvService::TEvAlterVolumeRequest>();
+            request->Record.MutableHeaders()->SetClientId(clientId);
+            request->Record.SetDiskId(volumeConfig.GetDiskId());
+            request->Record.SetProjectId(volumeConfig.GetProjectId());
+            request->Record.SetFolderId(volumeConfig.GetFolderId());
+            request->Record.SetCloudId(volumeConfig.GetCloudId());
+            request->Record.SetConfigVersion(volumeConfig.GetVersion());
+            request->Record.SetEncryptionKeyHash(requestKeyHash);
 
-    if (volumeConfig.GetEncryptionDesc().GetKeyHash() != requestKeyHash) {
-        auto error = MakeError(
-            E_ARGUMENT,
-            "Encryption key hash verification failed");
-        HandleDescribeVolumeError(ctx, error);
-        return;
+            NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+            return;
+        }
+
+        if (volumeEncryption.GetKeyHash() != requestKeyHash) {
+            HandleDescribeVolumeError(ctx, MakeError(E_ARGUMENT, TStringBuilder()
+                << "Different encryption key hashes"
+                << " in request (" << requestKeyHash << ")"
+                << " and in volume (" << volumeEncryption.GetKeyHash() << ")"));
+            return;
+        }
     }
 
     AddClient(ctx, Params.InitialAddClientTimeout);
@@ -780,7 +794,7 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     const auto& accessMode = msg->Record.GetVolumeAccessMode();
     const auto& mountMode = msg->Record.GetVolumeMountMode();
     const auto& mountSeqNumber = msg->Record.GetMountSeqNumber();
-    const auto& encryptionKeyHash = msg->Record.GetEncryptionKeyHash();
+    const auto& encryptionKeyHash = msg->Record.GetEncryptionSpec().GetKeyHash();
 
     auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
     if (!clientInfo) {

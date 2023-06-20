@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "cloud/blockstore/public/api/protos/encryption.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 import "cloud/storage/core/protos/error.proto";
@@ -37,6 +38,8 @@ enum EMountFlag
 
 message TMountVolumeRequest
 {
+    reserved 13;
+
     // Optional request headers.
     THeaders Headers = 1;
 
@@ -67,11 +70,11 @@ message TMountVolumeRequest
     // Volume generation.
     uint64 MountSeqNumber = 12;
 
-    // Encryption key hash.
-    bytes EncryptionKeyHash = 13;
-
     // Mount flags.
     uint32 MountFlags = 14;
+
+    // Encryption spec.
+    TEncryptionSpec EncryptionSpec = 15;
 }
 
 message TMountVolumeResponse

@@ -130,7 +130,7 @@ public:
         const NProto::EVolumeMountMode mountMode = NProto::VOLUME_MOUNT_LOCAL,
         const ui32 mountFlags = 0,
         const ui64 mountSeqNumber = 0,
-        const TString& encryptionKeyHash = {});
+        const NProto::TEncryptionDesc& encryptionDesc = {});
 
     std::unique_ptr<TEvService::TEvUnmountVolumeRequest> CreateUnmountVolumeRequest(
         const TString& diskId = DefaultDiskId,

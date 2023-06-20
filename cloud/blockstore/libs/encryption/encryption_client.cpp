@@ -133,7 +133,7 @@ class TEncryptionClient final
 {
 private:
     const IEncryptorPtr Encryptor;
-    const TString EncryptionKeyHash;
+    const NProto::TEncryptionDesc EncryptionDesc;
 
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     ui32 BlockSize = 0;
@@ -146,10 +146,10 @@ public:
             IBlockStorePtr client,
             ILoggingServicePtr logging,
             IEncryptorPtr encryptor,
-            TString encryptionKeyHash)
+            NProto::TEncryptionDesc encryptionDesc)
         : TClientWrapper(std::move(client))
         , Encryptor(std::move(encryptor))
-        , EncryptionKeyHash(std::move(encryptionKeyHash))
+        , EncryptionDesc(std::move(encryptionDesc))
         , Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     {}
 
@@ -209,13 +209,15 @@ TFuture<NProto::TMountVolumeResponse> TEncryptionClient::MountVolume(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TMountVolumeRequest> request)
 {
-    if (request->GetEncryptionKeyHash()) {
+    if (request->GetEncryptionSpec().GetKeyHash()) {
         return FutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             "More than one encryption layer on data path");
     }
 
-    request->SetEncryptionKeyHash(EncryptionKeyHash);
+    auto& encryption = *request->MutableEncryptionSpec();
+    encryption.SetMode(EncryptionDesc.GetMode());
+    encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 
     auto future = Client->MountVolume(
         std::move(callContext),
@@ -660,7 +662,7 @@ class TSnapshotEncryptionClient final
     : public TClientWrapper
 {
 private:
-    const TString EncryptionKeyHash;
+    const NProto::TEncryptionDesc EncryptionDesc;
 
     TLog Log;
 
@@ -668,9 +670,9 @@ public:
     TSnapshotEncryptionClient(
             IBlockStorePtr client,
             ILoggingServicePtr logging,
-            TString encryptionKeyHash)
+            NProto::TEncryptionDesc encryptionDesc)
         : TClientWrapper(std::move(client))
-        , EncryptionKeyHash(std::move(encryptionKeyHash))
+        , EncryptionDesc(std::move(encryptionDesc))
         , Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     {}
 
@@ -706,13 +708,15 @@ TFuture<NProto::TMountVolumeResponse> TSnapshotEncryptionClient::MountVolume(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TMountVolumeRequest> request)
 {
-    if (request->GetEncryptionKeyHash()) {
+    if (request->GetEncryptionSpec().GetKeyHash()) {
         return FutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             "More than one encryption layer on data path");
     }
 
-    request->SetEncryptionKeyHash(EncryptionKeyHash);
+    auto& encryption = *request->MutableEncryptionSpec();
+    encryption.SetMode(EncryptionDesc.GetMode());
+    encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 
     return Client->MountVolume(
         std::move(callContext),
@@ -813,24 +817,24 @@ IBlockStorePtr CreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
     IEncryptorPtr encryptor,
-    TString encryptionKeyHash)
+    NProto::TEncryptionDesc encryptionDesc)
 {
     return std::make_shared<TEncryptionClient>(
         std::move(client),
         std::move(logging),
         std::move(encryptor),
-        std::move(encryptionKeyHash));
+        std::move(encryptionDesc));
 }
 
 IBlockStorePtr CreateSnapshotEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
-    TString encryptionKeyHash)
+    NProto::TEncryptionDesc encryptionDesc)
 {
     return std::make_shared<TSnapshotEncryptionClient>(
         std::move(client),
         std::move(logging),
-        std::move(encryptionKeyHash));
+        std::move(encryptionDesc));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -849,19 +853,23 @@ TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
         return client;
     }
 
+    NProto::TEncryptionDesc encryptionDesc;
+    encryptionDesc.SetMode(encryptionSpec.GetMode());
+
     if (encryptionSpec.HasKeyHash()) {
+        encryptionDesc.SetKeyHash(encryptionSpec.GetKeyHash());
         return CreateSnapshotEncryptionClient(
             std::move(client),
             std::move(logging),
-            encryptionSpec.GetKeyHash());
+            encryptionDesc);
     }
 
-    TString keyHash;
     IEncryptorPtr encryptor;
 
     switch (encryptionSpec.GetMode())
     {
         case NProto::ENCRYPTION_AES_XTS: {
+            TString keyHash;
             auto encryptorOrError = CreateAesXtsEncryptor(
                 encryptionSpec.GetKeyPath(),
                 keyHash);
@@ -870,6 +878,7 @@ TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
                 return encryptorOrError.GetError();
             }
 
+            encryptionDesc.SetKeyHash(keyHash);
             encryptor = encryptorOrError.ExtractResult();
             break;
         }
@@ -884,7 +893,7 @@ TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
         std::move(client),
         std::move(logging),
         std::move(encryptor),
-        std::move(keyHash));
+        std::move(encryptionDesc));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

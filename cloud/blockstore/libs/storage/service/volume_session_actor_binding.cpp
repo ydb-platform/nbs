@@ -81,8 +81,10 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
     request->Record.SetVolumeMountMode(localMounter->VolumeMountMode);
     request->Record.MutableHeaders()->SetClientId(localMounter->ClientId);
     if (VolumeInfo->VolumeInfo) {
-        request->Record.SetEncryptionKeyHash(
-            VolumeInfo->VolumeInfo->GetEncryptionDesc().GetKeyHash());
+        const auto& desc = VolumeInfo->VolumeInfo->GetEncryptionDesc();
+        auto& spec = *request->Record.MutableEncryptionSpec();
+        spec.SetMode(desc.GetMode());
+        spec.SetKeyHash(desc.GetKeyHash());
     }
     request->BindingType = bindingType;
     request->PreemptionSource = msg->Source;

@@ -30,6 +30,16 @@ bool BlockFilledByValue(const TBlockDataRef& block, char value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TEncryptionDesc GetDefaultEncryption()
+{
+    NProto::TEncryptionDesc encryption;
+    encryption.SetMode(NProto::ENCRYPTION_AES_XTS);
+    encryption.SetKeyHash("testKeyHash");
+    return encryption;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestEncryptor
     : public IEncryptor
 {
@@ -105,13 +115,15 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
     Y_UNIT_TEST(ShouldAddEncryptionKeyHashToMount)
     {
         auto logging = CreateLoggingService("console");
-        TString encryptionKeyHash = "testKeyHash";
 
         auto testClient = std::make_shared<TTestService>();
+        auto encryptionDesc = GetDefaultEncryption();
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetEncryptionKeyHash() == encryptionKeyHash);
+                const auto& spec = request->GetEncryptionSpec();
+                UNIT_ASSERT(encryptionDesc.GetMode() == spec.GetMode());
+                UNIT_ASSERT(encryptionDesc.GetKeyHash() == spec.GetKeyHash());
                 return MakeFuture<NProto::TMountVolumeResponse>();
             };
 
@@ -120,7 +132,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 testClient,
                 logging,
                 nullptr,
-                encryptionKeyHash);
+                encryptionDesc);
 
             auto mountResponse = MountVolume(*encryptionClient);
             UNIT_ASSERT(!HasError(mountResponse));
@@ -130,7 +142,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto encryptionClient = CreateSnapshotEncryptionClient(
                 testClient,
                 logging,
-                encryptionKeyHash);
+                encryptionDesc);
 
             auto mountResponse = MountVolume(*encryptionClient);
             UNIT_ASSERT(!HasError(mountResponse));
@@ -140,13 +152,15 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
     Y_UNIT_TEST(ShouldFailMountIfOtherEncryptionClientExists)
     {
         auto logging = CreateLoggingService("console");
-        TString encryptionKeyHash = "testKeyHash";
+        auto encryptionDesc = GetDefaultEncryption();
 
         auto testClient = std::make_shared<TTestService>();
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetEncryptionKeyHash() == encryptionKeyHash);
+                const auto& spec = request->GetEncryptionSpec();
+                UNIT_ASSERT(encryptionDesc.GetMode() == spec.GetMode());
+                UNIT_ASSERT(encryptionDesc.GetKeyHash() == spec.GetKeyHash());
                 return MakeFuture<NProto::TMountVolumeResponse>();
             };
 
@@ -155,7 +169,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 testClient,
                 logging,
                 nullptr,
-                encryptionKeyHash);
+                encryptionDesc);
 
             auto mountResponse1 = MountVolume(*encryptionClient1);
             UNIT_ASSERT(!HasError(mountResponse1));
@@ -164,7 +178,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 encryptionClient1,
                 logging,
                 nullptr,
-                encryptionKeyHash);
+                encryptionDesc);
 
             auto mountResponse2 = MountVolume(*encryptionClient2);
             UNIT_ASSERT(HasError(mountResponse2));
@@ -174,7 +188,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto encryptionClient1 = CreateSnapshotEncryptionClient(
                 testClient,
                 logging,
-                encryptionKeyHash);
+                encryptionDesc);
 
             auto mountResponse1 = MountVolume(*encryptionClient1);
             UNIT_ASSERT(!HasError(mountResponse1));
@@ -182,7 +196,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto encryptionClient2 = CreateSnapshotEncryptionClient(
                 encryptionClient1,
                 logging,
-                encryptionKeyHash);
+                encryptionDesc);
 
             auto mountResponse2 = MountVolume(*encryptionClient2);
             UNIT_ASSERT(HasError(mountResponse2));
@@ -207,7 +221,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -280,7 +294,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -363,7 +377,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         auto zRequest = std::make_shared<NProto::TZeroBlocksRequest>();
         zRequest->MutableHeaders()->SetClientId("testClientId");
@@ -475,7 +489,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -538,7 +552,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -602,7 +616,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -707,7 +721,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -818,7 +832,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto encryptionClient = CreateSnapshotEncryptionClient(
             testClient,
             logging,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         auto ctx = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TReadBlocksRequest>();
@@ -869,7 +883,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto encryptionClient = CreateSnapshotEncryptionClient(
             testClient,
             logging,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         auto blocksCount = 4 * 8;
 
@@ -912,7 +926,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto encryptionClient = CreateSnapshotEncryptionClient(
             std::make_shared<TTestService>(),
             logging,
-            "testKeyHash");
+            GetDefaultEncryption());
 
         auto future = encryptionClient->ZeroBlocks(
             MakeIntrusive<TCallContext>(),
@@ -926,7 +940,6 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
     Y_UNIT_TEST(ShouldHandleRequestsAfterDestroyClient)
     {
         auto logging = CreateLoggingService("console");
-        TString encryptionKeyHash = "testKeyHash";
         ui32 blocksCount = 42;
 
         auto testClient = std::make_shared<TTestService>();
@@ -935,7 +948,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             std::make_shared<TTestEncryptor>(),
-            encryptionKeyHash);
+            GetDefaultEncryption());
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
@@ -1072,7 +1085,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         encryptionClient = CreateSnapshotEncryptionClient(
             testClient,
             logging,
-            encryptionKeyHash);
+            GetDefaultEncryption());
 
         trigger = NewPromise<void>();
 

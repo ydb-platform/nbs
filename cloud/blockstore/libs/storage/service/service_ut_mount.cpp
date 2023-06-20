@@ -2551,7 +2551,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto keyHashOrError = ComputeEncryptionKeyHash(encryptionSpec);
         UNIT_ASSERT_C(!HasError(keyHashOrError), keyHashOrError.GetError());
-        const auto& encryptionKeyHash = keyHashOrError.GetResult();
+
+        NProto::TEncryptionDesc encryptionDesc;
+        encryptionDesc.SetMode(encryptionSpec.GetMode());
+        encryptionDesc.SetKeyHash(keyHashOrError.GetResult());
 
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -2580,6 +2583,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         }
 
         {
+            auto encryption = encryptionDesc;
+            encryption.SetKeyHash(TString("wrong") + encryption.GetKeyHash());
             service.SendMountVolumeRequest(
                 DefaultDiskId,
                 "",
@@ -2589,7 +2594,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::VOLUME_MOUNT_LOCAL,
                 false,
                 0,
-                "WrongTestKeyHash");
+                encryption);
             auto response = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
@@ -2597,7 +2602,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 response->GetErrorReason()
             );
             UNIT_ASSERT_C(
-                response->GetErrorReason().Contains("Encryption key hash"),
+                response->GetErrorReason().Contains("encryption key hashes"),
                 response->GetErrorReason()
             );
         }
@@ -2612,7 +2617,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::VOLUME_MOUNT_LOCAL,
                 false,
                 0,
-                encryptionKeyHash);
+                encryptionDesc);
             auto response = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -4367,7 +4372,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.AssignVolume();
 
-        auto encryptionKeyHash = "encryptionkeyhash";
+        NProto::TEncryptionDesc encryptionDesc;
+        encryptionDesc.SetMode(NProto::ENCRYPTION_AES_XTS);
+        encryptionDesc.SetKeyHash("encryptionkeyhash");
 
         auto validateVolume = [&](const NProto::TMountVolumeResponse& response) {
             UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -4396,25 +4403,24 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::VOLUME_MOUNT_LOCAL,
                 0,
                 0,
-                encryptionKeyHash);
+                encryptionDesc);
             validateVolume(response->Record);
             auto sessionId = response->Record.GetSessionId();
             service.UnmountVolume(DefaultDiskId, sessionId);
         }
 
         for (size_t i = 0; i < 2; ++i) {
-            // failed to mount without keyhash
+            // mount without encryption
             {
-                service.SendMountVolumeRequest();
-                auto response = service.RecvMountVolumeResponse();
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    E_ARGUMENT,
-                    response->GetStatus(),
-                    response->GetErrorReason());
+                auto response = service.MountVolume();
+                auto sessionId = response->Record.GetSessionId();
+                service.UnmountVolume(DefaultDiskId, sessionId);
             }
 
-            // failed to mount with wrong keyhash
+            // failed to mount without keyhash
             {
+                auto encryption = encryptionDesc;
+                encryption.ClearKeyHash();
                 service.SendMountVolumeRequest(
                     DefaultDiskId,
                     "",
@@ -4424,7 +4430,28 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     NProto::VOLUME_MOUNT_LOCAL,
                     0,
                     0,
-                    TString("other") + encryptionKeyHash);
+                    encryption);
+                auto response = service.RecvMountVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    response->GetStatus(),
+                    response->GetErrorReason());
+            }
+
+            // failed to mount with wrong keyhash
+            {
+                auto encryption = encryptionDesc;
+                encryption.SetKeyHash(TString("wrong") + encryption.GetKeyHash());
+                service.SendMountVolumeRequest(
+                    DefaultDiskId,
+                    "",
+                    "",
+                    NProto::IPC_GRPC,
+                    NProto::VOLUME_ACCESS_READ_WRITE,
+                    NProto::VOLUME_MOUNT_LOCAL,
+                    0,
+                    0,
+                    encryption);
                 auto response = service.RecvMountVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_ARGUMENT,
@@ -4443,7 +4470,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     NProto::VOLUME_MOUNT_LOCAL,
                     0,
                     0,
-                    encryptionKeyHash);
+                    encryptionDesc);
                 auto sessionId = response->Record.GetSessionId();
                 service.UnmountVolume(DefaultDiskId, sessionId);
             }
@@ -4477,7 +4504,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.AssignVolume();
 
-        auto encryptionKeyHash = "encryptionkeyhash";
+        NProto::TEncryptionDesc encryptionDesc;
+        encryptionDesc.SetMode(NProto::ENCRYPTION_AES_XTS);
+        encryptionDesc.SetKeyHash("encryptionkeyhash");
 
         auto validateVolume = [&](const NProto::TMountVolumeResponse& response) {
             UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -4500,7 +4529,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::VOLUME_MOUNT_LOCAL,
                 0,
                 0,
-                encryptionKeyHash);
+                encryptionDesc);
             validateVolume(response->Record);
             sessionId = response->Record.GetSessionId();
         }
