@@ -64,6 +64,41 @@ void Reply(
         request.Cookie));
 }
 
+std::pair<ui32, TString> HandleException(
+    const TActorSystem& actorSystem,
+    const char* source,
+    const char* methodName,
+    const TString& deviceUUID,
+    const TString& sessionId)
+{
+    try {
+        throw;
+    } catch (const TServiceError& e) {
+        LOG_ERROR(actorSystem, TBlockStoreComponents::DISK_AGENT,
+            "%s [%s / %s] Service %s error: %s (%s)",
+            methodName,
+            deviceUUID.c_str(),
+            sessionId.c_str(),
+            source,
+            FormatResultCode(e.GetCode()).c_str(),
+            e.what()
+        );
+
+        return { e.GetCode(), e.what() };
+    } catch (...) {
+        LOG_ERROR(actorSystem, TBlockStoreComponents::DISK_AGENT,
+            "%s [%s / %s] Unexpected %s error: %s",
+            methodName,
+            deviceUUID.c_str(),
+            sessionId.c_str(),
+            source,
+            CurrentExceptionMessage().c_str()
+        );
+
+        return { E_FAIL, CurrentExceptionMessage() };
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,38 +196,25 @@ void TDiskAgentActor::PerformIO(
                 try {
                     replySuccess(future.ExtractValue());
                 } catch (...) {
-                    LOG_ERROR(*actorSystem, TBlockStoreComponents::DISK_AGENT,
-                        "%s [%s / %s] Unexpected io error: %s",
+                    auto [code, message] = HandleException(
+                        *actorSystem,
+                        "io",
                         TMethod::Name,
-                        deviceUUID.c_str(),
-                        sessionId.c_str(),
-                        CurrentExceptionMessage().c_str()
-                    );
+                        deviceUUID,
+                        sessionId);
 
-                    replyError(E_FAIL, CurrentExceptionMessage());
+                    replyError(code, message);
                 }
             });
-    } catch (const TServiceError& e) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_AGENT,
-            "%s [%s / %s] Service error: %u (%s)",
-            TMethod::Name,
-            deviceUUID.c_str(),
-            sessionId.c_str(),
-            e.GetCode(),
-            e.what()
-        );
-
-        replyError(e.GetCode(), e.what());
     } catch (...) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_AGENT,
-            "%s [%s / %s] Unexpected state error: %s",
+        auto [code, message] = HandleException(
+            *actorSystem,
+            "state",
             TMethod::Name,
-            deviceUUID.c_str(),
-            sessionId.c_str(),
-            CurrentExceptionMessage().c_str()
-        );
+            deviceUUID,
+            sessionId);
 
-        replyError(E_FAIL, CurrentExceptionMessage());
+        replyError(code, message);
     }
 }
 

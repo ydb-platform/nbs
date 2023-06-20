@@ -2773,6 +2773,44 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
         }
     }
+
+    Y_UNIT_TEST(ShouldReceiveIOErrorFromBrokenDevice)
+    {
+        NProto::TDiskAgentConfig agentConfig;
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAgentId("agent-id");
+        agentConfig.SetEnabled(true);
+
+        const TVector<TString> uuids {"FileDevice-1"};
+
+        *agentConfig.AddFileDevices() = PrepareFileDevice("broken", uuids[0]);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(agentConfig)
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TString sessionId = "session-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE
+        );
+
+        const auto response = ReadDeviceBlocks(
+            runtime, diskAgent, uuids[0], 0, 1024, sessionId);
+
+        const auto& error = response->GetError();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), error.GetMessage());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
