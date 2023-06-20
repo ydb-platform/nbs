@@ -526,9 +526,12 @@ template <>
 bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     const TActorContext& ctx,
     const TCreateCheckpointMethod::TRequest::TPtr& ev,
+    const ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
+    Y_UNUSED(volumeRequestId);
+
     auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
@@ -553,9 +556,12 @@ template <>
 bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
     const TActorContext& ctx,
     const TDeleteCheckpointMethod::TRequest::TPtr& ev,
+    const ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
+     Y_UNUSED(volumeRequestId);
+
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
@@ -580,9 +586,12 @@ template <>
 bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
     const TActorContext& ctx,
     const TDeleteCheckpointDataMethod::TRequest::TPtr& ev,
+    const ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
+    Y_UNUSED(volumeRequestId);
+
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointDataMethod>(
         ev->Sender,
         ev->Cookie,

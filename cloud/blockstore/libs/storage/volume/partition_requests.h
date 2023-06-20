@@ -5,19 +5,20 @@
 #include "volume_events_private.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
-
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
-#include <library/cpp/actors/core/actorid.h>
 #include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actorid.h>
 #include <library/cpp/actors/core/event.h>
 #include <library/cpp/lwtrace/all.h>
 
@@ -257,16 +258,17 @@ bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
     ));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
+        auto& request = (*requests)[i];
         const auto blocksCount = InitIORequest<TEvService::TZeroBlocksMethod>(
             partitions,
             proto.GetBlocksCount(),
             blocksPerStripe,
             i,
             proto,
-            (*requests)[i]
+            request
         );
-        (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
-        (*requests)[i].Event->Record.SetSessionId(proto.GetSessionId());
+        request.Event->Record.SetBlocksCount(blocksCount);
+        request.Event->Record.SetSessionId(proto.GetSessionId());
     }
 
     return true;
@@ -323,7 +325,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
         return false;
     }
 
-    auto blockDatas = guard.Get();
+    const auto& blockDatas = guard.Get();
 
     *blockRange = TBlockRange64::WithLength(
         proto.GetStartIndex(),
@@ -373,7 +375,7 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
         return false;
     }
 
-    auto blockDatas = guard.Get();
+    const auto& blockDatas = guard.Get();
 
     *blockRange = TBlockRange64::WithLength(
         proto.GetStartIndex(),
@@ -920,6 +922,7 @@ TPartitionRequestActor<TMethod>::TPartitionRequestActor(
     , TraceInfo(std::move(traceInfo))
     , ChildCallContexts(Reserve(PartitionRequests.size()))
 {
+    Y_VERIFY_DEBUG(PartitionsCount >= PartitionRequests.size());
     TBase::ActivityType = TBlockStoreActivities::VOLUME;
 }
 
@@ -928,7 +931,8 @@ void TPartitionRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ct
 {
     Prepare(ctx);
 
-    ui32 cookie = 0;
+
+    ui32 requestNo = 0;
     for (auto& partitionRequest: PartitionRequests) {
         const auto selfId = TBase::SelfId();
 
@@ -939,7 +943,7 @@ void TPartitionRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ct
             selfId,
             partitionRequest.Event.release(),
             NActors::IEventHandle::FlagForwardOnNondelivery,
-            cookie++,
+            requestNo++,
             &selfId);
 
         ctx.Send(event.release());
@@ -992,13 +996,15 @@ void TPartitionRequestActor<TMethod>::HandlePartitionResponse(
 {
     auto* msg = ev->Get();
 
+    const ui32 requestNo = ev->Cookie;
+
     if (FAILED(msg->GetStatus())) {
         Record.MutableError()->CopyFrom(msg->GetError());
     } else {
-        Merge(msg->Record, ev->Cookie, Record);
+        Merge(msg->Record, requestNo, Record);
     }
 
-    JoinTraces(ev->Cookie);
+    JoinTraces(requestNo);
 
     if (++Responses == PartitionRequests.size() || FAILED(msg->GetStatus())) {
         auto response = std::make_unique<typename TMethod::TResponse>(

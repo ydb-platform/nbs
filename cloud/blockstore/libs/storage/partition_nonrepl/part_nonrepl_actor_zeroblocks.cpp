@@ -119,19 +119,19 @@ void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
         // TODO: remove after NBS-3886
         request->Record.SetSessionId(Request.GetHeaders().GetClientId());
+        request->Record.SetVolumeRequestId(RequestInfo->Cookie);
+        request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
 
-        TAutoPtr<IEventHandle> event(
-            new IEventHandle(
-                MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
-                ctx.SelfID,
-                request.get(),
-                IEventHandle::FlagForwardOnNondelivery,
-                cookie++,
-                &ctx.SelfID    // forwardOnNondelivery
-            ));
-        request.release();
+        auto event = std::make_unique<IEventHandle>(
+            MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            cookie++,
+            &ctx.SelfID // forwardOnNondelivery
+        );
 
-        ctx.Send(event);
+        ctx.Send(std::move(event));
     }
 }
 
