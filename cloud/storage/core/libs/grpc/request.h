@@ -3,7 +3,7 @@
 #include <util/generic/hash_set.h>
 #include <util/system/spinlock.h>
 
-namespace NCloud::NStorage::NRequests {
+namespace NCloud::NStorage::NGrpc {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,4 +93,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NStorage::NRequests
+}   // namespace NCloud::NStorage::NGrpc

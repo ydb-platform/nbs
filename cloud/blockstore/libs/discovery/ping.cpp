@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
-#include <cloud/storage/core/libs/grpc/time.h>
+#include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>

@@ -18,7 +18,6 @@ target_link_libraries(blockstore-libs-server PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-service
   core-libs-grpc
-  core-libs-requests
   cpp-actors-prof
   cpp-monlib-service
   monlib-service-pages

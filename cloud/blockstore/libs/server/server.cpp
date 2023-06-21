@@ -20,10 +20,10 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/completion.h>
 #include <cloud/storage/core/libs/grpc/credentials.h>
+#include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/keepalive.h>
-#include <cloud/storage/core/libs/grpc/time.h>
-#include <cloud/storage/core/libs/requests/executor.h>
+#include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
 #include <library/cpp/actors/prof/tag.h>
 
@@ -180,7 +180,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TServerRequestHandlerBase
-    : public NStorage::NRequests::TRequestHandlerBase
+    : public NStorage::NGrpc::TRequestHandlerBase
 {
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
 
@@ -228,12 +228,12 @@ struct TAppContext
 ////////////////////////////////////////////////////////////////////////////////
 
 using TRequestsInFlight =
-    NStorage::NRequests::TRequestsInFlight<TServerRequestHandlerBase>;
+    NStorage::NGrpc::TRequestsInFlight<TServerRequestHandlerBase>;
 
-using TExecutorContext = NStorage::NRequests::
+using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::ServerCompletionQueue, TRequestsInFlight>;
 
-using TExecutor = NStorage::NRequests::TExecutor<
+using TExecutor = NStorage::NGrpc::TExecutor<
     grpc::ServerCompletionQueue,
     TRequestsInFlight,
     TExecutorCounters::TExecutorScope>;

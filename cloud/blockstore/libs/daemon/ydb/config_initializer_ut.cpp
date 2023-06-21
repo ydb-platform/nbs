@@ -13,7 +13,6 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
-#include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>

@@ -12,7 +12,7 @@ using ::testing::Expectation;
 using ::testing::Return;
 using ::testing::SetArgPointee;
 
-namespace NCloud::NStorage::NRequests {
+namespace NCloud::NStorage::NGrpc {
 
 namespace {
 
@@ -92,4 +92,4 @@ Y_UNIT_TEST_SUITE(TExecutorTest)
     }
 }
 
-}   // namespace NCloud::NStorage::NRequests
+}   // namespace NCloud::NStorage::NGrpc

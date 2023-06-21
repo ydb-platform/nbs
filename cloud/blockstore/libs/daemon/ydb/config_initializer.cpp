@@ -16,7 +16,6 @@
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
-#include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>

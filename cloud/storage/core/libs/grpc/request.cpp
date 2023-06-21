@@ -1,6 +1,6 @@
 #include "request.h"
 
-namespace NCloud::NStorage::NRequests {
+namespace NCloud::NStorage::NGrpc {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,4 +17,4 @@ void TRequestHandlerBase::ReleaseCompletionTag()
     }
 }
 
-}   // namespace NCloud::NStorage::NRequests
+}   // namespace NCloud::NStorage::NGrpc

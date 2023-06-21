@@ -23,10 +23,9 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <cloud/storage/core/libs/grpc/completion.h>
+#include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
-#include <cloud/storage/core/libs/grpc/time.h>
-
-#include <cloud/storage/core/libs/requests/executor.h>
+#include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 
@@ -166,7 +165,7 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TClientRequestHandlerBase
-    : public NStorage::NRequests::TRequestHandlerBase
+    : public NStorage::NGrpc::TRequestHandlerBase
 {
     const EBlockStoreRequest RequestType;
     ui64 RequestId = 0;
@@ -258,9 +257,9 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TExecutorContext = NStorage::NRequests::
+using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::CompletionQueue, TRequestsInFlight>;
-using TExecutor = NStorage::NRequests::TExecutor<
+using TExecutor = NStorage::NGrpc::TExecutor<
     grpc::CompletionQueue,
     TRequestsInFlight,
     TExecutorCounters::TExecutorScope>;
