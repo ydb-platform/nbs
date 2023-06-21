@@ -58,13 +58,13 @@ TString FormatByteSize(ui64 size)
     if (size < KB) {
         out << size << " B";
     } else if (size < MB) {
-        out << Prec((double)size / KB, PREC_POINT_DIGITS, 2) << " KB";
+        out << Prec((double)size / KB, PREC_POINT_DIGITS, 2) << " KiB";
     } else if (size < GB) {
-        out << Prec((double)size / MB, PREC_POINT_DIGITS, 2) << " MB";
+        out << Prec((double)size / MB, PREC_POINT_DIGITS, 2) << " MiB";
     } else if (size < TB) {
-        out << Prec((double)size / GB, PREC_POINT_DIGITS, 2) << " GB";
+        out << Prec((double)size / GB, PREC_POINT_DIGITS, 2) << " GiB";
     } else {
-        out << Prec((double)size / TB, PREC_POINT_DIGITS, 2) << " TB";
+        out << Prec((double)size / TB, PREC_POINT_DIGITS, 2) << " TiB";
     }
     return out.Str();
 }
