@@ -94,7 +94,6 @@ template <typename TMethod>
 bool TVolumeActor::HandleRequest(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
-    const ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
@@ -125,7 +124,6 @@ bool TVolumeActor::HandleRequest(
         SendRequestToPartition<TMethod>(
             ctx,
             ev,
-            volumeRequestId,
             partitionRequests.front().PartitionId,
             traceTs
         );
@@ -156,12 +154,13 @@ bool TVolumeActor::HandleRequest(
         ctx,
         std::move(requestInfo),
         SelfId(),
-        volumeRequestId,
+        VolumeRequestId,
         blockRange,
         blocksPerStripe,
         State->GetPartitions().size(),
         std::move(partitionRequests),
-        TRequestTraceInfo(isTraced, traceTs, TraceSerializer));
+        TRequestTraceInfo(isTraced, traceTs, TraceSerializer)
+    );
 
     return true;
 }
@@ -177,7 +176,6 @@ template<>
 bool TVolumeActor::HandleRequest<TEvService::TCreateCheckpointMethod>(
     const TActorContext& ctx,
     const TEvService::TCreateCheckpointMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs);
 
@@ -185,7 +183,6 @@ template<>
 bool TVolumeActor::HandleRequest<TEvService::TDeleteCheckpointMethod>(
     const TActorContext& ctx,
     const TEvService::TDeleteCheckpointMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs);
 
@@ -193,7 +190,6 @@ template<>
 bool TVolumeActor::HandleRequest<TEvVolume::TDeleteCheckpointDataMethod>(
     const TActorContext& ctx,
     const TEvVolume::TDeleteCheckpointDataMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs);
 
@@ -203,7 +199,6 @@ template <typename TMethod>
 void TVolumeActor::SendRequestToPartition(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
-    const ui64 volumeRequestId,
     ui32 partitionId,
     ui64 traceTime)
 {
@@ -229,8 +224,7 @@ void TVolumeActor::SendRequestToPartition(
     const bool processed = SendRequestToPartitionWithUsedBlockTracking<TMethod>(
         ctx,
         ev,
-        partActorId,
-        volumeRequestId);
+        partActorId);
 
     if (processed) {
         return;
@@ -251,12 +245,12 @@ void TVolumeActor::SendRequestToPartition(
         selfId,
         ev->ReleaseBase().Release(),
         IEventHandle::FlagForwardOnNondelivery, // flags
-        volumeRequestId,                        // cookie
+        VolumeRequestId,                        // cookie
         &selfId                                 // forwardOnNondelivery
     );
 
     VolumeRequests.emplace(
-        volumeRequestId,
+        VolumeRequestId,
         TVolumeRequest(
             IEventHandlePtr(ev.Release()),
             std::move(callContext),
@@ -264,7 +258,7 @@ void TVolumeActor::SendRequestToPartition(
             traceTime,
             &RejectVolumeRequest<TMethod>));
 
-    ctx.Send(std::move(event));
+    ctx.Send(event.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -496,6 +490,8 @@ void TVolumeActor::ForwardRequest(
     auto* msg = ev->Get();
     auto now = GetCycleCount();
 
+    ++VolumeRequestId;
+
     bool isTraced = false;
 
     if (ev->Recipient != ev->GetRecipientRewrite())
@@ -527,15 +523,6 @@ void TVolumeActor::ForwardRequest(
 
         NCloud::Reply(ctx, *ev, std::move(response));
     };
-
-    if (!VolumeRequestIdGenerator->CanAdvance()) {
-        replyError(MakeError(
-            E_REJECTED,
-            "VolumeRequestId overflow. Going to restart tablet."));
-        NCloud::Send(ctx, SelfId(), std::make_unique<TEvents::TEvPoisonPill>());
-        return;
-    }
-    const ui64 volumeRequestId = VolumeRequestIdGenerator->Advance();
 
     if (ShuttingDown) {
         replyError(MakeError(E_REJECTED, "Shutting down"));
@@ -688,7 +675,7 @@ void TVolumeActor::ForwardRequest(
             *msg,
             State->GetBlockSize());
         auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
-            volumeRequestId,
+            VolumeRequestId,
             range);
 
         if (!addResult.Added) {
@@ -726,10 +713,9 @@ void TVolumeActor::ForwardRequest(
      *  Passing the request to the underlying (storage) layer.
      */
     if (CanForwardToPartition<TMethod>(State->GetPartitions().size())) {
-        SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, 0, now);
-    } else if (!HandleRequest<TMethod>(ctx, ev, volumeRequestId, isTraced, now))
-    {
-        WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
+        SendRequestToPartition<TMethod>(ctx, ev, 0, now);
+    } else if (!HandleRequest<TMethod>(ctx, ev, isTraced, now)) {
+        WriteAndZeroRequestsInFlight.RemoveRequest(VolumeRequestId);
 
         replyError(MakeError(E_REJECTED, "Sglist destroyed"));
     }

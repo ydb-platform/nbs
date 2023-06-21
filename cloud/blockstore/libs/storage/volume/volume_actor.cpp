@@ -114,11 +114,6 @@ void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
 {
     Y_VERIFY_DEBUG(state < STATE_MAX);
 
-    if (state == EState::STATE_INIT) {
-        VolumeRequestIdGenerator =
-            TCompositeId::FromGeneration(Executor()->Generation());
-    }
-
     Become(States[state].Func);
     CurrentState = state;
 

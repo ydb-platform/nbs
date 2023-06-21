@@ -127,21 +127,21 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
         request->Record.SetBlockSize(PartConfig->GetBlockSize());
         // TODO: remove after NBS-3886
         request->Record.SetSessionId(Request.GetHeaders().GetClientId());
-        request->Record.SetVolumeRequestId(RequestInfo->Cookie);
-        request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
 
         builder.BuildNextRequest(request->Record);
 
-        auto event = std::make_unique<IEventHandle>(
-            MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
-            ctx.SelfID,
-            request.release(),
-            IEventHandle::FlagForwardOnNondelivery,
-            cookie++,
-            &ctx.SelfID // forwardOnNondelivery
-        );
+        TAutoPtr<IEventHandle> event(
+            new IEventHandle(
+                MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
+                ctx.SelfID,
+                request.get(),
+                IEventHandle::FlagForwardOnNondelivery,
+                cookie++,
+                &ctx.SelfID    // forwardOnNondelivery
+            ));
+        request.release();
 
-        ctx.Send(std::move(event));
+        ctx.Send(event);
     }
 }
 

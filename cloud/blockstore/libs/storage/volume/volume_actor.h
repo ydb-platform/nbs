@@ -25,14 +25,14 @@
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
-#include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
-#include <ydb/core/base/tablet_pipe.h>
 #include <ydb/core/blockstore/core/blockstore.h>
+#include <ydb/core/base/tablet_pipe.h>
 #include <ydb/core/mind/local.h>
 
 #include <library/cpp/actors/core/actor.h>
@@ -153,7 +153,7 @@ class TVolumeActor final
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
-            , CancelRoutine(std::move(cancelRoutine))
+            , CancelRoutine(cancelRoutine)
         {}
 
         void CancelRequest(
@@ -289,7 +289,7 @@ private:
     THashMap<ui64, TDeque<TDuplicateRequest>> DuplicateWriteAndZeroRequests;
     ui32 DuplicateRequestCount = 0;
 
-    std::optional<TCompositeId> VolumeRequestIdGenerator;
+    ui64 VolumeRequestId = 0;
 
     TIntrusiveList<TRequestInfo> ActiveReadHistoryRequests;
     TInstant LastHistoryCleanup;
@@ -353,7 +353,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
         EVolumeStartMode startMode);
-    ~TVolumeActor() override;
+    ~TVolumeActor();
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::VOLUME;
     using TCounters = TVolumeCounters;
@@ -762,7 +762,6 @@ private:
     void SendRequestToPartition(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        const ui64 volumeRequestId,
         ui32 partitionId,
         ui64 traceTs);
 
@@ -778,14 +777,12 @@ private:
     bool SendRequestToPartitionWithUsedBlockTracking(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorId& partitions,
-        const ui64 volumeRequestId);
+        const NActors::TActorId& partitions);
 
     template <typename TMethod>
     bool HandleRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        const ui64 volumeRequestId,
         bool isTraced,
         ui64 traceTs);
 
