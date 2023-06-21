@@ -651,6 +651,12 @@ void TVolumeProxyActor::HandleResponse(
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
     }
 
+    LWTRACK(
+        ResponseReceivedPipe,
+        it->second.CallContext->LWOrbit,
+        TMethod::Name,
+        it->second.CallContext->RequestId);
+
     // forward response to the caller
     TAutoPtr<IEventHandle> event;
     if (ev->HasEvent()) {

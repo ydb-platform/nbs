@@ -25,6 +25,10 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
         NAMES("requestType", "requestId"))                                     \
+    PROBE(ResponseReceivedPipe,                                                \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES("requestType", "requestId"))                                     \
     PROBE(ResponseSent_Service,                                                \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
