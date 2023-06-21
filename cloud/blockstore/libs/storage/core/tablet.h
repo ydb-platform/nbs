@@ -182,8 +182,6 @@ protected:
             TX_JOIN();
 
             TTx::Complete(*Self, ctx, Args);
-
-            TX_TRACK(TxCompleteDone);
         }
     };
 
