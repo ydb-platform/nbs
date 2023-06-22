@@ -681,6 +681,7 @@ void virtq_push(struct virtio_virtq *vq, struct virtio_iov *iov, uint32_t len)
     }
 
     virtq_notify(vq);
+    vq->stat.metrics.request_completed++;
 }
 
 void virtq_set_notify_fd(struct virtio_virtq *vq, int fd)
@@ -700,11 +701,7 @@ void virtq_set_notify_fd(struct virtio_virtq *vq, int fd)
 void virtio_virtq_get_stat(struct virtio_virtq *vq,
                            struct vhd_vq_metrics *metrics)
 {
-    metrics->request_total = vq->stat.metrics.request_total;
-    metrics->dispatch_total = vq->stat.metrics.dispatch_total;
-    metrics->dispatch_empty = vq->stat.metrics.dispatch_empty;
-    metrics->queue_len_last = vq->stat.metrics.queue_len_last;
-    metrics->queue_len_max_60s = vq->stat.metrics.queue_len_max_60s;
+    *metrics = vq->stat.metrics;
 }
 
 __attribute__((weak))

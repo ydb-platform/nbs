@@ -92,6 +92,8 @@ void vhd_blockdev_set_total_blocks(struct vhd_vdev *vdev, uint64_t total_blocks)
         .total_blocks = total_blocks,
     };
 
+    VHD_OBJ_INFO(vdev, "Set total blocks %" PRIu64, total_blocks);
+
     /*
      * Modify virtio config in g_vhost_evloop, to not interfere with .get_config
      *

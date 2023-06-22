@@ -21,7 +21,10 @@ struct vhd_io {
     void (*completion_handler)(struct vhd_io *io);
 
     TAILQ_ENTRY(vhd_io) submission_link;
+    TAILQ_ENTRY(vhd_io) inflight_link;
     SLIST_ENTRY(vhd_io) completion_link;
+
+    time_t ts;
 };
 
 #ifdef __cplusplus

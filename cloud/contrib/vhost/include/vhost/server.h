@@ -99,6 +99,12 @@ bool vhd_dequeue_request(struct vhd_request_queue *rq,
                          struct vhd_request *out_req);
 
 /**
+ * Get request queue metrics.
+ */
+void vhd_get_rq_stat(struct vhd_request_queue *rq,
+                     struct vhd_rq_metrics *metrics);
+
+/**
  * Block io request result
  */
 enum vhd_bdev_io_result {
@@ -120,7 +126,7 @@ void vhd_complete_bio(struct vhd_io *io, enum vhd_bdev_io_result status);
 void *vhd_vdev_get_priv(struct vhd_vdev *vdev);
 
 /**
- * Get statistics for device's queue.
+ * Get statistics for device's virtio queue.
  */
 int vhd_vdev_get_queue_stat(struct vhd_vdev *vdev, uint32_t queue_num,
                             struct vhd_vq_metrics *metrics);
