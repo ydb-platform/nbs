@@ -1,0 +1,3 @@
+RECURSE(
+    compressed_bitmap
+)
