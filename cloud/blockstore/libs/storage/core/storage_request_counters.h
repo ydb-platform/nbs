@@ -24,7 +24,7 @@ enum class ERequestCounterOption
 
 Y_DECLARE_FLAGS(ERequestCounterOptions, ERequestCounterOption);
 
-Y_DECLARE_OPERATORS_FOR_FLAGS(ERequestCounterOptions)
+Y_DECLARE_OPERATORS_FOR_FLAGS(ERequestCounterOptions);
 
 ////////////////////////////////////////////////////////////////////////////////
 
