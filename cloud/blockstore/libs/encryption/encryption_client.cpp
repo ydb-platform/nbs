@@ -845,18 +845,13 @@ TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
     const NProto::TEncryptionSpec& encryptionSpec)
 {
     if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
-        if (encryptionSpec.HasKeyHash() || encryptionSpec.HasKeyPath()) {
-            return MakeError(
-                E_ARGUMENT,
-                "For not encrypted mode KeyHash and KeyPath should be empty");
-        }
         return client;
     }
 
     NProto::TEncryptionDesc encryptionDesc;
     encryptionDesc.SetMode(encryptionSpec.GetMode());
 
-    if (encryptionSpec.HasKeyHash()) {
+    if (encryptionSpec.GetKeyHash()) {
         encryptionDesc.SetKeyHash(encryptionSpec.GetKeyHash());
         return CreateSnapshotEncryptionClient(
             std::move(client),

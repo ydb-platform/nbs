@@ -150,7 +150,19 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         UNIT_ASSERT(spec.GetMode() == NProto::NO_ENCRYPTION);
 
         auto hashOrError = ComputeEncryptionKeyHash(spec);
-        UNIT_ASSERT(!HasError(hashOrError) && hashOrError.GetResult().empty());
+        UNIT_ASSERT_C(!HasError(hashOrError), hashOrError.GetError());
+        UNIT_ASSERT_VALUES_EQUAL("", hashOrError.GetResult());
+    }
+
+    Y_UNIT_TEST(EmptyEncryptionSpecShouldProvideEmptyHash)
+    {
+        NProto::TEncryptionSpec spec;
+        spec.SetMode(NProto::NO_ENCRYPTION);
+        spec.SetKeyHash("");
+
+        auto hashOrError = ComputeEncryptionKeyHash(spec);
+        UNIT_ASSERT_C(!HasError(hashOrError), hashOrError.GetError());
+        UNIT_ASSERT_VALUES_EQUAL("", hashOrError.GetResult());
     }
 
     Y_UNIT_TEST(ShouldComputeEncryptionKeyHash)

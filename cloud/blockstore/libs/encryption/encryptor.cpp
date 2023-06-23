@@ -329,15 +329,10 @@ TResultOrError<TString> ComputeEncryptionKeyHash(
     const NProto::TEncryptionSpec& spec)
 {
     if (spec.GetMode() == NProto::NO_ENCRYPTION) {
-        if (spec.HasKeyHash() || spec.HasKeyPath()) {
-            return MakeError(
-                E_ARGUMENT,
-                "For not encrypted mode KeyHash and KeyPath should be empty");
-        }
         return TString();
     }
 
-    if (spec.HasKeyHash()) {
+    if (spec.GetKeyHash()) {
         return spec.GetKeyHash();
     }
 
