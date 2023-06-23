@@ -36,6 +36,7 @@ type MountVolumeOpts struct {
 	MountMode      protos.EVolumeMountMode
 	MountFlags     uint32
 	MountSeqNumber uint64
+	EncryptionSpec *protos.TEncryptionSpec
 }
 
 type SessionInfo struct {
