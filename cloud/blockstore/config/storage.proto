@@ -818,4 +818,7 @@ message TStorageServiceConfig
 
     // Defines the rejection behavior for overlapped requests from the past.
     optional bool RejectLateRequestsAtDiskAgentEnabled = 308;
+
+    // Attached disk destruction is allowed after this period of client inactivity (ms).
+    optional uint32 AttachedDiskDestructionTimeout = 309;
 }

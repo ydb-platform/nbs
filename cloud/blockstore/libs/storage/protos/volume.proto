@@ -28,7 +28,7 @@ message TVolumeClientInfo
     // Obsolete, use MountFlags.
     bool ThrottlingDisabled = 4;
 
-    // Timestamp of client disconnection.
+    // Client disconnect timestamp (0 for active clients).
     uint64 DisconnectTimestamp = 5;
 
     // Mount seq number.

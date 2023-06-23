@@ -258,6 +258,8 @@ void TVolumeActor::HandleStatVolume(
         auto* client = clients->Add();
         client->SetClientId(x.second.GetVolumeClientInfo().GetClientId());
         client->SetInstanceId(x.second.GetVolumeClientInfo().GetInstanceId());
+        client->SetDisconnectTimestamp(
+            x.second.GetVolumeClientInfo().GetDisconnectTimestamp());
     }
     SortBy(clients->begin(), clients->end(), [] (const auto& x) {
         return x.GetClientId();

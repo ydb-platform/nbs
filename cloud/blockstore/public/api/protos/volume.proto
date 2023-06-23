@@ -283,6 +283,9 @@ message TVolumeClient
 
     // Instance id.
     string InstanceId = 2;
+
+    // Client disconnect timestamp (0 for active clients).
+    uint64 DisconnectTimestamp = 3;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

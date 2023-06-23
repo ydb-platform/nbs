@@ -97,6 +97,7 @@ public:
     TDuration GetClientRemountPeriod() const;
     TDuration GetInitialAddClientTimeout() const;
     TDuration GetLocalStartAddClientTimeout() const;
+    TDuration GetAttachedDiskDestructionTimeout() const;
 
     ui32 GetAllocationUnitSSD() const;
     ui32 GetSSDUnitReadBandwidth() const;

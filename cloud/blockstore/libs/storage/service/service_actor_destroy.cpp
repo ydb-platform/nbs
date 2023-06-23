@@ -28,6 +28,7 @@ private:
     const TActorId Sender;
     const ui64 Cookie;
 
+    const TDuration AttachedDiskDestructionTimeout;
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
@@ -37,6 +38,7 @@ public:
     TDestroyVolumeActor(
         const TActorId& sender,
         ui64 cookie,
+        TDuration attachedDiskDestructionTimeout,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -84,12 +86,14 @@ private:
 TDestroyVolumeActor::TDestroyVolumeActor(
         const TActorId& sender,
         ui64 cookie,
+        TDuration attachedDiskDestructionTimeout,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
         bool force)
     : Sender(sender)
     , Cookie(cookie)
+    , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
@@ -317,21 +321,34 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 
     for (const auto& client: msg->Record.GetClients()) {
         if (client.GetInstanceId()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-                "Volume %s is attached to instance: %s",
-                DiskId.Quote().data(),
-                client.GetInstanceId().Quote().data());
+            const auto timeout = AttachedDiskDestructionTimeout;
+            const auto disconnectTimestamp =
+                TInstant::MicroSeconds(client.GetDisconnectTimestamp());
+            const bool isStale = disconnectTimestamp
+                && disconnectTimestamp + timeout < ctx.Now();
+            if (isStale) {
+                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+                    "Volume %s is attached to instance (stale): %s, dt: %s",
+                    DiskId.Quote().c_str(),
+                    client.GetInstanceId().Quote().c_str(),
+                    ToString(disconnectTimestamp).c_str());
+            } else {
+                LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+                    "Volume %s is attached to instance: %s",
+                    DiskId.Quote().c_str(),
+                    client.GetInstanceId().Quote().c_str());
 
-            auto e = MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "attached to instance: "
-                    << client.GetInstanceId());
+                auto e = MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "attached to instance: "
+                        << client.GetInstanceId());
 
-            ReplyAndDie(
-                ctx,
-                std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                    std::move(e)));
-            return;
+                ReplyAndDie(
+                    ctx,
+                    std::make_unique<TEvService::TEvDestroyVolumeResponse>(
+                        std::move(e)));
+                return;
+            }
         }
     }
 
@@ -406,6 +423,7 @@ void TServiceActor::HandleDestroyVolume(
         ctx,
         ev->Sender,
         ev->Cookie,
+        Config->GetAttachedDiskDestructionTimeout(),
         diskId,
         destroyIfBroken,
         sync,

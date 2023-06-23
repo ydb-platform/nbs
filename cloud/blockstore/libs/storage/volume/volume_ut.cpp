@@ -9230,13 +9230,44 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volume.WaitReady();
 
-        auto stat = volume.StatVolume();
-        const auto& clients = stat->Record.GetClients();
-        UNIT_ASSERT_VALUES_EQUAL(2, clients.size());
-        UNIT_ASSERT_VALUES_EQUAL("c1", clients[0].GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("i1", clients[0].GetInstanceId());
-        UNIT_ASSERT_VALUES_EQUAL("c2", clients[1].GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
+        {
+            auto stat = volume.StatVolume();
+            const auto& clients = stat->Record.GetClients();
+            UNIT_ASSERT_VALUES_EQUAL(2, clients.size());
+            UNIT_ASSERT_VALUES_EQUAL("c1", clients[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL("i1", clients[0].GetInstanceId());
+            UNIT_ASSERT_VALUES_EQUAL(0, clients[0].GetDisconnectTimestamp());
+            UNIT_ASSERT_VALUES_EQUAL("c2", clients[1].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
+            UNIT_ASSERT_VALUES_EQUAL(0, clients[1].GetDisconnectTimestamp());
+        }
+
+        auto now = runtime->GetCurrentTime();
+
+        // rebooting to set DisconnectTimestamp
+        volume.RebootTablet();
+
+        {
+            auto stat = volume.StatVolume();
+            const auto& clients = stat->Record.GetClients();
+            UNIT_ASSERT_VALUES_EQUAL(2, clients.size());
+            UNIT_ASSERT_VALUES_EQUAL("c1", clients[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL("i1", clients[0].GetInstanceId());
+            UNIT_ASSERT_C(
+                clients[0].GetDisconnectTimestamp() > now.MicroSeconds(),
+                TStringBuilder()
+                    << "DisconnectTimestamp should be greater than reboot ts "
+                    << clients[0].GetDisconnectTimestamp()
+                    << ", " << now.MicroSeconds());
+            UNIT_ASSERT_VALUES_EQUAL("c2", clients[1].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
+            UNIT_ASSERT_C(
+                clients[1].GetDisconnectTimestamp() > now.MicroSeconds(),
+                TStringBuilder()
+                    << "DisconnectTimestamp should be greater than reboot ts "
+                    << clients[1].GetDisconnectTimestamp()
+                    << ", " << now.MicroSeconds());
+        }
     }
 
     Y_UNIT_TEST(ShouldReportTracesForNestedRequests)

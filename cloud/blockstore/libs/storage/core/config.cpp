@@ -169,6 +169,7 @@ TDuration MSeconds(ui32 value)
     xxx(MaxRangesPerBlob,              ui32,      8                           )\
     xxx(MaxBlobSize,                   ui32,      4_MB                        )\
     xxx(InactiveClientsTimeout,        TDuration, Seconds(9)                  )\
+    xxx(AttachedDiskDestructionTimeout,TDuration, Minutes(1)                  )\
     xxx(ClientRemountPeriod,           TDuration, Seconds(4)                  )\
     xxx(InitialAddClientTimeout,       TDuration, Seconds(1)                  )\
     xxx(LocalStartAddClientTimeout,    TDuration, Minutes(1)                  )\

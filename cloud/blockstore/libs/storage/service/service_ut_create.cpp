@@ -1342,8 +1342,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         ui32 nodeIdx = SetupTestEnv(env);
 
         auto& runtime = env.GetRuntime();
+        runtime.AdvanceCurrentTime(TDuration::Hours(1));
         TServiceClient service(runtime, nodeIdx);
-        service.CreateVolume();
 
         NProto::TVolumeClient client;
         client.SetClientId("c");
@@ -1370,6 +1370,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
+        service.CreateVolume();
+
         service.SendDestroyVolumeRequest(DefaultDiskId);
         {
             auto response = service.RecvDestroyVolumeResponse();
@@ -1380,6 +1382,37 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         client.SetInstanceId("");
 
+        service.SendDestroyVolumeRequest(DefaultDiskId);
+        {
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        service.SendDescribeVolumeRequest();
+        {
+            auto response = service.RecvDescribeVolumeResponse();
+            UNIT_ASSERT_C(S_OK != response->GetStatus(), response->GetErrorReason());
+        }
+
+        service.CreateVolume();
+        client.SetInstanceId("i");
+        client.SetDisconnectTimestamp(runtime.GetCurrentTime().MicroSeconds());
+
+        // clients with fresh disconnect timestamps should prevent disk
+        // destruction
+        service.SendDestroyVolumeRequest(DefaultDiskId);
+        {
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+        }
+
+        service.DescribeVolume();
+
+        client.SetDisconnectTimestamp(
+            (runtime.GetCurrentTime() - TDuration::Seconds(61)).MicroSeconds());
+
+        // clients who disconected a long time ago should not prevent disk
+        // destruction
         service.SendDestroyVolumeRequest(DefaultDiskId);
         {
             auto response = service.RecvDestroyVolumeResponse();
