@@ -173,9 +173,10 @@ class TVolumeActor final
 public:
     struct TDuplicateRequest
     {
-        TCallContextBasePtr CallContext;
+        TCallContextPtr CallContext;
         TEvService::EEvents EventType = TEvService::EvEnd;
         NActors::IEventHandlePtr Event;
+        ui64 ReceiveTime = 0;
     };
 
 private:

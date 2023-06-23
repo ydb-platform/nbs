@@ -416,23 +416,35 @@ void TVolumeActor::ReplyToDuplicateRequests(
 
     for (auto& duplicateRequest: it->second) {
         NActors::IEventBasePtr response;
-        TString methodName;
         switch (duplicateRequest.EventType) {
             case TEvService::EvWriteBlocksRequest: {
-                response = std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
-                methodName = TEvService::TWriteBlocksMethod::Name;
+                auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
+                FillResponse<TEvService::TWriteBlocksMethod>(
+                    *response,
+                    *duplicateRequest.CallContext,
+                    duplicateRequest.ReceiveTime);
+
+                NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
 
             case TEvService::EvWriteBlocksLocalRequest: {
-                response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
-                methodName = TEvService::TWriteBlocksLocalMethod::Name;
+                auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
+                FillResponse<TEvService::TWriteBlocksLocalMethod>(
+                    *response,
+                    *duplicateRequest.CallContext,
+                    duplicateRequest.ReceiveTime);
+                NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
 
             case TEvService::EvZeroBlocksRequest: {
-                response = std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
-                methodName = TEvService::TZeroBlocksMethod::Name;
+                auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
+                FillResponse<TEvService::TZeroBlocksMethod>(
+                    *response,
+                    *duplicateRequest.CallContext,
+                    duplicateRequest.ReceiveTime);
+                NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
 
@@ -445,16 +457,6 @@ void TVolumeActor::ReplyToDuplicateRequests(
                         << static_cast<ui32>(duplicateRequest.EventType));
             }
         }
-
-        LWTRACK(
-            ResponseSent_Volume,
-            duplicateRequest.CallContext->LWOrbit,
-            methodName,
-            duplicateRequest.CallContext->RequestId);
-
-        // TODO TraceInfo
-
-        NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
     }
 
     DuplicateRequestCount -= it->second.size();
@@ -689,6 +691,13 @@ void TVolumeActor::ForwardRequest(
                 return;
             }
 
+            LWTRACK(
+                DuplicatedRequestReceived_Volume,
+                msg->CallContext->LWOrbit,
+                TMethod::Name,
+                msg->CallContext->RequestId,
+                addResult.DuplicateRequestId);
+
             auto& q =
                 DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId];
 
@@ -697,6 +706,7 @@ void TVolumeActor::ForwardRequest(
                 std::move(callContext),
                 static_cast<TEvService::EEvents>(TMethod::TRequest::EventType),
                 NActors::IEventHandlePtr(ev.Release()),
+                now
             });
             ++DuplicateRequestCount;
 

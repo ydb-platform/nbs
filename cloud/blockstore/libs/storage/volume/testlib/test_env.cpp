@@ -42,6 +42,16 @@ void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired)
     UNIT_ASSERT_VALUES_EQUAL(0, forkBudget);
 }
 
+bool HasProbe(const NLWTrace::TShuttleTrace& trace, const TString& probeName)
+{
+    for (const auto& event: trace.GetEvents()) {
+        if (event.GetName() == probeName) {
+            return true;
+        }
+    }
+    return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TFakeHiveProxy::HandleGetStorageInfo(

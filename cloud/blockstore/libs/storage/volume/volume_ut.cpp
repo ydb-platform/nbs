@@ -9238,6 +9238,87 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("c2", clients[1].GetClientId());
         UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
     }
+
+    Y_UNIT_TEST(ShouldReportTracesForNestedRequests)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+
+        bool gotVolumeActorId = false;
+        TActorId volumeActor;
+        TAutoPtr<IEventHandle> delayedRequest;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev) {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvBlockStore::EvUpdateVolumeConfigResponse: {
+                        if (!gotVolumeActorId) {
+                            volumeActor = ev->Sender;
+                            gotVolumeActorId = true;
+                        }
+                        break;
+                    }
+                    case TEvService::EvWriteBlocksRequest: {
+                        if (!gotVolumeActorId ||
+                            ev->Sender != volumeActor)
+                        {
+                            break;
+                        }
+                        if (!delayedRequest) {
+                            delayedRequest = ev.Release();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+        );
+
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64(1024 * 0, 1023),
+                clientInfo.GetClientId(),
+                1
+            );
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+
+            volume.SendToPipe(std::move(request));
+        }
+
+        auto request = volume.CreateWriteBlocksRequest(
+            TBlockRange64(1024 * 0, 1023),
+            clientInfo.GetClientId(),
+            1
+        );
+        request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+
+        volume.SendToPipe(std::move(request));
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->Send(delayedRequest.Release());
+
+        auto duplicateResponse = volume.RecvWriteBlocksResponse();
+        auto response = volume.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT(
+            HasProbe(
+                duplicateResponse->Record.GetTrace().GetLWTrace().GetTrace(),
+                "DuplicatedRequestReceived_Volume"));
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

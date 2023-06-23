@@ -37,6 +37,10 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
         NAMES("requestType", "requestId"))                                     \
+    PROBE(DuplicatedRequestReceived_Volume,                                    \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(TString, ui64, ui64),                                            \
+        NAMES("requestType", "requestId", "parentId"))                         \
     PROBE(RequestReceived_VolumeWorker,                                        \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
