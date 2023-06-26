@@ -942,10 +942,11 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
 
     if (MountRequestActor || UnmountRequestActor) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Queuing mount volume %s by client %s request",
-            diskId.Quote().data(),
-            clientId.Quote().data());
+        LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
+            "Queuing mount volume " << diskId.Quote() <<
+            " by client " << clientId.Quote() <<
+            " request because of active " <<
+            (MountRequestActor ? "mount" : "unmount") << " request");
 
         MountUnmountRequests.emplace(ev.Release());
         return;
