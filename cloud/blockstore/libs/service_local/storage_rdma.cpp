@@ -71,7 +71,10 @@ public:
         Proto.SetBlockSize(blockSize);
         Proto.SetStartIndex(Request->GetStartIndex());
         Proto.SetBlocksCount(Request->GetBlocksCount());
-        Proto.SetSessionId(Request->GetSessionId());
+        const auto& clientId = Request->GetHeaders().GetClientId();
+        Proto.MutableHeaders()->SetClientId(clientId);
+        // TODO: remove after NBS-3886
+        Proto.SetSessionId(clientId);
     }
 
     size_t GetRequestSize() const
@@ -174,7 +177,10 @@ public:
         Proto.SetDeviceUUID(uuid);
         Proto.SetBlockSize(blockSize);
         Proto.SetStartIndex(Request->GetStartIndex());
-        Proto.SetSessionId(Request->GetSessionId());
+        const auto& clientId = Request->GetHeaders().GetClientId();
+        Proto.MutableHeaders()->SetClientId(clientId);
+        // TODO: remove after NBS-3886
+        Proto.SetSessionId(clientId);
     }
 
     size_t GetRequestSize() const
@@ -262,7 +268,10 @@ public:
         Proto.SetBlockSize(blockSize);
         Proto.SetStartIndex(Request->GetStartIndex());
         Proto.SetBlocksCount(Request->GetBlocksCount());
-        Proto.SetSessionId(Request->GetSessionId());
+        const auto& clientId = Request->GetHeaders().GetClientId();
+        Proto.MutableHeaders()->SetClientId(clientId);
+        // TODO: remove after NBS-3886
+        Proto.SetSessionId(clientId);
     }
 
     size_t GetRequestSize() const
