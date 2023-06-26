@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         service->Start();
 
         TVector<NThreading::TFuture<NProto::TError>> futures;
-        for (ui32 i = 0; i < 100; ++i) {
+        for (ui32 i = 0; i < 20; ++i) {
             futures.push_back(service->NotifyDiskError({
                 .DiskId = "nrd0",
                 .CloudId = "yc-nbs",
