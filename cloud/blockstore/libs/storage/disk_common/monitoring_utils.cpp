@@ -46,15 +46,16 @@ IOutputStream& DumpState(
 
 IOutputStream& DumpState(
     IOutputStream& out,
-    NProto::EDeviceState state)
+    NProto::EDeviceState state,
+    TString suffix)
 {
     switch (state) {
         case NProto::DEVICE_STATE_ONLINE:
-            return out << "<font color=green>online</font>";
+            return out << "<font color=green>online" << suffix << "</font>";
         case NProto::DEVICE_STATE_WARNING:
-            return out << "warning";
+            return out << "<font color=yellow>warning" << suffix << "</font>";
         case NProto::DEVICE_STATE_ERROR:
-            return out << "<font color=red>error</font>";
+            return out << "<font color=red>error" << suffix << "</font>";
         default:
             return out
                 << "(Unknown EDeviceState value "

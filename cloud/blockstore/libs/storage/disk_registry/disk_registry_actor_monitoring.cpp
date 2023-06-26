@@ -129,7 +129,7 @@ void DumpActionLink(
         << tabletId
         << "'>"
         << label;
-    out << "<font color=gray>" << cnt << "</font>";
+    out << " <font color=gray>" << cnt << "</font>";
     out << "</a></h3>";
 }
 
@@ -167,7 +167,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
 {
     HTML(out) {
         if (title) {
-            TAG(TH3) { out << "Title"; }
+            TAG(TH3) { out << title; }
         }
 
         TABLE_SORTABLE_CLASS("table table-bordered") {
@@ -1343,9 +1343,31 @@ void TDiskRegistryActor::RenderAgentList(
                     TABLEH() { out << "Dedicated"; }
                     TABLEH() { out << "State timestamp"; }
                     TABLEH() { out << "State message"; }
+                    TABLEH() { out << "Device states"; }
                 }
 
                 for (const auto& config: State->GetAgents()) {
+                    ui32 onlineDevs = 0;
+                    ui32 warningDevs = 0;
+                    ui32 errorDevs = 0;
+                    for (const auto& device: config.GetDevices()) {
+                        switch (device.GetState()) {
+                            case NProto::DEVICE_STATE_ONLINE: {
+                                ++onlineDevs;
+                                break;
+                            }
+                            case NProto::DEVICE_STATE_WARNING: {
+                                ++warningDevs;
+                                break;
+                            }
+                            case NProto::DEVICE_STATE_ERROR: {
+                                ++errorDevs;
+                                break;
+                            }
+                            default: {}
+                        }
+                    }
+
                     TABLER() {
                         TABLED() {
                             out << "<a href='?action=agent&TabletID="
@@ -1388,6 +1410,23 @@ void TDiskRegistryActor::RenderAgentList(
                             out << TInstant::MicroSeconds(config.GetStateTs());
                         }
                         TABLED() { out << config.GetStateMessage(); }
+
+                        TABLED() {
+                            DumpState(
+                                out,
+                                NProto::DEVICE_STATE_ONLINE,
+                                TStringBuilder() << " " << onlineDevs);
+                            out << " / ";
+                            DumpState(
+                                out,
+                                NProto::DEVICE_STATE_WARNING,
+                                TStringBuilder() << " " << warningDevs);
+                            out << " / ";
+                            DumpState(
+                                out,
+                                NProto::DEVICE_STATE_ERROR,
+                                TStringBuilder() << " " << errorDevs);
+                        }
                     }
                 }
             }

@@ -18,6 +18,7 @@ IOutputStream& DumpState(
 
 IOutputStream& DumpState(
     IOutputStream& out,
-    NProto::EDeviceState state);
+    NProto::EDeviceState state,
+    TString suffix = "");
 
 }   // namespace NCloud::NBlockStore::NStorage
