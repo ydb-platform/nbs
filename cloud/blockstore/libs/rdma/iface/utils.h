@@ -17,10 +17,15 @@ TOut SafeCast(TIn value)
 }
 
 template <typename T, typename A>
+bool OwnedBy(T* ptr, const TVector<T, A>& vec)
+{
+    return ptr >= &vec.front() && &vec.back() >= ptr;
+}
+
+template <typename T, typename A>
 bool OwnedBy(uintptr_t addr, const TVector<T, A>& vec)
 {
-    auto ptr = reinterpret_cast<T*>(addr);
-    return ptr >= &vec.front() && &vec.back() >= ptr;
+    return OwnedBy(reinterpret_cast<T*>(addr), vec);
 }
 
 }   // namespace NCloud::NBlockStore::NRdma
