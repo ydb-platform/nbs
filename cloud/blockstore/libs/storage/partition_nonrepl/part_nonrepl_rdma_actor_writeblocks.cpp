@@ -1,13 +1,12 @@
 #include "part_nonrepl_rdma_actor.h"
 #include "part_nonrepl_common.h"
-
 #include "part_nonrepl_util.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
-#include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -19,8 +18,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -31,28 +28,28 @@ struct TDeviceRequestInfo
 {
     NRdma::IClientEndpointPtr Endpoint;
     NRdma::TClientRequestPtr ClientRequest;
-    std::unique_ptr<TRdmaContext> DeviceRequestContext;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaRequestContext: NRdma::IClientHandler
+struct TRdmaRequestResponseHandler: NRdma::IClientHandler
 {
     TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
-    TAtomic Responses;
-    bool ReplyLocal;
+    TAdaptiveLock Lock;
+    size_t ResponseCount;
+    const bool ReplyLocal;
     NProto::TError Error;
     const ui32 RequestBlockCount;
-    NActors::TActorId ParentActorId;
-    ui64 RequestId;
+    const NActors::TActorId ParentActorId;
+    const ui64 RequestId;
 
-    TRdmaRequestContext(
+    TRdmaRequestResponseHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
-            TAtomicBase requests,
+            size_t requestCount,
             bool replyLocal,
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
@@ -60,7 +57,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , Responses(requests)
+        , ResponseCount(requestCount)
         , ReplyLocal(replyLocal)
         , RequestBlockCount(requestBlockCount)
         , ParentActorId(parentActorId)
@@ -90,7 +87,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
             static_cast<NProto::TWriteDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
             Error = concreteProto.GetError();
-            return;
         }
     }
 
@@ -101,52 +97,45 @@ struct TRdmaRequestContext: NRdma::IClientHandler
     {
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        auto guard = Guard(Lock);
+
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(buffer);
         } else {
             HandleError(PartConfig, buffer, Error);
         }
 
-        auto* dr = static_cast<TRdmaContext*>(req->Context);
-        dr->Endpoint->FreeRequest(std::move(req));
-
-        delete dr;
-
-        if (AtomicDecrement(Responses) == 0) {
-            ProcessError(*ActorSystem, *PartConfig, Error);
-
-            auto response = MakeResponse();
-            TAutoPtr<IEventHandle> event(
-                new IEventHandle(
-                    RequestInfo->Sender,
-                    {},
-                    response.get(),
-                    0,
-                    RequestInfo->Cookie));
-            response.release();
-            ActorSystem->Send(event);
-
-            using TCompletionEvent =
-                TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted;
-            auto completion =
-                std::make_unique<TCompletionEvent>(std::move(Error));
-            auto& counters = *completion->Stats.MutableUserWriteCounters();
-            completion->TotalCycles = RequestInfo->GetTotalCycles();
-
-            counters.SetBlocksCount(RequestBlockCount);
-            TAutoPtr<IEventHandle> completionEvent(
-                new IEventHandle(
-                    ParentActorId,
-                    {},
-                    completion.get(),
-                    0,
-                    RequestId));
-
-            completion.release();
-            ActorSystem->Send(completionEvent);
-
-            delete this;
+        if (--ResponseCount != 0) {
+            return;
         }
+
+        // Got all device responses. Do processing.
+
+        ProcessError(*TActivationContext::ActorSystem(), *PartConfig, Error);
+
+        auto response = MakeResponse();
+        auto event = std::make_unique<IEventHandle>(
+            RequestInfo->Sender,
+            TActorId(),
+            response.release(),
+            0,
+            RequestInfo->Cookie);
+        ActorSystem->Send(event.release());
+
+        using TCompletionEvent =
+            TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted;
+        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
+        auto& counters = *completion->Stats.MutableUserWriteCounters();
+        completion->TotalCycles = RequestInfo->GetTotalCycles();
+
+        counters.SetBlocksCount(RequestBlockCount);
+        auto completionEvent = std::make_unique<IEventHandle>(
+            ParentActorId,
+            TActorId(),
+            completion.release(),
+            0,
+            RequestId);
+        ActorSystem->Send(completionEvent.release());
     }
 };
 
@@ -223,7 +212,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_unique<TRdmaRequestContext>(
+    auto requestResponseHandler = std::make_shared<TRdmaRequestResponseHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -243,11 +232,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
     TVector<TDeviceRequestInfo> requests;
 
     for (auto& r: deviceRequests) {
-        auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
+        auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
-        auto dr = std::make_unique<TRdmaContext>();
-        dr->Endpoint = ep;
-        dr->RequestHandler = &*requestContext;
 
         NProto::TWriteDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -258,7 +244,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
-            &*dr,
+            requestResponseHandler,
+            nullptr,
             serializer->MessageByteSize(
                 deviceRequest,
                 r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
@@ -269,10 +256,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
                 "Failed to allocate rdma memory for WriteDeviceBlocksRequest, "
                 " error: %s",
                 FormatError(err).c_str());
-
-            for (auto& request: requests) {
-                request.Endpoint->FreeRequest(std::move(request.ClientRequest));
-            }
 
             using TResponse = TEvService::TEvWriteBlocksResponse;
             NCloud::Reply(
@@ -292,18 +275,16 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             deviceRequest,
             TContIOVector(parts.data(), parts.size()));
 
-        requests.push_back({ep, std::move(req), std::move(dr)});
+        requests.push_back({std::move(ep), std::move(req)});
     }
 
     for (auto& request: requests) {
         request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
-        request.DeviceRequestContext.release();
     }
 
     RequestsInProgress.AddWriteRequest(requestId);
-    requestContext.release();
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
@@ -372,7 +353,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_unique<TRdmaRequestContext>(
+    auto requestResponseHandler = std::make_shared<TRdmaRequestResponseHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -389,11 +370,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     ui64 blocks = 0;
     for (auto& r: deviceRequests) {
-        auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
+        auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
-        auto dr = std::make_unique<TRdmaContext>();
-        dr->Endpoint = ep;
-        dr->RequestHandler = &*requestContext;
 
         NProto::TWriteDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -404,7 +382,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
-            &*dr,
+            requestResponseHandler,
+            nullptr,
             serializer->MessageByteSize(
                 deviceRequest,
                 r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
@@ -415,10 +394,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
                 "Failed to allocate rdma memory for WriteDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
-
-            for (auto& request: requests) {
-                request.Endpoint->FreeRequest(std::move(request.ClientRequest));
-            }
 
             using TResponse = TEvService::TEvWriteBlocksLocalResponse;
             NCloud::Reply(
@@ -444,18 +419,16 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
         blocks += r.DeviceBlockRange.Size();
 
-        requests.push_back({ep, std::move(req), std::move(dr)});
+        requests.push_back({std::move(ep), std::move(req)});
     }
 
     for (auto& request: requests) {
         request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
-        request.DeviceRequestContext.release();
     }
 
     RequestsInProgress.AddWriteRequest(requestId);
-    requestContext.release();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -17,21 +17,37 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TRequest: public NRdma::TClientRequest
+{
+public:
+    TRequest(
+            NRdma::IClientHandlerPtr handler,
+            std::unique_ptr<NRdma::TNullContext> context)
+        : NRdma::TClientRequest(std::move(handler), std::move(context))
+    {}
+
+    ~TRequest() override
+    {
+        delete[] RequestBuffer.data();
+        delete[] ResponseBuffer.data();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRdmaEndpointImpl
     : NRdma::IClientEndpoint
 {
-    NRdma::IClientHandlerPtr Handler;
     TDeque<TString> Blocks;
     NProto::TError AllocationError;
     NProto::TError RdmaResponseError;
     NProto::TError ResponseError;
 
-    TRdmaEndpointImpl(NRdma::IClientHandlerPtr handler)
-        : Handler(std::move(handler))
-    {}
+    TRdmaEndpointImpl() = default;
 
     TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
-        void* context,
+        NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override
     {
@@ -39,12 +55,13 @@ struct TRdmaEndpointImpl
             return AllocationError;
         }
 
-        auto req = std::make_unique<NRdma::TClientRequest>();
-        req->Context = context;
+        auto req = std::make_unique<TRequest>(
+            std::move(handler),
+            std::move(context));
         req->RequestBuffer = {new char[requestBytes], requestBytes};
         req->ResponseBuffer = {new char[responseBytes], responseBytes};
 
-        return std::move(req);
+        return NRdma::TClientRequestPtr(std::move(req));
     }
 
     void SendRequest(
@@ -63,7 +80,8 @@ struct TRdmaEndpointImpl
                 RdmaResponseError.GetMessage(),
                 req->ResponseBuffer);
 
-            Handler->HandleResponse(
+            auto* handler = req->Handler.get();
+            handler->HandleResponse(
                 std::move(req),
                 NRdma::RDMA_PROTO_FAIL,
                 len);
@@ -206,17 +224,13 @@ struct TRdmaEndpointImpl
             }
         }
 
-        Handler->HandleResponse(
+        auto* handler = req->Handler.get();
+        handler->HandleResponse(
             std::move(req),
             NRdma::RDMA_PROTO_OK,
             responseBytes);
     }
 
-    void FreeRequest(NRdma::TClientRequestPtr req) override
-    {
-        delete[] req->RequestBuffer.data();
-        delete[] req->ResponseBuffer.data();
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -232,12 +246,11 @@ TString MakeKey(const TString& host, ui32 port)
 
 NThreading::TFuture<NRdma::IClientEndpointPtr> TRdmaClientTest::StartEndpoint(
     TString host,
-    ui32 port,
-    NRdma::IClientHandlerPtr handler)
+    ui32 port)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     if (!ep.Endpoint) {
-        ep.Endpoint = std::make_shared<TRdmaEndpointImpl>(handler);
+        ep.Endpoint = std::make_shared<TRdmaEndpointImpl>();
         ep.Promise = NThreading::NewPromise<NRdma::IClientEndpointPtr>();
     }
     return ep.Promise;

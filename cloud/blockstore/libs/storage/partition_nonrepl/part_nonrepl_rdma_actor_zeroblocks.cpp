@@ -85,11 +85,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
             HandleError(PartConfig, buffer, Error);
         }
 
-        auto* dr = static_cast<TRdmaContext*>(req->Context);
-        dr->Endpoint->FreeRequest(std::move(req));
-
-        delete dr;
-
         if (AtomicDecrement(Responses) == 0) {
             ProcessError(*ActorSystem, *PartConfig, Error);
 
@@ -122,8 +117,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
 
             completion.release();
             ActorSystem->Send(completionEvent);
-
-            delete this;
         }
     }
 };
@@ -169,7 +162,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_unique<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestContext>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -184,7 +177,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
     {
         NRdma::IClientEndpointPtr Endpoint;
         NRdma::TClientRequestPtr ClientRequest;
-        std::unique_ptr<TRdmaContext> DeviceRequestContext;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -192,9 +184,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
     for (auto& r: deviceRequests) {
         auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
-        auto dr = std::make_unique<TRdmaContext>();
-        dr->Endpoint = ep;
-        dr->RequestHandler = &*requestContext;
 
         NProto::TZeroDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -206,7 +195,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
-            &*dr,
+            requestContext,
+            nullptr,
             serializer->MessageByteSize(deviceRequest, 0),
             4_KB);
 
@@ -215,10 +205,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
                 "Failed to allocate rdma memory for ZeroDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
-
-            for (auto& request: requests) {
-                request.Endpoint->FreeRequest(std::move(request.ClientRequest));
-            }
 
             NCloud::Reply(
                 ctx,
@@ -234,18 +220,16 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             deviceRequest,
             TContIOVector(nullptr, 0));
 
-        requests.push_back({ep, std::move(req), std::move(dr)});
+        requests.push_back({ep, std::move(req)});
     }
 
     for (auto& request: requests) {
         request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
-        request.DeviceRequestContext.release();
     }
 
     RequestsInProgress.AddWriteRequest(requestId);
-    requestContext.release();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

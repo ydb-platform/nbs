@@ -27,7 +27,7 @@ using TResponse = TEvService::TEvReadBlocksLocalResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaRequestContext: NRdma::IClientHandler
+struct TRdmaRequestContext: public NRdma::IClientHandler
 {
     TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
@@ -59,7 +59,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
     {
     }
 
-    void HandleResult(TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
     {
         if (auto guard = SgList.Acquire()) {
             auto* serializer = TBlockStoreProtocol::Serializer();
@@ -103,7 +103,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         ui32 status,
         size_t responseBytes) override
     {
-        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context);
+        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
@@ -111,10 +111,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         } else {
             HandleError(PartConfig, buffer, Error);
         }
-
-        dr->Endpoint->FreeRequest(std::move(req));
-
-        delete dr;
 
         if (AtomicDecrement(Responses) == 0) {
             ProcessError(*ActorSystem, *PartConfig, Error);
@@ -148,8 +144,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
 
             completion.release();
             ActorSystem->Send(completionEvent);
-
-            delete this;
         }
     }
 };
@@ -195,7 +189,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_unique<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestContext>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -205,11 +199,12 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         SelfId(),
         requestId);
 
+
     auto error = SendReadRequests(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
-        &*requestContext,
+        requestContext,
         deviceRequests);
 
     if (HasError(error)) {
@@ -222,7 +217,6 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
     }
 
     RequestsInProgress.AddReadRequest(requestId);
-    requestContext.release();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

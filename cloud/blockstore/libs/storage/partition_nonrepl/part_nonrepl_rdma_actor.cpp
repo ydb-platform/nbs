@@ -23,23 +23,6 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaHandler: NRdma::IClientHandler
-{
-    void HandleResponse(
-        NRdma::TClientRequestPtr req,
-        ui32 status,
-        size_t responseBytes) override
-    {
-        TRdmaContext* rdmaContext = static_cast<TRdmaContext*>(req->Context);
-        rdmaContext->RequestHandler->HandleResponse(
-            std::move(req),
-            status,
-            responseBytes);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 void HandleError(
     const TNonreplicatedPartitionConfigPtr& partConfig,
     TStringBuf responseBuffer,
@@ -71,8 +54,6 @@ TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor()
 
 void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
 {
-    Handler = std::make_shared<TRdmaHandler>();
-
     for (const auto& d: PartConfig->GetDevices()) {
         auto& ep = AgentId2EndpointFuture[d.GetAgentId()];
         if (ep.Initialized()) {
@@ -81,8 +62,7 @@ void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
 
         ep = RdmaClient->StartEndpoint(
             d.GetAgentId(),
-            Config->GetRdmaTargetPort(),
-            Handler);
+            Config->GetRdmaTargetPort());
     }
 
     Become(&TThis::StateWork);
@@ -233,7 +213,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     const NActors::TActorContext& ctx,
     TCallContextPtr callContext,
     const NProto::THeaders& headers,
-    NRdma::IClientHandler* handler,
+    NRdma::IClientHandlerPtr handler,
     const TVector<TDeviceRequest>& deviceRequests)
 {
     auto* serializer = TBlockStoreProtocol::Serializer();
@@ -242,7 +222,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     {
         NRdma::IClientEndpointPtr Endpoint;
         NRdma::TClientRequestPtr ClientRequest;
-        std::unique_ptr<TDeviceReadRequestContext> DeviceRequestContext;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -252,8 +231,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
         auto dr = std::make_unique<TDeviceReadRequestContext>();
-        dr->Endpoint = ep;
-        dr->RequestHandler = handler;
 
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dr->StartIndexOffset = startBlockIndexOffset;
@@ -269,7 +246,8 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         deviceRequest.SetSessionId(headers.GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
-            &*dr,
+            handler,
+            std::move(dr),
             serializer->MessageByteSize(deviceRequest, 0),
             4_KB + sz);
 
@@ -278,10 +256,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
                 "Failed to allocate rdma memory for ReadDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
-
-            for (auto& request: requests) {
-                request.Endpoint->FreeRequest(std::move(request.ClientRequest));
-            }
 
             return err;
         }
@@ -292,14 +266,13 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             deviceRequest,
             TContIOVector(nullptr, 0));
 
-        requests.push_back({ep, std::move(req), std::move(dr)});
+        requests.push_back({ep, std::move(req)});
     }
 
     for (auto& request: requests) {
         request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             callContext);
-        request.DeviceRequestContext.release();
     }
 
     return {};

@@ -31,18 +31,40 @@ struct TClientConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TNullContext is the base class for the user context passed to TClientRequest.
+class TNullContext
+{
+public:
+    virtual ~TNullContext() = default;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// TClientRequest encapsulates all information for executing the request:
+// input and output buffers, response handler, user context.
+// Do not create TClientRequest directly, use IClientHandler::AllocateRequest().
 struct TClientRequest
 {
-    void* Context = nullptr;
+    IClientHandlerPtr Handler;
+    std::unique_ptr<TNullContext> Context;
 
     TStringBuf RequestBuffer;
     TStringBuf ResponseBuffer;
 
     virtual ~TClientRequest() = default;
+
+protected:
+    TClientRequest(
+            IClientHandlerPtr handler,
+            std::unique_ptr<TNullContext> context)
+        : Handler(std::move(handler))
+        , Context(std::move(context))
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// IClientHandler interface is used to process the response on the user side.
 struct IClientHandler
 {
     virtual ~IClientHandler() = default;
@@ -55,20 +77,20 @@ struct IClientHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// IClientEndpoint interface is used to create and execute a request.
 struct IClientEndpoint
 {
     virtual ~IClientEndpoint() = default;
 
     virtual TResultOrError<TClientRequestPtr> AllocateRequest(
-        void* context,
+        IClientHandlerPtr handler,
+        std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) = 0;
 
     virtual void SendRequest(
         TClientRequestPtr req,
         TCallContextPtr callContext) = 0;
-
-    virtual void FreeRequest(TClientRequestPtr req) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,8 +102,7 @@ struct IClient
 
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port,
-        IClientHandlerPtr handler) = 0;
+        ui32 port) = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

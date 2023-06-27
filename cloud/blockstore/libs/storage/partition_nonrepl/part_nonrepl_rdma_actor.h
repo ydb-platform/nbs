@@ -23,15 +23,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaContext
-{
-    NRdma::IClientHandler* RequestHandler = nullptr;
-    NRdma::IClientEndpointPtr Endpoint;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TDeviceReadRequestContext: TRdmaContext
+struct TDeviceReadRequestContext: public NRdma::TNullContext
 {
     ui64 StartIndexOffset = 0;
 };
@@ -67,7 +59,6 @@ private:
     using TEndpointFuture = NThreading::TFuture<NRdma::IClientEndpointPtr>;
     THashMap<TString, TEndpointFuture> AgentId2EndpointFuture;
     THashMap<TString, NRdma::IClientEndpointPtr> AgentId2Endpoint;
-    NRdma::IClientHandlerPtr Handler;
 
     TRequestInfoPtr Poisoner;
 
@@ -109,7 +100,7 @@ private:
         const NActors::TActorContext& ctx,
         TCallContextPtr callContext,
         const NProto::THeaders& headers,
-        NRdma::IClientHandler* handler,
+        NRdma::IClientHandlerPtr handler,
         const TVector<TDeviceRequest>& deviceRequests);
 
     void HandleUpdateCounters(

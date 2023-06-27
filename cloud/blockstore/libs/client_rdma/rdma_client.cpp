@@ -58,15 +58,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRequestHandler
+struct IRequestHandler: public NRdma::TNullContext
 {
-    virtual ~IRequestHandler() = default;
-
     virtual void HandleResponse(TStringBuf buffer) = 0;
     virtual void HandleError(ui32 error, TStringBuf message) = 0;
 };
-
-using IRequestHandlerPtr = std::unique_ptr<IRequestHandler>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -320,6 +316,7 @@ public:
 class TRdmaEndpoint final
     : public TEndpointBase
     , public NRdma::IClientHandler
+    , public std::enable_shared_from_this<TRdmaEndpoint>
 {
 private:
     const IBlockStorePtr VolumeClient;
@@ -331,15 +328,17 @@ private:
     size_t BlockSize = 4*1024;
 
 public:
-    TRdmaEndpoint(ILoggingServicePtr logging, IBlockStorePtr volumeClient)
-        : VolumeClient(std::move(volumeClient))
-    {
-        Log = logging->CreateLog("BLOCKSTORE_RDMA");
-    }
-
-    ~TRdmaEndpoint()
+    ~TRdmaEndpoint() override
     {
         Stop();
+    }
+
+    static std::shared_ptr<TRdmaEndpoint> Create(
+        ILoggingServicePtr logging,
+        IBlockStorePtr volumeClient)
+    {
+        return std::shared_ptr<TRdmaEndpoint>{
+            new TRdmaEndpoint(std::move(logging), std::move(volumeClient))};
     }
 
     void Init(NRdma::IClientEndpointPtr endpoint)
@@ -388,6 +387,12 @@ public:
     }
 
 private:
+    TRdmaEndpoint(ILoggingServicePtr logging, IBlockStorePtr volumeClient)
+        : VolumeClient(std::move(volumeClient))
+    {
+        Log = logging->CreateLog("BLOCKSTORE_RDMA");
+    }
+
     template <typename T>
     TFuture<typename T::TResponse> HandleRequest(
         TCallContextPtr callContext,
@@ -448,7 +453,8 @@ TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
         BlockSize);
 
     auto [req, err] = Endpoint->AllocateRequest(
-        handler.get(),
+        shared_from_this(),
+        nullptr,
         handler->GetRequestSize(),
         handler->GetResponseSize());
 
@@ -457,11 +463,10 @@ TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
     }
 
     handler->PrepareRequest(req->RequestBuffer);
-    Endpoint->SendRequest(std::move(req), callContext);
-
     auto response = handler->GetResponse();
+    req->Context = std::move(handler);
+    Endpoint->SendRequest(std::move(req), std::move(callContext));
 
-    handler.release();  // ownership transferred
     return response;
 }
 
@@ -472,7 +477,7 @@ void TRdmaEndpoint::HandleResponse(
 {
     // TODO: it is much better to process response in different thread
 
-    IRequestHandlerPtr handler(static_cast<IRequestHandler*>(req->Context));
+    auto* handler = static_cast<IRequestHandler*>(req->Context.get());
     try {
         auto buffer = req->ResponseBuffer.Head(responseBytes);
         if (status == 0) {
@@ -484,8 +489,6 @@ void TRdmaEndpoint::HandleResponse(
     } catch (...) {
         STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
     }
-
-    Endpoint->FreeRequest(std::move(req));
 }
 
 }   // namespace
@@ -498,14 +501,10 @@ IBlockStorePtr CreateRdmaEndpointClient(
     IBlockStorePtr volumeClient,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint = std::make_shared<TRdmaEndpoint>(
-        std::move(logging),
-        std::move(volumeClient));
+    auto endpoint =
+        TRdmaEndpoint::Create(std::move(logging), std::move(volumeClient));
 
-    auto startEndpoint = client->StartEndpoint(
-        config.Address,
-        config.Port,
-        endpoint);
+    auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
 
     endpoint->Init(startEndpoint.GetValue(WAIT_TIMEOUT));
     return endpoint;

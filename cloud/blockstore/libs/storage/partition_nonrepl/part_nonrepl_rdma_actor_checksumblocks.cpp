@@ -25,7 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceChecksumRequestContext: TRdmaContext
+struct TDeviceChecksumRequestContext: public NRdma::TNullContext
 {
     ui64 RangeStartIndex = 0;
     ui32 RangeSize = 0;
@@ -74,7 +74,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         , RequestId(requestId)
     {}
 
-    void HandleResult(TDeviceChecksumRequestContext& dc, TStringBuf buffer)
+    void HandleResult(const TDeviceChecksumRequestContext& dc, TStringBuf buffer)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
@@ -100,7 +100,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         ui32 status,
         size_t responseBytes) override
     {
-        auto* dc = static_cast<TDeviceChecksumRequestContext*>(req->Context);
+        auto* dc = static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
@@ -108,10 +108,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         } else {
             HandleError(PartConfig, buffer, Error);
         }
-
-        dc->Endpoint->FreeRequest(std::move(req));
-
-        delete dc;
 
         if (AtomicDecrement(Responses) == 0) {
             ProcessError(*ActorSystem, *PartConfig, Error);
@@ -151,8 +147,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
 
             completion.release();
             ActorSystem->Send(completionEvent);
-
-            delete this;
         }
     }
 };
@@ -198,7 +192,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_unique<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestContext>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -213,7 +207,6 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     {
         NRdma::IClientEndpointPtr Endpoint;
         NRdma::TClientRequestPtr ClientRequest;
-        std::unique_ptr<TDeviceChecksumRequestContext> DeviceRequestContext;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -222,8 +215,6 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
-        dc->Endpoint = ep;
-        dc->RequestHandler = &*requestContext;
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
 
@@ -237,7 +228,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
-            &*dc,
+            requestContext,
+            std::move(dc),
             serializer->MessageByteSize(deviceRequest, 0),
             4_KB);
 
@@ -246,10 +238,6 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
                 "Failed to allocate rdma memory for ChecksumDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
-
-            for (auto& request: requests) {
-                request.Endpoint->FreeRequest(std::move(request.ClientRequest));
-            }
 
             NCloud::Reply(
                 ctx,
@@ -265,18 +253,16 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             deviceRequest,
             TContIOVector(nullptr, 0));
 
-        requests.push_back({ep, std::move(req), std::move(dc)});
+        requests.push_back({ep, std::move(req)});
     }
 
     for (auto& request: requests) {
         request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
-        request.DeviceRequestContext.release();
     }
 
     RequestsInProgress.AddReadRequest(requestId);
-    requestContext.release();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

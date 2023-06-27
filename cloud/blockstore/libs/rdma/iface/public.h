@@ -13,6 +13,8 @@ namespace NCloud::NBlockStore::NRdma {
 struct IClient;
 using IClientPtr = std::shared_ptr<IClient>;
 
+class TNullContext;
+
 struct TClientRequest;
 using TClientRequestPtr = std::unique_ptr<TClientRequest>;
 

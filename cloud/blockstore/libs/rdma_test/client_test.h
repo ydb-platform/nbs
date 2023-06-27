@@ -24,8 +24,7 @@ struct TRdmaClientTest: NRdma::IClient
 
     NThreading::TFuture<NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port,
-        NRdma::IClientHandlerPtr handler) override;
+        ui32 port) override;
 
     void Start() override
     {

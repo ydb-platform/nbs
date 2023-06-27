@@ -61,7 +61,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         }
     }
 
-    void HandleResult(TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
@@ -104,7 +104,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         ui32 status,
         size_t responseBytes) override
     {
-        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context);
+        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
@@ -112,10 +112,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         } else {
             HandleError(PartConfig, buffer, *Response.MutableError());
         }
-
-        dr->Endpoint->FreeRequest(std::move(req));
-
-        delete dr;
 
         if (AtomicDecrement(Responses) == 0) {
             ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
@@ -154,8 +150,6 @@ struct TRdmaRequestContext: NRdma::IClientHandler
 
             completion.release();
             ActorSystem->Send(completionEvent);
-
-            delete this;
         }
     }
 };
@@ -201,7 +195,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_unique<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestContext>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -214,7 +208,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
-        &*requestContext,
+        requestContext,
         deviceRequests);
 
     if (HasError(error)) {
@@ -227,7 +221,6 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
     }
 
     RequestsInProgress.AddReadRequest(requestId);
-    requestContext.release();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

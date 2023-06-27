@@ -31,15 +31,11 @@ constexpr size_t MAX_PROTO_SIZE = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRequestHandler
+struct IRequestHandler: public NRdma::TNullContext
 {
-    virtual ~IRequestHandler() = default;
-
     virtual void HandleResponse(TStringBuf buffer) = 0;
     virtual void HandleError(ui32 error, TStringBuf message) = 0;
 };
-
-using IRequestHandlerPtr = std::unique_ptr<IRequestHandler>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -327,6 +323,7 @@ public:
 class TRdmaStorage
     : public IStorage
     , public NRdma::IClientHandler
+    , public std::enable_shared_from_this<TRdmaStorage>
 {
 private:
     const TString Uuid;
@@ -334,20 +331,19 @@ private:
 
     ITaskQueuePtr TaskQueue;
     NRdma::IClientEndpointPtr Endpoint;
-
 public:
-    TRdmaStorage(
-            TString uuid,
-            ui64 blockSize,
-            ITaskQueuePtr taskQueue)
-        : Uuid(std::move(uuid))
-        , BlockSize(blockSize)
-        , TaskQueue(std::move(taskQueue))
-    {}
+    static std::shared_ptr<TRdmaStorage> Create(
+        TString uuid,
+        ui64 blockSize,
+        ITaskQueuePtr taskQueue)
+    {
+        return std::shared_ptr<TRdmaStorage>{
+            new TRdmaStorage(std::move(uuid), blockSize, std::move(taskQueue))};
+    }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
         return HandleRequest<TReadBlocksHandler>(
             std::move(callContext),
@@ -356,7 +352,7 @@ public:
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
         return HandleRequest<TWriteBlocksHandler>(
             std::move(callContext),
@@ -365,7 +361,7 @@ public:
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
         return HandleRequest<TZeroBlocksHandler>(
             std::move(callContext),
@@ -373,13 +369,13 @@ public:
     }
 
     TFuture<NProto::TError> EraseDevice(
-        NProto::EDeviceEraseMethod method)
+        NProto::EDeviceEraseMethod method) override
     {
         Y_UNUSED(method);
         return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
     }
 
-    TStorageBuffer AllocateBuffer(size_t bytesCount)
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
         Y_UNUSED(bytesCount);
         return nullptr;
@@ -391,6 +387,15 @@ public:
     }
 
 private:
+    TRdmaStorage(
+            TString uuid,
+            ui64 blockSize,
+            ITaskQueuePtr taskQueue)
+        : Uuid(std::move(uuid))
+        , BlockSize(blockSize)
+        , TaskQueue(std::move(taskQueue))
+    {}
+
     template <typename T>
     TFuture<typename T::TResponse> HandleRequest(
         TCallContextPtr callContext,
@@ -413,7 +418,8 @@ private:
             BlockSize);
 
         auto [req, err] = Endpoint->AllocateRequest(
-            handler.get(),
+            shared_from_this(),
+            nullptr,
             handler->GetRequestSize(),
             handler->GetResponseSize());
 
@@ -422,18 +428,17 @@ private:
         }
 
         handler->PrepareRequest(req->RequestBuffer);
-        Endpoint->SendRequest(std::move(req), callContext);
-
         auto response = handler->GetResponse();
+        req->Context = std::move(handler);
+        Endpoint->SendRequest(std::move(req), std::move(callContext));
 
-        handler.release();  // ownership transferred
         return response;
     }
 
     void HandleResponse(
         NRdma::TClientRequestPtr req,
         ui32 status,
-        size_t responseBytes)
+        size_t responseBytes) override
     {
         TaskQueue->ExecuteSimple([=, req = std::move(req)] () mutable {
             DoHandleResponse(std::move(req), status, responseBytes);
@@ -445,7 +450,7 @@ private:
         ui32 status,
         size_t responseBytes)
     {
-        IRequestHandlerPtr handler(static_cast<IRequestHandler*>(req->Context));
+        auto* handler = static_cast<IRequestHandler*>(req->Context.get());
 
         try {
             auto buffer = req->ResponseBuffer.Head(responseBytes);
@@ -458,8 +463,6 @@ private:
         } catch (...) {
             handler->HandleError(E_FAIL, CurrentExceptionMessage());
         }
-
-        Endpoint->FreeRequest(std::move(req));
     }
 };
 
@@ -538,12 +541,12 @@ public:
                 }
 
                 if (!storage) {
-                    storage = std::make_shared<TRdmaStorage>(
+                    storage = TRdmaStorage::Create(
                         device.GetDeviceUUID(),
                         volume.GetBlockSize(),
                         TaskQueue);
 
-                    auto endpoint = Client->StartEndpoint(ep.Host, ep.Port, storage)
+                    auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
                         .Subscribe([=] (const auto& future) {
                             storage->Init(future.GetValue());
                         });
