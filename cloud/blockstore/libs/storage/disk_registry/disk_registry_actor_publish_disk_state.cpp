@@ -145,7 +145,7 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Publish disk state completed",
         TabletID());
 
