@@ -559,20 +559,24 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         UNIT_ASSERT(*counter == 3);
     }
 
-    Y_UNIT_TEST(ShouldReportBytesCountForSSDSystemVolumes)
+    void DoTestShouldReportBytesCount(
+        EPublishingPolicy policy,
+        NProto::EStorageMediaKind mediaKind,
+        TString type,
+        bool isSystem)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        RegisterVolume(runtime, DefaultDiskId, NProto::STORAGE_MEDIA_SSD, true);
+        RegisterVolume(runtime, DefaultDiskId, mediaKind, isSystem);
 
-        auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
+        auto counters = CreatePartitionDiskCounters(policy);
         counters->Simple.BytesCount.Set(100500);
         SendDiskStats(
             runtime,
             DefaultDiskId,
             std::move(counters),
-            CreateVolumeSelfCounters(EPublishingPolicy::Repl),
+            CreateVolumeSelfCounters(policy),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
             0);
         auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
@@ -593,64 +597,72 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         ui64 actual = *runtime.GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", "ssd_system")
+            ->GetSubgroup("type", type)
             ->GetCounter("BytesCount");
         UNIT_ASSERT_VALUES_EQUAL(100500, actual);
+    }
 
-        // should not report "ssd" metrics.
-        actual = *runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", "ssd")
-            ->GetCounter("BytesCount");
-        UNIT_ASSERT_VALUES_EQUAL(0, actual);
+    Y_UNIT_TEST(ShouldReportBytesCountForHDDVolumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_HDD,
+            "hdd",
+            false);
+    }
+
+    Y_UNIT_TEST(ShouldReportBytesCountForSSDVolumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_SSD,
+            "ssd",
+            false);
     }
 
     Y_UNIT_TEST(ShouldReportBytesCountForHDDSystemVolumes)
     {
-        TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_HDD,
+            "hdd_system",
+            true);
+    }
 
-        RegisterVolume(runtime, DefaultDiskId, NProto::STORAGE_MEDIA_HDD, true);
+    Y_UNIT_TEST(ShouldReportBytesCountForSSDSystemVolumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_SSD,
+            "ssd_system",
+            true);
+    }
 
-        auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
-        counters->Simple.BytesCount.Set(100500);
-        SendDiskStats(
-            runtime,
-            DefaultDiskId,
-            std::move(counters),
-            CreateVolumeSelfCounters(EPublishingPolicy::Repl),
-            EVolumeTestOptions::VOLUME_HASCLIENTS,
-            0);
-        auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
-        runtime.Send(
-            new IEventHandle(
-                MakeStorageStatsServiceId(),
-                MakeStorageStatsServiceId(),
-                updateMsg.release(),
-                0, // flags
-                0),
-            0);
+    Y_UNIT_TEST(ShouldReportBytesCountForSSDNonreplVolumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::NonRepl,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            "ssd_nonrepl",
+            false);
+    }
 
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
-        runtime.DispatchEvents(options);
+    Y_UNIT_TEST(ShouldReportBytesCountForSSDMirror2Volumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::NonRepl,
+            NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            "ssd_mirror2",
+            false);
+    }
 
-        // should report "hdd_system" metrics.
-        ui64 actual = *runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", "hdd_system")
-            ->GetCounter("BytesCount");
-        UNIT_ASSERT_VALUES_EQUAL(100500, actual);
-
-        // should not report "hdd" metrics.
-        actual = *runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", "hdd")
-            ->GetCounter("BytesCount");
-        UNIT_ASSERT_VALUES_EQUAL(0, actual);
+    Y_UNIT_TEST(ShouldReportBytesCountForSSDMirror3Volumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::NonRepl,
+            NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            "ssd_mirror3",
+            false);
     }
 
     Y_UNIT_TEST(ShouldReportDiskCountAndPartitionCount)

@@ -127,7 +127,7 @@ struct TVolumeStatsInfo
         , PerfCounters(EPublishingPolicy::All)
     {}
 
-    bool IsNonReplicated() const
+    bool IsDiskRegistryBased() const
     {
         return IsDiskRegistryMediaKind(VolumeInfo.GetStorageMediaKind());
     }

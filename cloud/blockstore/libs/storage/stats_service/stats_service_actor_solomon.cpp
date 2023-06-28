@@ -83,6 +83,8 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         &State.GetSsdCounters(),
         &State.GetHddCounters(),
         &State.GetSsdNonreplCounters(),
+        &State.GetSsdMirror2Counters(),
+        &State.GetSsdMirror3Counters(),
         &State.GetSsdSystemCounters(),
         &State.GetHddSystemCounters(),
     };
@@ -199,7 +201,7 @@ void TStatsServiceActor::HandleRegisterVolume(
 
     auto volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
 
-    if (volume->IsNonReplicated()) {
+    if (volume->IsDiskRegistryBased()) {
         volume->PerfCounters = TDiskPerfData(EPublishingPolicy::NonRepl);
     } else {
         volume->PerfCounters = TDiskPerfData(EPublishingPolicy::Repl);
