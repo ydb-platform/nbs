@@ -11,6 +11,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -18,6 +20,8 @@ using namespace NKikimr;
 using namespace NDiskRegistryTest;
 
 using namespace NThreading;
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -99,8 +103,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.AllocateDisk("nonrepl-vol", 10_GB, 4_KB, "", 0, "yc-nbs", "yc-nbs.folder");
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(2, notifications);
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
@@ -109,8 +113,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol", notifyService->Requests[0].DiskId);
         UNIT_ASSERT_VALUES_EQUAL("", notifyService->Requests[0].UserId);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(2, notifications);
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
@@ -168,8 +172,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol", notifyService->Requests[0].DiskId);
         UNIT_ASSERT_VALUES_EQUAL("vasya", notifyService->Requests[0].UserId);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(1, notifications);
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
@@ -215,8 +219,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs.folder", notifyService->Requests[0].FolderId);
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol", notifyService->Requests[0].DiskId);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
     }
@@ -265,8 +269,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-1", notifyService->Requests[0].DiskId);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(2, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-1", notifyService->Requests[1].DiskId);
@@ -275,8 +279,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         notifyService->Error = MakeError(S_OK);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(3, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-1", notifyService->Requests[2].DiskId);
@@ -284,14 +288,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         notifyService->Error = MakeError(E_REJECTED);
 
         diskRegistry.ChangeAgentState("agent-2", NProto::AGENT_STATE_UNAVAILABLE);
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(4, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-2", notifyService->Requests[3].DiskId);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(5, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-2", notifyService->Requests[4].DiskId);
@@ -299,15 +303,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, userNotificationError->Val());
         notifyService->Error = MakeError(E_FAIL);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(6, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-2", notifyService->Requests[5].DiskId);
         UNIT_ASSERT_VALUES_EQUAL(1, userNotificationError->Val());
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(6, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(1, userNotificationError->Val());
@@ -318,11 +322,63 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(6, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(1, userNotificationError->Val());
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(6, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(1, userNotificationError->Val());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreDeletedDisk)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        TAutoPtr<IEventHandle> delayedRequest;
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev) {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvPublishDiskStatesRequest: {
+                        if (!delayedRequest) {
+                            delayedRequest = ev.Release();
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+
+                return false;
+            });
+
+        diskRegistry.AllocateDisk("vol0", 10_GB, 4_KB, "", 0, "", "");
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+
+        UNIT_ASSERT(delayedRequest);
+
+        diskRegistry.DeallocateDisk(
+            "vol0",
+            true,   // force
+            false); // sync
+
+        // resend event
+        runtime->DispatchEvents({}, 10ms);
+        runtime->Send(delayedRequest.Release());
+        runtime->DispatchEvents({}, 10ms);
     }
 }
 

@@ -79,7 +79,9 @@ void TDiskRegistryActor::HandlePublishDiskStates(
     DiskStatesPublicationStartTs = ctx.Now();
 
     if (State->GetDiskStateUpdates().empty()) {
-        auto response = std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse>();
+        auto response = std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse>(
+            ev->Get()->CallContext,
+            0);
         NCloud::Reply(ctx, *ev, std::move(response));
 
         return;
