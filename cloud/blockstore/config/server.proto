@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-import "cloud/blockstore/config/certificate.proto";
 import "cloud/blockstore/config/rdma.proto";
+import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/endpoints.proto";
 
 package NCloud.NBlockStore.NProto;
@@ -63,7 +63,7 @@ message TServerConfig
     // The following 2 are deprecated in favor of Certs.
     optional string CertFile = 11;
     optional string CertPrivateKeyFile = 12;
-    repeated TCertificate Certs = 27;
+    repeated NCloud.NProto.TCertificate Certs = 27;
 
     // TCP KeepAlive details.
     optional bool KeepAliveEnabled = 13;

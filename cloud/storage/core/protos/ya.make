@@ -7,6 +7,7 @@ PEERDIR(
 )
 
 SRCS(
+    certificate.proto
     endpoints.proto
     error.proto
     media.proto

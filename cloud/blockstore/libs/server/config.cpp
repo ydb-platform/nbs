@@ -125,7 +125,7 @@ TVector<TString> ConvertValue(
 
 template <>
 TVector<TCertificate> ConvertValue(
-    const google::protobuf::RepeatedPtrField<NProto::TCertificate>& value)
+    const google::protobuf::RepeatedPtrField<NCloud::NProto::TCertificate>& value)
 {
     TVector<TCertificate> v;
     for (const auto& x : value) {

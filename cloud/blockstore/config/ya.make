@@ -3,7 +3,6 @@ PROTO_LIBRARY()
 INCLUDE_TAGS(GO_PROTO)
 
 SRCS(
-    certificate.proto
     client.proto
     diagnostics.proto
     discovery.proto
