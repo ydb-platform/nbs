@@ -17,8 +17,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -29,28 +27,31 @@ using TResponse = TEvService::TEvReadBlocksResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaRequestContext: NRdma::IClientHandler
+class TRdmaRequestContext: public NRdma::IClientHandler
 {
+private:
     TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
-    TAtomic Responses;
+    TAdaptiveLock Lock;
+    size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
+public:
     TRdmaRequestContext(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
-            TAtomicBase requests,
+            size_t requestCount,
             ui32 blockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , Responses(requests)
+        , ResponseCount(requestCount)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
     {
@@ -104,53 +105,57 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         ui32 status,
         size_t responseBytes) override
     {
+        auto guard = Guard(Lock);
+
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
+            HandleResult(*dr, std::move(buffer));
         } else {
-            HandleError(PartConfig, buffer, *Response.MutableError());
+            HandleError(
+                PartConfig,
+                std::move(buffer),
+                *Response.MutableError());
         }
 
-        if (AtomicDecrement(Responses) == 0) {
-            ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
-            auto error = Response.GetError();
-
-            ui32 blocks = Response.GetBlocks().BuffersSize();
-
-            auto response = std::make_unique<TResponse>();
-            response->Record = std::move(Response);
-            TAutoPtr<IEventHandle> event(
-                new IEventHandle(
-                    RequestInfo->Sender,
-                    {},
-                    response.get(),
-                    0,
-                    RequestInfo->Cookie));
-
-            response.release();
-            ActorSystem->Send(event);
-
-            using TCompletionEvent =
-                TEvNonreplPartitionPrivate::TEvReadBlocksCompleted;
-            auto completion =
-                std::make_unique<TCompletionEvent>(std::move(error));
-            auto& counters = *completion->Stats.MutableUserReadCounters();
-            completion->TotalCycles = RequestInfo->GetTotalCycles();
-
-            counters.SetBlocksCount(blocks);
-            TAutoPtr<IEventHandle> completionEvent(
-                new IEventHandle(
-                    ParentActorId,
-                    {},
-                    completion.get(),
-                    0,
-                    RequestId));
-
-            completion.release();
-            ActorSystem->Send(completionEvent);
+        if (--ResponseCount != 0) {
+            return;
         }
+
+        // Got all device responses. Do processing.
+
+        ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
+        auto error = Response.GetError();
+
+        ui32 blocks = Response.GetBlocks().BuffersSize();
+
+        auto response = std::make_unique<TResponse>();
+        response->Record = std::move(Response);
+        auto event = std::make_unique<IEventHandle>(
+            RequestInfo->Sender,
+            TActorId(),
+            response.release(),
+            0,
+            RequestInfo->Cookie);
+
+        ActorSystem->Send(event.release());
+
+        using TCompletionEvent =
+            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted;
+        auto completion = std::make_unique<TCompletionEvent>(std::move(error));
+        auto& counters = *completion->Stats.MutableUserReadCounters();
+        completion->TotalCycles = RequestInfo->GetTotalCycles();
+
+        counters.SetBlocksCount(blocks);
+        auto completionEvent = std::make_unique<IEventHandle>(
+            ParentActorId,
+            TActorId(),
+            completion.release(),
+            0,
+            RequestId);
+
+        ActorSystem->Send(completionEvent.release());
     }
 };
 
@@ -208,7 +213,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
-        requestContext,
+        std::move(requestContext),
         deviceRequests);
 
     if (HasError(error)) {

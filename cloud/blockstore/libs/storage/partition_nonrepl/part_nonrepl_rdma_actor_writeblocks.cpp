@@ -32,8 +32,9 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaRequestResponseHandler: NRdma::IClientHandler
+class TRdmaRequestResponseHandler: public NRdma::IClientHandler
 {
+private:
     TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
@@ -45,6 +46,7 @@ struct TRdmaRequestResponseHandler: NRdma::IClientHandler
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
 
+public:
     TRdmaRequestResponseHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
@@ -64,7 +66,7 @@ struct TRdmaRequestResponseHandler: NRdma::IClientHandler
         , RequestId(requestId)
     {}
 
-    IEventBasePtr MakeResponse() const
+    std::unique_ptr<IEventBase> MakeResponse() const
     {
         if (ReplyLocal) {
             return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -81,6 +83,7 @@ struct TRdmaRequestResponseHandler: NRdma::IClientHandler
 
         if (HasError(err)) {
             Error = std::move(err);
+            return;
         }
 
         const auto& concreteProto =
@@ -95,14 +98,14 @@ struct TRdmaRequestResponseHandler: NRdma::IClientHandler
         ui32 status,
         size_t responseBytes) override
     {
-        auto buffer = req->ResponseBuffer.Head(responseBytes);
-
         auto guard = Guard(Lock);
 
+        auto buffer = req->ResponseBuffer.Head(responseBytes);
+
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(buffer);
+            HandleResult(std::move(buffer));
         } else {
-            HandleError(PartConfig, buffer, Error);
+            HandleError(PartConfig, std::move(buffer), Error);
         }
 
         if (--ResponseCount != 0) {
@@ -111,7 +114,7 @@ struct TRdmaRequestResponseHandler: NRdma::IClientHandler
 
         // Got all device responses. Do processing.
 
-        ProcessError(*TActivationContext::ActorSystem(), *PartConfig, Error);
+        ProcessError(*ActorSystem, *PartConfig, Error);
 
         auto response = MakeResponse();
         auto event = std::make_unique<IEventHandle>(

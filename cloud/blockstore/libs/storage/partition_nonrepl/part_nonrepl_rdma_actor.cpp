@@ -17,8 +17,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -228,7 +226,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
     ui64 startBlockIndexOffset = 0;
     for (auto& r: deviceRequests) {
-        auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
+        auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
         auto dr = std::make_unique<TDeviceReadRequestContext>();
 
@@ -266,7 +264,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             deviceRequest,
             TContIOVector(nullptr, 0));
 
-        requests.push_back({ep, std::move(req)});
+        requests.push_back({std::move(ep), std::move(req)});
     }
 
     for (auto& request: requests) {

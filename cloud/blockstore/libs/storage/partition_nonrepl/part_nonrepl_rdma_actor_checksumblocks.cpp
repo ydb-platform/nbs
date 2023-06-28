@@ -17,8 +17,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -45,30 +43,33 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaRequestContext: NRdma::IClientHandler
+class TRdmaRequestContext: public NRdma::IClientHandler
 {
+private:
     TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
-    TAtomic Responses;
+    TAdaptiveLock Lock;
+    size_t ResponseCount;
     TMap<ui64, TPartialChecksum> Checksums;
     NProto::TError Error;
     const ui32 RequestBlockCount;
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
+public:
     TRdmaRequestContext(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
-            TAtomicBase requests,
+            size_t requestCount,
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , Responses(requests)
+        , ResponseCount(requestCount)
         , RequestBlockCount(requestBlockCount)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
@@ -81,6 +82,7 @@ struct TRdmaRequestContext: NRdma::IClientHandler
 
         if (HasError(err)) {
             Error = std::move(err);
+            return;
         }
 
         const auto& concreteProto =
@@ -100,54 +102,56 @@ struct TRdmaRequestContext: NRdma::IClientHandler
         ui32 status,
         size_t responseBytes) override
     {
-        auto* dc = static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
+        auto guard = Guard(Lock);
+
+        auto* dc =
+            static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dc, buffer);
+            HandleResult(*dc, std::move(buffer));
         } else {
-            HandleError(PartConfig, buffer, Error);
+            HandleError(PartConfig, std::move(buffer), Error);
         }
 
-        if (AtomicDecrement(Responses) == 0) {
-            ProcessError(*ActorSystem, *PartConfig, Error);
-
-            TBlockChecksum checksum;
-            for (const auto& [_, partialChecksum]: Checksums) {
-                checksum.Combine(partialChecksum.Value, partialChecksum.Size);
-            }
-
-            auto response = std::make_unique<TResponse>(Error);
-            response->Record.SetChecksum(checksum.GetValue());
-            TAutoPtr<IEventHandle> event(
-                new IEventHandle(
-                    RequestInfo->Sender,
-                    {},
-                    response.get(),
-                    0,
-                    RequestInfo->Cookie));
-            response.release();
-            ActorSystem->Send(event);
-
-            using TCompletionEvent =
-                TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
-            auto completion =
-                std::make_unique<TCompletionEvent>(std::move(Error));
-            auto& counters = *completion->Stats.MutableSysChecksumCounters();
-            completion->TotalCycles = RequestInfo->GetTotalCycles();
-
-            counters.SetBlocksCount(RequestBlockCount);
-            TAutoPtr<IEventHandle> completionEvent(
-                new IEventHandle(
-                    ParentActorId,
-                    {},
-                    completion.get(),
-                    0,
-                    RequestId));
-
-            completion.release();
-            ActorSystem->Send(completionEvent);
+        if (--ResponseCount != 0) {
+            return;
         }
+
+        // Got all device responses. Do processing.
+
+        ProcessError(*ActorSystem, *PartConfig, Error);
+
+        TBlockChecksum checksum;
+        for (const auto& [_, partialChecksum]: Checksums) {
+            checksum.Combine(partialChecksum.Value, partialChecksum.Size);
+        }
+
+        auto response = std::make_unique<TResponse>(Error);
+        response->Record.SetChecksum(checksum.GetValue());
+        auto event = std::make_unique<IEventHandle>(
+            RequestInfo->Sender,
+            TActorId(),
+            response.release(),
+            0,
+            RequestInfo->Cookie);
+        ActorSystem->Send(event.release());
+
+        using TCompletionEvent =
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
+        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
+        auto& counters = *completion->Stats.MutableSysChecksumCounters();
+        completion->TotalCycles = RequestInfo->GetTotalCycles();
+
+        counters.SetBlocksCount(RequestBlockCount);
+        auto completionEvent = std::make_unique<IEventHandle>(
+            ParentActorId,
+            TActorId(),
+            completion.release(),
+            0,
+            RequestId);
+
+        ActorSystem->Send(completionEvent.release());
     }
 };
 
@@ -212,7 +216,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     TVector<TDeviceRequestInfo> requests;
 
     for (auto& r: deviceRequests) {
-        auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
+        auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_VERIFY(ep);
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
         dc->RangeStartIndex = r.BlockRange.Start;
@@ -253,7 +257,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             deviceRequest,
             TContIOVector(nullptr, 0));
 
-        requests.push_back({ep, std::move(req)});
+        requests.push_back({std::move(ep), std::move(req)});
     }
 
     for (auto& request: requests) {
