@@ -362,6 +362,64 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRemoveMultipleDevicesUponCmsRequest)
+    {
+        const auto agent = CreateAgentConfig("agent-1", {
+            Device("some/path", "uuid-1", "rack-1", 10_GB),
+            Device("some/path", "uuid-2", "rack-1", 10_GB),
+        });
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents({ agent })
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, {agent});
+
+        diskRegistry.AllocateDisk("vol1", 10_GB);
+
+        ui32 cmsTimeout = 0;
+        {
+            auto [error, timeout] =
+                RemoveDevice(diskRegistry, "agent-1", "some/path");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+
+            cmsTimeout = timeout;
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(cmsTimeout));
+
+        diskRegistry.DeallocateDisk("vol1", true);
+
+        {
+            auto [error, timeout] =
+                RemoveDevice(diskRegistry, "agent-1", "some/path");
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+
+        {
+            diskRegistry.SendAllocateDiskRequest("vol1", 10_GB);
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus());
+        }
+    }
+
     Y_UNIT_TEST(ShouldReturnOkIfRemovedDeviceHasNoDisks)
     {
         const auto agent = CreateAgentConfig("agent-1", {

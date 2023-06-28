@@ -23,12 +23,12 @@ void TDiskRegistryActor::HandleResumeDevice(
         agentId.c_str(),
         path.c_str());
 
-    auto deviceId = State->GetDeviceId(agentId, path);
+    auto deviceIds = State->GetDeviceIds(agentId, path);
 
-    if (deviceId.empty()) {
+    if (deviceIds.empty()) {
         auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>(
             MakeError(E_NOT_FOUND, TStringBuilder() <<
-                "device not found: " << agentId << ":" << path));
+                "devices not found: " << agentId << ":" << path));
 
         NCloud::Reply(ctx, *ev, std::move(response));
 
@@ -40,16 +40,16 @@ void TDiskRegistryActor::HandleResumeDevice(
         ev->Cookie,
         msg->CallContext);
 
-    ExecuteTx<TResumeDevice>(
+    ExecuteTx<TResumeDevices>(
         ctx,
         std::move(requestInfo),
-        std::move(deviceId));
+        std::move(deviceIds));
 }
 
-bool TDiskRegistryActor::PrepareResumeDevice(
+bool TDiskRegistryActor::PrepareResumeDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TResumeDevice& args)
+    TTxDiskRegistry::TResumeDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -58,30 +58,23 @@ bool TDiskRegistryActor::PrepareResumeDevice(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteResumeDevice(
+void TDiskRegistryActor::ExecuteResumeDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TResumeDevice& args)
+    TTxDiskRegistry::TResumeDevices& args)
 {
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
 
-    args.Error = State->ResumeDevice(ctx.Now(), db, args.DeviceId);
+    State->ResumeDevices(ctx.Now(), db, args.DeviceIds);
 }
 
-void TDiskRegistryActor::CompleteResumeDevice(
+void TDiskRegistryActor::CompleteResumeDevices(
     const TActorContext& ctx,
-    TTxDiskRegistry::TResumeDevice& args)
+    TTxDiskRegistry::TResumeDevices& args)
 {
-    if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ResumeDevice error: %s",
-            FormatError(args.Error).c_str());
-    }
-
-    auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>(
-        std::move(args.Error));
+    auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 

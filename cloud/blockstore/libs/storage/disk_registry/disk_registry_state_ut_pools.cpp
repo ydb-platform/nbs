@@ -483,7 +483,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             for (auto& d: agent.GetDevices()) {
-                state.ResumeDevice(Now(), db, d.GetDeviceUUID());
+                state.ResumeDevices(Now(), db, {d.GetDeviceUUID()});
             }
         });
 

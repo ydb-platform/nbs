@@ -92,7 +92,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 },
                 &result);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("not found"));
 
             UNIT_ASSERT(state.FindDisk("uuid-2.3").empty());

@@ -22,7 +22,8 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
         msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateCmsHostDeviceState request: host=%s, path=%s, State=%u",
+        "[%lu] Received UpdateCmsHostDeviceState request"
+        ": host=%s, path=%s, State=%u",
         TabletID(),
         msg->Host.c_str(),
         msg->Path.c_str(),
@@ -59,17 +60,33 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
 
     args.TxTs = ctx.Now();
 
-    auto deviceId = State->GetDeviceId(args.Host, args.Path);
+    auto deviceIds = State->GetDeviceIds(args.Host, args.Path);
 
-    if (deviceId) {
-        args.Error = State->UpdateCmsDeviceState(
-            db,
-            deviceId,
-            args.State,
-            args.TxTs,
-            args.DryRun,
-            args.AffectedDisk,
-            args.Timeout);
+    if (deviceIds) {
+        // not transactional actually but it's not a big problem
+        ui32 processed = 0;
+        for (const auto& deviceId: deviceIds) {
+            args.Error = State->UpdateCmsDeviceState(
+                db,
+                deviceId,
+                args.State,
+                args.TxTs,
+                args.DryRun,
+                args.AffectedDisk,
+                args.Timeout);
+
+            if (HasError(args.Error)) {
+                LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                    "UpdateCmsDeviceState stopped after processing %u devices"
+                    ", current deviceId: %s",
+                    processed,
+                    deviceId.c_str());
+
+                break;
+            }
+
+            ++processed;
+        }
     } else {
         args.Error = MakeError(
             E_NOT_FOUND,

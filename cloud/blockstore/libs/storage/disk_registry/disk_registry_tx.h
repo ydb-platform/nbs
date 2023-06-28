@@ -47,7 +47,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateDiskReplicaCount,             __VA_ARGS__)                       \
     xxx(MarkReplacementDevice,              __VA_ARGS__)                       \
     xxx(SuspendDevice,                      __VA_ARGS__)                       \
-    xxx(ResumeDevice,                       __VA_ARGS__)                       \
+    xxx(ResumeDevices,                      __VA_ARGS__)                       \
     xxx(UpdatePlacementGroupSettings,       __VA_ARGS__)                       \
     xxx(RestoreDiskRegistryState,           __VA_ARGS__)                       \
     xxx(CreateDiskFromDevices,              __VA_ARGS__)                       \
@@ -1069,27 +1069,25 @@ struct TTxDiskRegistry
     };
 
     //
-    // ResumeDevice
+    // ResumeDevices
     //
 
-    struct TResumeDevice
+    struct TResumeDevices
     {
         const TRequestInfoPtr RequestInfo;
 
-        const TString DeviceId;
+        const TVector<TString> DeviceIds;
 
-        NProto::TError Error;
-
-        TResumeDevice(
+        TResumeDevices(
                 TRequestInfoPtr requestInfo,
-                TString deviceId)
+                TVector<TString> deviceIds)
             : RequestInfo(std::move(requestInfo))
-            , DeviceId(std::move(deviceId))
+            , DeviceIds(std::move(deviceIds))
         {}
 
         void Clear()
         {
-            Error.Clear();
+            // nothing to do
         }
     };
 

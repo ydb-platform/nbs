@@ -336,7 +336,7 @@ public:
     bool IsMasterDisk(const TString& diskId) const;
 
     NProto::TDeviceConfig GetDevice(const TString& id) const;
-    TString GetDeviceId(const TString& agentId, const TString& path) const;
+    TVector<TString> GetDeviceIds(const TString& agentId, const TString& path) const;
 
     NProto::TError GetDependentDisks(
         const TString& agentId,
@@ -560,10 +560,10 @@ public:
         bool isReplacement);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
-    NProto::TError ResumeDevice(
+    void ResumeDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TDeviceId& id);
+        const TVector<TDeviceId>& ids);
     bool IsSuspendedDevice(const TDeviceId& id) const;
     TVector<TDeviceId> GetSuspendedDevices() const;
 
@@ -677,11 +677,11 @@ private:
     auto FindDeviceLocation(const TDeviceId& uuid) const
         -> std::pair<const NProto::TAgentConfig*, const NProto::TDeviceConfig*>;
 
-    const NProto::TDeviceConfig* FindDevice(
+    TVector<NProto::TDeviceConfig> FindDevices(
         const TString& agentId,
         const TString& path) const;
 
-    const NProto::TDeviceConfig* FindDevice(
+    TResultOrError<NProto::TDeviceConfig> FindDevice(
         const NProto::TDeviceConfig& deviceConfig) const;
 
     NProto::EDiskState CalculateDiskState(const TDiskState& disk) const;

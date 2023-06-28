@@ -2267,41 +2267,77 @@ NProto::TDeviceConfig TDiskRegistryState::GetDevice(const TString& id) const
     return {};
 }
 
-const NProto::TDeviceConfig* TDiskRegistryState::FindDevice(
+TVector<NProto::TDeviceConfig> TDiskRegistryState::FindDevices(
     const TString& agentId,
     const TString& path) const
 {
     const auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
-        return nullptr;
+        return {};
     }
 
-    return FindIfPtr(agent->GetDevices(), [&] (const auto& x) {
-        return x.GetDeviceName() == path;
-    });
+    TVector<NProto::TDeviceConfig> devices;
+    for (const auto& device: agent->GetDevices()) {
+        if (device.GetDeviceName() == path) {
+            devices.push_back(device);
+        }
+    }
+    return devices;
 }
 
-const NProto::TDeviceConfig* TDiskRegistryState::FindDevice(
+TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::FindDevice(
     const NProto::TDeviceConfig& deviceConfig) const
 {
     const auto& deviceId = deviceConfig.GetDeviceUUID();
-    return deviceId.empty()
-        ? FindDevice(
-            deviceConfig.GetAgentId(),
-            deviceConfig.GetDeviceName())
-        : DeviceList.FindDevice(deviceId);
+    if (deviceId) {
+        const auto* device = DeviceList.FindDevice(deviceId);
+        if (!device) {
+            return MakeError(
+                E_NOT_FOUND,
+                TStringBuilder() << "device with id " << deviceId
+                    << " not found");
+        }
+
+        return *device;
+    }
+
+    auto devices = FindDevices(
+        deviceConfig.GetAgentId(),
+        deviceConfig.GetDeviceName());
+
+    if (devices.size() == 0) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "device with AgentId="
+                << deviceConfig.GetAgentId()
+                << " and DeviceName=" << deviceConfig.GetDeviceName()
+                << " not found");
+    }
+
+    if (devices.size() > 1) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "too many devices with AgentId="
+                << deviceConfig.GetAgentId()
+                << " and DeviceName=" << deviceConfig.GetDeviceName()
+                << ": " << devices.size());
+    }
+
+    return devices.front();
 }
 
 
-TString TDiskRegistryState::GetDeviceId(
+TVector<TString> TDiskRegistryState::GetDeviceIds(
     const TString& agentId,
     const TString& path) const
 {
-    auto* device = FindDevice(agentId, path);
-    if (device) {
-        return device->GetDeviceUUID();
+    auto devices = FindDevices(agentId, path);
+    TVector<TString> deviceIds;
+    deviceIds.reserve(devices.size());
+    for (auto& device: devices) {
+        deviceIds.push_back(*std::move(device.MutableDeviceUUID()));
     }
-    return {};
+    return deviceIds;
 }
 
 NProto::TError TDiskRegistryState::GetDependentDisks(
@@ -5163,23 +5199,19 @@ NProto::TError TDiskRegistryState::SuspendDevice(
     return {};
 }
 
-NProto::TError TDiskRegistryState::ResumeDevice(
+void TDiskRegistryState::ResumeDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
-    const TDeviceId& id)
+    const TVector<TDeviceId>& ids)
 {
-    if (id.empty()) {
-        return MakeError(E_ARGUMENT, "empty device id");
+    for (const auto& id: ids) {
+        DeviceList.ResumeDevice(id);
+        db.DeleteSuspendedDevice(id);
+
+        if (!DeviceList.IsDirtyDevice(id)) {
+            TryUpdateDevice(now, db, id);
+        }
     }
-
-    DeviceList.ResumeDevice(id);
-    db.DeleteSuspendedDevice(id);
-
-    if (!DeviceList.IsDirtyDevice(id)) {
-        TryUpdateDevice(now, db, id);
-    }
-
-    return {};
 }
 
 bool TDiskRegistryState::IsSuspendedDevice(const TDeviceId& id) const
@@ -5230,31 +5262,27 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     int poolKind = -1;
 
     for (auto& device: devices) {
-        auto* config = FindDevice(device);
-        if (!config) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "device name: " << device.GetDeviceName().Quote()
-                << " uuid:" << device.GetDeviceUUID().Quote()
-                << " on agent: " << device.GetAgentId().Quote()
-                << " not found");
+        auto [config, error] = FindDevice(device);
+        if (HasError(error)) {
+            return error;
         }
 
-        if (blockSize < config->GetBlockSize()) {
+        if (blockSize < config.GetBlockSize()) {
             return MakeError(E_ARGUMENT, TStringBuilder() <<
                 "volume's block size is less than device's block size: " <<
-                blockSize << " < " << config->GetBlockSize());
+                blockSize << " < " << config.GetBlockSize());
         }
 
-        const auto& uuid = config->GetDeviceUUID();
+        const auto& uuid = config.GetDeviceUUID();
 
         if (poolKind == -1) {
-            poolKind = static_cast<int>(config->GetPoolKind());
+            poolKind = static_cast<int>(config.GetPoolKind());
         }
 
-        if (static_cast<int>(config->GetPoolKind()) != poolKind) {
+        if (static_cast<int>(config.GetPoolKind()) != poolKind) {
             return MakeError(E_ARGUMENT, TStringBuilder() <<
                 "several device pool kinds for one disk: " <<
-                static_cast<int>(config->GetPoolKind()) << " and " <<
+                static_cast<int>(config.GetPoolKind()) << " and " <<
                 poolKind);
         }
 

@@ -146,8 +146,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.ResumeDevice(Now(), db, "uuid-2.1"));
-            UNIT_ASSERT_SUCCESS(state.ResumeDevice(Now(),db, "uuid-2.2"));
+            state.ResumeDevices(Now(), db, {"uuid-2.1", "uuid-2.2"});
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
@@ -177,8 +176,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.ResumeDevice(Now(), db, "uuid-2.3"));
-            UNIT_ASSERT_SUCCESS(state.ResumeDevice(Now(), db, "uuid-2.4"));
+            state.ResumeDevices(Now(), db, {"uuid-2.3", "uuid-2.4"});
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
