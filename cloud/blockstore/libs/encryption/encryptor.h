@@ -2,10 +2,9 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/encryption.pb.h>
+#include "encryption_key.h"
 
 #include <cloud/blockstore/libs/common/block_data_ref.h>
-#include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NBlockStore {
 
@@ -28,13 +27,8 @@ struct IEncryptor
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IEncryptorPtr> CreateAesXtsEncryptor(
-    const NProto::TKeyPath& encryptionKeyPath,
-    TString& keyHash);
+IEncryptorPtr CreateAesXtsEncryptor(TEncryptionKey key);
 
 IEncryptorPtr CreateTestCaesarEncryptor(size_t shift);
-
-TResultOrError<TString> ComputeEncryptionKeyHash(
-    const NProto::TEncryptionSpec& encryptionSpec);
 
 }   // namespace NCloud::NBlockStore

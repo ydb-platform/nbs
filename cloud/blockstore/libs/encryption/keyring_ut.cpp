@@ -38,7 +38,8 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             auto& keyPath = *spec.MutableKeyPath();
             keyPath.SetFilePath(keyFile.GetPath());
 
-            auto hashOrError = ComputeEncryptionKeyHash(spec);
+            auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+            auto hashOrError = encryptionKeyProvider->GetKeyHash(spec);
             UNIT_ASSERT_C(!HasError(hashOrError), hashOrError.GetError());
             fileKeyHash = hashOrError.GetResult();
             UNIT_ASSERT(!fileKeyHash.empty());
@@ -63,17 +64,18 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
                 UNIT_ASSERT_C(!HasError(error), error);
             };
 
-            auto keyOrError = mutableStorage->AddEndpoint(
+            auto keyringOrError = mutableStorage->AddEndpoint(
                 keyName,
                 DefaultEncryptionKey);
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            UNIT_ASSERT_C(!HasError(keyringOrError), keyringOrError.GetError());
 
             NProto::TEncryptionSpec spec;
             spec.SetMode(NProto::ENCRYPTION_AES_XTS);
             auto& keyPath = *spec.MutableKeyPath();
-            keyPath.SetKeyringId(keyOrError.GetResult());
+            keyPath.SetKeyringId(keyringOrError.GetResult());
 
-            auto hashOrError = ComputeEncryptionKeyHash(spec);
+            auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+            auto hashOrError = encryptionKeyProvider->GetKeyHash(spec);
             UNIT_ASSERT_C(!HasError(hashOrError), hashOrError.GetError());
             keyringKeyHash = hashOrError.GetResult();
             UNIT_ASSERT(!keyringKeyHash.empty());
@@ -101,32 +103,28 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
-        auto keyOrError = mutableStorage->AddEndpoint(
+        auto keyringOrError = mutableStorage->AddEndpoint(
             keyName,
             "key_with_invalid_length");
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        UNIT_ASSERT_C(!HasError(keyringOrError), keyringOrError.GetError());
 
         NProto::TEncryptionSpec spec;
         spec.SetMode(NProto::ENCRYPTION_AES_XTS);
         auto& keyPath = *spec.MutableKeyPath();
-        keyPath.SetKeyringId(keyOrError.GetResult());
+        keyPath.SetKeyringId(keyringOrError.GetResult());
 
-        {
-            TString keyHash;
-            auto resultOrError = CreateAesXtsEncryptor(keyPath, keyHash);
-            UNIT_ASSERT(HasError(resultOrError));
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
-                resultOrError.GetError().GetCode());
-        }
+        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
 
-        {
-            auto resultOrError = ComputeEncryptionKeyHash(spec);
-            UNIT_ASSERT(HasError(resultOrError));
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
-                resultOrError.GetError().GetCode());
-        }
+        auto keyOrError = encryptionKeyProvider->GetKey(spec);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            keyOrError.GetError().GetCode());
+
+        auto hashOrError = encryptionKeyProvider->GetKeyHash(spec);
+        UNIT_ASSERT(HasError(hashOrError));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            hashOrError.GetError().GetCode());
     }
 }
 

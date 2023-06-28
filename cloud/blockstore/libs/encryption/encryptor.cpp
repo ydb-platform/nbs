@@ -1,56 +1,14 @@
 #include "encryptor.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/keyring/keyring.h>
-
-#include <library/cpp/string_utils/base64/base64.h>
-
 #include <util/generic/utility.h>
-#include <util/string/builder.h>
-#include <util/system/file.h>
 #include <util/system/sanitizers.h>
 
 #include <openssl/err.h>
 #include <openssl/evp.h>
-#include <openssl/sha.h>
 
 namespace NCloud::NBlockStore {
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ComputeSHA384Hash(const TString& encryptionKey)
-{
-    SHA512_CTX ctx;
-    SHA384_Init(&ctx);
-    const ui8 version = 1;
-    SHA384_Update(&ctx, &version, sizeof(version));
-    ui32 keySize = encryptionKey.size();
-    SHA384_Update(&ctx, &keySize, sizeof(keySize));
-    SHA384_Update(&ctx, encryptionKey.data(), encryptionKey.size());
-
-    TString hash;
-    hash.resize(SHA384_DIGEST_LENGTH);
-    SHA384_Final(reinterpret_cast<unsigned char*>(hash.Detach()), &ctx);
-    return hash;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
-{
-    switch (mode) {
-        case NProto::NO_ENCRYPTION:
-            return 0;
-        case NProto::ENCRYPTION_AES_XTS:
-            return 32;
-        default:
-            ythrow TServiceError(E_ARGUMENT)
-                << "Unknown encryption mode: "
-                << static_cast<int>(mode);
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -227,124 +185,18 @@ public:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TEncryptionKey
-{
-private:
-    TString Key;
-
-public:
-    TEncryptionKey(TString key = "")
-        : Key(std::move(key))
-    {}
-
-    ~TEncryptionKey()
-    {
-        SecureZero(Key.begin(), Key.Size());
-    }
-
-    const TString& Get() const
-    {
-        return Key;
-    }
-
-    TString GetHash() const
-    {
-        return Base64Encode(ComputeSHA384Hash(Key));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TEncryptionKey ReadKeyFromKeyring(ui32 keyringId, ui32 expectedLength)
-{
-    auto keyring = TKeyring::Create(keyringId);
-
-    if (keyring.GetValueSize() != expectedLength) {
-        ythrow TServiceError(E_ARGUMENT)
-            << "Key from keyring " << keyringId
-            << " should has size " << expectedLength;
-    }
-
-    return TEncryptionKey(keyring.GetValue());
-}
-
-TEncryptionKey ReadKeyFromFile(TString filePath, ui32 expectedLength)
-{
-    TFile file(filePath, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-
-    if (file.GetLength() != expectedLength) {
-        ythrow TServiceError(E_ARGUMENT)
-            << "Key file " << filePath.Quote()
-            << " size " << file.GetLength() << " != " << expectedLength;
-    }
-
-    TString key = TString::TUninitialized(expectedLength);
-    auto size = file.Read(key.begin(), expectedLength);
-    if (size != expectedLength) {
-        ythrow TServiceError(E_ARGUMENT)
-            << "Read " << size << " bytes from key file "
-            << filePath.Quote() << ", expected " << expectedLength;
-    }
-
-    return TEncryptionKey(std::move(key));
-}
-
-TEncryptionKey GetEncryptionKey(NProto::TKeyPath keyPath, ui32 expectedLength)
-{
-    if (keyPath.HasKeyringId()) {
-        return ReadKeyFromKeyring(keyPath.GetKeyringId(), expectedLength);
-    } else if (keyPath.HasFilePath()) {
-        return ReadKeyFromFile(keyPath.GetFilePath(), expectedLength);
-    } else {
-        ythrow TServiceError(E_ARGUMENT)
-            << "KeyPath should contain path to encryption key";
-    }
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IEncryptorPtr> CreateAesXtsEncryptor(
-    const NProto::TKeyPath& encryptionKeyPath,
-    TString& keyHash)
+IEncryptorPtr CreateAesXtsEncryptor(TEncryptionKey key)
 {
-    return SafeExecute<TResultOrError<IEncryptorPtr>>([&] {
-        auto expectedLength = GetExpectedKeyLength(NProto::ENCRYPTION_AES_XTS);
-        auto key = GetEncryptionKey(encryptionKeyPath, expectedLength);
-        keyHash = key.GetHash();
-        IEncryptorPtr encryptor = std::make_shared<TAesXtsEncryptor>(key.Get());
-        return encryptor;
-    });
+    return std::make_shared<TAesXtsEncryptor>(key.GetKey());
 }
 
 IEncryptorPtr CreateTestCaesarEncryptor(size_t shift)
 {
     return std::make_shared<TCaesarEncryptor>(shift);
-}
-
-TResultOrError<TString> ComputeEncryptionKeyHash(
-    const NProto::TEncryptionSpec& spec)
-{
-    if (spec.GetMode() == NProto::NO_ENCRYPTION) {
-        return TString();
-    }
-
-    if (spec.GetKeyHash()) {
-        return spec.GetKeyHash();
-    }
-
-    if (spec.HasKeyPath()) {
-        return SafeExecute<TResultOrError<TString>>([&] {
-            auto expectedKeyLength = GetExpectedKeyLength(spec.GetMode());
-            auto key = GetEncryptionKey(spec.GetKeyPath(), expectedKeyLength);
-            return key.GetHash();
-        });
-    }
-
-    return TString();
 }
 
 }   // namespace NCloud::NBlockStore

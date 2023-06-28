@@ -1,6 +1,6 @@
 #include "service_actor.h"
 
-#include <cloud/blockstore/libs/encryption/encryptor.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -210,7 +210,8 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 
     const auto& encryptionSpec = Request.GetEncryptionSpec();
-    auto keyHashOrError = ComputeEncryptionKeyHash(encryptionSpec);
+    auto keyProvider = CreateEncryptionKeyProvider();
+    auto keyHashOrError = keyProvider->GetKeyHash(encryptionSpec);
     if (HasError(keyHashOrError)) {
         const auto& error = keyHashOrError.GetError();
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,

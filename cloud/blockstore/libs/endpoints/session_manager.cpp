@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
-#include <cloud/blockstore/libs/encryption/encryptor.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -290,6 +290,7 @@ private:
     const IBlockStorePtr Service;
     const IStorageProviderPtr StorageProvider;
     const IThrottlerProviderPtr ThrottlerProvider;
+    const IEncryptionKeyProviderPtr EncryptionKeyProvider;
     const TExecutorPtr Executor;
     const TSessionManagerOptions Options;
 
@@ -310,6 +311,7 @@ public:
             IBlockStorePtr service,
             IStorageProviderPtr storageProvider,
             IThrottlerProviderPtr throttlerProvider,
+            IEncryptionKeyProviderPtr encryptionKeyProvider,
             TExecutorPtr executor,
             TSessionManagerOptions options)
         : Timer(std::move(timer))
@@ -322,6 +324,7 @@ public:
         , Service(std::move(service))
         , StorageProvider(std::move(storageProvider))
         , ThrottlerProvider(std::move(throttlerProvider))
+        , EncryptionKeyProvider(std::move(encryptionKeyProvider))
         , Executor(std::move(executor))
         , Options(std::move(options))
     {
@@ -663,6 +666,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto clientOrError = TryToCreateEncryptionClient(
         std::move(client),
         Logging,
+        EncryptionKeyProvider,
         request.GetEncryptionSpec());
 
     if (HasError(clientOrError)) {
@@ -773,6 +777,8 @@ ISessionManagerPtr CreateSessionManager(
         requestStats,
         volumeStats);
 
+    auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+
     return std::make_shared<TSessionManager>(
         std::move(timer),
         std::move(scheduler),
@@ -784,6 +790,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(service),
         std::move(storageProvider),
         std::move(throttlerProvider),
+        std::move(encryptionKeyProvider),
         std::move(executor),
         std::move(options));
 }

@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
@@ -354,6 +355,7 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
     auto endpointOrError = TryToCreateEncryptionClient(
         ClientEndpoint,
         Logging,
+        EncryptionKeyProvider,
         encryptionSpec);
 
     if (HasError(endpointOrError)) {
@@ -472,6 +474,8 @@ void TCommand::Init()
         {},
         EVolumeStatsType::EClientStats,
         Timer);
+
+    EncryptionKeyProvider = CreateEncryptionKeyProvider();
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(

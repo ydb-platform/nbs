@@ -842,6 +842,7 @@ IBlockStorePtr CreateSnapshotEncryptionClient(
 TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
     const NProto::TEncryptionSpec& encryptionSpec)
 {
     if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
@@ -859,25 +860,19 @@ TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
             encryptionDesc);
     }
 
+    auto [key, error] = encryptionKeyProvider->GetKey(encryptionSpec);
+    if (HasError(error)) {
+        return error;
+    }
+
+    encryptionDesc.SetKeyHash(key.GetHash());
+
     IEncryptorPtr encryptor;
-
-    switch (encryptionSpec.GetMode())
-    {
+    switch (encryptionSpec.GetMode()) {
         case NProto::ENCRYPTION_AES_XTS: {
-            TString keyHash;
-            auto encryptorOrError = CreateAesXtsEncryptor(
-                encryptionSpec.GetKeyPath(),
-                keyHash);
-
-            if (HasError(encryptorOrError)) {
-                return encryptorOrError.GetError();
-            }
-
-            encryptionDesc.SetKeyHash(keyHash);
-            encryptor = encryptorOrError.ExtractResult();
+            encryptor = CreateAesXtsEncryptor(std::move(key));
             break;
         }
-
         default:
             return TErrorResponse(E_ARGUMENT, TStringBuilder()
                 << "Unknown encryption mode: "

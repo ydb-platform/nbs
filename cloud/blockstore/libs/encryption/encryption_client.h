@@ -29,6 +29,7 @@ IBlockStorePtr CreateSnapshotEncryptionClient(
 TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
     const NProto::TEncryptionSpec& encryptionSpec);
 
 }   // namespace NCloud::NBlockStore::NClient

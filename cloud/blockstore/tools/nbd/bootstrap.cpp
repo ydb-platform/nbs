@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
@@ -233,6 +234,7 @@ void TBootstrap::Init()
         auto clientOrError = TryToCreateEncryptionClient(
             std::move(ClientEndpoint),
             Logging,
+            CreateEncryptionKeyProvider(),
             encryptionSpec);
 
         if (HasError(clientOrError)) {
