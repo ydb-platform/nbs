@@ -937,9 +937,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
     Y_UNIT_TEST(ShouldRejectRequestsIfVolumeCannotBeResolved)
     {
-        TTestEnv env(1, 2);
+        TTestEnv env(1, 3);
         ui32 nodeIdx1 = SetupTestEnv(env);
         ui32 nodeIdx2 = SetupTestEnv(env);
+        ui32 nodeIdx3 = SetupTestEnv(env);
 
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
         service1.CreateVolume();
@@ -948,8 +949,13 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         TServiceClient service2(env.GetRuntime(), nodeIdx2);
         service2.DestroyVolume();
 
-        service2.SendStatVolumeRequest();
-        auto response = service2.RecvStatVolumeResponse();
+        // Note: nodeIdx2 creates a volume client while destroying the volume,
+        // so even though volume is no longer in the schema request may succeed
+        // since tablet is not guaranteed to be dead yet.
+        // Use nodeIdx3 which guarantees a new resolve request.
+        TServiceClient service3(env.GetRuntime(), nodeIdx3);
+        service3.SendStatVolumeRequest();
+        auto response = service3.RecvStatVolumeResponse();
         UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
     }
 
