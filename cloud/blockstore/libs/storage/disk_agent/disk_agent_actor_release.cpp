@@ -22,7 +22,7 @@ void TDiskAgentActor::HandleReleaseDevices(
 
         State->ReleaseDevices(
             tmp,
-            record.GetSessionId(),
+            record.GetHeaders().GetClientId(),
             record.GetDiskId(),
             record.GetVolumeGeneration());
     } catch (const TServiceError& e) {

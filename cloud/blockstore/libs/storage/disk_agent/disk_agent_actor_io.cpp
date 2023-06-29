@@ -69,7 +69,7 @@ std::pair<ui32, TString> HandleException(
     const char* source,
     const char* methodName,
     const TString& deviceUUID,
-    const TString& sessionId)
+    const TString& clientId)
 {
     try {
         throw;
@@ -78,7 +78,7 @@ std::pair<ui32, TString> HandleException(
             "%s [%s / %s] Service %s error: %s (%s)",
             methodName,
             deviceUUID.c_str(),
-            sessionId.c_str(),
+            clientId.c_str(),
             source,
             FormatResultCode(e.GetCode()).c_str(),
             e.what()
@@ -90,7 +90,7 @@ std::pair<ui32, TString> HandleException(
             "%s [%s / %s] Unexpected %s error: %s",
             methodName,
             deviceUUID.c_str(),
-            sessionId.c_str(),
+            clientId.c_str(),
             source,
             CurrentExceptionMessage().c_str()
         );
@@ -127,14 +127,14 @@ void TDiskAgentActor::PerformIO(
 
     auto& record = msg->Record;
     const auto deviceUUID = record.GetDeviceUUID();
-    const auto sessionId = record.GetSessionId();
+    const auto clientId = record.GetHeaders().GetClientId();
 
     if (State->IsDeviceDisabled(deviceUUID)) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT,
             "Dropped %s request to device %s, session %s",
             TMethod::Name,
             deviceUUID.c_str(),
-            sessionId.c_str());
+            clientId.c_str());
 
         return;
     }
@@ -178,7 +178,7 @@ void TDiskAgentActor::PerformIO(
         "%s [%s / %s]",
         TMethod::Name,
         deviceUUID.c_str(),
-        sessionId.c_str());
+        clientId.c_str());
 
     if (SecureErasePendingRequests.contains(deviceUUID)) {
         replyError(E_REJECTED, "Secure erase in progress");
@@ -201,7 +201,7 @@ void TDiskAgentActor::PerformIO(
                         "io",
                         TMethod::Name,
                         deviceUUID,
-                        sessionId);
+                        clientId);
 
                     replyError(code, message);
                 }
@@ -212,7 +212,7 @@ void TDiskAgentActor::PerformIO(
             "state",
             TMethod::Name,
             deviceUUID,
-            sessionId);
+            clientId);
 
         replyError(code, message);
     }

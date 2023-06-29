@@ -141,7 +141,7 @@ private:
 
     TStorageAdapterPtr GetDevice(
         const TString& uuid,
-        const TString& sessionId,
+        const TString& clientId,
         NProto::EVolumeAccessMode accessMode)
     {
         NProto::TError error;
@@ -149,7 +149,7 @@ private:
         if (DeviceClient) {
             error = DeviceClient->AccessDevice(
                 uuid,
-                sessionId,
+                clientId,
                 accessMode);
         }
 
@@ -169,12 +169,12 @@ private:
     struct TRequestLogDetails
     {
         TString DeviceUUID;
-        TString SessionId;
+        TString ClientId;
 
         template <typename T>
         TRequestLogDetails(T& request)
             : DeviceUUID(std::move(*request.MutableDeviceUUID()))
-            , SessionId(std::move(*request.MutableSessionId()))
+            , ClientId(std::move(*request.MutableHeaders()->MutableClientId()))
         {
         }
 
@@ -200,7 +200,7 @@ private:
 
         auto device = GetDevice(
             request.GetDeviceUUID(),
-            request.GetSessionId(),
+            request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_ONLY);
 
         auto req = std::make_shared<NProto::TReadBlocksRequest>();
@@ -236,7 +236,7 @@ private:
 
         if (HasError(error)) {
             STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.SessionId << "] read error: "
+                << "/" << rld.ClientId << "] read error: "
                 << error.GetMessage() << " (" << error.GetCode() << ")");
 
             *proto.MutableError() = error;
@@ -273,7 +273,7 @@ private:
 
         auto device = GetDevice(
             request.GetDeviceUUID(),
-            request.GetSessionId(),
+            request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto req = std::make_shared<NProto::TWriteBlocksRequest>();
@@ -310,7 +310,7 @@ private:
 
         if (HasError(error)) {
             STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.SessionId << "] write error: "
+                << "/" << rld.ClientId << "] write error: "
                 << error.GetMessage() << " (" << error.GetCode() << ")");
 
             *proto.MutableError() = error;
@@ -340,7 +340,7 @@ private:
 
         auto device = GetDevice(
             request.GetDeviceUUID(),
-            request.GetSessionId(),
+            request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto req = std::make_shared<NProto::TZeroBlocksRequest>();
@@ -375,7 +375,7 @@ private:
 
         if (HasError(error)) {
             STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.SessionId << "] zero error: "
+                << "/" << rld.ClientId << "] zero error: "
                 << error.GetMessage() << " (" << error.GetCode() << ")");
 
             *proto.MutableError() = error;
@@ -405,7 +405,7 @@ private:
 
         auto device = GetDevice(
             request.GetDeviceUUID(),
-            request.GetSessionId(),
+            request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_ONLY);
 
         auto req = std::make_shared<NProto::TReadBlocksRequest>();
@@ -441,7 +441,7 @@ private:
 
         if (HasError(error)) {
             STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.SessionId << "] checksum(read) error: "
+                << "/" << rld.ClientId << "] checksum(read) error: "
                 << error.GetMessage() << " (" << error.GetCode() << ")");
 
             *proto.MutableError() = error;

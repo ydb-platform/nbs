@@ -16,7 +16,7 @@ namespace {
 struct TAcquireParamsBuilder
 {
     TVector<TString> Uuids;
-    TString SessionId;
+    TString ClientId;
     TInstant Now = TInstant::Seconds(1);
     NProto::EVolumeAccessMode AccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
     ui64 MountSeqNumber = 1;
@@ -29,9 +29,9 @@ struct TAcquireParamsBuilder
         return *this;
     }
 
-    auto& SetSessionId(TString sessionId)
+    auto& SetClientId(TString clientId)
     {
-        SessionId = std::move(sessionId);
+        ClientId = std::move(clientId);
         return *this;
     }
 
@@ -70,7 +70,7 @@ auto AcquireDevices(TDeviceClient& client, const TAcquireParamsBuilder& builder)
 {
     return client.AcquireDevices(
         builder.Uuids,
-        builder.SessionId,
+        builder.ClientId,
         builder.Now,
         builder.AccessMode,
         builder.MountSeqNumber,
@@ -83,7 +83,7 @@ auto AcquireDevices(TDeviceClient& client, const TAcquireParamsBuilder& builder)
 struct TReleaseParamsBuilder
 {
     TVector<TString> Uuids;
-    TString SessionId;
+    TString ClientId;
     TString DiskId;
     ui32 VolumeGeneration = 0;
 
@@ -93,9 +93,9 @@ struct TReleaseParamsBuilder
         return *this;
     }
 
-    auto& SetSessionId(TString sessionId)
+    auto& SetClientId(TString clientId)
     {
-        SessionId = std::move(sessionId);
+        ClientId = std::move(clientId);
         return *this;
     }
 
@@ -116,7 +116,7 @@ auto ReleaseDevices(TDeviceClient& client, const TReleaseParamsBuilder& builder)
 {
     return client.ReleaseDevices(
         builder.Uuids,
-        builder.SessionId,
+        builder.ClientId,
         builder.DiskId,
         builder.VolumeGeneration);
 }
@@ -140,14 +140,14 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid3"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
 
         error = ReleaseDevices(
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid3"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
@@ -158,19 +158,19 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
         error = client.AccessDevice(
             "uuid3",
-            "session",
+            "client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "session",
+            "client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "session",
+            "client",
             NProto::VOLUME_ACCESS_READ_ONLY);
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
@@ -178,18 +178,18 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "session",
+            "client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "session",
+            "client",
             NProto::VOLUME_ACCESS_READ_ONLY);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
@@ -197,26 +197,26 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("another_session"));
+                .SetClientId("another_client"));
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = AcquireDevices(
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("another_session")
+                .SetClientId("another_client")
                 .SetAccessMode(NProto::VOLUME_ACCESS_READ_ONLY));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "another_session",
+            "another_client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "another_session",
+            "another_client",
             NProto::VOLUME_ACCESS_READ_ONLY);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
@@ -224,19 +224,19 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("yet_another_session")
+                .SetClientId("yet_another_client")
                 .SetNow(TInstant::Seconds(12)));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "yet_another_session",
+            "yet_another_client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "another_session",
+            "another_client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
@@ -244,20 +244,20 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("yet_yet_another_session")
+                .SetClientId("yet_yet_another_client")
                 .SetNow(TInstant::Seconds(12))
                 .SetMountSeqNumber(2));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "yet_yet_another_session",
+            "yet_yet_another_client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
-            "yet_another_session",
+            "yet_another_client",
             NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
     }
@@ -270,35 +270,35 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = AcquireDevices(
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("another_session"));
+                .SetClientId("another_client"));
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = ReleaseDevices(
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1"})
-                .SetSessionId("another_session"));
+                .SetClientId("another_client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = ReleaseDevices(
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid2"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = AcquireDevices(
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
     }
 
@@ -318,7 +318,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                     client,
                     TAcquireParamsBuilder()
                         .SetUuids({"uuid1", "uuid2"})
-                        .SetSessionId("session"));
+                        .SetClientId("client"));
             }
 
             AtomicIncrement(completed);
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             for (ui32 i = 0; i < runs; ++i) {
                 client.AccessDevice(
                     "uuid1",
-                    "session",
+                    "client",
                     NProto::VOLUME_ACCESS_READ_WRITE);
             }
 
@@ -343,7 +343,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                     client,
                     TReleaseParamsBuilder()
                         .SetUuids({"uuid1", "uuid2"})
-                        .SetSessionId("session"));
+                        .SetClientId("client"));
             }
 
             AtomicIncrement(completed);
@@ -379,7 +379,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session"));
+                .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
@@ -404,7 +404,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session0")
+                .SetClientId("client0")
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
@@ -414,7 +414,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session1")
+                .SetClientId("client1")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(12))
                 .SetVolumeGeneration(2));
@@ -425,7 +425,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session0")
+                .SetClientId("client0")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(12))
                 .SetVolumeGeneration(1));
@@ -439,7 +439,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session0")
+                .SetClientId("client0")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(23))
                 .SetVolumeGeneration(1));
@@ -453,7 +453,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterClientId))
+                .SetClientId(TString(AnyWriterClientId))
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -466,7 +466,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterClientId))
+                .SetClientId(TString(AnyWriterClientId))
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(2));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
@@ -476,7 +476,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session2")
+                .SetClientId("client2")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(23))
                 .SetVolumeGeneration(3));
@@ -487,7 +487,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session3")
+                .SetClientId("client3")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(34))
                 .SetVolumeGeneration(0));
@@ -498,7 +498,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session2")
+                .SetClientId("client2")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(45))
                 .SetVolumeGeneration(3));
@@ -509,7 +509,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterClientId))
+                .SetClientId(TString(AnyWriterClientId))
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(0));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
@@ -519,7 +519,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session2")
+                .SetClientId("client2")
                 .SetDiskId("vol0")
                 .SetNow(TInstant::Seconds(56))
                 .SetVolumeGeneration(3));
@@ -531,7 +531,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session0")
+                .SetClientId("client0")
                 .SetDiskId("vol1")
                 .SetNow(TInstant::Seconds(57))
                 .SetVolumeGeneration(1));
@@ -546,7 +546,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId("session0")
+                .SetClientId("client0")
                 .SetDiskId("vol1")
                 .SetNow(TInstant::Seconds(67))
                 .SetVolumeGeneration(1));
@@ -557,7 +557,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             client,
             TReleaseParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
-                .SetSessionId(TString(AnyWriterClientId))
+                .SetClientId(TString(AnyWriterClientId))
                 .SetDiskId("vol2")
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());

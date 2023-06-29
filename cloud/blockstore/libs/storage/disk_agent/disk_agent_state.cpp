@@ -254,20 +254,20 @@ TDiskAgentState::TDiskAgentState(
 
 const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceState(
     const TString& uuid,
-    const TString& sessionId,
+    const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
 {
     return AgentConfig->GetAcquireRequired()
-        ? GetDeviceStateImpl(uuid, sessionId, accessMode)
+        ? GetDeviceStateImpl(uuid, clientId, accessMode)
         : GetDeviceStateImpl(uuid);
 }
 
 const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceStateImpl(
     const TString& uuid,
-    const TString& sessionId,
+    const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
 {
-    auto error = DeviceClient->AccessDevice(uuid, sessionId, accessMode);
+    auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
     if (HasError(error)) {
         ythrow TServiceError(error);
@@ -482,7 +482,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
 
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
-        request.GetSessionId(),
+        request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_ONLY);
 
     auto readRequest = std::make_shared<NProto::TReadBlocksRequest>();
@@ -536,7 +536,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
 {
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
-        request.GetSessionId(),
+        request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
 
     auto writeRequest = std::make_shared<NProto::TWriteBlocksRequest>();
@@ -573,7 +573,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
 {
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
-        request.GetSessionId(),
+        request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
 
     auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
@@ -617,7 +617,7 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
 
         ythrow TServiceError(E_INVALID_STATE)
             << "Device " << uuid.Quote()
-            << " already acquired by session " << sessionInfo.Id;
+            << " already acquired by client " << sessionInfo.Id;
     }
 
     if (AgentConfig->GetDeviceEraseMethod() == NProto::DEVICE_ERASE_METHOD_NONE) {
@@ -636,7 +636,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
-        request.GetSessionId(),
+        request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_ONLY);
 
     // TODO: Pass checksum request down to the device to avoid data copying
@@ -683,7 +683,7 @@ TVector<TDeviceClient::TSessionInfo> TDiskAgentState::GetReaderSessions(
 
 void TDiskAgentState::AcquireDevices(
     const TVector<TString>& uuids,
-    const TString& sessionId,
+    const TString& clientId,
     TInstant now,
     NProto::EVolumeAccessMode accessMode,
     ui64 mountSeqNumber,
@@ -692,7 +692,7 @@ void TDiskAgentState::AcquireDevices(
 {
     auto error = DeviceClient->AcquireDevices(
         uuids,
-        sessionId,
+        clientId,
         now,
         accessMode,
         mountSeqNumber,
@@ -706,13 +706,13 @@ void TDiskAgentState::AcquireDevices(
 
 void TDiskAgentState::ReleaseDevices(
     const TVector<TString>& uuids,
-    const TString& sessionId,
+    const TString& clientId,
     const TString& diskId,
     ui32 volumeGeneration)
 {
     auto error = DeviceClient->ReleaseDevices(
         uuids,
-        sessionId,
+        clientId,
         diskId,
         volumeGeneration);
 

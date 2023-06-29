@@ -363,12 +363,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 r.Configs[i].GetBlocksCount());
         }
 
-        const TString sessionId = "session";
+        const TString clientId = "client";
 
         try {
             state.AcquireDevices(
                 {"uuid-1", "uuid-2", "uuid-3"},
-                sessionId,
+                clientId,
                 TInstant::Seconds(1),
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 0,
@@ -384,7 +384,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetStartIndex(1);
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
-            request.SetSessionId(sessionId);
+            request.MutableHeaders()->SetClientId(clientId);
 
             auto response = state.Read(Now(), std::move(request))
                 .GetValue(WaitTimeout);
@@ -401,7 +401,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetDeviceUUID("uuid-1");
             request.SetStartIndex(1);
             request.SetBlockSize(4096);
-            request.SetSessionId(sessionId);
+            request.MutableHeaders()->SetClientId(clientId);
 
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);
 
@@ -417,7 +417,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetStartIndex(1);
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
-            request.SetSessionId(sessionId);
+            request.MutableHeaders()->SetClientId(clientId);
 
             auto response = state.WriteZeroes(Now(), std::move(request))
                 .GetValue(WaitTimeout);
@@ -426,7 +426,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         try {
-            state.ReleaseDevices({"uuid-1"}, sessionId, "vol0", 0);
+            state.ReleaseDevices({"uuid-1"}, clientId, "vol0", 0);
         } catch (const TServiceError& e) {
             UNIT_ASSERT_C(false, e.GetMessage());
         }
@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetStartIndex(1);
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
-            request.SetSessionId(sessionId);
+            request.MutableHeaders()->SetClientId(clientId);
 
             state.Read(Now(), std::move(request)).GetValue(WaitTimeout);
 
@@ -460,7 +460,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetDeviceUUID("uuid-3");
             request.SetStartIndex(1);
             request.SetBlockSize(4096);
-            request.SetSessionId(sessionId);
+            request.MutableHeaders()->SetClientId(clientId);
 
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);
 
@@ -481,7 +481,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetStartIndex(1);
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
-            request.SetSessionId(sessionId);
+            request.MutableHeaders()->SetClientId(clientId);
 
             state.WriteZeroes(Now(), std::move(request)).GetValue(WaitTimeout);
 
@@ -495,7 +495,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         try {
-            state.ReleaseDevices({"uuid-2", "uuid-3"}, sessionId, "vol0", 0);
+            state.ReleaseDevices({"uuid-2", "uuid-3"}, clientId, "vol0", 0);
         } catch (const TServiceError& e) {
             UNIT_ASSERT_C(false, e.GetMessage());
         }
@@ -636,14 +636,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         const auto& r = future.GetValue(WaitTimeout);
         UNIT_ASSERT(r.Errors.empty());
 
-#define TEST_SHOULD_READ(sessionId)                                            \
+#define TEST_SHOULD_READ(clientId)                                             \
         try {                                                                  \
             NProto::TReadDeviceBlocksRequest request;                          \
             request.SetDeviceUUID("uuid-1");                                   \
             request.SetStartIndex(1);                                          \
             request.SetBlockSize(4096);                                        \
             request.SetBlocksCount(10);                                        \
-            request.SetSessionId(sessionId);                                   \
+            request.MutableHeaders()->SetClientId(clientId);                   \
                                                                                \
             auto response =                                                    \
                 state->Read(                                                   \
@@ -660,13 +660,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_READ
 
-#define TEST_SHOULD_WRITE(sessionId)                                           \
+#define TEST_SHOULD_WRITE(clientId)                                            \
         try {                                                                  \
             NProto::TWriteDeviceBlocksRequest request;                         \
             request.SetDeviceUUID("uuid-1");                                   \
             request.SetStartIndex(1);                                          \
             request.SetBlockSize(4096);                                        \
-            request.SetSessionId(sessionId);                                   \
+            request.MutableHeaders()->SetClientId(clientId);                   \
                                                                                \
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
                                                                                \
@@ -685,14 +685,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_WRITE
 
-#define TEST_SHOULD_ZERO(sessionId)                                            \
+#define TEST_SHOULD_ZERO(clientId)                                             \
         try {                                                                  \
             NProto::TZeroDeviceBlocksRequest request;                          \
             request.SetDeviceUUID("uuid-1");                                   \
             request.SetStartIndex(1);                                          \
             request.SetBlockSize(4096);                                        \
             request.SetBlocksCount(10);                                        \
-            request.SetSessionId(sessionId);                                   \
+            request.MutableHeaders()->SetClientId(clientId);                   \
                                                                                \
             auto response =                                                    \
                 state->WriteZeroes(                                            \
@@ -709,14 +709,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_ZERO
 
-#define TEST_SHOULD_NOT_READ(sessionId)                                        \
+#define TEST_SHOULD_NOT_READ(clientId)                                         \
         try {                                                                  \
             NProto::TReadDeviceBlocksRequest request;                          \
             request.SetDeviceUUID("uuid-1");                                   \
             request.SetStartIndex(1);                                          \
             request.SetBlockSize(4096);                                        \
             request.SetBlocksCount(10);                                        \
-            request.SetSessionId(sessionId);                                   \
+            request.MutableHeaders()->SetClientId(clientId);                   \
                                                                                \
             auto response =                                                    \
                 state->Read(                                                   \
@@ -733,13 +733,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_NOT_READ
 
-#define TEST_SHOULD_NOT_WRITE(sessionId)                                       \
+#define TEST_SHOULD_NOT_WRITE(clientId)                                        \
         try {                                                                  \
             NProto::TWriteDeviceBlocksRequest request;                         \
             request.SetDeviceUUID("uuid-1");                                   \
             request.SetStartIndex(1);                                          \
             request.SetBlockSize(4096);                                        \
-            request.SetSessionId(sessionId);                                   \
+            request.MutableHeaders()->SetClientId(clientId);                   \
                                                                                \
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
                                                                                \
@@ -758,14 +758,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_NOT_WRITE
 
-#define TEST_SHOULD_NOT_ZERO(sessionId)                                        \
+#define TEST_SHOULD_NOT_ZERO(clientId)                                         \
         try {                                                                  \
             NProto::TZeroDeviceBlocksRequest request;                          \
             request.SetDeviceUUID("uuid-1");                                   \
             request.SetStartIndex(1);                                          \
             request.SetBlockSize(4096);                                        \
             request.SetBlocksCount(10);                                        \
-            request.SetSessionId(sessionId);                                   \
+            request.MutableHeaders()->SetClientId(clientId);                   \
                                                                                \
             auto response =                                                    \
                 state->WriteZeroes(                                            \
@@ -782,11 +782,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_NOT_READ
 
-#define TEST_SHOULD_ACQUIRE(sessionId, ts, mode, seqNo)                        \
+#define TEST_SHOULD_ACQUIRE(clientId, ts, mode, seqNo)                         \
         try {                                                                  \
             state->AcquireDevices(                                             \
                 {"uuid-1"},                                                    \
-                sessionId,                                                     \
+                clientId,                                                      \
                 ts,                                                            \
                 mode,                                                          \
                 seqNo,                                                         \
@@ -798,11 +798,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_ACQUIRE
 
-#define TEST_SHOULD_NOT_ACQUIRE(sessionId, ts, mode, seqNo)                    \
+#define TEST_SHOULD_NOT_ACQUIRE(clientId, ts, mode, seqNo)                     \
         try {                                                                  \
             state->AcquireDevices(                                             \
                 {"uuid-1"},                                                    \
-                sessionId,                                                     \
+                clientId,                                                      \
                 ts,                                                            \
                 mode,                                                          \
                 seqNo,                                                         \
@@ -819,16 +819,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }                                                                      \
 // TEST_SHOULD_NOT_ACQUIRE
 
-        // read requests should fail for unregistered sessions
-        TEST_SHOULD_NOT_READ("some-session");
+        // read requests should fail for unregistered clients
+        TEST_SHOULD_NOT_READ("some-client");
 
         // write requests should also fail
-        TEST_SHOULD_NOT_WRITE("some-session");
+        TEST_SHOULD_NOT_WRITE("some-client");
 
         // and zero requests as well
-        TEST_SHOULD_NOT_ZERO("some-session");
+        TEST_SHOULD_NOT_ZERO("some-client");
 
-        // secure erase should succeed as long as there are no active sessions
+        // secure erase should succeed as long as there are no active clients
         {
             auto error = state->SecureErase("uuid-1", {}).GetValue(WaitTimeout);
             UNIT_ASSERT(!HasError(error));
@@ -842,7 +842,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             0
         );
 
-        // there is an active rw session already - second writer should be
+        // there is an active rw client already - second writer should be
         // rejected
         TEST_SHOULD_NOT_ACQUIRE(
             "writer2",
@@ -867,7 +867,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             0
         );
 
-        // all sessions should be able to read
+        // all clients should be able to read
         for (auto sessId: {"writer", "reader1", "reader2"}) {
             TEST_SHOULD_READ(sessId);
         }
@@ -886,7 +886,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TEST_SHOULD_NOT_ZERO("reader1");
         TEST_SHOULD_NOT_ZERO("reader2");
 
-        // secure erase should fail - there are active sessions
+        // secure erase should fail - there are active clients
         try {
             auto error = state->SecureErase(
                 "uuid-1",
@@ -902,7 +902,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         // after the inactivity period secure erase should succeed - our
-        // sessions are no longer considered 'active'
+        // clients are no longer considered 'active'
         try {
             auto error = state->SecureErase(
                 "uuid-1",
@@ -940,7 +940,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // new writer should be able to write
         TEST_SHOULD_WRITE("writer2");
 
-        // readonly reacquire for a readwrite session is fine
+        // readonly reacquire for a readwrite client is fine
         TEST_SHOULD_ACQUIRE(
             "writer2",
             TInstant::Seconds(21),
@@ -964,7 +964,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TEST_SHOULD_WRITE("writer");
         TEST_SHOULD_ZERO("writer");
 
-        // after writer's session expires, writer2 should be able to become a
+        // after writer's client expires, writer2 should be able to become a
         // writer
         TEST_SHOULD_ACQUIRE(
             "writer2",
@@ -981,7 +981,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TEST_SHOULD_NOT_WRITE("writer");
         TEST_SHOULD_NOT_ZERO("writer");
 
-        // writer3 should be able to acquire session with a greater seqno
+        // writer3 should be able to acquire client with a greater seqno
         TEST_SHOULD_ACQUIRE(
             "writer3",
             TInstant::Seconds(33),
@@ -989,7 +989,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             1
         );
 
-        // writer4 should be able to acquire session with a greater seqno
+        // writer4 should be able to acquire client with a greater seqno
         TEST_SHOULD_ACQUIRE(
             "writer4",
             TInstant::Seconds(34),
@@ -997,7 +997,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             2
         );
 
-        // writer3 should not be able to acquire session with a lower seqno
+        // writer3 should not be able to acquire client with a lower seqno
         TEST_SHOULD_NOT_ACQUIRE(
             "writer3",
             TInstant::Seconds(35),
@@ -1005,7 +1005,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             1
         );
 
-        // writer4 should be able to reacquire session with same seqno
+        // writer4 should be able to reacquire client with same seqno
         TEST_SHOULD_ACQUIRE(
             "writer4",
             TInstant::Seconds(36),

@@ -164,10 +164,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AcquireDevices(
             uuids,
-            "session-1",
+            "client-1",
             NProto::VOLUME_ACCESS_READ_WRITE
         );
-        diskAgent.ReleaseDevices(uuids, "session-1");
+        diskAgent.ReleaseDevices(uuids, "client-1");
     }
 
     Y_UNIT_TEST(ShouldAcquireWithRateLimits)
@@ -195,12 +195,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AcquireDevices(
             uuids,
-            "session-1",
+            "client-1",
             NProto::VOLUME_ACCESS_READ_WRITE,
             0,
             limits
         );
-        diskAgent.ReleaseDevices(uuids, "session-1");
+        diskAgent.ReleaseDevices(uuids, "client-1");
     }
 
     Y_UNIT_TEST(ShouldAcquireDevicesOnlyOnce)
@@ -225,7 +225,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             auto response = diskAgent.AcquireDevices(
                 uuids,
-                "session-id",
+                "client-id",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             UNIT_ASSERT(!HasError(response->Record));
@@ -234,7 +234,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             diskAgent.SendAcquireDevicesRequest(
                 uuids,
-                "session-id2",
+                "client-id2",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
@@ -242,11 +242,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT(response->GetErrorReason().Contains("already acquired"));
         }
 
-        // reacquire with same session id is ok
+        // reacquire with same client id is ok
         {
             auto response = diskAgent.AcquireDevices(
                 uuids,
-                "session-id",
+                "client-id",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             UNIT_ASSERT(!HasError(response->Record));
@@ -273,7 +273,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             auto response = diskAgent.AcquireDevices(
                 uuids,
-                "session-id",
+                "client-id",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             UNIT_ASSERT(!HasError(response->Record));
@@ -282,7 +282,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             diskAgent.SendAcquireDevicesRequest(
                 uuids,
-                "session-id2",
+                "client-id2",
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 1
             );
@@ -293,7 +293,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             diskAgent.SendAcquireDevicesRequest(
                 uuids,
-                "session-id3",
+                "client-id3",
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 2
             );
@@ -304,7 +304,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             diskAgent.SendAcquireDevicesRequest(
                 uuids,
-                "session-id4",
+                "client-id4",
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 2
             );
@@ -337,7 +337,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             auto response = diskAgent.AcquireDevices(
                 uuids,
-                "session-id",
+                "client-id",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             UNIT_ASSERT(!HasError(response->Record));
@@ -351,7 +351,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             diskAgent.SendAcquireDevicesRequest(
                 uuids,
-                "session-id2",
+                "client-id2",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
@@ -362,7 +362,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             ));
         }
 
-        // reacquire with same session id is ok
+        // reacquire with same client id is ok
         {
             const TVector<TString> uuids{
                 "MemoryDevice1"
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             auto response = diskAgent.AcquireDevices(
                 uuids,
-                "session-id",
+                "client-id",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             UNIT_ASSERT(!HasError(response->Record));
@@ -397,7 +397,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.SendAcquireDevicesRequest(
             uuids,
-            "session-id",
+            "client-id",
             NProto::VOLUME_ACCESS_READ_WRITE
         );
         auto response = diskAgent.RecvAcquireDevicesResponse();
@@ -427,11 +427,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "MemoryDevice2"
         };
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -439,7 +439,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         {
             const auto response = ReadDeviceBlocks(
-                runtime, diskAgent, uuids[0], 0, blocksCount, sessionId);
+                runtime, diskAgent, uuids[0], 0, blocksCount, clientId);
 
             const auto& record = response->Record;
 
@@ -459,13 +459,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 blocksCount,
                 TString(DefaultBlockSize, 'X'));
 
-            WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, sessionId);
-            ZeroDeviceBlocks(runtime, diskAgent, uuids[0], 0, 10, sessionId);
+            WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, clientId);
+            ZeroDeviceBlocks(runtime, diskAgent, uuids[0], 0, 10, clientId);
         }
 
         {
             auto request = std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(uuids[0]);
             request->Record.SetStartIndex(0);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -507,11 +507,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto writeRequest = [&](ui64 volumeRequestId,
@@ -520,7 +520,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                                 EWellKnownResultCodes expected) {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(uuids[0]);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -545,7 +545,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                                EWellKnownResultCodes expected) {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(uuids[0]);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -610,11 +610,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         // Steal TEvWriteOrZeroCompleted message.
@@ -639,7 +639,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                                     ui32 blockCount) {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(uuids[0]);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -662,7 +662,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                                    ui32 blockCount) {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(uuids[0]);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -793,11 +793,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         // Steal TEvWriteOrZeroCompleted request.
@@ -822,7 +822,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                                    ui32 blockCount) {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(uuids[0]);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -898,11 +898,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         // Steal TEvWriteOrZeroCompleted request.
@@ -927,7 +927,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                                    const TString& deviceUUID) {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(deviceUUID);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -991,11 +991,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto sendZeroRequest = [&](ui64 volumeRequestId,
@@ -1005,7 +1005,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             auto request =
                 std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-            request->Record.SetSessionId(sessionId);
+            request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDeviceUUID(deviceUUID);
             request->Record.SetStartIndex(blockStart);
             request->Record.SetBlockSize(DefaultBlockSize);
@@ -1057,7 +1057,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         DoShouldHandleSameRequestId(false);
     }
 
-    Y_UNIT_TEST(ShouldSupportReadOnlySessions)
+    Y_UNIT_TEST(ShouldSupportReadOnlyClients)
     {
         TTestBasicRuntime runtime;
 
@@ -1079,25 +1079,25 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "MemoryDevice2"
         };
 
-        const TString writerSessionId = "writer-1";
-        const TString readerSessionId1 = "reader-1";
-        const TString readerSessionId2 = "reader-2";
+        const TString writerClientId = "writer-1";
+        const TString readerClientId1 = "reader-1";
+        const TString readerClientId2 = "reader-2";
 
         diskAgent.AcquireDevices(
             uuids,
-            writerSessionId,
+            writerClientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
         diskAgent.AcquireDevices(
             uuids,
-            readerSessionId1,
+            readerClientId1,
             NProto::VOLUME_ACCESS_READ_ONLY
         );
 
         diskAgent.AcquireDevices(
             uuids,
-            readerSessionId2,
+            readerClientId2,
             NProto::VOLUME_ACCESS_READ_ONLY
         );
 
@@ -1109,10 +1109,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             blocksCount,
             TString(DefaultBlockSize, 'X'));
 
-        WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, writerSessionId);
-        // diskAgent.ZeroDeviceBlocks(uuids[0], 0, blocksCount / 2, writerSessionId);
+        WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, writerClientId);
+        // diskAgent.ZeroDeviceBlocks(uuids[0], 0, blocksCount / 2, writerClientId);
 
-        for (auto sid: {readerSessionId1, readerSessionId2}) {
+        for (auto sid: {readerClientId1, readerClientId2}) {
             diskAgent.SendWriteDeviceBlocksRequest(
                 uuids[0],
                 0,
@@ -1124,7 +1124,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
         }
 
-        for (auto sid: {readerSessionId1, readerSessionId2}) {
+        for (auto sid: {readerClientId1, readerClientId2}) {
             diskAgent.SendZeroDeviceBlocksRequest(
                 uuids[0],
                 0,
@@ -1136,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
         }
 
-        for (auto sid: {writerSessionId, readerSessionId1, readerSessionId2}) {
+        for (auto sid: {writerClientId, readerClientId1, readerClientId2}) {
             const auto response = ReadDeviceBlocks(
                 runtime,
                 diskAgent,
@@ -1279,7 +1279,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AcquireDevices(
             TVector<TString> {"dev1", "dev2"},
-            "session-1",
+            "client-1",
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -1306,7 +1306,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         };
 
         auto read = [&] (const auto& uuid) {
-            return ReadDeviceBlocks(runtime, diskAgent, uuid, 0, 1, "session-1")->GetStatus();
+            return ReadDeviceBlocks(
+                runtime,
+                diskAgent,
+                uuid,
+                0,
+                1,
+                "client-1")->GetStatus();
         };
 
         waitForStats([] (auto agentStats) {
@@ -1425,7 +1431,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AcquireDevices(
             uuids,
-            "session-id",
+            "client-id",
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -1439,7 +1445,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 TString(DefaultBlockSize, 'X'));
 
             auto request = diskAgent.CreateWriteDeviceBlocksRequest(
-                uuids[0], 0, sglist, "session-id");
+                uuids[0], 0, sglist, "client-id");
 
             const ui64 cookie = 42;
 
@@ -1472,7 +1478,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             auto request = diskAgent.CreateAcquireDevicesRequest(
                 {"MemoryDevice2"},
-                "session-d",
+                "client-id",
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
 
@@ -1515,11 +1521,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TVector<TString> uuids { "FileDevice-1" };
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -1552,7 +1558,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[0],
                 startIndex,
                 sglist,
-                sessionId);
+                clientId);
 
             runtime.DispatchEvents(TDispatchOptions());
 
@@ -1585,7 +1591,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[0],
                 startIndex,
                 blocksCount,
-                sessionId);
+                clientId);
 
             const auto& record = response->Record;
 
@@ -1628,11 +1634,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             uuids[0],
             startIndex,
             blocksCount,
-            sessionId);
+            clientId);
 
         {
             const auto response = ReadDeviceBlocks(
-                runtime, diskAgent, uuids[0], startIndex, blocksCount, sessionId);
+                runtime, diskAgent, uuids[0], startIndex, blocksCount, clientId);
 
             const auto& record = response->Record;
 
@@ -1744,11 +1750,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TVector<TString> uuids { "FileDevice-1", "FileDevice-2" };
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -1768,7 +1774,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[devIdx],
                 startIndex,
                 sglist,
-                sessionId);
+                clientId);
 
             runtime.DispatchEvents(TDispatchOptions());
 
@@ -1793,7 +1799,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[devIdx],
                 startIndex,
                 blockCount,
-                sessionId);
+                clientId);
 
             const auto& record = response->Record;
 
@@ -1822,7 +1828,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[devIdx],
                 startIndex,
                 blockCount,
-                sessionId);
+                clientId);
         };
 
         writeBlocks('A', 512, 2, 0);
@@ -1909,7 +1915,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(2 * DefaultBlockSize, bytes);
         UNIT_ASSERT_VALUES_EQUAL(TString(2 * DefaultBlockSize, 'C'), buffer);
 
-        diskAgent.ReleaseDevices(uuids, sessionId);
+        diskAgent.ReleaseDevices(uuids, clientId);
 
         diskAgent.SecureEraseDevice("FileDevice-1");
         bytes = f.Pread(
@@ -2150,12 +2156,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
         const TVector<TString> uuids { "FileDevice-1" };
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -2170,7 +2176,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             content);
 
         WriteDeviceBlocks(
-            runtime, diskAgent, uuids[0], startIndex, sglist, sessionId);
+            runtime, diskAgent, uuids[0], startIndex, sglist, clientId);
 
         {
             auto response = ReadDeviceBlocks(
@@ -2179,7 +2185,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[0],
                 startIndex,
                 blockCount,
-                sessionId);
+                clientId);
 
             auto data = ConvertToSgList(
                 response->Record.GetBlocks(),
@@ -2191,13 +2197,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             }
         }
 
-        diskAgent.ReleaseDevices(uuids, sessionId);
+        diskAgent.ReleaseDevices(uuids, clientId);
 
         diskAgent.SecureEraseDevice("FileDevice-1");
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -2208,7 +2214,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[0],
                 startIndex,
                 blockCount,
-                sessionId);
+                clientId);
 
             auto data = ConvertToSgList(
                 response->Record.GetBlocks(),
@@ -2223,7 +2229,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             }
         }
 
-        diskAgent.ReleaseDevices(uuids, sessionId);
+        diskAgent.ReleaseDevices(uuids, clientId);
     }
 
     Y_UNIT_TEST(ShouldInjectExceptions)
@@ -2384,16 +2390,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "MemoryDevice2"
         };
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto read = [&] (int index) {
             const auto response = ReadDeviceBlocks(
-                runtime, diskAgent, uuids[index], 0, 1, sessionId);
+                runtime, diskAgent, uuids[index], 0, 1, clientId);
 
             return response->GetStatus() == E_IO;
         };
@@ -2402,7 +2408,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TSgList sglist = {{ data.data(), data.size() }};
 
         auto write = [&] (int index) {
-            diskAgent.SendWriteDeviceBlocksRequest(uuids[index], 0, sglist, sessionId);
+            diskAgent.SendWriteDeviceBlocksRequest(uuids[index], 0, sglist, clientId);
             runtime.DispatchEvents(TDispatchOptions());
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
 
@@ -2410,7 +2416,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         };
 
         auto zero = [&] (int index) {
-            diskAgent.SendZeroDeviceBlocksRequest(uuids[index], 0, 1, sessionId);
+            diskAgent.SendZeroDeviceBlocksRequest(uuids[index], 0, 1, clientId);
             runtime.DispatchEvents(TDispatchOptions());
             const auto response = diskAgent.RecvZeroDeviceBlocksResponse();
 
@@ -2484,7 +2490,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(2, registrationCount);
     }
 
-    Y_UNIT_TEST(ShouldSecureEraseDeviceWithExpiredSession)
+    Y_UNIT_TEST(ShouldSecureEraseDeviceWithExpiredClient)
     {
         TTestBasicRuntime runtime;
 
@@ -2503,7 +2509,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AcquireDevices(
             uuids,
-            "session-1",
+            "client-1",
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -2813,11 +2819,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "MemoryDevice1",
         };
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -2834,12 +2840,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 checksum.Extend(block.Data(), block.Size());
             }
 
-            WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, sessionId);
+            WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, clientId);
         }
 
         {
             const auto response = ChecksumDeviceBlocks(
-                runtime, diskAgent, uuids[0], 0, blocksCount, sessionId);
+                runtime, diskAgent, uuids[0], 0, blocksCount, clientId);
 
             const auto& record = response->Record;
 
@@ -2889,11 +2895,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "MemoryDevice3",
         };
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
@@ -2914,7 +2920,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[0],
                 0,
                 sglist,
-                sessionId);
+                clientId);
             diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
             runtime.GrabEdgeEventRethrow<TResponse>(
                 handle,
@@ -2925,7 +2931,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[1],
                 0,
                 sglist,
-                sessionId);
+                clientId);
             diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
             runtime.GrabEdgeEventRethrow<TResponse>(
                 handle,
@@ -2936,7 +2942,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[2],
                 0,
                 sglist,
-                sessionId);
+                clientId);
             diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
             runtime.GrabEdgeEventRethrow<TResponse>(
                 handle,
@@ -2986,16 +2992,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        const TString sessionId = "session-1";
+        const TString clientId = "client-1";
 
         diskAgent.AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
         const auto response = ReadDeviceBlocks(
-            runtime, diskAgent, uuids[0], 0, 1024, sessionId);
+            runtime, diskAgent, uuids[0], 0, 1024, clientId);
 
         const auto& error = response->GetError();
 

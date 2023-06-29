@@ -131,7 +131,7 @@ public:
 
     auto CreateAcquireDevicesRequest(
         const TVector<TString>& ids,
-        const TString& sessionId,
+        const TString& clientId,
         const NProto::EVolumeAccessMode accessMode,
         const ui64 mountSeqNumber = 0,
         const NSpdk::TDeviceRateLimits& limits = {},
@@ -140,7 +140,7 @@ public:
     {
         auto request = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
 
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetAccessMode(accessMode);
         request->Record.SetMountSeqNumber(mountSeqNumber);
         request->Record.SetDiskId(diskId);
@@ -168,13 +168,13 @@ public:
 
     auto CreateReleaseDevicesRequest(
         const TVector<TString>& ids,
-        const TString& sessionId,
+        const TString& clientId,
         const TString& diskId = "",
         const ui32 volumeGeneration = 0)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
 
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDiskId(diskId);
         request->Record.SetVolumeGeneration(volumeGeneration);
 
@@ -201,10 +201,10 @@ public:
         const TString& uuid,
         ui64 startIndex,
         ui32 blocksCount,
-        const TString& sessionId)
+        const TString& clientId)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlockSize(DefaultBlockSize);
@@ -217,10 +217,10 @@ public:
         const TString& uuid,
         ui64 startIndex,
         ui32 blocksCount,
-        const TString& sessionId)
+        const TString& clientId)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlockSize(DefaultBlockSize);
@@ -233,10 +233,10 @@ public:
         const TString& uuid,
         ui64 startIndex,
         const TSgList& data,
-        const TString& sessionId)
+        const TString& clientId)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlockSize(DefaultBlockSize);
@@ -264,10 +264,10 @@ public:
         const TString& uuid,
         ui64 startIndex,
         ui32 blocksCount,
-        const TString& sessionId)
+        const TString& clientId)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvChecksumDeviceBlocksRequest>();
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlockSize(DefaultBlockSize);

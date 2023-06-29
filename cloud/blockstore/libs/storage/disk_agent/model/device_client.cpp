@@ -24,15 +24,15 @@ TDeviceClient::TDeviceClient(
 
 NCloud::NProto::TError TDeviceClient::AcquireDevices(
     const TVector<TString>& uuids,
-    const TString& sessionId,
+    const TString& clientId,
     TInstant now,
     NProto::EVolumeAccessMode accessMode,
     ui64 mountSeqNumber,
     const TString& diskId,
     ui32 volumeGeneration)
 {
-    if (!sessionId) {
-        return MakeError(E_ARGUMENT, "empty session id");
+    if (!clientId) {
+        return MakeError(E_ARGUMENT, "empty client id");
     }
 
     for (const auto& uuid: uuids) {
@@ -62,7 +62,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
 
         if (IsReadWriteMode(accessMode)
                 && it->second.WriterSession.Id
-                && it->second.WriterSession.Id != sessionId
+                && it->second.WriterSession.Id != clientId
                 && it->second.WriterSession.MountSeqNumber >= mountSeqNumber
                 && it->second.WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
@@ -70,7 +70,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
                 << "Device " << uuid.Quote()
-                << " already acquired by another session: "
+                << " already acquired by another client: "
                 << it->second.WriterSession.Id);
         }
     }
@@ -84,7 +84,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
             ds.ReaderSessions.begin(),
             ds.ReaderSessions.end(),
             [&] (const TSessionInfo& s) {
-                return s.Id == sessionId;
+                return s.Id == clientId;
             }
         );
 
@@ -93,16 +93,16 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
 
         if (!IsReadWriteMode(accessMode)) {
             if (s == ds.ReaderSessions.end()) {
-                ds.ReaderSessions.push_back({sessionId, now});
+                ds.ReaderSessions.push_back({clientId, now});
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
 
-            if (sessionId == ds.WriterSession.Id) {
+            if (clientId == ds.WriterSession.Id) {
                 ds.WriterSession = {};
             }
         } else {
-            ds.WriterSession.Id = sessionId;
+            ds.WriterSession.Id = clientId;
             ds.WriterSession.LastActivityTs =
                 Max(ds.WriterSession.LastActivityTs, now);
             ds.WriterSession.MountSeqNumber = mountSeqNumber;
@@ -118,12 +118,12 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
 
 NCloud::NProto::TError TDeviceClient::ReleaseDevices(
     const TVector<TString>& uuids,
-    const TString& sessionId,
+    const TString& clientId,
     const TString& diskId,
     ui32 volumeGeneration)
 {
-    if (!sessionId) {
-        return MakeError(E_ARGUMENT, "empty session id");
+    if (!clientId) {
+        return MakeError(E_ARGUMENT, "empty client id");
     }
 
     for (const auto& uuid : uuids) {
@@ -154,14 +154,14 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
             it->second.ReaderSessions.begin(),
             it->second.ReaderSessions.end(),
             [&] (const TSessionInfo& s) {
-                return s.Id == sessionId;
+                return s.Id == clientId;
             }
         );
 
         if (s != it->second.ReaderSessions.end()) {
             it->second.ReaderSessions.erase(s);
-        } else if (it->second.WriterSession.Id == sessionId
-            || sessionId == AnyWriterClientId)
+        } else if (it->second.WriterSession.Id == clientId
+            || clientId == AnyWriterClientId)
         {
             it->second.WriterSession = {};
         }
@@ -172,11 +172,11 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
 
 NCloud::NProto::TError TDeviceClient::AccessDevice(
     const TString& uuid,
-    const TString& sessionId,
+    const TString& clientId,
     NProto::EVolumeAccessMode accessMode) const
 {
-    if (!sessionId) {
-        return MakeError(E_ARGUMENT, "empty session id");
+    if (!clientId) {
+        return MakeError(E_ARGUMENT, "empty client id");
     }
 
     auto it = Devices.find(uuid);
@@ -188,20 +188,20 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     TReadGuard g(it->second.Lock);
 
     bool acquired = false;
-    if (sessionId == BackgroundOpsClientId) {
+    if (clientId == BackgroundOpsClientId) {
         // it's fine to accept migration writes if this device is not acquired
         // migration might be in progress even for an unmounted volume
         acquired = !IsReadWriteMode(accessMode)
             || it->second.WriterSession.Id.empty();
     } else {
-        acquired = sessionId == it->second.WriterSession.Id;
+        acquired = clientId == it->second.WriterSession.Id;
 
         if (!acquired && !IsReadWriteMode(accessMode)) {
             auto s = FindIf(
                 it->second.ReaderSessions.begin(),
                 it->second.ReaderSessions.end(),
                 [&] (const TSessionInfo& s) {
-                    return s.Id == sessionId;
+                    return s.Id == clientId;
                 }
             );
 
@@ -211,7 +211,7 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
 
     if (!acquired) {
         return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-            << "Device " << uuid.Quote() << " not acquired by session " << sessionId
+            << "Device " << uuid.Quote() << " not acquired by client " << clientId
             << ", current active writer: " << it->second.WriterSession.Id);
     }
 

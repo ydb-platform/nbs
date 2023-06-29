@@ -51,7 +51,7 @@ public:
 
     NCloud::NProto::TError AcquireDevices(
         const TVector<TString>& uuids,
-        const TString& sessionId,
+        const TString& clientId,
         TInstant now,
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber,
@@ -60,13 +60,13 @@ public:
 
     NCloud::NProto::TError ReleaseDevices(
         const TVector<TString>& uuids,
-        const TString& sessionId,
+        const TString& clientId,
         const TString& diskId,
         ui32 volumeGeneration);
 
     NCloud::NProto::TError AccessDevice(
         const TString& uuid,
-        const TString& sessionId,
+        const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const;
 
     TSessionInfo GetWriterSession(const TString& uuid) const;

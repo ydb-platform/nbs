@@ -110,7 +110,7 @@ public:
 
     void AcquireDevices(
         const TVector<TString>& uuids,
-        const TString& sessionId,
+        const TString& clientId,
         TInstant now,
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber,
@@ -119,7 +119,7 @@ public:
 
     void ReleaseDevices(
         const TVector<TString>& uuids,
-        const TString& sessionId,
+        const TString& clientId,
         const TString& diskId,
         ui32 volumeGeneration);
 
@@ -131,12 +131,12 @@ public:
 private:
     const TDeviceState& GetDeviceState(
         const TString& uuid,
-        const TString& sessionId,
+        const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
 
     const TDeviceState& GetDeviceStateImpl(
         const TString& uuid,
-        const TString& sessionId,
+        const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
     const TDeviceState& GetDeviceStateImpl(const TString& uuid) const;
 

@@ -41,7 +41,7 @@ void TDiskAgentActor::HandleAcquireDevices(
 
     const auto* msg = ev->Get();
     const auto& record = msg->Record;
-    const TString sessionId = record.GetSessionId();
+    const TString clientId = record.GetHeaders().GetClientId();
 
     TVector<TString> uuids {
         record.GetDeviceUUIDs().begin(),
@@ -52,13 +52,13 @@ void TDiskAgentActor::HandleAcquireDevices(
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "AcquireDevices: sessionId=" << sessionId
+            "AcquireDevices: clientId=" << clientId
                 << ", uuids=" << JoinSeq(",", uuids)
         );
 
         State->AcquireDevices(
             uuids,
-            sessionId,
+            clientId,
             ctx.Now(),
             record.GetAccessMode(),
             record.GetMountSeqNumber(),
@@ -98,7 +98,7 @@ void TDiskAgentActor::HandleAcquireDevices(
                 } catch (...) {
                     State->ReleaseDevices(
                         uuids,
-                        sessionId,
+                        clientId,
                         diskId,
                         volumeGeneration);
                     reply(MakeError(E_FAIL, CurrentExceptionMessage()));
