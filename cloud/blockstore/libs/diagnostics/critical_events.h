@@ -44,6 +44,7 @@ namespace NCloud::NBlockStore {
     xxx(ReceivedUnknownTaskId)                                                 \
     xxx(MigrationSourceNotFound)                                               \
     xxx(UnexpectedBatchMigration)                                              \
+    xxx(UnexpectedIdentifierRepetition)                                        \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

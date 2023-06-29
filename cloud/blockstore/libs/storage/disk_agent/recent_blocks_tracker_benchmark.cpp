@@ -1,5 +1,6 @@
-#include "composite_id.h"
-#include "recently_written_blocks.h"
+#include "recent_blocks_tracker.h"
+
+#include <cloud/blockstore/libs/storage/model/composite_id.h>
 
 #include <library/cpp/testing/gbenchmark/benchmark.h>
 
@@ -9,17 +10,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 static void BenchmarkSequence(benchmark::State& state)
 {
-    TString deviceUUID;
-    TRecentlyWrittenBlocks recentlyWritten;
+    TRecentBlocksTracker tracker("device1");
 
     TCompositeId id = TCompositeId::FromGeneration(1);
 
     // Sequence of incremented ids
     for (const auto _ : state) {
         TBlockRange64 range{0, 1023};
-        auto result = recentlyWritten.CheckRange(id.Advance(), range);
+        auto result = tracker.CheckRecorded(id.Advance(), range);
         Y_VERIFY(result == EOverlapStatus::NotOverlapped);
-        recentlyWritten.AddRange(id.Advance(), range, deviceUUID);
+        tracker.AddRecorded(id.Advance(), range);
     }
 }
 
@@ -27,8 +27,7 @@ static void BenchmarkSlightlyFromPastNotOverlapped(benchmark::State& state)
 {
     Y_UNUSED(state);
 
-    TString deviceUUID;
-    TRecentlyWrittenBlocks recentlyWritten;
+    TRecentBlocksTracker tracker("device1");
     // Id sequence:
     // 9- 8- 7- 6- 5- 4- 3- 2- 1- 0  ->
     // 19-18-17-16-15-14-13-12-11-10 ->
@@ -45,9 +44,9 @@ static void BenchmarkSlightlyFromPastNotOverlapped(benchmark::State& state)
         }
         TBlockRange64 range{step * 1024, (step + 1) * 1024 - 1};
         ui64 id = sequenceIdStart + step;
-        auto result = recentlyWritten.CheckRange(id, range);
+        auto result = tracker.CheckRecorded(id, range);
         Y_VERIFY(result == EOverlapStatus::NotOverlapped);
-        recentlyWritten.AddRange(id, range, deviceUUID);
+        tracker.AddRecorded(id, range);
     }
 }
 

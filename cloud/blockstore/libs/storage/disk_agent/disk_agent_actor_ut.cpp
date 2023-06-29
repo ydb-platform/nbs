@@ -1,12 +1,15 @@
-#include "disk_agent.h"
 #include "disk_agent_actor.h"
+
+#include "disk_agent.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 
 #include <library/cpp/lwtrace/all.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -675,6 +678,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(!stolenWriteCompletedRequests.empty());
+        // N.B. We are delaying the internal TEvWriteOrZeroCompleted request.
+        // The response to the client was not delayed, so here we receive write and zero responses.
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
@@ -834,6 +839,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         sendZeroRequest(100, 2048, 16);
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(!stolenWriteCompletedRequests.empty());
+        // N.B. We are delaying the internal TEvWriteOrZeroCompleted request.
+        // The response to the client was not delayed, so here we receive a
+        // ZeroDeviceBlocksResponse.
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
@@ -865,6 +873,188 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotMessDifferentDevicesRequests)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                       }))
+                       .With([] {
+                           NProto::TStorageServiceConfig config;
+                           config.SetRejectLateRequestsAtDiskAgentEnabled(true);
+                           return config;
+                       }())
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
+
+        const TString sessionId = "session-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        // Steal TEvWriteOrZeroCompleted request.
+        // We will return it later. This should not delay the request of another device.
+        std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
+        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
+                                           TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
+            {
+                stolenWriteCompletedRequests.push_back(
+                    std::unique_ptr<IEventHandle>{event.Release()});
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
+
+        auto sendZeroRequest = [&](ui64 volumeRequestId,
+                                   ui64 blockStart,
+                                   ui32 blockCount,
+                                   const TString& deviceUUID) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(deviceUUID);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(blockCount);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        // Send zero request. The TWriteOrZeroCompleted message from this request will
+        // be stolen.
+        sendZeroRequest(100, 2048, 16, uuids[0]);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!stolenWriteCompletedRequests.empty());
+        // N.B. We are delaying the internal TEvWriteOrZeroCompleted request.
+        // The response to the client was not delayed, so here we receive a
+        // ZeroDeviceBlocksResponse.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
+
+        // Turning off the theft of responses.
+        runtime.SetObserverFunc(oldObserverFunc);
+
+        {
+            // Send new zero request (from past) with range coverred by delayed
+            // request. This request will not be delayed as it relates to another device.
+            sendZeroRequest(98, 2048, 8, uuids[1]);
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
+
+    void DoShouldHandleSameRequestId(bool monitoringMode)
+    {
+        TTestBasicRuntime runtime;
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                       }))
+                       .With(
+                           [monitoringMode]()
+                           {
+                               NProto::TStorageServiceConfig config;
+                               config.SetRejectLateRequestsAtDiskAgentEnabled(
+                                   !monitoringMode);
+                               return config;
+                           }())
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
+
+        const TString sessionId = "session-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        auto sendZeroRequest = [&](ui64 volumeRequestId,
+                                   ui64 blockStart,
+                                   ui32 blockCount,
+                                   const TString& deviceUUID)
+        {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+            request->Record.SetSessionId(sessionId);
+            request->Record.SetDeviceUUID(deviceUUID);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(blockCount);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        {
+            sendZeroRequest(100, 2048, 16, uuids[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
+        }
+        {
+            // Send first request once again with same requestId.
+            sendZeroRequest(100, 2048, 8, uuids[0]);
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                monitoringMode ? S_OK : E_REJECTED,
+                response->GetStatus());
+        }
+        {
+            // Send request to another device.
+            sendZeroRequest(100, 2048, 8, uuids[1]);
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+
+        auto unexpectedIdentifierRepetition = counters->GetCounter(
+            "AppCriticalEvents/UnexpectedIdentifierRepetition",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            monitoringMode ? 2 : 1,
+            unexpectedIdentifierRepetition->Val());
+    }
+
+    Y_UNIT_TEST(ShouldHandleSameRequestIdMonitoringOn)
+    {
+        DoShouldHandleSameRequestId(true);
+    }
+
+    Y_UNIT_TEST(ShouldHandleSameRequestIdMonitoringOff)
+    {
+        DoShouldHandleSameRequestId(false);
     }
 
     Y_UNIT_TEST(ShouldSupportReadOnlySessions)

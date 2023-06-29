@@ -821,4 +821,7 @@ message TStorageServiceConfig
 
     // Attached disk destruction is allowed after this period of client inactivity (ms).
     optional uint32 AttachedDiskDestructionTimeout = 309;
+
+    // Assign unique identifiers to all zero and write requests in TVolumeActor.
+    optional bool AssignIdToWriteAndZeroRequestsEnabled = 310;
 }

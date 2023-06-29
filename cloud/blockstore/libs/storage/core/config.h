@@ -436,6 +436,7 @@ public:
     ui32 GetSpareNodeProbability() const;
 
     bool GetRejectLateRequestsAtDiskAgentEnabled() const;
+    bool GetAssignIdToWriteAndZeroRequestsEnabled() const;
 };
 
 ui64 GetAllocationUnit(

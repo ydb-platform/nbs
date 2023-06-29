@@ -416,6 +416,7 @@ TDuration MSeconds(ui32 value)
     xxx(SerialNumberValidationEnabled,             bool,      false           )\
                                                                                \
     xxx(RejectLateRequestsAtDiskAgentEnabled,      bool,      false           )\
+    xxx(AssignIdToWriteAndZeroRequestsEnabled,     bool,      false           )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

@@ -35,6 +35,7 @@ private:
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
+    const bool AssignIdToWriteAndZeroRequestsEnabled;
 
     ui32 RequestsCompleted = 0;
 
@@ -47,6 +48,7 @@ public:
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
+        bool assignIdToWriteAndZeroRequestsEnabled,
         bool replyLocal);
 
     void Bootstrap(const TActorContext& ctx);
@@ -84,12 +86,15 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
+        bool assignIdToWriteAndZeroRequestsEnabled,
         bool replyLocal)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
+    , AssignIdToWriteAndZeroRequestsEnabled(
+          assignIdToWriteAndZeroRequestsEnabled)
     , ReplyLocal(replyLocal)
 {
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
@@ -127,21 +132,23 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
         request->Record.SetBlockSize(PartConfig->GetBlockSize());
         // TODO: remove after NBS-3886
         request->Record.SetSessionId(Request.GetHeaders().GetClientId());
+        if (AssignIdToWriteAndZeroRequestsEnabled) {
+            request->Record.SetVolumeRequestId(RequestInfo->Cookie);
+            request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
+        }
 
         builder.BuildNextRequest(request->Record);
 
-        TAutoPtr<IEventHandle> event(
-            new IEventHandle(
-                MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
-                ctx.SelfID,
-                request.get(),
-                IEventHandle::FlagForwardOnNondelivery,
-                cookie++,
-                &ctx.SelfID    // forwardOnNondelivery
-            ));
-        request.release();
+        auto event = std::make_unique<IEventHandle>(
+            MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            cookie++,
+            &ctx.SelfID // forwardOnNondelivery
+        );
 
-        ctx.Send(event);
+        ctx.Send(std::move(event));
     }
 }
 
@@ -350,6 +357,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         false); // replyLocal
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
@@ -438,6 +446,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         true); // replyLocal
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));

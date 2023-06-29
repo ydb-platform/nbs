@@ -133,19 +133,15 @@ void TWriteAndMarkUsedActor<TMethod>::WriteBlocks(const TActorContext& ctx)
     request->CallContext = RequestInfo->CallContext;
     request->Record = Request;
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            PartActorId,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            0,  // cookie
-            &ctx.SelfID    // forwardOnNondelivery
-        )
+    auto event = std::make_unique<IEventHandle>(
+        PartActorId,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        VolumeRequestId, // cookie
+        &ctx.SelfID      // forwardOnNondelivery
     );
-    request.release();
-
-    ctx.Send(event);
+    ctx.Send(std::move(event));
 }
 
 template <typename TMethod>
@@ -158,18 +154,15 @@ void TWriteAndMarkUsedActor<TMethod>::MarkBlocksUsed(const TActorContext& ctx)
         Request, BlockSize));
     request->Record.SetUsed(true);
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            VolumeActorId,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            0,              // cookie
-            &ctx.SelfID     // forwardOnNondelivery
-        ));
-    request.release();
-
-    ctx.Send(event);
+    auto event = std::make_unique<IEventHandle>(
+        VolumeActorId,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        VolumeRequestId, // cookie
+        &ctx.SelfID      // forwardOnNondelivery
+    );
+    ctx.Send(std::move(event));
 }
 
 template <typename TMethod>
@@ -207,7 +200,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUndelivery(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
 
     LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] %s request undelivered to partition",
@@ -234,6 +227,8 @@ void TWriteAndMarkUsedActor<TMethod>::HandleResponse(
     const typename TMethod::TResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
+
     auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
@@ -264,6 +259,8 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksResponse(
     const TEvVolume::TEvUpdateUsedBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
+
     auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
@@ -288,7 +285,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksUndelivery(
     const TEvVolume::TEvUpdateUsedBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
 
     Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
         << TMethod::Name << " used blocks update undelivered"));
@@ -569,7 +566,8 @@ template <typename TMethod>
 bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
-    const TActorId& partActorId)
+    const TActorId& partActorId,
+    const ui64 volumeRequestId)
 {
     const auto* msg = ev->Get();
 
@@ -589,7 +587,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 std::move(msg->Record),
                 State->GetBlockSize(),
                 encryptedNonreplicatedVolume,
-                VolumeRequestId,
+                volumeRequestId,
                 partActorId,
                 TabletID(),
                 SelfId());
@@ -639,7 +637,8 @@ template bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<       \
     ns::T##name##Method>(                                                      \
         const TActorContext& ctx,                                              \
         const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorId& partActorId);                                          \
+        const TActorId& partActorId,                                           \
+        const ui64 volumeRequestId);                                           \
 // GENERATE_IMPL
 
 GENERATE_IMPL(ReadBlocks,         TEvService)

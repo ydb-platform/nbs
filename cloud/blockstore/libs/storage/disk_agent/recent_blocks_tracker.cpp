@@ -1,6 +1,11 @@
-#include "recently_written_blocks.h"
+#include "recent_blocks_tracker.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/common/verify.h>
+
+#include <library/cpp/actors/core/actor.h>
+#include <library/cpp/actors/core/log.h>
 
 #include <util/generic/bitmap.h>
 #include <util/generic/list.h>
@@ -30,12 +35,15 @@ EWellKnownResultCodes OverlapStatusToResult(
 
 ///////////////////////////////////////////////////////////////////////////////
 
-TRecentlyWrittenBlocks::TRecentlyWrittenBlocks(size_t trackDepth)
-    : TrackDepth(trackDepth)
+TRecentBlocksTracker::TRecentBlocksTracker(
+        const TString& deviceUUID,
+        size_t trackDepth)
+    : DeviceUUID(deviceUUID)
+    , TrackDepth(trackDepth)
     , OrderedByArrival(TrackDepth, OrderedById.end())
 {}
 
-EOverlapStatus TRecentlyWrittenBlocks::CheckRange(
+EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     ui64 requestId,
     const TBlockRange64& range) const
 {
@@ -57,6 +65,7 @@ EOverlapStatus TRecentlyWrittenBlocks::CheckRange(
     }
 
     if (it->first == requestId) {
+        ReportRepeatedRequestId(requestId, range);
         // Got same requestId. Reject it.
         return EOverlapStatus::Unknown;
     }
@@ -84,10 +93,9 @@ EOverlapStatus TRecentlyWrittenBlocks::CheckRange(
     return EOverlapStatus::NotOverlapped;
 }
 
-void TRecentlyWrittenBlocks::AddRange(
+void TRecentBlocksTracker::AddRecorded(
     ui64 requestId,
-    const TBlockRange64& range,
-    const TString& deviceUUID)
+    const TBlockRange64& range)
 {
     if (requestId == 0) {
         // Some unit tests do not set the request ID.
@@ -95,7 +103,10 @@ void TRecentlyWrittenBlocks::AddRange(
     }
 
     auto [it, inserted] = OrderedById.emplace(requestId, range);
-    STORAGE_VERIFY(inserted, TWellKnownEntityTypes::DEVICE, deviceUUID);
+    if (!inserted) {
+        ReportRepeatedRequestId(requestId, range);
+        return;
+    }
 
     auto removedOldIterator = OrderedByArrival.PushBack(it);
     if (removedOldIterator) {
@@ -103,12 +114,9 @@ void TRecentlyWrittenBlocks::AddRange(
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
-TInflightBlocks::TInflightBlocks() = default;
-
-bool TInflightBlocks::CheckOverlap(ui64 requestId, const TBlockRange64& range)
-    const
+bool TRecentBlocksTracker::CheckInflight(
+    ui64 requestId,
+    const TBlockRange64& range) const
 {
     if (requestId == 0) {
         // Some unit tests do not set the request ID.
@@ -116,33 +124,58 @@ bool TInflightBlocks::CheckOverlap(ui64 requestId, const TBlockRange64& range)
     }
 
     return std::any_of(
-        OrderedById.lower_bound(requestId),
-        OrderedById.end(),
-        [&](const auto& p) {
+        InflightBlocks.lower_bound(requestId),
+        InflightBlocks.end(),
+        [&](const auto& p)
+        {
             return p.first == requestId   // Reject requests with same id
                    || p.second.Overlaps(range);
         });
 }
 
-void TInflightBlocks::AddRange(ui64 requestId, const TBlockRange64& range)
+void TRecentBlocksTracker::AddInflight(
+    ui64 requestId,
+    const TBlockRange64& range)
 {
     if (requestId == 0) {
         // Some unit tests do not set the request ID.
         return;
     }
 
-    auto [it, inserted] = OrderedById.emplace(requestId, range);
-    Y_VERIFY(inserted);
+    auto [it, inserted] = InflightBlocks.emplace(requestId, range);
+    if (!inserted) {
+        ReportRepeatedRequestId(requestId, range);
+    }
 }
 
-void TInflightBlocks::Remove(ui64 requestId)
+void TRecentBlocksTracker::RemoveInflight(ui64 requestId)
 {
     if (requestId == 0) {
         // Some unit tests do not set the request ID.
         return;
     }
 
-    OrderedById.erase(requestId);
+    InflightBlocks.erase(requestId);
+}
+
+void TRecentBlocksTracker::ReportRepeatedRequestId(
+    ui64 requestId,
+    const TBlockRange64& range) const
+{
+    ReportUnexpectedIdentifierRepetition();
+
+    if (NActors::TlsActivationContext &&
+        NActors::TActivationContext::ActorSystem())
+    {
+        LOG_ERROR(
+            *NActors::TActivationContext::ActorSystem(),
+            TBlockStoreComponents::DISK_AGENT,
+            "[%s] Duplicate saved requestId: %ld block range [%ld, %ld]",
+            DeviceUUID.c_str(),
+            requestId,
+            range.Start,
+            range.End);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

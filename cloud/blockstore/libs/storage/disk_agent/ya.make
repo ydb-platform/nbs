@@ -17,6 +17,7 @@ SRCS(
     disk_agent.cpp
     hash_table_storage.cpp
     rdma_target.cpp
+    recent_blocks_tracker.cpp
     spdk_initializer.cpp
     storage_initializer.cpp
     storage_with_stats.cpp
@@ -49,6 +50,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    benchmark
     ut
     ut_actor
     ut_large

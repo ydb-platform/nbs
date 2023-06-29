@@ -16,7 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
-#include <cloud/blockstore/libs/storage/model/recently_written_blocks.h>
+#include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
@@ -72,8 +72,7 @@ private:
 
     const bool RejectLateRequestsAtDiskAgentEnabled =
         Config->GetRejectLateRequestsAtDiskAgentEnabled();
-    TInflightBlocks InFlightWriteBlocks;
-    TRecentlyWrittenBlocks RecentlyWrittenBlocks;
+    THashMap<TString, TRecentBlocksTracker> RecentBlocksTrackers;
     TList<TPostponedRequest> PostponedRequests;
 
 public:
@@ -132,6 +131,8 @@ private:
     void SecureErase(
         const NActors::TActorContext& ctx,
         const TString& deviceId);
+
+    TRecentBlocksTracker& GetRecentBlocksTracker(const TString& deviceUUID);
 
 private:
     STFUNC(StateInit);

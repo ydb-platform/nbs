@@ -12,7 +12,6 @@ SRCS(
     channel_data_kind.cpp
     channel_permissions.cpp
     composite_task_waiter.cpp
-    recently_written_blocks.cpp
     requests_in_progress.cpp
 )
 
@@ -20,5 +19,4 @@ END()
 
 RECURSE_FOR_TESTS(
     ut
-    benchmark
 )

@@ -2416,6 +2416,64 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 #undef TEST_READ
     }
 
+    Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequest)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAssignIdToWriteAndZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount /
+                DefaultBlockSize);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui64 writeRequestId = 0;
+        ui64 zeroRequestId = 0;
+        auto checkDeviceRequest = [&](TTestActorRuntimeBase& runtime,
+                                      TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                auto* msg = event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+                writeRequestId = msg->Record.GetVolumeRequestId();
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvZeroDeviceBlocksRequest)
+            {
+                auto* msg = event->Get<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestId);
+                zeroRequestId = msg->Record.GetVolumeRequestId();
+
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        runtime->SetObserverFunc(checkDeviceRequest);
+
+        volume.WriteBlocks(GetBlockRangeById(0), clientInfo.GetClientId(), 's');
+        volume.ZeroBlocks(GetBlockRangeById(0), clientInfo.GetClientId());
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, writeRequestId);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, zeroRequestId);
+        UNIT_ASSERT_GT(zeroRequestId, writeRequestId);
+    }
+
     Y_UNIT_TEST(ShouldReportMigrationProgressForReplicatingMirroredDisk)
     {
         NProto::TStorageServiceConfig config;

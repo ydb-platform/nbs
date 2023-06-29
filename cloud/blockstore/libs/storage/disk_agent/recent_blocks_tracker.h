@@ -39,45 +39,44 @@ EWellKnownResultCodes OverlapStatusToResult(
 // the check shows that the request has a smaller identifier (from the past) and
 // overwrites part of the data recorded by the request with a larger identifier,
 // that request should be rejected.
-class TRecentlyWrittenBlocks
+// Additionally tracks inflight requests.
+class TRecentBlocksTracker
 {
     using TRequestRangeMap = TMap<ui64, TBlockRange64>;
 
 private:
+    const TString DeviceUUID;
     const size_t TrackDepth;
     TRequestRangeMap OrderedById;
     TRingBuffer<TRequestRangeMap::iterator> OrderedByArrival;
+    TMap<ui64, TBlockRange64> InflightBlocks;
 
 public:
-    explicit TRecentlyWrittenBlocks(size_t trackDepth = DEFAULT_TRACKING_DEPTH);
+    TRecentBlocksTracker(
+        const TString& deviceUUID,
+        size_t trackDepth = DEFAULT_TRACKING_DEPTH);
 
-    [[nodiscard]] EOverlapStatus CheckRange(
+    // Checks overlapping among the recently written blocks.
+    [[nodiscard]] EOverlapStatus CheckRecorded(
         ui64 requestId,
         const TBlockRange64& range) const;
 
-    void AddRange(
-        ui64 requestId,
-        const TBlockRange64& range,
-        const TString& deviceUUID);
-};
+    // Store the request block range to recently written blocks.
+    void AddRecorded(ui64 requestId, const TBlockRange64& range);
 
-///////////////////////////////////////////////////////////////////////////////
-
-class TInflightBlocks
-{
-private:
-    TMap<ui64, TBlockRange64> OrderedById;
-
-public:
-    TInflightBlocks();
-
-    [[nodiscard]] bool CheckOverlap(ui64 requestId, const TBlockRange64& range)
+    // Check overlapping among the inflight requests.
+    [[nodiscard]] bool CheckInflight(ui64 requestId, const TBlockRange64& range)
         const;
 
-    void AddRange(ui64 requestId, const TBlockRange64& range);
-    void Remove(ui64 requestId);
-};
+    // Add inflight request to track.
+    void AddInflight(ui64 requestId, const TBlockRange64& range);
 
-///////////////////////////////////////////////////////////////////////////////
+    // Remove inflight request from tracking.
+    void RemoveInflight(ui64 requestId);
+
+private:
+    void ReportRepeatedRequestId(ui64 requestId, const TBlockRange64& range)
+        const;
+};
 
 }   // namespace NCloud::NBlockStore::NStorage

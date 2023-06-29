@@ -227,54 +227,60 @@ bool TDiskAgentActor::CheckIntersection(
 
     const auto range = BuildRequestBlockRange(*msg);
     const ui64 volumeRequestId = GetVolumeRequestId(*msg);
+    const TString deviceUUID = msg->Record.GetDeviceUUID();
+    auto& recentBlocksTracker = GetRecentBlocksTracker(deviceUUID);
 
     const bool overlapsWithInflightRequests =
-        InFlightWriteBlocks.CheckOverlap(volumeRequestId, range);
+        recentBlocksTracker.CheckInflight(volumeRequestId, range);
     if (overlapsWithInflightRequests) {
         DelayedRequestCount->Inc();
-        if (RejectLateRequestsAtDiskAgentEnabled) {
-            PostponedRequests.push_back(
-                {volumeRequestId,
-                 range,
-                 NActors::IEventHandlePtr(ev.Release())});
-
-            return true;
+        if (!RejectLateRequestsAtDiskAgentEnabled) {
+            // Monitoring mode. Don't change the behavior.
+            return false;
         }
+        PostponedRequests.push_back(
+            {volumeRequestId, range, NActors::IEventHandlePtr(ev.Release())});
+        return true;
     }
 
     auto result = OverlapStatusToResult(
-        RecentlyWrittenBlocks.CheckRange(volumeRequestId, range),
+        recentBlocksTracker.CheckRecorded(volumeRequestId, range),
         msg->Record.GetMultideviceRequest());
     if (result != S_OK) {
         if (result == E_REJECTED) {
             RejectedRequestCount->Inc();
         } else if (result == S_ALREADY) {
             AlreadyExecutedRequestCount->Inc();
+        } else {
+            Y_VERIFY_DEBUG(false);
         }
 
-        if (RejectLateRequestsAtDiskAgentEnabled) {
-            auto requestInfo = CreateRequestInfo<TMethod>(
-                ev->Sender,
-                ev->Cookie,
-                msg->CallContext);
-
-            Reply<TMethod>(
-                *TActivationContext::ActorSystem(),
-                ctx.SelfID,
-                *requestInfo,
-                MakeError(
-                    result,
-                    "range of the old request overlaps the newer request"),
-                {},
-                volumeRequestId,
-                msg->Record.GetDeviceUUID(),
-                GetCycleCount());
-
-            return true;
+        if (!RejectLateRequestsAtDiskAgentEnabled) {
+            // Monitoring mode. Don't change the behavior.
+            return false;
         }
+
+        auto requestInfo = CreateRequestInfo<TMethod>(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
+
+        Reply<TMethod>(
+            *TActivationContext::ActorSystem(),
+            ctx.SelfID,
+            *requestInfo,
+            MakeError(
+                result,
+                "range of the old request overlaps the newer request"),
+            {},
+            volumeRequestId,
+            std::move(deviceUUID),
+            GetCycleCount());
+
+        return true;
     }
 
-    InFlightWriteBlocks.AddRange(volumeRequestId, range);
+    recentBlocksTracker.AddInflight(volumeRequestId, range);
     return false;
 }
 
@@ -336,17 +342,15 @@ void TDiskAgentActor::HandleWriteOrZeroCompleted(
 
     auto* msg = ev->Get();
 
-    InFlightWriteBlocks.Remove(msg->RequestId);
+    auto& recentBlocksTracker = GetRecentBlocksTracker(msg->DeviceUUID);
+    recentBlocksTracker.RemoveInflight(msg->RequestId);
     if (msg->Success) {
-        RecentlyWrittenBlocks.AddRange(
-            msg->RequestId,
-            msg->Range,
-            msg->DeviceUUID);
+        recentBlocksTracker.AddRecorded(msg->RequestId, msg->Range);
     }
 
     auto executeNotOverlappedRequests =
         [&](TPostponedRequest& postponedRequest) {
-            if (InFlightWriteBlocks.CheckOverlap(
+            if (recentBlocksTracker.CheckInflight(
                     postponedRequest.VolumeRequestId,
                     postponedRequest.Range))
             {
@@ -358,6 +362,18 @@ void TDiskAgentActor::HandleWriteOrZeroCompleted(
         };
 
     std::erase_if(PostponedRequests, executeNotOverlappedRequests);
+}
+
+TRecentBlocksTracker& TDiskAgentActor::GetRecentBlocksTracker(
+    const TString& deviceUUID)
+{
+    if (auto* tracker = RecentBlocksTrackers.FindPtr(deviceUUID)) {
+        return *tracker;
+    }
+    auto [it, inserted] = RecentBlocksTrackers.insert(
+        {deviceUUID, TRecentBlocksTracker(deviceUUID)});
+    Y_VERIFY(inserted);
+    return it->second;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
