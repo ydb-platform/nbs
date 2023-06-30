@@ -53,7 +53,12 @@ TBackpressureFeaturesConfig DefaultBPConfig()
         {
             1600_KB,// fresh byte count limit
             400_KB, // fresh byte count threshold
-            10,     // fresh byte count max value
+            10,     // fresh byte count feature max value
+        },
+        {
+            8_MB,   // cleanup queue size limit
+            4_MB,   // cleanup queue size threshold
+            10,     // cleanup queue size feature max value
         },
     };
 }
@@ -712,13 +717,16 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.FreshIndexScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CompactionScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.DiskSpaceScore);
+        UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
-        state.IncrementUnflushedFreshBlocksFromDbCount(100);
+        state.IncrementUnflushedFreshBlobByteCount(100 * 4_KB);
         state.GetCompactionMap().Update(0, 10, 10, 10, false);
+        state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CleanupScore, 1e-5);
 
         // Backpressure caused by increased FreshBlobByteCount
         {
@@ -728,17 +736,26 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             UNIT_ASSERT_DOUBLES_EQUAL(2.5, bp.FreshIndexScore, 1e-5);
         }
 
-        state.IncrementUnflushedFreshBlocksFromDbCount(300);
+        state.IncrementUnflushedFreshBlobByteCount(300 * 4_KB);
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
+        state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.FreshIndexScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CleanupScore, 1e-5);
 
         state.GetCompactionMap().Update(0, 100, 100, 100, false);
 
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
+
+        state.GetCheckpoints().Add({"c1", 3, "idemp", Now(), {}});
+
+        const auto maxBackpressure3 = state.CalculateCurrentBackpressure();
+        UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure3.FreshIndexScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure3.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(0, maxBackpressure3.CleanupScore, 1e-5);
     }
 
     Y_UNIT_TEST(CompactionBackpressureShouldBeZeroIfNotRequiredByPolicy)

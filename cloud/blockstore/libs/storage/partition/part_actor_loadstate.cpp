@@ -134,6 +134,11 @@ void TPartitionActor::CompleteLoadState(
             Config->GetFreshByteCountThresholdForBackpressure(),
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
+        {
+            Config->GetCleanupQueueBytesLimitForBackpressure(),
+            Config->GetCleanupQueueBytesThresholdForBackpressure(),
+            static_cast<double>(Config->GetCleanupQueueBytesFeatureMaxValue()),
+        },
     };
 
     TFreeSpaceConfig fsConfig {

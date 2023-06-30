@@ -316,6 +316,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.BPFreshIndexScore.Set(100 * bp.FreshIndexScore);
     simple.BPCompactionScore.Set(100 * bp.CompactionScore);
     simple.BPDiskSpaceScore.Set(100 * bp.DiskSpaceScore);
+    simple.BPCleanupScore.Set(100 * bp.CleanupScore);
 
     simple.VBytesCount.Set(GetBlocksCount() * State->GetBlockSize());
     simple.PartitionCount.Set(State->GetPartitions().size());

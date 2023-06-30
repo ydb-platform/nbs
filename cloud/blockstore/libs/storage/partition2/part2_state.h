@@ -130,8 +130,8 @@ struct TChannelState
 
 struct TBackpressureFeatureConfig
 {
-    ui32 InputLimit = 0;
-    ui32 InputThreshold = 0;
+    ui64 InputLimit = 0;
+    ui64 InputThreshold = 0;
     double MaxValue = 0;
 };
 
@@ -139,6 +139,7 @@ struct TBackpressureFeaturesConfig
 {
     TBackpressureFeatureConfig CompactionScoreFeatureConfig;
     TBackpressureFeatureConfig FreshByteCountFeatureConfig;
+    TBackpressureFeatureConfig CleanupQueueBytesFeatureConfig;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

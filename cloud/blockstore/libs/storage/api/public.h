@@ -14,6 +14,7 @@ struct TBackpressureReport
     double FreshIndexScore = 0;
     double CompactionScore = 0;
     double DiskSpaceScore = 0;
+    double CleanupScore = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

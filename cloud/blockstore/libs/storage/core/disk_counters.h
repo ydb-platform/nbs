@@ -144,6 +144,7 @@ enum class EPublishingPolicy
     xxx(BPFreshIndexScore,          Generic, Expiring,             __VA_ARGS__)\
     xxx(BPCompactionScore,          Generic, Expiring,             __VA_ARGS__)\
     xxx(BPDiskSpaceScore,           Generic, Expiring,             __VA_ARGS__)\
+    xxx(BPCleanupScore,             Generic, Expiring,             __VA_ARGS__)\
     xxx(VBytesCount,                Generic, Permanent,            __VA_ARGS__)\
     xxx(PartitionCount,             Generic, Permanent,            __VA_ARGS__)\
 // BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS

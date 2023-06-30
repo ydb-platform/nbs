@@ -946,6 +946,10 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                                                     TABLED() { out << "DiskSpaceScore"; }
                                                     TABLED() { out << bp.DiskSpaceScore; }
                                                 }
+                                                TABLER() {
+                                                    TABLED() { out << "CleanupScore"; }
+                                                    TABLED() { out << bp.CleanupScore; }
+                                                }
                                             }
                                         }
                                     }

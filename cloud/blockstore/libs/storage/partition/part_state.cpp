@@ -406,16 +406,21 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
 {
     const auto& freshFeature = BPConfig.FreshByteCountFeatureConfig;
     const auto& compactionFeature = BPConfig.CompactionScoreFeatureConfig;
+    const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
-    const auto freshByteCount = GetUntrimmedFreshBlobByteCount() +
-        Stats.GetFreshBlocksCount() * GetBlockSize();
+    const auto freshByteCount = GetUntrimmedFreshBlobByteCount()
+        + GetUnflushedFreshBlobByteCount()
+        + Stats.GetFreshBlocksCount() * GetBlockSize();
 
     return {
         BPFeature(freshFeature, freshByteCount),
         CompactionPolicy->BackpressureEnabled()
             ? BPFeature(compactionFeature, GetLegacyCompactionScore())
             : 0,
-        BackpressureDiskSpaceScore
+        BackpressureDiskSpaceScore,
+        Checkpoints.IsEmpty()
+            ? BPFeature(cleanupFeature, CleanupQueue.GetQueueBytes())
+            : 0,
     };
 }
 

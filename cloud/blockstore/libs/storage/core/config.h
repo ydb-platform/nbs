@@ -183,6 +183,9 @@ public:
     ui32 GetFreshByteCountThresholdForBackpressure() const;
     ui32 GetFreshByteCountLimitForBackpressure() const;
     ui32 GetFreshByteCountFeatureMaxValue() const;
+    ui64 GetCleanupQueueBytesThresholdForBackpressure() const;
+    ui64 GetCleanupQueueBytesLimitForBackpressure() const;
+    ui32 GetCleanupQueueBytesFeatureMaxValue() const;
     ui32 GetMaxWriteCostMultiplier() const;
     ui32 GetFreshByteCountHardLimit() const;
     bool GetDiskSpaceScoreThrottlingEnabled() const;

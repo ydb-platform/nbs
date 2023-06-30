@@ -3106,7 +3106,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TICK(runtime);
         volume.SendReadBlocksRequest(threeBlocks, clientInfo.GetClientId()); // spending current budget
         TEST_QUICK_RESPONSE(runtime, ReadBlocks, S_OK);
-        volume.SendToPipe(volume.CreateBackpressureReport({3, 0, 0}));
+        volume.SendToPipe(volume.CreateBackpressureReport({3, 0, 0, 0}));
         TICK(runtime);
         TICK(runtime);
         volume.SendReadBlocksRequest(threeBlocks, clientInfo.GetClientId());
@@ -3117,7 +3117,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TEST_NO_RESPONSE(runtime, WriteBlocks); // but writes should
         TEST_RESPONSE(volume, WriteBlocks, S_OK, WaitTimeout);
 
-        volume.SendToPipe(volume.CreateBackpressureReport({0, 0, 3}));
+        volume.SendToPipe(volume.CreateBackpressureReport({0, 0, 3, 0}));
         TICK(runtime);
         TICK(runtime);
         volume.SendWriteBlocksRequest(oneBlock, clientInfo.GetClientId());

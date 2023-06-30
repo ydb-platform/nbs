@@ -476,13 +476,15 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
 {
     const auto& freshFeature = BPConfig.FreshByteCountFeatureConfig;
     const auto& compactionFeature = BPConfig.CompactionScoreFeatureConfig;
+    const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
     return {
         BPFeature(freshFeature, GetFreshBlockCount() * GetBlockSize()),
         CompactionPolicy->BackpressureEnabled()
             ? BPFeature(compactionFeature, GetLegacyCompactionScore())
             : 0,
-        BackpressureDiskSpaceScore
+        BackpressureDiskSpaceScore,
+        BPFeature(cleanupFeature, GetPendingUpdates() * GetBlockSize()),
     };
 }
 

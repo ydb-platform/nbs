@@ -47,6 +47,7 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(BPFreshIndexScore,           __VA_ARGS__)                              \
     xxx(BPCompactionScore,           __VA_ARGS__)                              \
     xxx(BPDiskSpaceScore,            __VA_ARGS__)                              \
+    xxx(BPCleanupScore,              __VA_ARGS__)                              \
     xxx(CheckpointBytes,             __VA_ARGS__)                              \
     xxx(AlmostFullChannelCount,      __VA_ARGS__)                              \
     xxx(FreshBlocksInFlight,         __VA_ARGS__)                              \

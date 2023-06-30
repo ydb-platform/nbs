@@ -28,6 +28,7 @@ double CalculateWriteCostMultiplier(const TBackpressureReport& lastReport)
         lastReport.FreshIndexScore,
         lastReport.CompactionScore,
         lastReport.DiskSpaceScore,
+        lastReport.CleanupScore,
     };
 
     double x = 1;
@@ -136,6 +137,10 @@ struct TVolumeThrottlingPolicy::TImpl
 
             if (CurrentBackpressure.FreshIndexScore < report.FreshIndexScore) {
                 CurrentBackpressure.FreshIndexScore = report.FreshIndexScore;
+            }
+
+            if (CurrentBackpressure.CleanupScore < report.CleanupScore) {
+                CurrentBackpressure.CleanupScore = report.CleanupScore;
             }
         }
 

@@ -209,6 +209,9 @@ message TStorageServiceConfig
     optional uint32 FreshByteCountLimitForBackpressure = 67;
     optional uint32 FreshByteCountThresholdForBackpressure = 68;
     optional uint32 FreshByteCountFeatureMaxValue = 69;
+    optional uint64 CleanupQueueBytesLimitForBackpressure = 311;
+    optional uint64 CleanupQueueBytesThresholdForBackpressure = 312;
+    optional uint32 CleanupQueueBytesFeatureMaxValue = 313;
 
     // Max write request cost multiplier due to backpressure.
     optional uint32 MaxWriteCostMultiplier = 70;

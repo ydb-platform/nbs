@@ -74,7 +74,12 @@ TBackpressureFeaturesConfig DefaultBPConfig()
         {
             1600_KB,// fresh byte count limit
             400_KB, // fresh byte count threshold
-            10,     // fresh byte count max value
+            10,     // fresh byte count feature max value
+        },
+        {
+            8_MB,   // cleanup queue size limit
+            4_MB,   // cleanup queue size threshold
+            10,     // cleanup queue size feature max value
         },
     };
 }
@@ -1394,10 +1399,13 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultIndexCachingConfig()
         );
 
+        state.GetBlobs().InitializeZone(0);
+
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.FreshIndexScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CompactionScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.DiskSpaceScore);
+        UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
         TVector<TOwningFreshBlock> freshBlocks;
         for (ui32 i = 0; i < 100; ++i) {
@@ -1405,10 +1413,12 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         }
         state.InitFreshBlocks(freshBlocks);
         state.GetCompactionMap().Update(0, 10, 10, 10, false);
+        state.AddBlobUpdateByFresh({TBlockRange32::WithLength(0, 1024), 1, 1});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CleanupScore, 1e-5);
 
         freshBlocks.clear();
         for (ui32 i = 100; i < 400; ++i) {
@@ -1416,10 +1426,12 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         }
         state.InitFreshBlocks(freshBlocks);
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
+        state.AddBlobUpdateByFresh({TBlockRange32::WithLength(1024, 1024), 2, 2});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.FreshIndexScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CleanupScore, 1e-5);
 
         state.GetCompactionMap().Update(0, 100, 100, 100, false);
 

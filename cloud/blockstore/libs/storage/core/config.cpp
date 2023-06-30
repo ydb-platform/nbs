@@ -272,10 +272,14 @@ TDuration MSeconds(ui32 value)
     xxx(CompactionScoreThresholdForBackpressure,        ui32,   100           )\
     xxx(CompactionScoreFeatureMaxValue,                 ui32,   10            )\
                                                                                \
-    xxx(FreshByteCountLimitForBackpressure,             ui32,   64_MB         )\
-    xxx(FreshByteCountThresholdForBackpressure,         ui32,   20_MB         )\
+    xxx(FreshByteCountLimitForBackpressure,             ui32,   128_MB        )\
+    xxx(FreshByteCountThresholdForBackpressure,         ui32,   40_MB         )\
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
     xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
+                                                                               \
+    xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\
+    xxx(CleanupQueueBytesThresholdForBackpressure,        ui64,   1_TB        )\
+    xxx(CleanupQueueBytesFeatureMaxValue,                 ui32,   10          )\
                                                                                \
     xxx(DiskSpaceScoreThrottlingEnabled,                bool,   false         )\
                                                                                \

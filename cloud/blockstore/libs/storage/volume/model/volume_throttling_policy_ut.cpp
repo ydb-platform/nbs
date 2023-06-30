@@ -416,6 +416,7 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TEST_FEATURE(FreshIndexScore);
         TEST_FEATURE(CompactionScore);
         //TEST_FEATURE(DiskSpaceScore);
+        TEST_FEATURE(CleanupScore);
 
 #undef TEST_FEATURE
     }
