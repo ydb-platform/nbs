@@ -27,6 +27,7 @@ private:
     const TStorageConfigPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;
     const ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    const IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     const NActors::TActorId ServiceActorId;
 
     NMonitoring::TDynamicCounters::TCounterPtr PushCount;
@@ -43,6 +44,7 @@ public:
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
         ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         NActors::TActorId serviceActorId);
 
     TVolumeBalancerActor() = default;

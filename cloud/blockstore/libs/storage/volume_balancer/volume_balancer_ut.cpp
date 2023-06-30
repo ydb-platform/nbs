@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
@@ -395,6 +396,9 @@ IActorPtr CreateVolumeBalancerActor(
 {
     NProto::TStorageServiceConfig storageConfig = config.Build();
 
+    auto volumeBalancerSwitch = CreateVolumeBalancerSwitch();
+    volumeBalancerSwitch->EnableVolumeBalancer();
+
     return CreateVolumeBalancerActor(
          std::make_shared<TStorageConfig>(
             config.Build(),
@@ -402,6 +406,7 @@ IActorPtr CreateVolumeBalancerActor(
         ),
         std::move(volumeStats),
         std::move(cgroupStatsFetcher),
+        std::move(volumeBalancerSwitch),
         std::move(serviceActorId));
 }
 
@@ -761,6 +766,38 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, counter->Val());
         UNIT_ASSERT(counter->Val() <= 90);
+    }
+
+    Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsNotActivated)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            std::make_shared<TStorageConfig>(
+                config.Build(),
+                CreateFeatureConfig("Balancer", {})
+            ),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            CreateVolumeBalancerSwitch(),
+            testEnv.GetEdgeActor()));
+
+        testEnv.DispatchEvents();
+
+        RunStateNoAction(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {
+                {"vol0", 10},
+                {"vol1", 1}
+            },
+            1,
+            TDuration::Seconds(15));
     }
 }
 

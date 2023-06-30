@@ -19,6 +19,7 @@ NActors::IActorPtr CreateVolumeBalancerActor(
     TStorageConfigPtr storageConfig,
     IVolumeStatsPtr volumeStats,
     ICgroupStatsFetcherPtr cgroupStatFetcher,
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     NActors::TActorId serviceActorId);
 
 NActors::IActorPtr CreateVolumeBalancerActorStub();

@@ -72,4 +72,7 @@ using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
 struct IPostponeTimePredictor;
 using IPostponeTimePredictorPtr = std::shared_ptr<IPostponeTimePredictor>;
 
+struct IVolumeBalancerSwitch;
+using IVolumeBalancerSwitchPtr = std::shared_ptr<IVolumeBalancerSwitch>;
+
 }   // namespace NCloud::NBlockStore

@@ -3,6 +3,7 @@
 #include "volume_balancer_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -139,10 +140,12 @@ TVolumeBalancerActor::TVolumeBalancerActor(
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
         ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
     , CgroupStatsFetcher(std::move(cgroupStatsFetcher))
+    , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
     , ServiceActorId(serviceActorId)
     , State(std::make_unique<TVolumeBalancerState>(StorageConfig))
 {
@@ -183,6 +186,7 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
 bool TVolumeBalancerActor::IsBalancerEnabled() const
 {
     return State->GetEnabled()
+        && VolumeBalancerSwitch->IsBalancerEnabled()
         && StorageConfig->GetVolumePreemptionType() != NProto::PREEMPTION_NONE;
 }
 

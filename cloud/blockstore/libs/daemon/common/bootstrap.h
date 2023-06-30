@@ -71,6 +71,7 @@ protected:
     NRdma::IClientPtr RdmaClient;
     ITaskQueuePtr RdmaThreadPool;
     NNvme::INvmeManagerPtr NvmeManager;
+    IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;

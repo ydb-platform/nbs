@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
+#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/discovery/balancing.h>
 #include <cloud/blockstore/libs/discovery/ban.h>
@@ -202,6 +203,8 @@ void TBootstrapBase::Init()
     BackgroundScheduler = CreateBackgroundScheduler(
         Scheduler,
         BackgroundThreadPool);
+
+    VolumeBalancerSwitch = CreateVolumeBalancerSwitch();
 
     switch (Configs->Options->ServiceKind) {
         case TOptionsCommon::EServiceKind::Ydb:
@@ -793,7 +796,14 @@ void TBootstrapBase::Start()
         STORAGE_INFO("Process memory locked");
     }
 
-    EndpointService->RestoreEndpoints();
+    auto restoreFuture = EndpointService->RestoreEndpoints();
+    if (!Configs->Options->TemporaryServer) {
+        auto balancerSwitch = VolumeBalancerSwitch;
+        restoreFuture.Subscribe([=] (const auto& future) {
+            Y_UNUSED(future);
+            balancerSwitch->EnableVolumeBalancer();
+        });
+    }
     STORAGE_INFO("Started endpoints restoring");
 
 #undef START_COMMON_COMPONENT

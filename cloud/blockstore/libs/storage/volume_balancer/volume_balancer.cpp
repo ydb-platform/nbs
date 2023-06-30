@@ -12,12 +12,14 @@ IActorPtr CreateVolumeBalancerActor(
     TStorageConfigPtr storageConfig,
     IVolumeStatsPtr volumeStats,
     ICgroupStatsFetcherPtr cgroupStatFetcher,
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     NActors::TActorId serviceActorId)
 {
     return std::make_unique<TVolumeBalancerActor>(
         std::move(storageConfig),
         std::move(volumeStats),
         std::move(cgroupStatFetcher),
+        std::move(volumeBalancerSwitch),
         serviceActorId);
 }
 

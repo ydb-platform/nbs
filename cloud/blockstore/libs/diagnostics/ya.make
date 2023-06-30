@@ -20,6 +20,7 @@ SRCS(
     stats_aggregator.cpp
     stats_helpers.cpp
     user_counter.cpp
+    volume_balancer_switch.cpp
     volume_perf.cpp
     volume_stats.cpp
     volume_stats_test.cpp

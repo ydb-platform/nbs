@@ -516,6 +516,7 @@ void TBootstrapYdb::InitKikimrService()
 
             return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
         }();
+    args.VolumeBalancerSwitch = VolumeBalancerSwitch;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

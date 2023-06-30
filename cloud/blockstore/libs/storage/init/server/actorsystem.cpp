@@ -297,6 +297,7 @@ public:
             Args.StorageConfig,
             Args.VolumeStats,
             Args.CgroupStatsFetcher,
+            Args.VolumeBalancerSwitch,
             MakeStorageServiceId());
 
         setup->LocalServices.emplace_back(
