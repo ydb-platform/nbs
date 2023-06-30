@@ -259,9 +259,11 @@ bool TVolumeBalancerState::IsVolumePreemptible(
     const TString& diskId,
     const TVolumeInfo& volume) const
 {
-    const bool isFeatureEnabled = StorageConfig->IsBalancerFeatureEnabled(
+    const bool isFeatureEnabledForFolder = StorageConfig->IsBalancerFeatureEnabled(
         volume.CloudId,
         volume.FolderId);
+
+    const bool balancerEnabled = isFeatureEnabledForFolder || GetEnabled();
 
     // NProto::STORAGE_MEDIA_DEFAULT means that volume mounting
     // is still in progress and will change to something else
@@ -271,7 +273,7 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
     return volume.IsLocal &&
-        isFeatureEnabled &&
+        balancerEnabled &&
         isSuitableMediaKind &&
         !VolumesInProgress.count(diskId);
 }

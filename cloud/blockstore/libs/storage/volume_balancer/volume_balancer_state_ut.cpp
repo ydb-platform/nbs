@@ -244,7 +244,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     Y_UNIT_TEST(ShouldNotSelectVolumeFromBlacklistedCloud)
     {
         auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            NProto::PREEMPTION_NONE,
             70,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
 

@@ -79,7 +79,9 @@ public:
 
     bool GetEnabled() const
     {
-        return IsEnabled;
+        return
+            StorageConfig->GetVolumePreemptionType() != NProto::PREEMPTION_NONE &&
+            IsEnabled;
     }
 
     void SetVolumeInProgress(TString volume)
