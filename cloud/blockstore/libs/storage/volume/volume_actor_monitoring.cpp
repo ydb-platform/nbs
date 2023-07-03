@@ -394,6 +394,7 @@ void TVolumeActor::HandleHttpInfo(
         HandleHttpInfo_Default(
             ctx,
             State->GetHistory(),
+            State->GetMetaHistory(),
             activeTab,
             params,
             requestInfo);
@@ -410,6 +411,7 @@ void TVolumeActor::HandleHttpInfo(
 void TVolumeActor::HandleHttpInfo_Default(
     const NActors::TActorContext& ctx,
     const TDeque<THistoryLogItem>& history,
+    const TVector<TVolumeMetaHistoryItem>& metaHistory,
     const TStringBuf tabName,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
@@ -478,7 +480,7 @@ void TVolumeActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID(historyTab, historyTabName) {
-                    RenderHistory(history, out);
+                    RenderHistory(history, metaHistory, out);
                 }
 
                 DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
@@ -499,6 +501,7 @@ void TVolumeActor::HandleHttpInfo_Default(
 
 void TVolumeActor::RenderHistory(
     const TDeque<THistoryLogItem>& history,
+    const TVector<TVolumeMetaHistoryItem>& metaHistory,
     IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
@@ -561,6 +564,33 @@ void TVolumeActor::RenderHistory(
                             BuildHistoryNextButton(out, history.back().Key, TabletID());
                         }
                     }
+                }
+            }
+        }
+
+        DIV_CLASS("row") {
+            TAG(TH3) { out << "MetaHistory"; }
+            TABLE_SORTABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "Time"; }
+                        TABLEH() { out << "Meta"; }
+                    }
+                }
+                auto it = metaHistory.rbegin();
+                while (it != metaHistory.rend()) {
+                    const auto& item = *it;
+
+                    TABLER() {
+                        TABLED() {
+                            out << item.Timestamp;
+                        }
+                        TABLED() {
+                            item.Meta.PrintJSON(out);
+                        }
+                    }
+
+                    ++it;
                 }
             }
         }

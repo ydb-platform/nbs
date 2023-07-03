@@ -24,6 +24,7 @@ target_sources(storage-volume-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/checkpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/client_state.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/merge.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/meta.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/requests_inflight.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/retry_policy.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/stripe.cpp

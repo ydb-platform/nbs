@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/client_state.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
@@ -98,6 +99,7 @@ class TVolumeState
 private:
     TStorageConfigPtr StorageConfig;
     NProto::TVolumeMeta Meta;
+    TVector<TVolumeMetaHistoryItem> MetaHistory;
     const NProto::TPartitionConfig* Config;
     ui64 BlockCount = 0;
 
@@ -150,6 +152,7 @@ public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
+        TVector<TVolumeMetaHistoryItem> metaHistory,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
         TDeque<THistoryLogItem> history,
@@ -159,6 +162,11 @@ public:
     const NProto::TVolumeMeta& GetMeta() const
     {
         return Meta;
+    }
+
+    const TVector<TVolumeMetaHistoryItem>& GetMetaHistory() const
+    {
+        return MetaHistory;
     }
 
     void UpdateMigrationIndexInMeta(ui64 migrationIndex)
@@ -183,6 +191,7 @@ public:
     }
 
     void ResetMeta(NProto::TVolumeMeta meta);
+    void AddMetaHistory(TVolumeMetaHistoryItem meta);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
     void Reset();
 
@@ -447,9 +456,6 @@ public:
         const TString& clientId,
         const TString& reason,
         const NProto::TError& error);
-    THistoryLogItem LogUpdateMeta(
-        TInstant timestamp,
-        const NProto::TVolumeMeta& meta);
 
     const TDeque<THistoryLogItem>& GetHistory() const
     {

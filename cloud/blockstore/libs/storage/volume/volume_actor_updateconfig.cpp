@@ -249,11 +249,14 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     Y_VERIFY(NextVolumeConfigVersion == GetCurrentConfigVersion());
     NextVolumeConfigVersion = UnfinishedUpdateVolumeConfig.ConfigVersion;
 
+    TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
+
     ExecuteTx<TUpdateConfig>(
         ctx,
         std::move(UnfinishedUpdateVolumeConfig.RequestInfo),
         UnfinishedUpdateVolumeConfig.Record.GetTxId(),
-        std::move(newMeta));
+        std::move(newMeta),
+        std::move(metaHistoryItem));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -279,10 +282,10 @@ void TVolumeActor::ExecuteUpdateConfig(
     Y_UNUSED(ctx);
 
     TVolumeDatabase db(tx.DB);
-    if (State) {
-        db.WriteHistory(State->LogUpdateMeta(ctx.Now(), args.Meta));
-    }
     db.WriteMeta(args.Meta);
+    db.WriteMetaHistory(
+        State ? State->GetMetaHistory().size() : 0,
+        args.MetaHistoryItem);
 }
 
 void TVolumeActor::CompleteUpdateConfig(
@@ -314,6 +317,7 @@ void TVolumeActor::CompleteUpdateConfig(
 
     if (State) {
         State->ResetMeta(args.Meta);
+        State->AddMetaHistory(args.MetaHistoryItem);
         SendVolumeConfigUpdated(ctx);
     } else {
         TThrottlerConfig throttlerConfig(
@@ -326,6 +330,7 @@ void TVolumeActor::CompleteUpdateConfig(
         State.reset(new TVolumeState(
             Config,
             args.Meta,
+            {args.MetaHistoryItem},
             throttlerConfig,
             {},   // clients
             {},   // history

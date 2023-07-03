@@ -65,6 +65,7 @@ struct TTxVolume
         const TInstant OldestLogEntry;
 
         TMaybe<NProto::TVolumeMeta> Meta;
+        TVector<TVolumeMetaHistoryItem> MetaHistory;
         TMaybe<bool> StartPartitionsNeeded;
         THashMap<TString, TVolumeClientState> Clients;
         ui64 MountSeqNumber;
@@ -85,6 +86,7 @@ struct TTxVolume
         void Clear()
         {
             Meta.Clear();
+            MetaHistory.clear();
             StartPartitionsNeeded.Clear();
             Clients.clear();
             MountSeqNumber = 0;
@@ -108,14 +110,17 @@ struct TTxVolume
         const TRequestInfoPtr RequestInfo;
         const ui64 TxId;
         const NProto::TVolumeMeta Meta;
+        const TVolumeMetaHistoryItem MetaHistoryItem;
 
         TUpdateConfig(
                 TRequestInfoPtr requestInfo,
                 ui64 txId,
-                NProto::TVolumeMeta meta)
+                NProto::TVolumeMeta meta,
+                TVolumeMetaHistoryItem metaHistoryItem)
             : RequestInfo(std::move(requestInfo))
             , TxId(txId)
             , Meta(std::move(meta))
+            , MetaHistoryItem(std::move(metaHistoryItem))
         {}
 
         void Clear()

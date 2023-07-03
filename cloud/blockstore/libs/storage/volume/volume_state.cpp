@@ -88,6 +88,7 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta)
 TVolumeState::TVolumeState(
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
+        TVector<TVolumeMetaHistoryItem> metaHistory,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
         TDeque<THistoryLogItem> history,
@@ -95,6 +96,7 @@ TVolumeState::TVolumeState(
         bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
     , Meta(std::move(meta))
+    , MetaHistory(std::move(metaHistory))
     , Config(&Meta.GetConfig())
     , ClientInfosByClientId(std::move(infos))
     , ThrottlerConfig(throttlerConfig)
@@ -157,6 +159,11 @@ void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
     Config = &Meta.GetConfig();
 
     Reset();
+}
+
+void TVolumeState::AddMetaHistory(TVolumeMetaHistoryItem meta)
+{
+    MetaHistory.push_back(std::move(meta));
 }
 
 void TVolumeState::ResetThrottlingPolicy(
@@ -698,23 +705,6 @@ THistoryLogItem TVolumeState::LogRemoveClient(
     removeInfo.SetReason(reason);
     *op.MutableRemove() = removeInfo;
     *op.MutableError() = error;
-    History.emplace_front(res.Key, op);
-    if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
-        History.pop_back();
-    }
-    return res;
-}
-
-THistoryLogItem TVolumeState::LogUpdateMeta(
-    TInstant timestamp,
-    const NProto::TVolumeMeta& meta)
-{
-    THistoryLogItem res;
-    res.Operation.SetTabletHost(FQDNHostName());
-    res.Key = AllocateHistoryLogKey(timestamp);
-
-    NProto::TVolumeOperation& op = res.Operation;
-    *op.MutableUpdateVolumeMeta() = meta;
     History.emplace_front(res.Key, op);
     if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
         History.pop_back();

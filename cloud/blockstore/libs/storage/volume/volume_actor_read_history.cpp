@@ -95,7 +95,13 @@ void TVolumeActor::CompleteReadHistory(
         for (auto& h : args.History) {
             history.push_back(std::move(h));
         }
-        HandleHttpInfo_Default(ctx, history, "History", {},  args.RequestInfo);
+        HandleHttpInfo_Default(
+            ctx,
+            history,
+            State ? State->GetMetaHistory() : TVector<TVolumeMetaHistoryItem>{},
+            "History",
+            {},
+            args.RequestInfo);
     } else {
         auto response = std::make_unique<TEvVolumePrivate::TEvReadHistoryResponse>();
         response->History = std::move(args.History);

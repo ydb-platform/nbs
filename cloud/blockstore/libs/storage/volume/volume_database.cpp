@@ -99,6 +99,51 @@ bool TVolumeDatabase::ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNee
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeDatabase::WriteMetaHistory(
+    ui32 version,
+    const TVolumeMetaHistoryItem& meta)
+{
+    using TTable = TVolumeSchema::MetaHistory;
+
+    Table<TTable>()
+        .Key(version)
+        .Update(
+            NIceDb::TUpdate<TTable::Timestamp>(meta.Timestamp.MicroSeconds()),
+            NIceDb::TUpdate<TTable::VolumeMeta>(meta.Meta));
+
+    // simple size limit
+    Table<TTable>()
+        .Key(version - 1000)
+        .Delete();
+}
+
+bool TVolumeDatabase::ReadMetaHistory(TVector<TVolumeMetaHistoryItem>& metas)
+{
+    using TTable = TVolumeSchema::MetaHistory;
+
+    auto it = Table<TTable>()
+        .Range()
+        .Select<TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        auto timestamp = TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>());
+        auto meta = it.GetValue<TTable::VolumeMeta>();
+        metas.push_back({timestamp, std::move(meta)});
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TVolumeDatabase::WriteClients(const THashMap<TString, TVolumeClientState>& infos)
 {
     using TTable = TVolumeSchema::Clients;

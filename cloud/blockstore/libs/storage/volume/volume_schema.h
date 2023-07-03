@@ -185,6 +185,29 @@ struct TVolumeSchema
         using TColumns = TableColumns<Id, Budget>;
     };
 
+    struct MetaHistory
+        : public TTableSchema<9>
+    {
+        struct Version
+            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct Timestamp
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct VolumeMeta
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TVolumeMeta;
+        };
+
+        using TKey = TableKey<Version>;
+        using TColumns = TableColumns<Version, Timestamp, VolumeMeta>;
+    };
+
     using TTables = SchemaTables<
         Meta,
         Clients,
@@ -193,7 +216,8 @@ struct TVolumeSchema
         CheckpointRequests,
         NonReplPartStats,
         UsedBlocks,
-        ThrottlerState
+        ThrottlerState,
+        MetaHistory
     >;
 };
 

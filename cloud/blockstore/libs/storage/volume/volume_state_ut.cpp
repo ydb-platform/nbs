@@ -84,6 +84,7 @@ TVolumeState CreateVolumeState(
     return TVolumeState(
         MakeConfig(inactiveClientsTimeout, historyStorageDuration),
         CreateVolumeMeta(pp),
+        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         throttlerConfig,
         std::move(clientInfos),
         std::move(history),
@@ -102,6 +103,7 @@ TVolumeState CreateVolumeState(
     return TVolumeState(
         MakeConfig(inactiveClientsTimeout, historyStorageDuration),
         CreateVolumeMeta(pp),
+        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         CreateThrottlerConfig(),
         std::move(clientInfos),
         std::move(history),

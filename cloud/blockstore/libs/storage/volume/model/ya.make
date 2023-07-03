@@ -4,6 +4,7 @@ SRCS(
     checkpoint.cpp
     client_state.cpp
     merge.cpp
+    meta.cpp
     requests_inflight.cpp
     retry_policy.cpp
     stripe.cpp
