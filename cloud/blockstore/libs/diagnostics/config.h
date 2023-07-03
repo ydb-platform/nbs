@@ -80,9 +80,6 @@ public:
     TString GetSolomonProject() const;
     ui32 GetKikimrMonPort() const;
     ui32 GetNbsMonPort() const;
-    TDuration GetHDDSlowRequestThreshold() const;
-    TDuration GetSSDSlowRequestThreshold() const;
-    TDuration GetNonReplicatedSSDSlowRequestThreshold() const;
     ui32 GetSamplingRate() const;
     ui32 GetSlowRequestSamplingRate() const;
     TString GetTracesUnifiedAgentEndpoint() const;

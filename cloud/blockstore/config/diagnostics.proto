@@ -80,12 +80,6 @@ message TDiagnosticsConfig
     // Nbs monitoring port.
     optional uint32 NbsMonPort = 7;
 
-    // The tracks of the requests whose processing time in ms exceeds these
-    // values have a chance to be logged
-    optional uint32 HDDSlowRequestThreshold = 8;
-    optional uint32 SSDSlowRequestThreshold = 9;
-    optional uint32 NonReplicatedSSDSlowRequestThreshold = 10;
-
     // Dump profile log data every ProfileLogTimeThreshold ms
     optional uint32 ProfileLogTimeThreshold = 12;
 

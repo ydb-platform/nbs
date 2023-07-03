@@ -63,13 +63,10 @@ message TClientThrottlingConfig
 
 message TClientTracingConfig
 {
-    optional uint32 HDDSlowRequestThreshold = 1;
-    optional uint32 SSDSlowRequestThreshold = 2;
-    optional uint32 NonReplicatedSSDSlowRequestThreshold = 3;
-    optional uint32 SamplingRate = 6;
-    optional uint32 SlowRequestSamplingRate = 7;
-    optional string TracesUnifiedAgentEndpoint = 8;
-    optional string TracesSyslogIdentifier = 9;
+    optional uint32 SamplingRate = 1;
+    optional uint32 SlowRequestSamplingRate = 2;
+    optional string TracesUnifiedAgentEndpoint = 3;
+    optional string TracesSyslogIdentifier = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -98,9 +98,6 @@ ITraceReaderPtr CreateSlowRequestsFilter(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
-    TDuration hddThreshold,
-    TDuration ssdThreshold,
-    TDuration nonReplicatedSSDThreshold,
     TRequestThresholds requestThresholds);
 
 NLWTrace::TQuery ProbabilisticQuery(

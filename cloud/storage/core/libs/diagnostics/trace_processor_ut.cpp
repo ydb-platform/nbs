@@ -104,35 +104,6 @@ struct TEnv
     }
 
     ITraceProcessorPtr CreateTraceProcessor(
-        TDuration hdd = TDuration::Zero(),
-        TDuration ssd = TDuration::Zero(),
-        TDuration nonreplSSD = TDuration::Zero())
-    {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto logging = CreateLoggingService(LogBackend);
-        TVector<ITraceReaderPtr> readers{
-            CreateSlowRequestsFilter(
-                "filter",
-                logging,
-                "STORAGE_TRACE",
-                hdd,
-                ssd,
-                nonreplSSD,
-                {}
-        )};
-        return NCloud::CreateTraceProcessor(
-            Timer,
-            Scheduler,
-            logging,
-            monitoring,
-            "STORAGE_TRACE",
-            *LWManager,
-            std::move(readers)
-        );
-    }
-
-
-    ITraceProcessorPtr CreateTraceProcessor(
         const TRequestThresholds& requestThresholds)
     {
         auto monitoring = CreateMonitoringServiceStub();
@@ -142,9 +113,6 @@ struct TEnv
                 "filter",
                 logging,
                 "STORAGE_TRACE",
-                TDuration::Zero(),
-                TDuration::Zero(),
-                TDuration::Zero(),
                 requestThresholds
         )};
         return NCloud::CreateTraceProcessor(
@@ -247,31 +215,24 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         UNIT_ASSERT_GT(2, env.LogBackend->Recs.size());
     }
 
-    void CheckCollectAllOverlappingTracks(
-        const TRequestThresholds& requestThresholds)
+    Y_UNIT_TEST(ShouldCollectAllOverlappingTracks)
     {
         TEnv env;
-        auto tp = requestThresholds.empty() ?  env.CreateTraceProcessor() :
-            env.CreateTraceProcessor(requestThresholds);
+        auto tp = env.CreateTraceProcessor({
+            {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Zero(), {}}}
+        });
         tp->Start();
 
         Track();
         Check(env, REQUEST_COUNT);
     }
 
-    Y_UNIT_TEST(ShouldCollectAllOverlappingTracks)
-    {
-        CheckCollectAllOverlappingTracks({});
-        CheckCollectAllOverlappingTracks({
-            {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Zero(), {}}}
-        });
-    }
-
-    void CheckProcessLotsOfTracks(const TRequestThresholds& requestThresholds)
+    Y_UNIT_TEST(ShouldProcessLotsOfTracks)
     {
         TEnv env;
-        auto tp = requestThresholds.empty() ?  env.CreateTraceProcessor() :
-            env.CreateTraceProcessor(requestThresholds);
+        auto tp = env.CreateTraceProcessor({
+            {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Zero(), {}}}
+        });
         tp->Start();
 
         auto threadPool = CreateThreadPool(20);
@@ -299,32 +260,21 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         Check(env, requestCount);
     }
 
-    Y_UNIT_TEST(ShouldProcessLotsOfTracks)
-    {
-        CheckProcessLotsOfTracks({});
-        CheckProcessLotsOfTracks({
-            {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Zero(), {}}}
-        });
-    }
-
-    void CheckSlowRequestThresholdByTrackLength(const bool byDict)
+    Y_UNIT_TEST(SlowRequestThresholdByTrackLength)
     {
         // no way to override timestamps in track items
         // => will have to test only max+zero and zero+max thresholds
         TEnv env;
-        auto tp = byDict ? env.CreateTraceProcessor(
+        auto tp = env.CreateTraceProcessor(
             {
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Zero(), {}}},
                 {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Zero(), {}}},
                 {NProto::STORAGE_MEDIA_SSD, {TDuration::Max(), {}}},
-                {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                {
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                         {TDuration::Max(), {}}
-                    }
+                }
             }
-        ) : env.CreateTraceProcessor(
-            TDuration::Zero(),
-            TDuration::Max(),
-            TDuration::Max()
         );
         tp->Start();
 
@@ -339,7 +289,7 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         Check(env, 0);
 
         env.RebuildLWManager();
-        tp = byDict ? env.CreateTraceProcessor(
+        tp = env.CreateTraceProcessor(
             {
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Max(), {}}},
                 {NProto::STORAGE_MEDIA_SSD, {TDuration::Zero(), {}}},
@@ -347,11 +297,7 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
                     {TDuration::Max(), {}}},
                 {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Max(), {}}}
             }
-        ) : env.CreateTraceProcessor(
-            TDuration::Max(),
-            TDuration::Zero(),
-            TDuration::Max()
-        );;
+        );
         tp->Start();
 
         Track(NProto::STORAGE_MEDIA_HYBRID);
@@ -364,18 +310,16 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         Check(env, 0);
 
         env.RebuildLWManager();
-        tp = byDict ? env.CreateTraceProcessor(
+        tp = env.CreateTraceProcessor(
             {
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Max(), {}}},
                 {NProto::STORAGE_MEDIA_SSD, {TDuration::Max(), {}}},
-                {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Zero(), {}}},
+                {
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    {TDuration::Zero(), {}}
+                },
                 {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Max(), {}}}
             }
-        ) : env.CreateTraceProcessor(
-            TDuration::Max(),
-            TDuration::Max(),
-            TDuration::Zero()
         );
         tp->Start();
 
@@ -389,16 +333,10 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         Check(env, REQUEST_COUNT);
     }
 
-    Y_UNIT_TEST(SlowRequestThresholdByTrackLength)
-    {
-        CheckSlowRequestThresholdByTrackLength(true);
-        CheckSlowRequestThresholdByTrackLength(false);
-    }
-
-    void CheckSlowRequestThresholdByExecutionTimeParam(const bool byDict)
+    Y_UNIT_TEST(SlowRequestThresholdByExecutionTimeParam)
     {
         TEnv env;
-        auto tp = byDict ? env.CreateTraceProcessor(
+        auto tp = env.CreateTraceProcessor(
             {
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}}},
                 {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Seconds(20), {}}},
@@ -406,10 +344,6 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
                 {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                     {TDuration::Seconds(20), {}}}
             }
-        ) : env.CreateTraceProcessor(
-            TDuration::Seconds(20),
-            TDuration::Seconds(20),
-            TDuration::Seconds(20)
         );
         tp->Start();
 
@@ -417,12 +351,6 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         Check(env, 0);
         Track(NProto::STORAGE_MEDIA_HYBRID, 25'000'000);
         Check(env, REQUEST_COUNT, 25'000'000);
-    }
-
-    Y_UNIT_TEST(SlowRequestThresholdByExecutionTimeParam)
-    {
-        CheckSlowRequestThresholdByExecutionTimeParam(true);
-        CheckSlowRequestThresholdByExecutionTimeParam(false);
     }
 
     Y_UNIT_TEST(SlowRequestByRequestType)

@@ -721,9 +721,6 @@ void TBootstrapBase::InitLWTrace()
             SlowRequestsFilterId,
             traceLog,
             "BLOCKSTORE_TRACE",
-            diagnosticsConfig->GetHDDSlowRequestThreshold(),
-            diagnosticsConfig->GetSSDSlowRequestThreshold(),
-            diagnosticsConfig->GetNonReplicatedSSDSlowRequestThreshold(),
             diagnosticsConfig->GetRequestThresholds()));
     }
 

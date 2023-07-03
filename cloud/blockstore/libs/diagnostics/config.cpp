@@ -19,9 +19,6 @@ namespace {
     xxx(KikimrMonPort,                   ui32,            8765                                          )\
     xxx(NbsMonPort,                      ui32,            8766                                          )\
                                                                                                          \
-    xxx(HDDSlowRequestThreshold,                TDuration,       TDuration::Seconds(0)                  )\
-    xxx(SSDSlowRequestThreshold,                TDuration,       TDuration::Seconds(0)                  )\
-    xxx(NonReplicatedSSDSlowRequestThreshold,   TDuration,       TDuration::MilliSeconds(10)            )\
     xxx(SamplingRate,                    ui32,            0                                             )\
     xxx(SlowRequestSamplingRate,         ui32,            0                                             )\
     xxx(TracesUnifiedAgentEndpoint,      TString,         ""                                            )\

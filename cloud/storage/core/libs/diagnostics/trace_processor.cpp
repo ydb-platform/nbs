@@ -283,9 +283,6 @@ private:
     const TString Id;
     TLog Log;
 
-    TDuration HDDThreshold;
-    TDuration SSDThreshold;
-    TDuration NonReplicatedSSDThreshold;
     TRequestThresholds RequestThresholds;
 
     ui64 TracksCount = 0;
@@ -297,15 +294,9 @@ public:
             TString id,
             ILoggingServicePtr logging,
             TString componentName,
-            TDuration hddThreshold,
-            TDuration ssdThreshold,
-            TDuration nonReplicatedSSDThreshold,
             TRequestThresholds requestThresholds)
         : TTraceReaderWithRingBuffer(id)
         , Id(std::move(id))
-        , HDDThreshold(hddThreshold)
-        , SSDThreshold(ssdThreshold)
-        , NonReplicatedSSDThreshold(nonReplicatedSSDThreshold)
         , RequestThresholds(std::move(requestThresholds))
     {
         Log = logging->CreateLog(std::move(componentName));
@@ -348,27 +339,6 @@ public:
         auto mediaKind = mediaKindParam->Get<NProto::EStorageMediaKind>();
 
         TDuration srt;
-        switch (mediaKind) {
-            case NProto::STORAGE_MEDIA_SSD: {
-                srt = SSDThreshold;
-                break;
-            }
-            case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
-            case NProto::STORAGE_MEDIA_SSD_MIRROR2:
-            case NProto::STORAGE_MEDIA_SSD_MIRROR3: {
-                srt = NonReplicatedSSDThreshold;
-                break;
-            }
-            // TODO
-            case NProto::STORAGE_MEDIA_SSD_LOCAL: {
-                srt = NonReplicatedSSDThreshold;
-                break;
-            }
-            default: {
-                srt = HDDThreshold;
-                break;
-            }
-        }
 
         if (RequestThresholds) {
             srt = Max(GetThresholdByRequestType(
@@ -629,18 +599,12 @@ ITraceReaderPtr CreateSlowRequestsFilter(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
-    TDuration hddThreshold,
-    TDuration ssdThreshold,
-    TDuration nonReplicatedSSDThreshold,
     TRequestThresholds requestThresholds)
 {
     return std::make_shared<TSlowRequestsFilter>(
         std::move(id),
         std::move(logging),
         std::move(componentName),
-        hddThreshold,
-        ssdThreshold,
-        nonReplicatedSSDThreshold,
         std::move(requestThresholds));
 }
 
