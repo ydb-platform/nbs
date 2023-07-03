@@ -252,12 +252,13 @@ void SetExplicitChannelProfiles(
     int mixedChannels,
     int freshChannels,
     const NCloud::NProto::EStorageMediaKind mediaKind,
-    const TVector<EChannelDataKind>& existingDataChannels,
+    const TVector<TChannelInfo>& existingDataChannels,
     NKikimrBlockStore::TVolumeConfig& volumeConfig,
     const NPrivateProto::TVolumeChannelsToPoolsKinds& volumeChannelsToPoolsKinds)
 {
     const auto unit = GetAllocationUnit(config, mediaKind);
     const auto poolKinds = GetPoolKinds(config, mediaKind);
+    const ui64 freshChannelSize = 128_MB;
 
     AddOrModifyChannel(
         poolKinds.System,
@@ -270,7 +271,7 @@ void SetExplicitChannelProfiles(
     AddOrModifyChannel(
         poolKinds.Log,
         1,
-        128_MB,
+        freshChannelSize,
         EChannelDataKind::Log,
         volumeConfig,
         volumeChannelsToPoolsKinds
@@ -286,14 +287,9 @@ void SetExplicitChannelProfiles(
 
     ui32 c = 3;
     while (c - 3 < existingDataChannels.size()) {
-        if ((!mixedChannels || !mergedChannels)
-                && config.GetPoolKindChangeAllowed())
-        {
-            break;
-        }
-
         TString poolKind;
-        const auto dataKind = existingDataChannels[c - 3];
+        ui64 channelSize = unit;
+        const auto dataKind = existingDataChannels[c - 3].DataKind;
         switch (dataKind) {
             case EChannelDataKind::Merged: {
                 poolKind = poolKinds.Merged;
@@ -309,6 +305,7 @@ void SetExplicitChannelProfiles(
 
             case EChannelDataKind::Fresh: {
                 poolKind = poolKinds.Fresh;
+                channelSize = freshChannelSize;
                 --freshChannels;
                 break;
             }
@@ -318,10 +315,14 @@ void SetExplicitChannelProfiles(
             }
         }
 
+        if (!config.GetPoolKindChangeAllowed()) {
+            poolKind = existingDataChannels[c - 3].PoolKind;
+        }
+
         AddOrModifyChannel(
             poolKind,
             c,
-            unit,
+            channelSize,
             dataKind,
             volumeConfig,
             volumeChannelsToPoolsKinds
@@ -358,26 +359,11 @@ void SetExplicitChannelProfiles(
         ++c;
     }
 
-    while (c - 3 < existingDataChannels.size()) {
-        Y_VERIFY(config.GetPoolKindChangeAllowed());
-
-        AddOrModifyChannel(
-            poolKinds.Merged,
-            c,
-            unit,
-            EChannelDataKind::Merged,
-            volumeConfig,
-            volumeChannelsToPoolsKinds
-        );
-
-        ++c;
-    }
-
     while (freshChannels > 0) {
         AddOrModifyChannel(
             poolKinds.Fresh,
             c,
-            128_MB,
+            freshChannelSize,
             EChannelDataKind::Fresh,
             volumeConfig,
             volumeChannelsToPoolsKinds
@@ -441,8 +427,8 @@ ui32 ComputeMergedChannelCount(
     const TVolumeParams& volumeParams)
 {
     ui32 mergedChannelCount = 0;
-    for (const auto dk: volumeParams.DataChannels) {
-        if (dk == EChannelDataKind::Merged) {
+    for (const auto& dc: volumeParams.DataChannels) {
+        if (dc.DataKind == EChannelDataKind::Merged) {
             ++mergedChannelCount;
         }
     }

@@ -761,7 +761,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             DefaultBlockSize,
             1024,
             1,
-            {EChannelDataKind::Merged, EChannelDataKind::Merged},
+            {
+                {config.GetHDDMergedChannelPoolKind(), EChannelDataKind::Merged},
+                {config.GetHDDMergedChannelPoolKind(), EChannelDataKind::Merged},
+            },
             0,
             0,
             0,
@@ -814,6 +817,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         CheckVolumeChannels(config, volumeConfig);
 
         params.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
+        params.DataChannels = {
+            {config.GetSSDMergedChannelPoolKind(), EChannelDataKind::Merged},
+            {config.GetSSDMergedChannelPoolKind(), EChannelDataKind::Merged},
+        };
         volumeConfig.ClearExplicitChannelProfiles();
         volumeConfig.ClearVolumeExplicitChannelProfiles();
         ResizeVolume(config, params, {}, {}, volumeConfig);
@@ -861,6 +868,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         CheckVolumeChannels(config, volumeConfig);
 
         params.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
+        params.DataChannels = {
+            {config.GetHybridMergedChannelPoolKind(), EChannelDataKind::Merged},
+            {config.GetHybridMergedChannelPoolKind(), EChannelDataKind::Merged},
+        };
         volumeConfig.ClearExplicitChannelProfiles();
         volumeConfig.ClearVolumeExplicitChannelProfiles();
         ResizeVolume(config, params, {}, {}, volumeConfig);
@@ -987,7 +998,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             DefaultBlockSize,
             blocksCount,
             1,
-            {EChannelDataKind::Merged, EChannelDataKind::Merged},
+            {
+                {"merged", EChannelDataKind::Merged},
+                {"merged", EChannelDataKind::Merged},
+            },
             0,
             0,
             0,
@@ -1011,9 +1025,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeConfig.ClearExplicitChannelProfiles();
 
         params.DataChannels = {
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Mixed
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
         };
         ResizeVolume(*config, params, {}, {}, volumeConfig);
         UNIT_ASSERT_VALUES_EQUAL(7, volumeConfig.ExplicitChannelProfilesSize());
@@ -1030,11 +1044,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeConfig.ClearExplicitChannelProfiles();
 
         params.DataChannels = {
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Mixed,
-            EChannelDataKind::Merged,
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
+            {"merged", EChannelDataKind::Merged},
         };
         ResizeVolume(*config, params, {}, {}, volumeConfig);
         UNIT_ASSERT_VALUES_EQUAL(9, volumeConfig.ExplicitChannelProfilesSize());
@@ -1053,9 +1067,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeConfig.ClearExplicitChannelProfiles();
 
         params.DataChannels = {
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Mixed
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
         };
         params.BlocksCountPerPartition = 5 * blocksCount;
         params.PartitionsCount = 1;
@@ -1278,28 +1292,32 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(6, "merged", EChannelDataKind::Merged);
+        // 2 mixed channels added due to high write iops/bandwidth limits
         CHECK_CHANNEL_HDD(7, "mixed", EChannelDataKind::Mixed);
         CHECK_CHANNEL_HDD(8, "mixed", EChannelDataKind::Mixed);
-        CHECK_CHANNEL(
-            9,
-            config->GetHybridFreshChannelPoolKind(),
-            EChannelDataKind::Fresh,
-            128_MB
+        CHECK_CHANNEL(9, "fresh", EChannelDataKind::Fresh, 128_MB);
+
+        storageServiceConfig.SetHybridMixedChannelPoolKind("mixed2");
+        config = std::make_unique<TStorageConfig>(
+            storageServiceConfig,
+            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
         );
 
         volumeConfig.Clear();
         NProto::TVolumePerformanceProfile pp;
+        // setting low limits
         pp.SetMaxReadIops(1);
         pp.SetMaxWriteIops(1);
         pp.SetMaxReadBandwidth(1);
         pp.SetMaxWriteBandwidth(1);
         params.DataChannels = {
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Merged,
-            EChannelDataKind::Mixed,
-            EChannelDataKind::Mixed,
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
+            {"mixed", EChannelDataKind::Mixed},
+            {"fresh", EChannelDataKind::Fresh},
         };
         ResizeVolume(*config, params, {}, pp, volumeConfig);
 
@@ -1308,14 +1326,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(6, "merged", EChannelDataKind::Merged);
+        // we still have 2 mixed channels - channel count decrease not allowed
+        // but pool kind hasn't changed
         CHECK_CHANNEL_HDD(7, "mixed", EChannelDataKind::Mixed);
         CHECK_CHANNEL_HDD(8, "mixed", EChannelDataKind::Mixed);
-        CHECK_CHANNEL(
-            9,
-            config->GetHybridFreshChannelPoolKind(),
-            EChannelDataKind::Fresh,
-            128_MB
-        );
+        CHECK_CHANNEL(9, "fresh", EChannelDataKind::Fresh, 128_MB);
 
         storageServiceConfig.SetPoolKindChangeAllowed(true);
         config = std::make_unique<TStorageConfig>(
@@ -1331,14 +1346,58 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(6, "merged", EChannelDataKind::Merged);
-        CHECK_CHANNEL_HDD(7, "mixed", EChannelDataKind::Mixed);
-        CHECK_CHANNEL_HDD(8, "merged", EChannelDataKind::Merged);
-        CHECK_CHANNEL(
-            9,
-            config->GetHybridFreshChannelPoolKind(),
-            EChannelDataKind::Fresh,
-            128_MB
+        // pool kind change was allowed => pool kind was changed to mixed2
+        CHECK_CHANNEL_HDD(7, "mixed2", EChannelDataKind::Mixed);
+        CHECK_CHANNEL_HDD(8, "mixed2", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(9, "fresh", EChannelDataKind::Fresh, 128_MB);
+
+        // testing merged and fresh channels as well
+        storageServiceConfig.SetHybridMergedChannelPoolKind("merged2");
+        storageServiceConfig.SetHybridFreshChannelPoolKind("fresh2");
+        storageServiceConfig.SetPoolKindChangeAllowed(false);
+        config = std::make_unique<TStorageConfig>(
+            storageServiceConfig,
+            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
         );
+
+        volumeConfig.Clear();
+        params.DataChannels = {
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed2", EChannelDataKind::Mixed},
+            {"mixed2", EChannelDataKind::Mixed},
+            {"fresh", EChannelDataKind::Fresh},
+        };
+        ResizeVolume(*config, params, {}, pp, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(6, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(7, "mixed2", EChannelDataKind::Mixed);
+        CHECK_CHANNEL_HDD(8, "mixed2", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(9, "fresh", EChannelDataKind::Fresh, 128_MB);
+
+        storageServiceConfig.SetPoolKindChangeAllowed(true);
+        config = std::make_unique<TStorageConfig>(
+            storageServiceConfig,
+            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        );
+
+        volumeConfig.Clear();
+        ResizeVolume(*config, params, {}, pp, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged2", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged2", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "merged2", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(6, "merged2", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(7, "mixed2", EChannelDataKind::Mixed);
+        CHECK_CHANNEL_HDD(8, "mixed2", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(9, "fresh2", EChannelDataKind::Fresh, 128_MB);
     }
 
     Y_UNIT_TEST(ShouldRespectResizeVolumeRequestFlags)

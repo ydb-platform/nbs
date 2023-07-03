@@ -13,6 +13,8 @@ enum class EChannelDataKind
     Merged = 5,
     Fresh = 6,
     External = 7,
+
+    Max,
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -23,12 +23,18 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TChannelInfo
+{
+    TString PoolKind;
+    EChannelDataKind DataKind = EChannelDataKind::Max;
+};
+
 struct TVolumeParams
 {
     ui32 BlockSize = 0;
     ui64 BlocksCountPerPartition = 0;
     ui32 PartitionsCount = 0;
-    TVector<EChannelDataKind> DataChannels;
+    TVector<TChannelInfo> DataChannels;
     ui32 MaxReadBandwidth = 0;
     ui32 MaxWriteBandwidth = 0;
     ui32 MaxReadIops = 0;

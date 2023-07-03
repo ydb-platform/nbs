@@ -94,8 +94,12 @@ private:
         if (volumeConfig.ExplicitChannelProfilesSize()) {
             Y_VERIFY_DEBUG(volumeConfig.ExplicitChannelProfilesSize() > 3);
             for (ui32 i = 3; i < volumeConfig.ExplicitChannelProfilesSize(); ++i) {
-                volumeParams.DataChannels.push_back(static_cast<EChannelDataKind>(
-                    volumeConfig.GetExplicitChannelProfiles(i).GetDataKind()));
+                const auto& channelProfile =
+                    volumeConfig.GetExplicitChannelProfiles(i);
+                volumeParams.DataChannels.push_back({
+                    channelProfile.GetPoolKind(),
+                    static_cast<EChannelDataKind>(channelProfile.GetDataKind())
+                });
             }
         }
 
