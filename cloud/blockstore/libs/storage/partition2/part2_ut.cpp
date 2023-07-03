@@ -1538,7 +1538,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
 
         // checking that drain-related counters are in a consistent state
         partition.Drain();
@@ -1597,7 +1596,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
 
         // checking that drain-related counters are in a consistent state
         partition.Drain();

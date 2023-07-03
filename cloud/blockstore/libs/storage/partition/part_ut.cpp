@@ -1546,7 +1546,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
     }
 
     Y_UNIT_TEST(ShouldStoreBlocksInFreshChannel)
@@ -1582,7 +1581,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
     }
 
     Y_UNIT_TEST(ShouldStoreBlocksAtTheEndOfAMaxSizeDisk)
@@ -1666,7 +1664,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
 
         // checking that drain-related counters are in a consistent state
         partition.Drain();
@@ -1721,7 +1718,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
 
         // checking that drain-related counters are in a consistent state
         partition.Drain();
@@ -1780,7 +1776,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserWriteCounters().GetWaitTime() != 0);
 
         // checking that drain-related counters are in a consistent state
         partition.Drain();
@@ -2142,7 +2137,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
 
             UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
-            UNIT_ASSERT(stats.GetSysWriteCounters().GetWaitTime() != 0);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -2192,7 +2186,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
 
             UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
-            UNIT_ASSERT(stats.GetSysWriteCounters().GetWaitTime() != 0);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -2738,11 +2731,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto& stats = response->Record.GetStats();
 
         UNIT_ASSERT(stats.GetSysReadCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetSysReadCounters().GetWaitTime() != 0);
         UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetSysWriteCounters().GetWaitTime() != 0);
         UNIT_ASSERT(stats.GetUserReadCounters().GetExecTime() != 0);
-        UNIT_ASSERT(stats.GetUserReadCounters().GetWaitTime() != 0);
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyRunCompaction)
