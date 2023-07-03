@@ -16,11 +16,8 @@ TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
-{
-    for (auto& uuid: uuids) {
-        Devices[std::move(uuid)];
-    }
-}
+    , Devices(MakeDevices(std::move(uuids)))
+{}
 
 NCloud::NProto::TError TDeviceClient::AcquireDevices(
     const TVector<TString>& uuids,
@@ -29,24 +26,23 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
     NProto::EVolumeAccessMode accessMode,
     ui64 mountSeqNumber,
     const TString& diskId,
-    ui32 volumeGeneration)
+    ui32 volumeGeneration) const
 {
     if (!clientId) {
         return MakeError(E_ARGUMENT, "empty client id");
     }
 
     for (const auto& uuid: uuids) {
-        auto it = Devices.find(uuid);
-
-        if (it == Devices.end()) {
+        TDeviceState* deviceState = GetDeviceState(uuid);
+        if (!deviceState) {
             return MakeError(E_NOT_FOUND, TStringBuilder()
                 << "Device " << uuid.Quote() << " not found");
         }
 
-        TReadGuard g(it->second.Lock);
+        TReadGuard g(deviceState->Lock);
 
-        if (it->second.DiskId == diskId
-                && it->second.VolumeGeneration > volumeGeneration
+        if (deviceState->DiskId == diskId
+                && deviceState->VolumeGeneration > volumeGeneration
                 // backwards compat
                 && volumeGeneration)
         {
@@ -54,29 +50,29 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
                 << "AcquireDevices: "
                 << "Outdated volume generation, DiskId=" << diskId.Quote()
                 << ", VolumeGeneration: " << volumeGeneration
-                << ", LastGeneration: " << it->second.VolumeGeneration);
+                << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
-        it->second.DiskId = diskId;
-        it->second.VolumeGeneration = volumeGeneration;
+        deviceState->DiskId = diskId;
+        deviceState->VolumeGeneration = volumeGeneration;
 
         if (IsReadWriteMode(accessMode)
-                && it->second.WriterSession.Id
-                && it->second.WriterSession.Id != clientId
-                && it->second.WriterSession.MountSeqNumber >= mountSeqNumber
-                && it->second.WriterSession.LastActivityTs
+                && deviceState->WriterSession.Id
+                && deviceState->WriterSession.Id != clientId
+                && deviceState->WriterSession.MountSeqNumber >= mountSeqNumber
+                && deviceState->WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
                     > now)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
                 << "Device " << uuid.Quote()
                 << " already acquired by another client: "
-                << it->second.WriterSession.Id);
+                << deviceState->WriterSession.Id);
         }
     }
 
     for (const auto& uuid: uuids) {
-        auto& ds = Devices[uuid];
+        TDeviceState& ds = *GetDeviceState(uuid);
 
         TWriteGuard g(ds.Lock);
 
@@ -120,23 +116,23 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
     const TVector<TString>& uuids,
     const TString& clientId,
     const TString& diskId,
-    ui32 volumeGeneration)
+    ui32 volumeGeneration) const
 {
     if (!clientId) {
         return MakeError(E_ARGUMENT, "empty client id");
     }
 
     for (const auto& uuid : uuids) {
-        auto it = Devices.find(uuid);
+        auto* deviceState = GetDeviceState(uuid);
 
-        if (it == Devices.end()) {
+        if (deviceState == nullptr) {
             continue; // TODO: log
         }
 
-        TWriteGuard g(it->second.Lock);
+        TWriteGuard g(deviceState->Lock);
 
-        if (it->second.DiskId == diskId
-                && it->second.VolumeGeneration > volumeGeneration
+        if (deviceState->DiskId == diskId
+                && deviceState->VolumeGeneration > volumeGeneration
                 // backwards compat
                 && volumeGeneration)
         {
@@ -144,26 +140,26 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
                 << "ReleaseDevices: "
                 << "outdated volume generation, DiskId=" << diskId.Quote()
                 << ", VolumeGeneration: " << volumeGeneration
-                << ", LastGeneration: " << it->second.VolumeGeneration);
+                << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
-        it->second.DiskId = diskId;
-        it->second.VolumeGeneration = volumeGeneration;
+        deviceState->DiskId = diskId;
+        deviceState->VolumeGeneration = volumeGeneration;
 
         auto s = FindIf(
-            it->second.ReaderSessions.begin(),
-            it->second.ReaderSessions.end(),
+            deviceState->ReaderSessions.begin(),
+            deviceState->ReaderSessions.end(),
             [&] (const TSessionInfo& s) {
                 return s.Id == clientId;
             }
         );
 
-        if (s != it->second.ReaderSessions.end()) {
-            it->second.ReaderSessions.erase(s);
-        } else if (it->second.WriterSession.Id == clientId
+        if (s != deviceState->ReaderSessions.end()) {
+            deviceState->ReaderSessions.erase(s);
+        } else if (deviceState->WriterSession.Id == clientId
             || clientId == AnyWriterClientId)
         {
-            it->second.WriterSession = {};
+            deviceState->WriterSession = {};
         }
     }
 
@@ -179,40 +175,40 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
         return MakeError(E_ARGUMENT, "empty client id");
     }
 
-    auto it = Devices.find(uuid);
-    if (it == Devices.cend()) {
+    auto* deviceState = GetDeviceState(uuid);
+    if (!deviceState) {
         return MakeError(E_NOT_FOUND, TStringBuilder()
             << "Device " << uuid.Quote() << " not found");
     }
 
-    TReadGuard g(it->second.Lock);
+    TReadGuard g(deviceState->Lock);
 
     bool acquired = false;
     if (clientId == BackgroundOpsClientId) {
         // it's fine to accept migration writes if this device is not acquired
         // migration might be in progress even for an unmounted volume
         acquired = !IsReadWriteMode(accessMode)
-            || it->second.WriterSession.Id.empty();
+            || deviceState->WriterSession.Id.empty();
     } else {
-        acquired = clientId == it->second.WriterSession.Id;
+        acquired = clientId == deviceState->WriterSession.Id;
 
         if (!acquired && !IsReadWriteMode(accessMode)) {
             auto s = FindIf(
-                it->second.ReaderSessions.begin(),
-                it->second.ReaderSessions.end(),
+                deviceState->ReaderSessions.begin(),
+                deviceState->ReaderSessions.end(),
                 [&] (const TSessionInfo& s) {
                     return s.Id == clientId;
                 }
             );
 
-            acquired = s != it->second.ReaderSessions.end();
+            acquired = s != deviceState->ReaderSessions.end();
         }
     }
 
     if (!acquired) {
         return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
             << "Device " << uuid.Quote() << " not acquired by client " << clientId
-            << ", current active writer: " << it->second.WriterSession.Id);
+            << ", current active writer: " << deviceState->WriterSession.Id);
     }
 
     return {};
@@ -221,10 +217,9 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
 TDeviceClient::TSessionInfo TDeviceClient::GetWriterSession(
     const TString& uuid) const
 {
-    auto it = Devices.find(uuid);
-    if (it != Devices.cend()) {
-        TReadGuard g(it->second.Lock);
-        return it->second.WriterSession;
+    if (auto* deviceState = GetDeviceState(uuid)) {
+        TReadGuard g(deviceState->Lock);
+        return deviceState->WriterSession;
     }
 
     return {};
@@ -233,13 +228,51 @@ TDeviceClient::TSessionInfo TDeviceClient::GetWriterSession(
 TVector<TDeviceClient::TSessionInfo> TDeviceClient::GetReaderSessions(
     const TString& uuid) const
 {
-    auto it = Devices.find(uuid);
-    if (it != Devices.cend()) {
-        TReadGuard g(it->second.Lock);
-        return it->second.ReaderSessions;
+    if (auto* deviceState = GetDeviceState(uuid)) {
+        TReadGuard g(deviceState->Lock);
+        return deviceState->ReaderSessions;
     }
 
     return {};
+}
+
+void TDeviceClient::DisableDevice(const TString& uuid) const
+{
+    if (auto* deviceState = GetDeviceState(uuid)) {
+        TWriteGuard g(deviceState->Lock);
+        deviceState->Disabled = true;
+    }
+}
+
+bool TDeviceClient::IsDeviceDisabled(const TString& uuid) const
+{
+    if (auto* deviceState = GetDeviceState(uuid)) {
+        TReadGuard g(deviceState->Lock);
+        return deviceState->Disabled;
+    }
+    return false;
+}
+
+// static
+TDeviceClient::TDevicesState TDeviceClient::MakeDevices(TVector<TString> uuids)
+{
+    TDevicesState result;
+    for (auto& uuid: uuids) {
+        result[std::move(uuid)] = std::make_unique<TDeviceState>();
+    }
+    return result;
+}
+
+TDeviceClient::TDeviceState* TDeviceClient::GetDeviceState(
+    const TString& uuid) const
+{
+    auto it = Devices.find(uuid);
+    if (it == Devices.end()) {
+        return nullptr;
+    }
+    auto* result = it->second.get();
+    Y_VERIFY(result);
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

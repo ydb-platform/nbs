@@ -36,8 +36,6 @@ private:
         std::shared_ptr<TStorageAdapter> StorageAdapter;
 
         TStorageIoStatsPtr Stats;
-
-        bool Disabled = false;
     };
 
 private:

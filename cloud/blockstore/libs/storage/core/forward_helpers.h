@@ -91,12 +91,6 @@ void FillUnencryptedBlockMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-TGuardedSgList GetSglist(const T&)
-{
-    return {};
-}
-
 inline TGuardedSgList GetSglist(const NProto::TReadBlocksLocalRequest& request)
 {
     return request.Sglist;

@@ -16,45 +16,66 @@
 
 #include <util/generic/hash.h>
 
+namespace NCloud::NBlockStore::NStorage {
+
+using namespace NThreading;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::MilliSeconds(500);
 
-}   // namespace
+////////////////////////////////////////////////////////////////////////////////
 
-namespace NCloud::NBlockStore::NStorage {
+struct TRequestLogDetails
+{
+    TString DeviceUUID;
+    TString ClientId;
 
-using namespace NThreading;
+    template <typename T>
+    TRequestLogDetails(T& request)
+        : DeviceUUID(std::move(*request.MutableDeviceUUID()))
+        , ClientId(std::move(*request.MutableHeaders()->MutableClientId()))
+    {
+    }
+
+    TRequestLogDetails(TRequestLogDetails&&) = default;
+
+    // XXX not actually used, but required by the compiler
+    // TODO remove it after the C++23 upgrade
+    // see https://en.cppreference.com/w/cpp/utility/functional/move_only_function
+    TRequestLogDetails(const TRequestLogDetails&) = default;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread-safe. After Init() public method HandleRequest() can be called from
+// any thread.
 class TRequestHandler final
     : public NRdma::IServerHandler
+    , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
-    THashMap<TString, TStorageAdapterPtr> Devices;
-    ITaskQueuePtr TaskQueue;
+    const THashMap<TString, TStorageAdapterPtr> Devices;
+    const ITaskQueuePtr TaskQueue;
 
-    TLogThrottler& LogThrottler;
+    mutable TLogThrottler LogThrottler{LOG_THROTTLER_PERIOD};
     TLog Log;
 
-    TDeviceClientPtr DeviceClient;
+    const TDeviceClientPtr DeviceClient;
 
     std::weak_ptr<NRdma::IServerEndpoint> Endpoint;
-    NRdma::TProtoMessageSerializer* Serializer
-        = TBlockStoreProtocol::Serializer();
+    const NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRequestHandler(
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
-            TLogThrottler& logThrottler,
             TDeviceClientPtr deviceClient)
         : Devices(std::move(devices))
         , TaskQueue(std::move(taskQueue))
-        , LogThrottler(logThrottler)
         , DeviceClient(std::move(deviceClient))
     {}
 
@@ -70,20 +91,35 @@ public:
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=] {
-            auto error = SafeExecute<NProto::TError>([=] {
-                return DoHandleRequest(context, callContext, in, out);
-            });
+        auto doHandleRequest = [self = shared_from_this(),
+                                context = context,
+                                callContext = std::move(callContext),
+                                in = std::move(in),
+                                out = std::move(out)]() -> NProto::TError
+        {
+            return self->DoHandleRequest(
+                context,
+                std::move(callContext),
+                std::move(in),
+                std::move(out));
+        };
+
+        auto safeHandleRequest =
+            [endpoint = Endpoint,
+             context = context,
+             doHandleRequest = std::move(doHandleRequest)]()
+        {
+            auto error =
+                SafeExecute<NProto::TError>(std::move(doHandleRequest));
 
             if (HasError(error)) {
-                if (auto ep = Endpoint.lock()) {
-                    ep->SendError(
-                        context,
-                        error.GetCode(),
-                        error.GetMessage());
+                if (auto ep = endpoint.lock()) {
+                    ep->SendError(context, error.GetCode(), error.GetMessage());
                 }
             }
-        });
+        };
+
+        TaskQueue->ExecuteSimple(std::move(safeHandleRequest));
     }
 
 private:
@@ -91,7 +127,7 @@ private:
         void* context,
         TCallContextPtr callContext,
         TStringBuf in,
-        TStringBuf out)
+        TStringBuf out) const
     {
         auto resultOrError = Serializer->Parse(in);
 
@@ -142,16 +178,18 @@ private:
     TStorageAdapterPtr GetDevice(
         const TString& uuid,
         const TString& clientId,
-        NProto::EVolumeAccessMode accessMode)
+        NProto::EVolumeAccessMode accessMode) const
     {
-        NProto::TError error;
+        if (DeviceClient->IsDeviceDisabled(uuid)) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[" << uuid << "/" << clientId << "] Device disabled. Drop request.");
 
-        if (DeviceClient) {
-            error = DeviceClient->AccessDevice(
-                uuid,
-                clientId,
-                accessMode);
+            ythrow TServiceError(E_ARGUMENT);
         }
+
+        NProto::TError error =
+            DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
         if (HasError(error)) {
             ythrow TServiceError(error);
@@ -166,33 +204,45 @@ private:
         return it->second;
     }
 
-    struct TRequestLogDetails
+    template <typename Future, typename TResponseMethod>
+    void SubscribeForResponse(
+        Future& future,
+        void* context,
+        TStringBuf out,
+        TRequestLogDetails rld,
+        TResponseMethod method) const
     {
-        TString DeviceUUID;
-        TString ClientId;
-
-        template <typename T>
-        TRequestLogDetails(T& request)
-            : DeviceUUID(std::move(*request.MutableDeviceUUID()))
-            , ClientId(std::move(*request.MutableHeaders()->MutableClientId()))
+        auto handleResponse = [self = shared_from_this(),
+                               context = context,
+                               out = std::move(out),
+                               logDetails = std::move(rld),
+                               method = method](Future future)
         {
-        }
-
-        TRequestLogDetails(TRequestLogDetails&&) = default;
-        TRequestLogDetails& operator=(TRequestLogDetails&&) = default;
-
-        // XXX not actually used, but required by the compiler
-        // TODO remove it after the C++23 upgrade
-        // see https://en.cppreference.com/w/cpp/utility/functional/move_only_function
-        TRequestLogDetails(const TRequestLogDetails&) = default;
-    };
+            self->TaskQueue->ExecuteSimple(
+                [self = self,
+                 context = context,
+                 out = std::move(out),
+                 logDetails = std::move(logDetails),
+                 future = std::move(future),
+                 method = method]()
+                {
+                    const TRequestHandler* obj = self.get();
+                    (obj->*method)(
+                              context,
+                              std::move(out),
+                              std::move(logDetails),
+                              std::move(future));
+                });
+        };
+        future.Subscribe(std::move(handleResponse));
+    }
 
     NProto::TError HandleReadBlocksRequest(
         void* context,
         TCallContextPtr callContext,
         NProto::TReadDeviceBlocksRequest& request,
         TStringBuf requestData,
-        TStringBuf out)
+        TStringBuf out) const
     {
         if (Y_UNLIKELY(requestData.length() != 0)) {
             return MakeError(E_ARGUMENT);
@@ -213,11 +263,12 @@ private:
             std::move(req),
             request.GetBlockSize());
 
-        future.Subscribe([=, r = TRequestLogDetails(request)] (auto future) mutable {
-            TaskQueue->ExecuteSimple([=, r = std::move(r)] () mutable {
-                HandleReadBlocksResponse(context, out, std::move(r), future);
-            });
-        });
+        SubscribeForResponse(
+            future,
+            context,
+            std::move(out),
+            TRequestLogDetails(request),
+            &TRequestHandler::HandleReadBlocksResponse);
 
         return {};
     }
@@ -226,7 +277,7 @@ private:
         void* context,
         TStringBuf out,
         TRequestLogDetails rld,
-        TFuture<NProto::TReadBlocksResponse> future)
+        TFuture<NProto::TReadBlocksResponse> future) const
     {
         auto& response = future.GetValue();
         auto& blocks = response.GetBlocks();
@@ -265,7 +316,7 @@ private:
         TCallContextPtr callContext,
         NProto::TWriteDeviceBlocksRequest& request,
         TStringBuf requestData,
-        TStringBuf out)
+        TStringBuf out) const
     {
         if (Y_UNLIKELY(requestData.length() == 0)) {
             return MakeError(E_ARGUMENT);
@@ -288,11 +339,12 @@ private:
             std::move(req),
             request.GetBlockSize());
 
-        future.Subscribe([=, r = TRequestLogDetails(request)] (auto future) mutable {
-            TaskQueue->ExecuteSimple([=, r = std::move(r)] () mutable {
-                HandleWriteBlocksResponse(context, out, std::move(r), future);
-            });
-        });
+        SubscribeForResponse(
+            future,
+            context,
+            std::move(out),
+            TRequestLogDetails(request),
+            &TRequestHandler::HandleWriteBlocksResponse);
 
         return {};
     }
@@ -301,7 +353,7 @@ private:
         void* context,
         TStringBuf out,
         TRequestLogDetails rld,
-        TFuture<NProto::TWriteBlocksResponse> future)
+        TFuture<NProto::TWriteBlocksResponse> future) const
     {
         auto& response = future.GetValue();
         auto& error = response.GetError();
@@ -330,9 +382,9 @@ private:
     NProto::TError HandleZeroBlocksRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TZeroDeviceBlocksRequest &request,
+        NProto::TZeroDeviceBlocksRequest& request,
         TStringBuf requestData,
-        TStringBuf out)
+        TStringBuf out) const
     {
         if (Y_UNLIKELY(requestData.length() != 0)) {
             return MakeError(E_ARGUMENT);
@@ -344,7 +396,6 @@ private:
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto req = std::make_shared<NProto::TZeroBlocksRequest>();
-
         req->SetStartIndex(request.GetStartIndex());
         req->SetBlocksCount(request.GetBlocksCount());
 
@@ -353,11 +404,12 @@ private:
             std::move(req),
             request.GetBlockSize());
 
-        future.Subscribe([=, r = TRequestLogDetails(request)] (auto future) mutable {
-            TaskQueue->ExecuteSimple([=, r = std::move(r)] () mutable {
-                HandleZeroBlocksResponse(context, out, std::move(r), future);
-            });
-        });
+        SubscribeForResponse(
+            future,
+            context,
+            std::move(out),
+            TRequestLogDetails(request),
+            &TRequestHandler::HandleZeroBlocksResponse);
 
         return {};
     }
@@ -366,7 +418,7 @@ private:
         void* context,
         TStringBuf out,
         TRequestLogDetails rld,
-        TFuture<NProto::TZeroBlocksResponse> future)
+        TFuture<NProto::TZeroBlocksResponse> future) const
     {
         auto& response = future.GetValue();
         auto& error = response.GetError();
@@ -397,7 +449,7 @@ private:
         TCallContextPtr callContext,
         NProto::TChecksumDeviceBlocksRequest& request,
         TStringBuf requestData,
-        TStringBuf out)
+        TStringBuf out) const
     {
         if (Y_UNLIKELY(requestData.length() != 0)) {
             return MakeError(E_ARGUMENT);
@@ -418,11 +470,12 @@ private:
             std::move(req),
             request.GetBlockSize());
 
-        future.Subscribe([=, r = TRequestLogDetails(request)] (auto future) mutable {
-            TaskQueue->ExecuteSimple([=, r = std::move(r)] () mutable {
-                HandleChecksumBlocksResponse(context, out, std::move(r), future);
-            });
-        });
+        SubscribeForResponse(
+            future,
+            context,
+            std::move(out),
+            TRequestLogDetails(request),
+            &TRequestHandler::HandleChecksumBlocksResponse);
 
         return {};
     }
@@ -431,7 +484,7 @@ private:
         void* context,
         TStringBuf out,
         TRequestLogDetails rld,
-        TFuture<NProto::TReadBlocksResponse> future)
+        TFuture<NProto::TReadBlocksResponse> future) const
     {
         auto& response = future.GetValue();
         auto& blocks = response.GetBlocks();
@@ -465,7 +518,7 @@ private:
     }
 };
 
-using TRequestHandlerPtr = std::shared_ptr<TRequestHandler>;
+///////////////////////////////////////////////////////////////////////////////
 
 class TRdmaTarget final
     : public IRdmaTarget
@@ -473,44 +526,45 @@ class TRdmaTarget final
 private:
     const NProto::TRdmaEndpoint Config;
 
-    TRequestHandlerPtr Handler;
+    std::shared_ptr<TRequestHandler> Handler;
     ILoggingServicePtr Logging;
-    TLogThrottler LogThrottler;
     NRdma::IServerPtr Server;
 
 public:
     TRdmaTarget(
             NProto::TRdmaEndpoint config,
             ILoggingServicePtr logging,
-            TLogThrottler logThrottler,
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Logging(std::move(logging))
-        , LogThrottler(std::move(logThrottler))
         , Server(std::move(server))
     {
         Handler = std::make_shared<TRequestHandler>(
             std::move(devices),
             std::move(taskQueue),
-            LogThrottler,
             std::move(deviceClient));
     }
 
-    void Start() {
+    void Start() override
+    {
         auto endpoint = Server->StartEndpoint(
             Config.GetHost(),
             Config.GetPort(),
             Handler);
 
-        Handler->Init(endpoint, Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+        Handler->Init(
+            std::move(endpoint),
+            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
     }
 
-    void Stop()
+    void Stop() override
     {}
 };
+
+}   // namespace
 
 IRdmaTargetPtr CreateRdmaTarget(
     NProto::TRdmaEndpoint config,
@@ -519,8 +573,6 @@ IRdmaTargetPtr CreateRdmaTarget(
     TDeviceClientPtr deviceClient,
     THashMap<TString, TStorageAdapterPtr> devices)
 {
-    auto logThrottler = TLogThrottler(LOG_THROTTLER_PERIOD);
-
     // TODO
     auto threadPool = CreateThreadPool("RDMA", 1);
     threadPool->Start();
@@ -528,7 +580,6 @@ IRdmaTargetPtr CreateRdmaTarget(
     return std::make_shared<TRdmaTarget>(
         std::move(config),
         std::move(logging),
-        std::move(logThrottler),
         std::move(server),
         std::move(deviceClient),
         std::move(devices),

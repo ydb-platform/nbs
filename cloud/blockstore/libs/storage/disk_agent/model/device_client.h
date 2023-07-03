@@ -14,6 +14,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread-safe. Public methods can be called from any thread.
 class TDeviceClient final
 {
 public:
@@ -31,12 +32,13 @@ private:
         ui32 VolumeGeneration = 0;
         TSessionInfo WriterSession;
         TVector<TSessionInfo> ReaderSessions;
+        bool Disabled = false;
         TRWMutex Lock;
     };
+    using TDevicesState = THashMap<TString, std::unique_ptr<TDeviceState>>;
 
     const TDuration ReleaseInactiveSessionsTimeout;
-
-    THashMap<TString, TDeviceState> Devices;
+    const TDevicesState Devices;
 
 public:
     TDeviceClient(
@@ -46,8 +48,8 @@ public:
     TDeviceClient(const TDeviceClient&) = delete;
     TDeviceClient& operator=(const TDeviceClient&) = delete;
 
-    TDeviceClient(TDeviceClient&&) noexcept = default;
-    TDeviceClient& operator=(TDeviceClient&&) noexcept = default;
+    TDeviceClient(TDeviceClient&&) noexcept = delete;
+    TDeviceClient& operator=(TDeviceClient&&) noexcept = delete;
 
     NCloud::NProto::TError AcquireDevices(
         const TVector<TString>& uuids,
@@ -56,13 +58,13 @@ public:
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber,
         const TString& diskId,
-        ui32 volumeGeneration);
+        ui32 volumeGeneration) const;
 
     NCloud::NProto::TError ReleaseDevices(
         const TVector<TString>& uuids,
         const TString& clientId,
         const TString& diskId,
-        ui32 volumeGeneration);
+        ui32 volumeGeneration) const;
 
     NCloud::NProto::TError AccessDevice(
         const TString& uuid,
@@ -71,6 +73,13 @@ public:
 
     TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
+
+    void DisableDevice(const TString& uuid) const;
+    bool IsDeviceDisabled(const TString& uuid) const;
+
+private:
+    static TDevicesState MakeDevices(TVector<TString> uuids);
+    [[nodiscard]] TDeviceState* GetDeviceState(const TString& uuid) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

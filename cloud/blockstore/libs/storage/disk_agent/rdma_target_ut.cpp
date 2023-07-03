@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/rdma_test/server_test.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
-
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -17,6 +17,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
 {
     Y_UNIT_TEST(ShouldProcessRequests)
     {
+        const TString clientId = "client_1";
         auto logging = CreateLoggingService(
             "console",
             TLogSettings{TLOG_RESOURCES});
@@ -86,6 +87,22 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             4_KB,
             true,
             0);
+        TVector<TString> uuids;
+        for (const auto& [key, value]: devices) {
+            uuids.push_back(key);
+        }
+        auto deviceClient = std::make_shared<TDeviceClient>(
+            TDuration::MilliSeconds(100),
+            uuids);
+        deviceClient->AcquireDevices(
+            uuids,
+            clientId,
+            TInstant::Now(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            0,
+            "vol0",
+            0);
+
         NProto::TRdmaEndpoint config;
         config.SetHost("host");
         config.SetPort(11111);
@@ -93,7 +110,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             config,
             std::move(logging),
             server,
-            nullptr,    // DeviceClient
+            deviceClient,
             devices);
 
         rdmaTarget->Start();
@@ -112,6 +129,8 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         writeRequest.SetDeviceUUID("vasya");
         writeRequest.SetBlockSize(4_KB);
         writeRequest.SetStartIndex(blockRange.Start);
+        writeRequest.MutableHeaders()->SetClientId(clientId);
+
         for (ui32 i = 0; i < blockRange.Size(); ++i) {
             *writeRequest.MutableBlocks()->AddBuffers() = TString(4_KB, 'A');
         }
@@ -130,6 +149,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         readRequest.SetBlockSize(4_KB);
         readRequest.SetStartIndex(blockRange.Start);
         readRequest.SetBlocksCount(blockRange.Size());
+        readRequest.MutableHeaders()->SetClientId(clientId);
 
         auto readResponse = server->ProcessRequest("host", 11111, readRequest);
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -160,6 +180,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         checksumRequest.SetBlockSize(4_KB);
         checksumRequest.SetStartIndex(blockRange.Start);
         checksumRequest.SetBlocksCount(blockRange.Size());
+        checksumRequest.MutableHeaders()->SetClientId(clientId);
 
         auto checksumResponse =
             server->ProcessRequest("host", 11111, checksumRequest);
@@ -184,6 +205,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         zeroRequest.SetBlockSize(4_KB);
         zeroRequest.SetStartIndex(blockRange.Start);
         zeroRequest.SetBlocksCount(blockRange.Size());
+        zeroRequest.MutableHeaders()->SetClientId(clientId);
 
         auto zeroResponse = server->ProcessRequest("host", 11111, zeroRequest);
         UNIT_ASSERT_VALUES_EQUAL_C(

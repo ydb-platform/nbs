@@ -46,10 +46,11 @@ struct IAsyncLogger
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread-safe. Public method Kick() can be called from any thread.
 struct TLogThrottler
 {
     ui64 LastWrite = 0;
-    ui64 Period = 0;
+    const ui64 Period = 0;
 
     TLogThrottler(TDuration period)
         : Period(DurationToCyclesSafe(period))

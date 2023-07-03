@@ -12,6 +12,7 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread-safe. Public methods can be called from any thread.
 class TProtoMessageSerializer
 {
     struct IProtoFactory
@@ -38,11 +39,11 @@ private:
 public:
     static size_t MessageByteSize(const TProtoMessage& proto, size_t dataLen);
 
-    size_t Serialize(
+    static size_t Serialize(
         TStringBuf buffer,
         ui32 msgId,
         const TProtoMessage& proto,
-        TContIOVector data) const;
+        TContIOVector data);
 
     struct TParseResult
     {

@@ -50,11 +50,12 @@ size_t TProtoMessageSerializer::MessageByteSize(
     return NRdma::MessageByteSize(protoLen, dataLen);
 }
 
+// static
 size_t TProtoMessageSerializer::Serialize(
     TStringBuf buffer,
     ui32 msgId,
     const TProtoMessage& proto,
-    TContIOVector data) const
+    TContIOVector data)
 {
     size_t protoLen = proto.ByteSizeLong();
     Y_ENSURE(protoLen < RDMA_MAX_PROTO_LEN, "protobuf message is too big");
