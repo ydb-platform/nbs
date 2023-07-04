@@ -2,8 +2,10 @@
 
 #include "public.h"
 
+#include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/generic/utility.h>
+#include <util/system/error.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -26,6 +28,13 @@ template <typename T, typename A>
 bool OwnedBy(uintptr_t addr, const TVector<T, A>& vec)
 {
     return OwnedBy(reinterpret_cast<T*>(addr), vec);
+}
+
+inline TString SafeLastSystemErrorText() {
+    int err = LastSystemError();
+    char buf[64];
+    strerror_r(err, buf, sizeof(buf));
+    return TString(buf);
 }
 
 }   // namespace NCloud::NBlockStore::NRdma
