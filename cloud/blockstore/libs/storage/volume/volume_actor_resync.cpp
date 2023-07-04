@@ -70,6 +70,7 @@ void TVolumeActor::ExecuteUpdateResyncState(
     State->UpdateResyncIndexInMeta(args.ResyncIndex);
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(State->GetMeta());
+    // MetaHistory update not needed here
 }
 
 void TVolumeActor::CompleteUpdateResyncState(
@@ -156,6 +157,7 @@ void TVolumeActor::ExecuteToggleResync(
     State->SetResyncNeededInMeta(args.ResyncEnabled);
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(State->GetMeta());
+    // MetaHistory update not needed here
 }
 
 void TVolumeActor::CompleteToggleResync(

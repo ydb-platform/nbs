@@ -489,9 +489,13 @@ void TVolumeActor::ExecuteUpdateDevices(
     // NBS-1988
     newMeta.SetMigrationIndex(0);
 
+    TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
+
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(newMeta);
+    db.WriteMetaHistory(State->GetMetaHistory().size(), metaHistoryItem);
     State->ResetMeta(std::move(newMeta));
+    State->AddMetaHistory(std::move(metaHistoryItem));
 }
 
 void TVolumeActor::CompleteUpdateDevices(

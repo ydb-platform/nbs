@@ -906,6 +906,50 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 metas[1].Meta.GetDevices(0).GetBlocksCount());
         });
     }
+
+    Y_UNIT_TEST(ShouldDeleteExtremelyOldMetaHistory)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            db.InitSchema();
+        });
+
+        TVector<TVolumeMetaHistoryItem> metas;
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            UNIT_ASSERT(db.ReadMetaHistory(metas));
+            UNIT_ASSERT_VALUES_EQUAL(0, metas.size());
+        });
+
+        const ui32 lastVersion = 2000;
+
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            NProto::TVolumeMeta meta;
+            auto* device = meta.MutableDevices()->Add();
+            device->SetBlocksCount(1024);
+            for (ui32 i = 0; i < lastVersion; ++i) {
+                device->SetDeviceUUID(Sprintf("uuid%u", i));
+                db.WriteMetaHistory(i, {TInstant::Seconds(i), meta});
+            }
+        });
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            UNIT_ASSERT(db.ReadMetaHistory(metas));
+
+            UNIT_ASSERT_VALUES_EQUAL(1000, metas.size());
+            for (ui32 i = 0; i < metas.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Sprintf("uuid%u", lastVersion - 1000 + i),
+                    metas[i].Meta.GetDevices(0).GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TInstant::Seconds(lastVersion - 1000 + i),
+                    metas[i].Timestamp);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1024,
+                    metas[i].Meta.GetDevices(0).GetBlocksCount());
+            }
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

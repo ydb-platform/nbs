@@ -70,6 +70,7 @@ void TVolumeActor::ExecuteUpdateMigrationState(
     State->UpdateMigrationIndexInMeta(args.MigrationIndex);
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(State->GetMeta());
+    // MetaHistory update not needed here
 }
 
 void TVolumeActor::CompleteUpdateMigrationState(
