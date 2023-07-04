@@ -215,6 +215,9 @@ TDuration MSeconds(ui32 value)
     xxx(HDDMaxBlobsPerRange,                ui32,      70                     )\
     xxx(HDDV2MaxBlobsPerRange,              ui32,      20                     )\
                                                                                \
+    xxx(SSDMaxBlobsPerUnit,                 ui32,      0                      )\
+    xxx(HDDMaxBlobsPerUnit,                 ui32,      0                      )\
+                                                                               \
     xxx(AllocationUnitNonReplicatedSSD,     ui32,      93                     )\
     xxx(NonReplicatedSSDUnitReadBandwidth,  ui32,      110                    )\
     xxx(NonReplicatedSSDUnitWriteBandwidth, ui32,      82                     )\

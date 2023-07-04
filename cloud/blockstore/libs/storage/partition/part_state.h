@@ -326,7 +326,9 @@ public:
         ui32 reassignChannelsPercentageThreshold,
         ui32 lastCommitId,
         ui32 channelCount,
-        ui32 mixedIndexCacheSize);
+        ui32 mixedIndexCacheSize,
+        ui64 allocationUnit,
+        ui32 maxBlobsPerUnit);
 
 private:
     bool LoadStateFinished = false;
@@ -788,6 +790,7 @@ private:
     TDuration LastCompactionExecTime;
     TInstant LastCompactionFinishTs;
     TDuration CompactionDelay;
+    ui32 MaxBlobsPerDisk;
 
 public:
     TOperationState& GetCompactionState()
@@ -855,6 +858,11 @@ public:
     TCompressedBitmap& GetLogicalUsedBlocks()
     {
         return LogicalUsedBlocks;
+    }
+
+    ui32 GetMaxBlobsPerDisk() const
+    {
+        return MaxBlobsPerDisk;
     }
 
     void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);

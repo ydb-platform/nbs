@@ -3,6 +3,8 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
+#include <util/generic/algorithm.h>
+#include <util/generic/utility.h>
 #include <util/generic/ymath.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -117,7 +119,9 @@ TPartitionState::TPartitionState(
         ui32 reassignChannelsPercentageThreshold,
         ui32 lastCommitId,
         ui32 channelCount,
-        ui32 mixedIndexCacheSize)
+        ui32 mixedIndexCacheSize,
+        ui64 allocationUnit,
+        ui32 maxBlobsPerUnit)
     : Meta(std::move(meta))
     , Generation(generation)
     , CompactionPolicy(compactionPolicy)
@@ -133,6 +137,8 @@ TPartitionState::TPartitionState(
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
     , LogicalUsedBlocks(Config.GetBlocksCount())
+    , MaxBlobsPerDisk(Max(Config.GetBlocksCount() * Config.GetBlockSize()
+        / allocationUnit, 1ul) * maxBlobsPerUnit)
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , Stats(*Meta.MutableStats())
 {

@@ -186,6 +186,11 @@ void TPartitionActor::CompleteLoadState(
         return 0u;
     }();
 
+    const auto mediaKind = partitionConfig.GetStorageMediaKind();
+    auto maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
+        Config->GetSSDMaxBlobsPerUnit() :
+        Config->GetHDDMaxBlobsPerUnit();
+
     State = std::make_unique<TPartitionState>(
         *args.Meta,
         Executor()->Generation(),
@@ -198,7 +203,9 @@ void TPartitionActor::CompleteLoadState(
         Config->GetReassignChannelsPercentageThreshold(),
         0,  // lastCommitId
         Min(tabletChannelCount, configChannelCount),  // channelCount
-        mixedIndexCacheSize);
+        mixedIndexCacheSize,
+        GetAllocationUnit(*Config, mediaKind),
+        maxBlobsPerUnit);
 
     MapBaseDiskIdToTabletId(ctx);
 

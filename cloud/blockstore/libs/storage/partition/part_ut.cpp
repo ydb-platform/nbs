@@ -9533,6 +9533,57 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             statsChecker.CheckStats(stats, 9, 9, 19, 19);
         }
     }
+
+    Y_UNIT_TEST(ShouldRunCompactionIfBlobCountIsGreaterThanThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetV1GarbageCompactionEnabled(true);
+        config.SetCompactionGarbageThreshold(999999999);
+        config.SetCompactionRangeGarbageThreshold(999999999);
+        config.SetSSDMaxBlobsPerUnit(7);
+        config.SetHDDMaxBlobsPerUnit(7);
+
+        ui32 blocksCount =  1024 * 1024;
+
+        auto runtime = PrepareTestActorRuntime(config, blocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool compactionRequestObserved = false;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        compactionRequestObserved = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        for (size_t i = 0; i < 6; ++i) {
+            partition.WriteBlocks(TBlockRange32(i * 1024, (i + 1) * 1024 - 1), i);
+        }
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // blob count is less than 4 * 2 => no compaction
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        for (size_t i = 6; i < 10; ++i) {
+            partition.WriteBlocks(TBlockRange32(i * 1024, (i + 1) * 1024 - 1), i);
+        }
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // blob count is greater than threshold on disk => compaction
+        UNIT_ASSERT(compactionRequestObserved);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

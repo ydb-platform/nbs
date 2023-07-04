@@ -210,18 +210,23 @@ ICompactionPolicyPtr BuildCompactionPolicy(
     const TStorageConfig& storageConfig,
     const ui32 siblingCount)
 {
-    NProto::ECompactionType ct;
+    NProto::ECompactionType ct = NProto::ECompactionType::CT_DEFAULT;
     switch (partitionConfig.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
-            ct = storageConfig.GetSSDCompactionType();
+            if (!storageConfig.GetSSDMaxBlobsPerUnit()) {
+                ct = storageConfig.GetSSDCompactionType();
+            }
             break;
         }
 
         default: {
-            ct = storageConfig.GetHDDCompactionType();
+            if (!storageConfig.GetHDDMaxBlobsPerUnit()) {
+                ct = storageConfig.GetHDDCompactionType();
+            }
             break;
         }
     }
+
     switch (ct) {
         case NProto::ECompactionType::CT_DEFAULT: {
             return BuildDefaultCompactionPolicy(

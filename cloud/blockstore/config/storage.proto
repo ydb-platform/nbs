@@ -827,4 +827,8 @@ message TStorageServiceConfig
 
     // Assign unique identifiers to all zero and write requests in TVolumeActor.
     optional bool AssignIdToWriteAndZeroRequestsEnabled = 310;
+
+    // MaxBlobsPerDisk will be proportional to the disk size.
+    optional uint32 SSDMaxBlobsPerUnit = 314;
+    optional uint32 HDDMaxBlobsPerUnit = 315;
 }

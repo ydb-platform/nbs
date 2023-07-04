@@ -982,7 +982,11 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     const bool diskGarbageBelowThreshold =
         diskGarbage < Config->GetCompactionGarbageThreshold();
 
-    if (topRange.Stat.Score <= 0) {
+    const bool diskBlobCountOverThreshold = State->GetMaxBlobsPerDisk() &&
+        (State->GetMixedBlobsCount() + State->GetMergedBlobsCount()) >
+        State->GetMaxBlobsPerDisk();
+
+    if (topRange.Stat.Score <= 0  && !diskBlobCountOverThreshold) {
         if (!Config->GetV1GarbageCompactionEnabled()) {
             // nothing to compact
             return;

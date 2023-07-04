@@ -119,7 +119,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 0,  // reassignChannelsPercentageThreshold
                 0,  // lastCommitId
                 channelCount + 4,  // channelCount
-                0   // mixedIndexCacheSize
+                0,  // mixedIndexCacheSize
+                10000,  // allocationUnit
+                1000  // maxBlobsPerUnit
             );
 
             UNIT_ASSERT(state.IsCompactionAllowed());
@@ -225,7 +227,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             6,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         UNIT_ASSERT(
@@ -280,7 +284,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10, // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             100,// channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         UNIT_ASSERT(
@@ -357,7 +363,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 0,  // reassignChannelsPercentageThreshold
                 0,  // lastCommitId
                 channelCount + 4,  // channelCount
-                0   // mixedIndexCacheSize
+                0,  // mixedIndexCacheSize
+                10000,  // allocationUnit
+                1000  // maxBlobsPerUnit
             );
 
             const double baseScore = 1;
@@ -426,7 +434,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 0,  // reassignChannelsPercentageThreshold
                 0,  // lastCommitId
                 MaxChannelsCount + 4,  // channelCount
-                0   // mixedIndexCacheSize
+                0,  // mixedIndexCacheSize
+                10000,  // allocationUnit
+                1000  // maxBlobsPerUnit
             );
             auto blobId = state.GenerateBlobId(
                 kind,
@@ -468,7 +478,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             config.ExplicitChannelProfilesSize(),
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         const auto perm = EChannelPermission::UserWritesAllowed;
@@ -517,7 +529,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 0,  // reassignChannelsPercentageThreshold
                 0,  // lastCommitId
                 6,  // channelCount
-                0   // mixedIndexCacheSize
+                0,  // mixedIndexCacheSize
+                10000,  // allocationUnit
+                1000  // maxBlobsPerUnit
             );
 
             {
@@ -654,7 +668,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             config.ExplicitChannelProfilesSize(),
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         {
@@ -710,7 +726,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -772,7 +790,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
@@ -795,11 +815,15 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             Max(),  // lastCommitId
             5,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
     }
+
+
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)
     {
@@ -820,7 +844,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
@@ -882,7 +908,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         state.AddFreshBlob({1, 10});
@@ -922,7 +950,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             1,  // channelCount
-            0   // mixedIndexCacheSize
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -958,7 +988,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,  // reassignChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
-            1   // mixedIndexCacheSize
+            1,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            1000  // maxBlobsPerUnit
         );
 
         TTestExecutor executor;
@@ -1062,6 +1094,40 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             TVector<TMixedBlock>({blocks[0], blocks[3], blocks[4]}),
             actual
         );
+    }
+
+    void CheckMaxBlobsPerDisk(
+        ui64 diskSize,
+        ui64 allocationUnit,
+        ui32 maxBlobsPerUnit,
+        ui32 maxBlobsPerDisk)
+    {
+        auto config = DefaultConfig(1, diskSize / DefaultBlockSize);
+
+        TPartitionState state(
+            config,
+            0,  // generation
+            BuildDefaultCompactionPolicy(5),
+            0,  // compactionScoreHistorySize
+            0,  // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            Max(),  // maxIORequestsInFlight
+            0,  // reassignChannelsPercentageThreshold
+            0,  // lastCommitId
+            5,  // channelCount
+            1,  // mixedIndexCacheSize
+            allocationUnit,  // allocationUnit
+            maxBlobsPerUnit  // maxBlobsPerUnit
+        );
+        UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
+    }
+
+    Y_UNIT_TEST(CheckMaxBlobsPerDisk)
+    {
+        CheckMaxBlobsPerDisk(320_GB, 32_GB, 100, 1000);
+        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 100);
     }
 }
 

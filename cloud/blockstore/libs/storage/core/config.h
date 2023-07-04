@@ -130,6 +130,8 @@ public:
     ui32 GetRealHDDUnitWriteIops() const;
     ui32 GetHDDMaxBlobsPerRange() const;
     ui32 GetHDDV2MaxBlobsPerRange() const;
+    ui32 GetSSDMaxBlobsPerUnit() const;
+    ui32 GetHDDMaxBlobsPerUnit() const;
 
     ui32 GetAllocationUnitNonReplicatedSSD() const;
     ui32 GetNonReplicatedSSDUnitReadBandwidth() const;
