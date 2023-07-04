@@ -35,6 +35,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/throttling
+    cloud/storage/core/libs/user_stats/counter
     library/cpp/lwtrace/mon
     library/cpp/digest/crc32c
     library/cpp/eventlog

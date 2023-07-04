@@ -6,20 +6,12 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(counter)
 
-add_library(core-libs-user_stats)
-target_link_libraries(core-libs-user_stats PUBLIC
+add_library(libs-user_stats-counter)
+target_link_libraries(libs-user_stats-counter PUBLIC
   contrib-libs-cxxsupp
   yutil
-  libs-user_stats-counter
-  libs-storage-protos
-  private-api-protos
-  cpp-actors-core
-  ydb-core-base
-  ydb-core-mon
 )
-target_sources(core-libs-user_stats PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/user_stats/user_stats.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/user_stats/user_stats_actor.cpp
+target_sources(libs-user_stats-counter PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/user_stats/counter/user_counter.cpp
 )

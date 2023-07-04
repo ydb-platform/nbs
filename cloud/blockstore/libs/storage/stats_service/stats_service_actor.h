@@ -71,7 +71,7 @@ private:
 
     bool StatsUploadScheduled = false;
 
-    std::shared_ptr<NUserCounter::TUserCounterSupplier> UserCounters;
+    std::shared_ptr<NCloud::NStorage::NUserStats::TUserCounterSupplier> UserCounters;
 
 public:
     TStatsServiceActor(

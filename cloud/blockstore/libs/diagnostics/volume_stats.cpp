@@ -24,6 +24,7 @@
 namespace NCloud::NBlockStore {
 
 using namespace NMonitoring;
+using namespace NCloud::NStorage::NUserStats;
 
 namespace {
 

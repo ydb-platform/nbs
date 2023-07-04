@@ -9,6 +9,7 @@
 namespace NCloud::NBlockStore::NUserCounter {
 
 using namespace NMonitoring;
+using namespace NCloud::NStorage::NUserStats;
 
 namespace {
 
@@ -162,17 +163,14 @@ void AddUserMetric(
     TUserCounterSupplier& dsc,
     const TLabels& commonLabels,
     const TVector<TBaseDynamicCounters>& baseCounters,
-    TStringBuf newName
-)
+    TStringBuf newName)
 {
     std::shared_ptr<TUserSumCounterWrapper> wrapper =
         std::make_shared<TUserSumCounterWrapper>();
 
     for (auto& counter: baseCounters) {
         if (counter.first) {
-            if (auto countSub =
-                counter.first->FindCounter(counter.second))
-            {
+            if (auto countSub = counter.first->FindCounter(counter.second)) {
                 wrapper->Counters.push_back(countSub);
                 wrapper->Type = countSub->ForDerivative()
                     ? EMetricType::RATE
@@ -244,87 +242,6 @@ TLabels MakeVolumeInstanceLabels(
 }
 
 } // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-TUserCounter::TUserCounter(std::shared_ptr<IUserCounter> counter)
-    : Counter(std::move(counter))
-{}
-
-void TUserCounter::Accept(
-    const TLabels& baseLabels,
-    TInstant time,
-    IMetricConsumer* consumer) const
-{
-    if (!Counter || !consumer) {
-        return;
-    }
-
-    Counter->GetType(consumer);
-
-    consumer->OnLabelsBegin();
-
-    for (const auto& label: baseLabels) {
-        consumer->OnLabel(label.Name(), label.Value());
-    }
-
-    consumer->OnLabelsEnd();
-
-    Counter->GetValue(time, consumer);
-
-    consumer->OnMetricEnd();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void TUserCounterSupplier::Accept(
-    TInstant time,
-    IMetricConsumer* consumer) const
-{
-    if (!consumer) {
-        return;
-    }
-
-    consumer->OnStreamBegin();
-    {
-        TReadGuard g{Lock};
-        for (const auto& it: Metrics) {
-            it.second.Accept(it.first, time, consumer);
-        }
-    }
-    consumer->OnStreamEnd();
-}
-
-void TUserCounterSupplier::Append(
-    TInstant time,
-    IMetricConsumer* consumer) const
-{
-    TReadGuard g{Lock};
-    for (const auto& it: Metrics) {
-        it.second.Accept(it.first, time, consumer);
-    }
-}
-
-void TUserCounterSupplier::AddUserMetric(
-    TLabels labels,
-    TStringBuf name,
-    TUserCounter metric)
-{
-    labels.Add("name", name);
-
-    TWriteGuard g{Lock};
-    Metrics.emplace(std::move(labels), std::move(metric));
-}
-
-void TUserCounterSupplier::RemoveUserMetric(
-    TLabels labels,
-    TStringBuf name)
-{
-    labels.Add("name", name);
-
-    TWriteGuard g{Lock};
-    Metrics.erase(labels);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 

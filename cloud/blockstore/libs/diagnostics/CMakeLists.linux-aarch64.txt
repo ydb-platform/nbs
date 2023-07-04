@@ -21,6 +21,7 @@ target_link_libraries(blockstore-libs-diagnostics PUBLIC
   core-libs-common
   core-libs-diagnostics
   core-libs-throttling
+  libs-user_stats-counter
   cpp-lwtrace-mon
   cpp-digest-crc32c
   library-cpp-eventlog
