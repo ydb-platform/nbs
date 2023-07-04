@@ -799,6 +799,57 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             1,
             TDuration::Seconds(15));
     }
+
+    Y_UNIT_TEST(ShouldSetCountersForPreemptedVolumes)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+
+        testEnv.DispatchEvents();
+
+        auto root = testEnv.GetRuntime().GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "service");
+
+        auto manuallyPreempted = root->GetCounter("ManuallyPreempted", false);
+        auto balancerPreempted = root->GetCounter("BalancerPreempted", false);
+        auto initiallyPreempted = root->GetCounter("InitiallyPreempted", false);
+
+        auto diskId = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", true, NProto::EPreemptionSource::SOURCE_MANUAL},
+                {"vol2", true, NProto::EPreemptionSource::SOURCE_MANUAL},
+                {"vol3", true, NProto::EPreemptionSource::SOURCE_BALANCER},
+                {"vol4", true, NProto::EPreemptionSource::SOURCE_BALANCER},
+                {"vol5", true, NProto::EPreemptionSource::SOURCE_BALANCER},
+                {"vol6", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
+                {"vol7", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
+                {"vol8", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
+                {"vol9", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
+            },
+            {
+                {"vol0", 10},
+                {"vol1", 1}
+            },
+            .9,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, manuallyPreempted->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, balancerPreempted->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, initiallyPreempted->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

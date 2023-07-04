@@ -178,6 +178,10 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
     PushCount = serviceCounters->GetCounter("PushCount", true);
     PullCount = serviceCounters->GetCounter("PullCount", true);
 
+    ManuallyPreempted = serviceCounters->GetCounter("ManuallyPreempted", false);
+    BalancerPreempted = serviceCounters->GetCounter("BalancerPreempted", false);
+    InitiallyPreempted = serviceCounters->GetCounter("InitiallyPreempted", false);
+
     CpuWait = serverCounters->GetCounter("CpuWait", false);
 
     ctx.Schedule(Timeout, new TEvents::TEvWakeup);
@@ -251,14 +255,37 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
                 "Cpu wait is " << cpuLack);
         }
 
+        ui64 numManuallyPreempted = 0;
+        ui64 numBalancerPreempted = 0;
+        ui64 numInitiallyPreempted = 0;
         for (const auto& v: msg->VolumeStats) {
-            LOG_DEBUG_S(
+            LOG_INFO_S(
                 ctx,
                 TBlockStoreComponents::VOLUME_BALANCER,
                 TStringBuilder() << "Disk:" << v.GetDiskId()
                 << " Local:" << v.GetIsLocal()
                 << " Preemption: " << static_cast<ui32>(v.GetPreemptionSource()));
+            switch (v.GetPreemptionSource()) {
+                case NProto::EPreemptionSource::SOURCE_MANUAL: {
+                    ++numManuallyPreempted;
+                    break;
+                }
+                case NProto::EPreemptionSource::SOURCE_BALANCER: {
+                    ++numBalancerPreempted;
+                    break;
+                }
+                case NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT: {
+                    ++numInitiallyPreempted;
+                    break;
+                }
+                default: {
+                }
+            }
         }
+
+        *ManuallyPreempted = numManuallyPreempted;
+        *BalancerPreempted = numBalancerPreempted;
+        *InitiallyPreempted = numInitiallyPreempted;
 
         auto status = VolumeStats->GatherVolumePerfStatuses();
         THashMap<TString, ui32> statusMap(status.begin(), status.end());

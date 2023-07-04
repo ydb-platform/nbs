@@ -33,6 +33,10 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr PushCount;
     NMonitoring::TDynamicCounters::TCounterPtr PullCount;
 
+    NMonitoring::TDynamicCounters::TCounterPtr ManuallyPreempted;
+    NMonitoring::TDynamicCounters::TCounterPtr BalancerPreempted;
+    NMonitoring::TDynamicCounters::TCounterPtr InitiallyPreempted;
+
     NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
 
     std::unique_ptr<TVolumeBalancerState> State;
