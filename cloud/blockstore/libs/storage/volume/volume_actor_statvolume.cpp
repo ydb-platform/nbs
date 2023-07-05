@@ -9,6 +9,8 @@
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 
+#include <util/system/hostname.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -264,6 +266,8 @@ void TVolumeActor::HandleStatVolume(
     SortBy(clients->begin(), clients->end(), [] (const auto& x) {
         return x.GetClientId();
     });
+
+    record.SetTabletHost(FQDNHostName());
 
     if (const auto& partConfig = State->GetNonreplicatedPartitionConfig()) {
         stats->SetMaxTimedOutDeviceStateDuration(

@@ -1,5 +1,7 @@
 #include "testlib/test_env.h"
 
+#include <util/system/hostname.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -9262,7 +9264,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(partitionsStopped);
     }
 
-    Y_UNIT_TEST(ShouldReturnClientsInStatVolumeResponse)
+    Y_UNIT_TEST(ShouldReturnClientsAndHostnameInStatVolumeResponse)
     {
         auto runtime = PrepareTestActorRuntime();
 
@@ -9298,6 +9300,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL("c2", clients[1].GetClientId());
             UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
             UNIT_ASSERT_VALUES_EQUAL(0, clients[1].GetDisconnectTimestamp());
+            UNIT_ASSERT_VALUES_EQUAL(FQDNHostName(), stat->Record.GetTabletHost());
         }
 
         auto now = runtime->GetCurrentTime();
@@ -9325,6 +9328,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     << "DisconnectTimestamp should be greater than reboot ts "
                     << clients[1].GetDisconnectTimestamp()
                     << ", " << now.MicroSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(FQDNHostName(), stat->Record.GetTabletHost());
         }
     }
 

@@ -648,6 +648,9 @@ message TStatVolumeResponse
 
     // List of volume clients.
     repeated TVolumeClient Clients = 7;
+
+    // The host where volume tablet is currently running.
+    string TabletHost = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
