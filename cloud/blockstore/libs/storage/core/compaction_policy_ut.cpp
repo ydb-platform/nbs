@@ -17,16 +17,16 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
     Y_UNIT_TEST(TestDefaultPolicy)
     {
         auto policy = BuildDefaultCompactionPolicy(1);
-        UNIT_ASSERT_DOUBLES_EQUAL(-1, policy->CalculateScore({}), 1e-4);
-        UNIT_ASSERT(policy->CalculateScore({}) > -1);
+        UNIT_ASSERT_DOUBLES_EQUAL(-1, policy->CalculateScore({}).Score, 1e-4);
+        UNIT_ASSERT(policy->CalculateScore({}).Score > -1);
         UNIT_ASSERT_DOUBLES_EQUAL(
             3,
-            policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0}),
+            policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0}).Score,
             1e-4
         );
         UNIT_ASSERT_DOUBLES_EQUAL(
             3,
-            policy->CalculateScore({4, 1, 1, 2, 3, 4, false, 5}),
+            policy->CalculateScore({4, 1, 1, 2, 3, 4, false, 5}).Score,
             1e-4
         );
     }
@@ -43,20 +43,22 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
             70
         });
 
-        UNIT_ASSERT_VALUES_EQUAL(0, policy->CalculateScore({}));
+        UNIT_ASSERT_VALUES_EQUAL(0, policy->CalculateScore({}).Score);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0})
+            policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0}).Score
         );
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            policy->CalculateScore({70, 0, 0, 0, 0, 0, false, 0})
+            policy->CalculateScore({70, 0, 0, 0, 0, 0, false, 0}).Score
         );
-        UNIT_ASSERT_VALUES_EQUAL(
-            71,
-            policy->CalculateScore({71, 0, 0, 0, 0, 0, false, 0})
-        );
+
+        auto compactionScore = policy->CalculateScore(
+            {71, 0, 0, 0, 0, 0, false, 0});
+        UNIT_ASSERT_VALUES_EQUAL(71, compactionScore.Score);
+        UNIT_ASSERT_EQUAL(compactionScore.Type,
+            TCompactionScore::EType::BlobCount);
 
         /*
          *  15_MB / 4_KB = 3840
@@ -75,20 +77,20 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
          *  loadScore = 3 - 2.075 - 0.58433 = 0.34066
          *
          */
-        UNIT_ASSERT_DOUBLES_EQUAL(
-            0.36566,
-            policy->CalculateScore({20, 2048, 1024, 30, 400, 7500, false, 0}),
-            1e-5
-        );
+
+        compactionScore = policy->CalculateScore(
+            {20, 2048, 1024, 30, 400, 7500, false, 0});
+        UNIT_ASSERT_DOUBLES_EQUAL(0.36566, compactionScore.Score, 1e-5);
+        UNIT_ASSERT_EQUAL(compactionScore.Type, TCompactionScore::EType::Read);
 
         /*
          * UsedBlockCount = 512
          */
-        UNIT_ASSERT_DOUBLES_EQUAL(
-            0.64483,
-            policy->CalculateScore({20, 2048, 512, 30, 400, 7500, false, 0}),
-            1e-5
-        );
+
+        compactionScore = policy->CalculateScore(
+            {20, 2048, 512, 30, 400, 7500, false, 0});
+        UNIT_ASSERT_DOUBLES_EQUAL(0.64483, compactionScore.Score, 1e-5);
+        UNIT_ASSERT_EQUAL(compactionScore.Type, TCompactionScore::EType::Read);
     }
 
     Y_UNIT_TEST(TestBuildLoadOptimizationPolicyConfig)

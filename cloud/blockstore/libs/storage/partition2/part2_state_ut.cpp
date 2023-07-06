@@ -106,7 +106,7 @@ TIndexCachingConfig DefaultIndexCachingConfig()
 struct TNoBackpressurePolicy
     : ICompactionPolicy
 {
-    float CalculateScore(const TRangeStat& stat) const override
+    TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
         return stat.BlobCount;
     }

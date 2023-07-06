@@ -952,7 +952,7 @@ void DumpCompactionMap(
                         TABLED() { out << item.Stat.ReadRequestCount; }
                         TABLED() { out << item.Stat.ReadRequestBlobCount; }
                         TABLED() { out << item.Stat.ReadRequestBlockCount; }
-                        TABLED() { out << item.Stat.Score; }
+                        TABLED() { out << item.Stat.CompactionScore.Score; }
                         TABLED() { out << item.Stat.Compacted; }
                         TABLED() {
                             BuildForceCompactionButton(

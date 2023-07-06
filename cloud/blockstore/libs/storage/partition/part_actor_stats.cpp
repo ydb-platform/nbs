@@ -104,7 +104,8 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     PartCounters->Simple.AlmostFullChannelCount.Set(
         State->GetAlmostFullChannelCount());
 
-    PartCounters->Simple.CleanupQueueBytes.Set(State->GetCleanupQueue().GetQueueBytes());
+    PartCounters->Simple.CleanupQueueBytes.Set(
+        State->GetCleanupQueue().GetQueueBytes());
     PartCounters->Simple.GarbageQueueBytes.Set(
         State->GetGarbageQueue().GetGarbageQueueBytes());
 

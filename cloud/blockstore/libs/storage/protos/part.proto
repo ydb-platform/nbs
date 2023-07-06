@@ -114,6 +114,9 @@ message TPartitionStats
     TIOCounters RealSysReadCounters = 15;
     TIOCounters RealSysWriteCounters = 16;
 
+    // Compaction reading and blobs count triggers counters
+    uint64 CompactionByReadStats = 17;
+    uint64 CompactionByBlobCount = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

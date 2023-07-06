@@ -641,7 +641,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     double cleanupScore = State->GetPendingUpdates()
         / double(Config->GetUpdateBlobsThreshold());
-    double rangeScore = top.Stat.Compacted ? 0 : top.Stat.Score;
+    double rangeScore = top.Stat.Compacted ? 0 : top.Stat.CompactionScore.Score;
     double garbageScore = garbageScoreInt
         / double(Config->GetCompactionGarbageThreshold());
 
@@ -806,7 +806,7 @@ void TPartitionActor::HandleCompaction(
             rangeStat.ReadRequestCount,
             rangeStat.ReadRequestBlobCount,
             rangeStat.ReadRequestBlockCount,
-            rangeStat.Score,
+            rangeStat.CompactionScore.Score,
             msg->ForceFullCompaction
         );
 

@@ -82,7 +82,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(1)).ReadRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(1)).ReadRequestBlobCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(1)).ReadRequestBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(-1000, map.Get(GetGroupIndex(1)).Score);
+        UNIT_ASSERT_VALUES_EQUAL(-1000, map.Get(GetGroupIndex(1)).CompactionScore.Score);
         UNIT_ASSERT_VALUES_EQUAL(true, map.Get(GetGroupIndex(1)).Compacted);
     }
 

@@ -920,7 +920,7 @@ public:
 
     float GetCompactionScore() const
     {
-        return CompactionMap.GetTop().Stat.Score;
+        return CompactionMap.GetTop().Stat.CompactionScore.Score;
     }
 
     void InitCompactionMap(const TVector<TCompactionCounter>& compactionMap);

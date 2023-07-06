@@ -26,8 +26,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, UserWrite)                          \
     BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, SysRead)                            \
     BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, SysWrite)                           \
-    BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, RealSysRead)                            \
-    BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, RealSysWrite)                           \
+    BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, RealSysRead)                        \
+    BLOCKSTORE_PARTITION_IO_COUNTERS_(xxx, RealSysWrite)                       \
 // BLOCKSTORE_PARTITION_IO_COUNTERS
 
 #define BLOCKSTORE_PARTITION_SIMPLE_COUNTERS(xxx)                              \

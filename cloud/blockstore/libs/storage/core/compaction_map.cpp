@@ -145,9 +145,11 @@ struct TCompactionMap::TImpl
 
     void InitGroupScores(TGroupNode* group)
     {
-        group->Score = Policy->CalculateScore({});
+        auto score = Policy->CalculateScore({}).Score;
+        group->Score = score;
+
         for (ui32 i = 0; i < group->Stats.size(); ++i) {
-            group->Stats[i].Score = group->Score;
+            group->Stats[i].CompactionScore = group->Score;
         }
     }
 
@@ -155,7 +157,7 @@ struct TCompactionMap::TImpl
     {
         group->Score = -Max<float>();
         for (ui32 i = 0; i < group->Stats.size(); ++i) {
-            auto& stat = group->Stats[i];
+            auto& stat = group->Stats[i].CompactionScore;
             if (stat.Score > group->Score) {
                 group->Score = stat.Score;
                 group->Range = i;
@@ -212,11 +214,11 @@ struct TCompactionMap::TImpl
             const auto newScore = compacted
                 ? COMPACTED_RANGE_SCORE
                 : Policy->CalculateScore(group->Stats[index]);
-            group->Stats[index].Score = newScore;
+            group->Stats[index].CompactionScore = newScore;
 
-            if (prev.Score < newScore) {
-                if (group->Score < newScore) {
-                    group->Score = newScore;
+            if (prev.CompactionScore.Score < newScore.Score) {
+                if (group->Score < newScore.Score) {
+                    group->Score = newScore.Score;
                     group->Range = index;
                 }
             } else if (index == group->Range) {
@@ -260,11 +262,11 @@ struct TCompactionMap::TImpl
 
         if (!group->Stats[index].Compacted) {
             auto newScore = Policy->CalculateScore(group->Stats[index]);
-            group->Stats[index].Score = newScore;
+            group->Stats[index].CompactionScore = newScore;
 
-            if (prev.Score < newScore) {
-                if (group->Score < newScore) {
-                    group->Score = newScore;
+            if (prev.CompactionScore.Score < newScore.Score) {
+                if (group->Score < newScore.Score) {
+                    group->Score = newScore.Score;
                     group->Range = index;
                 }
             } else if (index == group->Range) {
@@ -473,7 +475,7 @@ TVector<TCompactionCounter> TCompactionMap::GetTop(size_t count) const
     }
 
     Sort(result, [] (const auto& l, const auto& r) {
-        return l.Stat.Score > r.Stat.Score;
+        return l.Stat.CompactionScore.Score > r.Stat.CompactionScore.Score;
     });
 
     result.crop(count);

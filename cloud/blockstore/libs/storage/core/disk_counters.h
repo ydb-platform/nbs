@@ -65,6 +65,8 @@ enum class EPublishingPolicy
     xxx(BatchCount,                 Generic, Permanent,            __VA_ARGS__)\
     xxx(UncompressedBytesWritten,   Generic, Permanent,            __VA_ARGS__)\
     xxx(CompressedBytesWritten,     Generic, Permanent,            __VA_ARGS__)\
+    xxx(CompactionByReadStats,      Generic, Permanent,            __VA_ARGS__)\
+    xxx(CompactionByBlobCount,      Generic, Permanent,            __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS
 
 #define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(xxx, ...)                        \

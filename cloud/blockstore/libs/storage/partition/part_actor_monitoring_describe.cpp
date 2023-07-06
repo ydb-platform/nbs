@@ -215,7 +215,7 @@ void TPartitionActor::CompleteDescribeRange(
                     }
                     TABLER() {
                         TABLED() { out << "Score"; }
-                        TABLED() { out << rangeStat.Score; }
+                        TABLED() { out << rangeStat.CompactionScore.Score; }
                     }
                 }
             }

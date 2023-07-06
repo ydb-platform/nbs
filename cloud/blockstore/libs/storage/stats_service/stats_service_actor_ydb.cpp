@@ -136,6 +136,10 @@ NYdbStats::TYdbRow BuildStatsForUpload(
         BLOCKSTORE_CUMULATIVE_COUNTER(UncompressedBytesWritten);
     out.CompressedWrite_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(CompressedBytesWritten);
+    out.CompactionByBlobCount_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByBlobCount);
+    out.CompactionByReadStats_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByReadStats);
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 

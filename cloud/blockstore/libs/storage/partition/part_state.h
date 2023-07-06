@@ -847,7 +847,7 @@ public:
 
     float GetCompactionScore() const
     {
-        return CompactionMap.GetTop().Stat.Score;
+        return CompactionMap.GetTop().Stat.CompactionScore.Score;
     }
 
     TCompressedBitmap& GetUsedBlocks()

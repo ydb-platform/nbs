@@ -6,6 +6,28 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCompactionScore
+{
+    enum class EType
+    {
+        BlobCount = 0,
+        Read = 1
+    };
+
+    float Score = 0;
+    EType Type = EType::BlobCount;
+
+    TCompactionScore() = default;
+
+    TCompactionScore(float score, EType type)
+        : Score(score)
+        , Type(type)
+    {
+    };
+
+    TCompactionScore(float score) : Score(score) {};
+};
+
 struct TRangeStat
 {
     ui16 BlobCount = 0;
@@ -15,7 +37,7 @@ struct TRangeStat
     ui16 ReadRequestBlobCount = 0;
     ui16 ReadRequestBlockCount = 0;
     bool Compacted = false;
-    float Score = 0;
+    TCompactionScore CompactionScore;
 
     TRangeStat() = default;
 
@@ -27,7 +49,9 @@ struct TRangeStat
             ui16 readRequestBlobCount,
             ui16 readRequestBlockCount,
             bool compacted,
-            float score)
+            float score,
+            TCompactionScore::EType scoreType =
+                TCompactionScore::EType::BlobCount)
         : BlobCount(blobCount)
         , BlockCount(blockCount)
         , UsedBlockCount(usedBlockCount)
@@ -35,7 +59,7 @@ struct TRangeStat
         , ReadRequestBlobCount(readRequestBlobCount)
         , ReadRequestBlockCount(readRequestBlockCount)
         , Compacted(compacted)
-        , Score(score)
+        , CompactionScore(score, scoreType)
     {
     }
 
@@ -56,7 +80,7 @@ struct ICompactionPolicy
 {
     virtual ~ICompactionPolicy() {}
 
-    virtual float CalculateScore(const TRangeStat& stat) const = 0;
+    virtual TCompactionScore CalculateScore(const TRangeStat& stat) const = 0;
     virtual bool BackpressureEnabled() const = 0;
 };
 

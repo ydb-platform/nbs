@@ -44,12 +44,12 @@ struct TDefaultPolicy
     {
     }
 
-    float CalculateScore(const TRangeStat& stat) const override
+    TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
         // eps needed because we want the 'score > 0' condition to be equivalent
         // to the legacy 'BlobCount >= CompactionThreshold' condition
-        const auto eps = 1e-5;
-        return double(stat.BlobCount) - CompactionThreshold + eps;
+        const float eps = 1e-5;
+        return float(stat.BlobCount) - CompactionThreshold + eps;
     }
 
     bool BackpressureEnabled() const override
@@ -75,7 +75,7 @@ struct TLoadOptimizationPolicy
     {
     }
 
-    float CalculateScore(const TRangeStat& stat) const override
+    TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
         if (!stat.BlobCount) {
             return 0;
@@ -125,8 +125,8 @@ struct TLoadOptimizationPolicy
                 1
             );
         }
-
-        return readCost - compactedReadCost - compactionCost;
+        return {readCost - compactedReadCost - compactionCost,
+            TCompactionScore::EType::Read};
     }
 
     bool BackpressureEnabled() const override

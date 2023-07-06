@@ -968,7 +968,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         scoreHistory.Register({
             now,
             {
-                topRange.Stat.Score,
+                topRange.Stat.CompactionScore.Score,
                 topByGarbageBlockCount.Stat.GarbageBlockCount(),
             },
         });
@@ -986,7 +986,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         (State->GetMixedBlobsCount() + State->GetMergedBlobsCount()) >
         State->GetMaxBlobsPerDisk();
 
-    if (topRange.Stat.Score <= 0  && !diskBlobCountOverThreshold) {
+    if (topRange.Stat.CompactionScore.Score <= 0  && !diskBlobCountOverThreshold) {
         if (!Config->GetV1GarbageCompactionEnabled()) {
             // nothing to compact
             return;
@@ -1029,11 +1029,22 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         }
 
         mode = TEvPartitionPrivate::GarbageCompaction;
-    } else if (topRange.Stat.Score >= Config->GetCompactionScoreLimitForThrottling()) {
+    } else if (topRange.Stat.CompactionScore.Score >= Config->GetCompactionScoreLimitForThrottling()) {
         throttlingAllowed = false;
     }
 
     State->GetCompactionState().SetStatus(EOperationStatus::Enqueued);
+
+    switch (topRange.Stat.CompactionScore.Type) {
+        case TCompactionScore::EType::BlobCount: {
+            PartCounters->Cumulative.CompactionByBlobCount.Increment(1);
+            break;
+        }
+        case TCompactionScore::EType::Read: {
+            PartCounters->Cumulative.CompactionByReadStats.Increment(1);
+            break;
+        }
+    }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()),
@@ -1189,7 +1200,7 @@ void TPartitionActor::HandleCompaction(
             x.Stat.ReadRequestCount,
             x.Stat.ReadRequestBlobCount,
             x.Stat.ReadRequestBlockCount,
-            x.Stat.Score);
+            x.Stat.CompactionScore.Score);
 
         ranges.emplace_back(rangeIdx, blockRange);
     }
