@@ -7,3 +7,4 @@
 
 
 add_subdirectory(registry)
+add_subdirectory(request)
