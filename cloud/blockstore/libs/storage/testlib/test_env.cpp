@@ -36,6 +36,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 
+#include <ydb/core/blobstorage/base/blobstorage_events.h>
 #include <ydb/core/client/minikql_compile/mkql_compile_service.h>
 #include <ydb/core/mind/bscontroller/bsc.h>
 #include <ydb/core/mind/hive/hive.h>
