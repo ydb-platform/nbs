@@ -97,7 +97,8 @@ TString THttpFindVolumeActor::HandleError(
     const TString& path)
 {
     TStringStream out;
-    out << "Could not resolve volume path " << path.Quote()
+    out << "Could not resolve path " << path.Quote()
+        << " for volume " << DiskId.Quote()
         << ": " << FormatError(error);
 
     LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, out.Str());

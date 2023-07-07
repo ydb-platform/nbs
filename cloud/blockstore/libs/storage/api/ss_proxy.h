@@ -184,6 +184,10 @@ struct TEvSSProxy
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}
+
+        TDescribeVolumeResponse(TString path)
+            : TDescribeVolumeResponse(std::move(path), {})
+        {}
     };
 
     //

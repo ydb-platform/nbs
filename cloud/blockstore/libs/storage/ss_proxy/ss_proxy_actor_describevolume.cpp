@@ -163,7 +163,9 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
 
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(error));
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                error,
+                GetFullPath()));
         return;
     }
 
@@ -178,7 +180,8 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
                     E_FAIL,
                     TStringBuilder() << "Described path is not a blockstore volume: "
                         << GetFullPath().Quote()
-                )
+                ),
+                GetFullPath()
             )
         );
         return;
@@ -216,7 +219,8 @@ void TDescribeVolumeActor::HandleWakeup(
             E_TIMEOUT,
             TStringBuilder() << "DescribeVolume timeout for volume: "
                 << GetFullPath().Quote()
-        )
+        ),
+        GetFullPath()
     );
 
     ReplyAndDie(ctx, std::move(response));
