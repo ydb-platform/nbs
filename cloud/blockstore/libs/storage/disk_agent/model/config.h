@@ -88,6 +88,8 @@ public:
 
     bool GetDeviceLockingEnabled() const;
 
+    bool GetDeviceHealthCheckEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

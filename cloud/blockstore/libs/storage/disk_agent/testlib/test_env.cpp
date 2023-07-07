@@ -341,7 +341,9 @@ TTestEnv TTestEnvBuilder::Build()
             NvmeManager = CreateNvmeManagerStub();
         }
 
-        StorageProvider = CreateTestStorageProvider(FileIOService, NvmeManager);
+        if (!StorageProvider) {
+            StorageProvider = CreateTestStorageProvider(FileIOService, NvmeManager);
+        }
     } else {
         Spdk->Start();
     }

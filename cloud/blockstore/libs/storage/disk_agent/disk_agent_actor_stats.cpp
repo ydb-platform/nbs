@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <util/random/fast.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -82,13 +84,17 @@ private:
     NProto::TAgentStats PrevStats = {};
     NProto::TAgentStats CurStats = {};
 
+    TVector<NProto::TDeviceConfig> Devices;
+    TFastRng32 Rng;
+
 public:
-    explicit TStatsActor(const TActorId& owner);
+    explicit TStatsActor(const TActorId& owner, const TVector<NProto::TDeviceConfig>& devices);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void ScheduleUpdateStats(const TActorContext& ctx);
+    void CheckDevicesHealth(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -108,12 +114,18 @@ private:
     void HandleUpdateAgentStatsResponse(
         const TEvDiskRegistry::TEvUpdateAgentStatsResponse::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleReadDeviceBlocksResponse(
+        const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStatsActor::TStatsActor(const TActorId& owner)
+TStatsActor::TStatsActor(const TActorId& owner, const TVector<NProto::TDeviceConfig>& devices)
     : Owner(owner)
+    , Devices(devices)
+    , Rng(12345, 0)
 {
     ActivityType = TBlockStoreActivities::DISK_AGENT_WORKER;
 }
@@ -138,6 +150,25 @@ void TStatsActor::ScheduleUpdateStats(const TActorContext& ctx)
     request.release();
 }
 
+void TStatsActor::CheckDevicesHealth(const TActorContext& ctx)
+{
+    for (const auto& device: Devices) {
+        auto request = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+        auto& rec = request->Record;
+        rec.MutableHeaders()->SetClientId(TString(BackgroundOpsClientId));
+        rec.SetDeviceUUID(device.GetDeviceUUID());
+        rec.SetStartIndex(Rng.Uniform(device.GetBlocksCount()));
+        rec.SetBlockSize(device.GetBlockSize());
+        rec.SetBlocksCount(1);
+
+        LOG_DEBUG_S(
+            ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+            "Checking device: " + rec.DebugString());
+
+        ctx.Send(Owner, request.release());
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TStatsActor::HandlePoisonPill(
@@ -157,6 +188,7 @@ void TStatsActor::HandleWakeup(
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Collect stats");
 
+    CheckDevicesHealth(ctx);
     NCloud::Send<TEvDiskAgentPrivate::TEvCollectStatsRequest>(ctx, Owner);
 }
 
@@ -204,6 +236,21 @@ void TStatsActor::HandleUpdateAgentStatsResponse(
     ScheduleUpdateStats(ctx);
 }
 
+void TStatsActor::HandleReadDeviceBlocksResponse(
+    const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+            "Broken device found: " << FormatError(msg->GetError()));
+    } else {
+        LOG_TRACE_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+            "Everything fine!");
+    }
+}
+
 STFUNC(TStatsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -215,6 +262,9 @@ STFUNC(TStatsActor::StateWork)
 
         HFunc(TEvDiskRegistry::TEvUpdateAgentStatsResponse,
             HandleUpdateAgentStatsResponse);
+
+        HFunc(TEvDiskAgent::TEvReadDeviceBlocksResponse,
+            HandleReadDeviceBlocksResponse);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
@@ -229,7 +279,10 @@ STFUNC(TStatsActor::StateWork)
 void TDiskAgentActor::ScheduleUpdateStats(const TActorContext& ctx)
 {
     if (!StatsActor) {
-        StatsActor = NCloud::Register<TStatsActor>(ctx, ctx.SelfID);
+        StatsActor = NCloud::Register<TStatsActor>(
+            ctx,
+            ctx.SelfID,
+            AgentConfig->GetDeviceHealthCheckEnabled() ? State->GetDevices() : TVector<NProto::TDeviceConfig>{});
     }
 }
 

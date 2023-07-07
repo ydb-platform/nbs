@@ -11,6 +11,7 @@
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/testing/gmock_in_unittest/gmock.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -3006,6 +3007,132 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         const auto& error = response->GetError();
 
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), error.GetMessage());
+    }
+
+    auto MakeReadResponse(EWellKnownResultCodes code)
+    {
+        NProto::TReadBlocksLocalResponse response;
+        *response.MutableError() = MakeError(code, "");
+        return response;
+    };
+
+    Y_UNIT_TEST(ShouldCheckDevicesHealthInBackground)
+    {
+        using ::testing::Return;
+        using ::testing::_;
+
+        struct TMockStorage: public IStorage
+        {
+            MOCK_METHOD(NThreading::TFuture<NProto::TZeroBlocksResponse>, ZeroBlocks, (TCallContextPtr, std::shared_ptr<NProto::TZeroBlocksRequest>), (override));
+            MOCK_METHOD(NThreading::TFuture<NProto::TReadBlocksLocalResponse>, ReadBlocksLocal, (TCallContextPtr, std::shared_ptr<NProto::TReadBlocksLocalRequest>), (override));
+            MOCK_METHOD(NThreading::TFuture<NProto::TWriteBlocksLocalResponse>, WriteBlocksLocal, (TCallContextPtr, std::shared_ptr<NProto::TWriteBlocksLocalRequest>), (override));
+            MOCK_METHOD(NThreading::TFuture<NProto::TError>, EraseDevice, (NProto::EDeviceEraseMethod), (override));
+            MOCK_METHOD(TStorageBuffer, AllocateBuffer, (size_t), (override));
+        };
+
+        struct TMockStorageProvider: public IStorageProvider
+        {
+            IStoragePtr Storage;
+
+            TMockStorageProvider()
+                : Storage(std::make_shared<TMockStorage>())
+            {
+                ON_CALL((*GetStorage()), ReadBlocksLocal(_, _))
+                    .WillByDefault(Return(MakeFuture(MakeReadResponse(S_OK))));
+            }
+
+            NThreading::TFuture<IStoragePtr> CreateStorage(
+                const NProto::TVolume&, const TString&, NProto::EVolumeAccessMode) override
+            {
+                return MakeFuture(Storage);
+            }
+
+            TMockStorage* GetStorage()
+            {
+                return static_cast<TMockStorage*>(Storage.get());
+            }
+        };
+
+        const auto workingDir = TryGetRamDrivePath();
+        TTestBasicRuntime runtime;
+        auto mockSp = new TMockStorageProvider();
+        std::shared_ptr<IStorageProvider> sp(mockSp);
+
+        auto env = TTestEnvBuilder(runtime)
+            .With([&] {
+                NProto::TDiskAgentConfig agentConfig;
+                agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+                agentConfig.SetAcquireRequired(true);
+                agentConfig.SetEnabled(true);
+                agentConfig.SetDeviceHealthCheckEnabled(true);
+                *agentConfig.AddFileDevices() = PrepareFileDevice(workingDir / "dev1", "dev1");
+                *agentConfig.AddFileDevices() = PrepareFileDevice(workingDir / "dev2", "dev2");
+                return agentConfig;
+            }())
+            .With(sp)
+            .Build();
+
+        UNIT_ASSERT(env.DiskRegistryState->Stats.empty());
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.AcquireDevices(
+            TVector<TString> {"dev1", "dev2"},
+            "client-1",
+            NProto::VOLUME_ACCESS_READ_WRITE
+        );
+
+        auto jumpInFuture = [&](ui32 secs) {
+            runtime.AdvanceCurrentTime(TDuration::Seconds(secs));
+            TDispatchOptions options;
+            options.FinalEvents = {TDispatchOptions::TFinalEventCondition(TEvDiskRegistry::EvUpdateAgentStatsRequest)};
+            runtime.DispatchEvents(options);
+        };
+
+        auto getStats = [&]() -> THashMap<TString, NProto::TDeviceStats> {
+            jumpInFuture(15);
+            UNIT_ASSERT_VALUES_EQUAL(1, env.DiskRegistryState->Stats.size());
+            THashMap<TString, NProto::TDeviceStats> stats;
+            auto& agentStats = env.DiskRegistryState->Stats.begin()->second;
+            for (const auto& deviceStats: agentStats.GetDeviceStats()) {
+                stats[deviceStats.GetDeviceUUID()] = deviceStats;
+            }
+            return stats;
+        };
+
+        auto read = [&] (const auto& uuid) {
+            return ReadDeviceBlocks(
+                runtime, diskAgent, uuid, 0, 1, "client-1"
+            )->GetStatus();
+        };
+
+        {
+            auto stats = getStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev1"].GetErrors());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev1"].GetErrors());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, read("dev1"));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, read("dev2"));
+
+        {
+            auto stats = getStats();
+            UNIT_ASSERT_GT(stats["dev1"].GetNumReadOps(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev1"].GetErrors());
+            UNIT_ASSERT_GT(stats["dev2"].GetNumReadOps(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev2"].GetErrors());
+        }
+
+        ON_CALL((*mockSp->GetStorage()), ReadBlocksLocal(_, _))
+            .WillByDefault(Return(MakeFuture(MakeReadResponse(E_IO))));
+        jumpInFuture(15);
+
+        {
+            auto stats = getStats();
+            UNIT_ASSERT_GT(stats["dev1"].GetErrors(), 0);
+            UNIT_ASSERT_GT(stats["dev2"].GetErrors(), 0);
+        }
     }
 }
 

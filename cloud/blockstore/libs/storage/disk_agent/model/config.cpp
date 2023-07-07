@@ -32,6 +32,7 @@ namespace {
     xxx(ReleaseInactiveSessionsTimeout,     TDuration,  TDuration::Seconds(10))\
     xxx(DirectIoFlagDisabled,               bool,       false                 )\
     xxx(DeviceLockingEnabled,               bool,       false                 )\
+    xxx(DeviceHealthCheckEnabled,           bool,       false                 )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
