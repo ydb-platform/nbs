@@ -1,6 +1,5 @@
 #include "part_nonrepl_actor.h"
 #include "part_nonrepl_common.h"
-#include "part_nonrepl_util.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -216,10 +215,10 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& uuid = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+    const auto& device = DeviceRequests[ev->Cookie].Device;
 
     LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks undelivered for " << uuid);
+        "WriteBlocks undelivered for " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -228,11 +227,11 @@ void TDiskAgentWriteActor::HandleTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& uuid = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+    const auto& device = DeviceRequests[ev->Cookie].Device;
 
     LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks request timed out. Disk id: " << PartConfig->GetName() <<
-        " Device id: " << uuid);
+        "WriteBlocks request timed out. Disk id: "
+        << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(
         ctx,

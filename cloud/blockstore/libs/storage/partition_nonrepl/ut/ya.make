@@ -15,11 +15,11 @@ SRCS(
     part_mirror_resync_ut.cpp
     part_mirror_state_ut.cpp
     part_mirror_ut.cpp
+    part_nonrepl_common_ut.cpp
     part_nonrepl_migration_state_ut.cpp
     part_nonrepl_migration_ut.cpp
     part_nonrepl_rdma_ut.cpp
     part_nonrepl_ut.cpp
-    part_nonrepl_util_ut.cpp
     resync_range_ut.cpp
 )
 

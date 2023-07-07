@@ -1,4 +1,4 @@
-#include "part_nonrepl_util.h"
+#include "part_nonrepl_common.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 

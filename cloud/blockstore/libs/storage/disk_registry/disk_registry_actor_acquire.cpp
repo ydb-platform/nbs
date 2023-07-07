@@ -102,6 +102,8 @@ private:
     void HandleWakeup(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
+
+    TString LogTargets() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,9 +209,10 @@ void TAcquireDiskActor::CancelAcquireOperation(
     AcquireError = std::move(error);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "[%s] Canceling acquire operation for disk %s",
+        "[%s] Canceling acquire operation for disk %s, targets %s",
         ClientId.c_str(),
-        DiskId.c_str());
+        DiskId.c_str(),
+        LogTargets().c_str());
 
     if (Devices.empty()) {
         ReplyAndDie(ctx, AcquireError);
@@ -227,9 +230,10 @@ void TAcquireDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
 
     if (HasError(response->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] AcquireDisk %s error: %s",
+            "[%s] AcquireDisk %s targets %s error: %s",
             ClientId.c_str(),
             DiskId.c_str(),
+            LogTargets().c_str(),
             FormatError(response->GetError()).c_str());
     } else {
         response->Record.MutableDevices()->Reserve(Devices.size());
@@ -265,8 +269,9 @@ void TAcquireDiskActor::OnAcquireResponse(
 {
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] AcquireDevices error: %s",
+            "[%s] AcquireDevices %s error: %s",
             ClientId.c_str(),
+            LogTargets().c_str(),
             FormatError(error).c_str());
 
         CancelAcquireOperation(ctx, std::move(error));
@@ -288,8 +293,9 @@ void TAcquireDiskActor::OnReleaseResponse(
 {
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] ReleaseDevices error: %s, %llu",
+            "[%s] ReleaseDevices %s error: %s, %llu",
             ClientId.c_str(),
+            LogTargets().c_str(),
             FormatError(error).c_str(),
             cookie);
     }
@@ -338,10 +344,10 @@ void TAcquireDiskActor::HandleWakeup(
     Y_UNUSED(ev);
 
     const auto err = Sprintf(
-        "[%s] TAcquireDiskActor timeout, pending requests: %d",
+        "[%s] TAcquireDiskActor timeout, targets %s, pending requests: %d",
         ClientId.c_str(),
-        PendingRequests
-    );
+        LogTargets().c_str(),
+        PendingRequests);
     LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, err);
 
     AcquireError = MakeError(E_REJECTED, err);
@@ -375,17 +381,10 @@ void TAcquireDiskActor::HandleStartAcquireDiskResponse(
     // TODO: setup rate limits
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "[%s] Sending acquire devices requests for disk %s, devices%s",
+        "[%s] Sending acquire devices requests for disk %s, targets %s",
         ClientId.c_str(),
         DiskId.c_str(),
-        [&] () {
-            TStringBuilder sb;
-            for (const auto& d: Devices) {
-                sb << " " << d.GetDeviceUUID();
-            }
-
-            return sb;
-        }().c_str());
+        LogTargets().c_str());
 
     SendRequests<TEvDiskAgent::TEvAcquireDevicesRequest>(ctx);
 }
@@ -397,8 +396,9 @@ void TAcquireDiskActor::HandleFinishAcquireDiskResponse(
     const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] FinishAcquireDisk error: %s",
+            "[%s] FinishAcquireDisk targets %s error: %s",
             ClientId.c_str(),
+            LogTargets().c_str(),
             FormatError(msg->GetError()).c_str());
 
         CancelAcquireOperation(ctx, msg->GetError());
@@ -406,6 +406,13 @@ void TAcquireDiskActor::HandleFinishAcquireDiskResponse(
     }
 
     ReplyAndDie(ctx, AcquireError);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString TAcquireDiskActor::LogTargets() const
+{
+    return LogDevices(Devices);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

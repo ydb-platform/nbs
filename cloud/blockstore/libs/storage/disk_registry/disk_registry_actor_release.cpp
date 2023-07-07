@@ -71,6 +71,8 @@ private:
     void HandleTimeout(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
+
+    TString LogTargets() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -160,7 +162,8 @@ void TReleaseDiskActor::OnReleaseResponse(
 
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "ReleaseDevices error: %s, %llu",
+            "ReleaseDevices %s error: %s, %llu",
+            LogTargets().c_str(),
             FormatError(error).c_str(),
             cookie);
     }
@@ -212,6 +215,7 @@ void TReleaseDiskActor::HandleTimeout(
         << "TReleaseDiskActor timeout."
         << " DiskId: " << DiskId
         << " ClientId: " << ClientId
+        << " Targets: " << LogTargets()
         << " VolumeGeneration: " << VolumeGeneration
         << " PendingRequests: " << PendingRequests;
 
@@ -238,6 +242,13 @@ STFUNC(TReleaseDiskActor::StateWork)
             HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
             break;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString TReleaseDiskActor::LogTargets() const
+{
+    return LogDevices(Devices);
 }
 
 }   // namespace

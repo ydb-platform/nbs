@@ -200,10 +200,10 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& uuid = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+    const auto& device = DeviceRequests[ev->Cookie].Device;
 
     LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ReadBlocks undelivered for " << uuid);
+        "ReadBlocks undelivered for " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -212,11 +212,11 @@ void TDiskAgentReadActor::HandleTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& uuid = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+    const auto& device = DeviceRequests[ev->Cookie].Device;
 
     LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ReadBlocks request timed out. Disk id: " << PartConfig->GetName() <<
-        " Device id: " << uuid);
+        "ReadBlocks request timed out. Disk id: "
+        << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(
         ctx,

@@ -424,5 +424,6 @@ private:
 // BLOCKSTORE_DISK_REGISTRY_COUNTER
 
 bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize);
+TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
 }   // namespace NCloud::NBlockStore::NStorage

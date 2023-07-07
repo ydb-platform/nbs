@@ -702,4 +702,14 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
+{
+    TStringBuilder sb;
+    sb << "( ";
+    for (const auto& d: devices) {
+        sb << d.GetDeviceUUID() << "@" << d.GetAgentId() << " ";
+    }
+    return sb;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

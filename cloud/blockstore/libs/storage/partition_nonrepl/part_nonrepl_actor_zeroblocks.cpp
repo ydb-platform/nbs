@@ -199,10 +199,10 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& uuid = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+    const auto& device = DeviceRequests[ev->Cookie].Device;
 
     LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ZeroBlocks undelivered for " << uuid);
+        "ZeroBlocks undelivered for " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -211,11 +211,11 @@ void TDiskAgentZeroActor::HandleTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& uuid = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+    const auto& device = DeviceRequests[ev->Cookie].Device;
 
     LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ZeroBlocks request timed out. Disk id: " << PartConfig->GetName() <<
-        " Device id: " << uuid);
+        "ZeroBlocks request timed out. Disk id: "
+        << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(
         ctx,

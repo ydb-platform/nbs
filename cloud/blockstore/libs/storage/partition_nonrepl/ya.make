@@ -51,8 +51,6 @@ SRCS(
     part_nonrepl_migration_actor_readblocks_local.cpp
     part_nonrepl_migration_actor_stats.cpp
     part_nonrepl_migration_state.cpp
-
-    part_nonrepl_util.cpp
 )
 
 PEERDIR(
