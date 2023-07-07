@@ -4900,9 +4900,9 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        const ui64 size { device.GetBlockSize() * device.GetBlocksCount() };
+        const ui64 au = GetAllocationUnit(device.GetPoolName());
 
-        ++chunks[size];
+        ++chunks[au];
     }
 
     TVector<TAgentStorageInfo> infos;
