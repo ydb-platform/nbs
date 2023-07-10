@@ -89,6 +89,8 @@ private:
             return ReadKeyFromKeyring(keyPath.GetKeyringId(), expectedLen);
         } else if (keyPath.HasFilePath()) {
             return ReadKeyFromFile(keyPath.GetFilePath(), expectedLen);
+        } else if (keyPath.HasKmsKey()) {
+            return ReadKeyFromKMS(keyPath.GetKmsKey(), expectedLen);
         } else {
             ythrow TServiceError(E_ARGUMENT)
                 << "KeyPath should contain path to encryption key";
@@ -127,6 +129,15 @@ private:
         }
 
         return TEncryptionKey(std::move(key));
+    }
+
+    TEncryptionKey ReadKeyFromKMS(const NProto::TKmsKey& kmsKey, ui32 expectedLen)
+    {
+        Y_UNUSED(kmsKey);
+        Y_UNUSED(expectedLen);
+
+        ythrow TServiceError(E_NOT_IMPLEMENTED)
+            << "Reading key from KMS is not implemented yet";
     }
 };
 

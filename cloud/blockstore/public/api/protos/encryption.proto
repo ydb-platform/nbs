@@ -15,6 +15,21 @@ enum EEncryptionMode
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// KMS key options
+
+message TKmsKey
+{
+    // Identifier of the key in KMS.
+    string KekId = 1;
+
+    // Encrypted Data Encryption Key.
+    bytes EncryptedDEK = 2;
+
+    // Identifier of the compute task to get iam-token.
+    string TaskId = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Encryption key path
 
 message TKeyPath
@@ -26,6 +41,9 @@ message TKeyPath
 
         // Path to the file containing the key.
         bytes FilePath = 2;
+
+        // KMS key options
+        TKmsKey KmsKey = 3;
     }
 }
 

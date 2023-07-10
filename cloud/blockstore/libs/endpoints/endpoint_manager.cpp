@@ -33,12 +33,23 @@ int GetFieldCount()
 }
 
 bool CompareRequests(
+    const NProto::TKmsKey& left,
+    const NProto::TKmsKey& right)
+{
+    Y_VERIFY_DEBUG(3 == GetFieldCount<NProto::TKmsKey>());
+    return left.GetKekId() == right.GetKekId()
+        && left.GetEncryptedDEK() == right.GetEncryptedDEK()
+        && left.GetTaskId() == right.GetTaskId();
+}
+
+bool CompareRequests(
     const NProto::TKeyPath& left,
     const NProto::TKeyPath& right)
 {
-    Y_VERIFY_DEBUG(2 == GetFieldCount<NProto::TKeyPath>());
+    Y_VERIFY_DEBUG(3 == GetFieldCount<NProto::TKeyPath>());
     return left.GetKeyringId() == right.GetKeyringId()
-        && left.GetFilePath() == right.GetFilePath();
+        && left.GetFilePath() == right.GetFilePath()
+        && CompareRequests(left.GetKmsKey(), right.GetKmsKey());
 }
 
 bool CompareRequests(
