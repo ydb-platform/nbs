@@ -58,34 +58,30 @@ Y_UNIT_TEST_SUITE(TExecutorTest)
 
         TRequestHandlerMock handler;
 
-        std::condition_variable processCV;
-        std::mutex processMutex;
-        bool isProcessCalled = false;
+        std::atomic_bool processCalled = false;
         EXPECT_CALL(handler, Process(_)).WillRepeatedly([&] {
-            {
-                std::lock_guard lock(processMutex);
-                isProcessCalled = true;
-            }
-            // to avoid removal after processing is complete
             handler.AcquireCompletionTag();
-            processCV.notify_one();
+            if (!processCalled.load()) {
+                processCalled.store(true);
+                processCalled.notify_one();
+            }
         });
 
         void* handlerPointer = static_cast<void*>(&handler);
         EXPECT_CALL(cq, Next(_, _))
             .WillRepeatedly(
-                DoAll(SetArgPointee<0>(handlerPointer), Return(true)));
+                DoAll(SetArgPointee<0>(handlerPointer), testing::Invoke([] {
+                          static int counter = 0;
+                          // we return `true` 10 times to emulate usual flushing
+                          // once `Shutdown()` is being called, then we return
+                          // `false` to finish shutdown call
+                          return counter++ < 10;
+                      })));
 
         executor.Start();
-        {
-            std::unique_lock lk(processMutex);
-            processCV.wait(lk, [&isProcessCalled] { return isProcessCalled; });
-        }
+        processCalled.wait(false);
 
         EXPECT_CALL(cq, Shutdown());
-
-        EXPECT_CALL(cq, Next(_, _))
-            .WillOnce(Return(false));
 
         EXPECT_CALL(executor.RequestsInFlight, Shutdown());
         executor.Shutdown();
