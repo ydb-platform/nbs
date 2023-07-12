@@ -1603,7 +1603,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-12", "uuid-12", "rack-4"),
         });
 
+        auto monitoring = CreateMonitoringServiceStub();
+        auto diskRegistryGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
+
         TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(diskRegistryGroup)
             .WithKnownAgents({
                 agentConfig1,
                 agentConfig2,
@@ -1758,6 +1764,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[4].ReplacementTs);
         UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[5].ReplacementTs);
 
+        auto deviceCounter =
+            diskRegistryGroup->GetCounter("AutomaticallyReplacedDevices");
+
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(deviceCounter->Val(), 6);
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             state.DeleteAutomaticallyReplacedDevices(db, changeStateTs1);
             replaced = state.GetAutomaticallyReplacedDevices();
@@ -1769,9 +1781,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[1].ReplacementTs);
             UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[2].ReplacementTs);
 
+            state.PublishCounters(Now());
+            UNIT_ASSERT_VALUES_EQUAL(deviceCounter->Val(), 3);
+
             state.DeleteAutomaticallyReplacedDevices(db, changeStateTs2);
             replaced = state.GetAutomaticallyReplacedDevices();
             UNIT_ASSERT_VALUES_EQUAL(0, replaced.size());
+
+            state.PublishCounters(Now());
+            UNIT_ASSERT_VALUES_EQUAL(deviceCounter->Val(), 0);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {

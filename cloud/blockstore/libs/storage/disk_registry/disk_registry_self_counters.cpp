@@ -45,6 +45,8 @@ void TDiskRegistrySelfCounters::Init(NMonitoring::TDynamicCountersPtr counters)
         counters->GetCounter("PlacementGroupsWithBrokenTwoOrMoreDisks");
     MeanTimeBetweenFailures =
         counters->GetCounter("MeanTimeBetweenFailures");
+    AutomaticallyReplacedDevices =
+        counters->GetCounter("AutomaticallyReplacedDevices");
 
     QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
 

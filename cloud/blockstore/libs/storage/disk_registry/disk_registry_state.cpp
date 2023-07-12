@@ -3239,6 +3239,9 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.Mirror3DisksMinus3->Set(replicaCountStats[3][3]);
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
 
+    SelfCounters.AutomaticallyReplacedDevices->Set(
+        AutomaticallyReplacedDevices.size());
+
     SelfCounters.QueryAvailableStorageErrors.Publish(now);
     SelfCounters.QueryAvailableStorageErrors.Reset();
 }

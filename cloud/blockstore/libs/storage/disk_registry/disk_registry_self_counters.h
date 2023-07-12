@@ -65,6 +65,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr PlacementGroupsWithBrokenSingleDisk;
     TCounterPtr PlacementGroupsWithBrokenTwoOrMoreDisks;
     TCounterPtr MeanTimeBetweenFailures;
+    TCounterPtr AutomaticallyReplacedDevices;
 
     TCumulativeCounter QueryAvailableStorageErrors;
 
