@@ -1176,7 +1176,7 @@ bool EventHandler(
                     "Blob offset should fit in one byte");
 
                 // Debugging is easier when block content is equal to blob offset.
-                r.Buffer += TString(blockSize, char(blobOffset));
+                r.Buffer.Insert(r.Buffer.End(), TRope(TString(blockSize, char(blobOffset))));
             }
         }
     }
@@ -6516,7 +6516,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
                         // corrupt
                         auto& buffer = response->Responses[0].Buffer;
-                        std::memset(const_cast<char*>(buffer.data()), 0, 4);
+                        std::memset(buffer.Detach(), 0, 4);
 
                         auto* handle = new IEventHandle(
                             event->Recipient,

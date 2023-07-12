@@ -277,8 +277,7 @@ void TReadBlobActor::HandleGetResult(
                 return;
             }
 
-            char* head = response.Buffer.begin();
-            for (size_t offset = 0; offset < response.Buffer.size(); offset += BlockSize) {
+            for (auto iter = response.Buffer.begin(); iter.Valid(); ) {
                 if (sglistIndex >= sglist.size()) {
                     ReplyError(ctx, *msg, "response is out of range");
                     return;
@@ -286,7 +285,7 @@ void TReadBlobActor::HandleGetResult(
 
                 Y_VERIFY(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
-                memcpy(to, head + offset, BlockSize);
+                iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 ++sglistIndex;
             }
         }
