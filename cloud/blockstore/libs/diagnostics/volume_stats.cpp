@@ -517,7 +517,7 @@ public:
     bool HasThrottlerRejects() override
     {
         if (VolumeBase) {
-            return VolumeBase->ThrottlerRejectsCounter;
+            return AtomicGet(VolumeBase->ThrottlerRejectsCounter);
         }
         return false;
     }
@@ -772,7 +772,9 @@ public:
             volumeBase.PostponeTimePredictorStats.OnUpdateStats();
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
-            volumeBase.ThrottlerRejectsCounter = volumeBase.ThrottlerRejects.NextValue();
+            AtomicSet(
+                volumeBase.ThrottlerRejectsCounter,
+                volumeBase.ThrottlerRejects.NextValue());
             if (volumeBase.DowntimeCalculator.OnUpdateStats()) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];
