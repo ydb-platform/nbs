@@ -336,7 +336,11 @@ func (g *ConfigGenerator) dumpTxtConfigs(
 				err,
 			)
 		}
-		_, err = file.WriteString(cfg.Text + "\n")
+		result := cfg.Text
+		if !strings.HasSuffix(result, "\n") {
+			result += "\n"
+		}
+		_, err = file.WriteString(result)
 		if err != nil {
 			return fmt.Errorf(
 				"cannot write to file %v: %w",

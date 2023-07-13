@@ -44,6 +44,7 @@ config:
     zone1
     
 
+
 /generated-configs/cluster1/zone1/target2/cfg/nbs-auth.txt:
 UseBlackBox: true
 UseAccessService: true
@@ -74,6 +75,7 @@ config:
       Seconds: 1
     }
     
+
 
 /generated-configs/cluster1/zone2/target1/cfg/file.cfg:
 cfg file override for test
@@ -121,6 +123,7 @@ config:
     zone2
     
 
+
 /generated-configs/cluster1/zone2/target2/cfg/nbs-auth.txt:
 UseBlackBox: false
 UseAccessService: true
@@ -151,6 +154,7 @@ config:
       Seconds: 1
     }
     
+
 
 /generated-configs/cluster2/zoneA/target1/file.cfg:
 cfg file for test

@@ -43,6 +43,7 @@ func TestGenerator(t *testing.T) {
 			require.NoError(t, err)
 			buf.WriteString(strings.ReplaceAll(path, tmpDir, "") + ":\n")
 			buf.Write(b)
+			buf.WriteString("\n")
 		}
 		return nil
 	})
