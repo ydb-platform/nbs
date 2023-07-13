@@ -26,7 +26,6 @@ struct TPartitionDescr
     ui64 TabletId = 0;
     TActorId ActorId;
     bool DiskRegistryBasedDisk = false;
-    TString CurrentCheckpoint;
 };
 
 using TPartitionDescrs = TVector<TPartitionDescr>;
@@ -451,15 +450,6 @@ void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
             // Here we make a decision about the success of the task.
             bool okToExecute = true;
             if constexpr (std::is_same_v<TMethod, TCreateCheckpointMethod>) {
-                // Only one checkpoint at a time allowed.
-                if (x.CurrentCheckpoint && x.CurrentCheckpoint != CheckpointId)
-                {
-                    okToExecute = false;
-                    Error = MakeError(
-                        E_INVALID_STATE,
-                        TStringBuilder() << "checkpoint already exists: "
-                                         << x.CurrentCheckpoint.Quote());
-                }
                 if (!CheckpointId) {
                     okToExecute = false;
                     Error = MakeError(E_ARGUMENT, "empty checkpoint name");
@@ -539,15 +529,16 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
 
     AddTransaction(*requestInfo);
 
+    const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
+        ev->Get()->Record.GetCheckpointId(),
+        ctx.Now(),
+        ECheckpointRequestType::Create);
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
-        State->GenerateCheckpointRequestId(),
-        ev->Get()->Record.GetCheckpointId(),
-        ECheckpointRequestType::Create,
+        checkpointRequest.RequestId,
         isTraced,
-        traceTs
-    );
+        traceTs);
 
     return true;
 }
@@ -569,15 +560,16 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
 
     AddTransaction(*requestInfo);
 
+    const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
+        ev->Get()->Record.GetCheckpointId(),
+        ctx.Now(),
+        ECheckpointRequestType::Delete);
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
-        State->GenerateCheckpointRequestId(),
-        ev->Get()->Record.GetCheckpointId(),
-        ECheckpointRequestType::Delete,
+        checkpointRequest.RequestId,
         isTraced,
-        traceTs
-    );
+        traceTs);
 
     return true;
 }
@@ -599,15 +591,16 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
 
     AddTransaction(*requestInfo);
 
+    const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
+        ev->Get()->Record.GetCheckpointId(),
+        ctx.Now(),
+        ECheckpointRequestType::DeleteData);
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
-        State->GenerateCheckpointRequestId(),
-        ev->Get()->Record.GetCheckpointId(),
-        ECheckpointRequestType::DeleteData,
+        checkpointRequest.RequestId,
         isTraced,
-        traceTs
-    );
+        traceTs);
 
     return true;
 }
@@ -634,7 +627,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
 {
     // only one simultaneous checkpoint request is supported, other requests
     // should wait
-    if (CheckpointRequestInProgress) {
+    if (State->GetCheckpointStore().IsRequestInProgress()) {
         return;
     }
 
@@ -646,18 +639,33 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
         return;
     }
 
+    ui64 readyToExecuteRequestId = 0;
     // nothing to do
-    if (CheckpointRequestQueue.empty()) {
+    if (!State->GetCheckpointStore().HasRequestToExecute(
+            &readyToExecuteRequestId))
+    {
         return;
     }
 
-    CheckpointRequestInProgress = true;
+    const TCheckpointRequest& request =
+        State->GetCheckpointStore().GetRequestById(readyToExecuteRequestId);
 
-    auto& request = CheckpointRequestQueue.front();
+    TCheckpointRequestInfo emptyRequestInfo(
+        CreateRequestInfo(
+            SelfId(),
+            0,   // cookie
+            MakeIntrusive<TCallContext>()),
+        false,
+        GetCycleCount());
+    const TCheckpointRequestInfo* requestInfo =
+        CheckpointRequests.FindPtr(readyToExecuteRequestId);
+    if (!requestInfo) {
+        requestInfo = &emptyRequestInfo;
+    }
 
     TPartitionDescrs partitionDescrs;
     for (const auto& p: State->GetPartitions()) {
-        partitionDescrs.push_back({p.TabletId, p.Owner, false, {}});
+        partitionDescrs.push_back({p.TabletId, p.Owner, false});
 
         LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
             "[%lu] Forward %s request to partition: %lu %s",
@@ -670,8 +678,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
 
     if (auto actorId = State->GetNonreplicatedPartitionActor()) {
         ui64 TabletId = 0;
-        partitionDescrs.push_back(
-            {TabletId, actorId, true, State->GetActiveCheckpoints().GetLast()});
+        partitionDescrs.push_back({TabletId, actorId, true});
 
         LOG_TRACE(
             ctx,
@@ -685,48 +692,59 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
     TActorId actorId;
     switch (request.ReqType) {
         case ECheckpointRequestType::Create: {
-            actorId = NCloud::Register<TCheckpointActor<TCreateCheckpointMethod>>(
-                ctx,
-                request.RequestInfo,
-                request.RequestId,
-                request.CheckpointId,
-                TabletID(),
-                SelfId(),
-                std::move(partitionDescrs),
-                TRequestTraceInfo(request.IsTraced, request.TraceTs, TraceSerializer)
-            );
+            actorId =
+                NCloud::Register<TCheckpointActor<TCreateCheckpointMethod>>(
+                    ctx,
+                    requestInfo->RequestInfo,
+                    request.RequestId,
+                    request.CheckpointId,
+                    TabletID(),
+                    SelfId(),
+                    std::move(partitionDescrs),
+                    TRequestTraceInfo(
+                        requestInfo->IsTraced,
+                        requestInfo->TraceTs,
+                        TraceSerializer));
             break;
         }
         case ECheckpointRequestType::Delete: {
-            actorId = NCloud::Register<TCheckpointActor<TDeleteCheckpointMethod>>(
-                ctx,
-                request.RequestInfo,
-                request.RequestId,
-                request.CheckpointId,
-                TabletID(),
-                SelfId(),
-                std::move(partitionDescrs),
-                TRequestTraceInfo(request.IsTraced, request.TraceTs, TraceSerializer)
-            );
+            actorId =
+                NCloud::Register<TCheckpointActor<TDeleteCheckpointMethod>>(
+                    ctx,
+                    requestInfo->RequestInfo,
+                    request.RequestId,
+                    request.CheckpointId,
+                    TabletID(),
+                    SelfId(),
+                    std::move(partitionDescrs),
+                    TRequestTraceInfo(
+                        requestInfo->IsTraced,
+                        requestInfo->TraceTs,
+                        TraceSerializer));
             break;
         }
         case ECheckpointRequestType::DeleteData: {
-            actorId = NCloud::Register<TCheckpointActor<TDeleteCheckpointDataMethod>>(
-                ctx,
-                request.RequestInfo,
-                request.RequestId,
-                request.CheckpointId,
-                TabletID(),
-                SelfId(),
-                std::move(partitionDescrs),
-                TRequestTraceInfo(request.IsTraced, request.TraceTs, TraceSerializer)
-            );
+            actorId =
+                NCloud::Register<TCheckpointActor<TDeleteCheckpointDataMethod>>(
+                    ctx,
+                    requestInfo->RequestInfo,
+                    request.RequestId,
+                    request.CheckpointId,
+                    TabletID(),
+                    SelfId(),
+                    std::move(partitionDescrs),
+                    TRequestTraceInfo(
+                        requestInfo->IsTraced,
+                        requestInfo->TraceTs,
+                        TraceSerializer));
             break;
         }
         default:
-            Y_VERIFY(0);
+            Y_FAIL();
     }
 
+    State->GetCheckpointStore().SetCheckpointRequestInProgress(
+        readyToExecuteRequestId);
     Actors.insert(actorId);
 }
 
@@ -753,39 +771,32 @@ void TVolumeActor::ExecuteSaveCheckpointRequest(
 
     TVolumeDatabase db(tx.DB);
 
-    auto ts = ctx.Now();
-    if (State->GetCheckpointRequests()) {
-        const auto& lastReq = State->GetCheckpointRequests().back();
-        ts = Max(ts, lastReq.Timestamp + TDuration::MicroSeconds(1));
-    }
+    const auto& checkpointRequest =
+        State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    db.WriteCheckpointRequest(args.RequestId, args.CheckpointId, ts, args.ReqType);
-    State->GetCheckpointRequests().emplace_back(
-        args.RequestId,
-        args.CheckpointId,
-        ts,
-        args.ReqType,
-        ECheckpointRequestState::New);
+    db.WriteCheckpointRequest(
+        checkpointRequest.RequestId,
+        checkpointRequest.CheckpointId,
+        checkpointRequest.Timestamp,
+        checkpointRequest.ReqType);
 }
 
 void TVolumeActor::CompleteSaveCheckpointRequest(
     const TActorContext& ctx,
     TTxVolume::TSaveCheckpointRequest& args)
 {
+    const auto& checkpointRequest =
+        State->GetCheckpointStore().GetRequestById(args.RequestId);
+
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] CheckpointRequest %lu %s saved",
         TabletID(),
-        args.RequestId,
-        args.CheckpointId.Quote().c_str());
+        checkpointRequest.RequestId,
+        checkpointRequest.CheckpointId.Quote().c_str());
 
-    CheckpointRequestQueue.emplace_back(
-        args.RequestInfo,
-        args.RequestId,
-        args.CheckpointId,
-        args.ReqType,
-        args.IsTraced,
-        args.TraceTs
-    );
+    State->GetCheckpointStore().SetCheckpointRequestSaved(args.RequestId);
+    CheckpointRequests.insert(
+        {args.RequestId, {args.RequestInfo, args.IsTraced, args.TraceTs}});
 
     RemoveTransaction(*args.RequestInfo);
     ProcessNextCheckpointRequest(ctx);
@@ -795,11 +806,10 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
 
 bool TVolumeActor::CanExecuteWriteRequest() const
 {
-    const bool doesCheckpointExist = !State->GetActiveCheckpoints().Empty();
-
+    const bool doesCheckpointExist =
+        State->GetCheckpointStore().DoesCheckpointWithDataExist();
     const bool isCheckpointBeingCreated =
-        CheckpointRequestQueue && CheckpointRequestQueue.front().ReqType ==
-                                      ECheckpointRequestType::Create;
+        State->GetCheckpointStore().IsCheckpointBeingCreated();
 
     const bool isSinglePartition = State->GetPartitions().size() < 2;
 
@@ -845,61 +855,20 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
     const TActorContext& ctx,
     TTxVolume::TUpdateCheckpointRequest& args)
 {
-    CheckpointRequestInProgress = false;
-    for (auto it = State->GetCheckpointRequests().rbegin();
-            it != State->GetCheckpointRequests().rend(); ++it)
-    {
-        if (it->RequestId == args.RequestId) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] CheckpointRequest %lu %s marked %s",
-                TabletID(),
-                args.RequestId,
-                it->CheckpointId.Quote().c_str(),
-                args.Completed ? "completed" : "rejected");
+    const TCheckpointRequest& request =
+        State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-            it->State = args.Completed ? ECheckpointRequestState::Completed
-                                       : ECheckpointRequestState::Rejected;
-            break;
-        }
-    }
+    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] CheckpointRequest %lu %s marked %s",
+        TabletID(),
+        request.RequestId,
+        request.CheckpointId.Quote().c_str(),
+        args.Completed ? "completed" : "rejected");
 
-    if (args.Completed) {
-        auto& currentRequest = CheckpointRequestQueue.front();
-        switch (currentRequest.ReqType) {
-            case ECheckpointRequestType::Create: {
-                State->GetActiveCheckpoints().Add(currentRequest.CheckpointId);
-                break;
-            }
-            case ECheckpointRequestType::Delete: {
-                State->GetActiveCheckpoints().Delete(
-                    currentRequest.CheckpointId);
-                break;
-            }
-            case ECheckpointRequestType::DeleteData: {
-                if (State->GetNonreplicatedPartitionActor()) {
-                    // For disk-registry-based volumes delete entire checkpoint
-                    // instead of data
-                    State->GetActiveCheckpoints().Delete(
-                        currentRequest.CheckpointId);
-                } else {
-                    State->GetActiveCheckpoints().DeleteData(
-                        currentRequest.CheckpointId);
-                }
-                break;
-            }
-            default:
-                Y_VERIFY(0);
-        }
-
-        if (State->GetNonreplicatedPartitionActor()) {
-            STORAGE_VERIFY(
-                State->GetActiveCheckpoints().Size() <= 1,
-                TWellKnownEntityTypes::TABLET,
-                TabletID());
-        }
-    }
-
-    CheckpointRequestQueue.pop_front();
+    State->GetCheckpointStore().SetCheckpointRequestFinished(
+        request.RequestId,
+        args.Completed);
+    CheckpointRequests.erase(request.RequestId);
 
     NCloud::Reply(
         ctx,

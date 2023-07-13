@@ -301,29 +301,19 @@ private:
     struct TCheckpointRequestInfo
     {
         TRequestInfoPtr RequestInfo;
-        ui64 RequestId = 0;
-        TString CheckpointId;
-        ECheckpointRequestType ReqType;
         bool IsTraced;
         ui64 TraceTs;
 
         TCheckpointRequestInfo(
                 TRequestInfoPtr requestInfo,
-                ui64 requestId,
-                TString checkpointId,
-                ECheckpointRequestType reqType,
                 bool isTraced,
                 ui64 traceTs)
             : RequestInfo(std::move(requestInfo))
-            , RequestId(requestId)
-            , CheckpointId(std::move(checkpointId))
-            , ReqType(reqType)
             , IsTraced(isTraced)
             , TraceTs(traceTs)
         {}
     };
-    TList<TCheckpointRequestInfo> CheckpointRequestQueue;
-    bool CheckpointRequestInProgress = false;
+    TMap<ui64, TCheckpointRequestInfo> CheckpointRequests;
 
     ui32 MultipartitionWriteAndZeroRequestsInProgress = 0;
 

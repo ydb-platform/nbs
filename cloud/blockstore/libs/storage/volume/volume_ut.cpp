@@ -5054,26 +5054,83 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     GetBlockContent(i));
             }
         }
-        // After checkpoint deletion
-        volume.DeleteCheckpoint("c1");
+
+        // After checkpoint data deletion
+        volume.DeleteCheckpointData("c1");
+        {
+            // Read from checkpoint without data failed
+            volume.SendReadBlocksRequest(
+                GetBlockRangeById(0),
+                clientInfo.GetClientId(),
+                "c1");
+
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
 
         // Write blocks
-        volume.WriteBlocks(GetBlockRangeById(1), clientInfo.GetClientId(), 100);
+        volume.WriteBlocks(
+            GetBlockRangeById(25),
+            clientInfo.GetClientId(),
+            100);
         CheckBlockContent<__LINE__>(
             volume,
             clientInfo.GetClientId(),
             "",
-            GetBlockRangeById(1),
+            GetBlockRangeById(25),
             GetBlockContent(100));
 
         // Zero blocks
-        volume.ZeroBlocks(GetBlockRangeById(1), clientInfo.GetClientId());
+        volume.ZeroBlocks(GetBlockRangeById(25), clientInfo.GetClientId());
         CheckBlockContent<__LINE__>(
             volume,
             clientInfo.GetClientId(),
             "",
-            GetBlockRangeById(1),
+            GetBlockRangeById(25),
             GetBlockContent(0));
+
+        // Create second checkpoint
+        volume.CreateCheckpoint("c2");
+
+        {
+            // Write request rejected
+            volume.SendWriteBlocksRequest(
+                GetBlockRangeById(0),
+                clientInfo.GetClientId(),
+                100);
+
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+        {
+            // Read blocks from checkpoint and check values
+            for (ui32 i = 0; i < 21; ++i) {
+                CheckBlockContent<__LINE__>(
+                    volume,
+                    clientInfo.GetClientId(),
+                    "c2",
+                    GetBlockRangeById(i),
+                    GetBlockContent(i));
+            }
+        }
+
+        // After entire checkpoint deletion
+        volume.DeleteCheckpoint("c2");
+
+        // Write blocks OK
+        volume.WriteBlocks(
+            GetBlockRangeById(25),
+            clientInfo.GetClientId(),
+            100);
+        CheckBlockContent<__LINE__>(
+            volume,
+            clientInfo.GetClientId(),
+            "",
+            GetBlockRangeById(25),
+            GetBlockContent(100));
+
+        // Delete first checkpoint
+        volume.DeleteCheckpoint("c");
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointsForDiskRegistryBasedVolumes)

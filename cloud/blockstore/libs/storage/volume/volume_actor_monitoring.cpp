@@ -64,8 +64,10 @@ IOutputStream& operator <<(
     ECheckpointRequestState checkpointRequestState)
 {
     switch (checkpointRequestState) {
-        case ECheckpointRequestState::New:
-            return out << "New";
+        case ECheckpointRequestState::Received:
+            return out << "Received";
+        case ECheckpointRequestState::Saved:
+            return out << "Saved";
         case ECheckpointRequestState::Completed:
             return out << "Completed";
         case ECheckpointRequestState::Rejected:
@@ -619,10 +621,19 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                         TABLEH() { out << "Delete"; }
                     }
                 }
-                for (const auto& [r, dataDeleted]: State->GetActiveCheckpoints().GetAll()) {
+                for (const auto& [r, checkpointData]:
+                     State->GetCheckpointStore().GetActiveCheckpoints())
+                {
                     TABLER() {
                         TABLED() { out << r; }
-                        TABLED() { out << (dataDeleted ? "true" : ""); }
+                        TABLED()
+                        {
+                            out
+                                << (checkpointData ==
+                                            ECheckpointData::DataDeleted
+                                        ? "true"
+                                        : "");
+                        }
                         TABLED() {
                             BuildDeleteCheckpointButton(
                                 out,
@@ -645,7 +656,9 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                         TABLEH() { out << "Type"; }
                     }
                 }
-                for (const auto& r: State->GetCheckpointRequests()) {
+                for (const auto& r:
+                     State->GetCheckpointStore().GetCheckpointRequests())
+                {
                     TABLER() {
                         TABLED() { out << r.RequestId; }
                         TABLED() { out << r.CheckpointId; }

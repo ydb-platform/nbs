@@ -1,60 +1,233 @@
 #include "checkpoint.h"
 
+#include <cloud/storage/core/libs/common/verify.h>
+
+#include <util/generic/algorithm.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCheckpointStore::Add(const TString& checkpointId)
+TCheckpointStore::TCheckpointStore(
+    TVector<TCheckpointRequest> checkpointRequests,
+    const TString& diskID)
+    : DiskID(diskID)
 {
-    Checkpoints.emplace(checkpointId, false);
-}
+    SortBy(
+        checkpointRequests,
+        [](const TCheckpointRequest& operand) { return operand.RequestId; });
 
-void TCheckpointStore::DeleteData(const TString& checkpointId)
-{
-    if (auto* dataDeleted = Checkpoints.FindPtr(checkpointId)) {
-        *dataDeleted = true;
+    for (auto& checkpointRequest: checkpointRequests) {
+        AddCheckpointRequest(std::move(checkpointRequest));
     }
 }
 
-void TCheckpointStore::Delete(const TString& checkpointId)
+const TCheckpointRequest& TCheckpointStore::CreateNew(
+    TString checkpointId,
+    TInstant timestamp,
+    ECheckpointRequestType reqType)
 {
-    Checkpoints.erase(checkpointId);
+    if (!CheckpointRequests.empty()) {
+        const auto& lastReq = CheckpointRequests.rbegin()->second;
+        timestamp =
+            Max(timestamp, lastReq.Timestamp + TDuration::MicroSeconds(1));
+    }
+
+    return AddCheckpointRequest(TCheckpointRequest{
+        ++LastCheckpointRequestId,
+        std::move(checkpointId),
+        timestamp,
+        reqType,
+        ECheckpointRequestState::Received});
 }
 
-bool TCheckpointStore::Empty() const
+void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
 {
-    return Checkpoints.empty();
+    auto& checkpointRequest = GetRequest(requestId);
+    Y_VERIFY_DEBUG(
+        checkpointRequest.State == ECheckpointRequestState::Received);
+    checkpointRequest.State = ECheckpointRequestState::Saved;
 }
 
-size_t TCheckpointStore::Size() const
+void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
-    return Checkpoints.size();
+    auto& checkpointRequest = GetRequest(requestId);
+    Y_VERIFY_DEBUG(checkpointRequest.State == ECheckpointRequestState::Saved);
+
+    CheckpointRequestInProgress = requestId;
+    CheckpointBeingCreated =
+        checkpointRequest.ReqType == ECheckpointRequestType::Create;
 }
 
-TVector<TString> TCheckpointStore::Get() const
+void TCheckpointStore::SetCheckpointRequestFinished(
+    ui64 requestId,
+    bool success)
 {
-    TVector<TString> checkpoints(Reserve(Checkpoints.size()));
-    for (const auto& [checkpoint, dataDeleted]: Checkpoints) {
-        if (!dataDeleted) {
+    Y_VERIFY_DEBUG(CheckpointRequestInProgress == requestId);
+    if (requestId == CheckpointRequestInProgress) {
+        auto& checkpointRequest = GetRequest(requestId);
+        Y_VERIFY_DEBUG(
+            checkpointRequest.State == ECheckpointRequestState::Saved);
+        checkpointRequest.State = success ? ECheckpointRequestState::Completed
+                                          : ECheckpointRequestState::Rejected;
+        Apply(checkpointRequest);
+    }
+    CheckpointRequestInProgress = 0;
+    CheckpointBeingCreated = false;
+}
+
+bool TCheckpointStore::IsRequestInProgress() const
+{
+    return CheckpointRequestInProgress != 0;
+}
+
+bool TCheckpointStore::IsCheckpointBeingCreated() const
+{
+    return CheckpointBeingCreated;
+}
+
+bool TCheckpointStore::DoesCheckpointWithDataExist() const
+{
+    return CheckpointWithDataExists;
+}
+
+bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
+{
+    if (const ECheckpointData* data = ActiveCheckpoints.FindPtr(checkpointId)) {
+        return *data == ECheckpointData::DataPresent;
+    }
+    return false;
+}
+
+bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
+{
+    Y_VERIFY_DEBUG(requestId);
+
+    for (const auto& [key, checkpointRequest]: CheckpointRequests) {
+        if (checkpointRequest.State != ECheckpointRequestState::Saved) {
+            continue;
+        }
+        Y_VERIFY_DEBUG(key == checkpointRequest.RequestId);
+        if (requestId) {
+            *requestId = checkpointRequest.RequestId;
+        }
+        return true;
+    }
+    return false;
+}
+
+TVector<TString> TCheckpointStore::GetCheckpointsWithData() const
+{
+    TVector<TString> checkpoints(Reserve(ActiveCheckpoints.size()));
+    for (const auto& [checkpoint, checkpointData]: ActiveCheckpoints) {
+        if (checkpointData == ECheckpointData::DataPresent) {
             checkpoints.push_back(checkpoint);
         }
     }
     return checkpoints;
 }
 
-TString TCheckpointStore::GetLast() const
+const TMap<TString, ECheckpointData>& TCheckpointStore::GetActiveCheckpoints()
+    const
 {
-    TVector<TString> checkpoints = Get();
-    if (checkpoints.empty()) {
-        return {};
-    }
-
-    return checkpoints.back();
+    return ActiveCheckpoints;
 }
 
-const THashMap<TString, bool>& TCheckpointStore::GetAll() const
+const TCheckpointRequest& TCheckpointStore::GetRequestById(ui64 requestId) const
 {
-    return Checkpoints;
+    if (const TCheckpointRequest* checkpointRequest =
+            CheckpointRequests.FindPtr(requestId))
+    {
+        Y_VERIFY_DEBUG(requestId == checkpointRequest->RequestId);
+        return *checkpointRequest;
+    }
+    STORAGE_VERIFY(0, TWellKnownEntityTypes::DISK, DiskID);
+}
+
+TVector<TCheckpointRequest> TCheckpointStore::GetCheckpointRequests() const
+{
+    TVector<TCheckpointRequest> result;
+    result.reserve(CheckpointRequests.size());
+    for (const auto& [key, checkpointRequest]: CheckpointRequests) {
+        result.push_back(checkpointRequest);
+    }
+    return result;
+}
+
+TCheckpointRequest& TCheckpointStore::GetRequest(ui64 requestId)
+{
+    if (TCheckpointRequest* checkpointRequest =
+            CheckpointRequests.FindPtr(requestId))
+    {
+        Y_VERIFY_DEBUG(requestId == checkpointRequest->RequestId);
+        return *checkpointRequest;
+    }
+    STORAGE_VERIFY(0, TWellKnownEntityTypes::DISK, DiskID);
+}
+
+TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
+    TCheckpointRequest checkpointRequest)
+{
+    LastCheckpointRequestId =
+        Max(LastCheckpointRequestId, checkpointRequest.RequestId);
+    auto requestId = checkpointRequest.RequestId;
+    auto [it, inserted] =
+        CheckpointRequests.insert({requestId, std::move(checkpointRequest)});
+    Y_VERIFY_DEBUG(inserted);
+    Apply(it->second);
+    return it->second;
+}
+
+void TCheckpointStore::AddCheckpoint(const TString& checkpointId)
+{
+    ActiveCheckpoints.emplace(checkpointId, ECheckpointData::DataPresent);
+    CalcDoesCheckpointWithDataExist();
+}
+
+void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
+{
+    if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
+        *checkpointData = ECheckpointData::DataDeleted;
+    }
+    CalcDoesCheckpointWithDataExist();
+}
+
+void TCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
+{
+    ActiveCheckpoints.erase(checkpointId);
+    CalcDoesCheckpointWithDataExist();
+}
+
+void TCheckpointStore::CalcDoesCheckpointWithDataExist()
+{
+    CheckpointWithDataExists = AnyOf(
+        ActiveCheckpoints,
+        [](const auto& it)
+        { return it.second == ECheckpointData::DataPresent; });
+}
+
+void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
+{
+    if (checkpointRequest.State != ECheckpointRequestState::Completed) {
+        return;
+    }
+    switch (checkpointRequest.ReqType) {
+        case ECheckpointRequestType::Create: {
+            AddCheckpoint(checkpointRequest.CheckpointId);
+            break;
+        }
+        case ECheckpointRequestType::Delete: {
+            DeleteCheckpoint(checkpointRequest.CheckpointId);
+            break;
+        }
+        case ECheckpointRequestType::DeleteData: {
+            DeleteCheckpointData(checkpointRequest.CheckpointId);
+            break;
+        }
+        default: {
+            Y_VERIFY_DEBUG(0);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

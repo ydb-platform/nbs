@@ -273,7 +273,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 requests[1].Timestamp
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(ECheckpointRequestState::New),
+                static_cast<ui32>(ECheckpointRequestState::Saved),
                 static_cast<ui32>(requests[1].State)
             );
             UNIT_ASSERT_VALUES_EQUAL(3, requests[2].RequestId);
@@ -293,7 +293,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 requests[3].Timestamp
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(ECheckpointRequestState::New),
+                static_cast<ui32>(ECheckpointRequestState::Saved),
                 static_cast<ui32>(requests[3].State)
             );
         });

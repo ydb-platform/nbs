@@ -1,6 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/volume/model)
 
 SRCS(
+    checkpoint_ut.cpp
     client_state_ut.cpp
     merge_ut.cpp
     requests_inflight_ut.cpp

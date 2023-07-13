@@ -161,23 +161,6 @@ void TVolumeActor::CompleteLoadState(
         {
             StartPartitionsForGc(ctx);
         }
-
-        for (const auto& checkpointRequest: State->GetCheckpointRequests()) {
-            if (checkpointRequest.State == ECheckpointRequestState::New) {
-                CheckpointRequestQueue.emplace_back(
-                    CreateRequestInfo(
-                        SelfId(),
-                        0,  // cookie
-                        MakeIntrusive<TCallContext>()
-                    ),
-                    checkpointRequest.RequestId,
-                    checkpointRequest.CheckpointId,
-                    checkpointRequest.ReqType,
-                    false,
-                    GetCycleCount()
-                );
-            }
-        }
     }
 
     if (args.UsedBlocks) {

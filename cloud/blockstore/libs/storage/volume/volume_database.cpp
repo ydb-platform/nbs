@@ -421,7 +421,7 @@ void TVolumeDatabase::WriteCheckpointRequest(
             NIceDb::TUpdate<TTable::CheckpointId>(checkpointId),
             NIceDb::TUpdate<TTable::Timestamp>(timestamp.MicroSeconds()),
             NIceDb::TUpdate<TTable::State>(
-                static_cast<ui32>(ECheckpointRequestState::New)
+                static_cast<ui32>(ECheckpointRequestState::Saved)
             ),
             NIceDb::TUpdate<TTable::ReqType>(
                 static_cast<ui32>(reqType))

@@ -285,7 +285,7 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
         std::move(stats),
         systemCpu,
         userCpu,
-        State->GetActiveCheckpoints().Size(),
+        State->GetCheckpointStore().GetActiveCheckpoints().size(),
         std::move(offsetLoadMetrics));
 
     PrevMetrics = std::move(blobLoadMetrics);

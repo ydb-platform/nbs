@@ -99,13 +99,10 @@ TVolumeState::TVolumeState(
     , MetaHistory(std::move(metaHistory))
     , Config(&Meta.GetConfig())
     , ClientInfosByClientId(std::move(infos))
-    , ThrottlerConfig(throttlerConfig)
-    , ThrottlingPolicy(
-        Config->GetPerformanceProfile(),
-        ThrottlerConfig
-    )
+    , ThrottlerConfig(std::move(throttlerConfig))
+    , ThrottlingPolicy(Config->GetPerformanceProfile(), ThrottlerConfig)
     , History(std::move(history))
-    , CheckpointRequests(std::move(checkpointRequests))
+    , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
 {
     Reset();
@@ -126,29 +123,6 @@ TVolumeState::TVolumeState(
 
         if (volumeClientInfo.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL) {
             LocalMountClientId = pair.first;
-        }
-    }
-
-    for (const auto& r: CheckpointRequests) {
-        LastCheckpointRequestId = Max(LastCheckpointRequestId, r.RequestId);
-        if (r.State == ECheckpointRequestState::Completed) {
-            switch (r.ReqType) {
-                case ECheckpointRequestType::Create: {
-                    ActiveCheckpoints.Add(r.CheckpointId);
-                    break;
-                }
-                case ECheckpointRequestType::Delete: {
-                    ActiveCheckpoints.Delete(r.CheckpointId);
-                    break;
-                }
-                case ECheckpointRequestType::DeleteData: {
-                    ActiveCheckpoints.DeleteData(r.CheckpointId);
-                    break;
-                }
-                default: {
-                    Y_VERIFY(0);
-                }
-            }
         }
     }
 }

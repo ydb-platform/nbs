@@ -129,9 +129,7 @@ private:
     THistoryLogKey LastLogRecord;
     TDeque<THistoryLogItem> History;
 
-    ui64 LastCheckpointRequestId = 0;
-    TVector<TCheckpointRequest> CheckpointRequests;
-    TCheckpointStore ActiveCheckpoints;
+    TCheckpointStore CheckpointStore;
 
     std::unique_ptr<TCompressedBitmap> UsedBlocks;
     bool TrackUsedBlocks = false;
@@ -477,29 +475,14 @@ public:
     // Checkpoint request history
     //
 
-    const TVector<TCheckpointRequest>& GetCheckpointRequests() const
+    TCheckpointStore& GetCheckpointStore()
     {
-        return CheckpointRequests;
+        return CheckpointStore;
     }
 
-    TVector<TCheckpointRequest>& GetCheckpointRequests()
+    const TCheckpointStore& GetCheckpointStore() const
     {
-        return CheckpointRequests;
-    }
-
-    ui64 GenerateCheckpointRequestId()
-    {
-        return ++LastCheckpointRequestId;
-    }
-
-    TCheckpointStore& GetActiveCheckpoints()
-    {
-        return ActiveCheckpoints;
-    }
-
-    const TCheckpointStore& GetActiveCheckpoints() const
-    {
-        return ActiveCheckpoints;
+        return CheckpointStore;
     }
 
     //

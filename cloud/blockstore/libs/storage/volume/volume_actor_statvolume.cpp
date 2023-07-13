@@ -274,7 +274,8 @@ void TVolumeActor::HandleStatVolume(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());
     }
 
-    TVector<TString> checkpoints = State->GetActiveCheckpoints().Get();
+    TVector<TString> checkpoints =
+        State->GetCheckpointStore().GetCheckpointsWithData();
 
     if (State->GetPartitions()) {
         TVector<TActorId> partActorIds;
