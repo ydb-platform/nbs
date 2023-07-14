@@ -498,13 +498,26 @@ func (g *ConfigGenerator) generateConfigForCluster(
 	return nil
 }
 
-func (g *ConfigGenerator) Generate(ctx context.Context) error {
+func contains(collection []string, target string) bool {
+	for _, s := range collection {
+		if s == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *ConfigGenerator) Generate(ctx context.Context, whileListCluster []string) error {
 	g.LogInfo(
 		ctx,
 		"Start generation for service: %v",
 		g.spec.ServiceSpec.ServiceName)
 
+	genAllClusters := len(whileListCluster) == 0
 	for cluster, clusterConfig := range g.spec.ServiceSpec.Clusters {
+		if !genAllClusters && !contains(whileListCluster, cluster) {
+			continue
+		}
 		for _, zone := range clusterConfig.Zones {
 			for _, target := range clusterConfig.Targets {
 				err := g.generateConfigForCluster(

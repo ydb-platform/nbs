@@ -25,9 +25,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Options struct {
-	ServicePath     string
-	ArcadiaRootPath string
-	Verbose         bool
+	ServicePath       string
+	WhiteListClusters string
+	ArcadiaRootPath   string
+	Verbose           bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,13 +148,18 @@ func run(opts *Options, ctx context.Context) error {
 		return err
 	}
 
+	whiteListCluster := make([]string, 0)
+	if len(opts.WhiteListClusters) > 0 {
+		whiteListCluster = strings.Split(opts.WhiteListClusters, ",")
+	}
+
 	return configurator.NewConfigGenerator(
 		logger,
 		configurator.GeneratorSpec{
 			ServiceSpec:   *config,
 			ConfigMap:     configMap,
 			ArcadiaPath:   opts.ArcadiaRootPath,
-			OverridesPath: opts.ServicePath}).Generate(ctx)
+			OverridesPath: opts.ServicePath}).Generate(ctx, whiteListCluster)
 }
 
 func main() {
@@ -178,6 +184,14 @@ func main() {
 		"s",
 		"",
 		"path to folder with service spec",
+	)
+
+	rootCmd.Flags().StringVarP(
+		&opts.WhiteListClusters,
+		"whitelist-clusters",
+		"c",
+		"",
+		"specific clusters for generating. Use with service-path",
 	)
 
 	rootCmd.Flags().StringVarP(
