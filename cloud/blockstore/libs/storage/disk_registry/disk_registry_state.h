@@ -333,6 +333,7 @@ public:
     ui32 GetDiskCount() const;
     TVector<TString> GetDiskIds() const;
     TVector<TString> GetMasterDiskIds() const;
+    TVector<TString> GetMirroredDiskIds() const;
     bool IsMasterDisk(const TString& diskId) const;
 
     NProto::TDeviceConfig GetDevice(const TString& id) const;
@@ -597,7 +598,7 @@ public:
         const TDeviceId& sourceDeviceId,
         const TDeviceId& targetDeviceId);
 
-    // for tests
+    // for tests and monpages
     const TReplicaTable& GetReplicaTable() const
     {
         return ReplicaTable;

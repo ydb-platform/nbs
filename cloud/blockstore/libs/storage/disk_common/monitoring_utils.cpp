@@ -12,7 +12,7 @@ IOutputStream& DumpState(
         case NProto::AGENT_STATE_ONLINE:
             return out << "<font color=green>online</font>";
         case NProto::AGENT_STATE_WARNING:
-            return out << "warning";
+            return out << "<font color=brown>warning</font>";
         case NProto::AGENT_STATE_UNAVAILABLE:
             return out << "<font color=red>unavailable</font>";
         default:
@@ -53,7 +53,7 @@ IOutputStream& DumpState(
         case NProto::DEVICE_STATE_ONLINE:
             return out << "<font color=green>online" << suffix << "</font>";
         case NProto::DEVICE_STATE_WARNING:
-            return out << "<font color=yellow>warning" << suffix << "</font>";
+            return out << "<font color=brown>warning" << suffix << "</font>";
         case NProto::DEVICE_STATE_ERROR:
             return out << "<font color=red>error" << suffix << "</font>";
         default:

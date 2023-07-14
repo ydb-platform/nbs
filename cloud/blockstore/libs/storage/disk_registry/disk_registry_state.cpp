@@ -2808,6 +2808,21 @@ TVector<TString> TDiskRegistryState::GetMasterDiskIds() const
     return ids;
 }
 
+TVector<TString> TDiskRegistryState::GetMirroredDiskIds() const
+{
+    TVector<TString> ids;
+
+    for (auto& kv: Disks) {
+        if (kv.second.ReplicaCount) {
+            ids.push_back(kv.first);
+        }
+    }
+
+    Sort(ids);
+
+    return ids;
+}
+
 bool TDiskRegistryState::IsMasterDisk(const TString& diskId) const
 {
     const auto* disk = Disks.FindPtr(diskId);

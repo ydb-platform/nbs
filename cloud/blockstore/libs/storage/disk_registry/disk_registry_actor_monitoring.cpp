@@ -741,6 +741,74 @@ void TDiskRegistryActor::RenderDiskList(IOutputStream& out) const
     }
 }
 
+void TDiskRegistryActor::RenderMirroredDiskList(IOutputStream& out) const
+{
+    const auto ids = State->GetMirroredDiskIds();
+
+    HTML(out) {
+        TAG(TH3) { out << "MirroredDisks"; DumpSize(out, ids); }
+
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Disk"; }
+                    TABLEH() { out << "ReplicaCount"; }
+                    TABLEH() { out << "CellStates"; }
+                    TABLEH() { out << "DeviceStates"; }
+                }
+            }
+
+            for (const auto& id: ids) {
+                TDiskInfo diskInfo;
+                State->GetDiskInfo(id, diskInfo);
+
+                const auto cells = State->GetReplicaTable().AsMatrix(id);
+                TVector<ui32> cellsByState(diskInfo.Replicas.size() + 2);
+                ui32 readyCount = 0;
+                ui32 replacementCount = 0;
+                for (const auto& cell: cells) {
+                    ui32 cellReplacementCount = 0;
+                    for (const auto& deviceInfo: cell) {
+                        cellReplacementCount += deviceInfo.IsReplacement;
+                    }
+
+                    Y_VERIFY_DEBUG(cellReplacementCount < cellsByState.size());
+                    if (cellReplacementCount >= cellsByState.size()) {
+                        cellReplacementCount = cellsByState.size() - 1;
+                    }
+
+                    ++cellsByState[cellReplacementCount];
+                    readyCount += cell.size() - cellReplacementCount;
+                    replacementCount += cellReplacementCount;
+                }
+
+                TABLER() {
+                    TABLED() { DumpDiskLink(out, TabletID(), id); }
+                    TABLED() { out << diskInfo.Replicas.size() + 1; }
+                    TABLED() {
+                        for (ui32 i = 0; i < cellsByState.size(); ++i) {
+                            TStringBuf color =
+                                i == 0 ? "green" :
+                                i <= diskInfo.Replicas.size() ? "brown" :
+                                "red";
+
+                            out << "<font color=" << color << ">";
+                            out << "Minus " << i << ": " << cellsByState[i];
+                            out << "</font>";
+                        }
+                    }
+                    TABLED() {
+                        out << "Ready: <font color=green>"
+                            << readyCount << "</font>";
+                        out << "Fresh: <font color=blue>"
+                            << replacementCount << "</font>";
+                    }
+                }
+            }
+        }
+    }
+}
+
 void TDiskRegistryActor::RenderBrokenDiskList(IOutputStream& out) const
 {
     HTML(out) {
@@ -871,6 +939,7 @@ void TDiskRegistryActor::RenderDisks(IOutputStream& out, ui32 limit) const
     }
 
     RenderDiskList(out);
+    RenderMirroredDiskList(out);
     RenderMigrationList(out);
     RenderBrokenDiskList(out);
     RenderDisksToNotify(out);

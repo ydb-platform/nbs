@@ -226,6 +226,7 @@ private:
     void RenderState(IOutputStream& out) const;
     void RenderDisks(IOutputStream& out, ui32 limit) const;
     void RenderDiskList(IOutputStream& out) const;
+    void RenderMirroredDiskList(IOutputStream& out) const;
     void RenderMigrationList(IOutputStream& out) const;
     void RenderBrokenDiskList(IOutputStream& out) const;
     void RenderDisksToNotify(IOutputStream& out) const;

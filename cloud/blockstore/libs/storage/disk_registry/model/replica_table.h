@@ -41,7 +41,7 @@ public:
         const TDeviceId& deviceId,
         bool isReplacement);
 
-    // for tests
+    // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
 
     // for counters
