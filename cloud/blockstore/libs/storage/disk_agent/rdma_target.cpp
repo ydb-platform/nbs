@@ -530,6 +530,8 @@ private:
     ILoggingServicePtr Logging;
     NRdma::IServerPtr Server;
 
+    TLog Log;
+
 public:
     TRdmaTarget(
             NProto::TRdmaEndpoint config,
@@ -550,14 +552,19 @@ public:
 
     void Start() override
     {
+        Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
+
         auto endpoint = Server->StartEndpoint(
             Config.GetHost(),
             Config.GetPort(),
             Handler);
 
-        Handler->Init(
-            std::move(endpoint),
-            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+        if (endpoint == nullptr) {
+            STORAGE_ERROR("unable to set up RDMA endpoint");
+            return;
+        }
+
+        Handler->Init(std::move(endpoint), std::move(Log));
     }
 
     void Stop() override
