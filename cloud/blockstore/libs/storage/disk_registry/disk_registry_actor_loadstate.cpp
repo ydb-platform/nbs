@@ -165,7 +165,12 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ProcessAutomaticallyReplacedDevices(ctx);
 
-    ScheduleMakeBackup(ctx, args.LastBackupTime);
+    ScheduleMakeBackup(ctx,
+        args.LastBackupTime
+            ? args.LastBackupTime
+            : ctx.Now() -
+                Config->GetDiskRegistryBackupPeriod() +
+                TDuration::Minutes(5));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
