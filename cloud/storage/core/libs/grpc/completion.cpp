@@ -46,7 +46,7 @@ bool EnqueueCompletion(grpc::CompletionQueue* completionQueue, void* tag)
         grpc_cq_end_op(
             completionQueue->cq(),
             completion.get(),
-            GRPC_ERROR_NONE,
+            y_absl::OkStatus(),
             [] (void*, grpc_cq_completion*) {},
             nullptr,
             completion.get());

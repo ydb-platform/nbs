@@ -35,7 +35,7 @@ public:
         Y_UNUSED(endpoint);
 
         *authContext = grpc_core::MakeRefCounted<grpc_auth_context>(nullptr);
-        grpc_error_handle error = GRPC_ERROR_NONE;
+        grpc_error_handle error = y_absl::OkStatus();
         grpc_core::ExecCtx::Run(DEBUG_LOCATION, onPeerChecked, error);
         tsi_peer_destruct(&peer);
     }
@@ -71,8 +71,7 @@ public:
     }
 
     void cancel_check_peer(grpc_closure* /*on_peer_checked*/,
-                           grpc_error_handle error) override {
-      GRPC_ERROR_UNREF(error);
+                           grpc_error_handle /*error*/) override {
     }
 };
 
