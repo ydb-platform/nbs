@@ -135,6 +135,7 @@ private:
     void BecomeAux(const NActors::TActorContext& ctx, EState state);
     void ReportTabletState(const NActors::TActorContext& ctx);
 
+    void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
 
     bool OnRenderAppHtmlPage(

@@ -47,6 +47,7 @@ private:
 
     void OnStateChanged(const TActorContext& ctx, const char* name);
 
+    void DefaultSignalTabletActive(const TActorContext& ctx) override;
     void OnActivateExecutor(const TActorContext& ctx) override;
 
     void OnDetach(const TActorContext& ctx) override;
@@ -94,8 +95,14 @@ void TTabletActor::OnStateChanged(const TActorContext& ctx, const char* name)
         ToString(ExecutorID()).data());
 }
 
+void TTabletActor::DefaultSignalTabletActive(const TActorContext&)
+{
+    // must be empty
+}
+
 void TTabletActor::OnActivateExecutor(const TActorContext& ctx)
 {
+    SignalTabletActive(ctx);
     BecomeAux(ctx, "Work", &TThis::StateWork);
 }
 

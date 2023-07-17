@@ -54,10 +54,15 @@ public:
     {}
 
 private:
+    void DefaultSignalTabletActive(const TActorContext&) override
+    {
+        // must be empty
+    }
+
     void OnActivateExecutor(const TActorContext& ctx) override
     {
-        Y_UNUSED(ctx);
         Become(&TThis::StateWork);
+        SignalTabletActive(ctx);
     }
 
     void OnDetach(const TActorContext& ctx) override

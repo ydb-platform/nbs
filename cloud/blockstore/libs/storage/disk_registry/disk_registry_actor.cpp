@@ -140,12 +140,19 @@ void TDiskRegistryActor::ReportTabletState(const TActorContext& ctx)
     NCloud::Send(ctx, service, std::move(request));
 }
 
+void TDiskRegistryActor::DefaultSignalTabletActive(const TActorContext&)
+{
+    // must be empty
+}
+
 void TDiskRegistryActor::OnActivateExecutor(const TActorContext& ctx)
 {
     RegisterCounters(ctx);
 
     if (!Executor()->GetStats().IsFollower) {
         ExecuteTx<TInitSchema>(ctx);
+    } else {
+        SignalTabletActive(ctx);
     }
 
     BecomeAux(ctx, STATE_INIT);
