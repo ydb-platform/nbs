@@ -52,6 +52,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
     cloud/blockstore/libs/storage/volume/model
+    cloud/blockstore/libs/storage/volume/actors
 
     cloud/storage/core/libs/common
 
@@ -72,6 +73,7 @@ PEERDIR(
 END()
 
 RECURSE(
+    actors
     model
 )
 

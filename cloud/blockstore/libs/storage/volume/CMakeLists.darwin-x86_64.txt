@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(actors)
 add_subdirectory(model)
 
 add_library(libs-storage-volume)
@@ -25,6 +26,7 @@ target_link_libraries(libs-storage-volume PUBLIC
   libs-storage-protos
   libs-storage-protos_ydb
   storage-volume-model
+  storage-volume-actors
   core-libs-common
   cpp-actors-core
   library-cpp-lwtrace
