@@ -7,7 +7,6 @@ PEERDIR(
 )
 
 SRCS(
-    cgroup_stats_fetcher_ut.cpp
     block_digest_ut.cpp
     fault_injection_ut.cpp
     postpone_time_predictor_ut.cpp

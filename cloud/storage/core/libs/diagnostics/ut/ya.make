@@ -10,6 +10,7 @@ PEERDIR(
 )
 
 SRCS(
+    cgroup_stats_fetcher_ut.cpp
     histogram_types_ut.cpp
     logging_ut.cpp
     max_calculator_ut.cpp

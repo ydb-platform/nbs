@@ -1,7 +1,6 @@
 #include "cgroup_stats_fetcher.h"
 
-#include "critical_events.h"
-
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -13,8 +12,7 @@
 #include <util/string/cast.h>
 #include <util/system/file.h>
 
-
-namespace NCloud::NBlockStore {
+namespace NCloud::NStorage {
 
 using namespace NMonitoring;
 
@@ -22,17 +20,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const TString ComponentName = "BLOCKSTORE_CGROUP";
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TCgroupStatsFetcher final
     : public ICgroupStatsFetcher
 {
 private:
+    const TString ComponentName;
+
     const ILoggingServicePtr Logging;
     const IMonitoringServicePtr Monitoring;
-    const TString StatsFile;
+    TCgroupStatsFetcherSettings Settings;
+
     TLog Log;
 
     TFile CpuAcctWait;
@@ -43,12 +40,14 @@ private:
 
 public:
     TCgroupStatsFetcher(
+            TString componentName,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring,
-            TString statsFile)
-        : Logging(std::move(logging))
+            TCgroupStatsFetcherSettings settings)
+        : ComponentName(std::move(componentName))
+        , Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
-        , StatsFile(std::move(statsFile))
+        , Settings(std::move(settings))
     {
     }
 
@@ -58,7 +57,7 @@ public:
 
         try {
             CpuAcctWait = TFile(
-                StatsFile,
+                Settings.StatsFile,
                 EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
         } catch (...) {
             ReportCpuWaitFatalError();
@@ -68,7 +67,7 @@ public:
 
         if (!CpuAcctWait.IsOpen()) {
             ReportCpuWaitFatalError();
-            STORAGE_ERROR(TStringBuilder() << "Failed to open " << StatsFile);
+            STORAGE_ERROR("Failed to open " << Settings.StatsFile);
             return;
         }
 
@@ -92,7 +91,7 @@ public:
 
             if (CpuAcctWait.GetLength() >= bufSize - 1) {
                 ReportCpuWaitFatalError();
-                STORAGE_ERROR(TStringBuilder() << StatsFile << " is too large");
+                STORAGE_ERROR(Settings.StatsFile << " is too large");
                 CpuAcctWait.Close();
                 return {};
             }
@@ -109,7 +108,7 @@ public:
             if (value < Last) {
                 STORAGE_ERROR(
                     ReportCpuWaitCounterReadError(
-                        TStringBuilder() << StatsFile <<
+                        TStringBuilder() << Settings.StatsFile <<
                         " : new value " << value <<
                         " is less than previous " << Last));
                 Last = value;
@@ -129,7 +128,7 @@ public:
 
     TString BuildErrorMessageFromException()
     {
-        auto msg = TStringBuilder() << "IO error for " << StatsFile;
+        auto msg = TStringBuilder() << "IO error for " << Settings.StatsFile;
         msg << " with exception " << CurrentExceptionMessage();
         return msg;
     }
@@ -139,10 +138,17 @@ public:
         if (FailCounter) {
             return;
         }
+        if (Settings.ComponentGroupName.empty() ||
+            Settings.CountersGroupName.empty() ||
+            Settings.CounterName.empty() ||
+            Settings.StatsFile.empty())
+        {
+            return;
+        }
         FailCounter = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("CpuWaitFailure", false);
+            ->GetSubgroup("counters", Settings.CountersGroupName)
+            ->GetSubgroup("component", Settings.ComponentGroupName)
+            ->GetCounter(Settings.CounterName, false);
         *FailCounter = 1;
     }
 };
@@ -171,14 +177,16 @@ struct TCgroupStatsFetcherStub final
 ////////////////////////////////////////////////////////////////////////////////
 
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
+    TString componentName,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    TString statsFile)
+    TCgroupStatsFetcherSettings settings)
 {
     return std::make_shared<TCgroupStatsFetcher>(
+        std::move(componentName),
         std::move(logging),
         std::move(monitoring),
-        std::move(statsFile));
+        std::move(settings));
 }
 
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub()
@@ -186,5 +194,4 @@ ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub()
     return std::make_shared<TCgroupStatsFetcherStub>();
 }
 
-}   // namespace NCloud::NBlockStore
-
+}   // namespace NCloud::NStorage

@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
-#include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/fault_injection.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
@@ -78,6 +77,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>

@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/libs/actors/public.h>
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <ydb/core/driver_lib/run/factories.h>
@@ -58,7 +59,7 @@ struct TServerActorSystemArgs
     IVolumeStatsPtr VolumeStats;
     NRdma::IServerPtr RdmaServer;
     NRdma::IClientPtr RdmaClient;
-    ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
     TManuallyPreemptedVolumesPtr PreemptedVolumes;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;

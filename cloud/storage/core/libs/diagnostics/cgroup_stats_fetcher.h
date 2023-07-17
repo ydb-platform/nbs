@@ -6,7 +6,13 @@
 
 #include <util/datetime/base.h>
 
-namespace NCloud::NBlockStore {
+namespace NMonitoring {
+
+struct TCounterForPtr;
+
+};
+
+namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -18,13 +24,24 @@ struct ICgroupStatsFetcher
     virtual TDuration GetCpuWait() = 0;
 };
 
+using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCgroupStatsFetcherSettings
+{
+    TString StatsFile;
+    TString CountersGroupName;
+    TString ComponentGroupName;
+    TString CounterName;
+};
+
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
+    TString componentName,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    TString statsFile);
+    TCgroupStatsFetcherSettings settings);
 
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub();
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud::NStorage

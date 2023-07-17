@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    cgroup_stats_fetcher.cpp
     counters_helper.cpp
     critical_events.cpp
     executor_counters.cpp

@@ -38,7 +38,6 @@ target_link_libraries(blockstore-libs-diagnostics PUBLIC
 )
 target_sources(blockstore-libs-diagnostics PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/block_digest.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/critical_events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/dumpable.cpp

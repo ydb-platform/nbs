@@ -66,9 +66,6 @@ using IProfileLogPtr = std::shared_ptr<IProfileLog>;
 struct IBlockDigestGenerator;
 using IBlockDigestGeneratorPtr = std::shared_ptr<IBlockDigestGenerator>;
 
-struct ICgroupStatsFetcher;
-using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
-
 struct IPostponeTimePredictor;
 using IPostponeTimePredictorPtr = std::shared_ptr<IPostponeTimePredictor>;
 

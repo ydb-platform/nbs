@@ -11,7 +11,7 @@ using namespace NActors;
 IActorPtr CreateVolumeBalancerActor(
     TStorageConfigPtr storageConfig,
     IVolumeStatsPtr volumeStats,
-    ICgroupStatsFetcherPtr cgroupStatFetcher,
+    NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     NActors::TActorId serviceActorId)
 {

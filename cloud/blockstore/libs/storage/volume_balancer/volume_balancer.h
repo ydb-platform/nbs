@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+
 #include <util/generic/maybe.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -18,7 +20,7 @@ namespace NCloud::NBlockStore::NStorage {
 NActors::IActorPtr CreateVolumeBalancerActor(
     TStorageConfigPtr storageConfig,
     IVolumeStatsPtr volumeStats,
-    ICgroupStatsFetcherPtr cgroupStatFetcher,
+    NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     NActors::TActorId serviceActorId);
 

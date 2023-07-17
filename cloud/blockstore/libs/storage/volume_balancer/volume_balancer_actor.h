@@ -11,6 +11,8 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+
 #include <ydb/core/tablet/tablet_metrics.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
@@ -26,7 +28,7 @@ class TVolumeBalancerActor final
 private:
     const TStorageConfigPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;
-    const ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    const NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
     const IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     const NActors::TActorId ServiceActorId;
 
@@ -47,7 +49,7 @@ public:
     TVolumeBalancerActor(
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
-        ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         NActors::TActorId serviceActorId);
 

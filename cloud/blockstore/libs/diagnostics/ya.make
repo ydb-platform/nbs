@@ -2,7 +2,6 @@ LIBRARY()
 
 SRCS(
     block_digest.cpp
-    cgroup_stats_fetcher.cpp
     config.cpp
     critical_events.cpp
     dumpable.cpp

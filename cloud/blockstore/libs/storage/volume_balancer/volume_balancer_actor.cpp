@@ -2,7 +2,6 @@
 
 #include "volume_balancer_events_private.h"
 
-#include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -12,6 +11,8 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
@@ -139,7 +140,7 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
 TVolumeBalancerActor::TVolumeBalancerActor(
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
-        ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))

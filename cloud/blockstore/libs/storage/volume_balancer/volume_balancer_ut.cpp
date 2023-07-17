@@ -1,7 +1,6 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
 #include <cloud/blockstore/config/storage.pb.h>
-#include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -10,6 +9,8 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
+
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -174,7 +175,7 @@ struct TVolumeStatsTestMock final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCgroupStatsFetcherMock: public ICgroupStatsFetcher
+struct TCgroupStatsFetcherMock: public NCloud::NStorage::ICgroupStatsFetcher
 {
     TDuration Value;
 
@@ -391,7 +392,7 @@ TFeaturesConfigPtr CreateFeatureConfig(
 IActorPtr CreateVolumeBalancerActor(
     TVolumeBalancerConfigBuilder& config,
     IVolumeStatsPtr volumeStats,
-    ICgroupStatsFetcherPtr cgroupStatsFetcher,
+    NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher,
     TActorId serviceActorId)
 {
     NProto::TStorageServiceConfig storageConfig = config.Build();

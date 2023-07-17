@@ -29,6 +29,7 @@ target_link_libraries(core-libs-diagnostics PUBLIC
   client-cpp-logger
 )
 target_sources(core-libs-diagnostics PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/diagnostics/counters_helper.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/diagnostics/critical_events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/diagnostics/executor_counters.cpp

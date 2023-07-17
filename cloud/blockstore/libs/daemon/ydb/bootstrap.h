@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/libs/actors/public.h>
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <ydb/core/driver_lib/run/factories.h>
@@ -67,7 +68,7 @@ private:
     ITraceSerializerPtr TraceSerializer;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
-    ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
     NIamClient::IIamTokenClientPtr IamTokenClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
 

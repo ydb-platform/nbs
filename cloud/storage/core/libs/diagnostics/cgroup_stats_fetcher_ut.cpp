@@ -10,16 +10,18 @@
 
 #include <util/system/tempfile.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud::NStorage {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString ComponentName = "STORAGE_CGROUPS";
+
 auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
 {
     auto rootGroup = monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore");
+        ->GetSubgroup("counters", "storage");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
     InitCriticalEventsCounter(serverGroup);
@@ -53,9 +55,15 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(10));
 
         auto fetcher = CreateCgroupStatsFetcher(
+            ComponentName,
             CreateLoggingService("console"),
             monitoring,
-            statsFile.Name());
+            {
+                .StatsFile = statsFile.Name(),
+                .CountersGroupName = "storage",
+                .ComponentGroupName = "test",
+                .CounterName = "CpuWaitFailure",
+            });
         fetcher->Start();
 
         UNIT_ASSERT_VALUES_EQUAL(TDuration(), fetcher->GetCpuWait());
@@ -71,16 +79,22 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
     Y_UNIT_TEST(ShouldReportErrorIfFileIsMissing)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        SetupCriticalEvents(monitoring);
+        auto serverGroup = SetupCriticalEvents(monitoring);
 
         auto fetcher = CreateCgroupStatsFetcher(
+            ComponentName,
             CreateLoggingService("console"),
             monitoring,
-            "noname");
+            {
+                .StatsFile = "noname",
+                .CountersGroupName = "storage",
+                .ComponentGroupName = "server",
+                .CounterName = "CpuWaitFailure",
+            });
         fetcher->Start();
 
         auto failCounter = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("counters", "storage")
             ->GetSubgroup("component", "server")
             ->GetCounter("CpuWaitFailure", false);
 
@@ -101,9 +115,15 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(100));
 
         auto fetcher = CreateCgroupStatsFetcher(
+            ComponentName,
             CreateLoggingService("console"),
             monitoring,
-            "test");
+            {
+                .StatsFile = "test",
+                .CountersGroupName = "storage",
+                .ComponentGroupName = "test",
+                .CounterName = "CpuWaitFailure",
+            });
         fetcher->Start();
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));
@@ -118,4 +138,4 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud::NStorage

@@ -5,7 +5,6 @@
 
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
-#include <cloud/blockstore/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
@@ -44,6 +43,7 @@
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
@@ -445,10 +445,15 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("ProfileLog initialized");
 
-    CgroupStatsFetcher = CreateCgroupStatsFetcher(
-        logging,
-        monitoring,
-        Configs->DiagnosticsConfig->GetCpuWaitFilename());
+    auto cgroupStatsFetcherSettings = NCloud::NStorage::TCgroupStatsFetcherSettings{
+            .StatsFile = Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+            .CountersGroupName = "blockstore",
+            .ComponentGroupName = "server",
+            .CounterName = "CpuWaitFailure",
+    };
+    CgroupStatsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(
+        "BLOCKSTORE_CGROUPS", logging, monitoring,
+        std::move(cgroupStatsFetcherSettings));
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
