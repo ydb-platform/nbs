@@ -665,6 +665,20 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             diskConfig.SetCloudId("Cloud 4");
             diskConfig.SetBlockSize(44);
         }
+        {
+            auto& diskConfig = backup.Disks.emplace_back();
+            diskConfig.SetDiskId("Disk 4/0");
+            diskConfig.SetFolderId("Folder 4");
+            diskConfig.SetCloudId("Cloud 4");
+            diskConfig.SetBlockSize(44);
+        }
+        {
+            auto& diskConfig = backup.Disks.emplace_back();
+            diskConfig.SetDiskId("Disk 4/1");
+            diskConfig.SetFolderId("Folder 4");
+            diskConfig.SetCloudId("Cloud 4");
+            diskConfig.SetBlockSize(44);
+        }
 
         backup.DisksToCleanup.push_back("Disk 4");
 
@@ -764,13 +778,17 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                 TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
         auto& state = response->LoadDBState;
         UNIT_ASSERT_EQUAL(
-            state.Disks.size(), 3);
+            state.Disks.size(), 5);
         UNIT_ASSERT_EQUAL(
             state.Disks[0].GetDiskId(), "Disk 1");
         UNIT_ASSERT_EQUAL(
             state.Disks[1].GetDiskId(), "Disk 3");
         UNIT_ASSERT_EQUAL(
             state.Disks[2].GetDiskId(), "Disk 4");
+        UNIT_ASSERT_EQUAL(
+            state.Disks[3].GetDiskId(), "Disk 4/0");
+        UNIT_ASSERT_EQUAL(
+            state.Disks[4].GetDiskId(), "Disk 4/1");
     }
 }
 

@@ -485,7 +485,12 @@ void TRestoreValidationActor::HandleListVolumesResponse(
                 DisksInSS,
                 ValidSnapshot.Disks,
                 *itr)
-            && !FindPtr(ValidSnapshot.DisksToCleanup, itr->GetDiskId()))
+            && !FindPtr(
+                ValidSnapshot.DisksToCleanup,
+                itr->GetDiskId())
+            && !FindPtr(
+                ValidSnapshot.DisksToCleanup,
+                NormalizeMirrorId(itr->GetDiskId())))
         {
             LOG_WARN_S(
                 ctx,
