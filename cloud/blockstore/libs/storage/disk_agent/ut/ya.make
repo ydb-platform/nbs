@@ -1,5 +1,9 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_agent)
 
+IF (SANITIZER_TYPE == "thread")
+    SIZE(MEDIUM)
+ENDIF()
+
 SRCS(
     disk_agent_state_ut.cpp
     rdma_target_ut.cpp
