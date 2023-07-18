@@ -352,9 +352,18 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
         const TString filePath = msg->Record.GetBackupFilePath();
         if (!filePath.empty()) {
             try {
-                TProtoStringType str;
-                google::protobuf::util::MessageToJsonString(msg->Record, &str);
-                TFileOutput(filePath).Write(str.c_str());
+                if (!msg->Record.GetBackup().GetConfig().ByteSize()) {
+                    LOG_WARN(
+                        ctx, TBlockStoreComponents::DISK_REGISTRY,
+                        "The backup file is not created "
+                        "because the configuration is empty");
+                } else {
+                    TProtoStringType str;
+                    google::protobuf::util::MessageToJsonString(
+                        msg->Record,
+                        &str);
+                    TFileOutput(filePath).Write(str.c_str());
+                }
             } catch(...) {
                 LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
                     ReportDiskRegistryBackupFailed(

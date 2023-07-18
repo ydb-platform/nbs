@@ -512,6 +512,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {}));
 
         runtime->AdvanceCurrentTime(TDuration::Minutes(3));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -521,6 +523,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 std::filesystem::directory_iterator{Path.data()},
                 std::filesystem::directory_iterator{});
         UNIT_ASSERT_VALUES_EQUAL(backupsFileCount, 1);
+    }
+
+    Y_UNIT_TEST_F(ShouldScheduleBackupAfterReset, TScheduleBackup)
+    {
+        NProto::TStorageServiceConfig storageConfig =
+            CreateDefaultStorageConfig();
+        storageConfig.SetDiskRegistryBackupPeriod(
+            TInstant::Minutes(2).MilliSeconds());
+        storageConfig.SetDiskRegistryBackupDirPath(Path.data());
+
+        auto runtime = TTestRuntimeBuilder()
+            .With(storageConfig)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+
+        runtime->AdvanceCurrentTime(TDuration::Minutes(3));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        const int backupsFileCount =
+            std::distance(
+                std::filesystem::directory_iterator{Path.data()},
+                std::filesystem::directory_iterator{});
+        UNIT_ASSERT_VALUES_EQUAL(backupsFileCount, 0);
     }
 
     Y_UNIT_TEST(ShouldErrorOnBackup)
@@ -543,6 +570,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {}));
 
         runtime->AdvanceCurrentTime(TDuration::Minutes(3));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
