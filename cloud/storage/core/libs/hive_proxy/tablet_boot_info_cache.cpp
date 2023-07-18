@@ -166,13 +166,14 @@ void TTabletBootInfoCache::SyncCompleted(
     TmpCacheFileLock.reset();
     TmpCacheFileBuffer.clear();
 
-    for (auto& requestInfo : SyncRequests) {
+    if (!SyncRequests.empty()) {
+        auto requestInfo = std::move(SyncRequests.front());
         auto response =
             std::make_unique<TEvHiveProxy::TEvSyncTabletBootInfoCacheResponse>(
                 error);
         NCloud::Reply(ctx, requestInfo, std::move(response));
+        SyncRequests.pop();
     }
-    SyncRequests.clear();
 
     ScheduleSync(ctx);
 
@@ -252,7 +253,7 @@ void TTabletBootInfoCache::HandleSyncTabletBootInfoCache(
     using TResponse = TEvHiveProxy::TEvSyncTabletBootInfoCacheResponse;
 
     if (SyncEnabled) {
-        SyncRequests.emplace_back(ev->Sender, ev->Cookie);
+        SyncRequests.emplace(ev->Sender, ev->Cookie);
         Sync(ctx);
         return;
     }

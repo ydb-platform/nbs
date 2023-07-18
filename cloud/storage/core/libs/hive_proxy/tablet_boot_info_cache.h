@@ -14,7 +14,7 @@
 
 #include <util/folder/path.h>
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
+#include <util/generic/queue.h>
 #include <util/system/file.h>
 #include <util/system/file_lock.h>
 
@@ -70,7 +70,7 @@ private:
     TString TmpCacheFileBuffer;
 
     bool SyncInProgress = false;
-    TVector<TRequestInfo> SyncRequests;
+    TQueue<TRequestInfo> SyncRequests;
 
 public:
     // Never reads from cache file when sync is enabled, just overwrites its

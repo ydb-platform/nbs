@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/protos/path_description_cache.pb.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
@@ -16,7 +15,7 @@
 
 #include <util/folder/path.h>
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
+#include <util/generic/queue.h>
 #include <util/system/file.h>
 #include <util/system/file_lock.h>
 
@@ -30,6 +29,17 @@ class TPathDescriptionCache final
     : public NActors::TActorBootstrapped<TPathDescriptionCache>
 {
 private:
+    struct TRequestInfo
+    {
+        NActors::TActorId Sender;
+        ui64 Cookie = 0;
+
+        TRequestInfo(NActors::TActorId sender, ui64 cookie)
+            : Sender(sender)
+            , Cookie(cookie)
+        {}
+    };
+
     const TFsPath CacheFilePath;
     IFileIOServicePtr FileIOService;
     const bool SyncEnabled = false;
@@ -42,7 +52,7 @@ private:
     TString TmpCacheFileBuffer;
 
     bool SyncInProgress = false;
-    TVector<TRequestInfoPtr> SyncRequests;
+    TQueue<TRequestInfo> SyncRequests;
 
 public:
     // Never reads from cache file when sync is enabled, just overwrites its

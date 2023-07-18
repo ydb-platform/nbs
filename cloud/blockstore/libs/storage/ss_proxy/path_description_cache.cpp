@@ -161,13 +161,14 @@ void TPathDescriptionCache::SyncCompleted(
     TmpCacheFileLock.reset();
     TmpCacheFileBuffer.clear();
 
-    for (auto& requestInfo : SyncRequests) {
+    if (!SyncRequests.empty()) {
+        auto requestInfo = std::move(SyncRequests.front());
         auto response =
             std::make_unique<TEvSSProxy::TEvSyncPathDescriptionCacheResponse>(
                 error);
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        NCloud::Reply(ctx, requestInfo, std::move(response));
+        SyncRequests.pop();
     }
-    SyncRequests.clear();
 
     ScheduleSync(ctx);
 
@@ -246,16 +247,8 @@ void TPathDescriptionCache::HandleSyncPathDescriptionCache(
 {
     using TResponse = TEvSSProxy::TEvSyncPathDescriptionCacheResponse;
 
-    auto* msg = ev->Get();
-
     if (SyncEnabled) {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext
-        );
-        SyncRequests.push_back(std::move(requestInfo));
-
+        SyncRequests.emplace(ev->Sender, ev->Cookie);
         Sync(ctx);
         return;
     }
