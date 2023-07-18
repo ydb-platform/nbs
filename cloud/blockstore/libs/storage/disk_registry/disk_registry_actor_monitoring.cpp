@@ -1515,7 +1515,7 @@ void TDiskRegistryActor::RenderAgentList(
                         out << "RejectAgentTimeout(" << now << ")";
                     }
                     TABLED() {
-                        out << State->GetRejectAgentTimeout(now);
+                        out << State->GetRejectAgentTimeout(now, "");
                     }
                 }
             }

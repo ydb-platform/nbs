@@ -442,6 +442,8 @@ public:
 
     bool GetRejectLateRequestsAtDiskAgentEnabled() const;
     bool GetAssignIdToWriteAndZeroRequestsEnabled() const;
+
+    TDuration GetAgentListExpiredParamsCleanupInterval() const;
 };
 
 ui64 GetAllocationUnit(

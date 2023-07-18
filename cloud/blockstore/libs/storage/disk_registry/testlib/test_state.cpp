@@ -395,7 +395,8 @@ TDiskRegistryState TDiskRegistryStateBuilder::Build()
         std::move(ErrorNotifications),
         std::move(OutdatedVolumeConfigs),
         std::move(SuspendedDevices),
-        std::move(AutomaticallyReplacedDevices));
+        std::move(AutomaticallyReplacedDevices),
+        std::move(DiskRegistryAgentListParams));
 }
 
 TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::With(

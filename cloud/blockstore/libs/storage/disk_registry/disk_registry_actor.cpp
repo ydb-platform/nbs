@@ -276,6 +276,14 @@ void TDiskRegistryActor::UnregisterCounters(const TActorContext& ctx)
     }
 }
 
+void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
+    const NActors::TActorContext& ctx)
+{
+    ctx.Schedule(
+        Config->GetAgentListExpiredParamsCleanupInterval(),
+        new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandlePoisonPill(
@@ -312,6 +320,10 @@ bool TDiskRegistryActor::HandleRequests(STFUNC_SIG)
         BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvDiskRegistry)
         BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_REQUEST, TEvService)
         BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_HANDLE_REQUEST, TEvDiskRegistryPrivate)
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
         default:
             return false;
@@ -429,7 +441,7 @@ void TDiskRegistryActor::ScheduleRejectAgent(
     // phase that happens during the LoadState tx => we should use max timeout
     // in order not to reject all agents at once
     if (State) {
-        timeout = State->GetRejectAgentTimeout(ctx.Now());
+        timeout = State->GetRejectAgentTimeout(ctx.Now(), agentId);
     }
 
     if (!timeout) {

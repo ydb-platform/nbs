@@ -54,6 +54,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChangeDiskDevice,                   __VA_ARGS__)                       \
     xxx(RestoreDiskRegistryPart,            __VA_ARGS__)                       \
     xxx(ProcessAutomaticallyReplacedDevices,__VA_ARGS__)                       \
+    xxx(UpdateDiskRegistryAgentListParams,           __VA_ARGS__)                       \
+    xxx(CleanupExpiredAgentListParams,      __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1226,6 +1228,49 @@ struct TTxDiskRegistry
         void Clear()
         {
             ProcessedCount = 0;
+        }
+    };
+
+    //
+    // UpdateDiskRegistryAgentListParams
+    //
+
+    struct TUpdateDiskRegistryAgentListParams
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        const TVector<TString> AgentIds;
+        const NProto::TDiskRegistryAgentParams Params;
+
+        explicit TUpdateDiskRegistryAgentListParams(
+                TRequestInfoPtr requestInfo,
+                const TVector<TString>& agentIds,
+                const NProto::TDiskRegistryAgentParams& params)
+            : RequestInfo(std::move(requestInfo))
+            , AgentIds(agentIds)
+            , Params(params)
+        {}
+
+        void Clear()
+        {
+        }
+    };
+
+    //
+    // CleanupExpiredAgentListParams
+    //
+
+    struct TCleanupExpiredAgentListParams
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        explicit TCleanupExpiredAgentListParams(
+                TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
         }
     };
 };

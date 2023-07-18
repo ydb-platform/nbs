@@ -86,13 +86,15 @@ bool NormalizeLoadState(
         errorNotifications,
         outdatedVolumeConfigs,
         suspendedDevices,
-        automaticallyReplacedDevices
+        automaticallyReplacedDevices,
+        diskRegistryAgentListParams
     ] = state;
 
     Y_UNUSED(oldAgents);
     Y_UNUSED(lastDiskStateSeqNo);
     Y_UNUSED(diskAllocationAllowed);
     Y_UNUSED(diskStateChanges);
+    Y_UNUSED(diskRegistryAgentListParams);
 
     bool result = true;
 

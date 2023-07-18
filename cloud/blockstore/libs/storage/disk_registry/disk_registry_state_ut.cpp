@@ -9417,6 +9417,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 automaticallyReplacedDevices));
             UNIT_ASSERT_VALUES_EQUAL(0, automaticallyReplacedDevices.size());
 
+            THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams;
+            UNIT_ASSERT(db.ReadDiskRegistryAgentListParams(
+                diskRegistryAgentListParams));
+            UNIT_ASSERT_VALUES_EQUAL(0, diskRegistryAgentListParams.size());
+
             state.emplace(TDiskRegistryState {
                 CreateStorageConfig([] {
                     auto proto = CreateDefaultStorageConfigProto();
@@ -9437,7 +9442,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 std::move(errorNotifications),
                 std::move(outdatedVolumeConfigs),
                 std::move(suspendedDevices),
-                std::move(automaticallyReplacedDevices)
+                std::move(automaticallyReplacedDevices),
+                std::move(diskRegistryAgentListParams)
             });
         });
 

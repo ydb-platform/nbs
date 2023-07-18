@@ -109,9 +109,11 @@ NProto::TDeviceConfig& EnsureDevice(
 TAgentList::TAgentList(
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
-        TVector<NProto::TAgentConfig> configs)
+        TVector<NProto::TAgentConfig> configs,
+        const THashMap<TString, NProto::TDiskRegistryAgentParams>& diskRegistryAgentListParams)
     : Config(config)
     , ComponentGroup(std::move(counters))
+    , DiskRegistryAgentListParams(diskRegistryAgentListParams)
 {
     Agents.reserve(configs.size());
 
@@ -378,7 +380,7 @@ void TAgentList::PublishCounters(TInstant now)
         counter.Publish(now);
     }
 
-    RejectAgentTimeoutCounter.Set(GetRejectAgentTimeout(now).MilliSeconds());
+    RejectAgentTimeoutCounter.Set(GetRejectAgentTimeout(now, "").MilliSeconds());
     RejectAgentTimeoutCounter.Publish(now);
 }
 
@@ -395,7 +397,7 @@ void TAgentList::UpdateCounters(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDuration TAgentList::GetRejectAgentTimeout(TInstant now) const
+TDuration TAgentList::GetRejectAgentTimeout(TInstant now, const TString& agentId) const
 {
     const auto m = UpdateRejectTimeoutMultiplier(
         RejectTimeoutMultiplier,
@@ -404,7 +406,16 @@ TDuration TAgentList::GetRejectAgentTimeout(TInstant now) const
         Config.DisconnectRecoveryInterval,
         now);
 
-    return Min(Config.MaxRejectAgentTimeout, m * Config.MinRejectAgentTimeout);
+    const auto* params = GetDiskRegistryAgentListParams(agentId);
+
+    auto nonReplicatedAgentMinTimeout = params
+        ? TDuration::MilliSeconds(params->GetNewNonReplicatedAgentMinTimeoutMs())
+        : Config.MinRejectAgentTimeout;
+    auto nonReplicatedAgentMaxTimeoutMs = params
+        ? TDuration::MilliSeconds(params->GetNewNonReplicatedAgentMaxTimeoutMs())
+        : Config.MaxRejectAgentTimeout;
+
+    return Min(nonReplicatedAgentMaxTimeoutMs, m * nonReplicatedAgentMinTimeout);
 }
 
 void TAgentList::OnAgentDisconnected(TInstant now)
@@ -482,6 +493,32 @@ void TAgentList::RemoveAgentByIdx(size_t index)
     if (!AgentCounters.empty()) {
         AgentCounters.pop_back();
     }
+}
+
+const NProto::TDiskRegistryAgentParams* TAgentList::GetDiskRegistryAgentListParams(
+    const TString& agentId) const
+{
+    return DiskRegistryAgentListParams.FindPtr(agentId);
+}
+
+TVector<TString> TAgentList::CleanupExpiredAgentListParams(TInstant now) {
+    TVector<TString> expiredAgentListParamsAgentIds;
+    for (const auto& [agentId, params]: DiskRegistryAgentListParams) {
+        if (now.MilliSeconds() > params.GetDeadlineMs()) {
+            expiredAgentListParamsAgentIds.push_back(agentId);
+        }
+    }
+    for (const auto& agentId: expiredAgentListParamsAgentIds) {
+        DiskRegistryAgentListParams.erase(agentId);
+    }
+    return expiredAgentListParamsAgentIds;
+}
+
+void TAgentList::SetDiskRegistryAgentListParams(
+    const TString& agentId,
+    const NProto::TDiskRegistryAgentParams& params)
+{
+    DiskRegistryAgentListParams[agentId] = params;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

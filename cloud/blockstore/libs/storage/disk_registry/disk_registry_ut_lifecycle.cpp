@@ -1151,6 +1151,74 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
             static_cast<ui32>(agentState));
+
+        {
+            TDiskRegistryClient diskRegistry(*runtime);
+            diskRegistry.WaitReady();
+            diskRegistry.SetWritableState(true);
+
+            agentId = "";
+            agentState = NProto::AGENT_STATE_ONLINE;
+
+            pipe = registerAgent();
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(200));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            diskRegistry.UpdateDiskRegistryAgentListParams(
+                TVector<TString>{"agent-1"},
+                TDuration::Seconds(100),
+                TDuration::Seconds(500),
+                TDuration::Seconds(1000));
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            // diskRegistry.RebootTablet();
+            // diskRegistry.WaitReady();
+
+            disconnectAgent(pipe);
+
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->DispatchEvents({}, TDuration::Seconds(5));
+
+            UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
+
+            runtime->DispatchEvents({}, TDuration::Seconds(5));
+
+            UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
+
+            runtime->DispatchEvents({}, TDuration::Seconds(90));
+
+            UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
+                static_cast<ui32>(agentState));
+
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(1000));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            agentId = "";
+            agentState = NProto::AGENT_STATE_ONLINE;
+
+            pipe = registerAgent();
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(200));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            disconnectAgent(pipe);
+
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->DispatchEvents({}, TDuration::Seconds(5));
+
+            UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
+
+            runtime->DispatchEvents({}, TDuration::Seconds(5));
+            runtime->DispatchEvents({}, TDuration::Seconds(5));
+
+            UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
+                static_cast<ui32>(agentState));
+        }
     }
 
     Y_UNIT_TEST(ShouldFailCleanupIfDiskRegistryRestarts)

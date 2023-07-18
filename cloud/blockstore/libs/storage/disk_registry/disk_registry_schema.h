@@ -271,6 +271,25 @@ struct TDiskRegistrySchema
     };
     */
 
+    struct DiskRegistryAgentListParams
+        : public TTableSchema<17>
+    {
+        struct AgentId
+            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct Params
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TDiskRegistryAgentParams;
+        };
+
+        using TKey = TableKey<AgentId>;
+        using TColumns = TableColumns<AgentId, Params>;
+    };
+
+
     using TTables = SchemaTables<
         Agents,
         Disks,
@@ -285,7 +304,8 @@ struct TDiskRegistrySchema
         OutdatedVolumeConfigs,
         AgentById,
         SuspendedDevices,
-        AutomaticallyReplacedDevices
+        AutomaticallyReplacedDevices,
+        DiskRegistryAgentListParams
     >;
 };
 

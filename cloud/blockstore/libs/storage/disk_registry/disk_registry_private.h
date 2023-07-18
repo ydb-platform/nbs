@@ -95,6 +95,7 @@ struct TDiskRegistryStateSnapshot
     TVector<TString> OutdatedVolumeConfigs;
     TVector<TString> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
+    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
     void Clear()
     {
@@ -114,6 +115,7 @@ struct TDiskRegistryStateSnapshot
         OutdatedVolumeConfigs.clear();
         SuspendedDevices.clear();
         AutomaticallyReplacedDevices.clear();
+        DiskRegistryAgentListParams.clear();
     }
 };
 
@@ -124,28 +126,28 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(xxx, ...)                    \
-    xxx(CleanupDisks,                __VA_ARGS__)                              \
-    xxx(SecureErase,                 __VA_ARGS__)                              \
-    xxx(CleanupDevices,              __VA_ARGS__)                              \
-    xxx(StartAcquireDisk,            __VA_ARGS__)                              \
-    xxx(FinishAcquireDisk,           __VA_ARGS__)                              \
-    xxx(RemoveDiskSession,           __VA_ARGS__)                              \
-    xxx(DestroyBrokenDisks,          __VA_ARGS__)                              \
-    xxx(ListBrokenDisks,             __VA_ARGS__)                              \
-    xxx(NotifyDisks,                 __VA_ARGS__)                              \
-    xxx(ListDisksToNotify,           __VA_ARGS__)                              \
-    xxx(InitiateDiskReallocation,    __VA_ARGS__)                              \
-    xxx(ReplaceDiskDevice,           __VA_ARGS__)                              \
-    xxx(UpdateCmsHostDeviceState,    __VA_ARGS__)                              \
-    xxx(UpdateCmsHostState,          __VA_ARGS__)                              \
-    xxx(GetDependentDisks,           __VA_ARGS__)                              \
-    xxx(PublishDiskStates,           __VA_ARGS__)                              \
-    xxx(StartMigration,              __VA_ARGS__)                              \
-    xxx(NotifyUsers,                 __VA_ARGS__)                              \
-    xxx(NotifyDiskError,             __VA_ARGS__)                              \
-    xxx(UpdateVolumeConfig,          __VA_ARGS__)                              \
-    xxx(FinishVolumeConfigUpdate,    __VA_ARGS__)                              \
-    xxx(RestoreDiskRegistryPart,     __VA_ARGS__)                              \
+    xxx(CleanupDisks,                               __VA_ARGS__)               \
+    xxx(SecureErase,                                __VA_ARGS__)               \
+    xxx(CleanupDevices,                             __VA_ARGS__)               \
+    xxx(StartAcquireDisk,                           __VA_ARGS__)               \
+    xxx(FinishAcquireDisk,                          __VA_ARGS__)               \
+    xxx(RemoveDiskSession,                          __VA_ARGS__)               \
+    xxx(DestroyBrokenDisks,                         __VA_ARGS__)               \
+    xxx(ListBrokenDisks,                            __VA_ARGS__)               \
+    xxx(NotifyDisks,                                __VA_ARGS__)               \
+    xxx(ListDisksToNotify,                          __VA_ARGS__)               \
+    xxx(InitiateDiskReallocation,                   __VA_ARGS__)               \
+    xxx(ReplaceDiskDevice,                          __VA_ARGS__)               \
+    xxx(UpdateCmsHostDeviceState,                   __VA_ARGS__)               \
+    xxx(UpdateCmsHostState,                         __VA_ARGS__)               \
+    xxx(GetDependentDisks,                          __VA_ARGS__)               \
+    xxx(PublishDiskStates,                          __VA_ARGS__)               \
+    xxx(StartMigration,                             __VA_ARGS__)               \
+    xxx(NotifyUsers,                                __VA_ARGS__)               \
+    xxx(NotifyDiskError,                            __VA_ARGS__)               \
+    xxx(UpdateVolumeConfig,                         __VA_ARGS__)               \
+    xxx(FinishVolumeConfigUpdate,                   __VA_ARGS__)               \
+    xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -688,6 +690,9 @@ struct TEvDiskRegistryPrivate
         {}
     };
 
+    struct TDiskRegistryAgentListExpiredParamsCleanup
+    {};
+
     //
     // Events declaration
     //
@@ -703,6 +708,8 @@ struct TEvDiskRegistryPrivate
         EvOperationCompleted,
 
         EvRestoreDiskRegistryValidationResponse,
+
+        EvDiskRegistryAgentListExpiredParamsCleanup,
 
         EvEnd
     };
@@ -722,6 +729,10 @@ struct TEvDiskRegistryPrivate
     using TEvRestoreDiskRegistryValidationResponse = TResponseEvent<
         TRestoreDiskRegistryValidationResponse,
         EvRestoreDiskRegistryValidationResponse>;
+
+    using TEvDiskRegistryAgentListExpiredParamsCleanup = TRequestEvent<
+        TDiskRegistryAgentListExpiredParamsCleanup,
+        EvDiskRegistryAgentListExpiredParamsCleanup>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

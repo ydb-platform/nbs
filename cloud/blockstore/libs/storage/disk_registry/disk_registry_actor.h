@@ -265,6 +265,9 @@ private:
         TRequestInfo& requestInfo,
         TString message);
 
+    void ScheduleDiskRegistryAgentListExpiredParamsCleanup(
+        const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -405,6 +408,10 @@ private:
 
     void HandleRestoreDiskRegistryValidationResponse(
         const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryAgentListExpiredParamsCleanup(
+        const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

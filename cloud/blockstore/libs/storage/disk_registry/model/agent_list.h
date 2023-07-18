@@ -55,11 +55,14 @@ private:
     THashMap<TAgentId, size_t> AgentIdToIdx;
     THashMap<TNodeId, size_t> NodeIdToIdx;
 
+    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+
 public:
     TAgentList(
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
-        TVector<NProto::TAgentConfig> configs);
+        TVector<NProto::TAgentConfig> configs,
+        const THashMap<TString, NProto::TDiskRegistryAgentParams>& diskRegistryAgentListParams);
 
     const TVector<NProto::TAgentConfig>& GetAgents() const
     {
@@ -90,8 +93,18 @@ public:
         const NProto::TAgentStats& stats,
         const NProto::TMeanTimeBetweenFailures& mtbf);
 
-    TDuration GetRejectAgentTimeout(TInstant now) const;
+    TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const;
     void OnAgentDisconnected(TInstant now);
+
+    const THashMap<TString, NProto::TDiskRegistryAgentParams>& GetDiskRegistryAgentListParams() const
+    {
+        return DiskRegistryAgentListParams;
+    }
+    const NProto::TDiskRegistryAgentParams* GetDiskRegistryAgentListParams(
+        const TString& agentId) const;
+    void SetDiskRegistryAgentListParams(
+        const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
+    TVector<TString> CleanupExpiredAgentListParams(TInstant now);
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);

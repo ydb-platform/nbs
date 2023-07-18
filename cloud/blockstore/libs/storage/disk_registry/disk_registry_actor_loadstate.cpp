@@ -49,6 +49,7 @@ bool TDiskRegistryActor::LoadState(
         db.ReadOutdatedVolumeConfigs(args.OutdatedVolumeConfigs),
         db.ReadSuspendedDevices(args.SuspendedDevices),
         db.ReadAutomaticallyReplacedDevices(args.AutomaticallyReplacedDevices),
+        db.ReadDiskRegistryAgentListParams(args.DiskRegistryAgentListParams),
     });
 }
 
@@ -143,7 +144,8 @@ void TDiskRegistryActor::CompleteLoadState(
         std::move(args.Snapshot.ErrorNotifications),
         std::move(args.Snapshot.OutdatedVolumeConfigs),
         std::move(args.Snapshot.SuspendedDevices),
-        std::move(args.Snapshot.AutomaticallyReplacedDevices)));
+        std::move(args.Snapshot.AutomaticallyReplacedDevices),
+        std::move(args.Snapshot.DiskRegistryAgentListParams)));
 
     SecureErase(ctx);
 
@@ -166,6 +168,8 @@ void TDiskRegistryActor::CompleteLoadState(
     ProcessAutomaticallyReplacedDevices(ctx);
 
     ScheduleMakeBackup(ctx, args.LastBackupTime);
+
+    ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

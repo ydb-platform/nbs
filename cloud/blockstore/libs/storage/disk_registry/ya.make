@@ -42,6 +42,7 @@ SRCS(
     disk_registry_actor_update_device_state.cpp
     disk_registry_actor_update_disk_block_size.cpp
     disk_registry_actor_update_disk_replica_count.cpp
+    disk_registry_actor_update_params.cpp
     disk_registry_actor_update_placement_group_settings.cpp
     disk_registry_actor_update_stats.cpp
     disk_registry_actor_volume_config.cpp

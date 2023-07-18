@@ -951,6 +951,23 @@ public:
         return request;
     }
 
+    auto CreateUpdateDiskRegistryAgentListParamsRequest(
+        const TVector<TString>& agentIds,
+        TDuration newNonReplicatedAgentMinTimeoutMs,
+        TDuration newNonReplicatedAgentMaxTimeoutMs,
+        TDuration timeout)
+    {
+        auto request = std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>();
+        auto& params = *request->Record.MutableParams();
+
+        params.MutableAgentIds()->Assign(agentIds.begin(), agentIds.end());
+        params.SetNewNonReplicatedAgentMinTimeoutMs(newNonReplicatedAgentMinTimeoutMs.MilliSeconds());
+        params.SetNewNonReplicatedAgentMaxTimeoutMs(newNonReplicatedAgentMaxTimeoutMs.MilliSeconds());
+        params.SetTimeoutMs(timeout.MilliSeconds());
+
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

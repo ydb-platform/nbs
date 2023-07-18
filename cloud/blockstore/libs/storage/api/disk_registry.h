@@ -18,34 +18,35 @@ namespace NCloud::NBlockStore::NStorage {
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS
 
 #define BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(xxx, ...)                      \
-    xxx(RegisterAgent,                  __VA_ARGS__)                           \
-    xxx(UnregisterAgent,                __VA_ARGS__)                           \
-    xxx(AllocateDisk,                   __VA_ARGS__)                           \
-    xxx(DeallocateDisk,                 __VA_ARGS__)                           \
-    xxx(AcquireDisk,                    __VA_ARGS__)                           \
-    xxx(ReleaseDisk,                    __VA_ARGS__)                           \
-    xxx(DescribeDisk,                   __VA_ARGS__)                           \
-    xxx(UpdateConfig,                   __VA_ARGS__)                           \
-    xxx(DescribeConfig,                 __VA_ARGS__)                           \
-    xxx(UpdateAgentStats,               __VA_ARGS__)                           \
-    xxx(ReplaceDevice,                  __VA_ARGS__)                           \
-    xxx(ChangeDeviceState,              __VA_ARGS__)                           \
-    xxx(ChangeAgentState,               __VA_ARGS__)                           \
-    xxx(FinishMigration,                __VA_ARGS__)                           \
-    xxx(BackupDiskRegistryState,        __VA_ARGS__)                           \
-    xxx(SetWritableState,               __VA_ARGS__)                           \
-    xxx(MarkDiskForCleanup,             __VA_ARGS__)                           \
-    xxx(SetUserId,                      __VA_ARGS__)                           \
-    xxx(UpdateDiskBlockSize,            __VA_ARGS__)                           \
-    xxx(UpdateDiskReplicaCount,         __VA_ARGS__)                           \
-    xxx(MarkReplacementDevice,          __VA_ARGS__)                           \
-    xxx(SuspendDevice,                  __VA_ARGS__)                           \
-    xxx(UpdatePlacementGroupSettings,   __VA_ARGS__)                           \
-    xxx(RestoreDiskRegistryState,       __VA_ARGS__)                           \
-    xxx(CreateDiskFromDevices,          __VA_ARGS__)                           \
-    xxx(ChangeDiskDevice,               __VA_ARGS__)                           \
-    xxx(DisableAgent,                   __VA_ARGS__)                           \
-    xxx(StartForceMigration,            __VA_ARGS__)                           \
+    xxx(RegisterAgent,                      __VA_ARGS__)                       \
+    xxx(UnregisterAgent,                    __VA_ARGS__)                       \
+    xxx(AllocateDisk,                       __VA_ARGS__)                       \
+    xxx(DeallocateDisk,                     __VA_ARGS__)                       \
+    xxx(AcquireDisk,                        __VA_ARGS__)                       \
+    xxx(ReleaseDisk,                        __VA_ARGS__)                       \
+    xxx(DescribeDisk,                       __VA_ARGS__)                       \
+    xxx(UpdateConfig,                       __VA_ARGS__)                       \
+    xxx(DescribeConfig,                     __VA_ARGS__)                       \
+    xxx(UpdateAgentStats,                   __VA_ARGS__)                       \
+    xxx(ReplaceDevice,                      __VA_ARGS__)                       \
+    xxx(ChangeDeviceState,                  __VA_ARGS__)                       \
+    xxx(ChangeAgentState,                   __VA_ARGS__)                       \
+    xxx(FinishMigration,                    __VA_ARGS__)                       \
+    xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
+    xxx(SetWritableState,                   __VA_ARGS__)                       \
+    xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
+    xxx(SetUserId,                          __VA_ARGS__)                       \
+    xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
+    xxx(UpdateDiskReplicaCount,             __VA_ARGS__)                       \
+    xxx(MarkReplacementDevice,              __VA_ARGS__)                       \
+    xxx(SuspendDevice,                      __VA_ARGS__)                       \
+    xxx(UpdatePlacementGroupSettings,       __VA_ARGS__)                       \
+    xxx(RestoreDiskRegistryState,           __VA_ARGS__)                       \
+    xxx(CreateDiskFromDevices,              __VA_ARGS__)                       \
+    xxx(ChangeDiskDevice,                   __VA_ARGS__)                       \
+    xxx(DisableAgent,                       __VA_ARGS__)                       \
+    xxx(StartForceMigration,                __VA_ARGS__)                       \
+    xxx(UpdateDiskRegistryAgentListParams,  __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -178,6 +179,9 @@ struct TEvDiskRegistry
 
         EvChangeDiskDeviceRequest = EvBegin + 59,
         EvChangeDiskDeviceResponse = EvBegin + 60,
+
+        EvUpdateDiskRegistryAgentListParamsRequest = EvBegin + 61,
+        EvUpdateDiskRegistryAgentListParamsResponse = EvBegin + 62,
 
         EvEnd
     };

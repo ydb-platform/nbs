@@ -242,7 +242,8 @@ public:
         TVector<TDiskId> errorNotifications,
         TVector<TString> outdatedVolumeConfigs,
         TVector<TDeviceId> suspendedDevices,
-        TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices);
+        TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
+        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
 public:
     NProto::TError RegisterAgent(
@@ -604,15 +605,24 @@ public:
         return ReplicaTable;
     }
 
-    TDuration GetRejectAgentTimeout(TInstant now) const
+    TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const
     {
-        return AgentList.GetRejectAgentTimeout(now);
+        return AgentList.GetRejectAgentTimeout(now, agentId);
     }
 
     void OnAgentDisconnected(TInstant now)
     {
         AgentList.OnAgentDisconnected(now);
     }
+
+    void SetDiskRegistryAgentListParams(
+        TDiskRegistryDatabase& db,
+        const TString& agentId,
+        const NProto::TDiskRegistryAgentParams& params);
+
+    void CleanupExpiredAgentListParams(
+        TDiskRegistryDatabase& db,
+        TInstant now);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

@@ -357,6 +357,26 @@ message TAgentStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TDiskRegistryAgentListRequestParams
+{
+    repeated string AgentIds = 1;
+
+    uint64 TimeoutMs = 2;
+
+    optional uint64 NewNonReplicatedAgentMinTimeoutMs = 3;
+    optional uint64 NewNonReplicatedAgentMaxTimeoutMs = 4;
+}
+
+message TDiskRegistryAgentParams
+{    
+    uint64 DeadlineMs = 1;
+
+    optional uint64 NewNonReplicatedAgentMinTimeoutMs = 2;
+    optional uint64 NewNonReplicatedAgentMaxTimeoutMs = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskRegistryStateBackup
 {
     repeated TDiskConfig Disks = 1;
@@ -404,6 +424,8 @@ message TDiskRegistryStateBackup
     }
 
     repeated TAutomaticallyReplacedDeviceInfo AutomaticallyReplacedDevices = 15;
+
+    map<string, TDiskRegistryAgentParams> DiskRegistryAgentListParams = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1310,6 +1332,24 @@ message TCreateVolumeFromDevicesRequest
 }
 
 message TCreateVolumeFromDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Update disk registry params
+
+message TUpdateDiskRegistryAgentListParamsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Params to update
+    TDiskRegistryAgentListRequestParams Params = 3;
+}
+
+message TUpdateDiskRegistryAgentListParamsResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

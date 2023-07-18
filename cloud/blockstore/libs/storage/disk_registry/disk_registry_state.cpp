@@ -232,7 +232,8 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<TString> errorNotifications,
         TVector<TString> outdatedVolumeConfigs,
         TVector<TDeviceId> suspendedDevices,
-        TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices)
+        TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
+        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams)
     : StorageConfig(std::move(storageConfig))
     , Counters(counters)
     , AgentList({
@@ -242,7 +243,7 @@ TDiskRegistryState::TDiskRegistryState(
         StorageConfig->GetNonReplicatedAgentMaxTimeout(),
         StorageConfig->GetNonReplicatedAgentDisconnectRecoveryInterval(),
         StorageConfig->GetSerialNumberValidationEnabled(),
-    }, counters, std::move(agents))
+    }, counters, std::move(agents), std::move(diskRegistryAgentListParams))
     , DeviceList([&] {
         TVector<TDeviceId> uuids;
         uuids.reserve(dirtyDevices.size());
@@ -4563,7 +4564,7 @@ TString TDiskRegistryState::GetAgentId(TNodeId nodeId) const
 NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 {
     static_assert(
-        TTableCount<TDiskRegistrySchema::TTables>::value == 14,
+        TTableCount<TDiskRegistrySchema::TTables>::value == 15,
         "not all fields are processed"
     );
 
@@ -4586,6 +4587,12 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
             src.cend(),
             RepeatedFieldBackInserter(dst)
         );
+    };
+
+    auto copyMap = [] (const auto& src, auto* dst) {
+        for (const auto& [k, v]: src) {
+            (*dst)[k] = v;
+        }
     };
 
     transform(Disks, backup.MutableDisks(), [this] (const auto& kv) {
@@ -4649,6 +4656,10 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 
             return info;
         });
+
+    copyMap(
+        AgentList.GetDiskRegistryAgentListParams(),
+        backup.MutableDiskRegistryAgentListParams());
 
     auto config = GetConfig();
     config.SetLastDiskStateSeqNo(NotificationSystem.GetDiskStateSeqNo());
@@ -5476,6 +5487,24 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
 const TVector<TDiskStateUpdate>& TDiskRegistryState::GetDiskStateUpdates() const
 {
     return NotificationSystem.GetDiskStateUpdates();
+}
+
+void TDiskRegistryState::SetDiskRegistryAgentListParams(
+    TDiskRegistryDatabase& db,
+    const TString& agentId,
+    const NProto::TDiskRegistryAgentParams& params)
+{
+    AgentList.SetDiskRegistryAgentListParams(agentId, params);
+    db.AddDiskRegistryAgentListParams(agentId, params);
+}
+
+void TDiskRegistryState::CleanupExpiredAgentListParams(
+    TDiskRegistryDatabase& db,
+    TInstant now)
+{
+    for (const auto& agentId: AgentList.CleanupExpiredAgentListParams(now)) {
+        db.DeleteDiskRegistryAgentListParams(agentId);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

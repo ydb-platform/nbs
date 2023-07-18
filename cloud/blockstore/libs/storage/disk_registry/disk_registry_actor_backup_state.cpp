@@ -102,7 +102,8 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         errorNotifications,
         outdatedVolumeConfigs,
         suspendedDevices,
-        automaticallyReplacedDevices
+        automaticallyReplacedDevices,
+        diskRegistryAgentListParams
     ] = args.Snapshot;
 
     auto copy = [] (auto& src, auto* dst) {
@@ -162,6 +163,10 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
             dst.SetDeviceId(src.DeviceId);
             dst.SetReplacementTs(src.ReplacementTs.MicroSeconds());
         });
+
+    backup.MutableDiskRegistryAgentListParams()->insert(
+        diskRegistryAgentListParams.begin(),
+        diskRegistryAgentListParams.end());
 
     backup.MutableConfig()->Swap(&config);
     backup.MutableConfig()->SetLastDiskStateSeqNo(lastDiskStateSeqNo);

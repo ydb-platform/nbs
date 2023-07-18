@@ -115,6 +115,10 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo>& deviceInfos);
     void DeleteAutomaticallyReplacedDevice(const TString& deviceId);
 
+    void AddDiskRegistryAgentListParams(const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
+    bool ReadDiskRegistryAgentListParams(THashMap<TString, NProto::TDiskRegistryAgentParams>& params);
+    void DeleteDiskRegistryAgentListParams(const TString& agentId);
+
 private:
     template <typename TTable>
     bool LoadConfigs(TVector<typename TTable::Config::Type>& configs);

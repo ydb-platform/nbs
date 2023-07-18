@@ -689,4 +689,43 @@ void TDiskRegistryDatabase::DeleteAutomaticallyReplacedDevice(
         .Delete();
 }
 
+void TDiskRegistryDatabase::AddDiskRegistryAgentListParams(const TString& agentId, const NProto::TDiskRegistryAgentParams& params) {
+    using TTable = TDiskRegistrySchema::DiskRegistryAgentListParams;
+
+    Table<TTable>()
+        .Key(agentId)
+        .Update<TTable::Params>(params);
+}
+
+bool TDiskRegistryDatabase::ReadDiskRegistryAgentListParams(THashMap<TString, NProto::TDiskRegistryAgentParams>& params) {
+    using TTable = TDiskRegistrySchema::DiskRegistryAgentListParams;
+
+    auto it = Table<TTable>()
+        .Range()
+        .template Select<typename TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        params.emplace(
+            it.GetValue<TTable::AgentId>(),
+            it.GetValue<TTable::Params>());
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+void TDiskRegistryDatabase::DeleteDiskRegistryAgentListParams(const TString& agentId) {
+    using TTable = TDiskRegistrySchema::DiskRegistryAgentListParams;
+
+    Table<TTable>()
+        .Key(agentId)
+        .Delete();
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

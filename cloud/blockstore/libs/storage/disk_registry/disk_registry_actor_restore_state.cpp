@@ -53,7 +53,8 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         errorNotifications,
         outdatedVolumeConfigs,
         suspendedDevices,
-        automaticallyReplacedDevices
+        automaticallyReplacedDevices,
+        diskRegistryAgentListParams
     ] = newLoadState;
 
     if (backup.DirtyDevicesSize()) {
@@ -105,6 +106,10 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
             dst.DeviceId = src.GetDeviceId();
             dst.ReplacementTs = TInstant::MicroSeconds(src.GetReplacementTs());
         });
+
+    diskRegistryAgentListParams.insert(
+        backup.MutableDiskRegistryAgentListParams()->begin(),
+        backup.MutableDiskRegistryAgentListParams()->end());
 
     if (backup.HasConfig()) {
         config.Swap(backup.MutableConfig());
@@ -398,6 +403,25 @@ void RestoreAutomaticallyReplacedDevices(
     }
 }
 
+void RestoreDiskRegistryAgentListParams(
+    THashMap<TString, NProto::TDiskRegistryAgentParams> newDiskRegistryAgentListParams,
+    THashMap<TString, NProto::TDiskRegistryAgentParams> currentDiskRegistryAgentListParams,
+    TOperations& operations)
+{
+    for (auto&& disk: currentDiskRegistryAgentListParams) {
+        operations.push(
+            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
+                db.DeleteDiskRegistryAgentListParams(disk.first);
+            });
+    }
+    for (auto&& disk: newDiskRegistryAgentListParams) {
+        operations.push(
+            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
+                db.AddDiskRegistryAgentListParams(disk.first, disk.second);
+            });
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -503,7 +527,8 @@ void TDiskRegistryActor::ExecuteRestoreDiskRegistryState(
         args.NewState.ErrorNotifications,
         args.NewState.OutdatedVolumeConfigs,
         args.NewState.SuspendedDevices,
-        args.NewState.AutomaticallyReplacedDevices
+        args.NewState.AutomaticallyReplacedDevices,
+        args.NewState.DiskRegistryAgentListParams
     ));
 }
 
@@ -529,7 +554,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newErrorNotifications,
         newOutdatedVolumeConfigs,
         newSuspendedDevices,
-        newAutomaticallyReplacedDevices
+        newAutomaticallyReplacedDevices,
+        newDiskRegistryAgentListParams
     ] = std::move(args.NewState);
 
     auto&& [
@@ -548,7 +574,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         currentErrorNotifications,
         currentOutdatedVolumeConfigs,
         currentSuspendedDevices,
-        currentAutomaticallyReplacedDevices
+        currentAutomaticallyReplacedDevices,
+        currentDiskRegistryAgentListParams
     ] = std::move(args.CurrentState);
 
     RestoreConfig(
@@ -614,6 +641,10 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
     RestoreAutomaticallyReplacedDevices(
         std::move(newAutomaticallyReplacedDevices),
         std::move(currentAutomaticallyReplacedDevices),
+        operations);
+    RestoreDiskRegistryAgentListParams(
+        std::move(newDiskRegistryAgentListParams),
+        std::move(currentDiskRegistryAgentListParams),
         operations);
 
     auto request = std::make_unique<

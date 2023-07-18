@@ -831,4 +831,6 @@ message TStorageServiceConfig
     // MaxBlobsPerDisk will be proportional to the disk size.
     optional uint32 SSDMaxBlobsPerUnit = 314;
     optional uint32 HDDMaxBlobsPerUnit = 315;
+
+    optional uint32 AgentListExpiredParamsCleanupInterval = 316;
 }
