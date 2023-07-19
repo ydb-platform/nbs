@@ -445,15 +445,19 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("ProfileLog initialized");
 
-    auto cgroupStatsFetcherSettings = NCloud::NStorage::TCgroupStatsFetcherSettings{
-            .StatsFile = Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+    auto cgroupStatsFetcherMonitoringSettings =
+        TCgroupStatsFetcherMonitoringSettings{
             .CountersGroupName = "blockstore",
             .ComponentGroupName = "server",
             .CounterName = "CpuWaitFailure",
-    };
-    CgroupStatsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(
-        "BLOCKSTORE_CGROUPS", logging, monitoring,
-        std::move(cgroupStatsFetcherSettings));
+        };
+
+    CgroupStatsFetcher = CreateCgroupStatsFetcher(
+        "BLOCKSTORE_CGROUPS",
+        logging,
+        monitoring,
+        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+        std::move(cgroupStatsFetcherMonitoringSettings));
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {

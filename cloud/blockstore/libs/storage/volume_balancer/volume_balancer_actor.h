@@ -11,7 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <ydb/core/tablet/tablet_metrics.h>
 

@@ -28,9 +28,8 @@ using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCgroupStatsFetcherSettings
+struct TCgroupStatsFetcherMonitoringSettings
 {
-    TString StatsFile;
     TString CountersGroupName;
     TString ComponentGroupName;
     TString CounterName;
@@ -40,8 +39,11 @@ ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    TCgroupStatsFetcherSettings settings);
+    TString statsFile,
+    TCgroupStatsFetcherMonitoringSettings settings);
 
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub();
+
+TString BuildCpuWaitStatsFilename(const TString& serviceName);
 
 }   // namespace NCloud::NStorage

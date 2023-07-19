@@ -73,4 +73,12 @@ struct IIncompleteRequestProcessor;
 using IIncompleteRequestProcessorPtr =
     std::shared_ptr<IIncompleteRequestProcessor>;
 
+namespace NStorage {
+
+struct ICgroupStatsFetcher;
+
+using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
+
+}
+
 }   // namespace NCloud

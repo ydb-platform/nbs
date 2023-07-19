@@ -58,8 +58,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
             ComponentName,
             CreateLoggingService("console"),
             monitoring,
+            statsFile.Name(),
             {
-                .StatsFile = statsFile.Name(),
                 .CountersGroupName = "storage",
                 .ComponentGroupName = "test",
                 .CounterName = "CpuWaitFailure",
@@ -85,8 +85,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
             ComponentName,
             CreateLoggingService("console"),
             monitoring,
+            "noname",
             {
-                .StatsFile = "noname",
                 .CountersGroupName = "storage",
                 .ComponentGroupName = "server",
                 .CounterName = "CpuWaitFailure",
@@ -118,8 +118,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
             ComponentName,
             CreateLoggingService("console"),
             monitoring,
+            "test",
             {
-                .StatsFile = "test",
                 .CountersGroupName = "storage",
                 .ComponentGroupName = "test",
                 .CounterName = "CpuWaitFailure",

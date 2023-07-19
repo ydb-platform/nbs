@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <util/generic/maybe.h>
 
