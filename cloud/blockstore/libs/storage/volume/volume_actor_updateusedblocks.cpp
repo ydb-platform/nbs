@@ -13,13 +13,17 @@ void TVolumeActor::HandleUpdateUsedBlocks(
     const TEvVolume::TEvUpdateUsedBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!State->GetTrackUsedBlocks()) {
+    auto replyFalse = [&ctx, &ev](){
         // should neither cause a non-retriable error nor be retried
         auto response = std::make_unique<TEvVolume::TEvUpdateUsedBlocksResponse>(
             MakeError(S_FALSE, "Used block tracking not set up"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
-        return;
+    };
+
+    TCheckpointLight* checkpointLight = State->GetCheckpointLight();
+    if (!State->GetTrackUsedBlocks() && !checkpointLight) {
+        return replyFalse();
     }
 
     auto* msg = ev->Get();
@@ -53,6 +57,16 @@ void TVolumeActor::HandleUpdateUsedBlocks(
         msg->CallContext);
 
     auto& ub = State->AccessUsedBlocks();
+
+    if (checkpointLight) {
+        for (const auto& range: ranges) {
+            checkpointLight->Set(range.Start, range.End + 1);
+        }
+    }
+
+    if (!State->GetTrackUsedBlocks()) {
+        return replyFalse();
+    }
 
     // XXX: possible race when we have 2 inflight writes for the same block:
     // 1. request 1 is received and updates used block map here

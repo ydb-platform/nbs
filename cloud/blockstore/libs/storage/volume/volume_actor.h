@@ -873,6 +873,18 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    bool HandleCreateCheckpointLightRequest(
+        const TEvService::TCreateCheckpointMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    bool HandleDeleteCheckpointLightRequest(
+        const TEvService::TDeleteCheckpointMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    bool HandleGetChangedBlocksLightRequest(
+        const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

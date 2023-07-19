@@ -679,6 +679,17 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
             </script>
         )___";
+        auto checkpointLight = State->GetCheckpointLight();
+        if (checkpointLight) {
+            TABLE_SORTABLE_CLASS("table table-condensed") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLED() { out << "Light checkpoint id"; }
+                        TABLED() { out << checkpointLight->GetCheckpointId(); }
+                    }
+                }
+            }
+        }
     }
 }
 

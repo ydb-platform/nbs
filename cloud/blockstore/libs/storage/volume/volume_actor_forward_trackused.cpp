@@ -34,7 +34,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
 
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetTrackUsedBlocks()) {
+        if (State->GetTrackUsedBlocks() || State->GetCheckpointLight()) {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
@@ -81,6 +81,12 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
                 return true;
             }
+        }
+    }
+
+    if constexpr (std::is_same_v<TMethod, TEvService::TGetChangedBlocksMethod>) {
+        if (msg->Record.GetIsLight()) {
+            return HandleGetChangedBlocksLightRequest(ev, ctx);
         }
     }
 

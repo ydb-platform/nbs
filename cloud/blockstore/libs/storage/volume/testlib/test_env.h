@@ -388,15 +388,18 @@ public:
         ui32 blocksCountToRead = 0);
 
     std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
-        const TString& checkpointId);
+        const TString& checkpointId,
+        bool isLight = false);
 
     std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> CreateDeleteCheckpointRequest(
-        const TString& checkpointId);
+        const TString& checkpointId,
+        bool isLight = false);
 
     std::unique_ptr<TEvService::TEvGetChangedBlocksRequest> CreateGetChangedBlocksRequest(
         const TBlockRange64& range,
         const TString& lowCheckpointId,
-        const TString& highCheckpointId);
+        const TString& highCheckpointId,
+        bool isLight = false);
 
     std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest> CreateDeleteCheckpointDataRequest(
         const TString& checkpointId);

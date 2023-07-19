@@ -35,6 +35,7 @@ using TPartitionDescrs = TVector<TPartitionDescr>;
 using TCreateCheckpointMethod = TEvService::TCreateCheckpointMethod;
 using TDeleteCheckpointMethod = TEvService::TDeleteCheckpointMethod;
 using TDeleteCheckpointDataMethod = TEvVolume::TDeleteCheckpointDataMethod;
+using TGetChangedBlocksMethod = TEvService::TGetChangedBlocksMethod;
 
 const char* GetCheckpointRequestName(ECheckpointRequestType reqType) {
     switch (reqType) {
@@ -512,6 +513,116 @@ void TCheckpointActor<TCreateCheckpointMethod>::Bootstrap(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TVolumeActor::HandleCreateCheckpointLightRequest(
+    const TCreateCheckpointMethod::TRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] %s created light checkpoint %s",
+        TabletID(),
+        TCreateCheckpointMethod::Name,
+        msg->Record.GetCheckpointId().Quote().c_str());
+
+    TCheckpointLight& checkpointLight = State->StartCheckpointLight();
+    checkpointLight.CreateCheckpoint(msg->Record.GetCheckpointId());
+
+    auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<TCreateCheckpointMethod::TResponse>());
+
+    return true;
+}
+
+bool TVolumeActor::HandleDeleteCheckpointLightRequest(
+    const TDeleteCheckpointMethod::TRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    TCheckpointLight* checkpointLight = State->GetCheckpointLight();
+    if (checkpointLight &&
+        checkpointLight->GetCheckpointId() == msg->Record.GetCheckpointId())
+    {
+        State->StopCheckpointLight();
+    }
+
+    auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<TDeleteCheckpointMethod::TResponse>());
+
+    return true;
+}
+
+bool TVolumeActor::HandleGetChangedBlocksLightRequest(
+    const TGetChangedBlocksMethod::TRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
+    auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    auto checkpointLight = State->GetCheckpointLight();
+
+    if (!checkpointLight) {
+        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] %s Light checkpoint disabled",
+            TabletID(),
+            TGetChangedBlocksMethod::Name);
+
+        *response->Record.MutableError() =
+            MakeError(E_REJECTED, "Light checkpoint disabled");
+    } else {
+        const ui64 beginBlock =
+            msg->Record.GetStartIndex();
+        const ui64 endBlock =
+            beginBlock + msg->Record.GetBlocksCount();
+
+        if (endBlock > State->GetBlocksCount()) {
+            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+                "[%lu] %s Invalid blocks requested %d blocks %d",
+                TabletID(),
+                TGetChangedBlocksMethod::Name,
+                endBlock,
+                State->GetBlocksCount());
+
+            *response->Record.MutableError() =
+                MakeError(E_REJECTED, "Invalid blocks requested");
+        } else {
+            const auto& data =
+                checkpointLight->GetCheckpointData();
+
+            response->Record.MutableMask()->reserve(
+                msg->Record.GetBlocksCount() / 8 + 1);
+            for (auto i = beginBlock; i < endBlock;) {
+                ui8 bitData = 0;
+                for (auto j = 0; j < 8 && i < endBlock; ++j) {
+                    bitData |= data.Test(i) << j;
+                    ++i;
+                }
+                response->Record.MutableMask()->push_back(bitData);
+            }
+        }
+    }
+
+    NCloud::Reply(ctx, *requestInfo, std::move(response));
+    return true;
+}
+
 template <>
 bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     const TActorContext& ctx,
@@ -521,6 +632,10 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     ui64 traceTs)
 {
     Y_UNUSED(volumeRequestId);
+
+    if (ev->Get()->Record.GetIsLight()) {
+        return HandleCreateCheckpointLightRequest(ev, ctx);
+    }
 
     auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
         ev->Sender,
@@ -552,6 +667,10 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
     ui64 traceTs)
 {
      Y_UNUSED(volumeRequestId);
+
+    if (ev->Get()->Record.GetIsLight()) {
+        return HandleDeleteCheckpointLightRequest(ev, ctx);
+    }
 
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
         ev->Sender,

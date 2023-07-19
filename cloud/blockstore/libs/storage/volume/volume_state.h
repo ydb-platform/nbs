@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/client_state.h>
+#include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
@@ -130,6 +131,7 @@ private:
     TDeque<THistoryLogItem> History;
 
     TCheckpointStore CheckpointStore;
+    std::unique_ptr<TCheckpointLight> CheckpointLight;
 
     std::unique_ptr<TCompressedBitmap> UsedBlocks;
     bool TrackUsedBlocks = false;
@@ -266,6 +268,23 @@ public:
     const auto& GetReadWriteError() const
     {
         return ReadWriteError;
+    }
+
+    TCheckpointLight& StartCheckpointLight()
+    {
+        if (!CheckpointLight) {
+            CheckpointLight = std::make_unique<TCheckpointLight>(BlockCount);
+        }
+        return *CheckpointLight;
+    }
+
+    void StopCheckpointLight() {
+        CheckpointLight.reset();
+    }
+
+    TCheckpointLight* GetCheckpointLight()
+    {
+        return CheckpointLight.get();
     }
 
     TString GetPartitionsError() const;

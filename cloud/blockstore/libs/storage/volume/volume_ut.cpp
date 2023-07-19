@@ -9469,6 +9469,106 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 "DuplicatedRequestReceived_Volume"));
     }
 
+    Y_UNIT_TEST(ShouldReportChangedBlocksForLightCheckpoint)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+        volume.CreateCheckpoint("c1", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "",
+                "c1",
+                true);
+            const auto& mask = response->Record.GetMask();
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1024 / 8, mask.size());
+            for (size_t i = 0; i < mask.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[i]));
+            }
+        }
+
+        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64(5, 15), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64(63, 64), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64(1022, 1023), clientInfo.GetClientId(), 2);
+        volume.CreateCheckpoint("c2", true);
+
+        auto popCountStr = [](const TString& s) {
+            ui64 count = 0;
+            for (char c : s) {
+                count += PopCount(c);
+            }
+            return count;
+        };
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c1",
+                "c2",
+                true);
+            const auto& mask = response->Record.GetMask();
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1024 / 8, mask.size());
+            UNIT_ASSERT_VALUES_EQUAL(16, popCountStr(mask));  // 0, 5-15, 63-64, 1022-1023
+            // range [0-7]
+            UNIT_ASSERT_VALUES_EQUAL(0b11100001, ui8(mask[0]));
+            // range [8-15]
+            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[1]));
+            // range [56-63]
+            UNIT_ASSERT_VALUES_EQUAL(0b10000000, ui8(mask[7]));
+            // range [64-72]
+            UNIT_ASSERT_VALUES_EQUAL(0b00000001, ui8(mask[8]));
+            // range [1016-1023]
+            UNIT_ASSERT_VALUES_EQUAL(0b11000000, ui8(mask[127]));
+        }
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 999),
+                "c1",
+                "c2",
+                true);
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(999 / 8 + 1, mask.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c1", true)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c2", true)->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

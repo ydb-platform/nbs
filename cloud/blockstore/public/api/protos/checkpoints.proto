@@ -22,6 +22,10 @@ message TCreateCheckpointRequest
 
     // Checkpoint identifier.
     string CheckpointId = 3;
+
+    // Light checkpoint.
+    // Checkpoint only for collect used blocks.
+    bool IsLight = 4;
 }
 
 message TCreateCheckpointResponse
@@ -46,6 +50,9 @@ message TDeleteCheckpointRequest
 
     // Checkpoint identifier.
     string CheckpointId = 3;
+
+    // Light checkpoint.
+    bool IsLight = 4;
 }
 
 message TDeleteCheckpointResponse
@@ -82,6 +89,9 @@ message TGetChangedBlocksRequest
 
     // Only affects case when LowCheckpointId is not set.
     bool IgnoreBaseDisk = 7;
+
+    // Light checkpoint.
+    bool IsLight = 8;
 }
 
 message TGetChangedBlocksResponse
