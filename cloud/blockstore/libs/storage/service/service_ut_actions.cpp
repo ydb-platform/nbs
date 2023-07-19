@@ -1,5 +1,6 @@
 #include "service_ut.h"
 
+#include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -951,6 +952,45 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         describeReceived = false;
         service.DescribeVolume("vol0");
         UNIT_ASSERT(describeReceived);
+    }
+
+    Y_UNIT_TEST(ShouldForwardUpdateParamsRequestsToDiskRegistry)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+        auto& runtime = env.GetRuntime();
+
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        NProto::TDiskRegistryAgentListRequestParams requestParams;
+        requestParams.AddAgentIds("agent0");
+        requestParams.SetTimeoutMs(600);
+        requestParams.SetNewNonReplicatedAgentMinTimeoutMs(123);
+        requestParams.SetNewNonReplicatedAgentMaxTimeoutMs(456);
+
+        bool updateParamsReceived = false;
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistry::EvUpdateDiskRegistryAgentListParamsRequest: {
+                        updateParamsReceived = true;
+                        auto* msg = event->Get<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>();
+                        const auto& params = msg->Record.GetParams();
+                        UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(requestParams, params));
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(requestParams, &buf);
+        const auto response = service.ExecuteAction("updatediskregistryagentlistparams", buf);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT(updateParamsReceived);
     }
 }
 

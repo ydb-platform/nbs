@@ -118,6 +118,10 @@ private:
                 TEvDiskRegistry::TEvChangeDiskDeviceRequest,
                 HandleChangeDiskDevice);
 
+            HFunc(
+                TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest,
+                HandleUpdateDiskRegistryAgentListParams);
+
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
@@ -859,6 +863,17 @@ private:
             *ev,
             std::make_unique<TEvDiskRegistry::TEvChangeDiskDeviceResponse>(
                 MakeError(foundTarget && foundSource ? S_OK : E_ARGUMENT)));
+    }
+
+    void HandleUpdateDiskRegistryAgentListParams(
+        const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>(
+                MakeError(S_OK)));
     }
 
 };

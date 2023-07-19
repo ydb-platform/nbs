@@ -34,6 +34,7 @@ SRCS(
     service_actor_actions_suspend_device.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
+    service_actor_actions_update_disk_registry_params.cpp
     service_actor_actions_update_placement_group_settings.cpp
     service_actor_actions_update_used_blocks.cpp
     service_actor_actions_writable_state.cpp

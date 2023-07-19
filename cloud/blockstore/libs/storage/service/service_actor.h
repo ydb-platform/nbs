@@ -338,6 +338,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateSetupChannelsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateUpdateDiskRegistryAgentListParamsActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
