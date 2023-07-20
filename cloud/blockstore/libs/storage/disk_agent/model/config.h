@@ -71,6 +71,7 @@ public:
 
     TDuration GetRegisterRetryTimeout() const;
     TDuration GetSecureEraseTimeout() const;
+    TDuration GetDeviceIOTimeout() const;
 
     NProto::EDiskAgentBackendType GetBackend() const;
     NProto::EDeviceEraseMethod GetDeviceEraseMethod() const;

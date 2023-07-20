@@ -149,6 +149,7 @@ public:
         }
 
         return StorageAdapter.ReadBlocks(
+            Now(),
             std::move(callContext),
             std::move(request),
             BlockSize);
@@ -164,6 +165,7 @@ public:
         }
 
         return StorageAdapter.WriteBlocks(
+            Now(),
             std::move(callContext),
             std::move(request),
             BlockSize);
@@ -179,6 +181,7 @@ public:
         }
 
         return StorageAdapter.ZeroBlocks(
+            Now(),
             std::move(callContext),
             std::move(request),
             BlockSize);

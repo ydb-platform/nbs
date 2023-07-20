@@ -21,6 +21,7 @@ namespace {
     xxx(PageDropSize,           ui32,             512_KB                      )\
     xxx(RegisterRetryTimeout,   TDuration,        TDuration::Seconds(10)      )\
     xxx(SecureEraseTimeout,     TDuration,        TDuration::Minutes(1)       )\
+    xxx(DeviceIOTimeout,        TDuration,        TDuration::Zero()           )\
     xxx(Backend,                                                               \
         NProto::EDiskAgentBackendType,                                         \
         NProto::DISK_AGENT_BACKEND_SPDK                                       )\

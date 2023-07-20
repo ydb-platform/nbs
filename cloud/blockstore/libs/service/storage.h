@@ -52,27 +52,33 @@ public:
         IStoragePtr storage,
         ui32 storageBlockSize,
         bool normalize,
-        ui32 maxRequestSize = 0);
+        ui32 maxRequestSize = 0,
+        TDuration maxRequestDuration = TDuration::Zero());
 
     ~TStorageAdapter();
 
     NThreading::TFuture<NProto::TReadBlocksResponse> ReadBlocks(
+        TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksRequest> request,
         ui32 requestBlockSize) const;
 
     NThreading::TFuture<NProto::TWriteBlocksResponse> WriteBlocks(
+        TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksRequest> request,
         ui32 requestBlockSize) const;
 
     NThreading::TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
+        TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request,
         ui32 requestBlockSize) const;
 
     NThreading::TFuture<NProto::TError> EraseDevice(
         NProto::EDeviceEraseMethod method) const;
+
+    void CheckIOTimeouts(TInstant now);
 };
 
 }   // namespace NCloud::NBlockStore

@@ -80,11 +80,13 @@ auto CreateSpdkConfig()
 
 auto CreateNullConfig(
     const std::array<const TFsPath, 3>& namespaces,
-    bool acquireRequired)
+    bool acquireRequired,
+    TDuration deviceIOTimeout)
 {
     NProto::TDiskAgentConfig config;
     config.SetAcquireRequired(acquireRequired);
     config.SetReleaseInactiveSessionsTimeout(10000);
+    config.SetDeviceIOTimeout(deviceIOTimeout.MilliSeconds());
 
     for (size_t i = 0; i < namespaces.size(); ++i) {
         auto& device = *config.AddFileDevices();
@@ -109,6 +111,103 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,    // rdmaServer
         nullptr);   // nvmeManager
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestStorageState: TAtomicRefCount<TTestStorageState>
+{
+    bool DropRequests = false;
+};
+
+using TTestStorageStatePtr = TIntrusivePtr<TTestStorageState>;
+
+struct TTestStorage: IStorage
+{
+    TTestStorageStatePtr StorageState;
+
+    TTestStorage(TTestStorageStatePtr storageState)
+        : StorageState(std::move(storageState))
+    {
+    }
+
+    TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        if (StorageState->DropRequests) {
+            return NewPromise<NProto::TReadBlocksLocalResponse>();
+        }
+
+        return MakeFuture<NProto::TReadBlocksLocalResponse>();
+    }
+
+    TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        if (StorageState->DropRequests) {
+            return NewPromise<NProto::TWriteBlocksLocalResponse>();
+        }
+
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+    }
+
+    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TZeroBlocksRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        if (StorageState->DropRequests) {
+            return NewPromise<NProto::TZeroBlocksResponse>();
+        }
+
+        return MakeFuture<NProto::TZeroBlocksResponse>();
+    }
+
+    TFuture<NProto::TError> EraseDevice(
+        NProto::EDeviceEraseMethod method) override
+    {
+        Y_UNUSED(method);
+        return MakeFuture(NProto::TError());
+    }
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        Y_UNUSED(bytesCount);
+        return nullptr;
+    }
+};
+
+struct TTestStorageProvider: IStorageProvider
+{
+    TTestStorageStatePtr StorageState;
+
+    TTestStorageProvider(TTestStorageStatePtr storageState)
+        : StorageState(std::move(storageState))
+    {
+    }
+
+    TFuture<IStoragePtr> CreateStorage(
+        const NProto::TVolume& volume,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode) override
+    {
+        Y_UNUSED(volume);
+        Y_UNUSED(clientId);
+        Y_UNUSED(accessMode);
+
+        IStoragePtr storage = std::make_shared<TTestStorage>(StorageState);
+        return MakeFuture(std::move(storage));
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -312,7 +411,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldInitializeWithNull, TFiles)
     {
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig(Nvme3s, false)
+            CreateNullConfig(Nvme3s, false, {})
         );
 
         ShouldInitialize(
@@ -322,7 +421,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
     Y_UNIT_TEST_F(ShouldProperlyProcessRequestsToUninitializedDevices, TFiles)
     {
-        auto config = CreateNullConfig(Nvme3s, false);
+        auto config = CreateNullConfig(Nvme3s, false, {});
 
         TDiskAgentState state(
             config,
@@ -629,7 +728,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldAcquireDevices, TFiles)
     {
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig(Nvme3s, true)
+            CreateNullConfig(Nvme3s, true, {})
         );
 
         auto future = state->Initialize();
@@ -1012,6 +1111,143 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             2
         );
+    }
+
+    Y_UNIT_TEST_F(ShouldConvertIOTimeoutsToErrors, TFiles)
+    {
+        auto config = CreateNullConfig(Nvme3s, false, TDuration::Seconds(4));
+
+        TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
+
+        TDiskAgentState state(
+            config,
+            nullptr,    // spdk
+            CreateTestAllocator(),
+            std::make_shared<TTestStorageProvider>(storageState),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            nullptr,    // logging
+            nullptr,    // rdmaServer
+            NvmeManager);
+
+        auto future = state.Initialize();
+        const auto& r = future.GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+
+        auto stats = state.CollectStats().GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetInitErrorsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats().size());
+
+        auto now = TInstant::Seconds(1);
+
+        {
+            NProto::TReadDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+
+            auto response = state.Read(now, std::move(request))
+                .GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        {
+            NProto::TWriteDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+
+            ResizeIOVector(*request.MutableBlocks(), 10, 4096);
+
+            auto response = state.Write(now, std::move(request))
+                .GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        {
+            NProto::TZeroDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+
+            auto response = state.WriteZeroes(now, std::move(request))
+                .GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        storageState->DropRequests = true;
+
+        {
+            NProto::TReadDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+
+            auto future = state.Read(now, std::move(request));
+            now += TDuration::Seconds(5);
+            state.CheckIOTimeouts(now);
+            auto response = future.GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        {
+            NProto::TWriteDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+
+            ResizeIOVector(*request.MutableBlocks(), 10, 4096);
+
+            auto future = state.Write(now, std::move(request));
+            now += TDuration::Seconds(5);
+            state.CheckIOTimeouts(now);
+            auto response = future.GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        {
+            NProto::TZeroDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+
+            auto future = state.WriteZeroes(now, std::move(request));
+            now += TDuration::Seconds(5);
+            state.CheckIOTimeouts(now);
+            auto response = future.GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
     }
 }
 

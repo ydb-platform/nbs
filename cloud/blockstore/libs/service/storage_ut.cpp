@@ -47,6 +47,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
 
         auto future = adapter->WriteBlocks(
+            Now(),
             MakeIntrusive<TCallContext>(),
             std::move(request),
             requestBlockSize);
@@ -103,6 +104,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
 
         auto future = adapter->WriteBlocks(
+            Now(),
             MakeIntrusive<TCallContext>(),
             std::move(request),
             requestBlockSize);

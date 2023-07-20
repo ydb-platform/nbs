@@ -666,6 +666,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             }
 
             auto future = storageAdapter.WriteBlocks(
+                Now(),
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
                 blockSize);
@@ -680,6 +681,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             request->SetBlocksCount(8);
 
             auto future = storageAdapter.ReadBlocks(
+                Now(),
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
                 blockSize);

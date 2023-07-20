@@ -666,6 +666,7 @@ TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
         }
 
         return session->StorageAdapter.ReadBlocks(
+            Now(),
             std::move(ctx),
             std::move(request),
             volume->Volume.GetBlockSize());
@@ -722,6 +723,7 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
         }
 
         return session->StorageAdapter.WriteBlocks(
+            Now(),
             std::move(ctx),
             std::move(request),
             volume->Volume.GetBlockSize());
@@ -770,6 +772,7 @@ TFuture<NProto::TZeroBlocksResponse> TLocalService::ZeroBlocks(
         }
 
         return session->StorageAdapter.ZeroBlocks(
+            Now(),
             std::move(ctx),
             std::move(request),
             volume->Volume.GetBlockSize());

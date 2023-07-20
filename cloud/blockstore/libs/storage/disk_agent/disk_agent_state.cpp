@@ -368,7 +368,8 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                         std::move(r.Devices[i]),
                         config.GetBlockSize(),
                         false,  // normalize
-                        MaxRequestSize),
+                        MaxRequestSize,
+                        AgentConfig->GetDeviceIOTimeout()),
                     .Stats = std::move(r.Stats[i])
                 };
 
@@ -491,6 +492,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     readRequest->SetBlocksCount(request.GetBlocksCount());
 
     auto result = device.StorageAdapter->ReadBlocks(
+        now,
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
         request.GetBlockSize());
@@ -553,6 +555,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
     );
 
     auto result = device.StorageAdapter->WriteBlocks(
+        now,
         MakeIntrusive<TCallContext>(),
         std::move(writeRequest),
         request.GetBlockSize());
@@ -589,6 +592,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
     );
 
     auto result = device.StorageAdapter->ZeroBlocks(
+        now,
         MakeIntrusive<TCallContext>(),
         std::move(zeroRequest),
         request.GetBlockSize());
@@ -646,6 +650,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     readRequest->SetBlocksCount(request.GetBlocksCount());
 
     auto result = device.StorageAdapter->ReadBlocks(
+        now,
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
         request.GetBlockSize());
@@ -667,6 +672,13 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
             return response;
         });
+}
+
+void TDiskAgentState::CheckIOTimeouts(TInstant now)
+{
+    for (auto& x: Devices) {
+        x.second.StorageAdapter->CheckIOTimeouts(now);
+    }
 }
 
 TDeviceClient::TSessionInfo TDiskAgentState::GetWriterSession(

@@ -147,6 +147,10 @@ message TDiskAgentConfig
 
     // Enables random device block reads to check device health (background device scrubbing).
     optional bool DeviceHealthCheckEnabled = 22;
+
+    // After this interval (in milliseconds) disk agent will return E_IO error
+    // for the request.
+    optional uint32 DeviceIOTimeout = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

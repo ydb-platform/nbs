@@ -98,6 +98,8 @@ public:
         TInstant now,
         NProto::TChecksumDeviceBlocksRequest request);
 
+    void CheckIOTimeouts(TInstant now);
+
     TString GetDeviceName(const TString& uuid) const;
 
     TVector<NProto::TDeviceConfig> GetDevices() const;

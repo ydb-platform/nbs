@@ -259,6 +259,7 @@ private:
         req->SetBlocksCount(request.GetBlocksCount());
 
         auto future = device->ReadBlocks(
+            Now(),
             std::move(callContext),
             std::move(req),
             request.GetBlockSize());
@@ -335,6 +336,7 @@ private:
             requestData.length());
 
         auto future = device->WriteBlocks(
+            Now(),
             std::move(callContext),
             std::move(req),
             request.GetBlockSize());
@@ -400,6 +402,7 @@ private:
         req->SetBlocksCount(request.GetBlocksCount());
 
         auto future = device->ZeroBlocks(
+            Now(),
             std::move(callContext),
             std::move(req),
             request.GetBlockSize());
@@ -466,6 +469,7 @@ private:
         req->SetBlocksCount(request.GetBlocksCount());
 
         auto future = device->ReadBlocks(
+            Now(),
             std::move(callContext),
             std::move(req),
             request.GetBlockSize());
