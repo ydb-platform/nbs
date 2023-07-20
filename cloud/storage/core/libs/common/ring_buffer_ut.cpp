@@ -424,6 +424,14 @@ Y_UNIT_TEST_SUITE(TRingBufferTest)
         UNIT_ASSERT_EQUAL(1, ringBuffer.Front());
         UNIT_ASSERT_EQUAL(5, ringBuffer.Front(4));
     }
+
+    Y_UNIT_TEST(ShouldCorrectPushAndPopWithZeroCapacity)
+    {
+        auto ringBuffer = TRingBuffer<int>(0);
+        UNIT_ASSERT_VALUES_EQUAL(100, ringBuffer.PushBack(100).value());
+        UNIT_ASSERT_VALUES_EQUAL(200, ringBuffer.PushFront(200).value());
+        UNIT_ASSERT_VALUES_EQUAL(ringBuffer.Capacity(), 0);
+    }
 }
 
 }   // namespace NCloud

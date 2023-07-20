@@ -50,7 +50,7 @@ public:
     std::optional<T> PushFront(T val)
     {
         if (Capacity() == 0) {
-            return std::nullopt;
+            return val;
         }
 
         if (EndIndex == InvalidIndex) {
@@ -75,7 +75,7 @@ public:
     std::optional<T> PushBack(T val)
     {
         if (Capacity() == 0) {
-            return std::nullopt;
+            return val;
         }
 
         if (EndIndex == InvalidIndex) {
