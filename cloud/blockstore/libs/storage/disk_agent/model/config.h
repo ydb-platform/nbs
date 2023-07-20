@@ -72,6 +72,7 @@ public:
     TDuration GetRegisterRetryTimeout() const;
     TDuration GetSecureEraseTimeout() const;
     TDuration GetDeviceIOTimeout() const;
+    bool GetDeviceIOTimeoutsDisabled() const;
 
     NProto::EDiskAgentBackendType GetBackend() const;
     NProto::EDeviceEraseMethod GetDeviceEraseMethod() const;
@@ -89,7 +90,7 @@ public:
 
     bool GetDeviceLockingEnabled() const;
 
-    bool GetDeviceHealthCheckEnabled() const;
+    bool GetDeviceHealthCheckDisabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

@@ -282,9 +282,9 @@ void TDiskAgentActor::ScheduleUpdateStats(const TActorContext& ctx)
         StatsActor = NCloud::Register<TStatsActor>(
             ctx,
             ctx.SelfID,
-            AgentConfig->GetDeviceHealthCheckEnabled()
-                ? State->GetDevices()
-                : TVector<NProto::TDeviceConfig>{});
+            AgentConfig->GetDeviceHealthCheckDisabled()
+                ? TVector<NProto::TDeviceConfig>{}
+                : State->GetDevices());
     }
 }
 

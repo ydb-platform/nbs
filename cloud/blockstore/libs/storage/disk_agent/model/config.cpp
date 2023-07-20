@@ -12,16 +12,17 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_AGENT_CONFIG(xxx)                                           \
-    xxx(Enabled,                bool,             false                       )\
-    xxx(AgentId,                TString,          ""                          )\
-    xxx(SeqNumber,              ui64,             0                           )\
-    xxx(DedicatedDiskAgent,     bool,             false                       )\
-    xxx(PageSize,               ui32,             4_MB                        )\
-    xxx(MaxPageCount,           ui32,             256                         )\
-    xxx(PageDropSize,           ui32,             512_KB                      )\
-    xxx(RegisterRetryTimeout,   TDuration,        TDuration::Seconds(10)      )\
-    xxx(SecureEraseTimeout,     TDuration,        TDuration::Minutes(1)       )\
-    xxx(DeviceIOTimeout,        TDuration,        TDuration::Zero()           )\
+    xxx(Enabled,                    bool,               false                 )\
+    xxx(AgentId,                    TString,            ""                    )\
+    xxx(SeqNumber,                  ui64,               0                     )\
+    xxx(DedicatedDiskAgent,         bool,               false                 )\
+    xxx(PageSize,                   ui32,               4_MB                  )\
+    xxx(MaxPageCount,               ui32,               256                   )\
+    xxx(PageDropSize,               ui32,               512_KB                )\
+    xxx(RegisterRetryTimeout,       TDuration,          TDuration::Seconds(10))\
+    xxx(SecureEraseTimeout,         TDuration,          TDuration::Minutes(1) )\
+    xxx(DeviceIOTimeout,            TDuration,          TDuration::Minutes(1) )\
+    xxx(DeviceIOTimeoutsDisabled,   bool,               false                 )\
     xxx(Backend,                                                               \
         NProto::EDiskAgentBackendType,                                         \
         NProto::DISK_AGENT_BACKEND_SPDK                                       )\
@@ -33,7 +34,7 @@ namespace {
     xxx(ReleaseInactiveSessionsTimeout,     TDuration,  TDuration::Seconds(10))\
     xxx(DirectIoFlagDisabled,               bool,       false                 )\
     xxx(DeviceLockingEnabled,               bool,       false                 )\
-    xxx(DeviceHealthCheckEnabled,           bool,       false                 )\
+    xxx(DeviceHealthCheckDisabled,          bool,       false                 )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

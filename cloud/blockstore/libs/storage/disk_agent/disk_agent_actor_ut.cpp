@@ -1258,6 +1258,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 agentConfig.SetAcquireRequired(true);
                 agentConfig.SetEnabled(true);
+                // healthcheck generates extra requests whose presence in stats
+                // makes expected values in this test harder to calculate
+                agentConfig.SetDeviceHealthCheckDisabled(true);
 
                 *agentConfig.AddFileDevices() = PrepareFileDevice(
                     workingDir / "error",
@@ -3023,10 +3026,32 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         struct TMockStorage: public IStorage
         {
-            MOCK_METHOD(NThreading::TFuture<NProto::TZeroBlocksResponse>, ZeroBlocks, (TCallContextPtr, std::shared_ptr<NProto::TZeroBlocksRequest>), (override));
-            MOCK_METHOD(NThreading::TFuture<NProto::TReadBlocksLocalResponse>, ReadBlocksLocal, (TCallContextPtr, std::shared_ptr<NProto::TReadBlocksLocalRequest>), (override));
-            MOCK_METHOD(NThreading::TFuture<NProto::TWriteBlocksLocalResponse>, WriteBlocksLocal, (TCallContextPtr, std::shared_ptr<NProto::TWriteBlocksLocalRequest>), (override));
-            MOCK_METHOD(NThreading::TFuture<NProto::TError>, EraseDevice, (NProto::EDeviceEraseMethod), (override));
+            MOCK_METHOD(
+                NThreading::TFuture<NProto::TZeroBlocksResponse>,
+                ZeroBlocks,
+                (
+                    TCallContextPtr,
+                    std::shared_ptr<NProto::TZeroBlocksRequest>),
+                (override));
+            MOCK_METHOD(
+                NThreading::TFuture<NProto::TReadBlocksLocalResponse>,
+                ReadBlocksLocal,
+                (
+                    TCallContextPtr,
+                    std::shared_ptr<NProto::TReadBlocksLocalRequest>),
+                (override));
+            MOCK_METHOD(
+                NThreading::TFuture<NProto::TWriteBlocksLocalResponse>,
+                WriteBlocksLocal,
+                (
+                    TCallContextPtr,
+                    std::shared_ptr<NProto::TWriteBlocksLocalRequest>),
+                (override));
+            MOCK_METHOD(
+                NThreading::TFuture<NProto::TError>,
+                EraseDevice,
+                (NProto::EDeviceEraseMethod),
+                (override));
             MOCK_METHOD(TStorageBuffer, AllocateBuffer, (size_t), (override));
         };
 
@@ -3042,7 +3067,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             }
 
             NThreading::TFuture<IStoragePtr> CreateStorage(
-                const NProto::TVolume&, const TString&, NProto::EVolumeAccessMode) override
+                const NProto::TVolume&,
+                const TString&,
+                NProto::EVolumeAccessMode) override
             {
                 return MakeFuture(Storage);
             }
@@ -3064,9 +3091,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 agentConfig.SetAcquireRequired(true);
                 agentConfig.SetEnabled(true);
-                agentConfig.SetDeviceHealthCheckEnabled(true);
-                *agentConfig.AddFileDevices() = PrepareFileDevice(workingDir / "dev1", "dev1");
-                *agentConfig.AddFileDevices() = PrepareFileDevice(workingDir / "dev2", "dev2");
+                *agentConfig.AddFileDevices() =
+                    PrepareFileDevice(workingDir / "dev1", "dev1");
+                *agentConfig.AddFileDevices() =
+                    PrepareFileDevice(workingDir / "dev2", "dev2");
                 return agentConfig;
             }())
             .With(sp)
@@ -3086,7 +3114,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto jumpInFuture = [&](ui32 secs) {
             runtime.AdvanceCurrentTime(TDuration::Seconds(secs));
             TDispatchOptions options;
-            options.FinalEvents = {TDispatchOptions::TFinalEventCondition(TEvDiskRegistry::EvUpdateAgentStatsRequest)};
+            options.FinalEvents = {
+                TDispatchOptions::TFinalEventCondition(
+                    TEvDiskRegistry::EvUpdateAgentStatsRequest)};
             runtime.DispatchEvents(options);
         };
 

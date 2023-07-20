@@ -86,7 +86,9 @@ auto CreateNullConfig(
     NProto::TDiskAgentConfig config;
     config.SetAcquireRequired(acquireRequired);
     config.SetReleaseInactiveSessionsTimeout(10000);
-    config.SetDeviceIOTimeout(deviceIOTimeout.MilliSeconds());
+    if (deviceIOTimeout) {
+        config.SetDeviceIOTimeout(deviceIOTimeout.MilliSeconds());
+    }
 
     for (size_t i = 0; i < namespaces.size(); ++i) {
         auto& device = *config.AddFileDevices();
@@ -1115,7 +1117,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
     Y_UNIT_TEST_F(ShouldConvertIOTimeoutsToErrors, TFiles)
     {
-        auto config = CreateNullConfig(Nvme3s, false, TDuration::Seconds(4));
+        // using default io timeout - expecting it to be equal to 1 minute
+        auto config = CreateNullConfig(Nvme3s, false, TDuration::Zero());
 
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
@@ -1202,7 +1205,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlocksCount(10);
 
             auto future = state.Read(now, std::move(request));
-            now += TDuration::Seconds(5);
+            now += TDuration::Seconds(59);
+            state.CheckIOTimeouts(now);
+            UNIT_ASSERT(!future.HasValue() && !future.HasException());
+            now += TDuration::Seconds(2);
             state.CheckIOTimeouts(now);
             auto response = future.GetValue(WaitTimeout);
 
@@ -1221,7 +1227,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);
 
             auto future = state.Write(now, std::move(request));
-            now += TDuration::Seconds(5);
+            now += TDuration::Seconds(59);
+            state.CheckIOTimeouts(now);
+            UNIT_ASSERT(!future.HasValue() && !future.HasException());
+            now += TDuration::Seconds(2);
             state.CheckIOTimeouts(now);
             auto response = future.GetValue(WaitTimeout);
 
@@ -1239,7 +1248,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlocksCount(10);
 
             auto future = state.WriteZeroes(now, std::move(request));
-            now += TDuration::Seconds(5);
+            now += TDuration::Seconds(59);
+            state.CheckIOTimeouts(now);
+            UNIT_ASSERT(!future.HasValue() && !future.HasException());
+            now += TDuration::Seconds(2);
             state.CheckIOTimeouts(now);
             auto response = future.GetValue(WaitTimeout);
 

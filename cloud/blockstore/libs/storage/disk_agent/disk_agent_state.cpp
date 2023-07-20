@@ -362,6 +362,11 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
             for (size_t i = 0; i != r.Configs.size(); ++i) {
                 const auto& config = r.Configs[i];
 
+                TDuration ioTimeout;
+                if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+                    ioTimeout = AgentConfig->GetDeviceIOTimeout();
+                }
+
                 TDeviceState device {
                     .Config = config,
                     .StorageAdapter = std::make_shared<TStorageAdapter>(
@@ -369,7 +374,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                         config.GetBlockSize(),
                         false,  // normalize
                         MaxRequestSize,
-                        AgentConfig->GetDeviceIOTimeout()),
+                        ioTimeout),
                     .Stats = std::move(r.Stats[i])
                 };
 
