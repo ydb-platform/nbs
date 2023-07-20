@@ -74,9 +74,9 @@ void TDiskAgentActor::RegisterCounters(const TActorContext& ctx)
         auto totalCounters = rootGroup->GetSubgroup("component", "disk_agent");
         auto outOfOrderCounters = totalCounters->GetSubgroup("utils", "old_requests");
 
-        DelayedRequestCount = outOfOrderCounters->GetCounter("Delayed");
-        RejectedRequestCount = outOfOrderCounters->GetCounter("Rejected");
-        AlreadyExecutedRequestCount = outOfOrderCounters->GetCounter("Already");
+        OldRequestCounters.Delayed = outOfOrderCounters->GetCounter("Delayed");
+        OldRequestCounters.Rejected = outOfOrderCounters->GetCounter("Rejected");
+        OldRequestCounters.Already = outOfOrderCounters->GetCounter("Already");
 
         UpdateCounters(ctx);
         ScheduleCountersUpdate(ctx);

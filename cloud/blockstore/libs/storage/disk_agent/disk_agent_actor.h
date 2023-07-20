@@ -64,9 +64,7 @@ private:
     bool RegistrationInProgress = false;
 
     NActors::TActorId StatsActor;
-    NMonitoring::TDynamicCounters::TCounterPtr DelayedRequestCount;
-    NMonitoring::TDynamicCounters::TCounterPtr RejectedRequestCount;
-    NMonitoring::TDynamicCounters::TCounterPtr AlreadyExecutedRequestCount;
+    TOldRequestCounters OldRequestCounters;
 
     THashMap<TString, TDeque<TRequestInfoPtr>> SecureErasePendingRequests;
 

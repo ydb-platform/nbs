@@ -32,7 +32,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorage final
+struct TTestStorage
     : public IStorage
 {
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks)

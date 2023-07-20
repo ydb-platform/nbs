@@ -168,6 +168,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread-safe. Public methods can be called from any thread.
 TStorageAdapter::TImpl::TImpl(
         IStoragePtr storage,
         ui32 storageBlockSize,

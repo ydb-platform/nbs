@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
@@ -63,6 +64,9 @@ private:
     TRequestInfoPtr Poisoner;
 
     bool SentRdmaUnavailableNotification = false;
+
+    const bool AssignIdToWriteAndZeroRequestsEnabled{
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled()};
 
 public:
     TNonreplicatedPartitionRdmaActor(

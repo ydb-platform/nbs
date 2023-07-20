@@ -8,17 +8,36 @@
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRdmaTarget: IStartable {};
+struct TOldRequestCounters
+{
+    NMonitoring::TDynamicCounters::TCounterPtr Delayed = {};
+    NMonitoring::TDynamicCounters::TCounterPtr Rejected = {};
+    NMonitoring::TDynamicCounters::TCounterPtr Already = {};
+};
+
+struct TRdmaTargetConfig
+{
+    bool RejectLateRequestsAtDiskAgentEnabled = false;
+    TOldRequestCounters OldRequestCounters = {};
+    ui32 PoolSize = 1;
+};
+
+struct IRdmaTarget: IStartable
+{
+};
 
 using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
 IRdmaTargetPtr CreateRdmaTarget(
     NProto::TRdmaEndpoint config,
+    TRdmaTargetConfig rdmaTargetConfig,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,

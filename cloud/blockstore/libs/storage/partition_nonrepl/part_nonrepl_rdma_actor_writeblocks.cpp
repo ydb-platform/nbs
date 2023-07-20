@@ -244,6 +244,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         // TODO: remove after NBS-3886
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
+        if (AssignIdToWriteAndZeroRequestsEnabled) {
+            deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
+            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
+        }
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
@@ -382,6 +386,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         // TODO: remove after NBS-3886
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
+        if (AssignIdToWriteAndZeroRequestsEnabled) {
+            deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
+            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
+        }
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,

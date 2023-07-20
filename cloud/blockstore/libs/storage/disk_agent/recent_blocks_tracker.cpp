@@ -158,6 +158,10 @@ void TRecentBlocksTracker::RemoveInflight(ui64 requestId)
     InflightBlocks.erase(requestId);
 }
 
+const TString& TRecentBlocksTracker::GetDeviceUUID() const {
+    return DeviceUUID;
+}
+
 void TRecentBlocksTracker::ReportRepeatedRequestId(
     ui64 requestId,
     const TBlockRange64& range) const

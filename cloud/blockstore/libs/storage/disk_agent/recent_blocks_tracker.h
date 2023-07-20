@@ -74,6 +74,8 @@ public:
     // Remove inflight request from tracking.
     void RemoveInflight(ui64 requestId);
 
+    [[nodiscard]] const TString& GetDeviceUUID() const;
+
 private:
     void ReportRepeatedRequestId(ui64 requestId, const TBlockRange64& range)
         const;

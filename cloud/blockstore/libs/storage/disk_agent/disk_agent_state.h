@@ -76,7 +76,8 @@ public:
         TDeviceGuard Guard;
     };
 
-    NThreading::TFuture<TInitializeResult> Initialize();
+    NThreading::TFuture<TInitializeResult> Initialize(
+        TRdmaTargetConfig rdmaTargetConfig);
 
     NThreading::TFuture<NProto::TAgentStats> CollectStats();
 
@@ -151,7 +152,7 @@ private:
     NThreading::TFuture<TInitializeResult> InitSpdkStorage();
     NThreading::TFuture<TInitializeResult> InitAioStorage();
 
-    void InitRdmaTarget();
+    void InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

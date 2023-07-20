@@ -41,6 +41,7 @@ IStoragePtr CreateStorageStub();
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread-safe. Public methods can be called from any thread.
 class TStorageAdapter
 {
 private:

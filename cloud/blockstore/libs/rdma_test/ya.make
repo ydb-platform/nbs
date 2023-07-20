@@ -2,7 +2,9 @@ LIBRARY()
 
 SRCS(
     client_test.cpp
-    server_test.cpp
+    memory_test_storage.cpp
+    rdma_test_environment.cpp
+    server_test_async.cpp
 )
 
 PEERDIR(

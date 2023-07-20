@@ -227,13 +227,13 @@ bool TDiskAgentActor::CheckIntersection(
 
     const auto range = BuildRequestBlockRange(*msg);
     const ui64 volumeRequestId = GetVolumeRequestId(*msg);
-    const TString deviceUUID = msg->Record.GetDeviceUUID();
+    TString deviceUUID = msg->Record.GetDeviceUUID();
     auto& recentBlocksTracker = GetRecentBlocksTracker(deviceUUID);
 
     const bool overlapsWithInflightRequests =
         recentBlocksTracker.CheckInflight(volumeRequestId, range);
     if (overlapsWithInflightRequests) {
-        DelayedRequestCount->Inc();
+        OldRequestCounters.Delayed->Inc();
         if (!RejectLateRequestsAtDiskAgentEnabled) {
             // Monitoring mode. Don't change the behavior.
             return false;
@@ -248,9 +248,9 @@ bool TDiskAgentActor::CheckIntersection(
         msg->Record.GetMultideviceRequest());
     if (result != S_OK) {
         if (result == E_REJECTED) {
-            RejectedRequestCount->Inc();
+            OldRequestCounters.Rejected->Inc();
         } else if (result == S_ALREADY) {
-            AlreadyExecutedRequestCount->Inc();
+            OldRequestCounters.Already->Inc();
         } else {
             Y_VERIFY_DEBUG(false);
         }

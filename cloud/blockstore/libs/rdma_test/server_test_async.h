@@ -11,44 +11,44 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaServerTest: NRdma::IServer
+class TRdmaAsyncTestEndpoint;
+
+class TRdmaAsyncTestServer: public NRdma::IServer
 {
-    struct TEndpointInfo
-    {
-        NRdma::IServerEndpointPtr Endpoint;
-    };
+private:
+    THashMap<TString, std::shared_ptr<TRdmaAsyncTestEndpoint> > Endpoints;
 
-    THashMap<TString, TEndpointInfo> Endpoints;
-
+public:
     NRdma::IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
         NRdma::IServerHandlerPtr handler) override;
 
-    NProto::TChecksumDeviceBlocksResponse ProcessRequest(
-        TString host,
-        ui32 port,
-        NProto::TChecksumDeviceBlocksRequest request);
-    NProto::TReadDeviceBlocksResponse ProcessRequest(
-        TString host,
-        ui32 port,
-        NProto::TReadDeviceBlocksRequest request);
-    NProto::TWriteDeviceBlocksResponse ProcessRequest(
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> Run(
         TString host,
         ui32 port,
         NProto::TWriteDeviceBlocksRequest request);
-    NProto::TZeroDeviceBlocksResponse ProcessRequest(
+
+    NThreading::TFuture<NProto::TReadDeviceBlocksResponse> Run(
+        TString host,
+        ui32 port,
+        NProto::TReadDeviceBlocksRequest request);
+
+    NThreading::TFuture<NProto::TChecksumDeviceBlocksResponse> Run(
+        TString host,
+        ui32 port,
+        NProto::TChecksumDeviceBlocksRequest request);
+
+    NThreading::TFuture<NProto::TZeroDeviceBlocksResponse> Run(
         TString host,
         ui32 port,
         NProto::TZeroDeviceBlocksRequest request);
-
-    void Start() override
-    {
-    }
-
-    void Stop() override
-    {
-    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

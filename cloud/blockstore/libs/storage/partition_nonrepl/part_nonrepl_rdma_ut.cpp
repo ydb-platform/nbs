@@ -5,12 +5,13 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/sglist_test.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
+#include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
-#include <cloud/blockstore/libs/storage/api/stats_service.h>
 
 #include <ydb/core/testlib/basics/runtime.h>
 #include <ydb/core/testlib/tablet_helpers.h>
@@ -95,6 +96,7 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeout(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeout(5'000);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -670,6 +672,84 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             DefaultBlockSize * blockRange.Size(),
             counters.ChecksumBlocks.RequestBytes
         );
+    }
+
+    Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequest)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+
+        env.Rdma().InitAllEndpoints();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui64 writeRequestId = 0;
+        ui64 zeroRequestId = 0;
+        auto observer =
+            [&](NRdma::TProtoMessageSerializer::TParseResult& parseResut)
+        {
+            if (parseResut.MsgId ==
+                TBlockStoreProtocol::WriteDeviceBlocksRequest)
+            {
+                auto* request = static_cast<NProto::TWriteDeviceBlocksRequest*>(
+                    parseResut.Proto.get());
+                writeRequestId = request->GetVolumeRequestId();
+            }
+            if (parseResut.MsgId ==
+                TBlockStoreProtocol::ZeroDeviceBlocksRequest)
+            {
+                auto* request = static_cast<NProto::TZeroDeviceBlocksRequest*>(
+                    parseResut.Proto.get());
+                zeroRequestId = request->GetVolumeRequestId();
+            }
+        };
+        env.Rdma().SetMessageObserver(std::move(observer));
+
+        const TBlockRange64 blockRange(1024, 4095);
+
+        {
+            TString data(DefaultBlockSize, 'A');
+            client.SendRequest(
+                client.GetActorId(),
+                client.CreateWriteBlocksLocalRequest(blockRange, data),
+                10);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            auto response =
+                client.RecvResponse<TEvService::TEvWriteBlocksLocalResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(10, writeRequestId);
+        }
+
+        {
+            client.SendRequest(
+                client.GetActorId(),
+                client.CreateWriteBlocksRequest(blockRange, 'A'),
+                20);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            auto response =
+                client.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(20, writeRequestId);
+        }
+
+        {
+            client.SendRequest(
+                client.GetActorId(),
+                client.CreateZeroBlocksRequest(blockRange),
+                30);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            auto response =
+                client.RecvResponse<TEvService::TEvZeroBlocksResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(30, zeroRequestId);
+        }
     }
 }
 

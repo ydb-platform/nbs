@@ -4,21 +4,27 @@
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
+#include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/containers/stack_vector/stack_vec.h>
+#include <library/cpp/threading/synchronized/synchronized.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/list.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
+using namespace NMonitoring;
 
 namespace {
 
@@ -28,36 +34,101 @@ constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::MilliSeconds(500);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestLogDetails
+enum class ECheckRange
 {
-    TString DeviceUUID;
-    TString ClientId;
-
-    template <typename T>
-    TRequestLogDetails(T& request)
-        : DeviceUUID(std::move(*request.MutableDeviceUUID()))
-        , ClientId(std::move(*request.MutableHeaders()->MutableClientId()))
-    {
-    }
-
-    TRequestLogDetails(TRequestLogDetails&&) = default;
-
-    // XXX not actually used, but required by the compiler
-    // TODO remove it after the C++23 upgrade
-    // see https://en.cppreference.com/w/cpp/utility/functional/move_only_function
-    TRequestLogDetails(const TRequestLogDetails&) = default;
+    NotOverlapped,
+    DelayRequest,
+    ResponseAlready,
+    ResponseRejected,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Thread-safe. After Init() public method HandleRequest() can be called from
-// any thread.
+struct TRequestDetails
+{
+    void* Context = nullptr;
+    TStringBuf Out;
+    TString DeviceUUID;
+    TString ClientId;
+
+    ui64 VolumeRequestId = 0;
+    TBlockRange64 Range = {};
+    bool IsMultideviceRequest = false;
+};
+
+template <typename TRequest>
+struct TExecutionData
+{
+    TCallContextPtr CallContext;
+    ui32 BlockSize = 0;
+    std::shared_ptr<TRequest> Request;
+    TStorageAdapterPtr Device;
+};
+
+template <typename TRequest>
+struct TContinuationData
+{
+    TRequestDetails RequestDetails;
+    TExecutionData<TRequest> ExecutionData;
+};
+
+using TWriteRequestContinuationData =
+    TContinuationData<NProto::TWriteBlocksRequest>;
+using TZeroRequestContinuationData =
+    TContinuationData<NProto::TZeroBlocksRequest>;
+
+
+struct TSynchronizedData
+{
+    TRecentBlocksTracker RecentBlocksTracker;
+    TOldRequestCounters OldRequestCounters;
+    TList<TWriteRequestContinuationData> PostponedWriteRequests = {};
+    TList<TZeroRequestContinuationData> PostponedZeroRequests = {};
+};
+
+struct TThreadSafeData: public TSynchronized<TSynchronizedData, TAdaptiveLock>
+{
+    TAccess operator->() = delete;
+};
+
+struct TDeviceData
+{
+    const TStorageAdapterPtr Device;
+    mutable TThreadSafeData ThreadSafeData;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+THashMap<TString, TDeviceData> MakeDevices(
+    THashMap<TString, TStorageAdapterPtr> devices,
+    const TRdmaTargetConfig& rdmaTargetConfig)
+{
+    THashMap<TString, TDeviceData> result;
+    for (auto& [deviceUUID, storageAdapter]: devices) {
+        TSynchronizedData synchronizedData{
+            TRecentBlocksTracker{deviceUUID},
+            rdmaTargetConfig.OldRequestCounters};
+
+        TDeviceData device{
+            std::move(storageAdapter),
+            TThreadSafeData{std::move(synchronizedData)}};
+
+        result.insert({deviceUUID, std::move(device)});
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Thread-safe. After Init() public method HandleRequest() can be called
+// from any thread.
 class TRequestHandler final
     : public NRdma::IServerHandler
     , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
-    const THashMap<TString, TStorageAdapterPtr> Devices;
+    const THashMap<TString, TDeviceData> Devices;
     const ITaskQueuePtr TaskQueue;
 
     mutable TLogThrottler LogThrottler{LOG_THROTTLER_PERIOD};
@@ -69,14 +140,19 @@ private:
     const NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
+    const bool RejectLateRequestsAtDiskAgentEnabled;
+
 public:
     TRequestHandler(
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
-            TDeviceClientPtr deviceClient)
-        : Devices(std::move(devices))
+            TDeviceClientPtr deviceClient,
+            TRdmaTargetConfig rdmaTargetConfig)
+        : Devices(MakeDevices(std::move(devices), rdmaTargetConfig))
         , TaskQueue(std::move(taskQueue))
         , DeviceClient(std::move(deviceClient))
+        , RejectLateRequestsAtDiskAgentEnabled(
+              rdmaTargetConfig.RejectLateRequestsAtDiskAgentEnabled)
     {}
 
     void Init(NRdma::IServerEndpointPtr endpoint, TLog log)
@@ -94,25 +170,22 @@ public:
         auto doHandleRequest = [self = shared_from_this(),
                                 context = context,
                                 callContext = std::move(callContext),
-                                in = std::move(in),
-                                out = std::move(out)]() -> NProto::TError
+                                in = in,
+                                out = out]() mutable -> NProto::TError
         {
-            return self->DoHandleRequest(
-                context,
-                std::move(callContext),
-                std::move(in),
-                std::move(out));
+            return self
+                ->DoHandleRequest(context, std::move(callContext), in, out);
         };
 
         auto safeHandleRequest =
             [endpoint = Endpoint,
              context = context,
-             doHandleRequest = std::move(doHandleRequest)]()
+             doHandleRequest = std::move(doHandleRequest)]() mutable
         {
             auto error =
                 SafeExecute<NProto::TError>(std::move(doHandleRequest));
 
-            if (HasError(error)) {
+            if (error.GetCode()) {
                 if (auto ep = endpoint.lock()) {
                     ep->SendError(context, error.GetCode(), error.GetMessage());
                 }
@@ -141,15 +214,16 @@ private:
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
                 return HandleReadBlocksRequest(
                     context,
-                    callContext,
-                    static_cast<NProto::TReadDeviceBlocksRequest&>(*request.Proto),
+                    std::move(callContext),
+                    static_cast<NProto::TReadDeviceBlocksRequest&>(
+                        *request.Proto),
                     request.Data,
                     out);
 
             case TBlockStoreProtocol::WriteDeviceBlocksRequest:
                 return HandleWriteBlocksRequest(
                     context,
-                    callContext,
+                    std::move(callContext),
                     static_cast<NProto::TWriteDeviceBlocksRequest&>(*request.Proto),
                     request.Data,
                     out);
@@ -157,7 +231,7 @@ private:
             case TBlockStoreProtocol::ZeroDeviceBlocksRequest:
                 return HandleZeroBlocksRequest(
                     context,
-                    callContext,
+                    std::move(callContext),
                     static_cast<NProto::TZeroDeviceBlocksRequest&>(*request.Proto),
                     request.Data,
                     out);
@@ -165,7 +239,7 @@ private:
             case TBlockStoreProtocol::ChecksumDeviceBlocksRequest:
                 return HandleChecksumBlocksRequest(
                     context,
-                    callContext,
+                    std::move(callContext),
                     static_cast<NProto::TChecksumDeviceBlocksRequest&>(*request.Proto),
                     request.Data,
                     out);
@@ -201,40 +275,166 @@ private:
             ythrow TServiceError(E_NOT_FOUND);
         }
 
-        return it->second;
+        return it->second.Device;
     }
 
-    template <typename Future, typename TResponseMethod>
-    void SubscribeForResponse(
-        Future& future,
-        void* context,
-        TStringBuf out,
-        TRequestLogDetails rld,
-        TResponseMethod method) const
+    TThreadSafeData::TAccess GetAccessToken(const TString& uuid) const
     {
-        auto handleResponse = [self = shared_from_this(),
-                               context = context,
-                               out = std::move(out),
-                               logDetails = std::move(rld),
-                               method = method](Future future)
+        if (const auto* deviceData = Devices.FindPtr(uuid)) {
+            return deviceData->ThreadSafeData.Access();
+        }
+        ythrow TServiceError(E_NOT_FOUND);
+    }
+
+    template <typename Future, typename THandleResponseMethod>
+    void SubscribeForResponse(
+        Future future,
+        TRequestDetails requestDetails,
+        THandleResponseMethod handleResponseMethod) const
+    {
+        auto handleResponse =
+            [self = shared_from_this(),
+             requestDetails = std::move(requestDetails),
+             handleResponseMethod = handleResponseMethod](Future future) mutable
         {
             self->TaskQueue->ExecuteSimple(
                 [self = self,
-                 context = context,
-                 out = std::move(out),
-                 logDetails = std::move(logDetails),
                  future = std::move(future),
-                 method = method]()
+                 requestDetails = std::move(requestDetails),
+                 handleResponseMethod = handleResponseMethod]() mutable
                 {
+                    if (requestDetails.VolumeRequestId) {
+                        const bool success = future.HasValue() &&
+                                             !HasError(future.GetValueSync());
+                        self->OnRequestFinished(
+                            requestDetails.VolumeRequestId,
+                            requestDetails.Range,
+                            requestDetails.DeviceUUID,
+                            success);
+                    }
+
                     const TRequestHandler* obj = self.get();
-                    (obj->*method)(
-                              context,
-                              std::move(out),
-                              std::move(logDetails),
-                              std::move(future));
+                    // Call TRequestHandler::HandleXXXBlocksResponse()
+                    (obj->*handleResponseMethod)(
+                        requestDetails,
+                        std::move(future));
                 });
         };
         future.Subscribe(std::move(handleResponse));
+    }
+
+    ECheckRange CheckRangeIntersection(
+        const TRequestDetails& requestDetails,
+        TSynchronizedData& synchronizedData) const
+    {
+        const bool overlapsWithInflightRequests =
+            synchronizedData.RecentBlocksTracker.CheckInflight(
+                requestDetails.VolumeRequestId,
+                requestDetails.Range);
+        if (overlapsWithInflightRequests) {
+            synchronizedData.OldRequestCounters.Delayed->Inc();
+            if (!RejectLateRequestsAtDiskAgentEnabled) {
+                // Monitoring mode. Don't change the behavior.
+                return ECheckRange::NotOverlapped;
+            }
+            return ECheckRange::DelayRequest;
+        }
+
+        auto result = OverlapStatusToResult(
+            synchronizedData.RecentBlocksTracker.CheckRecorded(
+                requestDetails.VolumeRequestId,
+                requestDetails.Range),
+            requestDetails.IsMultideviceRequest);
+        if (result != S_OK) {
+            if (result == E_REJECTED) {
+                synchronizedData.OldRequestCounters.Rejected->Inc();
+            } else if (result == S_ALREADY) {
+                synchronizedData.OldRequestCounters.Already->Inc();
+            } else {
+                Y_VERIFY_DEBUG(false);
+            }
+
+            if (!RejectLateRequestsAtDiskAgentEnabled) {
+                // Monitoring mode. Don't change the behavior.
+                return ECheckRange::NotOverlapped;
+            }
+
+            if (result == E_REJECTED) {
+                return ECheckRange::ResponseRejected;
+            }
+            return ECheckRange::ResponseAlready;
+        }
+
+        // Here we add request to inflight list. Caller should execute request
+        // and call RecentBlocksTracker.RemoveInflight() after request finished.
+        synchronizedData.RecentBlocksTracker.AddInflight(
+            requestDetails.VolumeRequestId,
+            requestDetails.Range);
+        return ECheckRange::NotOverlapped;
+    }
+
+    template <typename T>
+    TList<T> ProcessPostponedRequests(
+        TThreadSafeData::TAccess& token,
+        TList<T>& postponedRequests) const
+    {
+        TList<T> readyToExecute;
+        auto executeNotOverlappedRequests = [&](T& postponedRequest) {
+            const ECheckRange checkResult =
+                CheckRangeIntersection(postponedRequest.RequestDetails, *token);
+
+            switch (checkResult) {
+                case ECheckRange::NotOverlapped:
+                    readyToExecute.push_back(std::move(postponedRequest));
+                    return true;
+                case ECheckRange::ResponseAlready:
+                    FinishHandleRequest(postponedRequest, S_ALREADY);
+                    return true;
+                case ECheckRange::ResponseRejected:
+                    FinishHandleRequest(postponedRequest, E_REJECTED);
+                    return true;
+                case ECheckRange::DelayRequest: {
+                    return false;
+                }
+            }
+            STORAGE_VERIFY(
+                false,
+                TWellKnownEntityTypes::DEVICE,
+                token->RecentBlocksTracker.GetDeviceUUID());
+            return false;
+        };
+
+        std::erase_if(postponedRequests, executeNotOverlappedRequests);
+        return readyToExecute;
+    }
+
+    void OnRequestFinished(
+        ui64 volumeRequestId,
+        TBlockRange64 range,
+        const TString& uuid,
+        bool success) const
+    {
+        TList<TWriteRequestContinuationData> readyToExecuteWriteRequests;
+        TList<TZeroRequestContinuationData> readyToExecuteZeroRequests;
+
+        {
+            auto token = GetAccessToken(uuid);
+            token->RecentBlocksTracker.RemoveInflight(volumeRequestId);
+            if (success) {
+                token->RecentBlocksTracker.AddRecorded(volumeRequestId, range);
+            }
+            readyToExecuteWriteRequests =
+                ProcessPostponedRequests(token, token->PostponedWriteRequests);
+            readyToExecuteZeroRequests =
+                ProcessPostponedRequests(token, token->PostponedZeroRequests);
+        }
+
+        for (auto& continuationData: readyToExecuteWriteRequests) {
+            ContinueHandleRequest(std::move(continuationData));
+        }
+        for (auto& continuationData: readyToExecuteZeroRequests) {
+            ContinueHandleRequest(std::move(continuationData));
+        }
     }
 
     NProto::TError HandleReadBlocksRequest(
@@ -265,50 +465,52 @@ private:
             request.GetBlockSize());
 
         SubscribeForResponse(
-            future,
-            context,
-            std::move(out),
-            TRequestLogDetails(request),
+            std::move(future),
+            TRequestDetails{
+                context,
+                out,
+                request.GetDeviceUUID(),
+                request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleReadBlocksResponse);
 
         return {};
     }
 
     void HandleReadBlocksResponse(
-        void* context,
-        TStringBuf out,
-        TRequestLogDetails rld,
+        const TRequestDetails& requestDetails,
         TFuture<NProto::TReadBlocksResponse> future) const
     {
-        auto& response = future.GetValue();
-        auto& blocks = response.GetBlocks();
-        auto& error = response.GetError();
+        const auto& response = future.GetValue();
+        const auto& blocks = response.GetBlocks();
+        const auto& error = response.GetError();
 
         NProto::TReadDeviceBlocksResponse proto;
-
-        if (HasError(error)) {
-            STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.ClientId << "] read error: "
-                << error.GetMessage() << " (" << error.GetCode() << ")");
-
+        if (error.GetCode()) {
             *proto.MutableError() = error;
+        }
+        if (HasError(error)) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[" << requestDetails.DeviceUUID << "/"
+                    << requestDetails.ClientId << "] read error: "
+                    << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
         TStackVec<IOutputStream::TPart> parts;
         parts.reserve(blocks.BuffersSize());
 
-        for (auto buffer: blocks.GetBuffers()) {
+        for (const auto& buffer: blocks.GetBuffers()) {
             parts.emplace_back(TStringBuf(buffer));
         }
 
-        size_t bytes = Serializer->Serialize(
-            out,
+        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+            requestDetails.Out,
             TBlockStoreProtocol::ReadDeviceBlocksResponse,
             proto,
             TContIOVector(parts.data(), parts.size()));
 
         if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(context, bytes);
+            ep->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -335,49 +537,99 @@ private:
             requestData.data(),
             requestData.length());
 
-        auto future = device->WriteBlocks(
-            Now(),
-            std::move(callContext),
-            std::move(req),
-            request.GetBlockSize());
+        const ui32 blockCount = requestData.length() / request.GetBlockSize();
 
-        SubscribeForResponse(
-            future,
-            context,
-            std::move(out),
-            TRequestLogDetails(request),
-            &TRequestHandler::HandleWriteBlocksResponse);
+        TWriteRequestContinuationData continuationData{
+            {context,
+             out,
+             request.GetDeviceUUID(),
+             request.GetHeaders().GetClientId(),
+             request.GetVolumeRequestId(),
+             TBlockRange64::WithLength(request.GetStartIndex(), blockCount),
+             request.GetMultideviceRequest()},
+            {std::move(callContext),
+             request.GetBlockSize(),
+             std::move(req),
+             std::move(device)}};
 
+        if (continuationData.RequestDetails.VolumeRequestId) {
+            auto token =
+                GetAccessToken(continuationData.RequestDetails.DeviceUUID);
+            const ECheckRange checkResult =
+                CheckRangeIntersection(continuationData.RequestDetails, *token);
+
+            switch (checkResult) {
+                case ECheckRange::NotOverlapped:
+                    break;
+                case ECheckRange::ResponseAlready:
+                    return TErrorResponse(S_ALREADY);
+                case ECheckRange::ResponseRejected:
+                    return TErrorResponse(E_REJECTED);
+                case ECheckRange::DelayRequest: {
+                    token->PostponedWriteRequests.push_back(
+                        std::move(continuationData));
+                    return {};
+                }
+            }
+        }
+
+        ContinueHandleRequest(std::move(continuationData));
         return {};
     }
 
+    void ContinueHandleRequest(
+        TWriteRequestContinuationData continuationData) const
+    {
+        auto future = continuationData.ExecutionData.Device->WriteBlocks(
+            Now(),
+            std::move(continuationData.ExecutionData.CallContext),
+            std::move(continuationData.ExecutionData.Request),
+            continuationData.ExecutionData.BlockSize);
+
+        SubscribeForResponse(
+            std::move(future),
+            std::move(continuationData.RequestDetails),
+            &TRequestHandler::HandleWriteBlocksResponse);
+    }
+
+    void FinishHandleRequest(
+        const TWriteRequestContinuationData& continuationData,
+        EWellKnownResultCodes resultCode) const
+    {
+        HandleWriteBlocksResponse(
+            continuationData.RequestDetails,
+            MakeFuture<NProto::TWriteBlocksResponse>(
+                TErrorResponse(resultCode)));
+    }
+
     void HandleWriteBlocksResponse(
-        void* context,
-        TStringBuf out,
-        TRequestLogDetails rld,
+        const TRequestDetails& requestDetails,
         TFuture<NProto::TWriteBlocksResponse> future) const
     {
-        auto& response = future.GetValue();
-        auto& error = response.GetError();
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
 
         NProto::TWriteDeviceBlocksResponse proto;
-
-        if (HasError(error)) {
-            STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.ClientId << "] write error: "
-                << error.GetMessage() << " (" << error.GetCode() << ")");
-
+        if (error.GetCode()) {
             *proto.MutableError() = error;
         }
 
-        size_t bytes = Serializer->Serialize(
-            out,
+        if (HasError(error)) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[" << requestDetails.DeviceUUID << "/"
+                    << requestDetails.ClientId << "] write error: "
+                    << error.GetMessage() << " (" << error.GetCode() << ")");
+        }
+
+        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+            requestDetails.Out,
             TBlockStoreProtocol::WriteDeviceBlocksResponse,
             proto,
             TContIOVector(nullptr, 0));
 
         if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(context, bytes);
+            ep->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -401,49 +653,98 @@ private:
         req->SetStartIndex(request.GetStartIndex());
         req->SetBlocksCount(request.GetBlocksCount());
 
-        auto future = device->ZeroBlocks(
-            Now(),
-            std::move(callContext),
-            std::move(req),
-            request.GetBlockSize());
+        TZeroRequestContinuationData continuationData{
+            {context,
+             out,
+             request.GetDeviceUUID(),
+             request.GetHeaders().GetClientId(),
+             request.GetVolumeRequestId(),
+             TBlockRange64::WithLength(
+                 request.GetStartIndex(),
+                 GetBlocksCount(request)),
+             request.GetMultideviceRequest()},
+            {std::move(callContext),
+             request.GetBlockSize(),
+             std::move(req),
+             std::move(device)}};
 
-        SubscribeForResponse(
-            future,
-            context,
-            std::move(out),
-            TRequestLogDetails(request),
-            &TRequestHandler::HandleZeroBlocksResponse);
+        if (continuationData.RequestDetails.VolumeRequestId) {
+            auto token =
+                GetAccessToken(continuationData.RequestDetails.DeviceUUID);
+            const ECheckRange checkResult =
+                CheckRangeIntersection(continuationData.RequestDetails, *token);
 
+            switch (checkResult) {
+                case ECheckRange::NotOverlapped:
+                    break;
+                case ECheckRange::ResponseAlready:
+                    return TErrorResponse(S_ALREADY);
+                case ECheckRange::ResponseRejected:
+                    return TErrorResponse(E_REJECTED);
+                case ECheckRange::DelayRequest: {
+                    token->PostponedZeroRequests.push_back(
+                        std::move(continuationData));
+                    return {};
+                }
+            }
+        }
+
+        ContinueHandleRequest(std::move(continuationData));
         return {};
     }
 
+    void ContinueHandleRequest(
+        TZeroRequestContinuationData continuationData) const
+    {
+        auto future = continuationData.ExecutionData.Device->ZeroBlocks(
+            Now(),
+            std::move(continuationData.ExecutionData.CallContext),
+            std::move(continuationData.ExecutionData.Request),
+            continuationData.ExecutionData.BlockSize);
+
+        SubscribeForResponse(
+            std::move(future),
+            std::move(continuationData.RequestDetails),
+            &TRequestHandler::HandleZeroBlocksResponse);
+    }
+
+    void FinishHandleRequest(
+        const TZeroRequestContinuationData& continuationData,
+        EWellKnownResultCodes resultCode) const
+    {
+        HandleZeroBlocksResponse(
+            continuationData.RequestDetails,
+            MakeFuture<NProto::TZeroBlocksResponse>(
+                TErrorResponse(resultCode)));
+    }
+
     void HandleZeroBlocksResponse(
-        void* context,
-        TStringBuf out,
-        TRequestLogDetails rld,
+        const TRequestDetails& requestDetails,
         TFuture<NProto::TZeroBlocksResponse> future) const
     {
-        auto& response = future.GetValue();
-        auto& error = response.GetError();
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
 
         NProto::TZeroDeviceBlocksResponse proto;
-
-        if (HasError(error)) {
-            STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.ClientId << "] zero error: "
-                << error.GetMessage() << " (" << error.GetCode() << ")");
-
+        if (error.GetCode()) {
             *proto.MutableError() = error;
         }
+        if (HasError(error)) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[" << requestDetails.DeviceUUID << "/"
+                    << requestDetails.ClientId << "] zero error: "
+                    << error.GetMessage() << " (" << error.GetCode() << ")");
+        }
 
-        size_t bytes = Serializer->Serialize(
-            out,
+        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+            requestDetails.Out,
             TBlockStoreProtocol::ZeroDeviceBlocksResponse,
             proto,
             TContIOVector(nullptr, 0));
 
         if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(context, bytes);
+            ep->SendResponse(requestDetails.Context, bytes);
         }
     }
 
@@ -475,33 +776,35 @@ private:
             request.GetBlockSize());
 
         SubscribeForResponse(
-            future,
-            context,
-            std::move(out),
-            TRequestLogDetails(request),
+            std::move(future),
+            TRequestDetails{
+                context,
+                out,
+                request.GetDeviceUUID(),
+                request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleChecksumBlocksResponse);
 
         return {};
     }
 
     void HandleChecksumBlocksResponse(
-        void* context,
-        TStringBuf out,
-        TRequestLogDetails rld,
+        const TRequestDetails& requestDetails,
         TFuture<NProto::TReadBlocksResponse> future) const
     {
-        auto& response = future.GetValue();
-        auto& blocks = response.GetBlocks();
-        auto& error = response.GetError();
+        const auto& response = future.GetValue();
+        const auto& blocks = response.GetBlocks();
+        const auto& error = response.GetError();
 
         NProto::TChecksumDeviceBlocksResponse proto;
-
-        if (HasError(error)) {
-            STORAGE_ERROR_T(LogThrottler, "[" << rld.DeviceUUID
-                << "/" << rld.ClientId << "] checksum(read) error: "
-                << error.GetMessage() << " (" << error.GetCode() << ")");
-
+        if (error.GetCode()) {
             *proto.MutableError() = error;
+        }
+        if (HasError(error)) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[" << requestDetails.DeviceUUID << "/"
+                    << requestDetails.ClientId << "] checksum(read) error: "
+                    << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
         TBlockChecksum checksum;
@@ -510,14 +813,14 @@ private:
         }
         proto.SetChecksum(checksum.GetValue());
 
-        size_t bytes = Serializer->Serialize(
-            out,
+        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+            requestDetails.Out,
             TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
             proto,
             TContIOVector(nullptr, 0));
 
         if (auto ep = Endpoint.lock()) {
-            ep->SendResponse(context, bytes);
+            ep->SendResponse(requestDetails.Context, bytes);
         }
     }
 };
@@ -533,6 +836,7 @@ private:
     std::shared_ptr<TRequestHandler> Handler;
     ILoggingServicePtr Logging;
     NRdma::IServerPtr Server;
+    ITaskQueuePtr TaskQueue;
 
     TLog Log;
 
@@ -543,15 +847,18 @@ public:
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
             THashMap<TString, TStorageAdapterPtr> devices,
-            ITaskQueuePtr taskQueue)
+            ITaskQueuePtr taskQueue,
+            TRdmaTargetConfig rdmaTargetConfig)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Server(std::move(server))
+        , TaskQueue(taskQueue)
     {
         Handler = std::make_shared<TRequestHandler>(
             std::move(devices),
             std::move(taskQueue),
-            std::move(deviceClient));
+            std::move(deviceClient),
+            std::move(rdmaTargetConfig));
     }
 
     void Start() override
@@ -572,20 +879,22 @@ public:
     }
 
     void Stop() override
-    {}
+    {
+        TaskQueue->Stop();
+    }
 };
 
 }   // namespace
 
 IRdmaTargetPtr CreateRdmaTarget(
     NProto::TRdmaEndpoint config,
+    TRdmaTargetConfig rdmaTargetConfig,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     THashMap<TString, TStorageAdapterPtr> devices)
 {
-    // TODO
-    auto threadPool = CreateThreadPool("RDMA", 1);
+    auto threadPool = CreateThreadPool("RDMA", rdmaTargetConfig.PoolSize);
     threadPool->Start();
 
     return std::make_shared<TRdmaTarget>(
@@ -594,7 +903,8 @@ IRdmaTargetPtr CreateRdmaTarget(
         std::move(server),
         std::move(deviceClient),
         std::move(devices),
-        std::move(threadPool));
+        std::move(threadPool),
+        std::move(rdmaTargetConfig));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

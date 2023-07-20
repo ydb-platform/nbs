@@ -193,6 +193,10 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         // TODO: remove after NBS-3886
         deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
+        if (AssignIdToWriteAndZeroRequestsEnabled) {
+            deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
+            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
+        }
 
         auto [req, err] = ep->AllocateRequest(
             requestContext,

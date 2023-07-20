@@ -317,7 +317,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 {
     void ShouldInitialize(TDiskAgentState& state, bool checkSerialNumbers)
     {
-        auto future = state.Initialize();
+        auto future = state.Initialize({});
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT(r.Errors.empty());
@@ -437,7 +437,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,    // rdmaServer
             NvmeManager);
 
-        auto future = state.Initialize();
+        auto future = state.Initialize({});
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(1, r.Errors.size());
@@ -648,7 +648,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     nullptr,    // rdmaServer
                     NvmeManager);
 
-                auto future = state.Initialize();
+                auto future = state.Initialize({});
                 const auto& r = future.GetValue(WaitTimeout);
 
                 if (checkLockedDevices) {
@@ -713,7 +713,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,    // rdmaServer
             std::make_shared<TTestNvmeManager>());
 
-        auto future = state.Initialize();
+        auto future = state.Initialize({});
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(3, r.Errors.size());
@@ -731,7 +731,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateNullConfig(Nvme3s, true, {})
         );
 
-        auto future = state->Initialize();
+        auto future = state->Initialize({});
         const auto& r = future.GetValue(WaitTimeout);
         UNIT_ASSERT(r.Errors.empty());
 
@@ -1130,7 +1130,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,    // rdmaServer
             NvmeManager);
 
-        auto future = state.Initialize();
+        auto future = state.Initialize({});
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());

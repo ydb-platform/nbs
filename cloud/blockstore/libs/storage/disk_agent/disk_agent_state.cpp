@@ -386,7 +386,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
         });
 }
 
-void TDiskAgentState::InitRdmaTarget()
+void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
 {
     if (RdmaServer) {
         THashMap<TString, TStorageAdapterPtr> devices;
@@ -400,6 +400,7 @@ void TDiskAgentState::InitRdmaTarget()
 
         RdmaTarget = CreateRdmaTarget(
             endpoint,
+            std::move(rdmaTargetConfig),
             Logging,
             RdmaServer,
             DeviceClient,
@@ -409,22 +410,25 @@ void TDiskAgentState::InitRdmaTarget()
     }
 }
 
-TFuture<TInitializeResult> TDiskAgentState::Initialize()
+TFuture<TInitializeResult> TDiskAgentState::Initialize(
+    TRdmaTargetConfig rdmaTargetConfig)
 {
     auto future = Spdk ? InitSpdkStorage() : InitAioStorage();
 
-    return future.Subscribe([=] (auto) {
-        TVector<TString> uuids(Reserve(Devices.size()));
-        for (const auto& x: Devices) {
-            uuids.push_back(x.first);
-        }
+    return future.Subscribe(
+        [this, rdmaTargetConfig = std::move(rdmaTargetConfig)](auto) mutable
+        {
+            TVector<TString> uuids(Reserve(Devices.size()));
+            for (const auto& x: Devices) {
+                uuids.push_back(x.first);
+            }
 
-        DeviceClient = std::make_shared<TDeviceClient>(
-            AgentConfig->GetReleaseInactiveSessionsTimeout(),
-            std::move(uuids));
+            DeviceClient = std::make_shared<TDeviceClient>(
+                AgentConfig->GetReleaseInactiveSessionsTimeout(),
+                std::move(uuids));
 
-        InitRdmaTarget();
-    });
+            InitRdmaTarget(std::move(rdmaTargetConfig));
+        });
 }
 
 TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()

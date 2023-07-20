@@ -35,13 +35,23 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaEndpointImpl
+TString MakeKey(const TString& host, ui32 port)
+{
+    return Sprintf("%s:%u", host.c_str(), port);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace
+
+struct TRdmaClientTest::TRdmaEndpointImpl
     : NRdma::IClientEndpoint
 {
     TDeque<TString> Blocks;
     NProto::TError AllocationError;
     NProto::TError RdmaResponseError;
     NProto::TError ResponseError;
+    TRdmaClientTest::TMessageObserver MessageObserver;
 
     TRdmaEndpointImpl() = default;
 
@@ -73,6 +83,10 @@ struct TRdmaEndpointImpl
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(req->RequestBuffer);
         Y_ENSURE_EX(!HasError(err), yexception() << err.GetMessage());
+
+        if (MessageObserver) {
+            MessageObserver(result);
+        }
 
         if (HasError(RdmaResponseError)) {
             auto len = NRdma::SerializeError(
@@ -230,17 +244,7 @@ struct TRdmaEndpointImpl
             NRdma::RDMA_PROTO_OK,
             responseBytes);
     }
-
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString MakeKey(const TString& host, ui32 port)
-{
-    return Sprintf("%s:%u", host.c_str(), port);
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -285,6 +289,14 @@ ui32 TRdmaClientTest::InitAllEndpointsWithError()
     }
 
     return Endpoints.size();
+}
+
+void TRdmaClientTest::SetMessageObserver(TMessageObserver messageObserver)
+{
+    MessageObserver = messageObserver;
+    for (auto& [_, endpointInfo]: Endpoints) {
+        endpointInfo.Endpoint->MessageObserver = MessageObserver;
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

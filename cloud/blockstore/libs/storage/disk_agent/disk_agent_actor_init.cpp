@@ -28,7 +28,14 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         RdmaServer,
         NvmeManager);
 
-    auto result = State->Initialize();
+    Y_VERIFY_DEBUG(
+        OldRequestCounters.Delayed && OldRequestCounters.Rejected &&
+        OldRequestCounters.Already);
+    TRdmaTargetConfig rdmaTargetConfig{
+        RejectLateRequestsAtDiskAgentEnabled,
+        OldRequestCounters};
+
+    auto result = State->Initialize(std::move(rdmaTargetConfig));
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
