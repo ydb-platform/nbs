@@ -23,6 +23,7 @@ struct TRequest
     TDuration RequestTime;
     TDuration PostponedTime;
     bool Aligned = false;
+    ui64 ResponseTime = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,14 +38,20 @@ void AddRequestStats(
             requestType,
             request.RequestBytes);
 
+        ui64 responseSent = request.ResponseTime ?
+            requestStarted - request.ResponseTime : 0;
+
         requestCounters.RequestCompleted(
             requestType,
-            requestStarted - DurationToCyclesSafe(request.RequestTime),
+            requestStarted - DurationToCyclesSafe(request.RequestTime) -
+                request.ResponseTime,
             request.PostponedTime,
             request.RequestBytes,
             EDiagnosticsErrorKind::Success,
             NCloud::NProto::EF_NONE,
-            request.Aligned);
+            request.Aligned,
+            ECalcMaxTime::ENABLE,
+            responseSent);
     }
 }
 
@@ -303,6 +310,77 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
             UNIT_ASSERT_VALUES_EQUAL(100, p100->Val());
             UNIT_ASSERT_VALUES_EQUAL(75, p50->Val());
+        }
+    }
+
+
+    Y_UNIT_TEST(ShouldFillTimePercentilesWithResponseTime)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters();
+        requestCounters.Register(*monitoring->GetCounters());
+
+        auto writeBlocks = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "WriteBlocks");
+
+        auto readBlocks = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "ReadBlocks");
+
+        AddRequestStats(requestCounters, ReadRequestType, {
+            { 1_MB, TDuration::MilliSeconds(106), TDuration::MilliSeconds(50),
+                false, DurationToCyclesSafe(TDuration::MilliSeconds(45)) }
+        });
+
+        requestCounters.UpdateStats(true);
+
+        {
+            auto percentiles = writeBlocks->GetSubgroup("percentiles", "Time");
+
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(0, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, p50->Val());
+        }
+
+        {
+            auto percentiles = writeBlocks->GetSubgroup("percentiles", "ExecutionTime");
+
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(0, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, p50->Val());
+        }
+
+        {
+            auto percentiles = readBlocks->GetSubgroup("percentiles", "Time");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(200, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(150, p50->Val());
+        }
+
+        {
+            auto percentiles = readBlocks->GetSubgroup("percentiles", "ExecutionTime");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(100, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(75, p50->Val());
+        }
+
+        {
+            auto percentiles = readBlocks->GetSubgroup("percentiles", "ResponseTime");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(50, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(35, p50->Val());
         }
     }
 

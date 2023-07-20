@@ -279,7 +279,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calcMaxTime) override
+        ECalcMaxTime calcMaxTime,
+        ui64 responseSent) override
     {
         auto requestTime = Total.RequestCompleted(
             static_cast<TRequestCounters::TRequestType>(
@@ -290,7 +291,8 @@ public:
             errorKind,
             errorFlags,
             unaligned,
-            calcMaxTime);
+            calcMaxTime,
+            responseSent);
 
         if (IsReadWriteRequest(requestType)) {
             GetRequestCounters(mediaKind).RequestCompleted(
@@ -302,7 +304,8 @@ public:
                 errorKind,
                 errorFlags,
                 unaligned,
-                calcMaxTime);
+                calcMaxTime,
+                responseSent);
 
             if (IsServerSide) {
                 HdrTotal.AddStats(
@@ -527,7 +530,8 @@ struct TRequestStatsStub final
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calcMaxTime) override
+        ECalcMaxTime calcMaxTime,
+        ui64 responseSent) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
@@ -537,6 +541,7 @@ struct TRequestStatsStub final
         Y_UNUSED(errorFlags);
         Y_UNUSED(unaligned);
         Y_UNUSED(calcMaxTime);
+        Y_UNUSED(responseSent);
         return CyclesToDurationSafe(GetCycleCount() - requestStarted);
     }
 

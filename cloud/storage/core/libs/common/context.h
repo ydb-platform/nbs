@@ -24,6 +24,7 @@ struct TCallContextBase
 private:
     TAtomic Stage2Time[static_cast<int>(EProcessingStage::Last)] = {};
     TAtomic RequestStartedCycles = 0;
+    TAtomic ResponseSentCycles = 0;
 
     // Used only in tablet throttler.
     TAtomic PostponeTs = 0;
@@ -42,6 +43,9 @@ public:
 
     ui64 GetPostponeCycles() const;
     void SetPostponeCycles(ui64 cycles);
+
+    ui64 GetResponseSentCycles() const;
+    void SetResponseSentCycles(ui64 cycles);
 
     void Postpone(ui64 nowCycles);
     TDuration Advance(ui64 nowCycles);

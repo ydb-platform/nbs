@@ -74,7 +74,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calMaxTime = ECalcMaxTime::ENABLE);
+        ECalcMaxTime calMaxTime = ECalcMaxTime::ENABLE,
+        ui64 responseSent = 0);
 
     void AddRetryStats(
         TRequestType requestType,
@@ -115,7 +116,9 @@ private:
 
     void RequestCompletedImpl(
         TRequestType requestType,
-        TDuration requestTime,
+        ui64 requestStarted,
+        ui64 responseSent,
+        ui64 requestCompleted,
         TDuration postponedTime,
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
