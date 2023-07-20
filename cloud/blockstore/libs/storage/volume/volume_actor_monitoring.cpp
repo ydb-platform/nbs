@@ -935,6 +935,14 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                 }
 
                 TABLER() {
+                    TABLED() { out << "Encryption mode"; }
+                    TABLED() {
+                        out << NProto::EEncryptionMode_Name(
+                            (NProto::EEncryptionMode)volumeConfig.GetEncryptionDesc().GetMode());
+                    }
+                }
+
+                TABLER() {
                     TABLED() { out << "Channel profile id"; }
                     TABLED() {
                         out << volumeConfig.GetChannelProfileId();
