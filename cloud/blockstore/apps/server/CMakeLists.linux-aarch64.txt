@@ -17,7 +17,7 @@ target_link_libraries(nbsd PUBLIC
   yutil
   libs-daemon-ydb
   libs-logbroker-iface
-  libs-rdma-iface
+  libs-rdma-impl
   blockstore-libs-service
   libs-spdk-iface
   core-libs-daemon

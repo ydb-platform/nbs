@@ -8,7 +8,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/disk_agent
-    cloud/blockstore/libs/rdma/iface
+    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/spdk/iface
 
     cloud/storage/core/libs/daemon

@@ -9,7 +9,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/libs/daemon/ydb
     cloud/blockstore/libs/logbroker/iface
-    cloud/blockstore/libs/rdma/iface
+    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
 

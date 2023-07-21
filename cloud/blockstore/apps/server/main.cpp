@@ -1,7 +1,8 @@
 #include <cloud/blockstore/libs/daemon/ydb/bootstrap.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/rdma/impl/client.h>
+#include <cloud/blockstore/libs/rdma/impl/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
@@ -61,11 +62,11 @@ int main(int argc, char** argv)
         NCloud::IMonitoringServicePtr monitoring,
         NRdma::TClientConfigPtr config)
     {
-        Y_UNUSED(logging);
-        Y_UNUSED(monitoring);
-        Y_UNUSED(config);
-
-        return NRdma::IClientPtr();
+        return NRdma::CreateClient(
+            NRdma::NVerbs::CreateVerbs(),
+            std::move(logging),
+            std::move(monitoring),
+            std::move(config));
     };
 
     serverModuleFactories->RdmaServerFactory = [] (
@@ -73,11 +74,11 @@ int main(int argc, char** argv)
         NCloud::IMonitoringServicePtr monitoring,
         NRdma::TServerConfigPtr config)
     {
-        Y_UNUSED(logging);
-        Y_UNUSED(monitoring);
-        Y_UNUSED(config);
-
-        return NRdma::IServerPtr();
+        return NRdma::CreateServer(
+            NRdma::NVerbs::CreateVerbs(),
+            std::move(logging),
+            std::move(monitoring),
+            std::move(config));
     };
 
     NServer::TBootstrapYdb bootstrap(
