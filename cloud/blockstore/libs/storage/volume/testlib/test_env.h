@@ -392,14 +392,12 @@ public:
         bool isLight = false);
 
     std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> CreateDeleteCheckpointRequest(
-        const TString& checkpointId,
-        bool isLight = false);
+        const TString& checkpointId);
 
     std::unique_ptr<TEvService::TEvGetChangedBlocksRequest> CreateGetChangedBlocksRequest(
         const TBlockRange64& range,
         const TString& lowCheckpointId,
-        const TString& highCheckpointId,
-        bool isLight = false);
+        const TString& highCheckpointId);
 
     std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest> CreateDeleteCheckpointDataRequest(
         const TString& checkpointId);

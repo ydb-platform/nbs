@@ -408,24 +408,18 @@ bool TVolumeDatabase::ReadNonReplPartStats(TVector<TPartStats>& stats)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeDatabase::WriteCheckpointRequest(
-    ui64 requestId,
-    TString checkpointId,
-    TInstant timestamp,
-    ECheckpointRequestType reqType)
+    const TCheckpointRequest& request)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
     Table<TTable>()
-        .Key(requestId)
+        .Key(request.RequestId)
         .Update(
-            NIceDb::TUpdate<TTable::CheckpointId>(checkpointId),
-            NIceDb::TUpdate<TTable::Timestamp>(timestamp.MicroSeconds()),
-            NIceDb::TUpdate<TTable::State>(
-                static_cast<ui32>(ECheckpointRequestState::Saved)
-            ),
-            NIceDb::TUpdate<TTable::ReqType>(
-                static_cast<ui32>(reqType))
-        );
+            NIceDb::TUpdate<TTable::CheckpointId>(request.CheckpointId),
+            NIceDb::TUpdate<TTable::Timestamp>(request.Timestamp.MicroSeconds()),
+            NIceDb::TUpdate<TTable::State>(static_cast<ui32>(request.State)),
+            NIceDb::TUpdate<TTable::ReqType>(static_cast<ui32>(request.ReqType)),
+            NIceDb::TUpdate<TTable::CheckpointType>(static_cast<ui32>(request.Type)));
 }
 
 void TVolumeDatabase::UpdateCheckpointRequest(ui64 requestId, bool completed)
@@ -501,8 +495,8 @@ bool TVolumeDatabase::ReadCheckpointRequests(
                 it.GetValue<TTable::CheckpointId>(),
                 TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>()),
                 static_cast<ECheckpointRequestType>(it.GetValue<TTable::ReqType>()),
-                static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>())
-            );
+                static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>()),
+                static_cast<ECheckpointType>(it.GetValue<TTable::CheckpointType>()));
         }
 
         if (!it.Next()) {

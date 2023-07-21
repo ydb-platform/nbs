@@ -126,8 +126,13 @@ struct TVolumeSchema
         {
         };
 
+        struct CheckpointType
+            : public Column<6, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
         using TKey = TableKey<RequestId>;
-        using TColumns = TableColumns<RequestId, CheckpointId, Timestamp, State, ReqType>;
+        using TColumns = TableColumns<RequestId, CheckpointId, Timestamp, State, ReqType, CheckpointType>;
     };
 
     struct NonReplPartStats

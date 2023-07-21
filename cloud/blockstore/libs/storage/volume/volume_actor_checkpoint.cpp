@@ -513,58 +513,53 @@ void TCheckpointActor<TCreateCheckpointMethod>::Bootstrap(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TVolumeActor::HandleCreateCheckpointLightRequest(
-    const TCreateCheckpointMethod::TRequest::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeActor::CreateCheckpointLightRequest(
+    const TActorContext& ctx,
+    ui64 requestId,
+    const TString& checkpointId)
 {
-    const auto* msg = ev->Get();
-
     LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] %s created light checkpoint %s",
         TabletID(),
         TCreateCheckpointMethod::Name,
-        msg->Record.GetCheckpointId().Quote().c_str());
+        checkpointId.Quote().c_str());
 
     TCheckpointLight& checkpointLight = State->StartCheckpointLight();
-    checkpointLight.CreateCheckpoint(msg->Record.GetCheckpointId());
+    checkpointLight.CreateCheckpoint(checkpointId);
 
-    auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    const TCheckpointRequestInfo* requestInfo =
+        CheckpointRequests.FindPtr(requestId);
 
-    NCloud::Reply(
+    ExecuteTx<TUpdateCheckpointRequest>(
         ctx,
-        *requestInfo,
-        std::make_unique<TCreateCheckpointMethod::TResponse>());
-
-    return true;
+        requestInfo ? std::move(requestInfo->RequestInfo) : nullptr,
+        requestId,
+        true // Completed
+    );
 }
 
-bool TVolumeActor::HandleDeleteCheckpointLightRequest(
-    const TDeleteCheckpointMethod::TRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
 
+void TVolumeActor::DeleteCheckpointLightRequest(
+    const TActorContext& ctx,
+    ui64 requestId,
+    const TString& checkpointId)
+{
     TCheckpointLight* checkpointLight = State->GetCheckpointLight();
     if (checkpointLight &&
-        checkpointLight->GetCheckpointId() == msg->Record.GetCheckpointId())
+        checkpointLight->GetCheckpointId() == checkpointId)
     {
         State->StopCheckpointLight();
     }
 
-    auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    const TCheckpointRequestInfo* requestInfo =
+        CheckpointRequests.FindPtr(requestId);
 
-    NCloud::Reply(
+    ExecuteTx<TUpdateCheckpointRequest>(
         ctx,
-        *requestInfo,
-        std::make_unique<TDeleteCheckpointMethod::TResponse>());
-
-    return true;
+        requestInfo ? std::move(requestInfo->RequestInfo) : nullptr,
+        requestId,
+        true // Completed
+    );
 }
 
 bool TVolumeActor::HandleGetChangedBlocksLightRequest(
@@ -633,10 +628,6 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
 {
     Y_UNUSED(volumeRequestId);
 
-    if (ev->Get()->Record.GetIsLight()) {
-        return HandleCreateCheckpointLightRequest(ev, ctx);
-    }
-
     auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
@@ -647,7 +638,10 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
         ev->Get()->Record.GetCheckpointId(),
         ctx.Now(),
-        ECheckpointRequestType::Create);
+        ECheckpointRequestType::Create,
+        ev->Get()->Record.GetIsLight()
+            ? ECheckpointType::Light
+            : ECheckpointType::Normal);
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -668,10 +662,6 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
 {
      Y_UNUSED(volumeRequestId);
 
-    if (ev->Get()->Record.GetIsLight()) {
-        return HandleDeleteCheckpointLightRequest(ev, ctx);
-    }
-
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
@@ -679,10 +669,15 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
 
     AddTransaction(*requestInfo);
 
-    const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
-        ev->Get()->Record.GetCheckpointId(),
+    auto& checkpointStore = State->GetCheckpointStore();
+    const auto& checkpointId = ev->Get()->Record.GetCheckpointId();
+    const auto type = checkpointStore.GetCheckpointType(checkpointId);
+
+    const auto& checkpointRequest = checkpointStore.CreateNew(
+        checkpointId,
         ctx.Now(),
-        ECheckpointRequestType::Delete);
+        ECheckpointRequestType::Delete,
+        type.value_or(ECheckpointType::Normal));
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -713,7 +708,8 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
     const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
         ev->Get()->Record.GetCheckpointId(),
         ctx.Now(),
-        ECheckpointRequestType::DeleteData);
+        ECheckpointRequestType::DeleteData,
+        ECheckpointType::Normal);
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -808,9 +804,18 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
             ToString(actorId).c_str());
     }
 
+    State->GetCheckpointStore().SetCheckpointRequestInProgress(
+        readyToExecuteRequestId);
+
     TActorId actorId;
     switch (request.ReqType) {
         case ECheckpointRequestType::Create: {
+            if (request.Type == ECheckpointType::Light) {
+                return CreateCheckpointLightRequest(
+                    ctx,
+                    request.RequestId,
+                    request.CheckpointId);
+            }
             actorId =
                 NCloud::Register<TCheckpointActor<TCreateCheckpointMethod>>(
                     ctx,
@@ -827,6 +832,12 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
             break;
         }
         case ECheckpointRequestType::Delete: {
+            if (request.Type == ECheckpointType::Light) {
+                return DeleteCheckpointLightRequest(
+                    ctx,
+                    request.RequestId,
+                    request.CheckpointId);
+            }
             actorId =
                 NCloud::Register<TCheckpointActor<TDeleteCheckpointMethod>>(
                     ctx,
@@ -862,8 +873,6 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
             Y_FAIL();
     }
 
-    State->GetCheckpointStore().SetCheckpointRequestInProgress(
-        readyToExecuteRequestId);
     Actors.insert(actorId);
 }
 
@@ -890,14 +899,17 @@ void TVolumeActor::ExecuteSaveCheckpointRequest(
 
     TVolumeDatabase db(tx.DB);
 
-    const auto& checkpointRequest =
+    // The request in memory has the Received status.
+    // We save this request to the database with the Saved status.
+    // After receiving confirmation of the transaction,
+    //  we will raise the status in memory to Saved too.
+    auto checkpointRequestCopy =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
+    Y_VERIFY_DEBUG(
+        checkpointRequestCopy.State == ECheckpointRequestState::Received);
+    checkpointRequestCopy.State = ECheckpointRequestState::Saved;
 
-    db.WriteCheckpointRequest(
-        checkpointRequest.RequestId,
-        checkpointRequest.CheckpointId,
-        checkpointRequest.Timestamp,
-        checkpointRequest.ReqType);
+    db.WriteCheckpointRequest(checkpointRequestCopy);
 }
 
 void TVolumeActor::CompleteSaveCheckpointRequest(
@@ -914,6 +926,7 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
         checkpointRequest.CheckpointId.Quote().c_str());
 
     State->GetCheckpointStore().SetCheckpointRequestSaved(args.RequestId);
+
     CheckpointRequests.insert(
         {args.RequestId, {args.RequestInfo, args.IsTraced, args.TraceTs}});
 
@@ -989,12 +1002,30 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.Completed);
     CheckpointRequests.erase(request.RequestId);
 
-    NCloud::Reply(
-        ctx,
-        *args.RequestInfo,
-        std::make_unique<TEvVolumePrivate::TEvUpdateCheckpointRequestResponse>()
-    );
-    Actors.erase(args.RequestInfo->Sender);
+    if (request.Type == ECheckpointType::Light) {
+        const bool needReply =
+            args.RequestInfo && SelfId() != args.RequestInfo->Sender;
+        if (needReply) {
+            if (request.ReqType == ECheckpointRequestType::Create) {
+                NCloud::Reply(
+                    ctx,
+                    *args.RequestInfo,
+                    std::make_unique<TCreateCheckpointMethod::TResponse>());
+            } else if (request.ReqType == ECheckpointRequestType::Delete) {
+                NCloud::Reply(
+                    ctx,
+                    *args.RequestInfo,
+                    std::make_unique<TDeleteCheckpointMethod::TResponse>());
+            }
+        }
+    } else {
+        NCloud::Reply(
+            ctx,
+            *args.RequestInfo,
+            std::make_unique<TEvVolumePrivate::TEvUpdateCheckpointRequestResponse>()
+        );
+        Actors.erase(args.RequestInfo->Sender);
+    }
 
     ProcessNextCheckpointRequest(ctx);
 }

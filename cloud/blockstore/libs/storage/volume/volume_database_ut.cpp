@@ -237,10 +237,34 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         });
 
         executor.WriteTx([&] (TVolumeDatabase db) {
-            db.WriteCheckpointRequest(1, "xxx", TInstant::Seconds(111), ECheckpointRequestType::Create);
-            db.WriteCheckpointRequest(2, "yyy", TInstant::Seconds(222), ECheckpointRequestType::Create);
-            db.WriteCheckpointRequest(3, "zzz", TInstant::Seconds(333), ECheckpointRequestType::Create);
-            db.WriteCheckpointRequest(4, "xxx", TInstant::Seconds(444), ECheckpointRequestType::Create);
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                1,
+                "xxx",
+                TInstant::Seconds(111),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                2,
+                "yyy",
+                TInstant::Seconds(222),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                3,
+                "zzz",
+                TInstant::Seconds(333),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                4,
+                "xxx",
+                TInstant::Seconds(444),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
             db.UpdateCheckpointRequest(1, true);
             db.UpdateCheckpointRequest(3, false);
         });
@@ -405,10 +429,34 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         });
 
         executor.WriteTx([&] (TVolumeDatabase db) {
-            db.WriteCheckpointRequest(1, "xxx", TInstant::Seconds(111), ECheckpointRequestType::Create);
-            db.WriteCheckpointRequest(2, "yyy", TInstant::Seconds(222), ECheckpointRequestType::Create);
-            db.WriteCheckpointRequest(3, "xxx", TInstant::Seconds(333), ECheckpointRequestType::Delete);
-            db.WriteCheckpointRequest(4, "yyy", TInstant::Seconds(444), ECheckpointRequestType::Delete);
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                1,
+                "xxx",
+                TInstant::Seconds(111),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                2,
+                "yyy",
+                TInstant::Seconds(222),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                3,
+                "xxx",
+                TInstant::Seconds(333),
+                ECheckpointRequestType::Delete,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                4,
+                "yyy",
+                TInstant::Seconds(444),
+                ECheckpointRequestType::Delete,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
             db.UpdateCheckpointRequest(1, true);
             db.UpdateCheckpointRequest(2, true);
             db.UpdateCheckpointRequest(3, true);
@@ -549,7 +597,13 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         });
 
         executor.WriteTx([&] (TVolumeDatabase db) {
-            db.WriteCheckpointRequest(5, "yyy", TInstant::Seconds(555), ECheckpointRequestType::Create);
+            db.WriteCheckpointRequest(TCheckpointRequest{
+                5,
+                "yyy",
+                TInstant::Seconds(555),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Saved,
+                ECheckpointType::Normal});
             db.UpdateCheckpointRequest(5, true);
         });
 

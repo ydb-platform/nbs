@@ -25,7 +25,8 @@ TCheckpointStore::TCheckpointStore(
 const TCheckpointRequest& TCheckpointStore::CreateNew(
     TString checkpointId,
     TInstant timestamp,
-    ECheckpointRequestType reqType)
+    ECheckpointRequestType reqType,
+    ECheckpointType type)
 {
     if (!CheckpointRequests.empty()) {
         const auto& lastReq = CheckpointRequests.rbegin()->second;
@@ -38,7 +39,8 @@ const TCheckpointRequest& TCheckpointStore::CreateNew(
         std::move(checkpointId),
         timestamp,
         reqType,
-        ECheckpointRequestState::Received});
+        ECheckpointRequestState::Received,
+        type});
 }
 
 void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
@@ -93,8 +95,8 @@ bool TCheckpointStore::DoesCheckpointWithDataExist() const
 
 bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
 {
-    if (const ECheckpointData* data = ActiveCheckpoints.FindPtr(checkpointId)) {
-        return *data == ECheckpointData::DataPresent;
+    if (const auto* data = ActiveCheckpoints.FindPtr(checkpointId)) {
+        return data->Data == ECheckpointData::DataPresent;
     }
     return false;
 }
@@ -116,19 +118,36 @@ bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
     return false;
 }
 
-TVector<TString> TCheckpointStore::GetCheckpointsWithData() const
+std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(
+    const TString& checkpointId) const
+{
+    auto ptr = ActiveCheckpoints.FindPtr(checkpointId);
+    return ptr ? ptr->Type : std::optional<ECheckpointType>{};
+}
+
+TVector<TString> TCheckpointStore::GetLightCheckpoints() const
 {
     TVector<TString> checkpoints(Reserve(ActiveCheckpoints.size()));
     for (const auto& [checkpoint, checkpointData]: ActiveCheckpoints) {
-        if (checkpointData == ECheckpointData::DataPresent) {
+        if (checkpointData.Type == ECheckpointType::Light) {
             checkpoints.push_back(checkpoint);
         }
     }
     return checkpoints;
 }
 
-const TMap<TString, ECheckpointData>& TCheckpointStore::GetActiveCheckpoints()
-    const
+TVector<TString> TCheckpointStore::GetCheckpointsWithData() const
+{
+    TVector<TString> checkpoints(Reserve(ActiveCheckpoints.size()));
+    for (const auto& [checkpoint, checkpointData]: ActiveCheckpoints) {
+        if (checkpointData.Data == ECheckpointData::DataPresent) {
+            checkpoints.push_back(checkpoint);
+        }
+    }
+    return checkpoints;
+}
+
+const TActiveCheckpointsMap& TCheckpointStore::GetActiveCheckpoints() const
 {
     return ActiveCheckpoints;
 }
@@ -178,16 +197,24 @@ TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
     return it->second;
 }
 
-void TCheckpointStore::AddCheckpoint(const TString& checkpointId)
+void TCheckpointStore::AddCheckpoint(
+    const TString& checkpointId,
+    ECheckpointType type)
 {
-    ActiveCheckpoints.emplace(checkpointId, ECheckpointData::DataPresent);
+    ActiveCheckpoints.emplace(
+        checkpointId,
+        TActiveCheckpointsType{
+            type,
+            type == ECheckpointType::Normal
+                ? ECheckpointData::DataPresent
+                : ECheckpointData::DataDeleted});
     CalcDoesCheckpointWithDataExist();
 }
 
 void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
 {
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
-        *checkpointData = ECheckpointData::DataDeleted;
+        checkpointData->Data = ECheckpointData::DataDeleted;
     }
     CalcDoesCheckpointWithDataExist();
 }
@@ -203,7 +230,7 @@ void TCheckpointStore::CalcDoesCheckpointWithDataExist()
     CheckpointWithDataExists = AnyOf(
         ActiveCheckpoints,
         [](const auto& it)
-        { return it.second == ECheckpointData::DataPresent; });
+        { return it.second.Data == ECheckpointData::DataPresent; });
 }
 
 void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
@@ -213,7 +240,9 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
     }
     switch (checkpointRequest.ReqType) {
         case ECheckpointRequestType::Create: {
-            AddCheckpoint(checkpointRequest.CheckpointId);
+            AddCheckpoint(
+                checkpointRequest.CheckpointId,
+                checkpointRequest.Type);
             break;
         }
         case ECheckpointRequestType::Delete: {

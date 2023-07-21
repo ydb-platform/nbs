@@ -100,18 +100,12 @@ public:
     // CheckpointRequests
     //
 
-    void WriteCheckpointRequest(
-        ui64 requestId,
-        TString checkpointId,
-        TInstant timestamp,
-        ECheckpointRequestType reqType);
-
+    void WriteCheckpointRequest(const TCheckpointRequest& state);
     bool CollectCheckpointsToDelete(
         TDuration deletedCheckpointHistoryLifetime,
         TInstant now,
         THashMap<TString, TInstant>& deletedCheckpoints);
     void UpdateCheckpointRequest(ui64 requestId, bool completed);
-    void MarkCheckpointDeleted(ui64 requestId);
     bool ReadCheckpointRequests(
         const THashMap<TString, TInstant>& deletedCheckpoints,
         TVector<TCheckpointRequest>& requests,

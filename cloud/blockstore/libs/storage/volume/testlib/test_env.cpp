@@ -365,12 +365,10 @@ TVolumeClient::CreateCreateCheckpointRequest(
 
 std::unique_ptr<TEvService::TEvDeleteCheckpointRequest>
 TVolumeClient::CreateDeleteCheckpointRequest(
-    const TString& checkpointId,
-    bool isLight)
+    const TString& checkpointId)
 {
     auto request = std::make_unique<TEvService::TEvDeleteCheckpointRequest>();
     request->Record.SetCheckpointId(checkpointId);
-    request->Record.SetIsLight(isLight);
     return request;
 }
 
@@ -378,15 +376,13 @@ std::unique_ptr<TEvService::TEvGetChangedBlocksRequest>
 TVolumeClient::CreateGetChangedBlocksRequest(
     const TBlockRange64& range,
     const TString& lowCheckpointId,
-    const TString& highCheckpointId,
-    bool isLight)
+    const TString& highCheckpointId)
 {
     auto request = std::make_unique<TEvService::TEvGetChangedBlocksRequest>();
     request->Record.SetStartIndex(range.Start);
     request->Record.SetBlocksCount(range.Size());
     request->Record.SetLowCheckpointId(lowCheckpointId);
     request->Record.SetHighCheckpointId(highCheckpointId);
-    request->Record.SetIsLight(isLight);
     return request;
 }
 

@@ -50,9 +50,6 @@ message TDeleteCheckpointRequest
 
     // Checkpoint identifier.
     string CheckpointId = 3;
-
-    // Light checkpoint.
-    bool IsLight = 4;
 }
 
 message TDeleteCheckpointResponse
@@ -89,9 +86,6 @@ message TGetChangedBlocksRequest
 
     // Only affects case when LowCheckpointId is not set.
     bool IgnoreBaseDisk = 7;
-
-    // Light checkpoint.
-    bool IsLight = 8;
 }
 
 message TGetChangedBlocksResponse

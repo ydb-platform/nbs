@@ -85,7 +85,9 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     }
 
     if constexpr (std::is_same_v<TMethod, TEvService::TGetChangedBlocksMethod>) {
-        if (msg->Record.GetIsLight()) {
+        const auto type = State->GetCheckpointStore().GetCheckpointType(
+            msg->Record.GetHighCheckpointId());
+        if (type.value_or(ECheckpointType::Normal) == ECheckpointType::Light){
             return HandleGetChangedBlocksLightRequest(ev, ctx);
         }
     }

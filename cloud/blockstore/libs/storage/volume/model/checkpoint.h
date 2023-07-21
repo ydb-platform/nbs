@@ -25,6 +25,12 @@ enum class ECheckpointRequestType
     DeleteData = 2,
 };
 
+enum class ECheckpointType
+{
+    Normal,
+    Light
+};
+
 enum class ECheckpointData
 {
     DataPresent,
@@ -38,26 +44,37 @@ struct TCheckpointRequest
     TInstant Timestamp;
     ECheckpointRequestType ReqType;
     ECheckpointRequestState State;
+    ECheckpointType Type;
 
     TCheckpointRequest(
             ui64 requestId,
             TString checkpointId,
             TInstant timestamp,
             ECheckpointRequestType reqType,
-            ECheckpointRequestState state)
+            ECheckpointRequestState state,
+            ECheckpointType type)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
         , ReqType(reqType)
         , State(state)
+        , Type(type)
     {}
 };
+
+struct TActiveCheckpointsType
+{
+    ECheckpointType Type;
+    ECheckpointData Data;
+};
+
+using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointsType>;
 
 class TCheckpointStore
 {
 private:
     TMap<ui64, TCheckpointRequest> CheckpointRequests;
-    TMap<TString, ECheckpointData> ActiveCheckpoints;
+    TActiveCheckpointsMap ActiveCheckpoints;
     ui64 LastCheckpointRequestId = 0;
     ui64 CheckpointRequestInProgress = 0;
     bool CheckpointBeingCreated = false;
@@ -73,7 +90,8 @@ public:
     const TCheckpointRequest& CreateNew(
         TString checkpointId,
         TInstant timestamp,
-        ECheckpointRequestType reqType);
+        ECheckpointRequestType reqType,
+        ECheckpointType type);
 
     void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);
@@ -85,9 +103,11 @@ public:
     [[nodiscard]] bool DoesCheckpointHaveData(
         const TString& checkpointId) const;
 
+    [[nodiscard]] std::optional<ECheckpointType> GetCheckpointType(
+        const TString& checkpointId) const;
+    [[nodiscard]] TVector<TString> GetLightCheckpoints() const;
     [[nodiscard]] TVector<TString> GetCheckpointsWithData() const;
-    [[nodiscard]] const TMap<TString, ECheckpointData>& GetActiveCheckpoints()
-        const;
+    [[nodiscard]] const TActiveCheckpointsMap& GetActiveCheckpoints() const;
 
     [[nodiscard]] bool HasRequestToExecute(ui64* requestId) const;
 
@@ -100,7 +120,7 @@ private:
     [[nodiscard]] TCheckpointRequest& GetRequest(ui64 requestId);
     TCheckpointRequest& AddCheckpointRequest(
         TCheckpointRequest checkpointRequest);
-    void AddCheckpoint(const TString& checkpointId);
+    void AddCheckpoint(const TString& checkpointId, ECheckpointType type);
     void DeleteCheckpoint(const TString& checkpointId);
     void DeleteCheckpointData(const TString& checkpointId);
     void CalcDoesCheckpointWithDataExist();

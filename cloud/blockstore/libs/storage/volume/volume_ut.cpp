@@ -9504,8 +9504,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto response = volume.GetChangedBlocks(
                 TBlockRange64(0, 1023),
                 "",
-                "c1",
-                true);
+                "c1");
             const auto& mask = response->Record.GetMask();
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -9533,8 +9532,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto response = volume.GetChangedBlocks(
                 TBlockRange64(0, 1023),
                 "c1",
-                "c2",
-                true);
+                "c2");
             const auto& mask = response->Record.GetMask();
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -9556,18 +9554,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto response = volume.GetChangedBlocks(
                 TBlockRange64(0, 999),
                 "c1",
-                "c2",
-                true);
+                "c2");
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(999 / 8 + 1, mask.size());
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            volume.DeleteCheckpoint("c1", true)->GetStatus());
+            volume.DeleteCheckpoint("c1")->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            volume.DeleteCheckpoint("c2", true)->GetStatus());
+            volume.DeleteCheckpoint("c2")->GetStatus());
     }
 }
 

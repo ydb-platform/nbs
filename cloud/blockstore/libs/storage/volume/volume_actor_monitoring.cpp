@@ -25,6 +25,17 @@ namespace {
 
 IOutputStream& operator <<(
     IOutputStream& out,
+    const TActiveCheckpointsType& checkpointType)
+{
+    return out << (checkpointType.Type == ECheckpointType::Light
+        ? "no data (is light)"
+        : checkpointType.Data == ECheckpointData::DataPresent
+            ? "present"
+            : "deleted");
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
     NProto::EVolumeIOMode ioMode)
 {
     switch (ioMode) {
@@ -617,23 +628,16 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                 TABLEHEAD() {
                     TABLER() {
                         TABLEH() { out << "CheckpointId"; }
-                        TABLEH() { out << "DataDeleted"; }
+                        TABLEH() { out << "DataType"; }
                         TABLEH() { out << "Delete"; }
                     }
                 }
-                for (const auto& [r, checkpointData]:
-                     State->GetCheckpointStore().GetActiveCheckpoints())
+                for (const auto& [r, checkpointType]:
+                    State->GetCheckpointStore().GetActiveCheckpoints())
                 {
                     TABLER() {
                         TABLED() { out << r; }
-                        TABLED()
-                        {
-                            out
-                                << (checkpointData ==
-                                            ECheckpointData::DataDeleted
-                                        ? "true"
-                                        : "");
-                        }
+                        TABLED() { out << checkpointType; }
                         TABLED() {
                             BuildDeleteCheckpointButton(
                                 out,
@@ -679,17 +683,6 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
             </script>
         )___";
-        auto checkpointLight = State->GetCheckpointLight();
-        if (checkpointLight) {
-            TABLE_SORTABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLED() { out << "Light checkpoint id"; }
-                        TABLED() { out << checkpointLight->GetCheckpointId(); }
-                    }
-                }
-            }
-        }
     }
 }
 

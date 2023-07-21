@@ -873,13 +873,15 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    bool HandleCreateCheckpointLightRequest(
-        const TEvService::TCreateCheckpointMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
+    void CreateCheckpointLightRequest(
+        const NActors::TActorContext& ctx,
+        ui64 requestId,
+        const TString& checkpointId);
 
-    bool HandleDeleteCheckpointLightRequest(
-        const TEvService::TDeleteCheckpointMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
+    void DeleteCheckpointLightRequest(
+        const NActors::TActorContext& ctx,
+        ui64 requestId,
+        const TString& checkpointId);
 
     bool HandleGetChangedBlocksLightRequest(
         const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,

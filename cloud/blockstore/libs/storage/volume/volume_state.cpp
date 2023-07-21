@@ -125,6 +125,12 @@ TVolumeState::TVolumeState(
             LocalMountClientId = pair.first;
         }
     }
+
+    const auto lightCheckpoints = CheckpointStore.GetLightCheckpoints();
+    if (!lightCheckpoints.empty()) {
+        TCheckpointLight& checkpointLight = StartCheckpointLight();
+        checkpointLight.CreateCheckpoint(lightCheckpoints.front());
+    }
 }
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
