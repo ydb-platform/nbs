@@ -28,6 +28,7 @@ type CreateVolumeOpts struct {
 	EncryptionSpec          *protos.TEncryptionSpec
 	StoragePoolName         string
 	AgentIds                []string
+	FillToken               string
 }
 
 type MountVolumeOpts struct {
@@ -88,6 +89,7 @@ func (client *safeClient) CreateVolume(
 		req.EncryptionSpec = opts.EncryptionSpec
 		req.StoragePoolName = opts.StoragePoolName
 		req.AgentIds = opts.AgentIds
+		req.FillToken = opts.FillToken
 	}
 
 	_, err := client.Impl.CreateVolume(ctx, req)

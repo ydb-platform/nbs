@@ -31,6 +31,7 @@ enum EMountFlag
     MF_NONE = 0;
     MF_THROTTLING_DISABLED = 1;
     MF_FORCE_WRITE = 2;
+    MF_FILL = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

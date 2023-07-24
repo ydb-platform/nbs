@@ -448,6 +448,9 @@ message TCreateVolumeRequest
     // Placement partition index, allowed only for nonreplicated volumes.
     // Takes values from 1 to PlacementPartitionCount.
     uint32 PlacementPartitionIndex = 20;
+
+    // Mount requests with incorrect FillToken will be rejected unless filling is finished.
+    string FillToken = 21;
 }
 
 message TCreateVolumeResponse
