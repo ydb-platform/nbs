@@ -307,7 +307,9 @@ NProto::TError TVolumeActor::ProcessAndValidateReadRequest(
     const auto& checkpointId = record.GetCheckpointId();
     const bool checkpointValid =
         !checkpointId ||
-        State->GetCheckpointStore().DoesCheckpointHaveData(checkpointId);
+        State->GetCheckpointStore().DoesCheckpointHaveData(checkpointId) ||
+        State->GetCheckpointStore().GetCheckpointType(checkpointId)
+            .value_or(ECheckpointType::Normal) == ECheckpointType::Light;
 
     if (checkpointValid) {
         record.ClearCheckpointId();
