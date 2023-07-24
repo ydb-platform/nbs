@@ -9566,6 +9566,62 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             S_OK,
             volume.DeleteCheckpoint("c2")->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldReadFromLightCheckpoint)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        const TString checkpointId = "c1";
+        volume.CreateCheckpoint(checkpointId, true);
+
+        volume.WriteBlocks(
+            TBlockRange64(0, 0),
+            clientInfo.GetClientId(),
+            GetBlockContent(2));
+        CheckBlockContent<__LINE__>(
+            volume,
+            clientInfo.GetClientId(),
+            checkpointId,
+            TBlockRange64(0, 0),
+            GetBlockContent(2));
+
+        volume.WriteBlocks(
+            TBlockRange64(10, 112),
+            clientInfo.GetClientId(),
+            GetBlockContent(42));
+        CheckBlockContent<__LINE__>(
+            volume,
+            clientInfo.GetClientId(),
+            checkpointId,
+            TBlockRange64(10, 112),
+            GetBlockContent(42));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
