@@ -8,8 +8,6 @@
 
 #include <util/generic/string.h>
 
-#include <openssl/sha.h>
-
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,9 +38,6 @@ struct IEncryptionKeyProvider
     virtual ~IEncryptionKeyProvider() = default;
 
     virtual TResultOrError<TEncryptionKey> GetKey(
-        const NProto::TEncryptionSpec& encryptionSpec) = 0;
-
-    virtual TResultOrError<TString> GetKeyHash(
         const NProto::TEncryptionSpec& encryptionSpec) = 0;
 };
 

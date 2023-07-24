@@ -210,23 +210,11 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 
     const auto& encryptionSpec = Request.GetEncryptionSpec();
-    auto keyProvider = CreateEncryptionKeyProvider();
-    auto keyHashOrError = keyProvider->GetKeyHash(encryptionSpec);
-    if (HasError(keyHashOrError)) {
-        const auto& error = keyHashOrError.GetError();
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of volume %s failed: %s",
-            Request.GetDiskId().Quote().c_str(),
-            error.GetMessage().c_str());
-
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvCreateVolumeResponse>(error));
-        return;
+    if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION) {
+        auto& desc = *config.MutableEncryptionDesc();
+        desc.SetMode(encryptionSpec.GetMode());
+        desc.SetKeyHash(encryptionSpec.GetKeyHash());
     }
-    auto& encryptionDesc = *config.MutableEncryptionDesc();
-    encryptionDesc.SetMode(encryptionSpec.GetMode());
-    encryptionDesc.SetKeyHash(keyHashOrError.GetResult());
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
         std::move(config));
@@ -460,6 +448,13 @@ NProto::TError ValidateCreateVolumeRequest(
                 E_ARGUMENT, TStringBuilder()
                     << "volume size should be divisible by " << unit);
         }
+    }
+
+    const auto& encryptionSpec = request.GetEncryptionSpec();
+    if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION &&
+        encryptionSpec.HasKeyPath())
+    {
+        return MakeError(E_ARGUMENT, "KeyPath not supported in disk creation");
     }
 
     return MakeError(S_OK);

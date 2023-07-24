@@ -39,9 +39,9 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             keyPath.SetFilePath(keyFile.GetPath());
 
             auto encryptionKeyProvider = CreateEncryptionKeyProvider();
-            auto hashOrError = encryptionKeyProvider->GetKeyHash(spec);
-            UNIT_ASSERT_C(!HasError(hashOrError), hashOrError.GetError());
-            fileKeyHash = hashOrError.GetResult();
+            auto keyOrError = encryptionKeyProvider->GetKey(spec);
+            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            fileKeyHash = keyOrError.GetResult().GetHash();
             UNIT_ASSERT(!fileKeyHash.empty());
         }
 
@@ -75,9 +75,9 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             keyPath.SetKeyringId(keyringOrError.GetResult());
 
             auto encryptionKeyProvider = CreateEncryptionKeyProvider();
-            auto hashOrError = encryptionKeyProvider->GetKeyHash(spec);
-            UNIT_ASSERT_C(!HasError(hashOrError), hashOrError.GetError());
-            keyringKeyHash = hashOrError.GetResult();
+            auto keyOrError = encryptionKeyProvider->GetKey(spec);
+            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            keyringKeyHash = keyOrError.GetResult().GetHash();
             UNIT_ASSERT(!keyringKeyHash.empty());
         }
 
@@ -119,12 +119,6 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             keyOrError.GetError().GetCode());
-
-        auto hashOrError = encryptionKeyProvider->GetKeyHash(spec);
-        UNIT_ASSERT(HasError(hashOrError));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            hashOrError.GetError().GetCode());
     }
 }
 

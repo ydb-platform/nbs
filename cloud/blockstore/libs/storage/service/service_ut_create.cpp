@@ -606,6 +606,89 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCreateEncryptedVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        NProto::TEncryptionSpec encryptionSpec;
+        encryptionSpec.SetMode(NProto::ENCRYPTION_AES_XTS);
+
+        {
+            service.CreateVolume(
+                "vol0",
+                2_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                TString(),  // folderId
+                TString(),  // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                NProto::TVolumePerformanceProfile(),
+                TString(),  // placementGroupId
+                0,          // placementPartitionIndex
+                0,  // partitionsCount
+                encryptionSpec
+            );
+
+            auto response = service.DescribeVolume("vol0");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto desc = response->Record.GetVolume().GetEncryptionDesc();
+            UNIT_ASSERT(NProto::ENCRYPTION_AES_XTS == desc.GetMode());
+            UNIT_ASSERT_VALUES_EQUAL("", desc.GetKeyHash());
+        }
+
+        encryptionSpec.SetKeyHash("keyhash");
+        {
+            service.CreateVolume(
+                "vol1",
+                2_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                TString(),  // folderId
+                TString(),  // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                NProto::TVolumePerformanceProfile(),
+                TString(),  // placementGroupId
+                0,          // placementPartitionIndex
+                0,  // partitionsCount
+                encryptionSpec
+            );
+
+            auto response = service.DescribeVolume("vol1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto desc = response->Record.GetVolume().GetEncryptionDesc();
+            UNIT_ASSERT(NProto::ENCRYPTION_AES_XTS == desc.GetMode());
+            UNIT_ASSERT_VALUES_EQUAL("keyhash", desc.GetKeyHash());
+        }
+
+        encryptionSpec.MutableKeyPath()->SetFilePath("some correct path");
+        {
+            service.SendCreateVolumeRequest(
+                "vol2",
+                2_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                TString(),  // folderId
+                TString(),  // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                NProto::TVolumePerformanceProfile(),
+                TString(),  // placementGroupId
+                0,          // placementPartitionIndex
+                0,  // partitionsCount
+                encryptionSpec
+            );
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+            UNIT_ASSERT_C(
+                response->GetErrorReason().Contains("KeyPath not supported"),
+                response->GetErrorReason()
+            );
+        }
+    }
 
     Y_UNIT_TEST(ShouldNotCreateVolumeWithBaseDiskAndMultiplePartitions)
     {

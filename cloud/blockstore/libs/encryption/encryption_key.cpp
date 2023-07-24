@@ -6,6 +6,8 @@
 
 #include <util/system/file.h>
 
+#include <openssl/sha.h>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -58,28 +60,6 @@ public:
                 spec.GetKeyPath(),
                 GetExpectedKeyLength(spec.GetMode()));
         });
-    }
-
-    TResultOrError<TString> GetKeyHash(const NProto::TEncryptionSpec& spec)
-    {
-        if (spec.GetMode() == NProto::NO_ENCRYPTION) {
-            return TString();
-        }
-
-        if (spec.GetKeyHash()) {
-            return TString(spec.GetKeyHash());
-        }
-
-        if (spec.HasKeyPath()) {
-            return SafeExecute<TResultOrError<TString>>([&] {
-                auto key = GetEncryptionKey(
-                    spec.GetKeyPath(),
-                    GetExpectedKeyLength(spec.GetMode()));
-                return key.GetHash();
-            });
-        }
-
-        return TString();
     }
 
 private:

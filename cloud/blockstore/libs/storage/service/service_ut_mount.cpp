@@ -2,8 +2,6 @@
 
 #include "service_events_private.h"
 
-#include <cloud/blockstore/libs/encryption/encryption_test.h>
-#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
@@ -2543,19 +2541,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
     Y_UNIT_TEST(ShouldFailVolumeMountIfWrongEncryptionKeyHashIsUsed)
     {
-        TEncryptionKeyFile keyFile("01234567890123456789012345678901");
+        auto keyHash = "01234567890123456789012345678901";
 
         NProto::TEncryptionSpec encryptionSpec;
         encryptionSpec.SetMode(NProto::ENCRYPTION_AES_XTS);
-        encryptionSpec.MutableKeyPath()->SetFilePath(keyFile.GetPath());
-
-        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
-        auto keyHashOrError = encryptionKeyProvider->GetKeyHash(encryptionSpec);
-        UNIT_ASSERT_C(!HasError(keyHashOrError), keyHashOrError.GetError());
+        encryptionSpec.SetKeyHash(keyHash);
 
         NProto::TEncryptionDesc encryptionDesc;
         encryptionDesc.SetMode(encryptionSpec.GetMode());
-        encryptionDesc.SetKeyHash(keyHashOrError.GetResult());
+        encryptionDesc.SetKeyHash(encryptionSpec.GetKeyHash());
 
         TTestEnv env;
         NProto::TStorageServiceConfig config;
