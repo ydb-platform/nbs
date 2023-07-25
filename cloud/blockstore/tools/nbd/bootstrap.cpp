@@ -231,12 +231,14 @@ void TBootstrap::Init()
                 Options->EncryptionKeyPath);
         }
 
-        auto clientOrError = TryToCreateEncryptionClient(
+        auto future = TryToCreateEncryptionClient(
             std::move(ClientEndpoint),
             Logging,
-            CreateEncryptionKeyProvider(),
-            encryptionSpec);
+            CreateDefaultEncryptionKeyProvider(),
+            encryptionSpec,
+            Options->DiskId);
 
+        auto clientOrError = future.GetValue();
         if (HasError(clientOrError)) {
             const auto& error = clientOrError.GetError();
             ythrow TServiceError(error.GetCode()) << error.GetMessage();

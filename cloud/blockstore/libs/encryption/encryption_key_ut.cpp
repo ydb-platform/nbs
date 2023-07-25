@@ -21,12 +21,13 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
         auto& keyPath = *spec.MutableKeyPath();
         keyPath.SetFilePath(keyFile.GetPath());
 
-        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+        auto keyProvider = CreateDefaultEncryptionKeyProvider();
 
-        auto [key, error] = encryptionKeyProvider->GetKey(spec);
-        UNIT_ASSERT(!HasError(error));
-
-        UNIT_ASSERT_VALUES_EQUAL(encryptionKey, key.GetKey());
+        auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
+        UNIT_ASSERT(!HasError(keyOrError));
+        UNIT_ASSERT_VALUES_EQUAL(
+            encryptionKey,
+            keyOrError.GetResult().GetKey());
     }
 
     Y_UNIT_TEST(ShouldFailToProvideKeyIfKeyFileNotExist)
@@ -36,9 +37,9 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
         auto& keyPath = *spec.MutableKeyPath();
         keyPath.SetFilePath("nonexistent_file");
 
-        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+        auto keyProvider = CreateDefaultEncryptionKeyProvider();
 
-        auto keyOrError = encryptionKeyProvider->GetKey(spec);
+        auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
     }
 
@@ -51,9 +52,9 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
         auto& keyPath = *spec.MutableKeyPath();
         keyPath.SetFilePath(keyFile.GetPath());
 
-        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+        auto keyProvider = CreateDefaultEncryptionKeyProvider();
 
-        auto keyOrError = encryptionKeyProvider->GetKey(spec);
+        auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
@@ -67,9 +68,9 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
         auto& keyPath = *spec.MutableKeyPath();
         keyPath.SetKeyringId(-1);
 
-        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+        auto keyProvider = CreateDefaultEncryptionKeyProvider();
 
-        auto keyOrError = encryptionKeyProvider->GetKey(spec);
+        auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
@@ -81,9 +82,9 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
         NProto::TEncryptionSpec spec;
         spec.SetMode(NProto::ENCRYPTION_AES_XTS);
 
-        auto encryptionKeyProvider = CreateEncryptionKeyProvider();
+        auto keyProvider = CreateDefaultEncryptionKeyProvider();
 
-        auto keyOrError = encryptionKeyProvider->GetKey(spec);
+        auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,

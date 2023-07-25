@@ -839,51 +839,59 @@ IBlockStorePtr CreateSnapshotEncryptionClient(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IBlockStorePtr> TryToCreateEncryptionClient(
+TFuture<TResultOrError<IBlockStorePtr>> TryToCreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
     IEncryptionKeyProviderPtr encryptionKeyProvider,
-    const NProto::TEncryptionSpec& encryptionSpec)
+    const NProto::TEncryptionSpec& encryptionSpec,
+    const TString& diskId)
 {
     if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
-        return client;
+        return MakeFuture<TResultOrError<IBlockStorePtr>>(std::move(client));
     }
-
-    NProto::TEncryptionDesc encryptionDesc;
-    encryptionDesc.SetMode(encryptionSpec.GetMode());
 
     if (encryptionSpec.GetKeyHash()) {
+        NProto::TEncryptionDesc encryptionDesc;
+        encryptionDesc.SetMode(encryptionSpec.GetMode());
         encryptionDesc.SetKeyHash(encryptionSpec.GetKeyHash());
-        return CreateSnapshotEncryptionClient(
+        return MakeFuture<TResultOrError<IBlockStorePtr>>(
+            CreateSnapshotEncryptionClient(
+                std::move(client),
+                std::move(logging),
+                encryptionDesc));
+    }
+
+    auto future = encryptionKeyProvider->GetKey(encryptionSpec, diskId);
+
+    return future.Apply([=] (auto f) -> TResultOrError<IBlockStorePtr> {
+        auto response = f.ExtractValue();
+        if (HasError(response)) {
+            return response.GetError();
+        }
+
+        auto key = response.ExtractResult();
+        NProto::TEncryptionDesc encryptionDesc;
+        encryptionDesc.SetMode(encryptionSpec.GetMode());
+        encryptionDesc.SetKeyHash(key.GetHash());
+
+        IEncryptorPtr encryptor;
+        switch (encryptionSpec.GetMode()) {
+            case NProto::ENCRYPTION_AES_XTS: {
+                encryptor = CreateAesXtsEncryptor(std::move(key));
+                break;
+            }
+            default:
+                return MakeError(E_ARGUMENT, TStringBuilder()
+                    << "Unknown encryption mode: "
+                    << static_cast<int>(encryptionSpec.GetMode()));
+        }
+
+        return CreateEncryptionClient(
             std::move(client),
             std::move(logging),
-            encryptionDesc);
-    }
-
-    auto [key, error] = encryptionKeyProvider->GetKey(encryptionSpec);
-    if (HasError(error)) {
-        return error;
-    }
-
-    encryptionDesc.SetKeyHash(key.GetHash());
-
-    IEncryptorPtr encryptor;
-    switch (encryptionSpec.GetMode()) {
-        case NProto::ENCRYPTION_AES_XTS: {
-            encryptor = CreateAesXtsEncryptor(std::move(key));
-            break;
-        }
-        default:
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
-                << "Unknown encryption mode: "
-                << static_cast<int>(encryptionSpec.GetMode()));
-    }
-
-    return CreateEncryptionClient(
-        std::move(client),
-        std::move(logging),
-        std::move(encryptor),
-        std::move(encryptionDesc));
+            std::move(encryptor),
+            std::move(encryptionDesc));
+    });
 }
 
 }   // namespace NCloud::NBlockStore::NClient

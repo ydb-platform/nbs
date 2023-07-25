@@ -663,12 +663,14 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         STORAGE_WARN("disable durable client for " << volume.GetDiskId().Quote());
     }
 
-    auto clientOrError = TryToCreateEncryptionClient(
+    auto encryptionFuture = TryToCreateEncryptionClient(
         std::move(client),
         Logging,
         EncryptionKeyProvider,
-        request.GetEncryptionSpec());
+        request.GetEncryptionSpec(),
+        request.GetDiskId());
 
+    auto clientOrError = Executor->WaitFor(encryptionFuture);
     if (HasError(clientOrError)) {
         return clientOrError.GetError();
     }
@@ -765,6 +767,7 @@ ISessionManagerPtr CreateSessionManager(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IStorageProviderPtr storageProvider,
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
     TExecutorPtr executor,
     TSessionManagerOptions options)
 {
@@ -776,8 +779,6 @@ ISessionManagerPtr CreateSessionManager(
         monitoring->GetCounters()->GetSubgroup("counters", "blockstore"),
         requestStats,
         volumeStats);
-
-    auto encryptionKeyProvider = CreateEncryptionKeyProvider();
 
     return std::make_shared<TSessionManager>(
         std::move(timer),

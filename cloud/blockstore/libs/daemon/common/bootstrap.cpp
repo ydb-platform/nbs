@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
 #include <cloud/blockstore/libs/endpoints/service_endpoint.h>
@@ -331,6 +332,7 @@ void TBootstrapBase::Init()
         ServerStats,
         Service,
         StorageProvider,
+        CreateDefaultEncryptionKeyProvider(),
         Executor,
         sessionManagerOptions);
 

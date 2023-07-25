@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
@@ -127,6 +128,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             serverStats,
             service,
             CreateDefaultStorageProvider(service),
+            CreateDefaultEncryptionKeyProvider(),
             executor,
             TSessionManagerOptions());
 
@@ -236,6 +238,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateServerStatsStub(),
             service,
             CreateDefaultStorageProvider(service),
+            CreateDefaultEncryptionKeyProvider(),
             executor,
             options);
 

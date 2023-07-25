@@ -4,11 +4,14 @@
 
 #include <library/cpp/string_utils/base64/base64.h>
 
+#include <util/string/builder.h>
 #include <util/system/file.h>
 
 #include <openssl/sha.h>
 
 namespace NCloud::NBlockStore {
+
+using namespace NThreading;
 
 namespace {
 
@@ -49,75 +52,116 @@ ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
 class TEncryptionKeyProvider
     : public IEncryptionKeyProvider
 {
+private:
+    const IKmsKeyProviderPtr KmsKeyProvider;
+
 public:
-    TEncryptionKeyProvider()
+    TEncryptionKeyProvider(IKmsKeyProviderPtr kmsKeyProvider)
+        : KmsKeyProvider(std::move(kmsKeyProvider))
     {}
 
-    TResultOrError<TEncryptionKey> GetKey(const NProto::TEncryptionSpec& spec)
+    TFuture<TResponse> GetKey(
+        const NProto::TEncryptionSpec& spec,
+        const TString& diskId)
     {
-        return SafeExecute<TResultOrError<TEncryptionKey>>([&] {
-            return GetEncryptionKey(
-                spec.GetKeyPath(),
-                GetExpectedKeyLength(spec.GetMode()));
-        });
+        auto len = GetExpectedKeyLength(spec.GetMode());
+        const auto& keyPath = spec.GetKeyPath();
+
+        if (keyPath.HasKeyringId()) {
+            return MakeFuture(ReadKeyFromKeyring(keyPath.GetKeyringId(), len));
+        } else if (keyPath.HasFilePath()) {
+            return MakeFuture(ReadKeyFromFile(keyPath.GetFilePath(), len));
+        } else if (keyPath.HasKmsKey()) {
+            return ReadKeyFromKMS(keyPath.GetKmsKey(), diskId, len);
+        } else {
+            return MakeFuture<TResponse>(TErrorResponse(
+                E_ARGUMENT,
+                "KeyPath should contain path to encryption key"));
+        }
     }
 
 private:
-    TEncryptionKey GetEncryptionKey(NProto::TKeyPath keyPath, ui32 expectedLen)
+    TResponse ReadKeyFromKeyring(ui32 keyringId, ui32 expectedLen)
     {
-        if (keyPath.HasKeyringId()) {
-            return ReadKeyFromKeyring(keyPath.GetKeyringId(), expectedLen);
-        } else if (keyPath.HasFilePath()) {
-            return ReadKeyFromFile(keyPath.GetFilePath(), expectedLen);
-        } else if (keyPath.HasKmsKey()) {
-            return ReadKeyFromKMS(keyPath.GetKmsKey(), expectedLen);
-        } else {
-            ythrow TServiceError(E_ARGUMENT)
-                << "KeyPath should contain path to encryption key";
-        }
+        return SafeExecute<TResponse>([&] () -> TResponse {
+            auto keyring = TKeyring::Create(keyringId);
+
+            if (keyring.GetValueSize() != expectedLen) {
+                return MakeError(E_ARGUMENT, TStringBuilder()
+                    << "Key from keyring " << keyringId
+                    << " should has size " << expectedLen);
+            }
+
+            return TEncryptionKey(keyring.GetValue());
+        });
     }
 
-    TEncryptionKey ReadKeyFromKeyring(ui32 keyringId, ui32 expectedLen)
+    TResponse ReadKeyFromFile(TString filePath, ui32 expectedLen)
     {
-        auto keyring = TKeyring::Create(keyringId);
+        return SafeExecute<TResponse>([&] () -> TResponse {
+            TFile file(
+                filePath,
+                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
 
-        if (keyring.GetValueSize() != expectedLen) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Key from keyring " << keyringId
-                << " should has size " << expectedLen;
-        }
+            if (file.GetLength() != expectedLen) {
+                return MakeError(E_ARGUMENT, TStringBuilder()
+                    << "Key file " << filePath.Quote()
+                    << " size " << file.GetLength() << " != " << expectedLen);
+            }
 
-        return TEncryptionKey(keyring.GetValue());
+            TString key = TString::TUninitialized(expectedLen);
+            auto size = file.Read(key.begin(), expectedLen);
+            if (size != expectedLen) {
+                return MakeError(E_ARGUMENT, TStringBuilder()
+                    << "Read " << size << " bytes from key file "
+                    << filePath.Quote() << ", expected " << expectedLen);
+            }
+
+            return TEncryptionKey(std::move(key));
+        });
     }
 
-    TEncryptionKey ReadKeyFromFile(TString filePath, ui32 expectedLen)
+    TFuture<TResponse> ReadKeyFromKMS(
+        const NProto::TKmsKey& kmsKey,
+        const TString& diskId,
+        ui32 expectedLen)
     {
-        TFile file(filePath, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+        auto future = KmsKeyProvider->GetKey(kmsKey, diskId);
+        return future.Apply([diskId, expectedLen] (auto f) -> TResponse {
+            auto response = f.ExtractValue();
+            if (HasError(response)) {
+                return response.GetError();
+            }
 
-        if (file.GetLength() != expectedLen) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Key file " << filePath.Quote()
-                << " size " << file.GetLength() << " != " << expectedLen;
-        }
+            auto key = response.ExtractResult();
+            if (key.GetKey().size() != expectedLen) {
+                return MakeError(E_INVALID_STATE, TStringBuilder()
+                    << "Key from KMS for disk " << diskId
+                    << " should has size " << expectedLen);
+            }
 
-        TString key = TString::TUninitialized(expectedLen);
-        auto size = file.Read(key.begin(), expectedLen);
-        if (size != expectedLen) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Read " << size << " bytes from key file "
-                << filePath.Quote() << ", expected " << expectedLen;
-        }
-
-        return TEncryptionKey(std::move(key));
+            return key;
+        });
     }
+};
 
-    TEncryptionKey ReadKeyFromKMS(const NProto::TKmsKey& kmsKey, ui32 expectedLen)
+////////////////////////////////////////////////////////////////////////////////
+
+class TNullKmsKeyProvider
+    : public IKmsKeyProvider
+{
+public:
+    TNullKmsKeyProvider()
+    {}
+
+    TFuture<TResponse> GetKey(
+        const NProto::TKmsKey& kmsKey,
+        const TString& diskId) override
     {
         Y_UNUSED(kmsKey);
-        Y_UNUSED(expectedLen);
-
-        ythrow TServiceError(E_NOT_IMPLEMENTED)
-            << "Reading key from KMS is not implemented yet";
+        Y_UNUSED(diskId);
+        return MakeFuture<TResponse>(
+            MakeError(E_ARGUMENT, "KmsKeyProvider is not set"));
     }
 };
 
@@ -146,9 +190,21 @@ TString TEncryptionKey::GetHash() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IEncryptionKeyProviderPtr CreateEncryptionKeyProvider()
+IKmsKeyProviderPtr CreateNullKmsKeyProvider()
 {
-    return std::make_shared<TEncryptionKeyProvider>();
+    return std::make_shared<TNullKmsKeyProvider>();
+}
+
+IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
+    IKmsKeyProviderPtr kmsKeyProvider)
+{
+    return std::make_shared<TEncryptionKeyProvider>(
+        std::move(kmsKeyProvider));
+}
+
+IEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider()
+{
+    return CreateEncryptionKeyProvider(CreateNullKmsKeyProvider());
 }
 
 }   // namespace NCloud::NBlockStore

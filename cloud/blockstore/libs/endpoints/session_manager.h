@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
@@ -84,6 +85,7 @@ ISessionManagerPtr CreateSessionManager(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IStorageProviderPtr storageProvider,
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
     TExecutorPtr executor,
     TSessionManagerOptions options);
 

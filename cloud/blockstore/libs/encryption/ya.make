@@ -30,6 +30,8 @@ ENDIF()
 
 END()
 
-RECURSE_FOR_TESTS(ut)
-RECURSE_FOR_TESTS(keyring-ut)
-RECURSE_FOR_TESTS(keyring-ut/bin)
+RECURSE_FOR_TESTS(
+    ut
+    keyring-ut
+    keyring-ut/bin
+)

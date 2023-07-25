@@ -352,12 +352,14 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
     sessionConfig.ClientVersionInfo = GetFullVersionString();
     sessionConfig.AccessMode = accessMode;
 
-    auto endpointOrError = TryToCreateEncryptionClient(
+    auto future = TryToCreateEncryptionClient(
         ClientEndpoint,
         Logging,
         EncryptionKeyProvider,
-        encryptionSpec);
+        encryptionSpec,
+        sessionConfig.DiskId);
 
+    auto endpointOrError = WaitFor(future);
     if (HasError(endpointOrError)) {
         return TErrorResponse(endpointOrError.GetError());
     }
@@ -475,7 +477,7 @@ void TCommand::Init()
         EVolumeStatsType::EClientStats,
         Timer);
 
-    EncryptionKeyProvider = CreateEncryptionKeyProvider();
+    EncryptionKeyProvider = CreateDefaultEncryptionKeyProvider();
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(

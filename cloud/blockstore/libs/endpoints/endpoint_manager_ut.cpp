@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
 #include <cloud/blockstore/libs/server/client_acceptor.h>
 #include <cloud/blockstore/libs/service/service_test.h>
@@ -366,6 +367,7 @@ IEndpointManagerPtr CreateEndpointManager(
         serverStats,
         bootstrap.Service,
         CreateDefaultStorageProvider(bootstrap.Service),
+        CreateDefaultEncryptionKeyProvider(),
         bootstrap.Executor,
         sessionManagerOptions);
 

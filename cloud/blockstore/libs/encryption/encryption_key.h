@@ -35,14 +35,35 @@ public:
 
 struct IEncryptionKeyProvider
 {
+    using TResponse = TResultOrError<TEncryptionKey>;
+
     virtual ~IEncryptionKeyProvider() = default;
 
-    virtual TResultOrError<TEncryptionKey> GetKey(
-        const NProto::TEncryptionSpec& encryptionSpec) = 0;
+    virtual NThreading::TFuture<TResponse> GetKey(
+        const NProto::TEncryptionSpec& encryptionSpec,
+        const TString& diskId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IEncryptionKeyProviderPtr CreateEncryptionKeyProvider();
+struct IKmsKeyProvider
+{
+    using TResponse = TResultOrError<TEncryptionKey>;
+
+    virtual ~IKmsKeyProvider() = default;
+
+    virtual NThreading::TFuture<TResponse> GetKey(
+        const NProto::TKmsKey& kmsKey,
+        const TString& diskId) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+IKmsKeyProviderPtr CreateNullKmsKeyProvider();
+
+IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
+    IKmsKeyProviderPtr kmsKeyProvider);
+
+IEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider();
 
 }   // namespace NCloud::NBlockStore
