@@ -268,10 +268,12 @@ func (client *safeClient) CreateCheckpoint(
 	ctx context.Context,
 	diskId string,
 	checkpointId string,
+	isLightCheckpoint bool,
 ) error {
 	req := &protos.TCreateCheckpointRequest{
 		DiskId:       diskId,
 		CheckpointId: checkpointId,
+		IsLight:      isLightCheckpoint,
 	}
 
 	_, err := client.Impl.CreateCheckpoint(ctx, req)
