@@ -38,6 +38,8 @@ type MountVolumeOpts struct {
 	MountFlags     uint32
 	MountSeqNumber uint64
 	EncryptionSpec *protos.TEncryptionSpec
+	FillToken      string
+	FillSeqNumber  uint64
 }
 
 type SessionInfo struct {
