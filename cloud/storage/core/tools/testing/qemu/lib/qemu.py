@@ -37,15 +37,18 @@ def daemon_log_files(prefix, id, cwd):
     return ret
 
 
-def prepare_root_image(src_image, dest_path):
-    logger.info("copy image '{}' to {}".format(
-        src_image,
-        dest_path))
-    os.system('cp {} {}'.format(src_image, dest_path))
+def prepare_root_image(src_image, dest_path, backup):
+    if backup is True:
+        logger.info("copy image '{}' to {}".format(
+            src_image,
+            dest_path))
+        os.system('cp {} {}'.format(src_image, dest_path))
 
-    new_root_fs_image = dest_path + '/' + os.path.basename(src_image)
-    os.chmod(new_root_fs_image, stat.S_IRWXU + stat.S_IRWXG + stat.S_IRWXO)
-    return new_root_fs_image
+        new_root_fs_image = dest_path + '/' + os.path.basename(src_image)
+        os.chmod(new_root_fs_image, stat.S_IRWXU + stat.S_IRWXG + stat.S_IRWXO)
+        return new_root_fs_image
+    else:
+        return src_image
 
 
 def create_qmp_socket():
@@ -73,7 +76,8 @@ class Qemu:
                  virtio,
                  vhost_socket,
                  qemu_options,
-                 enable_kvm):
+                 enable_kvm,
+                 backup_rootfs=False):
 
         self.ssh_port = 0
         self.qmp = None
@@ -93,6 +97,7 @@ class Qemu:
         self.qemu_options = qemu_options
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
+        self.backup_rootfs = backup_rootfs
 
     def prepare_mount_paths(self, ssh):
         for tag, path, _ in self.mount_paths:
@@ -217,6 +222,9 @@ class Qemu:
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
 
+        if self.backup_rootfs is False:
+            cmd += ["-snapshot"]
+
         if self.enable_kvm:
             cmd += ["-cpu", "host", "-enable-kvm"]
         else:
@@ -252,7 +260,10 @@ class Qemu:
             logger.error(msg)
             raise QemuException(msg)
 
-        self.new_root_fs_image = prepare_root_image(self.rootfs, yatest.common.output_path())
+        self.new_root_fs_image = prepare_root_image(
+            self.rootfs,
+            yatest.common.output_path(),
+            self.backup_rootfs)
 
         cmd = self._create_cmd()
 
