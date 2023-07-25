@@ -1,0 +1,8 @@
+SchemeShardDir: "/Root/NBS"
+AuthorizationMode: AUTHORIZATION_IGNORE
+AllocationUnitNonReplicatedSSD: 1
+NonReplicatedDiskRecyclingPeriod: 5000
+NonReplicatedMigrationStartAllowed: true
+AllocationUnitMirror2SSD: 1
+NonReplicatedDontSuspendDevices: true
+

@@ -1,0 +1,20 @@
+ServerConfig {
+  Host: "*"
+  Port: 9766
+  DataHost: "localhost"
+  DataPort: 9767
+  ThreadsCount: 2
+  SecurePort: 9768
+  RootCertsFile: "certs/server.crt"
+  Certs {
+    CertFile: "certs/server.crt"
+    CertPrivateKeyFile: "certs/server.key"
+  }
+  Certs {
+    CertFile: "certs/server-fallback.crt"
+    CertPrivateKeyFile: "certs/server.key"
+  }
+  NodeType: "nbs"
+  NbdEnabled: true
+}
+

@@ -46,3 +46,8 @@ format_disk() {
 
 format_disk ssd 64G
 format_disk rot 64G
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+ln -s "${SCRIPT_DIR}/static" static
+ln -s "${SCRIPT_DIR}/dynamic" dynamic
+ln -s "${SCRIPT_DIR}/nbs" nbs
