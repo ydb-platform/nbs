@@ -102,10 +102,12 @@ func (client *safeClient) DestroyVolume(
 	ctx context.Context,
 	diskId string,
 	sync bool,
+	FillToken string,
 ) error {
 	req := &protos.TDestroyVolumeRequest{
-		DiskId: diskId,
-		Sync:   sync,
+		DiskId:    diskId,
+		Sync:      sync,
+		FillToken: FillToken,
 	}
 
 	_, err := client.Impl.DestroyVolume(ctx, req)
