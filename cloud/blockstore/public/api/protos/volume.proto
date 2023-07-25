@@ -481,6 +481,9 @@ message TDestroyVolumeRequest
     // Asynchronous force deallocation: deallocate nonrepl. backend without
     // waiting for devices cleanup.
     bool Force = 5;
+
+    // Delete requests with incorrect FillToken will be rejected.
+    string FillToken = 6;
 }
 
 message TDestroyVolumeResponse
