@@ -5,28 +5,33 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-static NActors::TActorId EdgeActor;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TForwardReadTests)
 {
+    struct TActorSystem
+        : NActors::TTestActorRuntimeBase
+    {
+        void Start()
+        {
+            SetDispatchTimeout(TDuration::Seconds(5));
+            InitNodes();
+            AppendToLogSettings(
+                TBlockStoreComponents::START,
+                TBlockStoreComponents::END,
+                GetComponentName);
+        }
+    };
+
     struct TSetupEnvironment
         : public TCurrentTestCase
     {
-        NActors::TTestActorRuntimeBase ActorSystem;
+        NActors::TActorId EdgeActor;
+        TActorSystem ActorSystem;
 
         void SetUp(NUnitTest::TTestContext&) override
         {
-            static const TString volumeName = "VOLUME";
-            ActorSystem.Initialize();
-            ActorSystem.SetDispatchTimeout(TDuration::Seconds(5));
-            ActorSystem.GetLogSettings(0)->Append(
-                TBlockStoreComponents::VOLUME,
-                TBlockStoreComponents::VOLUME + 1,
-                [](int){ return volumeName; });
-
-
+            ActorSystem.Start();
             EdgeActor = ActorSystem.AllocateEdgeActor();
         }
     };
