@@ -14,7 +14,7 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Range [start, end]. End value included to range.
-template <typename TBlockIndex>
+template <std::unsigned_integral TBlockIndex>
 struct TBlockRange
 {
     struct TDifference
@@ -40,36 +40,88 @@ struct TBlockRange
         , End(end)
     {}
 
-    TBlockIndex Size() const
+    // Create range [0, std::numeric_limits<TBlockRange>::max()]
+    static TBlockRange Max()
+    {
+        return {0, MaxIndex};
+    }
+
+    // Create a range from a single block.
+    static TBlockRange MakeOneBlock(TBlockIndex start)
+    {
+        return TBlockRange{start, start};
+    }
+
+    // Create range [start, includeEnd].
+    static TBlockRange MakeClosedInterval(
+        TBlockIndex start,
+        TBlockIndex includeEnd)
+    {
+        Y_VERIFY_DEBUG(start <= includeEnd);
+        return TBlockRange{start, includeEnd};
+    }
+
+    // Create half interval range [start, excludedEnd).
+    static TBlockRange MakeHalfOpenInterval(
+        TBlockIndex start,
+        TBlockIndex excludedEnd)
+    {
+        Y_VERIFY_DEBUG(start < excludedEnd);
+        return TBlockRange{start, excludedEnd - 1};
+    }
+
+    // Create range with start and length. It is guaranteed that there will be
+    // no overflow for the end of the interval. Therefore, the constructed range
+    // may be shorter than the requested one.
+    static TBlockRange WithLength(TBlockIndex start, TBlockIndex count)
+    {
+        Y_VERIFY_DEBUG(count);
+        if (start < MaxIndex - (count - 1)) {
+            return {start, start + (count - 1)};
+        } else {
+            return {start, MaxIndex};
+        }
+    }
+
+    static bool TryParse(TStringBuf s, TBlockRange& range);
+
+    [[nodiscard]] TBlockIndex Size() const
     {
         Y_VERIFY_DEBUG(Start <= End);
         return (End - Start) + 1;
     }
 
-    bool Contains(TBlockIndex blockIndex) const
+    // Checks that blockIndex contains in this range.
+    [[nodiscard]] bool Contains(TBlockIndex blockIndex) const
     {
         return Start <= blockIndex && blockIndex <= End;
     }
 
-    bool Contains(const TBlockRange& other) const
+    // Checks that other range completely contains in this range.
+    [[nodiscard]] bool Contains(const TBlockRange& other) const
     {
         return Start <= other.Start && other.End <= End;
     }
 
-    bool Overlaps(const TBlockRange& other) const
+    // Checks that other range overlaps with this range.
+    [[nodiscard]] bool Overlaps(const TBlockRange& other) const
     {
         return Start <= other.End && other.Start <= End;
     }
 
-    TBlockRange Intersect(const TBlockRange& other) const
+    // Create new range as the intersection of this range with another. The
+    // ranges must overlap.
+    [[nodiscard]] TBlockRange Intersect(const TBlockRange& other) const
     {
+        Y_VERIFY_DEBUG(Overlaps(other));
+
         auto start = ::Max(Start, other.Start);
         auto end = ::Min(End, other.End);
         return {start, end};
     }
 
     // Subtract |other| from |*this|
-    TDifference Difference(const TBlockRange& other) const
+    [[nodiscard]] TDifference Difference(const TBlockRange& other) const
     {
         if (!Overlaps(other)) {
             // Ranges not overlapped, do not cut.
@@ -93,30 +145,16 @@ struct TBlockRange
         return {};
     }
 
-    TBlockRange Union(const TBlockRange& other) const
+    // Create new range as the union of this range with other. The ranges must
+    // overlap.
+    [[nodiscard]] TBlockRange Union(const TBlockRange& other) const
     {
+        Y_VERIFY_DEBUG(Overlaps(other));
+
         auto start = ::Min(Start, other.Start);
         auto end = ::Max(End, other.End);
-        Y_VERIFY_DEBUG(Size() + other.Size() >= end - start + 1);
         return {start, end};
     }
-
-    static TBlockRange Max()
-    {
-        return {0, MaxIndex};
-    }
-
-    static TBlockRange WithLength(TBlockIndex start, TBlockIndex count)
-    {
-        Y_VERIFY_DEBUG(count);
-        if (start < MaxIndex - (count - 1)) {
-            return {start, start + (count - 1)};
-        } else {
-            return {start, MaxIndex};
-        }
-    }
-
-    static bool TryParse(TStringBuf s, TBlockRange& range);
 
     friend bool operator==(const TBlockRange& lhs, const TBlockRange& rhs)
     {
@@ -162,7 +200,8 @@ public:
     void OnBlock(TBlockIndex blockIndex)
     {
         if (Ranges.empty() || Ranges.back().End + 1 != blockIndex) {
-            Ranges.emplace_back(blockIndex);
+            Ranges.push_back(
+                TBlockRange<TBlockIndex>::MakeOneBlock(blockIndex));
         } else {
             ++Ranges.back().End;
         }

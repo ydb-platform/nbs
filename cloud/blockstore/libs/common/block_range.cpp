@@ -1,5 +1,6 @@
 #include "block_range.h"
 
+#include <util/generic/strbuf.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
@@ -7,7 +8,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TBlockIndex>
+template <std::unsigned_integral TBlockIndex>
 bool TBlockRange<TBlockIndex>::TryParse(
     TStringBuf s,
     TBlockRange<TBlockIndex>& range)
@@ -16,13 +17,13 @@ bool TBlockRange<TBlockIndex>::TryParse(
     if (s.TrySplit(':', l, r)) {
         TBlockIndex start = 0, end = 0;
         if (TryFromString(l, start) && TryFromString(r, end) && start <= end) {
-            range = TBlockRange<TBlockIndex>(start, end);
+            range = TBlockRange<TBlockIndex>::MakeClosedInterval(start, end);
             return true;
         }
     } else {
         TBlockIndex blockIndex = 0;
         if (TryFromString(s, blockIndex)) {
-            range = TBlockRange<TBlockIndex>(blockIndex);
+            range = TBlockRange<TBlockIndex>::MakeOneBlock(blockIndex);
             return true;
         }
     }
@@ -34,7 +35,7 @@ template bool TBlockRange64::TryParse(TStringBuf s, TBlockRange64& range);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TBlockIndex>
+template <std::unsigned_integral TBlockIndex>
 TString DescribeRange(const TBlockRange<TBlockIndex>& blockRange)
 {
     return TStringBuilder()
@@ -44,7 +45,7 @@ TString DescribeRange(const TBlockRange<TBlockIndex>& blockRange)
 template TString DescribeRange(const TBlockRange32& blockRange);
 template TString DescribeRange(const TBlockRange64& blockRange);
 
-template <typename TBlockIndex>
+template <std::unsigned_integral TBlockIndex>
 TString DescribeRange(const TVector<TBlockIndex>& blocks)
 {
     if (blocks) {
