@@ -140,7 +140,7 @@ private:
                     << " should has size " << expectedLen);
             }
 
-            return key;
+            return std::move(key);
         });
     }
 };
