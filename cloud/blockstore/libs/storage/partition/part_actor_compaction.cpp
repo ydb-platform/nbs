@@ -1035,14 +1035,16 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     State->GetCompactionState().SetStatus(EOperationStatus::Enqueued);
 
-    switch (topRange.Stat.CompactionScore.Type) {
-        case TCompactionScore::EType::BlobCount: {
-            PartCounters->Cumulative.CompactionByBlobCount.Increment(1);
-            break;
-        }
-        case TCompactionScore::EType::Read: {
-            PartCounters->Cumulative.CompactionByReadStats.Increment(1);
-            break;
+    if (mode != TEvPartitionPrivate::GarbageCompaction) {
+        switch (topRange.Stat.CompactionScore.Type) {
+            case TCompactionScore::EType::BlobCount: {
+                PartCounters->Cumulative.CompactionByBlobCount.Increment(1);
+                break;
+            }
+            case TCompactionScore::EType::Read: {
+                PartCounters->Cumulative.CompactionByReadStats.Increment(1);
+                break;
+            }
         }
     }
 
