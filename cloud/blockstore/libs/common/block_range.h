@@ -52,13 +52,13 @@ struct TBlockRange
         return TBlockRange{start, start};
     }
 
-    // Create range [start, includeEnd].
+    // Create range [start, includedEnd].
     static TBlockRange MakeClosedInterval(
         TBlockIndex start,
-        TBlockIndex includeEnd)
+        TBlockIndex includedEnd)
     {
-        Y_VERIFY_DEBUG(start <= includeEnd);
-        return TBlockRange{start, includeEnd};
+        Y_VERIFY_DEBUG(start <= includedEnd);
+        return TBlockRange{start, includedEnd};
     }
 
     // Create half interval range [start, excludedEnd).
@@ -70,7 +70,7 @@ struct TBlockRange
         return TBlockRange{start, excludedEnd - 1};
     }
 
-    // Create range with start and length. It is guaranteed that there will be
+    // Create a range with start and length. It is guaranteed that there will be
     // no overflow for the end of the interval. Therefore, the constructed range
     // may be shorter than the requested one.
     static TBlockRange WithLength(TBlockIndex start, TBlockIndex count)
@@ -91,25 +91,25 @@ struct TBlockRange
         return (End - Start) + 1;
     }
 
-    // Checks that blockIndex contains in this range.
+    // Checks that blockIndex is contained in this range.
     [[nodiscard]] bool Contains(TBlockIndex blockIndex) const
     {
         return Start <= blockIndex && blockIndex <= End;
     }
 
-    // Checks that other range completely contains in this range.
+    // Checks that the other range is completely contained in this range.
     [[nodiscard]] bool Contains(const TBlockRange& other) const
     {
         return Start <= other.Start && other.End <= End;
     }
 
-    // Checks that other range overlaps with this range.
+    // Checks that the other range overlaps with this range.
     [[nodiscard]] bool Overlaps(const TBlockRange& other) const
     {
         return Start <= other.End && other.Start <= End;
     }
 
-    // Create new range as the intersection of this range with another. The
+    // Create a new range as the intersection of this range with another. The
     // ranges must overlap.
     [[nodiscard]] TBlockRange Intersect(const TBlockRange& other) const
     {
