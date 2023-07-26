@@ -135,7 +135,9 @@ public:
             size_t readPos = AtomicGet(head->ReadPos);
             size_t writePos = AtomicGet(head->WritePos);
             if (readPos < Min(writePos, SegmentCapacity)) {
-                Y_PREFETCH_READ(head->Ptrs[readPos], 3);
+                // TODO. Investigate whether this prefetch optimization is
+                // required.
+                // Y_PREFETCH_READ(head->Ptrs[readPos], 3);
                 // advance the reader position
                 if (AtomicCas(&head->ReadPos, readPos + 1, readPos)) {
                     // ... and then wait for the pointer published by the writer
