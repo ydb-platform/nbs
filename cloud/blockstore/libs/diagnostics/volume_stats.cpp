@@ -405,8 +405,7 @@ public:
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned,
-        ui64 responseSent) override
+        bool unaligned) override
     {
         VolumeBase->BusyIdleCalc.OnRequestCompleted();
         VolumeBase->PerfCalc.OnRequestCompleted(
@@ -433,9 +432,7 @@ public:
             requestBytes,
             errorKind,
             errorFlags,
-            unaligned,
-            ECalcMaxTime::ENABLE,
-            responseSent);
+            unaligned);
     }
 
     void AddIncompleteStats(

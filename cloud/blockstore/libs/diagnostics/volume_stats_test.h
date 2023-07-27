@@ -70,8 +70,7 @@ public:
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned,
-        ui64 responseSent) override
+        bool unaligned) override
     {
         Y_UNUSED(requestType);
         Y_UNUSED(requestStarted);
@@ -80,7 +79,6 @@ public:
         Y_UNUSED(errorKind);
         Y_UNUSED(errorFlags);
         Y_UNUSED(unaligned);
-        Y_UNUSED(responseSent);
         return TDuration::Zero();
     }
 

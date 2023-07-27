@@ -201,8 +201,7 @@ struct TRequestStats final
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calcMaxTime,
-        ui64 responseSent) override
+        ECalcMaxTime calcMaxTime) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
@@ -213,7 +212,6 @@ struct TRequestStats final
         Y_UNUSED(errorFlags);
         Y_UNUSED(unaligned);
         Y_UNUSED(calcMaxTime);
-        Y_UNUSED(responseSent);
         return TDuration::Zero();
     }
 

@@ -47,8 +47,7 @@ struct IVolumeInfo
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned,
-        ui64 responseSent = 0) = 0;
+        bool unaligned) = 0;
 
     virtual void AddIncompleteStats(
         EBlockStoreRequest requestType,
