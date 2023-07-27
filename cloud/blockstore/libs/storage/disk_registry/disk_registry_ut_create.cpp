@@ -115,7 +115,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.RebootTablet();
         diskRegistry.WaitReady();
 
-        diskRegistry.DeallocateDisk("disk-1", true);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
 
         {
             diskRegistry.SendCreateDiskFromDevicesRequest(
@@ -383,7 +384,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, allocateSSD("vol0"));
 
-        diskRegistry.DeallocateDisk("ssd0", true);
+        diskRegistry.MarkDiskForCleanup("ssd0");
+        diskRegistry.DeallocateDisk("ssd0");
         WaitForSecureErase(*runtime, {agents[1]});
 
         checkState([&] (bool isDB, auto&& backup) {

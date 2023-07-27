@@ -464,6 +464,8 @@ message TCreateVolumeResponse
 
 message TDestroyVolumeRequest
 {
+    reserved 5;
+
     // Optional request headers.
     THeaders Headers = 1;
 
@@ -477,10 +479,6 @@ message TDestroyVolumeRequest
     // Synchronous force deallocation: deallocate nonrepl. backend and wait for
     // devices cleanup.
     bool Sync = 4;
-
-    // Asynchronous force deallocation: deallocate nonrepl. backend without
-    // waiting for devices cleanup.
-    bool Force = 5;
 
     // Delete requests with incorrect FillToken will be rejected.
     string FillToken = 6;

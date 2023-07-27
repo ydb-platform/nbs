@@ -540,14 +540,13 @@ message TAllocateDiskResponse
 
 message TDeallocateDiskRequest
 {
+    reserved 3;
+
     // Optional request headers.
     THeaders Headers = 1;
 
     // Label of volume to remove.
     string DiskId = 2;
-
-    // Deallocate disk even if it wasn't marked for cleanup
-    bool Force = 3;
 
     // Wait for secure cleanup of disk's devices before response.
     bool Sync = 4;

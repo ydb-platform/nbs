@@ -177,7 +177,6 @@ struct TTxDiskRegistry
     {
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
-        const bool Force;
         const bool Sync;
 
         NProto::TError Error;
@@ -185,11 +184,9 @@ struct TTxDiskRegistry
         TRemoveDisk(
                 TRequestInfoPtr requestInfo,
                 TString diskId,
-                bool force,
                 bool sync)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
-            , Force(force)
             , Sync(sync)
         {}
 

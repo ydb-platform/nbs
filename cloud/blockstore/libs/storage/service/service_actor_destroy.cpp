@@ -32,7 +32,8 @@ private:
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
-    const bool Force;
+
+    bool IsDiskRegistryBased = false;
 
 public:
     TDestroyVolumeActor(
@@ -41,8 +42,7 @@ public:
         TDuration attachedDiskDestructionTimeout,
         TString diskId,
         bool destroyIfBroken,
-        bool sync,
-        bool force);
+        bool sync);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -89,15 +89,13 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         TDuration attachedDiskDestructionTimeout,
         TString diskId,
         bool destroyIfBroken,
-        bool sync,
-        bool force)
+        bool sync)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
-    , Force(force)
 {
     ActivityType = TBlockStoreActivities::SERVICE;
 }
@@ -154,7 +152,6 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(DiskId);
-    request->Record.SetForce(true);
     request->Record.SetSync(Sync);
 
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
@@ -177,9 +174,8 @@ void TDestroyVolumeActor::HandleModifyResponse(
     const TEvSSProxy::TEvModifyVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    // TODO: nonreplicated disk deallocation
     const auto* msg = ev->Get();
-    const NProto::TError& error = msg->GetError();
+    const auto& error = msg->GetError();
 
     if (FAILED(error.GetCode())) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
@@ -193,9 +189,15 @@ void TDestroyVolumeActor::HandleModifyResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Volume %s dropped successfully",
-        DiskId.Quote().data());
+        DiskId.Quote().c_str());
+
+    if (IsDiskRegistryBased) {
+        DeallocateDisk(ctx);
+
+        return;
+    }
 
     ReplyAndDie(
         ctx,
@@ -277,14 +279,13 @@ void TDestroyVolumeActor::HandleDeallocateDiskResponse(
             "Volume %s: unable to deallocate disk: %s",
             DiskId.Quote().data(),
             FormatError(error).data());
-
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
-        return;
+    } else {
+        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+            "Volume %s deallocated successfully",
+            DiskId.Quote().c_str());
     }
 
-    DestroyVolume(ctx);
+    ReplyAndDie(ctx, std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
 }
 
 void TDestroyVolumeActor::HandleStatVolumeResponse(
@@ -352,14 +353,11 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         }
     }
 
-    auto mediaKind = msg->Record.GetVolume().GetStorageMediaKind();
+    IsDiskRegistryBased = IsDiskRegistryMediaKind(
+        msg->Record.GetVolume().GetStorageMediaKind());
 
-    if (IsDiskRegistryMediaKind(mediaKind)) {
-        if (Sync || Force) {
-            DeallocateDisk(ctx);
-        } else {
-            NotifyDiskRegistry(ctx);
-        }
+    if (IsDiskRegistryBased) {
+        NotifyDiskRegistry(ctx);
     } else {
         DestroyVolume(ctx);
     }
@@ -410,14 +408,12 @@ void TServiceActor::HandleDestroyVolume(
     const auto& diskId = request.GetDiskId();
     const bool destroyIfBroken = request.GetDestroyIfBroken();
     const bool sync = request.GetSync();
-    const bool force = request.GetForce();
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Deleting volume: %s, %d, %d, %d",
         diskId.Quote().c_str(),
         destroyIfBroken,
-        sync,
-        force);
+        sync);
 
     NCloud::Register<TDestroyVolumeActor>(
         ctx,
@@ -426,8 +422,7 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetAttachedDiskDestructionTimeout(),
         diskId,
         destroyIfBroken,
-        sync,
-        force);
+        sync);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

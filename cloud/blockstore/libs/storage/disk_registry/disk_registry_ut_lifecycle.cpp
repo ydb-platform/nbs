@@ -62,7 +62,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("disk-2", 20_GB);
         diskRegistry.AllocateDisk("disk-3", 10_GB);
 
-        diskRegistry.DeallocateDisk("disk-2", true);
+        diskRegistry.MarkDiskForCleanup("disk-2");
+        diskRegistry.DeallocateDisk("disk-2");
 
         diskRegistry.RebootTablet();
         diskRegistry.WaitReady();
@@ -419,7 +420,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         });
 
         diskRegistry.AllocateDisk("disk-1", 20_GB);
-        diskRegistry.DeallocateDisk("disk-1", true);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
 
         UNIT_ASSERT_VALUES_EQUAL(0, dev1Requests);
         UNIT_ASSERT_VALUES_EQUAL(0, dev2Requests);
@@ -1312,7 +1314,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         diskRegistry.ChangeDeviceState("uuid-1.1", NProto::DEVICE_STATE_WARNING);
-        diskRegistry.DeallocateDisk("disk-1", true);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
 
         // wait for cleanup devices
         {
@@ -1555,7 +1558,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return tmp;
         };
 
-        diskRegistry.DeallocateDisk("disk-1", true);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
 
         {
             auto uuids = waitForErase();

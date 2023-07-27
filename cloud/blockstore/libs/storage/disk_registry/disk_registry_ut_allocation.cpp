@@ -642,17 +642,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto wait = [&] (auto dt) {
             runtime->AdvanceCurrentTime(dt);
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime->DispatchEvents({}, 10ms);
         };
 
-        wait(TDuration::Seconds(4));
+        wait(4s);
         UNIT_ASSERT(!destroyVolumeRequest);
 
-        wait(TDuration::Seconds(1));
+        wait(1s);
         UNIT_ASSERT(destroyVolumeRequest);
         runtime->Send(destroyVolumeRequest.Release());
 
-        wait(TDuration::Seconds(1));
+        wait(1s);
         UNIT_ASSERT_VALUES_EQUAL(1, destroyedDiskIds.size());
         UNIT_ASSERT_VALUES_EQUAL("disk-4", destroyedDiskIds[0]);
 
@@ -759,38 +759,41 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST(ShouldNotDeallocateUnmarkedDisk)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
+        const TVector agents {CreateAgentConfig("agent-1", {
             Device("dev-1", "uuid-1", "rack-1", 10_GB),
             Device("dev-2", "uuid-2", "rack-1", 10_GB),
-        });
+        })};
 
         auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent })
+            .WithAgents(agents)
             .Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
 
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent}));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
 
         RegisterAgents(*runtime, 1);
         WaitForAgents(*runtime, 1);
-        WaitForSecureErase(*runtime, {agent});
+        WaitForSecureErase(*runtime, agents);
 
         diskRegistry.AllocateDisk("disk-0", 10_GB);
         diskRegistry.AllocateDisk("disk-1", 10_GB);
 
         diskRegistry.MarkDiskForCleanup("disk-1");
 
-        auto deallocate = [&] (auto name, auto force) {
-            diskRegistry.SendDeallocateDiskRequest(name, force);
+        auto deallocate = [&] (auto name) {
+            diskRegistry.SendDeallocateDiskRequest(name);
             return diskRegistry.RecvDeallocateDiskResponse()->GetStatus();
         };
 
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, deallocate("disk-0", false));
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-0", true));
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-1", false));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, deallocate("disk-0"));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-1"));
+
+        diskRegistry.MarkDiskForCleanup("disk-0");
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-0"));
     }
 
     Y_UNIT_TEST(ShouldAwaitSchemaResponseForAlterDisk)
@@ -833,7 +836,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                             event->Sender,
                             event->Recipient,
                             new TEvSSProxy::TEvModifySchemeResponse()),
-                        TDuration::Seconds(2));
+                        2s);
                     return true;
                     break;
                 case TEvService::EvAlterPlacementGroupMembershipResponse:
@@ -851,11 +854,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TVector<TString>{"disk-1"},
             TVector<TString>());
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->AdvanceCurrentTime(1s);
         UNIT_ASSERT_VALUES_EQUAL(gotAlterPlacementGroupMembershipResponse, false);
 
         // We should get response in two seconds.
-        runtime->DispatchEvents({}, TDuration::Seconds(2));
+        runtime->DispatchEvents({}, 2s);
         auto response =
             diskRegistry.RecvAlterPlacementGroupMembershipResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -907,9 +910,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                             event->Sender,
                             event->Recipient,
                             new TEvSSProxy::TEvModifySchemeResponse()),
-                        TDuration::Seconds(2));
+                        2s);
                     return true;
-                    break;
                 case TEvService::EvDestroyPlacementGroupResponse:
                     gotDestroyPlacementGroupResponse = true;
                     break;
@@ -920,11 +922,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // The response of DestroyPlacementGroup will be delayed for 2 sec.
         // We won't get an answer in a second.
         diskRegistry.SendDestroyPlacementGroupRequest("group-1");
-        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->AdvanceCurrentTime(1s);
         UNIT_ASSERT_VALUES_EQUAL(gotDestroyPlacementGroupResponse, false);
 
         // We should get response in two seconds.
-        runtime->DispatchEvents({}, TDuration::Seconds(2));
+        runtime->DispatchEvents({}, 2s);
         auto response =
             diskRegistry.RecvDestroyPlacementGroupResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -1471,7 +1473,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices.size());
 
         runtime->AdvanceCurrentTime(replaceFreezePeriod);
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->DispatchEvents({}, 1s);
 
         // replaced devices should be deleted from AutomaticallyReplacedDevices
         // and thus they are allowed to be erased now
@@ -1593,19 +1595,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         );
 
+        diskRegistry.MarkDiskForCleanup("vol0");
+
         // first request
-        diskRegistry.SendRequest(diskRegistry.CreateDeallocateDiskRequest(
+        diskRegistry.SendDeallocateDiskRequest(
             "vol0",
-            true,   // force
             true    // sync
-        ));
+        );
 
         UNIT_ASSERT(tryRecvDeallocResponse() == nullptr);
 
         // second request
         diskRegistry.SendDeallocateDiskRequest(
             "vol0",
-            true,   // force
             true    // sync
         );
 
@@ -1624,13 +1626,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->SetObserverFunc(oldOfn);
 
         while (secureEraseDeviceRequests.size() != 1) {
-            runtime->AdvanceCurrentTime(TDuration::Minutes(5));
+            runtime->AdvanceCurrentTime(5min);
             runtime->Send(secureEraseDeviceRequests.back().release());
 
             secureEraseDeviceRequests.pop_back();
 
-            runtime->AdvanceCurrentTime(TDuration::Minutes(5));
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime->AdvanceCurrentTime(5min);
+            runtime->DispatchEvents({}, 10ms);
         }
 
         UNIT_ASSERT(tryRecvDeallocResponse() == nullptr);
@@ -1709,7 +1711,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // first request (async)
         diskRegistry.DeallocateDisk(
             "vol0",
-            false,   // force
             false    // sync
         );
 
@@ -1722,7 +1723,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // second request (sync)
         diskRegistry.SendDeallocateDiskRequest(
             "vol0",
-            true,   // force
             true    // sync
         );
 

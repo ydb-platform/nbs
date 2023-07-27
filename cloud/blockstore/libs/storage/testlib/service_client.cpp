@@ -80,14 +80,12 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
 std::unique_ptr<TEvService::TEvDestroyVolumeRequest> TServiceClient::CreateDestroyVolumeRequest(
     const TString& diskId,
     bool destroyIfBroken,
-    bool force,
     bool sync)
 {
     auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
     PrepareRequestHeaders(*request);
     request->Record.SetDiskId(diskId);
     request->Record.SetDestroyIfBroken(destroyIfBroken);
-    request->Record.SetForce(force);
     request->Record.SetSync(sync);
     return request;
 }

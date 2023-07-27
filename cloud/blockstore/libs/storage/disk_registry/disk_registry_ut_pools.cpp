@@ -415,7 +415,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 2, msg.GetAvailableStorage(0).GetChunkCount());
         }
 
-        diskRegistry.DeallocateDisk("disk-1", true);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
 
         // dirty device...
         {

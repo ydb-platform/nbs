@@ -370,9 +370,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT(delayedRequest);
 
+        diskRegistry.MarkDiskForCleanup("vol0");
         diskRegistry.DeallocateDisk(
             "vol0",
-            true,   // force
             false); // sync
 
         // resend event

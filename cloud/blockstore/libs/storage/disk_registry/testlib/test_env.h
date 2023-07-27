@@ -562,15 +562,11 @@ public:
         return request;
     }
 
-    auto CreateDeallocateDiskRequest(
-        const TString& diskId,
-        bool force,
-        bool sync = false)
+    auto CreateDeallocateDiskRequest(const TString& diskId, bool sync = false)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
-        request->Record.SetForce(force);
         request->Record.SetSync(sync);
 
         return request;

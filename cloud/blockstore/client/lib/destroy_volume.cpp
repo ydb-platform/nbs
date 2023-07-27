@@ -20,7 +20,6 @@ class TDestroyVolumeCommand final
 private:
     TString DiskId;
     bool Sync = false;
-    bool Force = false;
 
 public:
     TDestroyVolumeCommand(IBlockStorePtr client)
@@ -33,10 +32,6 @@ public:
         Opts.AddLongOption("sync", "synchronous deallocation")
             .NoArgument()
             .StoreTrue(&Sync);
-
-        Opts.AddLongOption("force", "force deallocation")
-            .NoArgument()
-            .StoreTrue(&Force);
     }
 
 protected:
@@ -56,7 +51,6 @@ protected:
         } else {
             request->SetDiskId(DiskId);
             request->SetSync(Sync);
-            request->SetForce(Force);
 
             STORAGE_WARN("Waiting for confirmation");
             output << "Confirm disk destruction by typing disk id to stdin" << Endl;

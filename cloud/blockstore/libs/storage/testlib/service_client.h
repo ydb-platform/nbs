@@ -103,7 +103,6 @@ public:
     std::unique_ptr<TEvService::TEvDestroyVolumeRequest> CreateDestroyVolumeRequest(
         const TString& diskId = DefaultDiskId,
         bool destroyIfBroken = false,
-        bool force = false,
         bool sync = false);
 
     std::unique_ptr<TEvService::TEvAssignVolumeRequest> CreateAssignVolumeRequest(

@@ -398,7 +398,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(cmsTimeout));
 
-        diskRegistry.DeallocateDisk("vol1", true);
+        diskRegistry.MarkDiskForCleanup("vol1");
+        diskRegistry.DeallocateDisk("vol1");
 
         {
             auto [error, timeout] =
@@ -583,7 +584,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(cmsTimeout, timeout);
         }
 
-        diskRegistry.DeallocateDisk("vol1", true);
+        diskRegistry.MarkDiskForCleanup("vol1");
+        diskRegistry.DeallocateDisk("vol1");
 
         {
             auto [error, timeout] = removeAction(diskRegistry);
@@ -687,7 +689,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
         }
 
-        diskRegistry.DeallocateDisk("vol1", true);
+        diskRegistry.MarkDiskForCleanup("vol1");
+        diskRegistry.DeallocateDisk("vol1");
 
         runtime->AdvanceCurrentTime(TDuration::Days(1) / 2);
         {
@@ -766,7 +769,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
         }
 
-        diskRegistry.DeallocateDisk("vol1", true);
+        diskRegistry.MarkDiskForCleanup("vol1");
+        diskRegistry.DeallocateDisk("vol1");
 
         {
             auto [error, timeout] = RemoveHost(diskRegistry, "agent-2");
@@ -989,7 +993,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
-        diskRegistry.DeallocateDisk("vol1", true);
+        diskRegistry.MarkDiskForCleanup("vol1");
+        diskRegistry.DeallocateDisk("vol1");
 
         diskRegistry.ChangeDeviceState(
             "uuid-1",

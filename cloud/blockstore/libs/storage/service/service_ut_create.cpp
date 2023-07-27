@@ -1570,7 +1570,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
-    Y_UNIT_TEST(ShouldDestroyVolumeWithForce)
+    Y_UNIT_TEST(ShouldDestroyVolumeWithSync)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -1588,7 +1588,6 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED
         );
 
-        bool forceDealloc = false;
         bool syncDealloc = false;
 
         auto& runtime = env.GetRuntime();
@@ -1599,7 +1598,6 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             if (event->GetTypeRewrite() == TEvDiskRegistry::EvDeallocateDiskRequest) {
                 auto* msg = event->Get<TEvDiskRegistry::TEvDeallocateDiskRequest>();
                 if (msg->Record.GetDiskId() == DefaultDiskId) {
-                    forceDealloc = msg->Record.GetForce();
                     syncDealloc = msg->Record.GetSync();
                 }
             }
@@ -1609,11 +1607,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.DestroyVolume(
             DefaultDiskId,
             false,  // destroyIfBroken
-            true    // force
+            true   // sync
         );
 
-        UNIT_ASSERT(forceDealloc);
-        UNIT_ASSERT(!syncDealloc);
+        UNIT_ASSERT(syncDealloc);
     }
 }
 

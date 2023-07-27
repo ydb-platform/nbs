@@ -195,7 +195,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
         }
 
-        diskRegistry.DeallocateDisk("disk-1", true);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
         runtime->AdvanceCurrentTime(TDuration::Seconds(20));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
@@ -335,7 +336,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
         }
 
-        diskRegistry.DeallocateDisk("dummy", true);
+        diskRegistry.MarkDiskForCleanup("dummy");
+        diskRegistry.DeallocateDisk("dummy");
         runtime->AdvanceCurrentTime(TDuration::Seconds(20));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 

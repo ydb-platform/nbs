@@ -262,10 +262,9 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DeallocateDisk request: DiskId=%s Force=%d Sync=%d",
+        "[%lu] Received DeallocateDisk request: DiskId=%s Sync=%d",
         TabletID(),
         msg->Record.GetDiskId().c_str(),
-        msg->Record.GetForce(),
         msg->Record.GetSync());
 
     const auto& diskId = msg->Record.GetDiskId();
@@ -284,7 +283,6 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         ctx,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
-        msg->Record.GetForce(),
         msg->Record.GetSync());
 }
 
@@ -305,9 +303,7 @@ void TDiskRegistryActor::ExecuteRemoveDisk(
     TTransactionContext& tx,
     TTxDiskRegistry::TRemoveDisk& args)
 {
-    Y_UNUSED(ctx);
-
-    if (!args.Force && !State->IsReadyForCleanup(args.DiskId)) {
+    if (!State->IsReadyForCleanup(args.DiskId)) {
         ReportNrdDestructionError();
 
         args.Error = MakeError(E_INVALID_STATE, TStringBuilder() <<
