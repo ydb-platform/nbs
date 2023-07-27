@@ -26,6 +26,7 @@ public:
 
     [[nodiscard]] TString FindDiskId(const TString& uuid) const;
     [[nodiscard]] bool IsEmpty() const;
+    [[nodiscard]] bool Contains(const TString& diskId) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -315,6 +315,8 @@ public:
         TDiskRegistryDatabase& db,
         const TString& diskId);
 
+    bool HasPendingCleanup(const TDiskId& diskId) const;
+
     void FinishAcquireDisk(const TString& diskId);
 
     bool IsAcquireInProgress(const TString& diskId) const;

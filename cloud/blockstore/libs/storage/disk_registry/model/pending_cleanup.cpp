@@ -76,4 +76,9 @@ bool TPendingCleanup::IsEmpty() const
     return DiskToDeviceCount.empty();
 }
 
+bool TPendingCleanup::Contains(const TString& diskId) const
+{
+    return DiskToDeviceCount.contains(diskId);
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -270,7 +270,7 @@ void TDiskRegistryActor::HandleDeallocateDisk(
 
     const auto& diskId = msg->Record.GetDiskId();
 
-    if (msg->Record.GetSync() && PendingDiskDeallocationRequests.contains(diskId)){
+    if (msg->Record.GetSync() && State->HasPendingCleanup(diskId)) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Postpone DeallocateDisk response",
             TabletID());

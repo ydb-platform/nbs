@@ -2146,6 +2146,11 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     return {};
 }
 
+bool TDiskRegistryState::HasPendingCleanup(const TDiskId& diskId) const
+{
+    return PendingCleanup.Contains(diskId);
+}
+
 auto TDiskRegistryState::DeallocateSimpleDisk(
     TDiskRegistryDatabase& db,
     const TString& diskId,

@@ -17,11 +17,14 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NDiskRegistryTest;
+using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1590,11 +1593,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         );
 
+        // first request
         diskRegistry.SendRequest(diskRegistry.CreateDeallocateDiskRequest(
             "vol0",
             true,   // force
             true    // sync
         ));
+
+        UNIT_ASSERT(tryRecvDeallocResponse() == nullptr);
+
+        // second request
+        diskRegistry.SendDeallocateDiskRequest(
+            "vol0",
+            true,   // force
+            true    // sync
+        );
 
         UNIT_ASSERT(tryRecvDeallocResponse() == nullptr);
 
@@ -1625,6 +1638,113 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->Send(secureEraseDeviceRequests.back().release(), 1);
 
         UNIT_ASSERT(tryRecvDeallocResponse() != nullptr);
+        UNIT_ASSERT(tryRecvDeallocResponse() != nullptr);
+    }
+
+    Y_UNIT_TEST(ShouldWaitSecureEraseAfterRegularDeallocation)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1.1"),
+                Device("dev-2", "uuid-1.2")
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .With([] {
+                auto config = CreateDefaultStorageConfig();
+
+                // disable timeout
+                config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+
+                return config;
+            }())
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        diskRegistry.AllocateDisk("vol0", 20_GB);
+
+        auto tryRecvDeallocResponse = [&] {
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime->GrabEdgeEventRethrow<
+                TEvDiskRegistry::TEvDeallocateDiskResponse>(handle, WaitTimeout);
+
+            std::unique_ptr<TEvDiskRegistry::TEvDeallocateDiskResponse> ptr;
+
+            if (handle) {
+                ptr.reset(handle->Release<TEvDiskRegistry::TEvDeallocateDiskResponse>()
+                    .Release());
+            }
+
+            return ptr;
+        };
+
+        TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
+
+        auto oldOfn = runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceRequest) {
+                    event->DropRewrite();
+                    secureEraseDeviceRequests.push_back(std::unique_ptr<IEventHandle> {
+                        event.Release()
+                    });
+
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        diskRegistry.MarkDiskForCleanup("vol0");
+
+        // first request (async)
+        diskRegistry.DeallocateDisk(
+            "vol0",
+            false,   // force
+            false    // sync
+        );
+
+        runtime->DispatchEvents({
+            .CustomFinalCondition = [&] {
+                return secureEraseDeviceRequests.size() == 2;
+            }
+        });
+
+        // second request (sync)
+        diskRegistry.SendDeallocateDiskRequest(
+            "vol0",
+            true,   // force
+            true    // sync
+        );
+
+        UNIT_ASSERT(!tryRecvDeallocResponse());
+
+        runtime->SetObserverFunc(oldOfn);
+
+        runtime->AdvanceCurrentTime(5min);
+        runtime->Send(secureEraseDeviceRequests.back().release());
+
+        secureEraseDeviceRequests.pop_back();
+
+        runtime->AdvanceCurrentTime(5min);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(!tryRecvDeallocResponse());
+
+        runtime->Send(secureEraseDeviceRequests.back().release());
+
+        auto response = tryRecvDeallocResponse();
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 }
 
