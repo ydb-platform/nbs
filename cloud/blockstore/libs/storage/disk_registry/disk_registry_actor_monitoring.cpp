@@ -792,6 +792,10 @@ void TDiskRegistryActor::RenderMirroredDiskList(IOutputStream& out) const
                                 i <= diskInfo.Replicas.size() ? "brown" :
                                 "red";
 
+                            if (i) {
+                                out << " / ";
+                            }
+
                             out << "<font color=" << color << ">";
                             out << "Minus " << i << ": " << cellsByState[i];
                             out << "</font>";
