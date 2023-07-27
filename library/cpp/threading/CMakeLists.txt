@@ -8,7 +8,6 @@
 
 add_subdirectory(atomic)
 add_subdirectory(blocking_queue)
-add_subdirectory(bounded_queue)
 add_subdirectory(chunk_queue)
 add_subdirectory(equeue)
 add_subdirectory(future)
