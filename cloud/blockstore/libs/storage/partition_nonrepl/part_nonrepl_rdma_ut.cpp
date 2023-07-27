@@ -115,7 +115,7 @@ struct TTestEnv
         );
 
         auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices),
+            ToLogicalBlocks(devices, DefaultBlockSize),
             ioMode,
             "test",
             DefaultBlockSize,

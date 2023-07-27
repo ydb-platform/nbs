@@ -185,15 +185,18 @@ private:
     ui32 NodeIdx;
     NActors::TActorId ActorId;
     NActors::TActorId Sender;
+    const ui32 BlockSize;
 
 public:
     TPartitionClient(
             NActors::TTestActorRuntime& runtime,
-            NActors::TActorId actorId)
+            NActors::TActorId actorId,
+            ui32 blockSize = DefaultBlockSize)
         : Runtime(runtime)
         , NodeIdx(0)
         , ActorId(actorId)
         , Sender(runtime.AllocateEdgeActor())
+        , BlockSize(blockSize)
     {}
 
     const NActors::TActorId& GetActorId() const
@@ -252,7 +255,7 @@ public:
             b.resize(Min<ui32>(
                 blocksInBuffer,
                 (blockRange.Size() - i)
-            ) * DefaultBlockSize, fill);
+            ) * BlockSize, fill);
         }
 
         return request;
@@ -275,8 +278,8 @@ public:
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.SetStartIndex(range.Start);
         request->Record.BlocksCount = range.Size();
-        request->Record.BlockSize = DefaultBlockSize;
-        Y_VERIFY(DefaultBlockSize == content.size());
+        request->Record.BlockSize = BlockSize;
+        Y_VERIFY(BlockSize == content.size());
 
         return request;
     }
@@ -287,7 +290,7 @@ public:
         request->Record.Sglist = std::move(sglist);
         request->Record.SetStartIndex(range.Start);
         request->Record.SetBlocksCount(range.Size());
-        request->Record.BlockSize = DefaultBlockSize;
+        request->Record.BlockSize = BlockSize;
 
         return request;
     }
@@ -297,7 +300,7 @@ public:
         auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
         request->Record.SetStartIndex(range.Start);
         request->Record.SetBlocksCount(range.Size());
-        request->Record.SetBlockSize(DefaultBlockSize);
+        request->Record.SetBlockSize(BlockSize);
 
         return request;
     }
@@ -340,18 +343,18 @@ public:
 #undef BLOCKSTORE_DECLARE_METHOD
 };
 
-inline void ToLogicalBlocks(NProto::TDeviceConfig& device)
+inline void ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 blockSize)
 {
-    const auto k = DefaultBlockSize / DefaultDeviceBlockSize;
+    const auto k = blockSize / DefaultDeviceBlockSize;
 
     device.SetBlocksCount(device.GetBlocksCount() / k);
-    device.SetBlockSize(DefaultBlockSize);
+    device.SetBlockSize(blockSize);
 }
 
-inline TDevices ToLogicalBlocks(TDevices devices)
+inline TDevices ToLogicalBlocks(TDevices devices, ui32 blockSize)
 {
     for (auto& device: devices) {
-        ToLogicalBlocks(device);
+        ToLogicalBlocks(device, blockSize);
     }
 
     return devices;

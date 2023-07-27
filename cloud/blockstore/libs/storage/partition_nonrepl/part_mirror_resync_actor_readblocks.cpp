@@ -34,11 +34,11 @@ void TMirrorPartitionResyncActor::ProcessReadRequest(
         return;
     }
 
-    const auto rangeId = BlockRange2RangeId(range);
+    const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
     for (ui32 id = rangeId.first; id <= rangeId.second; ++id) {
-        if (!State.IsResynced(RangeId2BlockRange(id))
-                && State.AddPendingResyncRange(id))
-        {
+        const auto blockRange =
+            RangeId2BlockRange(id, PartConfig->GetBlockSize());
+        if (!State.IsResynced(blockRange) && State.AddPendingResyncRange(id)) {
             ResyncNextRange(ctx);
         }
     }

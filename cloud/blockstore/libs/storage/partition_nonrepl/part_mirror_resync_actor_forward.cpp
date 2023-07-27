@@ -46,7 +46,8 @@ void TMirrorPartitionResyncActor::ForwardRequest(
         PartConfig->GetBlockSize());
 
     for (const auto activeRangeId: State.GetActiveResyncRangeSet()) {
-        const auto resyncRange = RangeId2BlockRange(activeRangeId);
+        const auto resyncRange =
+            RangeId2BlockRange(activeRangeId, PartConfig->GetBlockSize());
         if (range.Overlaps(resyncRange)) {
             replyError(E_REJECTED, TStringBuilder()
                 << "Request " << TMethod::Name

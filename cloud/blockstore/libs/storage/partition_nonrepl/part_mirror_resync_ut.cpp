@@ -44,7 +44,7 @@ struct TResyncController
     };
 
     bool ResyncFinished = false;
-    ui32 ResyncedRangeCount = 0;
+    TVector<TBlockRange64> ResyncedRanges;
 
     ui32 StopAfterResyncedRangeCount = 0xffffffffu;
 
@@ -56,7 +56,7 @@ struct TResyncController
         runtime.SetObserverFunc([this] (auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
-                    if (ResyncedRangeCount >= StopAfterResyncedRangeCount) {
+                    if (ResyncedRanges.size() >= StopAfterResyncedRangeCount) {
                         return TTestActorRuntime::EEventAction::RESCHEDULE;
                     }
 
@@ -76,7 +76,7 @@ struct TResyncController
                     auto* msg = event->template Get<TEvent>();
                     Cerr << "resynced range "
                         << DescribeRange(msg->Range) << Endl;
-                    ++ResyncedRangeCount;
+                    ResyncedRanges.push_back(msg->Range);
 
                     break;
                 }
@@ -93,7 +93,7 @@ struct TResyncController
 
     void WaitForResyncedRangeCount(ui32 count)
     {
-        while (ResyncedRangeCount < count) {
+        while (ResyncedRanges.size() < count) {
             Runtime.DispatchEvents({}, ResyncNextRangeInterval);
         }
     }
@@ -111,6 +111,8 @@ struct TResyncController
 struct TTestEnv
 {
     TTestActorRuntime& Runtime;
+    const ui32 BlockSize;
+
     TActorId MirrorActorId;
     TActorId VolumeActorId;
     TStorageStatsServiceStatePtr StorageStatsServiceState;
@@ -131,10 +133,11 @@ struct TTestEnv
     static void AddDevice(
         ui32 nodeId,
         ui32 blockCount,
+        ui32 blockSize,
         TString name,
         TDevices& devices)
     {
-        const auto k = DefaultBlockSize / DefaultDeviceBlockSize;
+        const auto k = blockSize / DefaultDeviceBlockSize;
 
         auto& device = *devices.Add();
         device.SetNodeId(nodeId);
@@ -143,19 +146,19 @@ struct TTestEnv
         device.SetBlockSize(DefaultDeviceBlockSize);
     }
 
-    static TDevices DefaultDevices(ui64 nodeId)
+    static TDevices DefaultDevices(ui64 nodeId, ui32 blockSize)
     {
         TDevices devices;
-        AddDevice(nodeId, 2048, "vasya", devices);
-        AddDevice(nodeId, 3072, "petya", devices);
-        //AddDevice(0, 1024, "", devices);
+        AddDevice(nodeId, 2048 * 4_KB / blockSize, blockSize, "vasya", devices);
+        AddDevice(nodeId, 3072 * 4_KB / blockSize, blockSize, "petya", devices);
+        //AddDevice(0, 1024 * 4_KB / blockSize, blockSize, "", devices);
 
         return devices;
     }
 
-    static TDevices DefaultReplica(ui64 nodeId, ui32 replicaId)
+    static TDevices DefaultReplica(ui64 nodeId, ui32 blockSize, ui32 replicaId)
     {
-        auto devices = DefaultDevices(nodeId);
+        auto devices = DefaultDevices(nodeId, blockSize);
         for (auto& device: devices) {
             if (device.GetDeviceUUID()) {
                 device.SetDeviceUUID(TStringBuilder() << device.GetDeviceUUID()
@@ -168,24 +171,42 @@ struct TTestEnv
     TTestEnv(TTestActorRuntime& runtime, THashSet<TString> freshDeviceIds = {})
         : TTestEnv(
             runtime,
+            DefaultBlockSize,
             false,
-            DefaultDevices(runtime.GetNodeId(0)),
+            DefaultDevices(runtime.GetNodeId(0), DefaultBlockSize),
             TVector<TDevices>{
-                DefaultReplica(runtime.GetNodeId(0), 1),
-                DefaultReplica(runtime.GetNodeId(0), 2),
+                DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 1),
+                DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 2),
             },
             std::move(freshDeviceIds)
         )
     {
     }
 
+    TTestEnv(TTestActorRuntime& runtime, ui32 blockSize)
+        : TTestEnv(
+            runtime,
+            blockSize,
+            false,
+            DefaultDevices(runtime.GetNodeId(0), blockSize),
+            TVector<TDevices>{
+                DefaultReplica(runtime.GetNodeId(0), blockSize, 1),
+                DefaultReplica(runtime.GetNodeId(0), blockSize, 2),
+            },
+            {}
+        )
+    {
+    }
+
     TTestEnv(
             TTestActorRuntime& runtime,
+            ui32 blockSize,
             bool markBlocksUsed,
             TDevices devices,
             TVector<TDevices> replicas,
             THashSet<TString> freshDeviceIds)
         : Runtime(runtime)
+        , BlockSize(blockSize)
         , MirrorActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
@@ -234,10 +255,10 @@ struct TTestEnv
         );
 
         PartConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices),
+            ToLogicalBlocks(devices, BlockSize),
             NProto::VOLUME_IO_OK,
             "test",
-            DefaultBlockSize,
+            BlockSize,
             VolumeActorId,
             false, // muteIOErrors
             markBlocksUsed,
@@ -247,7 +268,7 @@ struct TTestEnv
         );
 
         for (auto& replica: Replicas) {
-            replica = ToLogicalBlocks(replica);
+            replica = ToLogicalBlocks(replica, BlockSize);
         }
 
         auto mirror = std::make_unique<TMirrorPartitionActor>(
@@ -358,7 +379,7 @@ struct TTestEnv
 
     TVector<TString> ReadActor(TActorId actorId, TBlockRange64 range)
     {
-        TPartitionClient client(Runtime, actorId);
+        TPartitionClient client(Runtime, actorId, BlockSize);
         TVector<TString> blocks;
 
         client.ReadBlocksLocal(
@@ -366,7 +387,7 @@ struct TTestEnv
             TGuardedSgList(ResizeBlocks(
                 blocks,
                 range.Size(),
-                TString(DefaultBlockSize, '\0')
+                TString(BlockSize, '\0')
             )));
 
         return blocks;
@@ -374,7 +395,7 @@ struct TTestEnv
 
     void WriteActor(TActorId actorId, TBlockRange64 range, char fill)
     {
-        TPartitionClient client(Runtime, actorId);
+        TPartitionClient client(Runtime, actorId, BlockSize);
         client.WriteBlocks(range, fill);
     }
 
@@ -530,12 +551,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             counters.RequestCounters.ZeroBlocks.RequestBytes);
     }
 
-    Y_UNIT_TEST(ShouldResyncWholeDisk)
+    void DoTestShouldResyncWholeDisk(ui32 blockSize)
     {
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
+        TTestEnv env(runtime, blockSize);
 
-        const TBlockRange64 range(0, 5119);
+        const auto range = TBlockRange64::WithLength(0, 5120 * 4_KB / blockSize);
 
         env.WriteMirror(range, 'A');
         env.WriteReplica(1, range, 'B');
@@ -547,21 +568,39 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         // Trigger sequential reading from different replicas
         for (const auto& block: env.ReadMirror(range)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'B'), block);
         }
         for (const auto& block: env.ReadMirror(range)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'B'), block);
         }
         for (const auto& block: env.ReadMirror(range)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'B'), block);
         }
 
         // Check individual replicas
         for (size_t i = 0; i < env.ReplicaActors.size(); ++i) {
             for (const auto& block: env.ReadReplica(i, range)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+                UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'B'), block);
             }
         }
+
+        const ui32 expectedResyncRangeSize = 4_MB;
+        for (const auto& resyncRange: env.ResyncController.ResyncedRanges) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedResyncRangeSize,
+                resyncRange.Size() * blockSize);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(5, env.ResyncController.ResyncedRanges.size());
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDisk)
+    {
+        DoTestShouldResyncWholeDisk(4_KB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithLargeBlockSize)
+    {
+        DoTestShouldResyncWholeDisk(128_KB);
     }
 
     Y_UNIT_TEST(ShouldResyncFromStartIndex)

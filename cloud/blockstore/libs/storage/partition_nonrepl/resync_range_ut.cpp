@@ -145,7 +145,7 @@ struct TTestEnv
             TString name = Sprintf("replica-%d", i);
 
             auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-                ToLogicalBlocks(replicaDevices),
+                ToLogicalBlocks(replicaDevices, DefaultBlockSize),
                 ioMode,
                 name,
                 DefaultBlockSize,

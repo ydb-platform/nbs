@@ -143,7 +143,7 @@ struct TTestEnv
         }
         for (auto& m: migrations) {
             allDevices.Add()->CopyFrom(m.GetTargetDevice());
-            ToLogicalBlocks(*m.MutableTargetDevice());
+            ToLogicalBlocks(*m.MutableTargetDevice(), DefaultBlockSize);
         }
 
         Runtime.AddLocalService(
@@ -156,7 +156,7 @@ struct TTestEnv
         );
 
         auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices),
+            ToLogicalBlocks(devices, DefaultBlockSize),
             NProto::VOLUME_IO_OK,
             "test",
             DefaultBlockSize,
@@ -169,7 +169,7 @@ struct TTestEnv
         );
 
         for (auto& replica: replicas) {
-            replica = ToLogicalBlocks(replica);
+            replica = ToLogicalBlocks(replica, DefaultBlockSize);
         }
 
         auto part = std::make_unique<TMirrorPartitionActor>(

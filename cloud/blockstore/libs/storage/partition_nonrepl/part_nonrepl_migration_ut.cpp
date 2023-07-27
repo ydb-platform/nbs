@@ -107,7 +107,7 @@ struct TTestEnv
             if (m.GetTargetDevice().GetDeviceUUID()) {
                 *agentDevices.Add() = m.GetTargetDevice();
 
-                ToLogicalBlocks(*m.MutableTargetDevice());
+                ToLogicalBlocks(*m.MutableTargetDevice(), DefaultBlockSize);
             }
         }
 
@@ -128,7 +128,7 @@ struct TTestEnv
         );
 
         auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices),
+            ToLogicalBlocks(devices, DefaultBlockSize),
             ioMode,
             "test",
             DefaultBlockSize,

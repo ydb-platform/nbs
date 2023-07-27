@@ -44,7 +44,8 @@ void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
 
     if (State.GetActiveResyncRangeSet().empty()) {
         const auto range = State.BuildResyncRange();
-        const auto rangeId = BlockRange2RangeId(range);
+        const auto rangeId =
+            BlockRange2RangeId(range, PartConfig->GetBlockSize());
         State.AddPendingResyncRange(rangeId.first);
     }
 
@@ -69,7 +70,8 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         return;
     }
 
-    const auto resyncRange = RangeId2BlockRange(rangeId);
+    const auto resyncRange =
+        RangeId2BlockRange(rangeId, PartConfig->GetBlockSize());
 
     for (const auto& [key, requestInfo] :
          WriteAndZeroRequestsInProgress.AllRequests())
@@ -143,7 +145,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 {
     const auto* msg = ev->Get();
     const auto range = msg->Range;
-    const auto rangeId = BlockRange2RangeId(range);
+    const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
     STORAGE_VERIFY(
         rangeId.first == rangeId.second,
@@ -201,7 +203,9 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
         TDeque<TPostponedRead> postponedReads;
         for (auto& pr: PostponedReads) {
-            const auto readRangeId = BlockRange2RangeId(pr.BlockRange);
+            const auto readRangeId = BlockRange2RangeId(
+                pr.BlockRange,
+                PartConfig->GetBlockSize());
             if (readRangeId == rangeId) {
                 RejectPostponedRead(pr);
             } else {
@@ -237,11 +241,15 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     State.MarkResynced(range);
     while (PostponedReads.size()) {
         auto& pr = PostponedReads.front();
-        const auto readRangeId = BlockRange2RangeId(pr.BlockRange);
+        const auto readRangeId = BlockRange2RangeId(
+            pr.BlockRange,
+            PartConfig->GetBlockSize());
 
         bool resynced = true;
         for (ui32 id = readRangeId.first; id <= readRangeId.second; ++id) {
-            if (!State.IsResynced(RangeId2BlockRange(id))) {
+            const auto blockRange =
+                RangeId2BlockRange(id, PartConfig->GetBlockSize());
+            if (!State.IsResynced(blockRange)) {
                 resynced = false;
                 break;
             }
