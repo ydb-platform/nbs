@@ -20,11 +20,15 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NDiskRegistryTest;
+
+using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -420,13 +424,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dev1Requests);
         UNIT_ASSERT_VALUES_EQUAL(0, dev2Requests);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(6));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(6s);
+        runtime->DispatchEvents({}, 10ms);
         UNIT_ASSERT_VALUES_EQUAL(1, dev1Requests);
         UNIT_ASSERT_VALUES_EQUAL(1, dev2Requests);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(6));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(6s);
+        runtime->DispatchEvents({}, 10ms);
         UNIT_ASSERT_VALUES_EQUAL(2, dev1Requests);
         UNIT_ASSERT_VALUES_EQUAL(1, dev2Requests);
 
@@ -531,7 +535,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         WaitForSecureErase(*runtime, agents);
 
         KillAgent(*runtime, 0);
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         // secure erase
 
@@ -657,7 +661,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             device.SetDeviceUUID("uuid-4");
         }
 
-        diskRegistry.SecureErase(devices, TDuration::Seconds(1));
+        diskRegistry.SecureErase(devices, 1s);
 
         Sort(cleanDevices);
         UNIT_ASSERT_VALUES_EQUAL(2, cleanDevices.size());
@@ -778,8 +782,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL("disk-4", response->DiskIds[2]);
         }
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
         UNIT_ASSERT_VALUES_EQUAL(3, notifications.size());
         for (auto& notification: notifications) {
             runtime->Send(notification.release());
@@ -791,8 +795,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-3", notifiedDiskIds[1]);
         UNIT_ASSERT_VALUES_EQUAL("disk-4", notifiedDiskIds[2]);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(1s);
+        runtime->DispatchEvents({}, 10ms);
 
         {
             auto response = diskRegistry.ListDisksToNotify();
@@ -852,13 +856,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, requests);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(1, requests);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(30));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(30s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(2, requests);
 
@@ -988,30 +992,30 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto pipe = registerAgent();
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(60));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(60s);
+        runtime->DispatchEvents({}, 10ms);
         disconnectAgent(pipe);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(1s);
+        runtime->DispatchEvents({}, 10ms);
 
         pipe = registerAgent();
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(13));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(13s);
+        runtime->DispatchEvents({}, 10ms);
 
         disconnectAgent(pipe);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(2s);
+        runtime->DispatchEvents({}, 10ms);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(1s);
+        runtime->DispatchEvents({}, 10ms);
 
         pipe = registerAgent();
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
 
         {
             diskRegistry.CleanupDevices(TVector<TString>{"uuid-1"});
@@ -1096,16 +1100,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto pipe = registerAgent();
 
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         disconnectAgent(pipe);
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        runtime->DispatchEvents({}, TDuration::Seconds(5));
+        runtime->DispatchEvents({}, 1s);
+        runtime->DispatchEvents({}, 5s);
 
         UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-        runtime->DispatchEvents({}, TDuration::Seconds(5));
+        runtime->DispatchEvents({}, 5s);
 
         UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1117,16 +1121,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         pipe = registerAgent();
 
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         disconnectAgent(pipe);
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        runtime->DispatchEvents({}, TDuration::Seconds(10));
+        runtime->DispatchEvents({}, 1s);
+        runtime->DispatchEvents({}, 10s);
 
         UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-        runtime->DispatchEvents({}, TDuration::Seconds(10));
+        runtime->DispatchEvents({}, 10s);
 
         UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1138,14 +1142,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         pipe = registerAgent();
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(200));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(200s);
+        runtime->DispatchEvents({}, 10ms);
 
         disconnectAgent(pipe);
 
         // disconnect timeout should've been completely recovered
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        runtime->DispatchEvents({}, TDuration::Seconds(10));
+        runtime->DispatchEvents({}, 1s);
+        runtime->DispatchEvents({}, 10s);
 
         UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1162,30 +1166,30 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             pipe = registerAgent();
 
-            runtime->AdvanceCurrentTime(TDuration::Seconds(200));
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime->AdvanceCurrentTime(200s);
+            runtime->DispatchEvents({}, 10ms);
 
             diskRegistry.UpdateDiskRegistryAgentListParams(
                 TVector<TString>{"agent-1"},
-                TDuration::Seconds(100),
-                TDuration::Seconds(500),
-                TDuration::Seconds(1000));
-            runtime->DispatchEvents({}, TDuration::Seconds(1));
+                100s,
+                500s,
+                1000s);
+            runtime->DispatchEvents({}, 1s);
             // diskRegistry.RebootTablet();
             // diskRegistry.WaitReady();
 
             disconnectAgent(pipe);
 
-            runtime->DispatchEvents({}, TDuration::Seconds(1));
-            runtime->DispatchEvents({}, TDuration::Seconds(5));
+            runtime->DispatchEvents({}, 1s);
+            runtime->DispatchEvents({}, 5s);
 
             UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-            runtime->DispatchEvents({}, TDuration::Seconds(5));
+            runtime->DispatchEvents({}, 5s);
 
             UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-            runtime->DispatchEvents({}, TDuration::Seconds(90));
+            runtime->DispatchEvents({}, 90s);
 
             UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1193,26 +1197,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 static_cast<ui32>(agentState));
 
 
-            runtime->AdvanceCurrentTime(TDuration::Seconds(1000));
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime->AdvanceCurrentTime(1000s);
+            runtime->DispatchEvents({}, 10ms);
 
             agentId = "";
             agentState = NProto::AGENT_STATE_ONLINE;
 
             pipe = registerAgent();
 
-            runtime->AdvanceCurrentTime(TDuration::Seconds(200));
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime->AdvanceCurrentTime(200s);
+            runtime->DispatchEvents({}, 10ms);
 
             disconnectAgent(pipe);
 
-            runtime->DispatchEvents({}, TDuration::Seconds(1));
-            runtime->DispatchEvents({}, TDuration::Seconds(5));
+            runtime->DispatchEvents({}, 1s);
+            runtime->DispatchEvents({}, 5s);
 
             UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-            runtime->DispatchEvents({}, TDuration::Seconds(5));
-            runtime->DispatchEvents({}, TDuration::Seconds(5));
+            runtime->DispatchEvents({}, 5s);
+            runtime->DispatchEvents({}, 5s);
 
             UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1252,6 +1256,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT(diskRegistry.Exists("nonrepl-vol"));
         UNIT_ASSERT(diskRegistry.Exists("nonrepl-garbage"));
 
+        diskRegistry.MarkDiskForCleanup("nonrepl-garbage");
+
         runtime->SetObserverFunc(
         [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
@@ -1265,7 +1271,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.SendCleanupDisksRequest();
 
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
         diskRegistry.RebootTablet();
         diskRegistry.WaitReady();
 
@@ -1371,7 +1377,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto waitForItems = [&] {
             // speed up test
-            runtime->AdvanceCurrentTime(TDuration::Seconds(10));
+            runtime->AdvanceCurrentTime(10s);
 
             if (logbrokerService->GetItemCount()) {
                 return;
@@ -1423,15 +1429,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         // unavailable
-        runtime->AdvanceCurrentTime(TDuration::Days(1));
+        runtime->AdvanceCurrentTime(24h);
         removeHost("agent-1");
         diskRegistry.ChangeAgentState(
             "agent-1",
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
         // waste some time
-        runtime->AdvanceCurrentTime(TDuration::Minutes(1));
-        runtime->DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(1min);
+        runtime->DispatchEvents(TDispatchOptions(), 10ms);
 
         // vol0 already broken
         UNIT_ASSERT_VALUES_EQUAL(0, logbrokerService->GetItemCount());
@@ -1477,7 +1483,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("disk-1", 10_GB);
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
-        runtime->DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(10));
+        runtime->DispatchEvents(TDispatchOptions(), 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(1, getOnlineDisks());
 
@@ -1536,7 +1542,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         });
 
         auto waitForErase = [&] {
-            runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+            runtime->AdvanceCurrentTime(5s);
             TDispatchOptions options;
             options.FinalEvents = {
                 TDispatchOptions::TFinalEventCondition(
@@ -1634,7 +1640,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             diskRegistry.UpdateAgentStats(std::move(agentStats));
         }
 
-        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        runtime->DispatchEvents(TDispatchOptions(), 1s);
         {
             // can't allocate disk with two devices
             diskRegistry.SendAllocateDiskRequest("vol1", 20_GB);
@@ -1702,7 +1708,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         // speed up test
-        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
+        runtime->AdvanceCurrentTime(10s);
 
         if (!logbrokerService->GetItemCount()) {
 
@@ -1747,11 +1753,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry.RecvRegisterAgentResponse();
             UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
         }
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(
             defaultConfig.GetNonReplicatedAgentMinTimeout() / 2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
@@ -1763,11 +1769,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry.RecvRegisterAgentResponse();
             UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
         }
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(
             defaultConfig.GetNonReplicatedAgentMinTimeout() / 2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         {
             diskRegistry.SendRegisterAgentRequest(agent);
@@ -1801,7 +1807,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry0->RecvRegisterAgentResponse();
             UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
         }
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         TDiskRegistryClient diskRegistry1(*runtime);
         diskRegistry1.WaitReady();
@@ -1813,14 +1819,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry1.RecvRegisterAgentResponse();
             UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
         }
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         diskRegistry0.reset();
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(
             defaultConfig.GetNonReplicatedAgentMaxTimeout()));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         agent.SetSeqNumber(0);
         agent.SetNodeId(42);
@@ -1866,7 +1872,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry0.RecvRegisterAgentResponse();
             UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
         }
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, 10ms);
 
         TDiskRegistryClient diskRegistry1(*runtime);
         diskRegistry1.WaitReady();

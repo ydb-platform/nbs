@@ -213,7 +213,7 @@ void TDiskRegistryActor::HandleCleanupDisks(
             ev->Cookie,
             ev->Get()->CallContext
         ),
-        State->GetMasterDiskIds());
+        State->GetDisksToCleanup());
 
     Actors.insert(actor);
 }

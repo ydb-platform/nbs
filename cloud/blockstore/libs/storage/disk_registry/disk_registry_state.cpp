@@ -4674,6 +4674,11 @@ bool TDiskRegistryState::IsReadyForCleanup(const TDiskId& diskId) const
     return DisksToCleanup.contains(diskId);
 }
 
+TVector<TString> TDiskRegistryState::GetDisksToCleanup() const
+{
+    return {DisksToCleanup.begin(), DisksToCleanup.end()};
+}
+
 std::pair<TVolumeConfig, ui64> TDiskRegistryState::GetVolumeConfigUpdate(
     const TDiskId& diskId) const
 {

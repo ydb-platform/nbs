@@ -335,6 +335,7 @@ public:
     TVector<TString> GetDiskIds() const;
     TVector<TString> GetMasterDiskIds() const;
     TVector<TString> GetMirroredDiskIds() const;
+    TVector<TString> GetDisksToCleanup() const;
     bool IsMasterDisk(const TString& diskId) const;
 
     NProto::TDeviceConfig GetDevice(const TString& id) const;
