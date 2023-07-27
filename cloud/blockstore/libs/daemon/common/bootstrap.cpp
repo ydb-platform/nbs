@@ -205,6 +205,8 @@ void TBootstrapBase::Init()
         Scheduler,
         BackgroundThreadPool);
 
+    Executor = TExecutor::Create("SVC");
+
     VolumeBalancerSwitch = CreateVolumeBalancerSwitch();
 
     switch (Configs->Options->ServiceKind) {
@@ -320,7 +322,9 @@ void TBootstrapBase::Init()
     sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
 
-    Executor = TExecutor::Create("SVC");
+    if (!KmsKeyProvider) {
+        KmsKeyProvider = CreateNullKmsKeyProvider();
+    }
 
     auto sessionManager = CreateSessionManager(
         Timer,
@@ -332,7 +336,7 @@ void TBootstrapBase::Init()
         ServerStats,
         Service,
         StorageProvider,
-        CreateDefaultEncryptionKeyProvider(),
+        CreateEncryptionKeyProvider(KmsKeyProvider),
         Executor,
         sessionManagerOptions);
 
@@ -768,6 +772,8 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(ClientPercentiles);
     START_KIKIMR_COMPONENT(StatsAggregator);
     START_KIKIMR_COMPONENT(IamTokenClient);
+    START_KIKIMR_COMPONENT(ComputeClient);
+    START_KIKIMR_COMPONENT(KmsClient);
     START_KIKIMR_COMPONENT(YdbStorage);
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
@@ -843,6 +849,8 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Spdk);
     STOP_KIKIMR_COMPONENT(StatsUploader);
     STOP_KIKIMR_COMPONENT(YdbStorage);
+    STOP_KIKIMR_COMPONENT(KmsClient);
+    STOP_KIKIMR_COMPONENT(ComputeClient);
     STOP_KIKIMR_COMPONENT(IamTokenClient);
     STOP_KIKIMR_COMPONENT(StatsAggregator);
     STOP_KIKIMR_COMPONENT(ClientPercentiles);

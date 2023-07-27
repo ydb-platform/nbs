@@ -19,6 +19,7 @@ PEERDIR(
     cloud/blockstore/libs/endpoints_rdma
     cloud/blockstore/libs/endpoints_spdk
     cloud/blockstore/libs/endpoints_vhost
+    cloud/blockstore/libs/encryption
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/nvme
     cloud/blockstore/libs/rdma/iface

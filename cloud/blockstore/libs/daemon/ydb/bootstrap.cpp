@@ -15,6 +15,9 @@
 #include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
+#include <cloud/blockstore/libs/kms/compute_client.h>
+#include <cloud/blockstore/libs/kms/key_provider.h>
+#include <cloud/blockstore/libs/kms/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/config.h>
@@ -152,6 +155,8 @@ IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
 IStartable* TBootstrapYdb::GetCgroupStatsFetcher() { return CgroupStatsFetcher.get(); }
 IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
+IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
+IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 
 void TBootstrapYdb::InitConfigs()
 {
@@ -331,6 +336,27 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     STORAGE_INFO("StatsUploader initialized");
+
+    auto serverConfig = Configs->ServerConfig->GetServerConfig();
+    if (serverConfig->HasKmsGrpcConfig() &&
+        serverConfig->HasComputeGrpcConfig())
+    {
+        ComputeClient = CreateComputeClient(
+            Logging,
+            serverConfig->GetComputeGrpcConfig());
+
+        KmsClient = CreateKmsClient(
+            Logging,
+            serverConfig->GetKmsGrpcConfig());
+
+        KmsKeyProvider = CreateKmsKeyProvider(
+            Executor,
+            IamTokenClient,
+            ComputeClient,
+            KmsClient);
+
+        STORAGE_INFO("KmsKeyProvider initialized");
+    }
 
     auto discoveryConfig = Configs->DiscoveryConfig;
     if (discoveryConfig->GetConductorGroups()

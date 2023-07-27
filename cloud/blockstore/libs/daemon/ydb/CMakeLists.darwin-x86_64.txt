@@ -20,6 +20,7 @@ target_link_libraries(libs-daemon-ydb PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-discovery
   blockstore-libs-endpoints
+  blockstore-libs-kms
   blockstore-libs-kikimr
   libs-logbroker-iface
   blockstore-libs-notify

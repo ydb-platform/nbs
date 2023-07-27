@@ -8,6 +8,7 @@ SRCS(
     discovery.proto
     disk.proto
     features.proto
+    grpc_client.proto
     http_proxy.proto
     logbroker.proto
     notify.proto

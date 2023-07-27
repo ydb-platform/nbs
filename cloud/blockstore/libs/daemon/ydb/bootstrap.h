@@ -1,6 +1,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
+#include <cloud/blockstore/libs/kms/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
@@ -70,6 +71,8 @@ private:
     NNotify::IServicePtr NotifyService;
     NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
     NIamClient::IIamTokenClientPtr IamTokenClient;
+    IComputeClientPtr ComputeClient;
+    IKmsClientPtr KmsClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
 
 public:
@@ -95,6 +98,8 @@ protected:
     IStartable* GetNotifyService() override;
     IStartable* GetCgroupStatsFetcher() override;
     IStartable* GetIamTokenClient() override;
+    IStartable* GetComputeClient() override;
+    IStartable* GetKmsClient() override;
 
     void InitSpdk() override;
     void InitRdmaClient() override;

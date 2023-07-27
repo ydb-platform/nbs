@@ -13,6 +13,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/endpoints
+    cloud/blockstore/libs/kms
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/logbroker/iface
     cloud/blockstore/libs/notify

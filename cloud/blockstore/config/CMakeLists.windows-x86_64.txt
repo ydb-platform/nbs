@@ -174,6 +174,18 @@ get_built_tool_path(
   contrib/tools/protoc/plugins/cpp_styleguide
   cpp_styleguide
 )
+get_built_tool_path(
+  TOOL_protoc_bin
+  TOOL_protoc_dependency
+  contrib/tools/protoc/bin
+  protoc
+)
+get_built_tool_path(
+  TOOL_cpp_styleguide_bin
+  TOOL_cpp_styleguide_dependency
+  contrib/tools/protoc/plugins/cpp_styleguide
+  cpp_styleguide
+)
 
 add_library(cloud-blockstore-config)
 target_link_libraries(cloud-blockstore-config PUBLIC
@@ -190,6 +202,7 @@ target_proto_messages(cloud-blockstore-config PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/discovery.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/disk.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/features.proto
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/grpc_client.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/http_proxy.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/logbroker.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/config/notify.proto

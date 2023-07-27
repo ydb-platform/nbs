@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "cloud/blockstore/config/grpc_client.proto";
 import "cloud/blockstore/config/rdma.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/endpoints.proto";
@@ -168,6 +169,12 @@ message TServerConfig
 
     // Path to vhost server executable.
     optional string VhostServerPath = 108;
+
+    // KMS client details.
+    optional TGrpcClientConfig KmsGrpcConfig = 109;
+
+    // Compute client details.
+    optional TGrpcClientConfig ComputeGrpcConfig = 110;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

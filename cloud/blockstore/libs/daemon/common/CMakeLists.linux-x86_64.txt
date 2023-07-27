@@ -29,6 +29,7 @@ target_link_libraries(libs-daemon-common PUBLIC
   blockstore-libs-endpoints_rdma
   blockstore-libs-endpoints_spdk
   blockstore-libs-endpoints_vhost
+  blockstore-libs-encryption
   blockstore-libs-nbd
   blockstore-libs-nvme
   libs-rdma-iface

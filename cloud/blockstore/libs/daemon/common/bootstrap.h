@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
+#include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
@@ -61,6 +62,7 @@ protected:
     NBD::IServerPtr NbdServer;
     IFileIOServicePtr FileIOService;
     IStorageProviderPtr StorageProvider;
+    IKmsKeyProviderPtr KmsKeyProvider;
     TExecutorPtr Executor;
     IServerPtr Server;
     NSpdk::ISpdkEnvPtr Spdk;
@@ -104,6 +106,8 @@ protected:
     virtual IStartable* GetNotifyService() = 0;
     virtual IStartable* GetCgroupStatsFetcher() = 0;
     virtual IStartable* GetIamTokenClient() = 0;
+    virtual IStartable* GetComputeClient() = 0;
+    virtual IStartable* GetKmsClient() = 0;
 
     virtual void InitSpdk() = 0;
     virtual void InitRdmaClient() = 0;

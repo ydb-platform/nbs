@@ -34,6 +34,8 @@ protected:
     IStartable* GetNotifyService() override      { return nullptr; }
     IStartable* GetCgroupStatsFetcher() override { return nullptr; }
     IStartable* GetIamTokenClient() override     { return nullptr; }
+    IStartable* GetComputeClient() override      { return nullptr; }
+    IStartable* GetKmsClient() override          { return nullptr; }
 
     void InitSpdk() override;
     void InitRdmaClient() override;

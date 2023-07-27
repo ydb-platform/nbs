@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TGrpcClientConfig
+{
+    // GRPC server address.
+    optional string Address = 1;
+
+    // GRPC server port.
+    optional uint32 Port = 2;
+
+    // GRPC request timeout.
+    optional uint32 GrpcTimeout = 3; // in milliseconds
+}
