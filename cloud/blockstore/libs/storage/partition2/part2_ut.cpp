@@ -4908,10 +4908,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         // drain before any requests should work
         partition.Drain();
 
-        partition.WriteBlocks(TBlockRange32(0));          // fresh
-        partition.WriteBlocks(TBlockRange32(0, 1023));    // blob
-        partition.ZeroBlocks(TBlockRange32(0));           // fresh
-        partition.ZeroBlocks(TBlockRange32(0, 1023));     // blob
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0));   // fresh
+        partition.WriteBlocks(TBlockRange32(0, 1023));           // blob
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(0));    // fresh
+        partition.ZeroBlocks(TBlockRange32(0, 1023));            // blob
 
         // drain after some requests have completed should work
         partition.Drain();
@@ -4992,13 +4992,13 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             intercept = true;
         };
 
-        partition.SendWriteBlocksRequest(TBlockRange32(0));
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0));
         test("write fresh", true);
 
         partition.SendWriteBlocksRequest(TBlockRange32(0, 1023));
         test("write blob", true);
 
-        partition.SendZeroBlocksRequest(TBlockRange32(0));
+        partition.SendZeroBlocksRequest(TBlockRange32::MakeOneBlock(0));
         test("zero fresh", false);
 
         partition.SendZeroBlocksRequest(TBlockRange32(0, 1023));
@@ -6340,9 +6340,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0), 1);
-        partition.WriteBlocks(TBlockRange32(1), 2);
-        partition.WriteBlocks(TBlockRange32(2), 3);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(1), 2);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(2), 3);
 
         bool evRangeResultSeen = false;
 
@@ -6484,9 +6484,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0), 1);
-        partition.WriteBlocks(TBlockRange32(1), 2);
-        partition.WriteBlocks(TBlockRange32(2), 3);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(1), 2);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(2), 3);
 
         bool evRangeResultSeen = false;
 
@@ -6845,10 +6845,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0), 1);
-        partition.WriteBlocks(TBlockRange32(0), 1);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
 
-        partition.SendWriteBlocksRequest(TBlockRange32(0), 1);
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
         auto response = partition.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_REJECTED,
@@ -6857,7 +6857,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         partition.Flush();
 
-        partition.SendWriteBlocksRequest(TBlockRange32(0), 1);
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
         response = partition.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,

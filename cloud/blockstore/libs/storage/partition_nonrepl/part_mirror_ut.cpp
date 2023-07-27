@@ -691,21 +691,21 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 // TEST_READ
 
         // doing multiple reads to check that none of them targets fresh devices
-        TEST_READ(TBlockRange64(0));
-        TEST_READ(TBlockRange64(0));
-        TEST_READ(TBlockRange64(0));
+        TEST_READ(TBlockRange64::MakeOneBlock(0));
+        TEST_READ(TBlockRange64::MakeOneBlock(0));
+        TEST_READ(TBlockRange64::MakeOneBlock(0));
 
-        TEST_READ(TBlockRange64(2047));
-        TEST_READ(TBlockRange64(2047));
-        TEST_READ(TBlockRange64(2047));
+        TEST_READ(TBlockRange64::MakeOneBlock(2047));
+        TEST_READ(TBlockRange64::MakeOneBlock(2047));
+        TEST_READ(TBlockRange64::MakeOneBlock(2047));
 
-        TEST_READ(TBlockRange64(2048));
-        TEST_READ(TBlockRange64(2048));
-        TEST_READ(TBlockRange64(2048));
+        TEST_READ(TBlockRange64::MakeOneBlock(2048));
+        TEST_READ(TBlockRange64::MakeOneBlock(2048));
+        TEST_READ(TBlockRange64::MakeOneBlock(2048));
 
-        TEST_READ(TBlockRange64(5119));
-        TEST_READ(TBlockRange64(5119));
-        TEST_READ(TBlockRange64(5119));
+        TEST_READ(TBlockRange64::MakeOneBlock(5119));
+        TEST_READ(TBlockRange64::MakeOneBlock(5119));
+        TEST_READ(TBlockRange64::MakeOneBlock(5119));
 
 #undef TEST_READ
     }

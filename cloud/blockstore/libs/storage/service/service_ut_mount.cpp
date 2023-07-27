@@ -80,7 +80,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        service.WriteBlocks(DefaultDiskId, TBlockRange64(0), sessionId, 1);
+        service.WriteBlocks(DefaultDiskId, TBlockRange64::MakeOneBlock(0), sessionId, 1);
         {
             auto response = service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
@@ -228,7 +228,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_REMOTE);
 
-        service1.WriteBlocks(DefaultDiskId, TBlockRange64(0), sessionId);
+        service1.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId);
     }
 
     Y_UNIT_TEST(ShouldKeepSessionsAfterTabletRestart)
@@ -2730,7 +2733,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
         auto session1 = response1->Record.GetSessionId();
 
-        service1.WriteBlocks(DefaultDiskId, TBlockRange64(0), session1, 1);
+        service1.WriteBlocks(DefaultDiskId, TBlockRange64::MakeOneBlock(0), session1, 1);
 
         auto response2 = service2.MountVolume(
             DefaultDiskId,
@@ -2753,7 +2756,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             false,
             1);
 
-        service2.WriteBlocks(DefaultDiskId, TBlockRange64(0), session2, 1);
+        service2.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            session2,
+            1);
     }
 
     Y_UNIT_TEST(ShouldNotUnmountInactiveClientIfThereArePendingMountUnmountRequests)
@@ -3092,7 +3099,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
         auto session1 = response1->Record.GetSessionId();
 
-        service1.WriteBlocks(DefaultDiskId, TBlockRange64(0), session1, 1);
+        service1.WriteBlocks(DefaultDiskId, TBlockRange64::MakeOneBlock(0), session1, 1);
 
         auto response2 = service2.MountVolume(
             DefaultDiskId,
@@ -3105,12 +3112,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             1);
         auto session2 = response2->Record.GetSessionId();
 
-        service2.WriteBlocks(DefaultDiskId, TBlockRange64(0), session2, 1);
+        service2.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            session2,
+            1);
 
         {
             service1.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0),
+                TBlockRange64::MakeOneBlock(0),
                 session1,
                 1);
 
@@ -3130,12 +3141,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
         auto session3 = response3->Record.GetSessionId();
 
-        service3.WriteBlocks(DefaultDiskId, TBlockRange64(0), session3, 1);
+        service3.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            session3,
+            1);
 
         {
             service2.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0),
+                TBlockRange64::MakeOneBlock(0),
                 session2,
                 1);
 
@@ -4040,7 +4055,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto writeRequest = service.CreateWriteBlocksRequest(
-                DefaultDiskId, TBlockRange64(0), sessionId);
+                DefaultDiskId, TBlockRange64::MakeOneBlock(0), sessionId);
             auto callContext =  writeRequest->CallContext;
             service.SendRequest(
                 MakeStorageServiceId(),
@@ -4064,7 +4079,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto writeRequest = service.CreateWriteBlocksRequest(
-                DefaultDiskId, TBlockRange64(0), sessionId);
+                DefaultDiskId, TBlockRange64::MakeOneBlock(0), sessionId);
             auto callContext =  writeRequest->CallContext;
             service.SendRequest(
                 MakeStorageServiceId(),

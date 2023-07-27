@@ -155,7 +155,8 @@ void TPartitionActor::ExecuteAddBlobs(
                 block.MinCommitId = commitId;
             }
 
-            TBlockRange32 currentRange(blob.Blocks.front().BlockIndex);
+            auto currentRange =
+                TBlockRange32::MakeOneBlock(blob.Blocks.front().BlockIndex);
 
             for (ui32 i = 1; i < blob.Blocks.size(); ++i) {
                 const auto& block = blob.Blocks[i];
@@ -166,7 +167,8 @@ void TPartitionActor::ExecuteAddBlobs(
                     State->AddFreshBlockUpdate(db, {commitId, currentRange});
                     State->MarkMergedBlocksDeleted(db, currentRange, commitId);
 
-                    currentRange = TBlockRange32(block.BlockIndex);
+                    currentRange =
+                        TBlockRange32::MakeOneBlock(block.BlockIndex);
                 }
             }
 

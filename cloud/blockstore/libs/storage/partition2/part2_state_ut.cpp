@@ -315,8 +315,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
         ui64 commitId2 = state.GenerateCommitId();
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.AddFreshBlockUpdate(db, { commitId2, TBlockRange32(1) });
-            state.AddFreshBlockUpdate(db, { commitId2, TBlockRange32(2) });
+            state.AddFreshBlockUpdate(
+                db, {commitId2, TBlockRange32::MakeOneBlock(1)});
+            state.AddFreshBlockUpdate(
+                db, {commitId2, TBlockRange32::MakeOneBlock(2)});
         });
 
         {

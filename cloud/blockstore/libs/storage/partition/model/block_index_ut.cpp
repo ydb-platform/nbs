@@ -31,7 +31,10 @@ TFreshBlock FindBlock(const TBlockIndex& index, ui32 blockIndex, ui64 commitId)
         }
     } visitor;
 
-    index.FindBlocks(visitor, TBlockRange32(blockIndex), commitId);
+    index.FindBlocks(
+        visitor,
+        TBlockRange32::MakeOneBlock(blockIndex),
+        commitId);
 
     return visitor.Block;
 }

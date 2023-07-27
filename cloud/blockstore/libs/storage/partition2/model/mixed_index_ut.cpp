@@ -840,7 +840,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
     {
         const auto bi = 1;
 
-        const TBlockRange32 range(bi);
+        const auto range = TBlockRange32::MakeOneBlock(bi);
         TMixedIndexBuilder builder(range);
 
         // added before first checkpoint, rebased

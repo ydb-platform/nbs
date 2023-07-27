@@ -753,17 +753,17 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
         index.AddBlob(blobId1, {TBlockRange32(0, 5)}, 9, 0);
         index.AddBlockList(0, blobId1, BuildBlockList(blocks), blocks.size());
 
-        index.MarkBlocksDeleted({TBlockRange32(5), 1, 1});
+        index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(5), 1, 1});
         index.OnCheckpoint(4);
         // delayed deletion which appeared after barrier should be added
         // to the chunk it belongs to (the one before checkpoint)
-        index.MarkBlocksDeleted({TBlockRange32(1), 3, 2});
+        index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(1), 3, 2});
 
-        index.MarkBlocksDeleted({TBlockRange32(1), 4, 3});
-        index.MarkBlocksDeleted({TBlockRange32(2), 5, 4});
+        index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(1), 4, 3});
+        index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(2), 5, 4});
         index.OnCheckpoint(6);
-        index.MarkBlocksDeleted({TBlockRange32(1), 7, 5});
-        index.MarkBlocksDeleted({TBlockRange32(5), 10, 6});
+        index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(1), 7, 5});
+        index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(5), 10, 6});
 
         const ui32 updateCount = index.ApplyUpdates(
             TBlockRange32(0, 5),

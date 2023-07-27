@@ -68,7 +68,7 @@ struct TReferenceImplementation
         for (ui32 b = 0; b < Marks.size(); ++b) {
             const auto m = Marks[b];
             if (m) {
-                visitor(TBlockRange32(Range.Start + b));
+                visitor(TBlockRange32::MakeOneBlock(Range.Start + b));
             }
         }
     }

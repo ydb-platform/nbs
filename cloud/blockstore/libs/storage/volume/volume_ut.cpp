@@ -516,9 +516,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         // writing some data whose migration we will test
-        const TBlockRange64 range1(5);
-        const TBlockRange64 range2(5 + blocksPerDevice);
-        const TBlockRange64 range3(5 + 2 * blocksPerDevice);
+        const auto range1 = TBlockRange64::MakeOneBlock(5);
+        const auto range2 = TBlockRange64::MakeOneBlock(5 + blocksPerDevice);
+        const auto range3 = TBlockRange64::MakeOneBlock(5 + 2 * blocksPerDevice);
         client1.WriteBlocksLocal(
             range1,
             clientInfo.GetClientId(),
@@ -1033,7 +1033,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(evRangeMigrated);
 
         client1.SendWriteBlocksRequest(
-            TBlockRange64(migratedRange.Start),
+            TBlockRange64::MakeOneBlock(migratedRange.Start),
             clientInfo.GetClientId(),
             'a'
         );
@@ -1043,7 +1043,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         client1.SendWriteBlocksRequest(
-            TBlockRange64(migratedRange.End),
+            TBlockRange64::MakeOneBlock(migratedRange.End),
             clientInfo.GetClientId(),
             'a'
         );
@@ -1053,7 +1053,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         client1.SendZeroBlocksRequest(
-            TBlockRange64(migratedRange.Start),
+            TBlockRange64::MakeOneBlock(migratedRange.Start),
             clientInfo.GetClientId()
         );
         {
@@ -1062,7 +1062,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         client1.SendZeroBlocksRequest(
-            TBlockRange64(migratedRange.End),
+            TBlockRange64::MakeOneBlock(migratedRange.End),
             clientInfo.GetClientId()
         );
         {
@@ -1072,7 +1072,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         interceptWrite = true;
         client1.SendWriteBlocksRequest(
-            TBlockRange64(migratedRange.End + 1),
+            TBlockRange64::MakeOneBlock(migratedRange.End + 1),
             clientInfo.GetClientId(),
             'a'
         );
@@ -1108,7 +1108,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         auto resp = client1.ReadBlocks(
-            TBlockRange64(lastMigratedRange.End + 1),
+            TBlockRange64::MakeOneBlock(lastMigratedRange.End + 1),
             clientInfo.GetClientId()
         );
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -1288,9 +1288,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         // writing some data whose migration we will test
-        const TBlockRange64 range1(5);
-        const TBlockRange64 range2(5 + blocksPerDevice);
-        const TBlockRange64 range3(5 + 2 * blocksPerDevice);
+        const auto range1 = TBlockRange64::MakeOneBlock(5);
+        const auto range2 = TBlockRange64::MakeOneBlock(5 + blocksPerDevice);
+        const auto range3 =
+            TBlockRange64::MakeOneBlock(5 + 2 * blocksPerDevice);
         volume.WriteBlocks(range1, clientInfo.GetClientId(), 1);
         volume.WriteBlocks(range2, clientInfo.GetClientId(), 2);
         volume.WriteBlocks(range3, clientInfo.GetClientId(), 3);
@@ -1983,9 +1984,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
         }
 
-        volume.WriteBlocks(TBlockRange64(blocks * 2 - 1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(blocks * 2 - 1),
+            clientInfo.GetClientId(),
+            2);
         {
-            auto resp = volume.ReadBlocks(TBlockRange64(blocks * 2 - 1), clientInfo.GetClientId());
+            auto resp = volume.ReadBlocks(
+                TBlockRange64::MakeOneBlock(blocks * 2 - 1),
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
             UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(2), bufs[0]);
@@ -3547,7 +3553,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.SendReadBlocksRequest(threeBlocks, clientInfo.GetClientId());
         TEST_NO_RESPONSE(runtime, ReadBlocks);
 
-        const TBlockRange64 oneBlock(0);    // should stay in queue for at least 1s
+        // should stay in queue for at least 1s
+        const auto oneBlock = TBlockRange64::MakeOneBlock(0);
         // => more than limit
         volume.SendReadBlocksRequest(oneBlock, clientInfo.GetClientId());
         TEST_NO_RESPONSE(runtime, ReadBlocks);
@@ -3938,7 +3945,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             40
         );
         volume.WriteBlocks(
-            TBlockRange64(504),
+            TBlockRange64::MakeOneBlock(504),
             clientInfo.GetClientId(),
             50
         );
@@ -3987,15 +3994,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         volume.ZeroBlocks(
-            TBlockRange64(500),
+            TBlockRange64::MakeOneBlock(500),
             clientInfo.GetClientId()
         );
         volume.ZeroBlocks(
-            TBlockRange64(501),
+            TBlockRange64::MakeOneBlock(501),
             clientInfo.GetClientId()
         );
         volume.ZeroBlocks(
-            TBlockRange64(502),
+            TBlockRange64::MakeOneBlock(502),
             clientInfo.GetClientId()
         );
         {
@@ -4200,7 +4207,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             GetBlockContent(40)
         );
         volume.WriteBlocksLocal(
-            TBlockRange64(504),
+            TBlockRange64::MakeOneBlock(504),
             clientInfo.GetClientId(),
             GetBlockContent(50)
         );
@@ -5429,9 +5436,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
         // writing some data whose migration we will test
-        const TBlockRange64 range1(5);
-        const TBlockRange64 range2(5 + blocksPerDevice);
-        const TBlockRange64 range3(5 + 2 * blocksPerDevice);
+        const auto range1 = TBlockRange64::MakeOneBlock(5);
+        const auto range2 = TBlockRange64::MakeOneBlock(5 + blocksPerDevice);
+        const auto range3 = TBlockRange64::MakeOneBlock(5 + 2 * blocksPerDevice);
         client1.WriteBlocksLocal(
             range1,
             clientInfo.GetClientId(),
@@ -7585,7 +7592,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.SendWriteBlocksRequest(
-            TBlockRange64(0), clientInfo.GetClientId(), 0);
+            TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 0);
 
         auto response = volume.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -7709,7 +7716,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         auto readBlocks = [&] (ui64 blockIndex, char fill) {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(blockIndex),
+                TBlockRange64::MakeOneBlock(blockIndex),
                 clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
@@ -7724,7 +7731,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 TString::TUninitialized(DefaultBlockSize)
             );
             auto resp = volume.ReadBlocksLocal(
-                TBlockRange64(blockIndex),
+                TBlockRange64::MakeOneBlock(blockIndex),
                 TGuardedSgList(std::move(sglist)),
                 clientInfo.GetClientId()
             );

@@ -455,20 +455,20 @@ struct TDisjointRangeMap::TWideTreeMap
 
     void Visit(const TRangeVisitor& visitor) const
     {
-        TConstIterator it(TBlockRange32(0, Max<ui32>()), &Root);
+        TConstIterator it(TBlockRange32::Max(), &Root);
 
         if (!it.IsValid()) {
             return;
         }
 
-        TBlockRange32 currentRange(it.Index());
+        auto currentRange = TBlockRange32::MakeOneBlock(it.Index());
         it.Next();
         while (it.IsValid()) {
             if (it.Index() == currentRange.End + 1) {
                 ++currentRange.End;
             } else {
                 visitor(currentRange);
-                currentRange = TBlockRange32(it.Index());
+                currentRange = TBlockRange32::MakeOneBlock(it.Index());
             }
 
             it.Next();

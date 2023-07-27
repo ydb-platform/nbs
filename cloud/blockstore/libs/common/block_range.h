@@ -30,11 +30,6 @@ struct TBlockRange
 
     TBlockRange() = default;
 
-    explicit TBlockRange(TBlockIndex blockIndex)
-        : Start(blockIndex)
-        , End(blockIndex)
-    {}
-
     TBlockRange(TBlockIndex start, TBlockIndex end)
         : Start(start)
         , End(end)
