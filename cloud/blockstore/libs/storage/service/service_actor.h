@@ -342,6 +342,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateUpdateDiskRegistryAgentListParamsActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateFinishFillDiskActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

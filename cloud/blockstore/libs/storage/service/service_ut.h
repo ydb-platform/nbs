@@ -44,4 +44,8 @@ ui32 SetupTestEnvWithManuallyPreemptedVolumes(
 
 TString GetBlockContent(char fill, size_t size = DefaultBlockSize);
 
+NKikimrBlockStore::TVolumeConfig GetVolumeConfig(
+    TServiceClient& service,
+    const TString& diskId);
+
 }   // namespace NCloud::NBlockStore::NStorage

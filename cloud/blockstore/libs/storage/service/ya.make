@@ -14,6 +14,7 @@ SRCS(
     service_actor_actions_describe.cpp
     service_actor_actions_disk_registry_change_state.cpp
     service_actor_actions_drain_node.cpp
+    service_actor_actions_finish_fill_disk.cpp
     service_actor_actions_get_compaction_status.cpp
     service_actor_actions_get_diskregistry_tablet_info.cpp
     service_actor_actions_get_partition_info.cpp

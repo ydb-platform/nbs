@@ -223,22 +223,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.CreateVolume(DefaultDiskId);
         service.CreateVolume("new-base-disk");
 
-        auto describeVolume = [&service]()
-        {
-            NPrivateProto::TDescribeVolumeRequest request;
-            request.SetDiskId(DefaultDiskId);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto response = service.ExecuteAction("DescribeVolume", buf);
-            NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &pathDescr
-            ).ok());
-            return pathDescr.GetVolumeConfig();
-        };
-
-        UNIT_ASSERT_EQUAL(0, describeVolume().GetBaseDiskTabletId());
+        UNIT_ASSERT_EQUAL(0, GetVolumeConfig(service, DefaultDiskId).GetBaseDiskTabletId());
 
         {
             NPrivateProto::TRebaseVolumeRequest rebaseReq;
@@ -251,7 +236,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             service.ExecuteAction("rebasevolume", buf);
         }
 
-        auto volumeConfig = describeVolume();
+        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL("new-base-disk", volumeConfig.GetBaseDiskId());
         UNIT_ASSERT_UNEQUAL(0, volumeConfig.GetBaseDiskTabletId());
     }
@@ -991,6 +976,32 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT(updateParamsReceived);
+    }
+
+    Y_UNIT_TEST(ShouldFinishFillDisk)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+
+        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetIsFillFinished());
+
+        {
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("finishfilldisk", buf);
+        }
+
+        volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(true, volumeConfig.GetIsFillFinished());
     }
 }
 

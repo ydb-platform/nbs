@@ -259,4 +259,40 @@ void TSSProxyActor::HandleModifyScheme(
         msg->ModifyScheme);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<TEvSSProxy::TEvModifySchemeRequest> CreateModifySchemeRequestForAlterVolume(
+    TString path,
+    ui64 pathId,
+    ui64 version,
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig)
+{
+    TString volumeDir;
+    TString volumeName;
+
+    {
+        TStringBuf dir;
+        TStringBuf name;
+        TStringBuf(path).RSplit('/', dir, name);
+        volumeDir = TString{dir};
+        volumeName = TString{name};
+    }
+
+    NKikimrSchemeOp::TModifyScheme modifyScheme;
+    modifyScheme.SetWorkingDir(volumeDir);
+    modifyScheme.SetOperationType(
+        NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
+
+    auto* op = modifyScheme.MutableAlterBlockStoreVolume();
+    op->SetName(volumeName);
+
+    op->MutableVolumeConfig()->CopyFrom(volumeConfig);
+    auto* applyIf = modifyScheme.MutableApplyIf()->Add();
+    applyIf->SetPathId(pathId);
+    applyIf->SetPathVersion(version);
+
+    return std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+        std::move(modifyScheme));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

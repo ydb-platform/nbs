@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
@@ -231,37 +232,12 @@ void TAlterVolumeActor::AlterVolume(
 {
     Become(&TThis::StateAlterVolume);
 
-    TString volumeDir;
-    TString volumeName;
-
-    {
-        TStringBuf dir;
-        TStringBuf name;
-        TStringBuf(path).RSplit('/', dir, name);
-        volumeDir = TString{dir};
-        volumeName = TString{name};
-    }
-
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending alter request for %s in directory %s",
-        volumeName.Quote().c_str(),
-        volumeDir.Quote().c_str());
+        "Sending alter request for %s",
+        path.Quote().c_str());
 
-    NKikimrSchemeOp::TModifyScheme modifyScheme;
-    modifyScheme.SetWorkingDir(volumeDir);
-    modifyScheme.SetOperationType(
-        NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
-
-    auto* op = modifyScheme.MutableAlterBlockStoreVolume();
-    op->SetName(volumeName);
-
-    op->MutableVolumeConfig()->CopyFrom(VolumeConfig);
-    auto* applyIf = modifyScheme.MutableApplyIf()->Add();
-    applyIf->SetPathId(pathId);
-    applyIf->SetPathVersion(version);
-
-    auto request = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
-        std::move(modifyScheme));
+    auto request = CreateModifySchemeRequestForAlterVolume(
+        path, pathId, version, VolumeConfig);
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 

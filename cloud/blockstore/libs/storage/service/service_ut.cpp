@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
+#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -126,6 +127,23 @@ ui32 SetupTestEnvWithManuallyPreemptedVolumes(
 TString GetBlockContent(char fill, size_t size)
 {
     return TString(size, fill);
+}
+
+NKikimrBlockStore::TVolumeConfig GetVolumeConfig(
+    TServiceClient& service,
+    const TString& diskId)
+{
+    NCloud::NBlockStore::NPrivateProto::TDescribeVolumeRequest request;
+    request.SetDiskId(diskId);
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    auto response = service.ExecuteAction("DescribeVolume", buf);
+    NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
+    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+        response->Record.GetOutput(),
+        &pathDescr
+    ).ok());
+    return pathDescr.GetVolumeConfig();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

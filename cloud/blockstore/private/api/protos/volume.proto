@@ -273,3 +273,19 @@ message TSetupChannelsRequest
 message TSetupChannelsResponse
 {
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// FinishFillDisk request/response.
+
+message TFinishFillDiskRequest
+{
+    // Label of volume to finish fill for.
+    string DiskId = 1;
+
+    // Volume configuration version.
+    uint32 ConfigVersion = 2;
+}
+
+message TFinishFillDiskResponse
+{
+}
