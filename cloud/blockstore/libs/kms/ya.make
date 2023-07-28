@@ -24,3 +24,9 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    example
+)
+
+RECURSE_FOR_TESTS(ut)

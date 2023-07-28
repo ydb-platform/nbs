@@ -8,12 +8,18 @@ option go_package = "a.yandex-team.ru/cloud/blockstore/config";
 
 message TGrpcClientConfig
 {
-    // GRPC server address.
+    // Server address.
     optional string Address = 1;
 
-    // GRPC server port.
+    // Server port.
     optional uint32 Port = 2;
 
-    // GRPC request timeout.
-    optional uint32 GrpcTimeout = 3; // in milliseconds
+    // Request timeout.
+    optional uint32 RequestTimeout = 3; // in milliseconds
+
+    // Without TLS.
+    optional bool Insecure = 4;
+
+    // SSL target name override.
+    optional string SslTargetNameOverride = 5;
 }

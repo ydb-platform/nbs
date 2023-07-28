@@ -39,10 +39,12 @@ private:
     using TResult = TResultOrError<TString>;
 
     grpc::ClientContext ClientContext;
-    kms::SymmetricDecryptRequest Request;
-    std::unique_ptr<TReader> Reader;
-    kms::SymmetricDecryptResponse Record;
     grpc::Status Status;
+
+    std::unique_ptr<TReader> Reader;
+
+    kms::SymmetricDecryptRequest Request;
+    kms::SymmetricDecryptResponse Response;
 
     TPromise<TResult> Promise = NewPromise<TResult>();
 
@@ -53,7 +55,10 @@ public:
         const TString& keyId,
         const TString& ciphertext)
     {
-        ClientContext.set_deadline(TInstant::Now() + timeout);
+        if (timeout != TDuration::Zero()) {
+            ClientContext.set_deadline(TInstant::Now() + timeout);
+        }
+
         if (authToken) {
             ClientContext.AddMetadata(
                 AUTH_HEADER,
@@ -70,7 +75,7 @@ public:
         void* tag)
     {
         Reader = service.AsyncDecrypt(&ClientContext, Request, cq);
-        Reader->Finish(&Record, &Status, tag);
+        Reader->Finish(&Response, &Status, tag);
         return Promise;
     }
 
@@ -81,7 +86,7 @@ public:
                 MAKE_GRPC_ERROR(Status.error_code()),
                 Status.error_message()));
         } else {
-            Promise.SetValue(Record.plaintext());
+            Promise.SetValue(Response.plaintext());
         }
     }
 };
@@ -121,10 +126,19 @@ public:
         auto address = ::Join(":", Config.GetAddress(), Config.GetPort());
         STORAGE_INFO("Connect to " << address);
 
-        grpc::SslCredentialsOptions sslOptions;
-        auto channel = grpc::CreateChannel(
+        auto creds = Config.GetInsecure()
+            ? grpc::InsecureChannelCredentials()
+            : grpc::SslCredentials(grpc::SslCredentialsOptions());
+
+        grpc::ChannelArguments args;
+        if (Config.GetSslTargetNameOverride()) {
+            args.SetSslTargetNameOverride(Config.GetSslTargetNameOverride());
+        }
+
+        auto channel = grpc::CreateCustomChannel(
             std::move(address),
-            grpc::SslCredentials(sslOptions));
+            std::move(creds),
+            args);
 
         Service = std::shared_ptr<kms::SymmetricCryptoService::Stub>(
             kms::SymmetricCryptoService::NewStub(std::move(channel)));
@@ -144,7 +158,7 @@ public:
         const TString& authToken) override
     {
         auto requestHandler = std::make_unique<TRequestHandler>(
-            TDuration::MilliSeconds(Config.GetGrpcTimeout()),
+            TDuration::MilliSeconds(Config.GetRequestTimeout()),
             authToken,
             keyId,
             ciphertext);
