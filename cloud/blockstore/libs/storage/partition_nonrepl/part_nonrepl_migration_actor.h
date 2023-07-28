@@ -35,6 +35,7 @@ private:
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
+    const NActors::TActorId StatActorId;
 
     TNonreplicatedPartitionMigrationState State;
     bool MigrationInProgress = false;
@@ -65,7 +66,8 @@ public:
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-        NRdma::IClientPtr rdmaClient);
+        NRdma::IClientPtr rdmaClient,
+        NActors::TActorId statActorId);
 
     ~TNonreplicatedPartitionMigrationActor();
 

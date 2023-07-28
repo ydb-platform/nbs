@@ -6,8 +6,9 @@
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
-
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
+#include <library/cpp/actors/core/actorid.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -21,6 +22,7 @@ NActors::IActorPtr CreateNonreplicatedPartitionMigration(
     TString rwClientId,
     TNonreplicatedPartitionConfigPtr partConfig,
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-    NRdma::IClientPtr rdmaClient);
+    NRdma::IClientPtr rdmaClient,
+    NActors::TActorId statActorId);
 
 }   // namespace NCloud::NBlockStore::NStorage

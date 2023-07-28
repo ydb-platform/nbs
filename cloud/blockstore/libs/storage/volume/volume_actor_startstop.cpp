@@ -196,7 +196,8 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
                     State->GetReadWriteAccessClientId(),
                     nonreplicatedConfig,
                     migrations,
-                    std::move(rdmaClient)));
+                    std::move(rdmaClient),
+                    SelfId()));
         }
     } else {
         // mirrored disk

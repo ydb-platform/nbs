@@ -148,7 +148,8 @@ struct TTestEnv
             "", // rwClientId
             std::move(partConfig),
             std::move(migrations),
-            RdmaClient
+            RdmaClient,
+            VolumeActorId // statActorId
         );
 
         Runtime.AddLocalService(

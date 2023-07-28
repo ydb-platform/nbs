@@ -29,13 +29,15 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-        NRdma::IClientPtr rdmaClient)
+        NRdma::IClientPtr rdmaClient,
+        NActors::TActorId statActorId)
     : Config(std::move(config))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
+    , StatActorId(statActorId)
     , State(Config, initialMigrationIndex, rwClientId, SrcConfig)
 {
     ActivityType = TBlockStoreActivities::PARTITION;

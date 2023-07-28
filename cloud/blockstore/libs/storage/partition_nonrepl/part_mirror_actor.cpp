@@ -97,7 +97,8 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 State.GetRWClientId(),
                 replicaInfo.Config,
                 replicaInfo.Migrations,
-                RdmaClient);
+                RdmaClient,
+                SelfId());
         } else {
             actor = CreateNonreplicatedPartition(
                 Config,
