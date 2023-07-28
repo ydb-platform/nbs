@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     disk_registry_database_ut.cpp
     disk_registry_state_ut.cpp
@@ -20,7 +22,5 @@ PEERDIR(
     library/cpp/testing/unittest
     ydb/core/testlib/basics
 )
-
-REQUIREMENTS(cpu:4)
 
 END()

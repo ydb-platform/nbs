@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/discovery)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 PEERDIR(
     cloud/blockstore/libs/diagnostics
 )

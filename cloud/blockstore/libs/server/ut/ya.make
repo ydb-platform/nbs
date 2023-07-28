@@ -1,8 +1,10 @@
 UNITTEST_FOR(cloud/blockstore/libs/server)
 
+
 IF (WITH_VALGRIND)
-    TIMEOUT(600)
-    SIZE(MEDIUM)
+    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
 ENDIF()
 
 SRCS(

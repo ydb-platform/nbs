@@ -1,11 +1,11 @@
 PY3TEST()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+
 TAG(
     ya:not_autocheck
     ya:manual
 )
-
-SIZE(MEDIUM)
 
 DEPENDS(
     cloud/blockstore/libs/encryption/keyring-ut/bin

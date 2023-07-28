@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/partition/model)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     barrier_ut.cpp
     block_index_ut.cpp

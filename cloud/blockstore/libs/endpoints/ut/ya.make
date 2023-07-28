@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/endpoints)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     endpoint_manager_ut.cpp
     service_endpoint_ut.cpp

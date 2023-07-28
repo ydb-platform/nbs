@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/core)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     block_handler_ut.cpp
     compaction_map_ut.cpp
@@ -19,8 +21,6 @@ PEERDIR(
     cloud/storage/core/libs/tablet
 )
 
-
-   YQL_LAST_ABI_VERSION()
-
+YQL_LAST_ABI_VERSION()
 
 END()

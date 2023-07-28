@@ -1,10 +1,9 @@
 G_BENCHMARK()
 
 IF (SANITIZER_TYPE)
-    SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/large.inc)
 ELSE()
-    SIZE(MEDIUM)
+    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
 ENDIF()
 
 SRCS(

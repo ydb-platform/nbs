@@ -1,16 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/service)
 
-FORK_SUBTESTS()
-SPLIT_FACTOR(30)
-
-TIMEOUT(600)
-SIZE(MEDIUM)
-
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    REQUIREMENTS(
-        ram:16
-    )
-ENDIF()
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
 
 SRCS(
     service_state_ut.cpp
@@ -37,9 +27,6 @@ PEERDIR(
     cloud/blockstore/libs/storage/testlib
 )
 
-
-   YQL_LAST_ABI_VERSION()
-
-
+YQL_LAST_ABI_VERSION()
 
 END()

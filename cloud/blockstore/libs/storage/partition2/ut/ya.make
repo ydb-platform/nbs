@@ -1,14 +1,9 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/partition2)
 
-FORK_SUBTESTS()
-SPLIT_FACTOR(30)
-
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-    REQUIREMENTS(
-        ram:18
-    )
+    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
 ENDIF()
 
 SRCS(
@@ -23,8 +18,6 @@ PEERDIR(
     cloud/storage/core/libs/tablet
 )
 
-
 YQL_LAST_ABI_VERSION()
-
 
 END()

@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry/model)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     agent_counters_ut.cpp
     agent_list_ut.cpp

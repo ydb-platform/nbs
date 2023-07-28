@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/volume/model)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     checkpoint_light_ut.cpp
     checkpoint_ut.cpp

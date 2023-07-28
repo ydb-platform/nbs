@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/service_kikimr)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     auth_provider_kikimr_ut.cpp
     kikimr_test_env.cpp
@@ -10,7 +12,5 @@ PEERDIR(
     ydb/core/testlib
     ydb/core/testlib/basics
 )
-
-REQUIREMENTS(ram:9)
 
 END()

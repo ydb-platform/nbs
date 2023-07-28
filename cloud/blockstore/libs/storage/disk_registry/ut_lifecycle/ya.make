@@ -1,7 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry)
 
-TIMEOUT(600)
-SIZE(MEDIUM)
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
 
 SRCS(
     disk_registry_ut_lifecycle.cpp
@@ -15,7 +14,5 @@ PEERDIR(
     library/cpp/testing/unittest
     ydb/core/testlib/basics
 )
-
-REQUIREMENTS(cpu:4)
 
 END()

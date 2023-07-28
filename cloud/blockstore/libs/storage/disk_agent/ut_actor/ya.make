@@ -1,5 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_agent)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+
 SRCS(
     disk_agent_actor_ut.cpp
 )
@@ -14,7 +16,5 @@ PEERDIR(
     ydb/core/testlib
     ydb/core/testlib/basics
 )
-
-REQUIREMENTS(ram_disk:1)
 
 END()

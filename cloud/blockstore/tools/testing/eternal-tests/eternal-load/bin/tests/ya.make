@@ -1,12 +1,10 @@
 PY2TEST()
 
-SIZE(MEDIUM)
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
 
 TEST_SRCS(
     test.py
 )
-
-TIMEOUT(360)
 
 DEPENDS(
     cloud/blockstore/tools/testing/eternal-tests/eternal-load/bin
