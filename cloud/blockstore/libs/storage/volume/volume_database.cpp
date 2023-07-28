@@ -586,4 +586,52 @@ bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
     return true;
 }
 
+
+///////////////////////////////////////////////////////
+
+void TVolumeDatabase::WriteVolumeParams(
+    const TVector<TVolumeParamsValue>& volumeParams)
+{
+    using TTable = TVolumeSchema::VolumeParams;
+
+    for (const auto& param: volumeParams) {
+        Table<TTable>()
+                .Key(param.Key)
+                .Update(
+                    NIceDb::TUpdate<TTable::Value>(param.Value),
+                    NIceDb::TUpdate<TTable::ValidUntil>(param.ValidUntil.MicroSeconds())
+                );
+    }
+}
+
+bool TVolumeDatabase::ReadVolumeParams(TVector<TVolumeParamsValue>& volumeParams) {
+    using TTable = TVolumeSchema::VolumeParams;
+
+    volumeParams.clear();
+
+    auto it = Table<TTable>()
+        .Range()
+        .Select<TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        volumeParams.push_back({
+            it.GetValue<TTable::Key>(),
+            it.GetValue<TTable::Value>(),
+            TInstant::MicroSeconds(
+                it.GetValue<TTable::ValidUntil>()
+            )
+        });
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

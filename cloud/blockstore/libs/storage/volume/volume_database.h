@@ -130,6 +130,13 @@ public:
 
     void WriteThrottlerState(const TThrottlerStateInfo& stateInfo);
     bool ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo);
+
+    //
+    // VolumeParams
+    //
+
+    void WriteVolumeParams(const TVector<TVolumeParamsValue>& volumeParams);
+    bool ReadVolumeParams(TVector<TVolumeParamsValue>& volumeParams);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

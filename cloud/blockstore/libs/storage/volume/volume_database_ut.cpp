@@ -11,6 +11,11 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+bool operator==(const TVolumeParamsValue& lhs, const TVolumeParamsValue& rhs)
+{
+    return lhs.Key == rhs.Key && lhs.Value == rhs.Value && lhs.ValidUntil == rhs.ValidUntil;
+}
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1004,6 +1009,71 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             }
         });
     }
+
+    Y_UNIT_TEST(ShouldUpdateVolumeParams)
+    {
+        const TString keyToUpdate = "key_to_update";
+        const TString keyToInsert = "key_to_insert";
+        const TString keyToIgnore = "key_to_ignore";
+        const TString valueOld = "1";
+        const TString valueNew = "2";
+        const TInstant validUntilOld = TInstant::MicroSeconds(100);
+        const TInstant validUntilNew = TInstant::MicroSeconds(200);
+
+        const auto paramVecToMap = [](const TVector<TVolumeParamsValue>& params) {
+            THashMap<TString, TVolumeParamsValue> map;
+            for (const auto& param: params) {
+                map.try_emplace(param.Key, param);
+            }
+            return map;
+        };
+
+        // initialize data
+        TTestExecutor executor;
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            db.WriteVolumeParams({
+                {keyToUpdate, valueOld, validUntilOld},
+                {keyToIgnore, valueOld, validUntilOld}
+            });
+        });
+
+        TVector<TVolumeParamsValue> volumeParams;
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            UNIT_ASSERT(db.ReadVolumeParams(volumeParams));
+            UNIT_ASSERT_VALUES_EQUAL(
+                paramVecToMap(volumeParams),
+                paramVecToMap({
+                    {keyToUpdate, valueOld, validUntilOld},
+                    {keyToIgnore, valueOld, validUntilOld}
+                })
+            );
+        });
+
+        // update data
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            db.WriteVolumeParams({
+                {keyToUpdate, valueNew, validUntilNew},
+                {keyToInsert, valueOld, validUntilOld}
+            });
+        });
+
+        volumeParams.clear();
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            UNIT_ASSERT(db.ReadVolumeParams(volumeParams));
+            UNIT_ASSERT_VALUES_EQUAL(
+                paramVecToMap(volumeParams),
+                paramVecToMap({
+                    {keyToUpdate, valueNew, validUntilNew},
+                    {keyToIgnore, valueOld, validUntilOld},
+                    {keyToInsert, valueOld, validUntilOld}
+                })
+            );
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
@@ -1018,5 +1088,17 @@ void Out<NCloud::NBlockStore::NStorage::THistoryLogKey>(
     out << '{'
         << "Timestamp: " << value.Timestamp << ", "
         << "Seqno: " << value.Seqno
+        << '}';
+}
+
+template <>
+void Out<NCloud::NBlockStore::NStorage::TVolumeParamsValue>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NStorage::TVolumeParamsValue& value)
+{
+    out << '{'
+        << "Key: " << value.Key << ", "
+        << "Value: " << value.Value << ", "
+        << "ValidUntil: " << value.ValidUntil
         << '}';
 }

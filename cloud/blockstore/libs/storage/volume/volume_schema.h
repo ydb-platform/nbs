@@ -213,6 +213,28 @@ struct TVolumeSchema
         using TColumns = TableColumns<Version, Timestamp, VolumeMeta>;
     };
 
+    struct VolumeParams
+        : public TTableSchema<10>
+    {
+        struct Key
+            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct Value
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct ValidUntil
+            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        using TKey = TableKey<Key>;
+        using TColumns = TableColumns<Key, Value, ValidUntil>;
+    };
+
     using TTables = SchemaTables<
         Meta,
         Clients,
@@ -222,7 +244,8 @@ struct TVolumeSchema
         NonReplPartStats,
         UsedBlocks,
         ThrottlerState,
-        MetaHistory
+        MetaHistory,
+        VolumeParams
     >;
 };
 
