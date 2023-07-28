@@ -1,6 +1,11 @@
 G_BENCHMARK()
 
-SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    TAG(ya:fat)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 SRCS(
     ../rdma_target_benchmark.cpp
