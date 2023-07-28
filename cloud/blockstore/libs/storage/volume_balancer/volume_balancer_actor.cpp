@@ -260,7 +260,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         ui64 numBalancerPreempted = 0;
         ui64 numInitiallyPreempted = 0;
         for (const auto& v: msg->VolumeStats) {
-            LOG_INFO_S(
+            LOG_DEBUG_S(
                 ctx,
                 TBlockStoreComponents::VOLUME_BALANCER,
                 TStringBuilder() << "Disk:" << v.GetDiskId()
