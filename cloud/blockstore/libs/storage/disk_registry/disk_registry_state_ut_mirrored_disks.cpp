@@ -1347,6 +1347,188 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldRemoveReplacementDeviceIdsUponReplacementDeviceReplacement)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto agentConfig1 = AgentConfig(1, {
+            Device("dev-1", "uuid-1", "rack-1"),
+            Device("dev-2", "uuid-2", "rack-1"),
+            Device("dev-3", "uuid-3", "rack-1"),
+        });
+
+        auto agentConfig2 = AgentConfig(2, {
+            Device("dev-4", "uuid-4", "rack-2"),
+            Device("dev-5", "uuid-5", "rack-2"),
+            Device("dev-6", "uuid-6", "rack-2"),
+        });
+
+        auto agentConfig3 = AgentConfig(3, {
+            Device("dev-7", "uuid-7", "rack-3"),
+            Device("dev-8", "uuid-8", "rack-3"),
+            Device("dev-9", "uuid-9", "rack-3"),
+        });
+
+        auto agentConfig4 = AgentConfig(4, {
+            Device("dev-10", "uuid-10", "rack-4"),
+            Device("dev-11", "uuid-11", "rack-4"),
+            Device("dev-12", "uuid-12", "rack-4"),
+        });
+
+        auto agentConfig5 = AgentConfig(5, {
+            Device("dev-13", "uuid-13", "rack-5"),
+            Device("dev-14", "uuid-14", "rack-5"),
+            Device("dev-15", "uuid-15", "rack-5"),
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({
+                agentConfig1,
+                agentConfig2,
+                agentConfig3,
+                agentConfig4,
+                agentConfig5,
+            })
+            .Build();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            TVector<TVector<TDeviceConfig>> replicas;
+            TVector<NProto::TDeviceMigration> migrations;
+            TVector<TString> deviceReplacementIds;
+            auto error = AllocateMirroredDisk(
+                db,
+                state,
+                "disk-1",
+                10_GB,
+                2,
+                devices,
+                replicas,
+                migrations,
+                deviceReplacementIds);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("dev-1", devices[0].GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[0].size());
+            UNIT_ASSERT_VALUES_EQUAL("dev-4", replicas[0][0].GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[1].size());
+            UNIT_ASSERT_VALUES_EQUAL("dev-7", replicas[1][0].GetDeviceName());
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
+        });
+
+        const auto changeStateTs = Now();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            TDuration timeout;
+            auto error = state.UpdateAgentState(
+                db,
+                agentConfig1.GetAgentId(),
+                NProto::AGENT_STATE_UNAVAILABLE,
+                changeStateTs,
+                "unreachable",
+                affectedDisks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+        });
+
+        TDiskInfo diskInfo;
+        auto error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL("dev-10", diskInfo.Devices[0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Replicas.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "dev-4",
+            diskInfo.Replicas[0][0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "dev-7",
+            diskInfo.Replicas[1][0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>{"uuid-10"},
+            diskInfo.DeviceReplacementIds);
+
+        auto dirtyDevices = state.GetDirtyDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", dirtyDevices[0].GetDeviceUUID());
+
+        auto replaced = state.GetAutomaticallyReplacedDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, replaced.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", replaced[0].DeviceId);
+        UNIT_ASSERT_VALUES_EQUAL(changeStateTs, replaced[0].ReplacementTs);
+
+        const auto changeStateTs2 = Now();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            TDuration timeout;
+            auto error = state.UpdateAgentState(
+                db,
+                agentConfig4.GetAgentId(),
+                NProto::AGENT_STATE_UNAVAILABLE,
+                changeStateTs2,
+                "unreachable",
+                affectedDisks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+        });
+
+        diskInfo = {};
+        error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL("dev-13", diskInfo.Devices[0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Replicas.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "dev-4",
+            diskInfo.Replicas[0][0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "dev-7",
+            diskInfo.Replicas[1][0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-13"}),
+            diskInfo.DeviceReplacementIds);
+
+        dirtyDevices = state.GetDirtyDevices();
+        SortBy(dirtyDevices, []  (const auto& d) {
+            return d.GetDeviceUUID();
+        });
+        UNIT_ASSERT_VALUES_EQUAL(2, dirtyDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", dirtyDevices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-10", dirtyDevices[1].GetDeviceUUID());
+
+        replaced = state.GetAutomaticallyReplacedDevices();
+        UNIT_ASSERT_VALUES_EQUAL(2, replaced.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", replaced[0].DeviceId);
+        UNIT_ASSERT_VALUES_EQUAL("uuid-10", replaced[1].DeviceId);
+        UNIT_ASSERT_VALUES_EQUAL(changeStateTs, replaced[0].ReplacementTs);
+        UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[1].ReplacementTs);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            state.DeallocateDisk(db, "disk-1");
+        });
+    }
+
     Y_UNIT_TEST(ShouldTakeReplicaAvailabilityIntoAccount)
     {
         TTestExecutor executor;

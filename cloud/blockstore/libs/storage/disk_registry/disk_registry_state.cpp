@@ -937,8 +937,19 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
             Y_VERIFY_DEBUG(masterDisk);
             if (masterDisk) {
-                masterDisk->DeviceReplacementIds.push_back(
-                    targetDevice.GetDeviceUUID());
+                auto it = Find(
+                    masterDisk->DeviceReplacementIds.begin(),
+                    masterDisk->DeviceReplacementIds.end(),
+                    deviceId);
+
+                if (it != masterDisk->DeviceReplacementIds.end()) {
+                    // source device was a replacement device already, let's
+                    // just change it inplace
+                    *it = targetDevice.GetDeviceUUID();
+                } else {
+                    masterDisk->DeviceReplacementIds.push_back(
+                        targetDevice.GetDeviceUUID());
+                }
 
                 db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDisk));
 
@@ -979,7 +990,6 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
         UpdateAndReallocateDisk(db, diskId, disk);
 
         PendingCleanup.Insert(diskId, deviceId);
-
     } catch (const TServiceError& e) {
         return MakeError(e.GetCode(), e.what());
     }
