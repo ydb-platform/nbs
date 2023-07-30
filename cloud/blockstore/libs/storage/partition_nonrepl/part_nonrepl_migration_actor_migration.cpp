@@ -228,7 +228,7 @@ void TNonreplicatedPartitionMigrationActor::HandleRangeMigrated(
 
             NCloud::Send(
                 ctx,
-                StatActorId,
+                SrcConfig->GetParentActorId(),
                 std::make_unique<TEvVolume::TEvUpdateMigrationState>(
                     migrationRange.Start
                 )

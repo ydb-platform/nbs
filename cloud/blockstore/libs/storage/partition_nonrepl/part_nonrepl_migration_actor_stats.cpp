@@ -57,7 +57,7 @@ void TNonreplicatedPartitionMigrationActor::SendStats(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(),
         std::move(stats));
 
-    NCloud::Send(ctx, SrcConfig->GetParentActorId(), std::move(request));
+    NCloud::Send(ctx, StatActorId, std::move(request));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
