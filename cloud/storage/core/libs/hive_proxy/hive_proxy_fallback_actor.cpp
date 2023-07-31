@@ -118,11 +118,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THiveProxyFallbackActor::THiveProxyFallbackActor(
-        THiveProxyConfig config,
-        IFileIOServicePtr fileIO)
+THiveProxyFallbackActor::THiveProxyFallbackActor(THiveProxyConfig config)
     : Config(std::move(config))
-    , FileIOService(std::move(fileIO))
 {
     ActivityType = TStorageActivities::HIVE_PROXY;
 }
@@ -131,11 +128,10 @@ void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (Config.TabletBootInfoCacheFilePath && FileIOService) {
+    if (Config.TabletBootInfoCacheFilePath) {
         auto cache = std::make_unique<TTabletBootInfoCache>(
             Config.LogComponent,
             Config.TabletBootInfoCacheFilePath,
-            FileIOService,
             false /* syncEnabled */
         );
         TabletBootInfoCache = ctx.Register(

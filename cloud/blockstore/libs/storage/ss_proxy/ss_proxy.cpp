@@ -13,17 +13,13 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorPtr CreateSSProxy(
-    TStorageConfigPtr config,
-    IFileIOServicePtr fileIO)
+IActorPtr CreateSSProxy(TStorageConfigPtr config)
 {
     if (config->GetSSProxyFallbackMode()) {
-        return std::make_unique<TSSProxyFallbackActor>(
-            std::move(config), std::move(fileIO));
+        return std::make_unique<TSSProxyFallbackActor>(std::move(config));
     }
 
-    return std::make_unique<TSSProxyActor>(
-        std::move(config), std::move(fileIO));
+    return std::make_unique<TSSProxyActor>(std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -149,14 +149,13 @@ private:
     THashMap<ui64, THiveState> HiveStates;
     TDuration LockExpireTimeout;
     int LogComponent = 0;
-    IFileIOServicePtr FileIOService;
     TString TabletBootInfoCacheFilePath;
     NActors::TActorId TabletBootInfoCache;
 
     static constexpr int BatchTimeout = 2000; // ms
 
 public:
-    THiveProxyActor(THiveProxyConfig config, IFileIOServicePtr fileIO);
+    explicit THiveProxyActor(THiveProxyConfig config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -34,13 +34,10 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THiveProxyActor::THiveProxyActor(
-        THiveProxyConfig config,
-        IFileIOServicePtr fileIO)
+THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
-    , FileIOService(std::move(fileIO))
     , TabletBootInfoCacheFilePath(config.TabletBootInfoCacheFilePath)
 {
     ActivityType = TStorageActivities::HIVE_PROXY;
@@ -50,11 +47,10 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (TabletBootInfoCacheFilePath && FileIOService) {
+    if (TabletBootInfoCacheFilePath) {
         auto cache = std::make_unique<TTabletBootInfoCache>(
             LogComponent,
             TabletBootInfoCacheFilePath,
-            FileIOService,
             true /* syncEnabled */
         );
         TabletBootInfoCache = ctx.Register(

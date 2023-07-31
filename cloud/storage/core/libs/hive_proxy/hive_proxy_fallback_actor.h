@@ -21,13 +21,10 @@ class THiveProxyFallbackActor final
 {
 private:
     const THiveProxyConfig Config;
-    IFileIOServicePtr FileIOService;
     NActors::TActorId TabletBootInfoCache;
 
 public:
-    THiveProxyFallbackActor(
-        THiveProxyConfig config,
-        IFileIOServicePtr fileIO);
+    explicit THiveProxyFallbackActor(THiveProxyConfig config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

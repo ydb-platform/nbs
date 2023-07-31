@@ -55,7 +55,7 @@ public:
             TBlockStoreComponents::HIVE_PROXY,
             Args.StorageConfig->GetTabletBootInfoCacheFilePath(),
             Args.StorageConfig->GetHiveProxyFallbackMode(),
-        }, Args.FileIOService);
+        });
 
         setup->LocalServices.emplace_back(
             MakeHiveProxyServiceId(),

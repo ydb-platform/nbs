@@ -20,14 +20,11 @@ class TSSProxyFallbackActor final
 {
 private:
     const TStorageConfigPtr Config;
-    IFileIOServicePtr FileIOService;
 
     NActors::TActorId PathDescriptionCache;
 
 public:
-    TSSProxyFallbackActor(
-        TStorageConfigPtr config,
-        IFileIOServicePtr fileIO);
+    explicit TSSProxyFallbackActor(TStorageConfigPtr config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

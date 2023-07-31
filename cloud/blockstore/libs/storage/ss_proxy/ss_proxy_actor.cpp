@@ -47,11 +47,8 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSSProxyActor::TSSProxyActor(
-        TStorageConfigPtr config,
-        IFileIOServicePtr fileIO)
+TSSProxyActor::TSSProxyActor(TStorageConfigPtr config)
     : Config(config)
-    , FileIOService(std::move(fileIO))
     , ClientCache(CreateTabletPipeClientCache(*config))
 {
     ActivityType = TBlockStoreActivities::SS_PROXY;
@@ -62,9 +59,9 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
     TThis::Become(&TThis::StateWork);
 
     const auto& filepath = Config->GetPathDescriptionCacheFilePath();
-    if (filepath && FileIOService) {
+    if (filepath) {
         auto cache = std::make_unique<TPathDescriptionCache>(
-            filepath, FileIOService, true /* syncEnabled */);
+            filepath, true /* syncEnabled */);
         PathDescriptionCache = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }

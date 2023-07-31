@@ -9,17 +9,13 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorPtr CreateHiveProxy(
-    THiveProxyConfig config,
-    IFileIOServicePtr fileIO)
+IActorPtr CreateHiveProxy(THiveProxyConfig config)
 {
     if (config.FallbackMode) {
-        return std::make_unique<THiveProxyFallbackActor>(
-            std::move(config), std::move(fileIO));
+        return std::make_unique<THiveProxyFallbackActor>(std::move(config));
     }
 
-    return std::make_unique<THiveProxyActor>(
-        std::move(config), std::move(fileIO));
+    return std::make_unique<THiveProxyActor>(std::move(config));
 }
 
 }   // namespace NCloud::NStorage

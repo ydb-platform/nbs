@@ -45,7 +45,7 @@ void SetupTestEnv(
     ui32 nodeIdx = 0;
 
     auto ssProxyId = runtime.Register(
-        CreateSSProxy(storageConfig, env.GetFileIOService()).release(),
+        CreateSSProxy(storageConfig).release(),
         nodeIdx,
         runtime.GetAppData(nodeIdx).UserPoolId,
         TMailboxType::Simple,

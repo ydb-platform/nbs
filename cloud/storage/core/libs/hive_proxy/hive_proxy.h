@@ -9,8 +9,6 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::IActorPtr CreateHiveProxy(
-    THiveProxyConfig config,
-    IFileIOServicePtr fileIO);
+NActors::IActorPtr CreateHiveProxy(THiveProxyConfig config);
 
 }   // namespace NCloud::NStorage

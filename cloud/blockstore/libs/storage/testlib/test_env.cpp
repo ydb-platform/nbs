@@ -29,9 +29,7 @@
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
-#include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
-#include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
@@ -98,10 +96,7 @@ TTestEnv::TTestEnv(
     , DynamicNodeCount(dynamicNodes)
     , State(std::move(state))
     , Runtime(staticNodes + dynamicNodes, false)
-    , FileIOService(CreateAIOService())
 {
-    FileIOService->Start();
-
     NextDynamicNode = StaticNodeCount;
 
     TAppPrepare app;
@@ -123,7 +118,6 @@ TTestEnv::TTestEnv(
 
 TTestEnv::~TTestEnv()
 {
-    FileIOService->Stop();
 }
 
 ui64 TTestEnv::GetHive()
@@ -277,7 +271,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         tenantPoolId,
         nodeIdx);
 
-    auto ssProxy = CreateSSProxy(storageConfig, FileIOService);
+    auto ssProxy = CreateSSProxy(storageConfig);
     auto ssProxyId = Runtime.Register(
         ssProxy.release(),
         nodeIdx,
@@ -297,7 +291,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TBlockStoreComponents::HIVE_PROXY,
         "",     // TabletBootInfoCacheFilePath
         false,  // FallbackMode
-    }, FileIOService);
+    });
     auto hiveProxyId = Runtime.Register(
         hiveProxy.release(),
         nodeIdx,

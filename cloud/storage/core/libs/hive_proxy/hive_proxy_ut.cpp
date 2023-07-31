@@ -1,8 +1,6 @@
 #include "hive_proxy.h"
 
-#include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
-#include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <ydb/core/base/blobstorage.h>
 #include <ydb/core/base/hive.h>
@@ -406,7 +404,6 @@ struct TTestEnv
     TTestActorRuntime& Runtime;
     bool Debug = false;
     THiveMockState::TPtr HiveState;
-    IFileIOServicePtr FileIOService;
     TActorId HiveProxyActorId;
 
     TTestEnv(
@@ -417,10 +414,7 @@ struct TTestEnv
         : Runtime(runtime)
         , Debug(debug)
         , HiveState(MakeIntrusive<THiveMockState>())
-        , FileIOService(CreateAIOService())
     {
-        FileIOService->Start();
-
         TAppPrepare app;
 
         AddDomain(app, 0, 0, FakeHiveTablet, FakeSchemeRoot);
@@ -439,10 +433,7 @@ struct TTestEnv
             EExternalBootOptions externalBootOptions)
         : Runtime(runtime)
         , HiveState(MakeIntrusive<THiveMockState>())
-        , FileIOService(CreateAIOService())
     {
-        FileIOService->Start();
-
         TAppPrepare app;
 
         AddDomain(app, 0, 0, FakeHiveTablet, FakeSchemeRoot);
@@ -458,7 +449,6 @@ struct TTestEnv
 
     ~TTestEnv()
     {
-        FileIOService->Stop();
     }
 
     void AddDomain(TAppPrepare& app, ui32 domainUid, ui32 ssId, ui64 hive, ui64 schemeRoot)
@@ -498,7 +488,7 @@ struct TTestEnv
             .FallbackMode = fallbackMode,
         };
         HiveProxyActorId = Runtime.Register(
-            CreateHiveProxy(std::move(config), FileIOService).release());
+            CreateHiveProxy(std::move(config)).release());
         Runtime.EnableScheduleForActor(HiveProxyActorId);
         Runtime.RegisterService(MakeHiveProxyServiceId(), HiveProxyActorId);
     }

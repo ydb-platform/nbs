@@ -146,11 +146,8 @@ STFUNC(TReadPathDescriptionCacheActor<TResponse>::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSSProxyFallbackActor::TSSProxyFallbackActor(
-        TStorageConfigPtr config,
-        IFileIOServicePtr fileIO)
+TSSProxyFallbackActor::TSSProxyFallbackActor(TStorageConfigPtr config)
     : Config(std::move(config))
-    , FileIOService(std::move(fileIO))
 {
     ActivityType = TBlockStoreActivities::SS_PROXY;
 }
@@ -160,9 +157,9 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
     TThis::Become(&TThis::StateWork);
 
     const auto& filepath = Config->GetPathDescriptionCacheFilePath();
-    if (filepath && FileIOService) {
+    if (filepath) {
         auto cache = std::make_unique<TPathDescriptionCache>(
-            filepath, FileIOService, false /* syncEnabled */);
+            filepath, false /* syncEnabled */);
         PathDescriptionCache = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }

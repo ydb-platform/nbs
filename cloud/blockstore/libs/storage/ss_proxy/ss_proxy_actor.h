@@ -33,14 +33,13 @@ class TSSProxyActor final
 
 private:
     const TStorageConfigPtr Config;
-    IFileIOServicePtr FileIOService;
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     NActors::TActorId PathDescriptionCache;
 
     THashMap<ui64, TSchemeShardState> SchemeShardStates;
 
 public:
-    TSSProxyActor(TStorageConfigPtr config, IFileIOServicePtr fileIO);
+    explicit TSSProxyActor(TStorageConfigPtr config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
