@@ -1,8 +1,8 @@
 import yatest.common as common
 
 
-tests_bin = "cloud-blockstore-libs-encryption-keyring-ut-bin"
-tests_bin_path = "cloud/blockstore/libs/encryption/keyring-ut/bin/" + tests_bin
+tests_bin = "cloud-blockstore-libs-encryption-ut_keyring-bin"
+tests_bin_path = "cloud/blockstore/libs/encryption/ut_keyring/bin/" + tests_bin
 
 
 def test_qemu_encryption_keyring_ut():

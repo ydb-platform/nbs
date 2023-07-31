@@ -32,6 +32,6 @@ END()
 
 RECURSE_FOR_TESTS(
     ut
-    keyring-ut
-    keyring-ut/bin
+    ut_keyring
+    ut_keyring/bin
 )

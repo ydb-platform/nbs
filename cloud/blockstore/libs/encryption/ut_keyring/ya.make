@@ -8,7 +8,7 @@ TAG(
 )
 
 DEPENDS(
-    cloud/blockstore/libs/encryption/keyring-ut/bin
+    cloud/blockstore/libs/encryption/ut_keyring/bin
 )
 
 TEST_SRCS(
