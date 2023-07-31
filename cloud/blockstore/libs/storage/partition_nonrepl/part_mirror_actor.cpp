@@ -79,11 +79,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
     // if resync is in progress we should not run data migration among replicas
     // to avoid replication<->resync races
     if (!ResyncActorId) {
-        Status = State.PrepareMigrationConfig();
-
-        if (HasError(Status)) {
-            return;
-        }
+        State.PrepareMigrationConfig();
     }
 
     for (const auto& replicaInfo: State.GetReplicaInfos()) {

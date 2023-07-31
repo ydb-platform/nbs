@@ -143,9 +143,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
     Y_UNIT_TEST(ShouldBuildReplicationMigrationConfig)
     {
+        using namespace NMonitoring;
+
         TEnv env;
         env.FreshDeviceIds = {"1_2", "2_1", "3_1"};
         env.Init();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto freshDeviceNotFoundInConfig =
+            counters->GetCounter("AppCriticalEvents/FreshDeviceNotFoundInConfig", true);
 
         TMirrorPartitionState state(
             std::make_shared<TStorageConfig>(
@@ -157,8 +164,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             {env.ReplicaDevices}
         );
 
-        auto error = state.PrepareMigrationConfig();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(0, freshDeviceNotFoundInConfig->Val());
+
+        state.PrepareMigrationConfig();
 
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetReplicaInfos().size());
 
@@ -269,8 +277,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             {env.ReplicaDevices}
         );
 
-        auto error = state.PrepareMigrationConfig();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+        state.PrepareMigrationConfig();
 
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetReplicaInfos().size());
 
@@ -365,8 +372,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             {env.ReplicaDevices}
         );
 
-        auto error = state.PrepareMigrationConfig();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+        state.PrepareMigrationConfig();
 
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetReplicaInfos().size());
 
@@ -469,8 +475,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
 
-        auto error = state.PrepareMigrationConfig();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+        state.PrepareMigrationConfig();
 
         UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
 
@@ -483,7 +488,73 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL("5_2", m.GetTargetDevice().GetDeviceUUID());
     }
 
-    // TODO: test config validation / migration config preparation failures
+    Y_UNIT_TEST(ShouldReportMigrationSourceNotFound)
+    {
+        using namespace NMonitoring;
+
+        TEnv env;
+        {
+            auto* m = env.Migrations.Add();
+            m->SetSourceDeviceId("nonexistent_device");
+            auto* device = m->MutableTargetDevice();
+            device->SetAgentId("5");
+            device->SetBlocksCount(1024);
+            device->SetDeviceUUID("5_2");
+        }
+        env.Init();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto migrationSourceNotFound =
+            counters->GetCounter("AppCriticalEvents/MigrationSourceNotFound", true);
+
+        TMirrorPartitionState state(
+            std::make_shared<TStorageConfig>(
+                NProto::TStorageServiceConfig(),
+                nullptr),
+            "xxx",      // rwClientId
+            env.Config,
+            env.Migrations,
+            {env.ReplicaDevices}
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
+
+        state.PrepareMigrationConfig();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, migrationSourceNotFound->Val());
+
+        const auto& replica1 = state.GetReplicaInfos()[1];
+        UNIT_ASSERT_VALUES_EQUAL(0, replica1.Migrations.size());
+    }
+
+    Y_UNIT_TEST(ShouldReportFreshDeviceNotFoundInConfig)
+    {
+        using namespace NMonitoring;
+
+        TEnv env;
+        env.FreshDeviceIds = {"nonexistent_device", "2_1", "3_1"};
+        env.Init();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto freshDeviceNotFoundInConfig =
+            counters->GetCounter("AppCriticalEvents/FreshDeviceNotFoundInConfig", true);
+
+        TMirrorPartitionState state(
+            std::make_shared<TStorageConfig>(
+                NProto::TStorageServiceConfig(),
+                nullptr),
+            "xxx",      // rwClientId
+            env.Config,
+            env.Migrations,
+            {env.ReplicaDevices}
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(1, freshDeviceNotFoundInConfig->Val());
+    }
+
+    // TODO: test config validation
 
 #undef TEST_READ_REPLICA
 }

@@ -27,6 +27,18 @@ TMirrorPartitionState::TMirrorPartitionState(
     for (auto& devices: replicaDevices) {
         ReplicaInfos.push_back({partConfig->Fork(std::move(devices)), {}});
     }
+
+    ui32 freshDeviceCount = 0;
+    for (auto& replicaInfo: ReplicaInfos) {
+        freshDeviceCount += replicaInfo.Config->GetFreshDeviceIds().size();
+    }
+
+    if (freshDeviceCount != partConfig->GetFreshDeviceIds().size()) {
+        ReportFreshDeviceNotFoundInConfig(TStringBuilder()
+            << "Fresh device count mismatch: " << freshDeviceCount
+            << " != " << partConfig->GetFreshDeviceIds().size()
+            << " for disk " << partConfig->GetName());
+    }
 }
 
 NProto::TError TMirrorPartitionState::Validate()
@@ -47,10 +59,10 @@ NProto::TError TMirrorPartitionState::Validate()
     return {};
 }
 
-NProto::TError TMirrorPartitionState::PrepareMigrationConfig()
+void TMirrorPartitionState::PrepareMigrationConfig()
 {
     if (MigrationConfigPrepared) {
-        return {};
+        return;
     }
 
     if (Migrations.size()) {
@@ -96,7 +108,7 @@ NProto::TError TMirrorPartitionState::PrepareMigrationConfig()
 
                 MigrationConfigPrepared = true;
 
-                return {};
+                return;
             }
         }
 
@@ -113,7 +125,7 @@ NProto::TError TMirrorPartitionState::PrepareMigrationConfig()
     if (!replicaInfo) {
         // nothing to replicate
 
-        return {};
+        return;
     }
 
     const auto& freshDevices = replicaInfo->Config->GetFreshDeviceIds();
@@ -130,18 +142,9 @@ NProto::TError TMirrorPartitionState::PrepareMigrationConfig()
     }
 
     if (deviceIdx == devices.size()) {
-        TStringBuilder message;
-        message << "fresh devices not empty but no device is fresh, devices:";
-        for (const auto& device: devices) {
-            message << " " << device.GetDeviceUUID();
-        }
+        Y_VERIFY_DEBUG(0);
 
-        message << ", fresh:";
-        for (const auto& fd: freshDevices) {
-            message << " " << fd;
-        }
-
-        return MakeError(E_INVALID_STATE, message);
+        return;
     }
 
     // we need to find corresponding good device from some other replica
@@ -170,8 +173,6 @@ NProto::TError TMirrorPartitionState::PrepareMigrationConfig()
     }
 
     MigrationConfigPrepared = true;
-
-    return {};
 }
 
 NProto::TError TMirrorPartitionState::NextReadReplica(

@@ -64,7 +64,7 @@ public:
     }
 
     [[nodiscard]] NProto::TError Validate();
-    [[nodiscard]] NProto::TError PrepareMigrationConfig();
+    void PrepareMigrationConfig();
 
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
