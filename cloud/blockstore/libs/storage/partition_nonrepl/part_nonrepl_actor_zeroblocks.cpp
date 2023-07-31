@@ -122,8 +122,6 @@ void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(BlockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
-        // TODO: remove after NBS-3886
-        request->Record.SetSessionId(Request.GetHeaders().GetClientId());
         if (AssignIdToWriteAndZeroRequestsEnabled) {
             request->Record.SetVolumeRequestId(RequestInfo->Cookie);
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);

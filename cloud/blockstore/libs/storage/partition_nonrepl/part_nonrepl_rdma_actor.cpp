@@ -239,8 +239,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
-        // TODO: remove after NBS-3886
-        deviceRequest.SetSessionId(headers.GetClientId());
 
         auto [req, err] = ep->AllocateRequest(
             handler,

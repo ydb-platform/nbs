@@ -583,8 +583,6 @@ public:
 
         request->Record.SetDiskId(diskId);
         request->Record.MutableHeaders()->SetClientId(clientId);
-        // TODO: remove after NBS-3886
-        request->Record.SetSessionId(clientId);
         request->Record.SetAccessMode(accessMode);
         request->Record.SetMountSeqNumber(mountSeqNumber);
         request->Record.SetVolumeGeneration(volumeGeneration);
@@ -601,8 +599,6 @@ public:
 
         request->Record.SetDiskId(diskId);
         request->Record.MutableHeaders()->SetClientId(clientId);
-        // TODO: remove after NBS-3886
-        request->Record.SetSessionId(clientId);
         request->Record.SetVolumeGeneration(volumeGeneration);
 
         return request;

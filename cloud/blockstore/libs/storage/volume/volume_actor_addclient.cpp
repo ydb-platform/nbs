@@ -44,8 +44,6 @@ void TVolumeActor::AcquireDisk(
 
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(std::move(clientId));
     request->Record.SetAccessMode(accessMode);
     request->Record.SetMountSeqNumber(mountSeqNumber);
     request->Record.SetVolumeGeneration(Executor()->Generation());

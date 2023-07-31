@@ -109,8 +109,6 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
         auto request =
             std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
         request->Record.MutableHeaders()->SetClientId(ClientId);
-        // TODO: remove after NBS-3886
-        request->Record.SetSessionId(ClientId);
         request->Record.SetDiskId(DiskId);
         request->Record.SetVolumeGeneration(VolumeGeneration);
 
@@ -269,9 +267,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
 
     auto* msg = ev->Get();
     TString& diskId = *msg->Record.MutableDiskId();
-    TString& clientId = msg->Record.GetHeaders().GetClientId()
-        ? *msg->Record.MutableHeaders()->MutableClientId()
-        : *msg->Record.MutableSessionId();
+    TString& clientId = *msg->Record.MutableHeaders()->MutableClientId();
     ui32 volumeGeneration = msg->Record.GetVolumeGeneration();
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,

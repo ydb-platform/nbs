@@ -153,8 +153,6 @@ void TAcquireDiskActor::FinishAcquireDisk(const TActorContext& ctx)
 void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
 {
     request.MutableHeaders()->SetClientId(ClientId);
-    // TODO: remove after NBS-3886
-    request.SetSessionId(ClientId);
     request.SetAccessMode(AccessMode);
     request.SetMountSeqNumber(MountSeqNumber);
     request.SetDiskId(DiskId);
@@ -164,8 +162,6 @@ void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
 void TAcquireDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
 {
     request.MutableHeaders()->SetClientId(ClientId);
-    // TODO: remove after NBS-3886
-    request.SetSessionId(ClientId);
 }
 
 template <typename R>
@@ -500,10 +496,6 @@ void TDiskRegistryActor::HandleAcquireDisk(
     );
 
     auto clientId = msg->Record.GetHeaders().GetClientId();
-    // TODO: remove after NBS-3886
-    if (!clientId) {
-        clientId = msg->Record.GetSessionId();
-    }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received AcquireDisk request: "

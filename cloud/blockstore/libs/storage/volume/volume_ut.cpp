@@ -665,11 +665,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             clientInfo.GetClientId(),
             writeBlocksRequests[0].GetHeaders().GetClientId()
         );
-        // TODO: remove after NBS-3886
-        UNIT_ASSERT_VALUES_EQUAL(
-            clientInfo.GetClientId(),
-            writeBlocksRequests[0].GetSessionId()
-        );
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize,
             writeBlocksRequests[0].GetBlockSize()
@@ -693,11 +688,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             clientInfo.GetClientId(),
             writeBlocksRequests[1].GetHeaders().GetClientId()
-        );
-        // TODO: remove after NBS-3886
-        UNIT_ASSERT_VALUES_EQUAL(
-            clientInfo.GetClientId(),
-            writeBlocksRequests[1].GetSessionId()
         );
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize,
@@ -732,11 +722,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             clientInfo.GetClientId(),
             zeroBlocksRequests[0].GetHeaders().GetClientId()
         );
-        // TODO: remove after NBS-3886
-        UNIT_ASSERT_VALUES_EQUAL(
-            clientInfo.GetClientId(),
-            zeroBlocksRequests[0].GetSessionId()
-        );
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize,
             zeroBlocksRequests[0].GetBlockSize()
@@ -756,11 +741,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             clientInfo.GetClientId(),
             zeroBlocksRequests[1].GetHeaders().GetClientId()
-        );
-        // TODO: remove after NBS-3886
-        UNIT_ASSERT_VALUES_EQUAL(
-            clientInfo.GetClientId(),
-            zeroBlocksRequests[1].GetSessionId()
         );
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize,
@@ -1765,8 +1745,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto runtime = PrepareTestActorRuntime(config, state);
 
         bool intercept = true;
-        // TODO: remove after NBS-3886
-        TString releaseSessionId;
         TString releaseClientId;
         TAutoPtr<IEventHandle> writeDeviceBlocks;
 
@@ -1800,10 +1778,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     case TEvDiskRegistry::EvReleaseDiskRequest: {
                         auto* msg =
                             event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
-                        UNIT_ASSERT(!releaseSessionId);
                         UNIT_ASSERT(!releaseClientId);
 
-                        releaseSessionId = msg->Record.GetSessionId();
                         releaseClientId = msg->Record.GetHeaders().GetClientId();
 
                         break;
@@ -1833,7 +1809,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         replyError();
 
         // timeout has not passed yet
-        UNIT_ASSERT_VALUES_EQUAL("", releaseSessionId);
         UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(5));
@@ -1842,7 +1817,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         replyError();
 
         // timeout has passed, ReleaseDisk should've been sent
-        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseSessionId);
         UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
 
         intercept = false;

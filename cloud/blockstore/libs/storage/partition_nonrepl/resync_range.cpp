@@ -61,8 +61,6 @@ void TResyncRangeActor::ChecksumReplicaBlocks(const TActorContext& ctx, int idx)
     auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(TString(BackgroundOpsClientId));
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
@@ -141,8 +139,6 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(TString(BackgroundOpsClientId));
     request->Record.BlockSize = BlockSize;
     request->Record.Sglist = SgList;
 
@@ -181,8 +177,6 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(clientId);
     request->Record.BlocksCount = Range.Size();
     request->Record.BlockSize = BlockSize;
     request->Record.Sglist = SgList;

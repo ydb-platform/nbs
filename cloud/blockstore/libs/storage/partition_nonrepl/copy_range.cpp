@@ -64,8 +64,6 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(TString(BackgroundOpsClientId));
     request->Record.BlockSize = blockSize;
     request->Record.Sglist = SgList;
 
@@ -98,8 +96,6 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(clientId);
     request->Record.BlocksCount = Range.Size();
     request->Record.BlockSize = blockSize;
     request->Record.Sglist = SgList;

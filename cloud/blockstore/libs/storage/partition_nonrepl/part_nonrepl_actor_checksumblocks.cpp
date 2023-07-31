@@ -125,8 +125,6 @@ void TDiskAgentChecksumActor::ChecksumBlocks(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
-        // TODO: remove after NBS-3886
-        request->Record.SetSessionId(Request.GetHeaders().GetClientId());
 
         TAutoPtr<IEventHandle> event(
             new IEventHandle(

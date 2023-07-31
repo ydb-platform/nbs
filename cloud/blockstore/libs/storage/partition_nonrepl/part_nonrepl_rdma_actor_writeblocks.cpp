@@ -242,8 +242,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        // TODO: remove after NBS-3886
-        deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
         if (AssignIdToWriteAndZeroRequestsEnabled) {
             deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
@@ -384,8 +382,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        // TODO: remove after NBS-3886
-        deviceRequest.SetSessionId(msg->Record.GetHeaders().GetClientId());
         if (AssignIdToWriteAndZeroRequestsEnabled) {
             deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);

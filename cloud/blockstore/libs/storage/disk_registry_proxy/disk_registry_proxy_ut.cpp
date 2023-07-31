@@ -444,22 +444,22 @@ public:
         return request;
     }
 
-    auto CreateAcquireDiskRequest(const TString& diskId, const TString& sessionId)
+    auto CreateAcquireDiskRequest(const TString& diskId, const TString& clientId)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
         request->Record.SetDiskId(diskId);
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
 
         return request;
     }
 
-    auto CreateReleaseDiskRequest(const TString& diskId, const TString& sessionId)
+    auto CreateReleaseDiskRequest(const TString& diskId, const TString& clientId)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
         request->Record.SetDiskId(diskId);
-        request->Record.SetSessionId(sessionId);
+        request->Record.MutableHeaders()->SetClientId(clientId);
 
         return request;
     }

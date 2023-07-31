@@ -27,8 +27,6 @@ void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId
 
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
-    // TODO: remove after NBS-3886
-    request->Record.SetSessionId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
 
     NCloud::Send(
