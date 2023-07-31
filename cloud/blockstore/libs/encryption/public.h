@@ -15,4 +15,7 @@ using IEncryptionKeyProviderPtr = std::shared_ptr<IEncryptionKeyProvider>;
 struct IKmsKeyProvider;
 using IKmsKeyProviderPtr = std::shared_ptr<IKmsKeyProvider>;
 
+struct IEncryptionClientFactory;
+using IEncryptionClientFactoryPtr = std::shared_ptr<IEncryptionClientFactory>;
+
 }   // namespace NCloud::NBlockStore

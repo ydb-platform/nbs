@@ -50,7 +50,7 @@ protected:
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
-    IEncryptionKeyProviderPtr EncryptionKeyProvider;
+    IEncryptionClientFactoryPtr EncryptionClientFactory;
 
     mutable TLog GrpcLog;
     mutable TLog Log;

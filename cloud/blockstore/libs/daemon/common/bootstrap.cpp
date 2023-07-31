@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
+#include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
@@ -326,6 +327,10 @@ void TBootstrapBase::Init()
         KmsKeyProvider = CreateNullKmsKeyProvider();
     }
 
+    auto encryptionClientFactory = CreateEncryptionClientFactory(
+        Logging,
+        CreateEncryptionKeyProvider(KmsKeyProvider));
+
     auto sessionManager = CreateSessionManager(
         Timer,
         Scheduler,
@@ -336,7 +341,7 @@ void TBootstrapBase::Init()
         ServerStats,
         Service,
         StorageProvider,
-        CreateEncryptionKeyProvider(KmsKeyProvider),
+        encryptionClientFactory,
         Executor,
         sessionManagerOptions);
 

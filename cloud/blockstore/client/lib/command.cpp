@@ -352,10 +352,8 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
     sessionConfig.ClientVersionInfo = GetFullVersionString();
     sessionConfig.AccessMode = accessMode;
 
-    auto future = TryToCreateEncryptionClient(
+    auto future = EncryptionClientFactory->CreateEncryptionClient(
         ClientEndpoint,
-        Logging,
-        EncryptionKeyProvider,
         encryptionSpec,
         sessionConfig.DiskId);
 
@@ -477,7 +475,9 @@ void TCommand::Init()
         EVolumeStatsType::EClientStats,
         Timer);
 
-    EncryptionKeyProvider = CreateDefaultEncryptionKeyProvider();
+    EncryptionClientFactory = CreateEncryptionClientFactory(
+        Logging,
+        CreateDefaultEncryptionKeyProvider());
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(

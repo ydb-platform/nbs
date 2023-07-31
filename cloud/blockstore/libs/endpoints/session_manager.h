@@ -85,7 +85,7 @@ ISessionManagerPtr CreateSessionManager(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IStorageProviderPtr storageProvider,
-    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
     TSessionManagerOptions options);
 

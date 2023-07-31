@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
 #include <cloud/blockstore/libs/server/client_acceptor.h>
@@ -357,6 +358,10 @@ IEndpointManagerPtr CreateEndpointManager(
     sessionManagerOptions.DefaultClientConfig.SetRequestTimeout(
         TestRequestTimeout.MilliSeconds());
 
+    auto encryptionClientFactory = CreateEncryptionClientFactory(
+        bootstrap.Logging,
+        CreateDefaultEncryptionKeyProvider());
+
     auto sessionManager = CreateSessionManager(
         CreateWallClockTimer(),
         CreateSchedulerStub(),
@@ -367,7 +372,7 @@ IEndpointManagerPtr CreateEndpointManager(
         serverStats,
         bootstrap.Service,
         CreateDefaultStorageProvider(bootstrap.Service),
-        CreateDefaultEncryptionKeyProvider(),
+        encryptionClientFactory,
         bootstrap.Executor,
         sessionManagerOptions);
 

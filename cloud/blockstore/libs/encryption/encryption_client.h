@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-namespace NCloud::NBlockStore::NClient {
+namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,11 +26,22 @@ IBlockStorePtr CreateSnapshotEncryptionClient(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> TryToCreateEncryptionClient(
-    IBlockStorePtr client,
-    ILoggingServicePtr logging,
-    IEncryptionKeyProviderPtr encryptionKeyProvider,
-    const NProto::TEncryptionSpec& encryptionSpec,
-    const TString& diskId);
+struct IEncryptionClientFactory
+{
+    using TResponse = TResultOrError<IBlockStorePtr>;
 
-}   // namespace NCloud::NBlockStore::NClient
+    virtual ~IEncryptionClientFactory() = default;
+
+    virtual NThreading::TFuture<TResponse> CreateEncryptionClient(
+        IBlockStorePtr client,
+        const NProto::TEncryptionSpec& encryptionSpec,
+        const TString& diskId) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
+    ILoggingServicePtr logging,
+    IEncryptionKeyProviderPtr encryptionKeyProvider);
+
+}   // namespace NCloud::NBlockStore

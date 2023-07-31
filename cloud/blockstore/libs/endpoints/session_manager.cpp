@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
-#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -290,7 +289,7 @@ private:
     const IBlockStorePtr Service;
     const IStorageProviderPtr StorageProvider;
     const IThrottlerProviderPtr ThrottlerProvider;
-    const IEncryptionKeyProviderPtr EncryptionKeyProvider;
+    const IEncryptionClientFactoryPtr EncryptionClientFactory;
     const TExecutorPtr Executor;
     const TSessionManagerOptions Options;
 
@@ -311,7 +310,7 @@ public:
             IBlockStorePtr service,
             IStorageProviderPtr storageProvider,
             IThrottlerProviderPtr throttlerProvider,
-            IEncryptionKeyProviderPtr encryptionKeyProvider,
+            IEncryptionClientFactoryPtr encryptionClientFactory,
             TExecutorPtr executor,
             TSessionManagerOptions options)
         : Timer(std::move(timer))
@@ -324,7 +323,7 @@ public:
         , Service(std::move(service))
         , StorageProvider(std::move(storageProvider))
         , ThrottlerProvider(std::move(throttlerProvider))
-        , EncryptionKeyProvider(std::move(encryptionKeyProvider))
+        , EncryptionClientFactory(std::move(encryptionClientFactory))
         , Executor(std::move(executor))
         , Options(std::move(options))
     {
@@ -663,10 +662,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         STORAGE_WARN("disable durable client for " << volume.GetDiskId().Quote());
     }
 
-    auto encryptionFuture = TryToCreateEncryptionClient(
+    auto encryptionFuture = EncryptionClientFactory->CreateEncryptionClient(
         std::move(client),
-        Logging,
-        EncryptionKeyProvider,
         request.GetEncryptionSpec(),
         request.GetDiskId());
 
@@ -767,7 +764,7 @@ ISessionManagerPtr CreateSessionManager(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IStorageProviderPtr storageProvider,
-    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
     TSessionManagerOptions options)
 {
@@ -791,7 +788,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(service),
         std::move(storageProvider),
         std::move(throttlerProvider),
-        std::move(encryptionKeyProvider),
+        std::move(encryptionClientFactory),
         std::move(executor),
         std::move(options));
 }

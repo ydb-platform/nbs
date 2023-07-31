@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
@@ -117,18 +118,23 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             };
 
         auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider());
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
             scheduler,
-            CreateLoggingService("console"),
+            logging,
             CreateMonitoringServiceStub(),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             serverStats,
             service,
             CreateDefaultStorageProvider(service),
-            CreateDefaultEncryptionKeyProvider(),
+            encryptionClientFactory,
             executor,
             TSessionManagerOptions());
 
@@ -223,22 +229,27 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             };
 
         auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
 
         TSessionManagerOptions options;
         options.TemporaryServer = temporaryServer;
         options.DisableDurableClient = true;
 
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider());
+
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
-            CreateLoggingService("console"),
+            logging,
             CreateMonitoringServiceStub(),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
             service,
             CreateDefaultStorageProvider(service),
-            CreateDefaultEncryptionKeyProvider(),
+            encryptionClientFactory,
             executor,
             options);
 

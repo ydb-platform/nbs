@@ -14,7 +14,7 @@
 
 #include <array>
 
-namespace NCloud::NBlockStore::NClient {
+namespace NCloud::NBlockStore {
 
 using namespace NThreading;
 
@@ -1142,4 +1142,4 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NClient
+}   // namespace NCloud::NBlockStore

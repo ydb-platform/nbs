@@ -163,6 +163,10 @@ void TBootstrap::Init()
         Monitoring = CreateMonitoringServiceStub();
     }
 
+    EncryptionClientFactory = CreateEncryptionClientFactory(
+        Logging,
+        CreateDefaultEncryptionKeyProvider());
+
     if (Options->DeviceMode == EDeviceMode::Null) {
         NProto::TNullServiceConfig config;
         config.SetDiskBlockSize(Options->NullBlockSize);
@@ -231,10 +235,8 @@ void TBootstrap::Init()
                 Options->EncryptionKeyPath);
         }
 
-        auto future = TryToCreateEncryptionClient(
+        auto future = EncryptionClientFactory->CreateEncryptionClient(
             std::move(ClientEndpoint),
-            Logging,
-            CreateDefaultEncryptionKeyProvider(),
             encryptionSpec,
             Options->DiskId);
 
