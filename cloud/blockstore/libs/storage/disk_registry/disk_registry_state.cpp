@@ -4010,7 +4010,22 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
+    if (newState != NProto::AGENT_STATE_ONLINE) {
+        SuspendLocalDevices(db, *agent);
+    }
+
     return result;
+}
+
+void TDiskRegistryState::SuspendLocalDevices(
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent)
+{
+    for (const auto& d: agent.GetDevices()) {
+        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+            SuspendDevice(db, d.GetDeviceUUID());
+        }
+    }
 }
 
 TMaybe<NProto::EAgentState> TDiskRegistryState::GetAgentState(

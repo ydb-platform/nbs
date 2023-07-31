@@ -18,109 +18,130 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NDiskRegistryStateTest;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixture
+    : public NUnitTest::TBaseFixture
+{
+    TTestExecutor Executor;
+
+    const TVector<NProto::TAgentConfig> Agents {
+        AgentConfig(1, {
+            Device("dev-1", "uuid-1.1"),
+            Device("dev-2", "uuid-1.2"),
+            Device("dev-3", "uuid-1.3"),
+            Device("dev-4", "uuid-1.4")
+        }),
+        AgentConfig(2, {
+            Device("dev-1", "uuid-2.1"),
+            Device("dev-2", "uuid-2.2"),
+            Device("dev-3", "uuid-2.3")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+            Device("dev-4", "uuid-2.4")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
+        }),
+        AgentConfig(3, {
+            Device("dev-1", "uuid-3.1")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+            Device("dev-2", "uuid-3.2")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+            Device("dev-3", "uuid-3.3")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+            Device("dev-4", "uuid-3.4")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
+        })
+    };
+
+    void SetUp(NUnitTest::TTestContext& /*context*/) override
+    {
+        TTestExecutor executor;
+        WriteTx([&] (auto db) {
+            db.InitSchema();
+        });
+    }
+
+    void WriteTx(auto func)
+    {
+        Executor.WriteTx([func = std::move(func)] (TDiskRegistryDatabase db) {
+            func(db);
+        });
+    }
+};
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
 {
-    Y_UNIT_TEST(ShouldSuspendDevices)
+    Y_UNIT_TEST_F(ShouldSuspendDevices, TFixture)
     {
-        TTestExecutor executor;
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            db.InitSchema();
-        });
-
-        const TVector agents {
-            AgentConfig(1, {
-                Device("dev-1", "uuid-1.1") | WithTotalSize(10_GB),
-                Device("dev-2", "uuid-1.2") | WithTotalSize(10_GB),
-                Device("dev-3", "uuid-1.3") | WithTotalSize(10_GB),
-                Device("dev-4", "uuid-1.4") | WithTotalSize(10_GB)
-            }),
-            AgentConfig(2, {
-                Device("dev-1", "uuid-2.1") | WithTotalSize(10_GB),
-                Device("dev-2", "uuid-2.2") | WithTotalSize(10_GB),
-                Device("dev-3", "uuid-2.3")
-                    | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
-                    | WithTotalSize(8_GB),
-                Device("dev-4", "uuid-2.4")
-                    | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
-                    | WithTotalSize(8_GB)
-            })
-        };
-
         auto makeConfig = [] (int version, auto agents) {
-            auto config = MakeConfig(version, agents);
-
-            auto* local = config.AddDevicePoolConfigs();
-            local->SetName("local-ssd");
-            local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-            local->SetAllocationUnit(8_GB);
-
-            return config;
+            return MakeConfig(version, agents)
+                | WithPoolConfig(
+                    "local-ssd",
+                    NProto::DEVICE_POOL_KIND_LOCAL,
+                    DefaultDeviceSize);
         };
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig(makeConfig(0, TVector { agents[0] }))
-            .WithAgents({ agents[0] })
+            .WithConfig(makeConfig(0, TVector { Agents[0] }))
+            .WithAgents({ Agents[0] })
             .Build();
 
-        auto allocNRD = [&] (auto db, auto* diskId, auto deviceCount) {
+        auto allocateDisk = [&] (auto db, auto* diskId, auto deviceCount, auto kind) {
             TDiskRegistryState::TAllocateDiskResult result;
             auto error = state.AllocateDisk(
                 Now(),
                 db,
                 TDiskRegistryState::TAllocateDiskParams {
                     .DiskId = diskId,
-                    .BlockSize = 4_KB,
-                    .BlocksCount = deviceCount * 10_GB / 4_KB
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount = deviceCount * DefaultDeviceSize / DefaultLogicalBlockSize,
+                    .MediaKind = kind
                 },
                 &result);
             return error.GetCode();
+        };
+
+        auto allocNRD = [&] (auto db, auto* diskId, auto deviceCount) {
+            return allocateDisk(db, diskId, deviceCount, NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
         };
 
         auto allocLocalSSD = [&] (auto db, auto* diskId, auto deviceCount) {
-            TDiskRegistryState::TAllocateDiskResult result;
-            auto error = state.AllocateDisk(
-                Now(),
-                db,
-                TDiskRegistryState::TAllocateDiskParams {
-                    .DiskId = diskId,
-                    .BlockSize = 4_KB,
-                    .BlocksCount = deviceCount * 8_GB / 4_KB,
-                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL
-                },
-                &result);
-            return error.GetCode();
+            return allocateDisk(db, diskId, deviceCount, NProto::STORAGE_MEDIA_SSD_LOCAL);
         };
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             UNIT_ASSERT_VALUES_EQUAL(S_OK, allocNRD(db, "nrd0", 3));
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             for (auto* uuid: {"uuid-2.1", "uuid-2.2", "uuid-2.3", "uuid-2.4"}) {
                 UNIT_ASSERT_SUCCESS(state.SuspendDevice(db, uuid));
             }
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             TVector<TString> affectedDisks;
             UNIT_ASSERT_SUCCESS(state.UpdateConfig(
                 db,
-                makeConfig(0, agents),
+                makeConfig(0, Agents),
                 false,  // ignoreVersion
                 affectedDisks));
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             TVector<TString> affectedDisks;
             TVector<TString> notifiedDisks;
 
             UNIT_ASSERT_SUCCESS(
                 state.RegisterAgent(
                     db,
-                    agents[1],
+                    Agents[1],
                     Now(),
                     &affectedDisks,
                     &notifiedDisks));
@@ -129,23 +150,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             UNIT_ASSERT_VALUES_EQUAL(0, notifiedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
 
-            for (const auto& d: agents[0].GetDevices()) {
+            for (const auto& d: Agents[0].GetDevices()) {
                 UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));
             }
 
-            for (const auto& d: agents[1].GetDevices()) {
+            for (const auto& d: Agents[1].GetDevices()) {
                 UNIT_ASSERT(state.IsSuspendedDevice(d.GetDeviceUUID()));
             }
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             UNIT_ASSERT_VALUES_EQUAL(
                 E_BS_DISK_ALLOCATION_FAILED,
                 allocNRD(db, "nrd1", 3)
             );
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             state.ResumeDevices(Now(), db, {"uuid-2.1", "uuid-2.2"});
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
@@ -161,26 +182,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 allocNRD(db, "nrd1", 3)
             );
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             UNIT_ASSERT_VALUES_EQUAL(
                 E_BS_DISK_ALLOCATION_FAILED,
                 allocLocalSSD(db, "local", 2)
             );
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             state.ResumeDevices(Now(), db, {"uuid-2.3", "uuid-2.4"});
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
-            for (const auto& d: agents[1].GetDevices()) {
+            for (const auto& d: Agents[1].GetDevices()) {
                 UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));
             }
 
@@ -190,9 +211,87 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+        WriteTx([&] (auto db) {
             UNIT_ASSERT_VALUES_EQUAL(S_OK, allocLocalSSD(db, "local", 2));
         });
+    }
+
+    Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TFixture)
+    {
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithConfig(MakeConfig(0, Agents)
+                | WithPoolConfig(
+                    "local-ssd",
+                    NProto::DEVICE_POOL_KIND_LOCAL,
+                    DefaultDeviceSize))
+            .WithAgents(Agents)
+            .Build();
+
+        for (auto& agent: Agents) {
+            for (const auto& d: agent.GetDevices()) {
+                UNIT_ASSERT_C(!state.IsSuspendedDevice(d.GetDeviceUUID()), d);
+            }
+        }
+
+        WriteTx([&] (auto db) {
+            TDiskRegistryState::TAllocateDiskResult result;
+            UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                Now(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams {
+                    .DiskId = "nrd0",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount = DefaultDeviceSize / DefaultLogicalBlockSize,
+                    .AgentIds = { Agents[1].GetAgentId() },
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL
+                },
+                &result));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
+
+            for (const auto& d: Agents[1].GetDevices()) {
+                TString diskId;
+                TDuration timeout;
+                auto error = state.UpdateCmsDeviceState(
+                    db,
+                    d.GetDeviceUUID(),
+                    NProto::DEVICE_STATE_WARNING,
+                    TInstant::FromValue(1),
+                    false,    // dryRun
+                    diskId,
+                    timeout);
+
+                UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));
+
+                if (d.GetDeviceUUID() == result.Devices[0].GetDeviceUUID()) {
+                    UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+                    UNIT_ASSERT_VALUES_EQUAL("nrd0", diskId);
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                }
+            }
+        });
+
+        WriteTx([&] (auto db) {
+            TVector<TString> affectedDisks;
+            TDuration timeout;
+            UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
+                db,
+                Agents[2].GetAgentId(),
+                NProto::AGENT_STATE_WARNING,
+                TInstant::FromValue(2),
+                false,  // dryRun
+                affectedDisks,
+                timeout));
+
+            for (const auto& d: Agents[2].GetDevices()) {
+                UNIT_ASSERT_C(state.IsSuspendedDevice(d.GetDeviceUUID()), d);
+            }
+        });
+
+        for (const auto& d: Agents[0].GetDevices()) {
+            UNIT_ASSERT_C(!state.IsSuspendedDevice(d.GetDeviceUUID()), d);
+        }
     }
 }
 

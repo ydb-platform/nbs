@@ -23,6 +23,16 @@ inline auto WithPool(const TString& name, auto kind)
     }};
 }
 
+inline auto WithPoolConfig(const TString& name, auto kind, ui64 allocationUnit)
+{
+    return TPipeableProperty{[=] (auto& config) mutable {
+        auto* pool = config.AddDevicePoolConfigs();
+        pool->SetName(std::move(name));
+        pool->SetKind(kind);
+        pool->SetAllocationUnit(allocationUnit);
+    }};
+}
+
 inline auto WithTotalSize(ui64 size, ui32 blockSize = 4096)
 {
     return TPipeableProperty{[=] (auto& config) {

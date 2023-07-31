@@ -937,6 +937,10 @@ private:
         const TDiskId& diskId);
 
     void AllowNotifications(const TDiskId& diskId, const TDiskState& disk);
+
+    void SuspendLocalDevices(
+        TDiskRegistryDatabase& db,
+        const NProto::TAgentConfig& agent);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
