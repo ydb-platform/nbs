@@ -154,6 +154,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     config.SetBaseDiskTabletId(BaseDiskTabletId);
     config.SetBaseDiskCheckpointId(Request.GetBaseDiskCheckpointId());
     config.SetIsSystem(Request.GetIsSystem());
+    config.SetFillToken(Request.GetFillToken());
 
     TVolumeParams volumeParams;
     volumeParams.BlockSize = GetBlockSize();

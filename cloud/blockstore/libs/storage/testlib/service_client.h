@@ -98,7 +98,8 @@ public:
         const NProto::TEncryptionSpec& encryptionSpec = {},
         bool isSystem = false,
         const TString& baseDiskId = TString(),
-        const TString& baseDiskCheckpointId = TString());
+        const TString& baseDiskCheckpointId = TString(),
+        const TString& fillToken = TString());
 
     std::unique_ptr<TEvService::TEvDestroyVolumeRequest> CreateDestroyVolumeRequest(
         const TString& diskId = DefaultDiskId,

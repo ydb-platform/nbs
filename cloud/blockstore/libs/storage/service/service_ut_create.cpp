@@ -1612,6 +1612,47 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         UNIT_ASSERT(syncDealloc);
     }
+
+    Y_UNIT_TEST(ShoudSaveFillToken)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto request = service.CreateCreateVolumeRequest();
+        request->Record.SetFillToken("hahahehe");
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
+
+        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("hahahehe", volumeConfig.GetFillToken());
+    }
+
+    Y_UNIT_TEST(ShouldCheckFillTokenIdempotence)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        for (int i = 0; i < 2; i++) {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetFillToken("barkovbg");
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
+        }
+        auto request = service.CreateCreateVolumeRequest();
+        request->Record.SetFillToken("svartmetal");
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == E_INVALID_STATE, response->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

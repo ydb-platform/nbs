@@ -56,7 +56,8 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     const NProto::TEncryptionSpec& encryptionSpec,
     bool isSystem,
     const TString& baseDiskId,
-    const TString& baseDiskCheckpointId)
+    const TString& baseDiskCheckpointId,
+    const TString& fillToken)
 {
     auto request = std::make_unique<TEvService::TEvCreateVolumeRequest>();
     PrepareRequestHeaders(*request);
@@ -74,6 +75,7 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     request->Record.SetIsSystem(isSystem);
     request->Record.SetBaseDiskId(baseDiskId);
     request->Record.SetBaseDiskCheckpointId(baseDiskCheckpointId);
+    request->Record.SetFillToken(fillToken);
     return request;
 }
 
