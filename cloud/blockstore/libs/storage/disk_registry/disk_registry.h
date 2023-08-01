@@ -16,6 +16,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 NActors::IActorPtr CreateDiskRegistry(
     const NActors::TActorId& owner,
+    ILoggingServicePtr logging,
     NKikimr::TTabletStorageInfoPtr storage,
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,

@@ -100,6 +100,29 @@ void TDiskRegistryActor::ExecuteLoadState(
     }
 }
 
+void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
+{
+    State = std::make_unique<TDiskRegistryState>(
+        Logging,
+        Config,
+        ComponentGroup,
+        std::move(snapshot.Config),
+        std::move(snapshot.Agents),
+        std::move(snapshot.Disks),
+        std::move(snapshot.PlacementGroups),
+        std::move(snapshot.BrokenDisks),
+        std::move(snapshot.DisksToReallocate),
+        std::move(snapshot.DiskStateChanges),
+        snapshot.LastDiskStateSeqNo,
+        std::move(snapshot.DirtyDevices),
+        std::move(snapshot.DisksToCleanup),
+        std::move(snapshot.ErrorNotifications),
+        std::move(snapshot.OutdatedVolumeConfigs),
+        std::move(snapshot.SuspendedDevices),
+        std::move(snapshot.AutomaticallyReplacedDevices),
+        std::move(snapshot.DiskRegistryAgentListParams));
+}
+
 void TDiskRegistryActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxDiskRegistry::TLoadState& args)
@@ -127,25 +150,7 @@ void TDiskRegistryActor::CompleteLoadState(
         }
     }
 
-    // initialize state
-    State.reset(new TDiskRegistryState(
-        Config,
-        ComponentGroup,
-        std::move(args.Snapshot.Config),
-        std::move(args.Snapshot.Agents),
-        std::move(args.Snapshot.Disks),
-        std::move(args.Snapshot.PlacementGroups),
-        std::move(args.Snapshot.BrokenDisks),
-        std::move(args.Snapshot.DisksToReallocate),
-        std::move(args.Snapshot.DiskStateChanges),
-        args.Snapshot.LastDiskStateSeqNo,
-        std::move(args.Snapshot.DirtyDevices),
-        std::move(args.Snapshot.DisksToCleanup),
-        std::move(args.Snapshot.ErrorNotifications),
-        std::move(args.Snapshot.OutdatedVolumeConfigs),
-        std::move(args.Snapshot.SuspendedDevices),
-        std::move(args.Snapshot.AutomaticallyReplacedDevices),
-        std::move(args.Snapshot.DiskRegistryAgentListParams)));
+    InitializeState(std::move(args.Snapshot));
 
     SecureErase(ctx);
 

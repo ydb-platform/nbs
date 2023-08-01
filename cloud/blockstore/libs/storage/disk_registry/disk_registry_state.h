@@ -181,6 +181,8 @@ class TDiskRegistryState
     using TPlacementGroups = THashMap<TString, TPlacementGroupInfo>;
 
 private:
+    TLog Log;
+
     const TStorageConfigPtr StorageConfig;
     const NMonitoring::TDynamicCountersPtr Counters;
     mutable TDiskRegistrySelfCounters SelfCounters;
@@ -227,6 +229,7 @@ private:
 
 public:
     TDiskRegistryState(
+        ILoggingServicePtr logging,
         TStorageConfigPtr storageConfig,
         NMonitoring::TDynamicCountersPtr counters,
         NProto::TDiskRegistryConfig config,

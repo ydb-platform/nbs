@@ -116,6 +116,8 @@ private:
         TDuration::Seconds(1),
         Config->GetDiskRegistryVolumeConfigUpdatePeriod()};
 
+    ILoggingServicePtr Logging;
+
 public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
@@ -123,7 +125,8 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TLogbrokerServicePtr logbrokerService,
-        NNotify::IServicePtr notifyService);
+        NNotify::IServicePtr notifyService,
+        ILoggingServicePtr logging);
 
     ~TDiskRegistryActor();
 
@@ -267,6 +270,8 @@ private:
 
     void ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         const NActors::TActorContext& ctx);
+
+    void InitializeState(TDiskRegistryStateSnapshot snapshot);
 
 private:
     STFUNC(StateBoot);

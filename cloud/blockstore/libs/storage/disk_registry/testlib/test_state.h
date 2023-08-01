@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -212,6 +213,7 @@ TString GetReplicaTableRepr(
 
 struct TDiskRegistryStateBuilder
 {
+    ILoggingServicePtr Logging = CreateLoggingService("console");
     TStorageConfigPtr StorageConfig = CreateStorageConfig();
     NMonitoring::TDynamicCountersPtr Counters;
     NProto::TDiskRegistryConfig Config;

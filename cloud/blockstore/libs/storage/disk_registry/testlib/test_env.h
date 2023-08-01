@@ -15,6 +15,8 @@
 #include <cloud/blockstore/libs/storage/testlib/common_properties.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <ydb/core/testlib/basics/runtime.h>
 #include <ydb/core/testlib/tablet_helpers.h>
 
@@ -421,6 +423,7 @@ struct TTestRuntimeBuilder
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
+    ILoggingServicePtr Logging = CreateLoggingService("console");
 
     std::unique_ptr<NActors::TTestActorRuntime> Build();
 

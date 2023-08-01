@@ -12,6 +12,7 @@ using namespace NKikimr;
 
 IActorPtr CreateDiskRegistry(
     const TActorId& owner,
+    ILoggingServicePtr logging,
     TTabletStorageInfoPtr storage,
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
@@ -24,7 +25,8 @@ IActorPtr CreateDiskRegistry(
         std::move(config),
         std::move(diagnosticsConfig),
         std::move(logbrokerService),
-        std::move(notifyService));
+        std::move(notifyService),
+        std::move(logging));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

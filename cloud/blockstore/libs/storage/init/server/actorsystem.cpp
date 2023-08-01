@@ -331,6 +331,7 @@ class TCustomLocalServiceInitializer final
 {
 private:
     const NKikimrConfig::TAppConfig& AppConfig;
+    const ILoggingServicePtr Logging;
     const TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
@@ -344,6 +345,7 @@ private:
 public:
     TCustomLocalServiceInitializer(
             const NKikimrConfig::TAppConfig& appConfig,
+            ILoggingServicePtr logging,
             TStorageConfigPtr storageConfig,
             TDiagnosticsConfigPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
@@ -354,6 +356,7 @@ public:
             NRdma::IClientPtr rdmaClient,
             bool isDiskRegistrySpareNode)
         : AppConfig(appConfig)
+        , Logging(std::move(logging))
         , StorageConfig(std::move(storageConfig))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , ProfileLog(std::move(profileLog))
@@ -377,6 +380,7 @@ public:
         auto logbrokerService = LogbrokerService;
         auto notifyService = NotifyService;
         auto rdmaClient = RdmaClient;
+        auto logging = Logging;
 
         auto volumeFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
             Y_VERIFY(storage->TabletType == TTabletTypes::BlockStoreVolume);
@@ -399,6 +403,7 @@ public:
 
             auto tablet = CreateDiskRegistry(
                 owner,
+                logging,
                 storage,
                 storageConfig,
                 diagnosticsConfig,
@@ -473,6 +478,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs));
         initializers.AddServiceInitializer(new TCustomLocalServiceInitializer(
             *sArgs.AppConfig,
+            sArgs.Logging,
             sArgs.StorageConfig,
             sArgs.DiagnosticsConfig,
             sArgs.ProfileLog,

@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -9423,6 +9424,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(0, diskRegistryAgentListParams.size());
 
             state.emplace(TDiskRegistryState {
+                CreateLoggingService("console"),
                 CreateStorageConfig([] {
                     auto proto = CreateDefaultStorageConfigProto();
                     proto.SetAllocationUnitNonReplicatedSSD(93);

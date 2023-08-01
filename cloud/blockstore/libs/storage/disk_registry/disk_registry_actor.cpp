@@ -35,13 +35,15 @@ TDiskRegistryActor::TDiskRegistryActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TLogbrokerServicePtr logbrokerService,
-        NNotify::IServicePtr notifyService)
+        NNotify::IServicePtr notifyService,
+        ILoggingServicePtr logging)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
+    , Logging(std::move(logging))
 {
     ActivityType = TBlockStoreActivities::DISK_REGISTRY;
 }

@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -217,6 +218,7 @@ void SetDevicePoolCounters(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskRegistryState::TDiskRegistryState(
+        ILoggingServicePtr logging,
         TStorageConfigPtr storageConfig,
         NMonitoring::TDynamicCountersPtr counters,
         NProto::TDiskRegistryConfig config,
@@ -234,7 +236,8 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<TDeviceId> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams)
-    : StorageConfig(std::move(storageConfig))
+    : Log(logging->CreateLog("BLOCKSTORE_DISK_REGISTRY"))
+    , StorageConfig(std::move(storageConfig))
     , Counters(counters)
     , AgentList({
         static_cast<double>(
@@ -721,6 +724,14 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
                 buddy && buddy->GetAgentId() != config.GetAgentId())
         {
+            STORAGE_INFO(
+                "Agent %s occupies the same node (#%d) as the arriving agent %s. "
+                "Kick out %s",
+                buddy->GetAgentId().c_str(),
+                config.GetNodeId(),
+                config.GetAgentId().c_str(),
+                buddy->GetAgentId().c_str());
+
             RemoveAgentFromNode(
                 db,
                 *buddy,
@@ -738,6 +749,17 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             timestamp,
             knownAgent,
             &newDevices);
+
+        if (!prevNodeId) {
+            STORAGE_INFO("A brand new agent %s #%d has arrived",
+                agent.GetAgentId().c_str(),
+                agent.GetNodeId());
+        } else if (prevNodeId != agent.GetNodeId()) {
+            STORAGE_INFO("Agent %s changed his previous node from #%d to #%d",
+                agent.GetAgentId().c_str(),
+                prevNodeId,
+                agent.GetNodeId());
+        }
 
         for (auto& d: *agent.MutableDevices()) {
             AdjustDeviceIfNeeded(d, timestamp);

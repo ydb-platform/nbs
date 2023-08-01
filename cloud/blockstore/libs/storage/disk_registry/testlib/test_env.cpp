@@ -125,11 +125,13 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
     auto diagnosticsConfig = DiagnosticsConfig;
     auto logbrokerService = LogbrokerService;
     auto notifyService = NotifyService;
+    auto logging = Logging;
 
     auto createFunc =
         [=] (const NActors::TActorId& owner, NKikimr::TTabletStorageInfo* info) {
             auto tablet = CreateDiskRegistry(
                 owner,
+                logging,
                 info,
                 storageConfig,
                 diagnosticsConfig,

@@ -511,25 +511,7 @@ void TDiskRegistryActor::ExecuteRestoreDiskRegistryState(
     TDiskRegistryDatabase db(tx.DB);
     db.WriteRestoreState(true);
 
-    State.reset(new TDiskRegistryState(
-        Config,
-        ComponentGroup,
-        args.NewState.Config,
-        args.NewState.Agents,
-        args.NewState.Disks,
-        args.NewState.PlacementGroups,
-        args.NewState.BrokenDisks,
-        args.NewState.DisksToReallocate,
-        args.NewState.DiskStateChanges,
-        args.NewState.LastDiskStateSeqNo,
-        args.NewState.DirtyDevices,
-        args.NewState.DisksToCleanup,
-        args.NewState.ErrorNotifications,
-        args.NewState.OutdatedVolumeConfigs,
-        args.NewState.SuspendedDevices,
-        args.NewState.AutomaticallyReplacedDevices,
-        args.NewState.DiskRegistryAgentListParams
-    ));
+    InitializeState(args.NewState);
 }
 
 void TDiskRegistryActor::CompleteRestoreDiskRegistryState(

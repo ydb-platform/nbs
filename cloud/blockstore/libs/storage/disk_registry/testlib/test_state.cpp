@@ -380,6 +380,7 @@ TString GetReplicaTableRepr(
 TDiskRegistryState TDiskRegistryStateBuilder::Build()
 {
     return TDiskRegistryState(
+        std::move(Logging),
         std::move(StorageConfig),
         std::move(Counters),
         std::move(Config),
