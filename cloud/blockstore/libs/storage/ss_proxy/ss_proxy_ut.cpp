@@ -508,9 +508,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 "/local/nbs/_17A/new-volume",
                 DescribeVolumeAndReturnPath(runtime, "new-volume"));
 
-            // Smoke check for background sync (100 seconds should be enough).
-            runtime.AdvanceCurrentTime(TDuration::Seconds(100));
-            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(100));
+            // Smoke check for background sync (15 seconds should be enough).
+            runtime.AdvanceCurrentTime(TDuration::Seconds(15));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
 
             TActorId sender = runtime.AllocateEdgeActor();
 

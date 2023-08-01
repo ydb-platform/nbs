@@ -1087,9 +1087,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 result.StorageInfo->TabletID);
             UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
 
-            // Smoke check for background sync (100 seconds should be enough).
-            runtime.AdvanceCurrentTime(TDuration::Seconds(100));
-            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(100));
+            // Smoke check for background sync (15 seconds should be enough).
+            runtime.AdvanceCurrentTime(TDuration::Seconds(15));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
 
             env.SendSyncTabletBootInfoCache(sender, S_OK);
         }
