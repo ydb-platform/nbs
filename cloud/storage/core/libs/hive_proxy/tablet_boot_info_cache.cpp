@@ -74,7 +74,7 @@ NProto::TError TTabletBootInfoCache::Sync(const TActorContext& ctx)
         TFileLock lock(TmpCacheFilePath);
 
         if (lock.TryAcquire()) {
-            TUnbufferedFileOutput output(TmpCacheFilePath);
+            TFileOutput output(TmpCacheFilePath);
             SerializeToTextFormat(Cache, output);
             TmpCacheFilePath.RenameTo(CacheFilePath);
         } else {
