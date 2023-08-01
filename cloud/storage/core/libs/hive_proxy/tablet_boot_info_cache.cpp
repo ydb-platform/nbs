@@ -189,6 +189,7 @@ void TTabletBootInfoCache::HandleSyncTabletBootInfoCache(
 STFUNC(TTabletBootInfoCache::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvHiveProxyPrivate::TEvReadTabletBootInfoCacheRequest, HandleReadTabletBootInfoCache);
         HFunc(TEvHiveProxyPrivate::TEvUpdateTabletBootInfoCacheRequest, HandleUpdateTabletBootInfoCache);
         HFunc(TEvHiveProxy::TEvSyncTabletBootInfoCacheRequest, HandleSyncTabletBootInfoCache);
