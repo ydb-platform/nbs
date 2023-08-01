@@ -164,7 +164,7 @@ typedef unsigned char uint8_t;
 #define HAVE_UINT8_T
 #endif
 
-#if !defined(HAVE_UINT16_T)
+#if !defined(HAVE_UINT8_T)
 #error No 8-bit unsigned integer type was found.
 #endif
 
@@ -207,6 +207,9 @@ typedef uint64_t uintmax_t;
 /* MD5 via ARCHIVE_CRYPTO_MD5_LIBSYSTEM supported. */
 /* #undef ARCHIVE_CRYPTO_MD5_LIBSYSTEM */
 
+/* MD5 via ARCHIVE_CRYPTO_MD5_MBEDTLS supported. */
+/* #undef ARCHIVE_CRYPTO_MD5_MBEDTLS */
+
 /* MD5 via ARCHIVE_CRYPTO_MD5_NETTLE supported. */
 /* #undef ARCHIVE_CRYPTO_MD5_NETTLE */
 
@@ -222,6 +225,9 @@ typedef uint64_t uintmax_t;
 /* RMD160 via ARCHIVE_CRYPTO_RMD160_NETTLE supported. */
 /* #undef ARCHIVE_CRYPTO_RMD160_NETTLE */
 
+/* RMD160 via ARCHIVE_CRYPTO_RMD160_MBEDTLS supported. */
+/* #undef ARCHIVE_CRYPTO_RMD160_MBEDTLS */
+
 /* RMD160 via ARCHIVE_CRYPTO_RMD160_OPENSSL supported. */
 #define ARCHIVE_CRYPTO_RMD160_OPENSSL 1
 
@@ -230,6 +236,9 @@ typedef uint64_t uintmax_t;
 
 /* SHA1 via ARCHIVE_CRYPTO_SHA1_LIBSYSTEM supported. */
 /* #undef ARCHIVE_CRYPTO_SHA1_LIBSYSTEM */
+
+/* SHA1 via ARCHIVE_CRYPTO_SHA1_MBEDTLS supported. */
+/* #undef ARCHIVE_CRYPTO_SHA1_MBEDTLS */
 
 /* SHA1 via ARCHIVE_CRYPTO_SHA1_NETTLE supported. */
 /* #undef ARCHIVE_CRYPTO_SHA1_NETTLE */
@@ -252,6 +261,9 @@ typedef uint64_t uintmax_t;
 /* SHA256 via ARCHIVE_CRYPTO_SHA256_LIBSYSTEM supported. */
 /* #undef ARCHIVE_CRYPTO_SHA256_LIBSYSTEM */
 
+/* SHA256 via ARCHIVE_CRYPTO_SHA256_MBEDTLS supported. */
+/* #undef ARCHIVE_CRYPTO_SHA256_MBEDTLS */
+
 /* SHA256 via ARCHIVE_CRYPTO_SHA256_NETTLE supported. */
 /* #undef ARCHIVE_CRYPTO_SHA256_NETTLE */
 
@@ -273,6 +285,9 @@ typedef uint64_t uintmax_t;
 /* SHA384 via ARCHIVE_CRYPTO_SHA384_LIBSYSTEM supported. */
 /* #undef ARCHIVE_CRYPTO_SHA384_LIBSYSTEM */
 
+/* SHA384 via ARCHIVE_CRYPTO_SHA384_MBEDTLS supported. */
+/* #undef ARCHIVE_CRYPTO_SHA384_MBEDTLS */
+
 /* SHA384 via ARCHIVE_CRYPTO_SHA384_NETTLE supported. */
 /* #undef ARCHIVE_CRYPTO_SHA384_NETTLE */
 
@@ -293,6 +308,9 @@ typedef uint64_t uintmax_t;
 
 /* SHA512 via ARCHIVE_CRYPTO_SHA512_LIBSYSTEM supported. */
 /* #undef ARCHIVE_CRYPTO_SHA512_LIBSYSTEM */
+
+/* SHA512 via ARCHIVE_CRYPTO_SHA512_MBEDTLS supported. */
+/* #undef ARCHIVE_CRYPTO_SHA512_MBEDTLS */
 
 /* SHA512 via ARCHIVE_CRYPTO_SHA512_NETTLE supported. */
 /* #undef ARCHIVE_CRYPTO_SHA512_NETTLE */
@@ -316,13 +334,13 @@ typedef uint64_t uintmax_t;
 /* #undef ARCHIVE_XATTR_LINUX */
 
 /* Version number of bsdcpio */
-#define BSDCPIO_VERSION_STRING "3.6.2"
+#define BSDCPIO_VERSION_STRING "3.7.0"
 
 /* Version number of bsdtar */
-#define BSDTAR_VERSION_STRING "3.6.2"
+#define BSDTAR_VERSION_STRING "3.7.0"
 
 /* Version number of bsdcat */
-#define BSDCAT_VERSION_STRING "3.6.2"
+#define BSDCAT_VERSION_STRING "3.7.0"
 
 /* Define to 1 if you have the `acl_create_entry' function. */
 /* #undef HAVE_ACL_CREATE_ENTRY */
@@ -366,7 +384,7 @@ typedef uint64_t uintmax_t;
 /* Define to 1 if you have the <attr/xattr.h> header file. */
 /* #undef HAVE_ATTR_XATTR_H */
 
-/* Define to 1 if you have the <Bcrypt.h> header file. */
+/* Define to 1 if you have the <bcrypt.h> header file. */
 /* #undef HAVE_BCRYPT_H */
 
 /* Define to 1 if you have the <bsdxml.h> header file. */
@@ -570,6 +588,12 @@ typedef uint64_t uintmax_t;
 /* Define to 1 if you have the `flistxattr' function. */
 /* #undef HAVE_FLISTXATTR */
 
+/* Define to 1 if you have the `fnmatch' function. */
+#define HAVE_FNMATCH 1
+
+/* Define to 1 if you have the <fnmatch.h> header file. */
+#define HAVE_FNMATCH_H 1
+
 /* Define to 1 if you have the `fork' function. */
 #define HAVE_FORK 1
 
@@ -592,7 +616,7 @@ typedef uint64_t uintmax_t;
 #define HAVE_FSTATFS 1
 
 /* Define to 1 if you have the `fstatvfs' function. */
-#define HAVE_FSTATVFS 1
+/* #undef HAVE_FSTATVFS */
 
 /* Define to 1 if you have the `ftruncate' function. */
 #define HAVE_FTRUNCATE 1
@@ -617,6 +641,9 @@ typedef uint64_t uintmax_t;
 
 /* Define to 1 if you have the `getgrnam_r' function. */
 #define HAVE_GETGRNAM_R 1
+
+/* Define to 1 if platform uses `optreset` to reset `getopt` */
+/* #undef HAVE_GETOPT_OPTRESET */
 
 /* Define to 1 if you have the `getpid' function. */
 #define HAVE_GETPID 1
@@ -827,6 +854,15 @@ typedef uint64_t uintmax_t;
 /* Define to 1 if you have the <lzo/lzoconf.h> header file. */
 /* #undef HAVE_LZO_LZOCONF_H */
 
+/* Define to 1 if you have the <mbedtls/aes.h> header file. */
+/* #undef HAVE_MBEDTLS_AES_H */
+
+/* Define to 1 if you have the <mbedtls/md.h> header file. */
+/* #undef HAVE_MBEDTLS_MD_H */
+
+/* Define to 1 if you have the <mbedtls/pkcs5.h> header file. */
+/* #undef HAVE_MBEDTLS_PKCS5_H */
+
 /* Define to 1 if you have the `mbrtowc' function. */
 #define HAVE_MBRTOWC 1
 
@@ -878,6 +914,9 @@ typedef uint64_t uintmax_t;
 /* Define to 1 if you have the `openat' function. */
 #define HAVE_OPENAT 1
 
+/* Define to 1 if you have the <openssl/evp.h> header file. */
+#define HAVE_OPENSSL_EVP_H 1
+
 /* Define to 1 if you have the <paths.h> header file. */
 #define HAVE_PATHS_H 1
 
@@ -888,7 +927,7 @@ typedef uint64_t uintmax_t;
 #define HAVE_PIPE 1
 
 /* Define to 1 if you have the `PKCS5_PBKDF2_HMAC_SHA1' function. */
-/* #undef HAVE_PKCS5_PBKDF2_HMAC_SHA1 */
+#define HAVE_PKCS5_PBKDF2_HMAC_SHA1 1
 
 /* Define to 1 if you have the `poll' function. */
 #define HAVE_POLL 1
@@ -948,7 +987,7 @@ typedef uint64_t uintmax_t;
 #define HAVE_STATFS 1
 
 /* Define to 1 if you have the `statvfs' function. */
-#define HAVE_STATVFS 1
+/* #undef HAVE_STATVFS */
 
 /* Define to 1 if `stat' has the bug that it succeeds when given the
    zero-length file name argument. */
@@ -1072,6 +1111,9 @@ typedef uint64_t uintmax_t;
 
 /* Define to 1 if you have the <sys/poll.h> header file. */
 #define HAVE_SYS_POLL_H 1
+
+/* Define to 1 if you have the <sys/queue.h> header file. */
+#define HAVE_SYS_QUEUE_H 1
 
 /* Define to 1 if you have the <sys/richacl.h> header file. */
 /* #undef HAVE_SYS_RICHACL_H */
@@ -1212,8 +1254,8 @@ typedef uint64_t uintmax_t;
 /* Define to 1 if you have the <zstd.h> header file. */
 #define HAVE_ZSTD_H 1
 
-/* Define to 1 if you have the `_ctime64_s' function. */
-/* #undef HAVE__CTIME64_S */
+/* Define to 1 if you have the `ctime_s' function. */
+/* #undef HAVE_CTIME_S */
 
 /* Define to 1 if you have the `_fseeki64' function. */
 /* #undef HAVE__FSEEKI64 */
@@ -1221,23 +1263,23 @@ typedef uint64_t uintmax_t;
 /* Define to 1 if you have the `_get_timezone' function. */
 /* #undef HAVE__GET_TIMEZONE */
 
-/* Define to 1 if you have the `_gmtime64_s' function. */
-/* #undef HAVE__GMTIME64_S */
+/* Define to 1 if you have the `gmtime_s' function. */
+/* #undef HAVE_GMTIME_S */
 
-/* Define to 1 if you have the `_localtime64_s' function. */
-/* #undef HAVE__LOCALTIME64_S */
+/* Define to 1 if you have the `localtime_s' function. */
+/* #undef HAVE_LOCALTIME_S */
 
-/* Define to 1 if you have the `_mkgmtime64' function. */
-/* #undef HAVE__MKGMTIME64 */
+/* Define to 1 if you have the `_mkgmtime' function. */
+/* #undef HAVE__MKGMTIME */
 
 /* Define as const if the declaration of iconv() needs const. */
 #define ICONV_CONST 
 
 /* Version number of libarchive as a single integer */
-#define LIBARCHIVE_VERSION_NUMBER "3006002"
+#define LIBARCHIVE_VERSION_NUMBER "3007000"
 
 /* Version number of libarchive */
-#define LIBARCHIVE_VERSION_STRING "3.6.2"
+#define LIBARCHIVE_VERSION_STRING "3.7.0"
 
 /* Define to 1 if `lstat' dereferences a symlink specified with a trailing
    slash. */
@@ -1261,7 +1303,7 @@ typedef uint64_t uintmax_t;
 /* #undef STRERROR_R_CHAR_P */
 
 /* Define to 1 if you can safely include both <sys/time.h> and <time.h>. */
-#define TIME_WITH_SYS_TIME 1
+/* #undef TIME_WITH_SYS_TIME */
 
 /*
  * Some platform requires a macro to use extension functions.
@@ -1291,7 +1333,7 @@ typedef uint64_t uintmax_t;
 #endif /* SAFE_TO_DEFINE_EXTENSIONS */
 
 /* Version number of package */
-#define VERSION "3.6.2"
+#define VERSION "3.7.0"
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 /* #undef _FILE_OFFSET_BITS */
@@ -1347,3 +1389,5 @@ typedef uint64_t uintmax_t;
 
 /* Define to `unsigned int' if <sys/types.h> does not define. */
 /* #undef uintptr_t */
+
+#define HAVE_STRUCT_STATFS
