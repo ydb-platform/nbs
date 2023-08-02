@@ -1,9 +1,11 @@
 IF (OPENSOURCE)
-    RESTRICT_LICENSES(
+    LICENSE_RESTRICTION(
         DENY REQUIRE_DISCLOSURE FORBIDDEN PROTESTWARE
-        EXCEPT contrib/libs/linux-headers   # DTCC-553
+    )
+    LICENSE_RESTRICTION_EXCEPTIONS(
+        contrib/libs/linux-headers   # DTCC-553
         # shared with ydb - if they get rid of these libs, we will also lose these dependencies
-        EXCEPT contrib/libs/fmt             #
-        EXCEPT contrib/libs/t1ha            # KIKIMR-16412
+        contrib/libs/fmt             #
+        contrib/libs/t1ha            # KIKIMR-16412
     )
 ENDIF()
