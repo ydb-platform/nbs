@@ -1,6 +1,6 @@
 #include "ss_proxy_fallback_actor.h"
 
-#include "path_description_cache.h"
+#include "path_description_backup.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_label.h>
@@ -19,23 +19,23 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class TResponse>
-class TReadPathDescriptionCacheActor final
-    : public TActorBootstrapped<TReadPathDescriptionCacheActor<TResponse>>
+class TReadPathDescriptionBackupActor final
+    : public TActorBootstrapped<TReadPathDescriptionBackupActor<TResponse>>
 {
 private:
-    using TSelf = TReadPathDescriptionCacheActor<TResponse>;
+    using TSelf = TReadPathDescriptionBackupActor<TResponse>;
     using TReadCacheRequest =
-        TEvSSProxyPrivate::TEvReadPathDescriptionCacheRequest;
+        TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest;
     using TReadCacheResponse =
-        TEvSSProxyPrivate::TEvReadPathDescriptionCacheResponse;
+        TEvSSProxyPrivate::TEvReadPathDescriptionBackupResponse;
 
     const TRequestInfoPtr RequestInfo;
-    const TActorId PathDescriptionCache;
+    const TActorId PathDescriptionBackup;
     const TVector<TString> Paths;
     size_t PathIndex = 0;
 
 public:
-    TReadPathDescriptionCacheActor(
+    TReadPathDescriptionBackupActor(
         TRequestInfoPtr requestInfo,
         TActorId pathDescriptionCache,
         TVector<TString> paths);
@@ -57,19 +57,19 @@ private:
 };
 
 template <class TResponse>
-TReadPathDescriptionCacheActor<TResponse>::TReadPathDescriptionCacheActor(
+TReadPathDescriptionBackupActor<TResponse>::TReadPathDescriptionBackupActor(
         TRequestInfoPtr requestInfo,
         TActorId pathDescriptionCache,
         TVector<TString> paths)
     : RequestInfo(std::move(requestInfo))
-    , PathDescriptionCache(std::move(pathDescriptionCache))
+    , PathDescriptionBackup(std::move(pathDescriptionCache))
     , Paths(std::move(paths))
 {
     TSelf::ActivityType = TBlockStoreActivities::SS_PROXY;
 }
 
 template <class TResponse>
-void TReadPathDescriptionCacheActor<TResponse>::Bootstrap(
+void TReadPathDescriptionBackupActor<TResponse>::Bootstrap(
     const TActorContext& ctx)
 {
     TSelf::Become(&TSelf::StateWork);
@@ -77,18 +77,18 @@ void TReadPathDescriptionCacheActor<TResponse>::Bootstrap(
 }
 
 template <class TResponse>
-void TReadPathDescriptionCacheActor<TResponse>::ReadCache(
+void TReadPathDescriptionBackupActor<TResponse>::ReadCache(
     const TActorContext& ctx)
 {
     auto& path = Paths[PathIndex];
     auto request = std::make_unique<TReadCacheRequest>(std::move(path));
-    NCloud::Send(ctx, PathDescriptionCache, std::move(request));
+    NCloud::Send(ctx, PathDescriptionBackup, std::move(request));
 
     ++PathIndex;
 }
 
 template <class TResponse>
-void TReadPathDescriptionCacheActor<TResponse>::HandleReadCacheResponse(
+void TReadPathDescriptionBackupActor<TResponse>::HandleReadCacheResponse(
     const TReadCacheResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -106,7 +106,7 @@ void TReadPathDescriptionCacheActor<TResponse>::HandleReadCacheResponse(
             // should not return fatal error to client
             error = MakeError(
                 E_REJECTED,
-                "E_NOT_FOUND from PathDescriptionCache converted to E_REJECTED"
+                "E_NOT_FOUND from PathDescriptionBackup converted to E_REJECTED"
             );
         }
 
@@ -120,7 +120,7 @@ void TReadPathDescriptionCacheActor<TResponse>::HandleReadCacheResponse(
 }
 
 template <class TResponse>
-void TReadPathDescriptionCacheActor<TResponse>::ReplyAndDie(
+void TReadPathDescriptionBackupActor<TResponse>::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
@@ -131,7 +131,7 @@ void TReadPathDescriptionCacheActor<TResponse>::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class TResponse>
-STFUNC(TReadPathDescriptionCacheActor<TResponse>::StateWork)
+STFUNC(TReadPathDescriptionBackupActor<TResponse>::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TReadCacheResponse, HandleReadCacheResponse);
@@ -156,11 +156,11 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    const auto& filepath = Config->GetPathDescriptionCacheFilePath();
+    const auto& filepath = Config->GetPathDescriptionBackupFilePath();
     if (filepath) {
-        auto cache = std::make_unique<TPathDescriptionCache>(
-            filepath, false /* syncEnabled */);
-        PathDescriptionCache = ctx.Register(
+        auto cache = std::make_unique<TPathDescriptionBackup>(
+            filepath, true /* readOnlyMode */);
+        PathDescriptionBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
 }
@@ -210,9 +210,9 @@ void TSSProxyFallbackActor::HandleDescribeScheme(
 {
     using TResponse = TEvSSProxy::TEvDescribeSchemeResponse;
 
-    if (!PathDescriptionCache) {
+    if (!PathDescriptionBackup) {
         // should not return fatal error to client
-        auto error = MakeError(E_REJECTED, "PathDescriptionCache is not set");
+        auto error = MakeError(E_REJECTED, "PathDescriptionBackup is not set");
         auto response = std::make_unique<TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -225,10 +225,10 @@ void TSSProxyFallbackActor::HandleDescribeScheme(
         ev->Cookie,
         msg->CallContext);
 
-    NCloud::Register<TReadPathDescriptionCacheActor<TResponse>>(
+    NCloud::Register<TReadPathDescriptionBackupActor<TResponse>>(
         ctx,
         std::move(requestInfo),
-        PathDescriptionCache,
+        PathDescriptionBackup,
         TVector<TString>{std::move(msg->Path)});
 }
 
@@ -238,9 +238,9 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
 {
     using TResponse = TEvSSProxy::TEvDescribeVolumeResponse;
 
-    if (!PathDescriptionCache) {
+    if (!PathDescriptionBackup) {
         // should not return fatal error to client
-        auto error = MakeError(E_REJECTED, "PathDescriptionCache is not set");
+        auto error = MakeError(E_REJECTED, "PathDescriptionBackup is not set");
         auto response = std::make_unique<TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -259,10 +259,10 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
     TString fallbackPath =
         TStringBuilder() << dir << DiskIdToPathDeprecated(msg->DiskId);
 
-    NCloud::Register<TReadPathDescriptionCacheActor<TResponse>>(
+    NCloud::Register<TReadPathDescriptionBackupActor<TResponse>>(
         ctx,
         std::move(requestInfo),
-        PathDescriptionCache,
+        PathDescriptionBackup,
         TVector<TString>{std::move(path), std::move(fallbackPath)});
 }
 
@@ -296,11 +296,11 @@ void TSSProxyFallbackActor::HandleWaitSchemeTx(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TSSProxyFallbackActor::HandleSyncPathDescriptionCache(
-    const TEvSSProxy::TEvSyncPathDescriptionCacheRequest::TPtr& ev,
+void TSSProxyFallbackActor::HandleBackupPathDescriptions(
+    const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvSSProxy::TEvSyncPathDescriptionCacheResponse;
+    using TResponse = TEvSSProxy::TEvBackupPathDescriptionsResponse;
 
     auto error = MakeError(E_NOT_IMPLEMENTED);
     auto response = std::make_unique<TResponse>(std::move(error));

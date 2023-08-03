@@ -10,7 +10,7 @@ SRCS(
     ss_proxy_actor_modifyvolume.cpp
     ss_proxy_actor_waitschemetx.cpp
     ss_proxy_fallback_actor.cpp
-    path_description_cache.cpp
+    path_description_backup.cpp
 )
 
 PEERDIR(

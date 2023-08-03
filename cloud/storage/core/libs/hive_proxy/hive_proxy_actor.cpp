@@ -1,6 +1,6 @@
 #include "hive_proxy_actor.h"
 
-#include "tablet_boot_info_cache.h"
+#include "tablet_boot_info_backup.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -38,7 +38,7 @@ THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
-    , TabletBootInfoCacheFilePath(config.TabletBootInfoCacheFilePath)
+    , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
 {
     ActivityType = TStorageActivities::HIVE_PROXY;
 }
@@ -47,13 +47,13 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (TabletBootInfoCacheFilePath) {
-        auto cache = std::make_unique<TTabletBootInfoCache>(
+    if (TabletBootInfoBackupFilePath) {
+        auto cache = std::make_unique<TTabletBootInfoBackup>(
             LogComponent,
-            TabletBootInfoCacheFilePath,
-            true /* syncEnabled */
+            TabletBootInfoBackupFilePath,
+            false /* readOnlyMode */
         );
-        TabletBootInfoCache = ctx.Register(
+        TabletBootInfoBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
 }
@@ -486,15 +486,15 @@ STFUNC(THiveProxyActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void THiveProxyActor::HandleSyncTabletBootInfoCache(
-    const TEvHiveProxy::TEvSyncTabletBootInfoCacheRequest::TPtr& ev,
+void THiveProxyActor::HandleBackupTabletBootInfos(
+    const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (TabletBootInfoCache) {
-        ctx.Send(ev->Forward(TabletBootInfoCache));
+    if (TabletBootInfoBackup) {
+        ctx.Send(ev->Forward(TabletBootInfoBackup));
     } else {
         auto response =
-            std::make_unique<TEvHiveProxy::TEvSyncTabletBootInfoCacheResponse>(
+            std::make_unique<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
                 MakeError(S_FALSE));
         NCloud::Reply(ctx, *ev, std::move(response));
     }

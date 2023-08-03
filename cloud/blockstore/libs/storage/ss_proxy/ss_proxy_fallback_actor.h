@@ -21,7 +21,7 @@ class TSSProxyFallbackActor final
 private:
     const TStorageConfigPtr Config;
 
-    NActors::TActorId PathDescriptionCache;
+    NActors::TActorId PathDescriptionBackup;
 
 public:
     explicit TSSProxyFallbackActor(TStorageConfigPtr config);

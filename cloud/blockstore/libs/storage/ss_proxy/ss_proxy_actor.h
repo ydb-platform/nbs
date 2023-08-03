@@ -34,7 +34,7 @@ class TSSProxyActor final
 private:
     const TStorageConfigPtr Config;
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
-    NActors::TActorId PathDescriptionCache;
+    NActors::TActorId PathDescriptionBackup;
 
     THashMap<ui64, TSchemeShardState> SchemeShardStates;
 

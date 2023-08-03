@@ -1,7 +1,7 @@
 PROTO_LIBRARY()
 
 SRCS(
-    path_description_cache.proto
+    path_description_backup.proto
 )
 
 PEERDIR(

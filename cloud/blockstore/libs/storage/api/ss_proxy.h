@@ -21,7 +21,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DescribeVolume,     __VA_ARGS__)                                       \
     xxx(WaitSchemeTx,       __VA_ARGS__)                                       \
                                                                                \
-    xxx(SyncPathDescriptionCache, __VA_ARGS__)                                 \
+    xxx(BackupPathDescriptions, __VA_ARGS__)                                   \
 // BLOCKSTORE_SS_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -212,14 +212,14 @@ struct TEvSSProxy
     };
 
     //
-    // SyncPathDescriptionCache
+    // BackupPathDescriptions
     //
 
-    struct TSyncPathDescriptionCacheRequest
+    struct TBackupPathDescriptionsRequest
     {
     };
 
-    struct TSyncPathDescriptionCacheResponse
+    struct TBackupPathDescriptionsResponse
     {
     };
 
@@ -249,8 +249,8 @@ struct TEvSSProxy
         EvWaitSchemeTxRequest = EvBegin + 11,
         EvWaitSchemeTxResponse = EvBegin + 12,
 
-        EvSyncPathDescriptionCacheRequest = EvBegin + 13,
-        EvSyncPathDescriptionCacheResponse = EvBegin + 14,
+        EvBackupPathDescriptionsRequest = EvBegin + 13,
+        EvBackupPathDescriptionsResponse = EvBegin + 14,
 
         EvEnd
     };

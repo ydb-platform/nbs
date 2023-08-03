@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/ss_proxy/protos/path_description_cache.pb.h>
+#include <cloud/blockstore/libs/storage/ss_proxy/protos/path_description_backup.pb.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
 #include <cloud/storage/core/libs/kikimr/public.h>
@@ -23,43 +23,41 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPathDescriptionCache final
-    : public NActors::TActorBootstrapped<TPathDescriptionCache>
+class TPathDescriptionBackup final
+    : public NActors::TActorBootstrapped<TPathDescriptionBackup>
 {
 private:
-    const TFsPath CacheFilePath;
-    const bool SyncEnabled = false;
+    const TFsPath BackupFilePath;
+    const bool ReadOnlyMode = false;
 
-    NSSProxy::NProto::TPathDescriptionCache Cache;
-    const TFsPath TmpCacheFilePath;
+    NSSProxy::NProto::TPathDescriptionBackup BackupProto;
+    const TFsPath TmpBackupFilePath;
 
 public:
-    // Never reads from cache file when sync is enabled, just overwrites its
-    // content.
-    TPathDescriptionCache(TString cacheFilePath, bool syncEnabled);
+    TPathDescriptionBackup(TString backupFilePath, bool readOnlyMode);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
 
-    void ScheduleSync(const NActors::TActorContext& ctx);
-    NProto::TError Sync(const NActors::TActorContext& ctx);
+    void ScheduleBackup(const NActors::TActorContext& ctx);
+    NProto::TError Backup(const NActors::TActorContext& ctx);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReadPathDescriptionCache(
-        const TEvSSProxyPrivate::TEvReadPathDescriptionCacheRequest::TPtr& ev,
+    void HandleReadPathDescriptionBackup(
+        const TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdatePathDescriptionCache(
-        const TEvSSProxyPrivate::TEvUpdatePathDescriptionCacheRequest::TPtr& ev,
+    void HandleUpdatePathDescriptionBackup(
+        const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleSyncPathDescriptionCache(
-        const TEvSSProxy::TEvSyncPathDescriptionCacheRequest::TPtr& ev,
+    void HandleBackupPathDescriptions(
+        const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

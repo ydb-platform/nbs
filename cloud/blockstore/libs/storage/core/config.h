@@ -389,9 +389,9 @@ public:
     TDuration GetNonReplicatedVolumeNotificationTimeout() const;
     TDuration GetNonReplicatedSecureEraseTimeout() const;
 
-    TString GetTabletBootInfoCacheFilePath() const;
+    TString GetTabletBootInfoBackupFilePath() const;
     bool GetHiveProxyFallbackMode() const;
-    TString GetPathDescriptionCacheFilePath() const;
+    TString GetPathDescriptionBackupFilePath() const;
     bool GetSSProxyFallbackMode() const;
 
     ui32 GetRdmaTargetPort() const;

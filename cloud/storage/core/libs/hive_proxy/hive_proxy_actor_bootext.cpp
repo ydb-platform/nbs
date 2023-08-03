@@ -21,7 +21,7 @@ private:
     const THiveProxyActor::TRequestInfo Request;
     const ui64 TabletId;
     TActorId ClientId;
-    TActorId TabletBootInfoCache;
+    TActorId TabletBootInfoBackup;
     TDuration RequestTimeout;
     ui64 TimerGeneration = 0;
 
@@ -32,14 +32,14 @@ public:
             THiveProxyActor::TRequestInfo request,
             ui64 tabletId,
             TActorId clientId,
-            TActorId tabletBootInfoCache,
+            TActorId tabletBootInfoBackup,
             TDuration externalBootRequestTimeout)
         : Owner(owner)
         , LogComponent(logComponent)
         , Request(request)
         , TabletId(tabletId)
         , ClientId(clientId)
-        , TabletBootInfoCache(std::move(tabletBootInfoCache))
+        , TabletBootInfoBackup(std::move(tabletBootInfoBackup))
         , RequestTimeout(externalBootRequestTimeout)
     {}
 
@@ -123,13 +123,13 @@ void TBootRequestActor::HandleBoot(
         TabletStorageInfoFromProto(msg->Record.GetInfo());
     ui64 suggestedGeneration = msg->Record.GetSuggestedGeneration();
 
-    if (TabletBootInfoCache) {
-        auto updateCacheRequest =
-            std::make_unique<TEvHiveProxyPrivate::TEvUpdateTabletBootInfoCacheRequest>(
+    if (TabletBootInfoBackup) {
+        auto updateRequest =
+            std::make_unique<TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
                 storageInfo,
                 suggestedGeneration
             );
-        NCloud::Send(ctx, TabletBootInfoCache, std::move(updateCacheRequest));
+        NCloud::Send(ctx, TabletBootInfoBackup, std::move(updateRequest));
     }
 
     EBootMode bootMode;
@@ -226,7 +226,7 @@ void THiveProxyActor::HandleBootExternal(
         TRequestInfo(ev->Sender, ev->Cookie),
         tabletId,
         clientId,
-        TabletBootInfoCache,
+        TabletBootInfoBackup,
         msg->RequestTimeout
     );
     HiveStates[hive].Actors.insert(requestId);

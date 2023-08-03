@@ -1,4 +1,4 @@
-#include "path_description_cache.h"
+#include "path_description_backup.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -20,62 +20,61 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration SyncInterval = TDuration::Seconds(10);
+constexpr TDuration BackupInterval = TDuration::Seconds(10);
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPathDescriptionCache::TPathDescriptionCache(
-        TString cacheFilePath,
-        bool syncEnabled)
-    : CacheFilePath(std::move(cacheFilePath))
-    , SyncEnabled(syncEnabled)
-    , TmpCacheFilePath(CacheFilePath.GetPath() + ".tmp")
+TPathDescriptionBackup::TPathDescriptionBackup(
+        TString backupFilePath,
+        bool readOnlyMode)
+    : BackupFilePath(std::move(backupFilePath))
+    , ReadOnlyMode(readOnlyMode)
+    , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
 {
     ActivityType = TBlockStoreActivities::SS_PROXY;
 }
 
-void TPathDescriptionCache::Bootstrap(const TActorContext& ctx)
+void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    if (SyncEnabled) {
-        ScheduleSync(ctx);
-    } else {
-        // Read only mode.
+    if (ReadOnlyMode) {
         try {
-            MergeFromTextFormat(CacheFilePath, Cache);
+            MergeFromTextFormat(BackupFilePath, BackupProto);
         } catch (...) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SS_PROXY,
-                "PathDescriptionCache: can't load from cache file: "
+                "PathDescriptionBackup: can't load from file: "
                 << CurrentExceptionMessage());
         }
+    } else {
+        ScheduleBackup(ctx);
     }
 
     LOG_INFO_S(ctx, TBlockStoreComponents::SS_PROXY,
-        "PathDescriptionCache: started with SyncEnabled=" << SyncEnabled);
+        "PathDescriptionBackup: started with ReadOnlyMode=" << ReadOnlyMode);
 }
 
-void TPathDescriptionCache::ScheduleSync(const TActorContext& ctx)
+void TPathDescriptionBackup::ScheduleBackup(const TActorContext& ctx)
 {
-    ctx.Schedule(SyncInterval, new TEvents::TEvWakeup());
+    ctx.Schedule(BackupInterval, new TEvents::TEvWakeup());
 }
 
-NProto::TError TPathDescriptionCache::Sync(const TActorContext& ctx)
+NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 {
     NProto::TError error;
 
     try {
-        TFileLock lock(TmpCacheFilePath);
+        TFileLock lock(TmpBackupFilePath);
 
         if (lock.TryAcquire()) {
-            TFileOutput output(TmpCacheFilePath);
-            SerializeToTextFormat(Cache, output);
-            TmpCacheFilePath.RenameTo(CacheFilePath);
+            TFileOutput output(TmpBackupFilePath);
+            SerializeToTextFormat(BackupProto, output);
+            TmpBackupFilePath.RenameTo(BackupFilePath);
         } else {
             auto message = TStringBuilder()
-                << "failed to acquire lock on file: " << TmpCacheFilePath;
+                << "failed to acquire lock on file: " << TmpBackupFilePath;
             error = MakeError(E_IO, std::move(message));
         }
     } catch (...) {
@@ -84,19 +83,19 @@ NProto::TError TPathDescriptionCache::Sync(const TActorContext& ctx)
 
     if (SUCCEEDED(error.GetCode())) {
         LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionCache: sync completed");
+            "PathDescriptionBackup: backup completed");
     } else {
-        ReportPathDescriptionCacheSyncFailure();
+        ReportBackupPathDescriptionsFailure();
 
         LOG_ERROR_S(ctx, TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionCache: sync failed: "
+            "PathDescriptionBackup: backup failed: "
             << error);
 
         try {
-            TmpCacheFilePath.DeleteIfExists();
+            TmpBackupFilePath.DeleteIfExists();
         } catch (...) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SS_PROXY,
-                "PathDescriptionCache: failed to delete temporary file: "
+                "PathDescriptionBackup: failed to delete temporary file: "
                 << CurrentExceptionMessage());
         }
     }
@@ -106,21 +105,21 @@ NProto::TError TPathDescriptionCache::Sync(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPathDescriptionCache::HandleWakeup(
+void TPathDescriptionBackup::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
-    Sync(ctx);
-    ScheduleSync(ctx);
+    Backup(ctx);
+    ScheduleBackup(ctx);
 }
 
-void TPathDescriptionCache::HandleReadPathDescriptionCache(
-    const TEvSSProxyPrivate::TEvReadPathDescriptionCacheRequest::TPtr& ev,
+void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
+    const TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvSSProxyPrivate::TEvReadPathDescriptionCacheResponse;
+    using TResponse = TEvSSProxyPrivate::TEvReadPathDescriptionBackupResponse;
 
     auto* msg = ev->Get();
 
@@ -128,8 +127,8 @@ void TPathDescriptionCache::HandleReadPathDescriptionCache(
     NKikimrSchemeOp::TPathDescription pathDescription;
 
     {
-        auto it = Cache.GetData().find(msg->Path);
-        if (it != Cache.GetData().end()) {
+        auto it = BackupProto.GetData().find(msg->Path);
+        if (it != BackupProto.GetData().end()) {
             found = true;
             pathDescription = it->second;
         }
@@ -139,41 +138,41 @@ void TPathDescriptionCache::HandleReadPathDescriptionCache(
 
     if (found) {
         LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionCache: found data for path " << msg->Path);
+            "PathDescriptionBackup: found data for path " << msg->Path);
         response = std::make_unique<TResponse>(
             std::move(msg->Path), std::move(pathDescription));
     } else {
         LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionCache: no data for path " << msg->Path);
+            "PathDescriptionBackup: no data for path " << msg->Path);
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TPathDescriptionCache::HandleUpdatePathDescriptionCache(
-    const TEvSSProxyPrivate::TEvUpdatePathDescriptionCacheRequest::TPtr& ev,
+void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
+    const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    auto& data = *Cache.MutableData();
+    auto& data = *BackupProto.MutableData();
     data[msg->Path] = std::move(msg->PathDescription);
 
     LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
-        "PathDescriptionCache: updated data for path " << msg->Path);
+        "PathDescriptionBackup: updated data for path " << msg->Path);
 }
 
-void TPathDescriptionCache::HandleSyncPathDescriptionCache(
-    const TEvSSProxy::TEvSyncPathDescriptionCacheRequest::TPtr& ev,
+void TPathDescriptionBackup::HandleBackupPathDescriptions(
+    const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvSSProxy::TEvSyncPathDescriptionCacheResponse;
+    using TResponse = TEvSSProxy::TEvBackupPathDescriptionsResponse;
 
     NProto::TError error;
-    if (SyncEnabled) {
-        error = Sync(ctx);
+    if (ReadOnlyMode) {
+        error = MakeError(E_PRECONDITION_FAILED, "backup file is read-only");
     } else {
-        error = MakeError(E_PRECONDITION_FAILED, "sync is disabled");
+        error = Backup(ctx);
     }
 
     auto response = std::make_unique<TResponse>(std::move(error));
@@ -182,13 +181,13 @@ void TPathDescriptionCache::HandleSyncPathDescriptionCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TPathDescriptionCache::StateWork)
+STFUNC(TPathDescriptionBackup::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
-        HFunc(TEvSSProxyPrivate::TEvReadPathDescriptionCacheRequest, HandleReadPathDescriptionCache);
-        HFunc(TEvSSProxyPrivate::TEvUpdatePathDescriptionCacheRequest, HandleUpdatePathDescriptionCache);
-        HFunc(TEvSSProxy::TEvSyncPathDescriptionCacheRequest, HandleSyncPathDescriptionCache);
+        HFunc(TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest, HandleReadPathDescriptionBackup);
+        HFunc(TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest, HandleUpdatePathDescriptionBackup);
+        HFunc(TEvSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);

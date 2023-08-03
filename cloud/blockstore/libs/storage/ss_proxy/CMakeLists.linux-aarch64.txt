@@ -34,5 +34,5 @@ target_sources(libs-storage-ss_proxy PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor_modifyvolume.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor_waitschemetx.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/ss_proxy/ss_proxy_fallback_actor.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/ss_proxy/path_description_cache.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/ss_proxy/path_description_backup.cpp
 )

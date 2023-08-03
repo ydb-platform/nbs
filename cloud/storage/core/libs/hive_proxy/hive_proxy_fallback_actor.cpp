@@ -1,6 +1,6 @@
 #include "hive_proxy_fallback_actor.h"
 
-#include "tablet_boot_info_cache.h"
+#include "tablet_boot_info_backup.h"
 
 #include <ydb/core/base/appdata.h>
 
@@ -29,32 +29,32 @@ struct TRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadTabletBootInfoCacheActor final
-    : public TActorBootstrapped<TReadTabletBootInfoCacheActor>
+class TReadTabletBootInfoBackupActor final
+    : public TActorBootstrapped<TReadTabletBootInfoBackupActor>
 {
 private:
     using TRequest =
-        TEvHiveProxyPrivate::TEvReadTabletBootInfoCacheRequest;
+        TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest;
     using TResponse =
-        TEvHiveProxyPrivate::TEvReadTabletBootInfoCacheResponse;
+        TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupResponse;
 
     using TReply = std::function<
         void(const TActorContext&, std::unique_ptr<TResponse>)
     >;
 
     int LogComponent;
-    TActorId TabletBootInfoCache;
+    TActorId TabletBootInfoBackup;
     ui64 TabletId;
     TReply Reply;
 
 public:
-    TReadTabletBootInfoCacheActor(
+    TReadTabletBootInfoBackupActor(
             int logComponent,
             TActorId tabletBootInfoCache,
             ui64 tabletId,
             TReply reply)
         : LogComponent(logComponent)
-        , TabletBootInfoCache(std::move(tabletBootInfoCache))
+        , TabletBootInfoBackup(std::move(tabletBootInfoCache))
         , TabletId(tabletId)
         , Reply(std::move(reply))
     {
@@ -71,7 +71,7 @@ private:
     void Request(const TActorContext& ctx)
     {
         auto request = std::make_unique<TRequest>(TabletId);
-        NCloud::Send(ctx, TabletBootInfoCache, std::move(request));
+        NCloud::Send(ctx, TabletBootInfoBackup, std::move(request));
     }
 
     void HandleResponse(
@@ -87,7 +87,7 @@ private:
                 // should not return fatal error to client
                 error = MakeError(
                     E_REJECTED,
-                    "E_NOT_FOUND from TabletBootInfoCache converted to E_REJECTED"
+                    "E_NOT_FOUND from TabletBootInfoBackup converted to E_REJECTED"
                 );
             }
 
@@ -128,13 +128,13 @@ void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (Config.TabletBootInfoCacheFilePath) {
-        auto cache = std::make_unique<TTabletBootInfoCache>(
+    if (Config.TabletBootInfoBackupFilePath) {
+        auto cache = std::make_unique<TTabletBootInfoBackup>(
             Config.LogComponent,
-            Config.TabletBootInfoCacheFilePath,
-            false /* syncEnabled */
+            Config.TabletBootInfoBackupFilePath,
+            true /* readOnlyMode */
         );
-        TabletBootInfoCache = ctx.Register(
+        TabletBootInfoBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
 }
@@ -186,9 +186,9 @@ void THiveProxyFallbackActor::HandleGetStorageInfo(
 {
     using TResponse = TEvHiveProxy::TEvGetStorageInfoResponse;
 
-    if (!TabletBootInfoCache) {
+    if (!TabletBootInfoBackup) {
         // should not return fatal error to client
-        auto error = MakeError(E_REJECTED, "TabletBootInfoCache is not set");
+        auto error = MakeError(E_REJECTED, "TabletBootInfoBackup is not set");
         auto response = std::make_unique<TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -211,10 +211,10 @@ void THiveProxyFallbackActor::HandleGetStorageInfo(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    NCloud::Register<TReadTabletBootInfoCacheActor>(
+    NCloud::Register<TReadTabletBootInfoBackupActor>(
         ctx,
         Config.LogComponent,
-        TabletBootInfoCache,
+        TabletBootInfoBackup,
         msg->TabletId,
         std::move(reply));
 }
@@ -225,9 +225,9 @@ void THiveProxyFallbackActor::HandleBootExternal(
 {
     using TResponse = TEvHiveProxy::TEvBootExternalResponse;
 
-    if (!TabletBootInfoCache) {
+    if (!TabletBootInfoBackup) {
         // should not return fatal error to client
-        auto error = MakeError(E_REJECTED, "TabletBootInfoCache is not set");
+        auto error = MakeError(E_REJECTED, "TabletBootInfoBackup is not set");
         auto response = std::make_unique<TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -255,10 +255,10 @@ void THiveProxyFallbackActor::HandleBootExternal(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    NCloud::Register<TReadTabletBootInfoCacheActor>(
+    NCloud::Register<TReadTabletBootInfoBackupActor>(
         ctx,
         Config.LogComponent,
-        TabletBootInfoCache,
+        TabletBootInfoBackup,
         msg->TabletId,
         std::move(reply));
 }
@@ -303,15 +303,15 @@ void THiveProxyFallbackActor::HandleDrainNode(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void THiveProxyFallbackActor::HandleSyncTabletBootInfoCache(
-    const TEvHiveProxy::TEvSyncTabletBootInfoCacheRequest::TPtr& ev,
+void THiveProxyFallbackActor::HandleBackupTabletBootInfos(
+    const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (TabletBootInfoCache) {
-        ctx.Send(ev->Forward(TabletBootInfoCache));
+    if (TabletBootInfoBackup) {
+        ctx.Send(ev->Forward(TabletBootInfoBackup));
     } else {
         auto response =
-            std::make_unique<TEvHiveProxy::TEvSyncTabletBootInfoCacheResponse>(
+            std::make_unique<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
                 MakeError(S_FALSE));
         NCloud::Reply(ctx, *ev, std::move(response));
     }

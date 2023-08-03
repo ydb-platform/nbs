@@ -31,14 +31,14 @@ private:
 
     const TStorageConfigPtr Config;
     const TString Path;
-    TActorId PathDescriptionCache;
+    TActorId PathDescriptionBackup;
 
 public:
     TDescribeSchemeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TString path,
-        TActorId pathDescriptionCache);
+        TActorId pathDescriptionBackup);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -65,11 +65,11 @@ TDescribeSchemeActor::TDescribeSchemeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TString path,
-        TActorId pathDescriptionCache)
+        TActorId pathDescriptionBackup)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Path(std::move(path))
-    , PathDescriptionCache(std::move(pathDescriptionCache))
+    , PathDescriptionBackup(std::move(pathDescriptionBackup))
 {
     ActivityType = TBlockStoreActivities::SS_PROXY;
 }
@@ -153,13 +153,13 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
         return;
     }
 
-    if (PathDescriptionCache) {
-        auto updateCacheRequest =
-            std::make_unique<TEvSSProxyPrivate::TEvUpdatePathDescriptionCacheRequest>(
+    if (PathDescriptionBackup) {
+        auto updateRequest =
+            std::make_unique<TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
                 record.GetPath(),
                 record.GetPathDescription()
             );
-        NCloud::Send(ctx, PathDescriptionCache, std::move(updateCacheRequest));
+        NCloud::Send(ctx, PathDescriptionBackup, std::move(updateRequest));
     }
 
     auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
@@ -200,7 +200,7 @@ void TSSProxyActor::HandleDescribeScheme(
         std::move(requestInfo),
         Config,
         msg->Path,
-        PathDescriptionCache);
+        PathDescriptionBackup);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

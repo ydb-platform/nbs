@@ -289,7 +289,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         storageConfig->GetPipeClientMinRetryTime(),
         storageConfig->GetHiveLockExpireTimeout(),
         TBlockStoreComponents::HIVE_PROXY,
-        "",     // TabletBootInfoCacheFilePath
+        "",     // TabletBootInfoBackupFilePath
         false,  // FallbackMode
     });
     auto hiveProxyId = Runtime.Register(

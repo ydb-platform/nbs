@@ -24,7 +24,7 @@ namespace NCloud::NBlockStore {
     xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(HangingYdbStatsRequest)                                                \
     xxx(UserNotificationError)                                                 \
-    xxx(PathDescriptionCacheSyncFailure)                                       \
+    xxx(BackupPathDescriptionsFailure)                                          \
     xxx(RdmaError)                                                             \
     xxx(MirroredDiskAllocationCleanupFailure)                                  \
     xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \

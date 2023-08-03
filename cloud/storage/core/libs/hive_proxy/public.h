@@ -15,7 +15,7 @@ struct THiveProxyConfig
     TDuration PipeClientMinRetryTime;
     TDuration HiveLockExpireTimeout;
     int LogComponent = 0;
-    TString TabletBootInfoCacheFilePath;
+    TString TabletBootInfoBackupFilePath;
     bool FallbackMode = false;
 };
 

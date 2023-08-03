@@ -86,8 +86,8 @@ TDuration MSeconds(ui32 value)
     xxx(MaxHDDGroupReadBandwidth,      ui64,         66 * 1024 * 1024         )\
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
                                                                                \
-    xxx(TabletBootInfoCacheFilePath,   TString,      ""                       )\
-    xxx(PathDescriptionCacheFilePath,  TString,      ""                       )\
+    xxx(TabletBootInfoBackupFilePath,   TString,     ""                       )\
+    xxx(PathDescriptionBackupFilePath,  TString,     ""                       )\
     xxx(DiskRegistrySplitTransactionCounter, ui32,   10000                    )\
     xxx(DiskRegistryBackupPeriod,      TDuration,    Days(1)                  )\
     xxx(DiskRegistryBackupDirPath,     TString,      ""                       )\

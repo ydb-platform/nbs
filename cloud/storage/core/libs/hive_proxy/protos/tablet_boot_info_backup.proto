@@ -12,7 +12,7 @@ message TTabletBootInfo
     required uint64 SuggestedGeneration = 2;
 }
 
-message TTabletBootInfoCache
+message TTabletBootInfoBackup
 {
     // Mapping from TabletId.
     map<uint64, TTabletBootInfo> Data = 1;

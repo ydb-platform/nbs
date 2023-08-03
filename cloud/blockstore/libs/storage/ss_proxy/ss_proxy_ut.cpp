@@ -487,10 +487,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldDescribeVolumesInFallbackMode)
     {
         TString cacheFilePath =
-            "ShouldDescribeVolumeInFallbackMode.path_description_cache";
+            "ShouldDescribeVolumeInFallbackMode.path_description_backup";
 
         NProto::TStorageServiceConfig configProto;
-        configProto.SetPathDescriptionCacheFilePath(cacheFilePath);
+        configProto.SetPathDescriptionBackupFilePath(cacheFilePath);
 
         {
             TTestEnv env;
@@ -518,11 +518,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvSyncPathDescriptionCacheRequest>());
+                std::make_unique<TEvSSProxy::TEvBackupPathDescriptionsRequest>());
 
             TAutoPtr<IEventHandle> handle;
             auto response =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvSyncPathDescriptionCacheResponse>(
+                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
                     handle);
             UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
         }

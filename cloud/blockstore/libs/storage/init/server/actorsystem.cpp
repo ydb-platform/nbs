@@ -139,7 +139,7 @@ public:
             Args.StorageConfig->GetPipeClientMinRetryTime(),
             Args.StorageConfig->GetHiveLockExpireTimeout(),
             TBlockStoreComponents::HIVE_PROXY,
-            Args.StorageConfig->GetTabletBootInfoCacheFilePath(),
+            Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
             Args.StorageConfig->GetHiveProxyFallbackMode(),
         });
 

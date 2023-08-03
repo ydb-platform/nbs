@@ -1,7 +1,7 @@
 PROTO_LIBRARY()
 
 SRCS(
-    tablet_boot_info_cache.proto
+    tablet_boot_info_backup.proto
 )
 
 PEERDIR(

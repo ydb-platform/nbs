@@ -21,7 +21,7 @@ class THiveProxyFallbackActor final
 {
 private:
     const THiveProxyConfig Config;
-    NActors::TActorId TabletBootInfoCache;
+    NActors::TActorId TabletBootInfoBackup;
 
 public:
     explicit THiveProxyFallbackActor(THiveProxyConfig config);

@@ -14,8 +14,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_SS_PROXY_REQUESTS_PRIVATE(xxx, ...)                         \
-    xxx(ReadPathDescriptionCache,   __VA_ARGS__)                               \
-    xxx(UpdatePathDescriptionCache, __VA_ARGS__)                               \
+    xxx(ReadPathDescriptionBackup,   __VA_ARGS__)                              \
+    xxx(UpdatePathDescriptionBackup, __VA_ARGS__)                              \
 // BLOCKSTORE_SS_PROXY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,26 +23,26 @@ namespace NCloud::NBlockStore::NStorage {
 struct TEvSSProxyPrivate
 {
     //
-    // ReadPathDescriptionCache
+    // ReadPathDescriptionBackup
     //
 
-    struct TReadPathDescriptionCacheRequest
+    struct TReadPathDescriptionBackupRequest
     {
         const TString Path;
 
-        explicit TReadPathDescriptionCacheRequest(TString path)
+        explicit TReadPathDescriptionBackupRequest(TString path)
             : Path(std::move(path))
         {}
     };
 
-    struct TReadPathDescriptionCacheResponse
+    struct TReadPathDescriptionBackupResponse
     {
         const TString Path;
         const NKikimrSchemeOp::TPathDescription PathDescription;
 
-        TReadPathDescriptionCacheResponse() = default;
+        TReadPathDescriptionBackupResponse() = default;
 
-        TReadPathDescriptionCacheResponse(
+        TReadPathDescriptionBackupResponse(
                 TString path,
                 NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
@@ -51,15 +51,15 @@ struct TEvSSProxyPrivate
     };
 
     //
-    // UpdatePathDescriptionCache
+    // UpdatePathDescriptionBackup
     //
 
-    struct TUpdatePathDescriptionCacheRequest
+    struct TUpdatePathDescriptionBackupRequest
     {
         const TString Path;
         const NKikimrSchemeOp::TPathDescription PathDescription;
 
-        TUpdatePathDescriptionCacheRequest(
+        TUpdatePathDescriptionBackupRequest(
                 TString path,
                 NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
@@ -68,7 +68,7 @@ struct TEvSSProxyPrivate
     };
 
     // unused
-    struct TUpdatePathDescriptionCacheResponse
+    struct TUpdatePathDescriptionBackupResponse
     {
     };
 

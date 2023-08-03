@@ -149,8 +149,8 @@ private:
     THashMap<ui64, THiveState> HiveStates;
     TDuration LockExpireTimeout;
     int LogComponent = 0;
-    TString TabletBootInfoCacheFilePath;
-    NActors::TActorId TabletBootInfoCache;
+    TString TabletBootInfoBackupFilePath;
+    NActors::TActorId TabletBootInfoBackup;
 
     static constexpr int BatchTimeout = 2000; // ms
 

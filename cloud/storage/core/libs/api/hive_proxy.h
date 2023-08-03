@@ -25,7 +25,7 @@ namespace NCloud::NStorage {
     xxx(LookupTablet,   __VA_ARGS__)                                           \
     xxx(DrainNode,      __VA_ARGS__)                                           \
                                                                                \
-    xxx(SyncTabletBootInfoCache, __VA_ARGS__)                                  \
+    xxx(BackupTabletBootInfos, __VA_ARGS__)                                    \
 // STORAGE_HIVE_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -244,14 +244,14 @@ struct TEvHiveProxy
     };
 
     //
-    // SyncTabletBootInfoCache
+    // BackupTabletBootInfos
     //
 
-    struct TSyncTabletBootInfoCacheRequest
+    struct TBackupTabletBootInfosRequest
     {
     };
 
-    struct TSyncTabletBootInfoCacheResponse
+    struct TBackupTabletBootInfosResponse
     {
     };
 
@@ -289,8 +289,8 @@ struct TEvHiveProxy
         EvDrainNodeRequest = EvBegin + 16,
         EvDrainNodeResponse = EvBegin + 17,
 
-        EvSyncTabletBootInfoCacheRequest = EvBegin + 18,
-        EvSyncTabletBootInfoCacheResponse = EvBegin + 19,
+        EvBackupTabletBootInfosRequest = EvBegin + 18,
+        EvBackupTabletBootInfosResponse = EvBegin + 19,
 
         EvEnd
     };

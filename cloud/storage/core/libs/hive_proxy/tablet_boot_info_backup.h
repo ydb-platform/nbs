@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy_events_private.h>
-#include <cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_cache.pb.h>
+#include <cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
@@ -38,47 +38,45 @@ struct TTabletBootInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTabletBootInfoCache final
-    : public NActors::TActorBootstrapped<TTabletBootInfoCache>
+class TTabletBootInfoBackup final
+    : public NActors::TActorBootstrapped<TTabletBootInfoBackup>
 {
 private:
     int LogComponent;
-    const TFsPath CacheFilePath;
-    const bool SyncEnabled = false;
+    const TFsPath BackupFilePath;
+    const bool ReadOnlyMode = false;
 
-    NHiveProxy::NProto::TTabletBootInfoCache Cache;
-    const TFsPath TmpCacheFilePath;
+    NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
+    const TFsPath TmpBackupFilePath;
 
 public:
-    // Never reads from cache file when sync is enabled, just overwrites its
-    // content.
-    TTabletBootInfoCache(
+    TTabletBootInfoBackup(
         int logComponent,
-        TString cacheFilePath,
-        bool syncEnabled);
+        TString backupFilePath,
+        bool readOnlyMode);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
 
-    void ScheduleSync(const NActors::TActorContext& ctx);
-    NProto::TError Sync(const NActors::TActorContext& ctx);
+    void ScheduleBackup(const NActors::TActorContext& ctx);
+    NProto::TError Backup(const NActors::TActorContext& ctx);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReadTabletBootInfoCache(
-        const TEvHiveProxyPrivate::TEvReadTabletBootInfoCacheRequest::TPtr& ev,
+    void HandleReadTabletBootInfoBackup(
+        const TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdateTabletBootInfoCache(
-        const TEvHiveProxyPrivate::TEvUpdateTabletBootInfoCacheRequest::TPtr& ev,
+    void HandleUpdateTabletBootInfoBackup(
+        const TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleSyncTabletBootInfoCache(
-        const TEvHiveProxy::TEvSyncTabletBootInfoCacheRequest::TPtr& ev,
+    void HandleBackupTabletBootInfos(
+        const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

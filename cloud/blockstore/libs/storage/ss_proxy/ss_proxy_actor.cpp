@@ -1,6 +1,6 @@
 #include "ss_proxy_actor.h"
 
-#include "path_description_cache.h"
+#include "path_description_backup.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -58,11 +58,11 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    const auto& filepath = Config->GetPathDescriptionCacheFilePath();
+    const auto& filepath = Config->GetPathDescriptionBackupFilePath();
     if (filepath) {
-        auto cache = std::make_unique<TPathDescriptionCache>(
-            filepath, true /* syncEnabled */);
-        PathDescriptionCache = ctx.Register(
+        auto cache = std::make_unique<TPathDescriptionBackup>(
+            filepath, false /* readOnlyMode */);
+        PathDescriptionBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
 }
@@ -147,15 +147,15 @@ STFUNC(TSSProxyActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TSSProxyActor::HandleSyncPathDescriptionCache(
-    const TEvSSProxy::TEvSyncPathDescriptionCacheRequest::TPtr& ev,
+void TSSProxyActor::HandleBackupPathDescriptions(
+    const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (PathDescriptionCache) {
-        ctx.Send(ev->Forward(PathDescriptionCache));
+    if (PathDescriptionBackup) {
+        ctx.Send(ev->Forward(PathDescriptionBackup));
     } else {
         auto response =
-            std::make_unique<TEvSSProxy::TEvSyncPathDescriptionCacheResponse>(
+            std::make_unique<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
                 MakeError(S_FALSE));
         NCloud::Reply(ctx, *ev, std::move(response));
     }

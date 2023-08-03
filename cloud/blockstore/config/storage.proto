@@ -637,13 +637,13 @@ message TStorageServiceConfig
     // Timeout for notify disks request (in milliseconds).
     optional uint32 NonReplicatedVolumeNotificationTimeout = 243;
 
-    // Enables persistent cache for tablet boot info.
-    optional string TabletBootInfoCacheFilePath = 244;
-    // In fallback mode, all requests to Hive are served from cache.
+    // Enables persistent backup for tablet boot infos.
+    optional string TabletBootInfoBackupFilePath = 244;
+    // In fallback mode, all requests to Hive are served from backup.
     optional bool HiveProxyFallbackMode = 245;
-    // Enables persistent cache for volume path description.
-    optional string PathDescriptionCacheFilePath = 246;
-    // In fallback mode, all requests to SchemeShard are served from cache.
+    // Enables persistent backup for volume path descriptions.
+    optional string PathDescriptionBackupFilePath = 246;
+    // In fallback mode, all requests to SchemeShard are served from backup.
     optional bool SSProxyFallbackMode = 247;
 
     // Max acceptable number of cpus we are waiting for (measured in %).

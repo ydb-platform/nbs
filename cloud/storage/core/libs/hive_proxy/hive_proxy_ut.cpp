@@ -408,7 +408,7 @@ struct TTestEnv
 
     TTestEnv(
             TTestActorRuntime& runtime,
-            TString tabletBootInfoCacheFilePath = "",
+            TString tabletBootInfoBackupFilePath = "",
             bool fallbackMode = false,
             bool debug = false)
         : Runtime(runtime)
@@ -425,7 +425,7 @@ struct TTestEnv
 
         BootHiveMock(Runtime, FakeHiveTablet, HiveState, EExternalBootOptions::PROCESS);
 
-        SetupHiveProxy(tabletBootInfoCacheFilePath, fallbackMode);
+        SetupHiveProxy(tabletBootInfoBackupFilePath, fallbackMode);
     }
 
     TTestEnv(
@@ -476,7 +476,7 @@ struct TTestEnv
     }
 
     void SetupHiveProxy(
-        TString tabletBootInfoCacheFilePath,
+        TString tabletBootInfoBackupFilePath,
         bool fallbackMode)
     {
         THiveProxyConfig config{
@@ -484,7 +484,7 @@ struct TTestEnv
             .PipeClientMinRetryTime = TDuration::Seconds(1),
             .HiveLockExpireTimeout = TDuration::Seconds(30),
             .LogComponent = 0,
-            .TabletBootInfoCacheFilePath = tabletBootInfoCacheFilePath,
+            .TabletBootInfoBackupFilePath = tabletBootInfoBackupFilePath,
             .FallbackMode = fallbackMode,
         };
         HiveProxyActorId = Runtime.Register(
@@ -656,16 +656,16 @@ struct TTestEnv
         return *msg;
     }
 
-    TEvHiveProxy::TSyncTabletBootInfoCacheResponse SendSyncTabletBootInfoCache(
+    TEvHiveProxy::TBackupTabletBootInfosResponse SendBackupTabletBootInfos(
         const TActorId& sender,
         ui32 errorCode)
     {
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
             sender,
-            new TEvHiveProxy::TEvSyncTabletBootInfoCacheRequest()));
+            new TEvHiveProxy::TEvBackupTabletBootInfosRequest()));
         auto ev =
-            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvSyncTabletBootInfoCacheResponse>(
+            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
                 sender);
         UNIT_ASSERT(ev);
         const auto* msg = ev->Get();
@@ -1091,7 +1091,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             runtime.AdvanceCurrentTime(TDuration::Seconds(15));
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
 
-            env.SendSyncTabletBootInfoCache(sender, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_OK);
         }
 
         fallbackMode = true;

@@ -6,7 +6,7 @@ package NCloud.NBlockStore.NStorage.NSSProxy.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TPathDescriptionCache
+message TPathDescriptionBackup
 {
     // Mapping from path.
     map<string, NKikimrSchemeOp.TPathDescription> Data = 1;
