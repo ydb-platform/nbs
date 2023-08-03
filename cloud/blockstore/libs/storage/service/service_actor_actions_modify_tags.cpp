@@ -141,6 +141,10 @@ void TModifyTagsActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     VolumeConfig.SetDiskId(Request.GetDiskId());
+    if (Request.GetConfigVersion()) {
+        VolumeConfig.SetVersion(Request.GetConfigVersion());
+    }
+
     DescribeVolume(ctx);
 }
 
@@ -232,9 +236,12 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
     const auto& pathDescription = msg->PathDescription;
     const auto& volumeDescription =
         pathDescription.GetBlockStoreVolumeDescription();
-    VolumeConfig.SetVersion(
-        volumeDescription.GetVolumeConfig().GetVersion()
-    );
+
+    if (!VolumeConfig.GetVersion()) {
+        VolumeConfig.SetVersion(
+            volumeDescription.GetVolumeConfig().GetVersion()
+        );
+    }
 
     TSet<TString> tags;
     {

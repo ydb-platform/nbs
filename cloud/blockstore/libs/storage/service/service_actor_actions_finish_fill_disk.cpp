@@ -103,8 +103,17 @@ void TFinishFillDiskActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    if (!Request.GetFillToken()) {
+        ReplyAndDie(
+            ctx,
+            MakeError(E_ARGUMENT, "FillToken should be supplied")
+        );
+        return;
+    }
+
     VolumeConfig.SetIsFillFinished(true);
     VolumeConfig.SetVersion(Request.GetConfigVersion());
+    VolumeConfig.SetFillToken(Request.GetFillToken());
     DescribeVolume(ctx);
 }
 

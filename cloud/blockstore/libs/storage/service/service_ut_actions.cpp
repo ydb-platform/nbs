@@ -126,8 +126,24 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.CreateVolume();
 
         {
+            // Incorrect ConfigVersion.
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(2);
+            *request.AddTagsToAdd() = "a";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("ModifyTags", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
+        }
+
+        {
+            // Pass ConfigVersion.
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
             *request.AddTagsToAdd() = "a";
             *request.AddTagsToAdd() = "b";
 
@@ -137,6 +153,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
 
         {
+            // Do not pass ConfigVersion.
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
             *request.AddTagsToAdd() = "c";
@@ -985,7 +1002,13 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume(DefaultDiskId);
+
+        auto request = service.CreateCreateVolumeRequest();
+        request->Record.SetFillToken("barkovbg");
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
 
         auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetIsFillFinished());
@@ -994,6 +1017,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
+            request.SetFillToken("barkovbg");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1002,6 +1026,65 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(true, volumeConfig.GetIsFillFinished());
+    }
+
+    Y_UNIT_TEST(ShouldValidateFinishFillDisk)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto request = service.CreateCreateVolumeRequest();
+        request->Record.SetFillToken("barkovbg");
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
+
+        {
+            // Incorrect ConfigVersion.
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(2);
+            request.SetFillToken("barkovbg");
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("FinishFillDisk", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
+        }
+
+        {
+            // ConfigVersion should be supplied.
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetFillToken("barkovbg");
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("FinishFillDisk", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            // FillToken should be supplied.
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("FinishFillDisk", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetIsFillFinished());
     }
 }
 
