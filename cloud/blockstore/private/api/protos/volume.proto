@@ -92,6 +92,9 @@ message TModifyTagsRequest
 
     repeated string TagsToAdd = 2;
     repeated string TagsToRemove = 3;
+
+    // Volume configuration version.
+    uint32 ConfigVersion = 4;
 }
 
 message TModifyTagsResponse
@@ -284,6 +287,9 @@ message TFinishFillDiskRequest
 
     // Volume configuration version.
     uint32 ConfigVersion = 2;
+
+    // Requests with incorrect FillToken will be rejected.
+    string FillToken = 3;
 }
 
 message TFinishFillDiskResponse
