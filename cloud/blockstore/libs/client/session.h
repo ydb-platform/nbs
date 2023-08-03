@@ -59,6 +59,8 @@ struct TSessionConfig
     TString ClientVersionInfo;
 
     ui64 MountSeqNumber = 0;
+
+    NProto::TEncryptionSpec EncryptionSpec;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

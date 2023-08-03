@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     encryption_client.cpp
     encryption_key.cpp
+    encryption_service.cpp
     encryption_test.cpp
     encryptor.cpp
 )

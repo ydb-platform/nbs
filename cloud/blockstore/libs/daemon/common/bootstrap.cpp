@@ -27,6 +27,7 @@
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
+#include <cloud/blockstore/libs/encryption/encryption_service.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
 #include <cloud/blockstore/libs/endpoints/service_endpoint.h>
@@ -516,6 +517,13 @@ void TBootstrapBase::Init()
     Service = EndpointService;
 
     STORAGE_INFO("MultipleEndpointService initialized");
+
+    Service = CreateMultipleEncryptionService(
+        std::move(Service),
+        Logging,
+        std::move(encryptionClientFactory));
+
+    STORAGE_INFO("MultipleEncryptionService initialized");
 
     if (Configs->ServerConfig->GetThrottlingEnabled()) {
         Service = CreateThrottlingService(

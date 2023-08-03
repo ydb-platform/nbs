@@ -560,6 +560,7 @@ std::shared_ptr<NProto::TMountVolumeRequest> TSession::PrepareMountRequest(
     request->SetToken(SessionConfig.MountToken);
     request->SetClientVersionInfo(SessionConfig.ClientVersionInfo);
     request->SetMountSeqNumber(SessionConfig.MountSeqNumber);
+    request->MutableEncryptionSpec()->CopyFrom(SessionConfig.EncryptionSpec);
 
     SetupRequestHeaders(headers, *request->MutableHeaders());
 

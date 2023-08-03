@@ -14,8 +14,6 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-#include <cloud/blockstore/libs/encryption/encryption_client.h>
-#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
@@ -163,10 +161,6 @@ void TBootstrap::Init()
         Monitoring = CreateMonitoringServiceStub();
     }
 
-    EncryptionClientFactory = CreateEncryptionClientFactory(
-        Logging,
-        CreateDefaultEncryptionKeyProvider());
-
     if (Options->DeviceMode == EDeviceMode::Null) {
         NProto::TNullServiceConfig config;
         config.SetDiskBlockSize(Options->NullBlockSize);
@@ -226,27 +220,6 @@ void TBootstrap::Init()
             Scheduler,
             RequestStats,
             VolumeStats);
-
-        NProto::TEncryptionSpec encryptionSpec;
-        encryptionSpec.SetMode(Options->EncryptionMode);
-
-        if (Options->EncryptionMode != NProto::NO_ENCRYPTION) {
-            encryptionSpec.MutableKeyPath()->SetFilePath(
-                Options->EncryptionKeyPath);
-        }
-
-        auto future = EncryptionClientFactory->CreateEncryptionClient(
-            std::move(ClientEndpoint),
-            encryptionSpec,
-            Options->DiskId);
-
-        auto clientOrError = future.GetValue();
-        if (HasError(clientOrError)) {
-            const auto& error = clientOrError.GetError();
-            ythrow TServiceError(error.GetCode()) << error.GetMessage();
-        }
-
-        ClientEndpoint = clientOrError.GetResult();
     }
 
     if (Options->DeviceMode != EDeviceMode::Endpoint) {
@@ -261,6 +234,14 @@ void TBootstrap::Init()
                 NProto::MF_THROTTLING_DISABLED);
         }
         sessionConfig.ClientVersionInfo = GetFullVersionString();
+
+        NProto::TEncryptionSpec encryptionSpec;
+        encryptionSpec.SetMode(Options->EncryptionMode);
+        if (Options->EncryptionMode != NProto::NO_ENCRYPTION) {
+            encryptionSpec.MutableKeyPath()->SetFilePath(
+                Options->EncryptionKeyPath);
+        }
+        sessionConfig.EncryptionSpec = encryptionSpec;
 
         Session = CreateSession(
             Timer,

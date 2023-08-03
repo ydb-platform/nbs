@@ -199,7 +199,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 encryptionDesc);
 
             auto mountResponse2 = MountVolume(*encryptionClient2);
-            UNIT_ASSERT(HasError(mountResponse2));
+            UNIT_ASSERT(!HasError(mountResponse2));
         }
     }
 

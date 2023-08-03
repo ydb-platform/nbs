@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
 SRCS(
     encryption_client_ut.cpp
     encryption_key_ut.cpp
+    encryption_service_ut.cpp
     encryptor_ut.cpp
 )
 

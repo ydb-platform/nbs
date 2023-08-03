@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
@@ -32,7 +31,6 @@ private:
     IVolumeStatsPtr VolumeStats;
     IServerStatsPtr ClientStats;
     IStatsUpdaterPtr StatsUpdater;
-    IEncryptionClientFactoryPtr EncryptionClientFactory;
 
     NClient::IClientPtr Client;
     IBlockStorePtr ClientEndpoint;
