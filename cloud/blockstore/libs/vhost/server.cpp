@@ -73,8 +73,8 @@ struct TRequest
     : public TIntrusiveListItem<TRequest>
     , TAtomicRefCount<TRequest>
 {
-    TVhostRequestPtr VhostRequest;
-    TCallContextPtr CallContext;
+    const TVhostRequestPtr VhostRequest;
+    const TCallContextPtr CallContext;
     TMetricRequest MetricRequest;
 
     std::atomic_flag Completed = 0;
@@ -84,25 +84,6 @@ struct TRequest
         , CallContext(MakeIntrusive<TCallContext>(requestId))
         , MetricRequest(VhostRequest->Type)
     {}
-
-    ~TRequest()
-    {
-        // NBS-3662
-        bool empty = Empty();
-        bool completed = Completed.test();
-        Y_VERIFY(empty && completed, "Invalid request final state"
-            ", unlinked = %d, completed = %d", empty, completed);
-    }
-
-    bool Complete(TVhostRequest::EResult result)
-    {
-        if (Completed.test_and_set()) {
-            return false;
-        }
-
-        VhostRequest->Complete(result);
-        return true;
-    }
 };
 
 using TRequestPtr = TIntrusivePtr<TRequest>;
@@ -338,17 +319,20 @@ private:
 
     void CompleteRequest(TRequest& request, const NProto::TError& error)
     {
-        auto statsError = error;
-        auto vhostResult = GetResult(statsError);
-        if (!request.Complete(vhostResult)) {
+        if (request.Completed.test_and_set()) {
             return;
         }
+
+        auto statsError = error;
+        auto vhostResult = GetResult(statsError);
 
         AppCtx.ServerStats->RequestCompleted(
             AppCtx.Log,
             request.MetricRequest,
             *request.CallContext,
             statsError);
+
+        request.VhostRequest->Complete(vhostResult);
     }
 
     void UnregisterRequest(TRequest& request)
