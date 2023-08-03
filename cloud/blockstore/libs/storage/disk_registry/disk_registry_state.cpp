@@ -3888,7 +3888,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 if (canReplaceDevice) {
                     bool updated = false;
 
-                    ReplaceDevice(
+                    auto error = ReplaceDevice(
                         db,
                         diskId,
                         deviceId,
@@ -3898,6 +3898,11 @@ void TDiskRegistryState::ApplyAgentStateChange(
                             "agent unavailable"),
                         false,  // manual
                         &updated);
+
+                    if (HasError(error)) {
+                        ReportMirroredDiskDeviceReplacementFailure(
+                            FormatError(error));
+                    }
 
                     if (!updated) {
                         isAffected = false;
@@ -4343,7 +4348,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
 
         if (canReplaceDevice) {
             bool updated = false;
-            ReplaceDevice(
+            auto error = ReplaceDevice(
                 db,
                 diskId,
                 device.GetDeviceUUID(),
@@ -4353,6 +4358,12 @@ void TDiskRegistryState::ApplyDeviceStateChange(
                     "device failure"),
                 false,  // manual
                 &updated);
+
+            if (HasError(error)) {
+                ReportMirroredDiskDeviceReplacementFailure(
+                    FormatError(error));
+            }
+
             if (updated) {
                 affectedDisk = diskId;
             }

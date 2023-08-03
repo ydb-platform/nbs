@@ -29,6 +29,7 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskAllocationCleanupFailure)                                  \
     xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
     xxx(MirroredDiskDeviceReplacementForbidden)                                \
+    xxx(MirroredDiskDeviceReplacementFailure)                                  \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
