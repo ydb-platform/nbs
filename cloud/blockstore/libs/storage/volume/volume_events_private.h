@@ -203,6 +203,14 @@ struct TEvVolumePrivate
     };
 
     //
+    // RemoveExpiredVolumeParams
+    //
+
+    struct TRemoveExpiredVolumeParams
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -222,6 +230,7 @@ struct TEvVolumePrivate
         EvMultipartitionWriteOrZeroCompleted,
         EvWriteOrZeroCompleted,
         EvUpdateReadWriteClientInfo,
+        EvRemoveExpiredVolumeParams,
 
         EvEnd
     };
@@ -273,6 +282,11 @@ struct TEvVolumePrivate
     using TEvUpdateReadWriteClientInfo = TRequestEvent<
         TUpdateReadWriteClientInfo,
         EvUpdateReadWriteClientInfo
+    >;
+
+    using TEvRemoveExpiredVolumeParams = TRequestEvent<
+        TRemoveExpiredVolumeParams,
+        EvRemoveExpiredVolumeParams
     >;
 };
 

@@ -89,6 +89,7 @@ TVolumeState::TVolumeState(
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
+        TVector<TVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
         TDeque<THistoryLogItem> history,
@@ -98,6 +99,7 @@ TVolumeState::TVolumeState(
     , Meta(std::move(meta))
     , MetaHistory(std::move(metaHistory))
     , Config(&Meta.GetConfig())
+    , VolumeParams(std::move(volumeParams))
     , ClientInfosByClientId(std::move(infos))
     , ThrottlerConfig(std::move(throttlerConfig))
     , ThrottlingPolicy(Config->GetPerformanceProfile(), ThrottlerConfig)
@@ -133,6 +135,11 @@ TVolumeState::TVolumeState(
     }
 }
 
+const TVolumeParams& TVolumeState::GetVolumeParams() const
+{
+    return VolumeParams;
+}
+
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 {
     Meta = std::move(meta);
@@ -144,6 +151,11 @@ void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 void TVolumeState::AddMetaHistory(TVolumeMetaHistoryItem meta)
 {
     MetaHistory.push_back(std::move(meta));
+}
+
+void TVolumeState::MergeVolumeParams(THashMap<TString, TVolumeParamsValue> volumeParams)
+{
+    VolumeParams.Merge(std::move(volumeParams));
 }
 
 void TVolumeState::ResetThrottlingPolicy(

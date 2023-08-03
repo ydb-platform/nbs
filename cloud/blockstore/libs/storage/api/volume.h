@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -31,6 +32,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
     xxx(GetVolumeInfo,            __VA_ARGS__)                                 \
+    xxx(UpdateVolumeParams,       __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_REQUESTS
 
 // requests forwarded from service to volume
@@ -254,6 +256,9 @@ struct TEvVolume
         EvSetupChannelsResponse = EvBegin + 50,
 
         EvClearBaseDiskIdToTabletIdMapping = EvBegin + 51,
+
+        EvUpdateVolumeParamsRequest = EvBegin + 52,
+        EvUpdateVolumeParamsResponse = EvBegin + 53,
 
         EvEnd
     };

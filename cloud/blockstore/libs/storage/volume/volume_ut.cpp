@@ -8360,7 +8360,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         NProto::TStorageServiceConfig storageServiceConfig;
         NProto::TFeaturesConfig featuresConfig;
 
-        auto initVolume = [&] (NProto::EStorageMediaKind mediaKind, TString tags) {
+        struct VolumeParamValue
+        {
+            TString value;
+            uint64_t ttlMs;
+        };
+
+        auto initVolume = [&] (NProto::EStorageMediaKind mediaKind,
+                               TString tags = "",
+                               TMaybe<VolumeParamValue> timeoutOverride = {})
+        {
             runtime = PrepareTestActorRuntime(
                 storageServiceConfig,
                 {},
@@ -8384,12 +8393,24 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 0,
                 std::move(tags));
 
+            if (timeoutOverride) {
+                NProto::TUpdateVolumeParamsMapValue protoParam;
+                protoParam.SetValue(timeoutOverride->value);
+                protoParam.SetTtlMs(timeoutOverride->ttlMs);
+
+                THashMap<TString, NProto::TUpdateVolumeParamsMapValue> volumeParams {
+                    {"max-timed-out-device-state-duration", protoParam}
+                };
+
+                client->UpdateVolumeParams("vol0", volumeParams);
+            }
+
             client->WaitReady();
         };
 
         {
 
-            initVolume(NProto::STORAGE_MEDIA_SSD_NONREPLICATED, "");
+            initVolume(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
             const auto stats = client->StatVolume()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -8403,7 +8424,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         };
 
         for (auto mediaKind: reliableMediaKinds) {
-            initVolume(mediaKind, "");
+            initVolume(mediaKind);
 
             const auto stats = client->StatVolume()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -8417,8 +8438,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto* wl = feature->MutableWhitelist();
         wl->AddFolderIds("folder");
 
+        // default value
         {
-            initVolume(NProto::STORAGE_MEDIA_SSD_NONREPLICATED, "");
+            initVolume(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
             const auto stats = client->StatVolume()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -8427,7 +8449,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         for (auto mediaKind: reliableMediaKinds) {
-            initVolume(mediaKind, "");
+            initVolume(mediaKind);
 
             const auto stats = client->StatVolume()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -8435,6 +8457,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 stats.GetMaxTimedOutDeviceStateDuration());
         }
 
+        // invalid tag value
         {
             initVolume(
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -8446,6 +8469,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 stats.GetMaxTimedOutDeviceStateDuration());
         }
 
+        // valid tag value
         {
             initVolume(
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -8461,6 +8485,47 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             initVolume(mediaKind, "max-timed-out-device-state-duration=30s");
 
             const auto stats = client->StatVolume()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                30'000,
+                stats.GetMaxTimedOutDeviceStateDuration());
+        }
+
+        // override
+        {
+            initVolume(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                "max-timed-out-device-state-duration=30s",
+                VolumeParamValue{"10s",3*UpdateCountersInterval.MilliSeconds()});
+
+            auto stats = client->StatVolume()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                10'000,
+                stats.GetMaxTimedOutDeviceStateDuration());
+
+            // override persists after reboot
+
+            // FIXME: scheduled events stop working after some time after reboot
+            /*
+            client->RebootTablet();
+            client->WaitReady();
+            */
+
+            runtime->AdvanceCurrentTime(UpdateCountersInterval);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            client->WaitReady();
+
+            stats = client->StatVolume()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                10'000,
+                stats.GetMaxTimedOutDeviceStateDuration());
+
+            // override expiration
+
+            runtime->AdvanceCurrentTime(2*UpdateCountersInterval);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            client->WaitReady();
+
+            stats = client->StatVolume()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 30'000,
                 stats.GetMaxTimedOutDeviceStateDuration());

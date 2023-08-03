@@ -4,6 +4,7 @@
 #include "volume_state.h"
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
@@ -35,6 +36,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ToggleResync,                   __VA_ARGS__)                           \
     xxx(UpdateClientInfo,               __VA_ARGS__)                           \
     xxx(ResetStartPartitionsNeeded,     __VA_ARGS__)                           \
+    xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
+    xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,6 +69,7 @@ struct TTxVolume
 
         TMaybe<NProto::TVolumeMeta> Meta;
         TVector<TVolumeMetaHistoryItem> MetaHistory;
+        TVector<TVolumeParamsValue> VolumeParams;
         TMaybe<bool> StartPartitionsNeeded;
         THashMap<TString, TVolumeClientState> Clients;
         ui64 MountSeqNumber;
@@ -87,6 +91,7 @@ struct TTxVolume
         {
             Meta.Clear();
             MetaHistory.clear();
+            VolumeParams.clear();
             StartPartitionsNeeded.Clear();
             Clients.clear();
             MountSeqNumber = 0;
@@ -559,6 +564,51 @@ struct TTxVolume
             // nothing to do
         }
     };
+
+    //
+    // UpdateVolumeParams
+    //
+
+    struct TUpdateVolumeParams
+    {
+        const TRequestInfoPtr RequestInfo;
+        const THashMap<TString, TVolumeParamsValue> VolumeParams;
+
+        TUpdateVolumeParams(
+                TRequestInfoPtr requestInfo,
+                THashMap<TString, TVolumeParamsValue> volumeParams)
+            : RequestInfo(std::move(requestInfo))
+            , VolumeParams(std::move(volumeParams))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // DeleteVolumeParams
+    //
+
+    struct TDeleteVolumeParams
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TVector<TString> Keys;
+
+        TDeleteVolumeParams(
+                TRequestInfoPtr requestInfo,
+                TVector<TString> keys)
+            : RequestInfo(std::move(requestInfo))
+            , Keys(std::move(keys))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

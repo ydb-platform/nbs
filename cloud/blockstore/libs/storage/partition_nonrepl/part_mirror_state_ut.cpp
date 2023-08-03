@@ -63,6 +63,7 @@ struct TEnv
             false, // markBlocksUsed
             FreshDeviceIds,
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
+            false, // maxTimedOutDeviceStateDurationOverriden
             true // useSimpleMigrationBandwidthLimiter
         );
 

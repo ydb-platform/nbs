@@ -28,6 +28,7 @@ bool TVolumeActor::PrepareLoadState(
     std::initializer_list<bool> results = {
         db.ReadMeta(args.Meta),
         db.ReadMetaHistory(args.MetaHistory),
+        db.ReadVolumeParams(args.VolumeParams),
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
         db.ReadOutdatedHistory(args.OutdatedHistory, args.OldestLogEntry),
@@ -119,6 +120,7 @@ void TVolumeActor::CompleteLoadState(
             Config,
             std::move(*args.Meta),
             std::move(args.MetaHistory),
+            std::move(args.VolumeParams),
             throttlerConfig,
             std::move(args.Clients),
             std::move(args.History),

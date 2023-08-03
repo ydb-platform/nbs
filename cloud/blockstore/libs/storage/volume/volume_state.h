@@ -4,6 +4,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
@@ -14,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
+#include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
@@ -91,15 +93,6 @@ struct TPartitionStatInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumeParamsValue
-{
-    TString Key;
-    TString Value;
-    TInstant ValidUntil;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,6 +104,7 @@ private:
     NProto::TVolumeMeta Meta;
     TVector<TVolumeMetaHistoryItem> MetaHistory;
     const NProto::TPartitionConfig* Config;
+    TVolumeParams VolumeParams;
     ui64 BlockCount = 0;
 
     TPartitionInfoList Partitions;
@@ -162,6 +156,7 @@ public:
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
+        TVector<TVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
         TDeque<THistoryLogItem> history,
@@ -177,6 +172,8 @@ public:
     {
         return MetaHistory;
     }
+
+    const TVolumeParams& GetVolumeParams() const;
 
     void UpdateMigrationIndexInMeta(ui64 migrationIndex)
     {
@@ -201,6 +198,7 @@ public:
 
     void ResetMeta(NProto::TVolumeMeta meta);
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
+    void MergeVolumeParams(THashMap<TString, TVolumeParamsValue> volumeParams);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
     void Reset();
 

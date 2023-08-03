@@ -184,6 +184,15 @@ void TVolumeActor::ScheduleRegularUpdates(const TActorContext& ctx)
             new TEvVolumePrivate::TEvUpdateReadWriteClientInfo());
         UpdateReadWriteClientInfoScheduled = true;
     }
+
+    if (!RemoveExpiredVolumeParamsScheduled && State) {
+        const auto delay = State->GetVolumeParams().GetNextExpirationDelay(ctx.Now());
+        if (delay.Defined()) {
+            ctx.Schedule(ctx.Now() + *delay,
+                    new TEvVolumePrivate::TEvRemoveExpiredVolumeParams());
+            RemoveExpiredVolumeParamsScheduled = true;
+        }
+    }
 }
 
 void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
@@ -728,6 +737,9 @@ STFUNC(TVolumeActor::StateBoot)
         HFunc(
             TEvVolumePrivate::TEvUpdateReadWriteClientInfo,
             HandleUpdateReadWriteClientInfo);
+        HFunc(
+            TEvVolumePrivate::TEvRemoveExpiredVolumeParams,
+            HandleRemoveExpiredVolumeParams);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
@@ -768,6 +780,9 @@ STFUNC(TVolumeActor::StateInit)
         HFunc(
             TEvVolumePrivate::TEvUpdateReadWriteClientInfo,
             HandleUpdateReadWriteClientInfo);
+        HFunc(
+            TEvVolumePrivate::TEvRemoveExpiredVolumeParams,
+            HandleRemoveExpiredVolumeParams);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
@@ -807,6 +822,9 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvUpdateReadWriteClientInfo,
             HandleUpdateReadWriteClientInfo);
+        HFunc(
+            TEvVolumePrivate::TEvRemoveExpiredVolumeParams,
+            HandleRemoveExpiredVolumeParams);
 
         HFunc(
             TEvVolume::TEvNonreplicatedPartitionCounters,
@@ -869,6 +887,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateCounters);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
+        IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 

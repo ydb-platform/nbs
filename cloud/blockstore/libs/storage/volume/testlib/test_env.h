@@ -431,6 +431,10 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetVolumeInfoRequest> CreateGetVolumeInfoRequest();
 
+    std::unique_ptr<TEvVolume::TEvUpdateVolumeParamsRequest> CreateUpdateVolumeParamsRequest(
+        const TString& diskId,
+        const THashMap<TString, NProto::TUpdateVolumeParamsMapValue>& volumeParams);
+
     void SendRemoteHttpInfo(
         const TString& params,
         HTTP_METHOD method);

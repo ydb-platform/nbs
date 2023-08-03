@@ -55,6 +55,7 @@ private:
     const bool MarkBlocksUsed;
     const THashSet<TString> FreshDeviceIds;
     const TDuration MaxTimedOutDeviceStateDuration;
+    const bool MaxTimedOutDeviceStateDurationOverriden;
     const bool UseSimpleMigrationBandwidthLimiter;
 
     TVector<ui64> BlockIndices;
@@ -70,6 +71,7 @@ public:
             bool markBlocksUsed,
             THashSet<TString> freshDeviceIds,
             TDuration maxTimedOutDeviceStateDuration,
+            bool maxTimedOutDeviceStateDurationOverriden,
             bool useSimpleMigrationBandwidthLimiter)
         : Devices(std::move(devices))
         , IOMode(ioMode)
@@ -80,6 +82,7 @@ public:
         , MarkBlocksUsed(markBlocksUsed)
         , FreshDeviceIds(std::move(freshDeviceIds))
         , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
+        , MaxTimedOutDeviceStateDurationOverriden(maxTimedOutDeviceStateDurationOverriden)
         , UseSimpleMigrationBandwidthLimiter(useSimpleMigrationBandwidthLimiter)
     {
         Y_VERIFY(Devices.size());
@@ -111,6 +114,7 @@ public:
             false,  // markBlocksUsed
             std::move(freshDeviceIds),
             MaxTimedOutDeviceStateDuration,
+            MaxTimedOutDeviceStateDurationOverriden,
             UseSimpleMigrationBandwidthLimiter
         );
     }
@@ -168,6 +172,11 @@ public:
     auto GetMaxTimedOutDeviceStateDuration() const
     {
         return MaxTimedOutDeviceStateDuration;
+    }
+
+    auto IsMaxTimedOutDeviceStateDurationOverriden() const
+    {
+        return MaxTimedOutDeviceStateDurationOverriden;
     }
 
     auto GetUseSimpleMigrationBandwidthLimiter() const

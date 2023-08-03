@@ -474,6 +474,22 @@ TVolumeClient::CreateGetVolumeInfoRequest()
     return std::make_unique<TEvVolume::TEvGetVolumeInfoRequest>();
 }
 
+std::unique_ptr<TEvVolume::TEvUpdateVolumeParamsRequest>
+TVolumeClient::CreateUpdateVolumeParamsRequest(
+    const TString& diskId,
+    const THashMap<TString, NProto::TUpdateVolumeParamsMapValue>& volumeParams)
+{
+    auto request = std::make_unique<TEvVolume::TEvUpdateVolumeParamsRequest>();
+    request->Record.SetDiskId(diskId);
+
+    auto* mutableVolumeParams = request->Record.MutableVolumeParams();
+    for (const auto& [key, value]: volumeParams) {
+        mutableVolumeParams->insert({key, value});
+    }
+
+    return request;
+}
+
 void TVolumeClient::SendRemoteHttpInfo(
     const TString& params,
     HTTP_METHOD method)
@@ -637,8 +653,14 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         TestTabletId,
         TTabletTypes::BlockStoreVolume);
 
-    auto volumeActorId = CreateTestBootstrapper(*runtime, info.Get(), createFunc);
-    runtime->EnableScheduleForActor(volumeActorId);
+    runtime->SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+    CreateTestBootstrapper(*runtime, info.Get(), createFunc);
 
     return runtime;
 }

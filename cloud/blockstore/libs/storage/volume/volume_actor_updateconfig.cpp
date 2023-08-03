@@ -331,6 +331,8 @@ void TVolumeActor::CompleteUpdateConfig(
             Config,
             args.Meta,
             {args.MetaHistoryItem},
+            // TODO: will it get updated later?
+            {},   // volume params
             throttlerConfig,
             {},   // clients
             {},   // history

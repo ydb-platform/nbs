@@ -596,11 +596,22 @@ void TVolumeDatabase::WriteVolumeParams(
 
     for (const auto& param: volumeParams) {
         Table<TTable>()
-                .Key(param.Key)
-                .Update(
-                    NIceDb::TUpdate<TTable::Value>(param.Value),
-                    NIceDb::TUpdate<TTable::ValidUntil>(param.ValidUntil.MicroSeconds())
-                );
+            .Key(param.Key)
+            .Update(
+                NIceDb::TUpdate<TTable::Value>(param.Value),
+                NIceDb::TUpdate<TTable::ValidUntil>(param.ValidUntil.MicroSeconds())
+            );
+    }
+}
+
+void TVolumeDatabase::DeleteVolumeParams(const TVector<TString>& keys)
+{
+    using TTable = TVolumeSchema::VolumeParams;
+
+    for (const auto& key: keys) {
+        Table<TTable>()
+            .Key(key)
+            .Delete();
     }
 }
 

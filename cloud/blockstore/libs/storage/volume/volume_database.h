@@ -136,6 +136,7 @@ public:
     //
 
     void WriteVolumeParams(const TVector<TVolumeParamsValue>& volumeParams);
+    void DeleteVolumeParams(const TVector<TString>& keys);
     bool ReadVolumeParams(TVector<TVolumeParamsValue>& volumeParams);
 };
 

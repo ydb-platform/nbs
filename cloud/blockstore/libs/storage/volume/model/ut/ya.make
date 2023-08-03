@@ -10,6 +10,7 @@ SRCS(
     requests_inflight_ut.cpp
     retry_policy_ut.cpp
     stripe_ut.cpp
+    volume_params_ut.cpp
     volume_throttling_policy_ut.cpp
 )
 

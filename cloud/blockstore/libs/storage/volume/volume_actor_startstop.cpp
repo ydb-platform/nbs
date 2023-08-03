@@ -131,8 +131,16 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
 
     const auto& volumeConfig = GetNewestConfig();
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
+    const auto volumeParams = State->GetVolumeParams();
+
     auto maxTimedOutDeviceStateDuration =
-        State->GetMaxTimedOutDeviceStateDuration();
+        volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
+    const auto maxTimedOutDeviceStateDurationOverriden = !!maxTimedOutDeviceStateDuration;
+
+    if (!maxTimedOutDeviceStateDuration) {
+        maxTimedOutDeviceStateDuration = State->GetMaxTimedOutDeviceStateDuration();
+    }
+
     if (!maxTimedOutDeviceStateDuration) {
         if (IsReliableDiskRegistryMediaKind(mediaKind)) {
             // reliable disks should not return io errors upon agent timeout
@@ -162,6 +170,7 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
             State->GetMeta().GetFreshDeviceIds().begin(),
             State->GetMeta().GetFreshDeviceIds().end()),
         maxTimedOutDeviceStateDuration,
+        maxTimedOutDeviceStateDurationOverriden,
         useSimpleMigrationBandwidthLimiter);
 
     TActorId nonreplicatedActorId;

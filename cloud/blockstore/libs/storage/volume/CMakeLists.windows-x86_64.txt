@@ -68,6 +68,7 @@ target_sources(libs-storage-volume PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_throttling.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_updateconfig.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_updatestartpartitionsneeded.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_updatevolumeparams.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_updateusedblocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_waitready.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_write_throttlerstate.cpp

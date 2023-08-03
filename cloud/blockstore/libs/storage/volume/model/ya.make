@@ -8,6 +8,7 @@ SRCS(
     requests_inflight.cpp
     retry_policy.cpp
     stripe.cpp
+    volume_params.cpp
     volume_throttler_logger.cpp
     volume_throttling_policy.cpp
 )
@@ -27,4 +28,6 @@ PEERDIR(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    ut
+)

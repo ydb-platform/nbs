@@ -204,6 +204,7 @@ private:
     bool UpdateCountersScheduled = false;
     bool UpdateLeakyBucketCountersScheduled = false;
     bool UpdateReadWriteClientInfoScheduled = false;
+    bool RemoveExpiredVolumeParamsScheduled = false;
     TInstant LastThrottlerStateWrite;
 
     // Next version that is being applied
@@ -621,6 +622,10 @@ private:
 
     void HandleUpdateReadWriteClientInfo(
         const TEvVolumePrivate::TEvUpdateReadWriteClientInfo::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRemoveExpiredVolumeParams(
+        const TEvVolumePrivate::TEvRemoveExpiredVolumeParams::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
