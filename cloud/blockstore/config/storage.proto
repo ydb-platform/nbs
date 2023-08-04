@@ -541,9 +541,6 @@ message TStorageServiceConfig
     // Maximum number of migrations running in parallel.
     optional uint32 MaxNonReplicatedDeviceMigrationsInProgress = 201;
 
-    // Enable calculation of the LogicalUsedBlocks metric.
-    optional bool LogicalUsedBlocksCalculationEnabled = 202;
-
     // Enables extra diagnostics by dumping block commitIds.
     optional bool DumpBlockCommitIdsIntoProfileLog = 203;
 
