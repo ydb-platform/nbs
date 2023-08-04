@@ -63,10 +63,10 @@ void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
     if (old.IsValid()) {
         const auto& profile = volume.GetPerformanceProfile();
         TVolumePerfSettings clientSettings(
-            profile.GetMaxReadIops(),
-            profile.GetMaxReadBandwidth(),
-            profile.GetMaxWriteIops(),
-            profile.GetMaxWriteBandwidth());
+            Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
+            Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
+            Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
+            Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()));
 
         TIntrusivePtr<TVolumePerfSettings> newSettings;
 
