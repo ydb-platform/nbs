@@ -191,6 +191,10 @@ public:
         Meta.SetResyncIndex(0);
     }
 
+    void UpdateFillSeqNumberInMeta(ui64 fillSeqNumber) {
+        Meta.SetFillSeqNumber(fillSeqNumber);
+    }
+
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {
         StartPartitionsNeeded = startPartitionsNeeded;
@@ -582,6 +586,10 @@ private:
         const TString& oldClientId,
         TInstant referenceTimestamp,
         ui64 clientMountSeqNumber);
+
+    bool CanAcceptClient(
+        bool isFill,
+        ui64 newFillSeqNumber);
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 };

@@ -242,6 +242,7 @@ void TVolumeActor::HandleAddClient(
     const auto mountMode = msg->Record.GetVolumeMountMode();
     const auto mountFlags = msg->Record.GetMountFlags();
     const auto mountSeqNumber = msg->Record.GetMountSeqNumber();
+    const auto fillSeqNumber = msg->Record.GetFillSeqNumber();
     const auto& host = msg->Record.GetHost();
 
     // If event was forwarded through pipe, its recipient and recipient rewrite
@@ -262,6 +263,7 @@ void TVolumeActor::HandleAddClient(
     clientInfo.SetVolumeAccessMode(accessMode);
     clientInfo.SetVolumeMountMode(mountMode);
     clientInfo.SetMountFlags(mountFlags);
+    clientInfo.SetFillSeqNumber(fillSeqNumber);
     clientInfo.SetMountSeqNumber(mountSeqNumber);
     clientInfo.SetHost(host);
     clientInfo.SetLastActivityTimestamp(ctx.Now().MicroSeconds());
@@ -442,6 +444,11 @@ void TVolumeActor::ExecuteAddClient(
         }
 
         db.WriteClient(args.Info);
+
+        if (IsReadWriteMode(args.Info.GetVolumeAccessMode())) {
+            State->UpdateFillSeqNumberInMeta(args.Info.GetFillSeqNumber());
+            db.WriteMeta(State->GetMeta());
+        }
     }
 }
 

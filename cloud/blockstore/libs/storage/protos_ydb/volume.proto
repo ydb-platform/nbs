@@ -62,6 +62,11 @@ message TVolumeMeta
 
     // Is resync needed.
     bool ResyncNeeded = 15;
+
+    // Mount sequential number for disk filling.
+    // We don't allow clients with old sequential number to mount disk for read/write
+    // in order to prevent data corruption during disk filling.
+    uint64 FillSeqNumber = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

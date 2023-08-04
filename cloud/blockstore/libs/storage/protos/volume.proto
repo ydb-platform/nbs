@@ -45,6 +45,11 @@ message TVolumeClientInfo
 
     // Instance id (if this client is a VM).
     string InstanceId = 10;
+
+    // Mount sequential number for disk filling.
+    // We don't allow clients with old sequential number to mount disk for read/write
+    // in order to prevent data corruption during disk filling.
+    uint64 FillSeqNumber = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,6 +83,9 @@ message TAddClientRequest
 
     // Instance id (if this client is a VM).
     string InstanceId = 9;
+
+    // Expected mount seq number for disk filling.
+    uint64 FillSeqNumber = 10;
 }
 
 message TAddClientResponse

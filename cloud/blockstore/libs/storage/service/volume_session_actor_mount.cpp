@@ -452,6 +452,7 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
     const auto accessMode = Request.GetVolumeAccessMode();
     const auto mountMode = Request.GetVolumeMountMode();
     const auto mountSeqNumber = Request.GetMountSeqNumber();
+    const auto fillSeqNumber = Request.GetFillSeqNumber();
 
     auto request = std::make_unique<TEvVolume::TEvAddClientRequest>();
     request->Record.MutableHeaders()->SetClientId(clientId);
@@ -461,6 +462,7 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
     request->Record.SetVolumeMountMode(mountMode);
     request->Record.SetMountFlags(Request.GetMountFlags());
     request->Record.SetMountSeqNumber(mountSeqNumber);
+    request->Record.SetFillSeqNumber(fillSeqNumber);
     request->Record.SetHost(FQDNHostName());
 
     auto requestInfo = CreateRequestInfo(

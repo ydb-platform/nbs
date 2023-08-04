@@ -375,7 +375,19 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         return res;
     }
 
+    bool isFill = HasProtoFlag(info.GetMountFlags(), NProto::MF_FILL);
     bool readWriteAccess = IsReadWriteMode(info.GetVolumeAccessMode());
+
+    if (readWriteAccess && !CanAcceptClient(isFill, info.GetFillSeqNumber())) {
+        res.Error = MakeError(
+            E_PRECONDITION_FAILED,
+            TStringBuilder()
+                << "Client can not be accepted with read-write access"
+                << ", new FillSeqNumber: " << info.GetFillSeqNumber()
+                << ", current FillSeqNumber: " << Meta.GetFillSeqNumber());
+        return res;
+    }
+
     if (readWriteAccess && ReadWriteAccessClientId && ReadWriteAccessClientId != clientId) {
         if (!CanPreemptClient(
                 ReadWriteAccessClientId,
@@ -652,6 +664,13 @@ bool TVolumeState::CanPreemptClient(
     return
         IsClientStale(oldClientId, referenceTimestamp) ||
             newClientMountSeqNumber > MountSeqNumber;
+}
+
+bool TVolumeState::CanAcceptClient(
+    bool isFill,
+    ui64 newFillSeqNumber)
+{
+    return !isFill || newFillSeqNumber >= Meta.GetFillSeqNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

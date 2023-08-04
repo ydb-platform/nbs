@@ -4575,6 +4575,149 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service.ReadBlocks(DefaultDiskId, 0, sessionId);
         }
     }
+
+    Y_UNIT_TEST(ShouldHandleMountRequestWithFillSeqNumber)
+    {
+        TTestEnv env(1, 2);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx1);
+        TServiceClient service2(runtime, nodeIdx2);
+        service1.CreateVolume();
+
+        ui32 mountFlags = 0;
+        SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
+        SetProtoFlag(mountFlags, NProto::MF_FILL);
+
+        auto response1 = service1.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            0, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0  // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response1->GetStatus(),
+            response1->GetErrorReason()
+        );
+
+        auto response2 = service2.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            1, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            1  // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response2->GetStatus(),
+            response2->GetErrorReason()
+        );
+
+        service1.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            2, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0  // fillSeqNumber
+        );
+
+        {
+            auto response = service1.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_PRECONDITION_FAILED,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+        }
+
+        response1 = service1.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            3, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0  // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response1->GetStatus(),
+            response1->GetErrorReason()
+        );
+
+        service2.UnmountVolume(DefaultDiskId, response2->Record.GetSessionId());
+
+        // Checking that client with old fill seqno will not be allowed
+        // even after another client is removed.
+        service1.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            4, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0  // fillSeqNumber
+        );
+
+        {
+            auto response = service1.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_PRECONDITION_FAILED,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+        }
+
+        // Checking that client can mount with same fill seq no after unmount.
+        response2 = service2.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            5, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            1  // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response2->GetStatus(),
+            response2->GetErrorReason()
+        );
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
