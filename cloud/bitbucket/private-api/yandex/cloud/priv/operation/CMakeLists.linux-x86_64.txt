@@ -36,11 +36,11 @@ target_include_directories(cloud-priv-operation PUBLIC
   ${CMAKE_BINARY_DIR}/cloud/bitbucket/private-api
 )
 target_link_libraries(cloud-priv-operation PUBLIC
+  contrib-libs-googleapis-common-protos
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   contrib-libs-grpc
-  contrib-libs-googleapis-common-protos
   contrib-libs-protobuf
 )
 target_proto_messages(cloud-priv-operation PRIVATE

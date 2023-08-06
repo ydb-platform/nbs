@@ -84,10 +84,10 @@ target_include_directories(priv-kms-v1 PUBLIC
   ${CMAKE_BINARY_DIR}/cloud/bitbucket/private-api
 )
 target_link_libraries(priv-kms-v1 PUBLIC
+  contrib-libs-googleapis-common-protos
   contrib-libs-cxxsupp
   yutil
   contrib-libs-grpc
-  contrib-libs-googleapis-common-protos
   yandex-cloud-api
   yandex-cloud-priv
   cloud-priv-access

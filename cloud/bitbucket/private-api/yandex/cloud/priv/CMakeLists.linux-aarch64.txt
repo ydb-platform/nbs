@@ -52,11 +52,11 @@ target_include_directories(yandex-cloud-priv PUBLIC
   ${CMAKE_BINARY_DIR}/cloud/bitbucket/private-api
 )
 target_link_libraries(yandex-cloud-priv PUBLIC
+  contrib-libs-googleapis-common-protos
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   contrib-libs-grpc
-  contrib-libs-googleapis-common-protos
   contrib-libs-protobuf
 )
 target_proto_messages(yandex-cloud-priv PRIVATE

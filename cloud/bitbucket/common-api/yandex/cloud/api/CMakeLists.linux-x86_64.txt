@@ -37,11 +37,11 @@ target_include_directories(yandex-cloud-api PUBLIC
   ${CMAKE_BINARY_DIR}/cloud/bitbucket/common-api
 )
 target_link_libraries(yandex-cloud-api PUBLIC
+  contrib-libs-googleapis-common-protos
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   contrib-libs-grpc
-  contrib-libs-googleapis-common-protos
   cloud-api-tools
   contrib-libs-protobuf
 )

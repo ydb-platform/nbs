@@ -36,10 +36,10 @@ target_include_directories(cloud-api-tools PUBLIC
   ${CMAKE_BINARY_DIR}/cloud/bitbucket/common-api
 )
 target_link_libraries(cloud-api-tools PUBLIC
+  contrib-libs-googleapis-common-protos
   contrib-libs-cxxsupp
   yutil
   contrib-libs-grpc
-  contrib-libs-googleapis-common-protos
   contrib-libs-protobuf
 )
 target_proto_messages(cloud-api-tools PRIVATE
