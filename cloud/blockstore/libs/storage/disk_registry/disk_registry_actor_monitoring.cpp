@@ -787,6 +787,10 @@ void TDiskRegistryActor::RenderMirroredDiskList(IOutputStream& out) const
                     TABLED() { out << diskInfo.Replicas.size() + 1; }
                     TABLED() {
                         for (ui32 i = 0; i < cellsByState.size(); ++i) {
+                            if (i && !cellsByState[i]) {
+                                continue;
+                            }
+
                             TStringBuf color =
                                 i == 0 ? "green" :
                                 i <= diskInfo.Replicas.size() ? "brown" :
@@ -804,8 +808,10 @@ void TDiskRegistryActor::RenderMirroredDiskList(IOutputStream& out) const
                     TABLED() {
                         out << "Ready: <font color=green>"
                             << readyCount << "</font>";
-                        out << "Fresh: <font color=blue>"
-                            << replacementCount << "</font>";
+                        if (replacementCount) {
+                            out << " / Fresh: <font color=blue>"
+                                << replacementCount << "</font>";
+                        }
                     }
                 }
             }
@@ -1489,16 +1495,20 @@ void TDiskRegistryActor::RenderAgentList(
                                 out,
                                 NProto::DEVICE_STATE_ONLINE,
                                 TStringBuilder() << " " << onlineDevs);
-                            out << " / ";
-                            DumpState(
-                                out,
-                                NProto::DEVICE_STATE_WARNING,
-                                TStringBuilder() << " " << warningDevs);
-                            out << " / ";
-                            DumpState(
-                                out,
-                                NProto::DEVICE_STATE_ERROR,
-                                TStringBuilder() << " " << errorDevs);
+                            if (warningDevs) {
+                                out << " / ";
+                                DumpState(
+                                    out,
+                                    NProto::DEVICE_STATE_WARNING,
+                                    TStringBuilder() << " " << warningDevs);
+                            }
+                            if (errorDevs) {
+                                out << " / ";
+                                DumpState(
+                                    out,
+                                    NProto::DEVICE_STATE_ERROR,
+                                    TStringBuilder() << " " << errorDevs);
+                            }
                         }
                     }
                 }
