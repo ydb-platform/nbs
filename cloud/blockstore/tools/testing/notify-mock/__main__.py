@@ -36,7 +36,7 @@ def create_api(file):
 
             data = json.loads(req)
 
-            if data.get('type') not in ['nbs.nonrepl.error']:
+            if data.get('type') not in ['nbs.nonrepl.error', 'nbs.nonrepl.back-online']:
                 self.send_error(400)
                 return
 

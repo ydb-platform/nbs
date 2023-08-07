@@ -24,6 +24,48 @@ bool AllSucceeded(std::initializer_list<bool> ls)
     return std::all_of(std::begin(ls), std::end(ls), identity);
 }
 
+// TODO: Remove legacy compatibility in next release
+void ProcessUserNotifications(
+    const TActorContext& ctx,
+    TDiskRegistryDatabase& db,
+    TVector<TString>& errorNotifications,
+    TVector<NProto::TUserNotification>& userNotifications)
+{
+    // Filter out unknown events for future version rollback compatibility
+    std::erase_if(userNotifications, [] (const auto& notif) {
+            return notif.GetEventCase()
+                == NProto::TUserNotification::EventCase::EVENT_NOT_SET;
+        });
+
+    THashSet<TString> ids(
+        errorNotifications.begin(),
+        errorNotifications.end(),
+        errorNotifications.size());
+
+    auto isObsolete = [&ids, now = ctx.Now()] (const auto& notif) {
+        if (notif.GetHasLegacyCopy()
+            && !ids.contains(notif.GetDiskError().GetDiskId()))
+        {
+            return true;
+        }
+
+        TDuration age = now - TInstant::MicroSeconds(notif.GetTimestamp());
+        // It seems it's feasible to hardcode the threshold in temporary code
+        return age >= TDuration::Days(3);
+    };
+
+    for (const auto& notif: userNotifications) {
+        if (isObsolete(notif)) {
+            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                "Obsolete user notification deleted: %s",
+                (TStringBuilder() << notif).c_str()
+            );
+            db.DeleteUserNotification(notif.GetSeqNo());
+        }
+    }
+    std::erase_if(userNotifications, isObsolete);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,6 +84,7 @@ bool TDiskRegistryActor::LoadState(
         db.ReadBrokenDisks(args.BrokenDisks),
         db.ReadDisksToReallocate(args.DisksToReallocate),
         db.ReadErrorNotifications(args.ErrorNotifications),
+        db.ReadUserNotifications(args.UserNotifications),
         db.ReadDiskStateChanges(args.DiskStateChanges),
         db.ReadLastDiskStateSeqNo(args.LastDiskStateSeqNo),
         db.ReadWritableState(args.WritableState),
@@ -98,6 +141,12 @@ void TDiskRegistryActor::ExecuteLoadState(
 
         db.UpdateAgent(agent);
     }
+
+    ProcessUserNotifications(
+        ctx,
+        db,
+        args.Snapshot.ErrorNotifications,
+        args.Snapshot.UserNotifications);
 }
 
 void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
@@ -117,6 +166,7 @@ void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
         std::move(snapshot.DirtyDevices),
         std::move(snapshot.DisksToCleanup),
         std::move(snapshot.ErrorNotifications),
+        std::move(snapshot.UserNotifications),
         std::move(snapshot.OutdatedVolumeConfigs),
         std::move(snapshot.SuspendedDevices),
         std::move(snapshot.AutomaticallyReplacedDevices),

@@ -1,5 +1,8 @@
 #include "disk_registry_state_notification.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
+
 namespace NCloud::NBlockStore::NStorage::NDiskRegistry {
 
 namespace {
@@ -9,22 +12,38 @@ namespace {
 static const TString DISK_STATE_MIGRATION_MESSAGE =
     "data migration in progress, slight performance decrease may be experienced";
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TUserNotification MakeBlankNotification(
+    ui64 seqNo,
+    TInstant timestamp)
+{
+    NProto::TUserNotification notif;
+    notif.SetSeqNo(seqNo);
+    notif.SetTimestamp(timestamp.MicroSeconds());
+    return notif;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TNotificationSystem::TNotificationSystem(
-        TVector<TDiskId> errorNotifications,
+        TStorageConfigPtr storageConfig,
+        TVector<TString> errorNotifications,
+        TVector<NProto::TUserNotification> userNotifications,
         TVector<TDiskId> disksToReallocate,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes)
-    : DiskStateUpdates {std::move(diskStateUpdates)}
+    : StorageConfig(std::move(storageConfig))
+    , UserNotifications(userNotifications.size() + errorNotifications.size())
+    , DiskStateUpdates {std::move(diskStateUpdates)}
     , DiskStateSeqNo {diskStateSeqNo}
 {
-    for (auto& diskId: errorNotifications) {
-        ErrorNotifications.insert(std::move(diskId));
-    }
+    PullInUserNotifications(
+        std::move(errorNotifications),
+        std::move(userNotifications));
 
     for (auto& diskId: disksToReallocate) {
         DisksToReallocate.emplace(std::move(diskId), DisksToReallocateSeqNo++);
@@ -34,6 +53,44 @@ TNotificationSystem::TNotificationSystem(
         OutdatedVolumeConfigs.emplace(std::move(diskId), VolumeConfigSeqNo++);
     }
 }
+
+// TODO: Remove legacy compatibility in next release
+void TNotificationSystem::PullInUserNotifications(
+    TVector<TString> errorNotifications,
+    TVector<NProto::TUserNotification> userNotifications)
+{
+    // Filter
+    THashSet<TString> ids(errorNotifications.size());
+    for (auto& id: errorNotifications) {
+        ids.emplace(std::move(id));
+    }
+
+    // Can miss fresh notifications here, but unlikely
+    for (const auto& notif: userNotifications) {
+        if (notif.GetHasLegacyCopy()) {
+            ids.erase(notif.GetDiskError().GetDiskId());
+        }
+    }
+
+    // Merge
+    for (auto& id: ids) {
+        NProto::TUserNotification notif;
+        notif.MutableDiskError()->SetDiskId(id);
+        notif.SetHasLegacyCopy(true);
+        // Leave SeqNo == 0
+        userNotifications.push_back(std::move(notif));
+    }
+
+    // Transform
+    for (auto& notif: userNotifications) {
+        const auto& id = GetEntityId(notif);
+        Y_VERIFY_DEBUG(!id.empty());
+        UserNotifications.Storage[id].Notifications.push_back(std::move(notif));
+        ++UserNotifications.Count;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TNotificationSystem::AllowNotifications(const TDiskId& diskId)
 {
@@ -45,7 +102,7 @@ void TNotificationSystem::DeleteDisk(
     const TDiskId& diskId)
 {
     SupportsNotifications.erase(diskId);
-    ErrorNotifications.erase(diskId);
+    DeleteUserNotifications(db, diskId);
 
     DisksToReallocate.erase(diskId);
     db.DeleteDiskToReallocate(diskId);
@@ -59,30 +116,110 @@ void TNotificationSystem::DeleteDisk(
     });
 }
 
-void TNotificationSystem::AddErrorNotification(
+void TNotificationSystem::AddUserNotification(
     TDiskRegistryDatabase& db,
-    const TDiskId& diskId)
+    NProto::TUserNotification notification)
 {
-    if (!SupportsNotifications.contains(diskId)) {
+    const auto& id = GetEntityId(notification);
+
+    // Note: Only disk events supported at the moment
+    if (!SupportsNotifications.contains(id)) {
         return;
     }
 
-    db.AddErrorNotification(diskId);
-    ErrorNotifications.emplace(diskId);
+    auto& data = UserNotifications.Storage[id];
+    if (data.LatestEvent == notification.GetEventCase()) {
+           return; // collapse repeats
+    }
+
+    // TODO: Remove legacy compatibility in next release
+    if (notification.GetEventCase()
+        == NProto::TUserNotification::EventCase::kDiskError)
+    {
+        notification.SetHasLegacyCopy(true);
+        db.AddErrorNotification(id);
+    }
+    db.AddUserNotification(notification);
+
+    data.LatestEvent = notification.GetEventCase();
+    data.Notifications.push_back(std::move(notification));
+    ++UserNotifications.Count;
 }
 
-void TNotificationSystem::DeleteErrorNotification(
+void TNotificationSystem::DeleteUserNotification(
     TDiskRegistryDatabase& db,
-    const TDiskId& diskId)
+    const TString& entityId,
+    ui64 seqNo)
 {
-    ErrorNotifications.erase(diskId);
-    db.DeleteErrorNotification(diskId);
+    auto found = UserNotifications.Storage.find(entityId);
+    if (found != UserNotifications.Storage.end()) {
+        auto& notifications = found->second.Notifications;
+
+        auto it = std::find_if(
+            notifications.begin(),
+            notifications.end(),
+            [&seqNo] (const auto& notif) {
+                return notif.GetSeqNo() == seqNo;
+            });
+
+        if (it != notifications.end()) {
+            // TODO: Remove legacy compatibility in next release
+            if (it->GetHasLegacyCopy()) {
+                db.DeleteErrorNotification(entityId);
+            }
+
+            notifications.erase(it);
+            --UserNotifications.Count;
+
+            if (notifications.empty()) {
+                UserNotifications.Storage.erase(found);
+            }
+        }
+    }
+
+    db.DeleteUserNotification(seqNo);
 }
 
-auto TNotificationSystem::GetErrorNotifications() const
-    -> const THashSet<TDiskId>&
+void TNotificationSystem::DeleteUserNotifications(
+    TDiskRegistryDatabase& db,
+    const TString& entityId)
 {
-    return ErrorNotifications;
+    bool hasLegacyCopy = false;
+    auto found = UserNotifications.Storage.find(entityId);
+    if (found != UserNotifications.Storage.end()) {
+        for (const auto& notif: found->second.Notifications) {
+            if (notif.GetHasLegacyCopy()) {
+                hasLegacyCopy = true;
+            }
+            db.DeleteUserNotification(notif.GetSeqNo());
+        }
+
+        UserNotifications.Count -= found->second.Notifications.size();
+        UserNotifications.Storage.erase(found);
+    }
+
+    // TODO: Remove legacy compatibility in next release
+    if (hasLegacyCopy) {
+        db.DeleteErrorNotification(entityId);
+    }
+}
+
+void TNotificationSystem::GetUserNotifications(
+    TVector<NProto::TUserNotification>& notifications) const
+{
+    notifications.reserve(notifications.size() +  UserNotifications.Count);
+    for (auto&& [id, data]: UserNotifications.Storage) {
+        notifications.insert(
+            notifications.end(),
+            data.Notifications.cbegin(),
+            data.Notifications.cend());
+    }
+}
+
+auto TNotificationSystem::GetUserNotifications() const
+    -> const TUserNotifications&
+{
+    return UserNotifications;
 }
 
 ui64 TNotificationSystem::AddReallocateRequest(
@@ -136,7 +273,9 @@ auto TNotificationSystem::GetDiskStateUpdates() const
 void TNotificationSystem::OnDiskStateChanged(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
-    NProto::EDiskState newState)
+    NProto::EDiskState oldState,
+    NProto::EDiskState newState,
+    TInstant timestamp)
 {
     NProto::TDiskState diskState;
     diskState.SetDiskId(diskId);
@@ -152,7 +291,17 @@ void TNotificationSystem::OnDiskStateChanged(
     db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
 
     if (newState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
-        AddErrorNotification(db, diskId);
+        if (oldState < NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
+            auto notif = MakeBlankNotification(seqNo, timestamp);
+            notif.MutableDiskError()->SetDiskId(diskId);
+            AddUserNotification(db, std::move(notif));
+         }
+    } else {
+        if (oldState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
+            auto notif = MakeBlankNotification(seqNo, timestamp);
+            notif.MutableDiskBackOnline()->SetDiskId(diskId);
+            AddUserNotification(db, std::move(notif));
+        }
     }
 
     if (SupportsNotifications.contains(diskId)) {

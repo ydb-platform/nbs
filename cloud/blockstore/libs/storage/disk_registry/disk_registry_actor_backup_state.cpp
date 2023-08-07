@@ -100,6 +100,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         writableState,
         disksToCleanup,
         errorNotifications,
+        userNotifications,
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
@@ -143,7 +144,10 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     copy(placementGroups, backup.MutablePlacementGroups());
     copy(disksToReallocate, backup.MutableDisksToNotify());
     copy(disksToCleanup, backup.MutableDisksToCleanup());
+
     copy(errorNotifications, backup.MutableErrorNotifications());
+    copy(userNotifications, backup.MutableUserNotifications());
+
     copy(outdatedVolumeConfigs, backup.MutableOutdatedVolumeConfigs());
 
     transform(brokenDisks, backup.MutableBrokenDisks(), [] (auto& src, auto& dst) {

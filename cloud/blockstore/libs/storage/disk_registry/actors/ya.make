@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/storage/api
+    cloud/blockstore/libs/storage/disk_registry/model
 
     cloud/storage/core/libs/actors
 

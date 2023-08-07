@@ -394,6 +394,7 @@ TDiskRegistryState TDiskRegistryStateBuilder::Build()
         std::move(DirtyDevices),
         std::move(DisksToCleanup),
         std::move(ErrorNotifications),
+        std::move(UserNotifications),
         std::move(OutdatedVolumeConfigs),
         std::move(SuspendedDevices),
         std::move(AutomaticallyReplacedDevices),

@@ -377,6 +377,35 @@ message TDiskRegistryAgentParams
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TUserNotification
+{
+    uint64 SeqNo = 2;
+    // In microseconds.
+    uint64 Timestamp = 3;
+
+    // If duplicated in obsolete ErrorNotifications for compatibility.
+    bool HasLegacyCopy = 4;
+
+    oneof Event {
+        TDiskError DiskError = 5;
+        TDiskBackOnline DiskBackOnline = 6;
+    }
+
+    //---------------------------------------
+
+    message TDiskError
+    {
+        string DiskId = 1;
+    }
+
+    message TDiskBackOnline
+    {
+        string DiskId = 1;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskRegistryStateBackup
 {
     repeated TDiskConfig Disks = 1;
@@ -405,7 +434,10 @@ message TDiskRegistryStateBackup
     repeated TBrokenDiskInfo BrokenDisks = 8;
     repeated string DisksToNotify = 9;
     repeated string DisksToCleanup = 10;
+
+    // Obsolete
     repeated string ErrorNotifications = 11;
+
     repeated string OutdatedVolumeConfigs = 12;
     repeated string SuspendedDevices = 13;
 
@@ -426,6 +458,8 @@ message TDiskRegistryStateBackup
     repeated TAutomaticallyReplacedDeviceInfo AutomaticallyReplacedDevices = 15;
 
     map<string, TDiskRegistryAgentParams> DiskRegistryAgentListParams = 16;
+
+    repeated TUserNotification UserNotifications = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

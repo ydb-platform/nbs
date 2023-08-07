@@ -7,7 +7,7 @@
 
 #include <library/cpp/json/writer/json_value.h>
 
-#include <util/string/printf.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NNotify {
 
@@ -17,7 +17,35 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static const TString TMPL_TYPE_NBS_NONREPL_ERROR = "nbs.nonrepl.error";
+template <typename T>
+concept TDiskEvent = std::is_same_v<T, TDiskError>
+                  || std::is_same_v<T, TDiskBackOnline>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TStringBuf GetTemplateId(const TDiskError&)
+{
+    return "nbs.nonrepl.error";
+}
+
+TStringBuf GetTemplateId(const TDiskBackOnline&)
+{
+    return "nbs.nonrepl.back-online";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void OutputEvent(IOutputStream& out, const TDiskEvent auto& event)
+{
+    out << GetTemplateId(event) << " { " << event.DiskId << " }";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void FillData(const TDiskEvent auto& event, NJson::TJsonValue& data)
+{
+    data["diskId"] = event.DiskId;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,8 +59,7 @@ public:
     void Stop() override
     {}
 
-    TFuture<NProto::TError> NotifyDiskError(
-        const TDiskErrorNotification& data) override
+    TFuture<NProto::TError> Notify(const TNotification& data) override
     {
         Y_UNUSED(data);
 
@@ -62,13 +89,12 @@ public:
     void Stop() override
     {}
 
-    TFuture<NProto::TError> NotifyDiskError(
-        const TDiskErrorNotification& data) override
+    TFuture<NProto::TError> Notify(const TNotification& data) override
     {
         STORAGE_WARN("Discard notification "
-            << TMPL_TYPE_NBS_NONREPL_ERROR.Quote() << " " << data.UserId.Quote()
-            << " " << data.CloudId.Quote() << "/" << data.FolderId.Quote() << " "
-            << data.DiskId.Quote());
+            << data.Event
+            << " " << data.UserId.Quote()
+            << " " << data.CloudId.Quote() << "/" << data.FolderId.Quote());
 
         return MakeFuture(NProto::TError());
     }
@@ -98,15 +124,19 @@ public:
     void Stop() override
     {}
 
-    TFuture<NProto::TError> NotifyDiskError(
-        const TDiskErrorNotification& data) override
+    TFuture<NProto::TError> Notify(const TNotification& data) override
     {
+        // TODO: Add Timestamp when time formatting will be supported
+        // by Cloud Notify service
         NJson::TJsonMap v {
-            { "type", TMPL_TYPE_NBS_NONREPL_ERROR },
+            { "type", std::visit([] (const auto& event) {
+                    return GetTemplateId(event);
+                },
+                data.Event)
+            },
             { "data", NJson::TJsonMap {
                 { "cloudId", data.CloudId },
                 { "folderId", data.FolderId },
-                { "diskId", data.DiskId },
             }}
         };
 
@@ -116,30 +146,29 @@ public:
             v["cloudId"] = data.CloudId;
         }
 
+        std::visit([&v] (const auto& e) {
+                FillData(e, v["data"]);
+            },
+            data.Event);
+
         auto p = NewPromise<NProto::TError>();
 
         HttpsClient.Post(
             Config->GetEndpoint(),
             v.GetStringRobust(),
             "application/json",
-            [p, diskId = data.DiskId] (int code, const TString& data) mutable {
+            [p, event = data.Event] (int code, const TString& message) mutable {
                 const bool isSuccess = code >= 200 && code < 300;
 
                 if (isSuccess) {
-                    p.SetValue(MakeError(S_OK, Sprintf("HTTP code: %d", code)));
+                    p.SetValue(MakeError(S_OK, TStringBuilder()
+                        << "HTTP code: " << code));
                     return;
                 }
 
-                p.SetValue(MakeError(
-                    E_REJECTED,
-                    Sprintf(
-                        "[%s] can't notify about %s. HTTP error: %d %s",
-                        TMPL_TYPE_NBS_NONREPL_ERROR.Quote().c_str(),
-                        diskId.Quote().c_str(),
-                        code,
-                        data.c_str()
-                    )
-                ));
+                p.SetValue(MakeError(E_REJECTED, TStringBuilder()
+                    << "Couldn't send notification " << event
+                    << ". HTTP error: " << code << " " << message));
             });
 
         return p.GetFuture();
@@ -166,3 +195,12 @@ IServicePtr CreateNullService(ILoggingServicePtr logging)
 }
 
 }   // namespace NCloud::NBlockStore::NNotify
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_DECLARE_OUT_SPEC(, NCloud::NBlockStore::NNotify::TEvent, out, event)
+{
+    using namespace NCloud::NBlockStore::NNotify;
+
+    std::visit([&] (const auto& e) { OutputEvent(out, e); }, event);
+}

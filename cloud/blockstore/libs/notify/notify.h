@@ -8,20 +8,40 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+#include <variant>
 
 namespace NCloud::NBlockStore::NNotify {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiskErrorNotification
+struct TDiskError
 {
     TString DiskId;
+};
 
+struct TDiskBackOnline
+{
+    TString DiskId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TEvent = std::variant<
+    TDiskError,
+    TDiskBackOnline>;
+
+struct TNotification
+{
     TString CloudId;
     TString FolderId;
     TString UserId;
+
+    TInstant Timestamp;
+
+    TEvent Event;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,8 +51,8 @@ struct IService
 {
     virtual ~IService() = default;
 
-    virtual NThreading::TFuture<NProto::TError> NotifyDiskError(
-        const TDiskErrorNotification& data) = 0;
+    virtual NThreading::TFuture<NProto::TError> Notify(
+        const TNotification& data) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

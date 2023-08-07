@@ -491,6 +491,49 @@ bool TDiskRegistryDatabase::ReadErrorNotifications(TVector<TString>& diskIds)
     return true;
 }
 
+void TDiskRegistryDatabase::AddUserNotification(
+    const NProto::TUserNotification& notification)
+{
+    using TTable = TDiskRegistrySchema::UserNotifications;
+
+    Table<TTable>()
+        .Key(notification.GetSeqNo())
+        .Update<TTable::Notification>(notification);
+}
+
+void TDiskRegistryDatabase::DeleteUserNotification(ui64 seqNo)
+{
+    using TTable = TDiskRegistrySchema::UserNotifications;
+
+    Table<TTable>()
+        .Key(seqNo)
+        .Delete();
+}
+
+bool TDiskRegistryDatabase::ReadUserNotifications(
+    TVector<NProto::TUserNotification>& notifications)
+{
+    using TTable = TDiskRegistrySchema::UserNotifications;
+
+    auto it = Table<TTable>()
+        .Range()
+        .template Select<typename TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        notifications.push_back(it.GetValue<TTable::Notification>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 void TDiskRegistryDatabase::AddOutdatedVolumeConfig(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::OutdatedVolumeConfigs;

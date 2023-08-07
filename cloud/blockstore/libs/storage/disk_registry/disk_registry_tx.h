@@ -40,7 +40,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(FinishMigration,                    __VA_ARGS__)                       \
     xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
     xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
-    xxx(DeleteErrorNotifications,           __VA_ARGS__)                       \
+    xxx(DeleteUserNotifications,            __VA_ARGS__)                       \
     xxx(SetUserId,                          __VA_ARGS__)                       \
     xxx(FinishVolumeConfigUpdate,           __VA_ARGS__)                       \
     xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
@@ -874,19 +874,19 @@ struct TTxDiskRegistry
     };
 
     //
-    // DeleteErrorNotification
+    // DeleteUserNotification
     //
 
-    struct TDeleteErrorNotifications
+    struct TDeleteUserNotifications
     {
         const TRequestInfoPtr RequestInfo;
-        const TVector<TString> DiskIds;
+        const TVector<TUserNotificationKey> Notifications;
 
-        TDeleteErrorNotifications(
+        TDeleteUserNotifications(
                 TRequestInfoPtr requestInfo,
-                TVector<TString> diskIds)
+                TVector<TUserNotificationKey> notifications)
             : RequestInfo(std::move(requestInfo))
-            , DiskIds(std::move(diskIds))
+            , Notifications(std::move(notifications))
         {}
 
         void Clear()

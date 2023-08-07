@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <google/protobuf/util/message_differencer.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/guid.h>
@@ -887,7 +888,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         TVector<TString> disksToReallocate;
         TVector<TString> diskIdsWithUpdatedStates;
-        TVector<TString> diskIdsWithErrorNotifications;
+        TVector<NProto::TUserNotification> userNotifications;
         auto fetchDisksToNotify = [&] () {
             for (const auto& x: state.GetDisksToReallocate()) {
                 disksToReallocate.push_back(x.first);
@@ -897,9 +898,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 diskIdsWithUpdatedStates.push_back(x.State.GetDiskId());
             }
 
-            diskIdsWithErrorNotifications.assign(
-                state.GetErrorNotifications().begin(),
-                state.GetErrorNotifications().end());
+            state.GetUserNotifications(userNotifications);
         };
 
         auto deleteDisksToNotify = [&] () {
@@ -915,7 +914,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -991,7 +992,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -1020,7 +1023,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -1189,7 +1194,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         TVector<TString> disksToReallocate;
         TVector<TString> diskIdsWithUpdatedStates;
-        TVector<TString> diskIdsWithErrorNotifications;
+        TVector<NProto::TUserNotification> userNotifications;
         auto fetchDisksToNotify = [&] () {
             for (const auto& x: state.GetDisksToReallocate()) {
                 disksToReallocate.push_back(x.first);
@@ -1199,9 +1204,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 diskIdsWithUpdatedStates.push_back(x.State.GetDiskId());
             }
 
-            diskIdsWithErrorNotifications.assign(
-                state.GetErrorNotifications().begin(),
-                state.GetErrorNotifications().end());
+            state.GetUserNotifications(userNotifications);
         };
 
         auto deleteDisksToNotify = [&] () {
@@ -1217,7 +1220,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -1290,7 +1295,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -1302,7 +1309,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -1665,11 +1674,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         }
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
 
-        TVector<TString> diskIdsWithErrorNotifications(
-            state.GetErrorNotifications().begin(),
-            state.GetErrorNotifications().end());
-
-        UNIT_ASSERT_VALUES_EQUAL(0, diskIdsWithErrorNotifications.size());
+        TVector<NProto::TUserNotification> userNotifications;
+        state.GetUserNotifications(userNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -2307,7 +2316,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         TVector<TString> disksToReallocate;
         TVector<TString> diskIdsWithUpdatedStates;
-        TVector<TString> diskIdsWithErrorNotifications;
+        TVector<NProto::TUserNotification> userNotifications;
         auto fetchDisksToNotify = [&] () {
             for (const auto& x: state.GetDisksToReallocate()) {
                 disksToReallocate.push_back(x.first);
@@ -2317,9 +2326,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 diskIdsWithUpdatedStates.push_back(x.State.GetDiskId());
             }
 
-            diskIdsWithErrorNotifications.assign(
-                state.GetErrorNotifications().begin(),
-                state.GetErrorNotifications().end());
+            state.GetUserNotifications(userNotifications);
         };
 
         auto deleteDisksToNotify = [&] () {
@@ -2335,7 +2342,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         fetchDisksToNotify();
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToReallocate);
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithErrorNotifications);
+        ASSERT_VECTORS_EQUAL(
+            TVector<NProto::TUserNotification>{},
+            userNotifications);
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
@@ -2386,3 +2395,16 @@ inline void Out<NCloud::NBlockStore::NStorage::TDiskStateUpdate>(
 {
     out << update.State.DebugString() << "\t" << update.SeqNo;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace NCloud::NBlockStore::NProto {
+
+static bool operator==(
+    const NCloud::NBlockStore::NProto::TUserNotification& l,
+    const NCloud::NBlockStore::NProto::TUserNotification& r)
+{
+    return  google::protobuf::util::MessageDifferencer::Equals(l, r);
+}
+
+}   // NCloud::NBlockStore::NProto

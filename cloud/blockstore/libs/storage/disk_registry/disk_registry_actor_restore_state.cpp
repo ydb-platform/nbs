@@ -51,6 +51,7 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         writableState,
         disksToCleanup,
         errorNotifications,
+        userNotifications,
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
@@ -79,7 +80,15 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     move(*backup.MutablePlacementGroups(), placementGroups);
     move(*backup.MutableDisksToNotify(), disksToReallocate);
     move(*backup.MutableDisksToCleanup(), disksToCleanup);
+
     move(*backup.MutableErrorNotifications(), errorNotifications);
+    move(*backup.MutableUserNotifications(), userNotifications);
+    // Filter out unknown events for future version rollback compatibility
+    std::erase_if(userNotifications, [] (const auto& notif) {
+            return notif.GetEventCase()
+                == NProto::TUserNotification::EventCase::EVENT_NOT_SET;
+        });
+
     move(*backup.MutableOutdatedVolumeConfigs(), outdatedVolumeConfigs);
     move(*backup.MutableSuspendedDevices(), suspendedDevices);
 
@@ -346,6 +355,26 @@ void RestoreErrorNotifications(
     }
 }
 
+void RestoreUserNotifications(
+    TVector<NProto::TUserNotification> newUserNotifications,
+    TVector<NProto::TUserNotification> currentUserNotifications,
+    TOperations& operations)
+{
+    for (auto&& notif: currentUserNotifications) {
+        operations.push(
+            [seqNo = notif.GetSeqNo()] (TDiskRegistryDatabase& db)
+            {
+                db.DeleteUserNotification(seqNo);
+            });
+    }
+    for (auto&& notif: newUserNotifications) {
+        operations.push(
+            [notif = std::move(notif)] (TDiskRegistryDatabase& db) {
+                db.AddUserNotification(notif);
+            });
+    }
+}
+
 void RestoreOutdatedVolumeConfigs(
     TVector<TString> newOutdatedVolumeConfigs,
     TVector<TString> currentOutdatedVolumeConfigs,
@@ -534,6 +563,7 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newWritableState,
         newDisksToCleanup,
         newErrorNotifications,
+        newUserNotifications,
         newOutdatedVolumeConfigs,
         newSuspendedDevices,
         newAutomaticallyReplacedDevices,
@@ -554,6 +584,7 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         currentWritableState,
         currentDisksToCleanup,
         currentErrorNotifications,
+        currentUserNotifications,
         currentOutdatedVolumeConfigs,
         currentSuspendedDevices,
         currentAutomaticallyReplacedDevices,
@@ -611,6 +642,10 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
     RestoreErrorNotifications(
         std::move(newErrorNotifications),
         std::move(currentErrorNotifications),
+        operations);
+    RestoreUserNotifications(
+        std::move(newUserNotifications),
+        std::move(currentUserNotifications),
         operations);
     RestoreOutdatedVolumeConfigs(
         std::move(newOutdatedVolumeConfigs),

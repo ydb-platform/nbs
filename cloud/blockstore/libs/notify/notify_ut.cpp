@@ -20,16 +20,14 @@ static constexpr TDuration WaitTimeout = TDuration::Seconds(30);
 
 auto MakeConfig()
 {
-    return [] {
-        const TString port = getenv("NOTIFY_SERVICE_MOCK_PORT");
+    const TString port = getenv("NOTIFY_SERVICE_MOCK_PORT");
 
-        NProto::TNotifyConfig proto;
-        proto.SetEndpoint("https://localhost:" + port + "/notify/v1/send");
-        proto.SetCaCertFilename(
-            JoinFsPaths(getenv("TEST_CERT_FILES_DIR"), "server.crt"));
+    NProto::TNotifyConfig proto;
+    proto.SetEndpoint("https://localhost:" + port + "/notify/v1/send");
+    proto.SetCaCertFilename(
+        JoinFsPaths(getenv("TEST_CERT_FILES_DIR"), "server.crt"));
 
-        return std::make_shared<TNotifyConfig>(std::move(proto));
-    }();
+    return std::make_shared<TNotifyConfig>(std::move(proto));
 }
 
 }   // namespace
@@ -45,10 +43,10 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateNullService(logging);
         service->Start();
 
-        auto r = service->NotifyDiskError({
-            .DiskId = "nrd0",
+        auto r = service->Notify({
             .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder"
+            .FolderId = "yc-nbs.folder",
+            .Event = TDiskError{ .DiskId = "nrd0" },
         }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
@@ -61,10 +59,10 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateServiceStub();
         service->Start();
 
-        auto r = service->NotifyDiskError({
-            .DiskId = "nrd0",
+        auto r = service->Notify({
             .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder"
+            .FolderId = "yc-nbs.folder",
+            .Event = TDiskError{ .DiskId = "nrd0" },
         }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
@@ -77,10 +75,28 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateService(MakeConfig());
         service->Start();
 
-        auto r = service->NotifyDiskError({
-            .DiskId = "nrd0",
+        auto r = service->Notify({
             .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder"
+            .FolderId = "yc-nbs.folder",
+            .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
+            .Event = TDiskError{ .DiskId = "nrd0" },
+        }).GetValue(WaitTimeout);
+
+        UNIT_ASSERT_C(!HasError(r), r);
+
+        service->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldNotifyDiskBackOnline)
+    {
+        auto service = CreateService(MakeConfig());
+        service->Start();
+
+        auto r = service->Notify({
+            .CloudId = "yc-nbs",
+            .FolderId = "yc-nbs.folder",
+            .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
+            .Event = TDiskBackOnline{ .DiskId = "nrd0" },
         }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
@@ -95,10 +111,11 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
 
         TVector<NThreading::TFuture<NProto::TError>> futures;
         for (ui32 i = 0; i < 20; ++i) {
-            futures.push_back(service->NotifyDiskError({
-                .DiskId = "nrd0",
+            futures.push_back(service->Notify({
                 .CloudId = "yc-nbs",
-                .FolderId = "yc-nbs.folder"
+                .FolderId = "yc-nbs.folder",
+                .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
+                .Event = TDiskError{ .DiskId = "nrd0" },
             }));
         }
 

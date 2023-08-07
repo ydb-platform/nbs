@@ -91,9 +91,15 @@ public:
     bool ReadWritableState(bool& state);
     void WriteWritableState(bool state);
 
+    // TODO: Remove legacy compatibility in next release
     void AddErrorNotification(const TString& diskId);
     void DeleteErrorNotification(const TString& diskId);
     bool ReadErrorNotifications(TVector<TString>& diskIds);
+
+    void AddUserNotification(const NProto::TUserNotification& notification);
+    void DeleteUserNotification(ui64 seqNo);
+    bool ReadUserNotifications(
+        TVector<NProto::TUserNotification>& notifications);
 
     void AddOutdatedVolumeConfig(const TString& diskId);
     void DeleteOutdatedVolumeConfig(const TString& diskId);

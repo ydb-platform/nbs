@@ -223,6 +223,7 @@ struct TDiskRegistryStateBuilder
     TVector<TBrokenDiskInfo> BrokenDisks;
     TVector<TString> DisksToReallocate;
     TVector<TString> ErrorNotifications;
+    TVector<NProto::TUserNotification> UserNotifications;
     TVector<TDiskStateUpdate> DiskStateUpdates;
     ui64 DiskStateSeqNo = 0;
     TVector<TDirtyDevice> DirtyDevices;

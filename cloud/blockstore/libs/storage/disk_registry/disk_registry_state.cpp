@@ -232,6 +232,7 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<TDirtyDevice> dirtyDevices,
         TVector<TString> disksToCleanup,
         TVector<TString> errorNotifications,
+        TVector<NProto::TUserNotification> userNotifications,
         TVector<TString> outdatedVolumeConfigs,
         TVector<TDeviceId> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
@@ -260,7 +261,9 @@ TDiskRegistryState::TDiskRegistryState(
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
     , NotificationSystem {
+        StorageConfig,
         std::move(errorNotifications),
+        std::move(userNotifications),
         std::move(disksToReallocate),
         std::move(diskStateUpdates),
         diskStateSeqNo,
@@ -3696,23 +3699,25 @@ void TDiskRegistryState::DeleteDiskToReallocate(
     RemoveFinishedMigrations(db, diskId, seqNo);
 }
 
-void TDiskRegistryState::AddErrorNotification(
+void TDiskRegistryState::AddUserNotification(
     TDiskRegistryDatabase& db,
-    TString diskId)
+    NProto::TUserNotification notification)
 {
-    NotificationSystem.AddErrorNotification(db, diskId);
+    NotificationSystem.AddUserNotification(db, std::move(notification));
 }
 
-void TDiskRegistryState::DeleteErrorNotification(
+void TDiskRegistryState::DeleteUserNotification(
     TDiskRegistryDatabase& db,
-    const TString& diskId)
+    const TString& entityId,
+    ui64 seqNo)
 {
-    NotificationSystem.DeleteErrorNotification(db, diskId);
+    NotificationSystem.DeleteUserNotification(db, entityId, seqNo);
 }
 
-auto TDiskRegistryState::GetErrorNotifications() const -> const THashSet<TDiskId>&
+void TDiskRegistryState::GetUserNotifications(
+    TVector<NProto::TUserNotification>& notifications) const
 {
-    return NotificationSystem.GetErrorNotifications();
+    return NotificationSystem.GetUserNotifications(notifications);
 }
 
 NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
@@ -4115,7 +4120,12 @@ bool TDiskRegistryState::TryUpdateDiskState(
 
     UpdateAndReallocateDisk(db, diskId, disk);
 
-    NotificationSystem.OnDiskStateChanged(db, diskId, newState);
+    NotificationSystem.OnDiskStateChanged(
+        db,
+        diskId,
+        oldState,
+        newState,
+        timestamp);
 
     return true;
 }
@@ -4627,7 +4637,7 @@ TString TDiskRegistryState::GetAgentId(TNodeId nodeId) const
 NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 {
     static_assert(
-        TTableCount<TDiskRegistrySchema::TTables>::value == 15,
+        TTableCount<TDiskRegistrySchema::TTables>::value == 16,
         "not all fields are processed"
     );
 
@@ -4697,7 +4707,24 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 
     copy(AgentList.GetAgents(), backup.MutableAgents());
     copy(DisksToCleanup, backup.MutableDisksToCleanup());
-    copy(GetErrorNotifications(), backup.MutableErrorNotifications());
+
+    backup.MutableUserNotifications()->Reserve(GetUserNotifications().Count);
+    for (auto&& [id, data]: GetUserNotifications().Storage) {
+        bool doLegacyBackup = false;
+        for (const auto& notif: data.Notifications) {
+            if (notif.GetSeqNo() || !notif.GetHasLegacyCopy()) {
+                *backup.AddUserNotifications() = notif;
+            }
+
+            if (notif.GetHasLegacyCopy()) {
+                doLegacyBackup = true;
+            }
+        }
+
+        if (doLegacyBackup) {
+            backup.AddErrorNotifications(id);
+        }
+    }
 
     {
         auto outdatedVolumes = GetOutdatedVolumeConfigs();

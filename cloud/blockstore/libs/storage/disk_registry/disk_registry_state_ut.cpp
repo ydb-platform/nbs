@@ -9405,6 +9405,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(1, errorNotifications.size());
             UNIT_ASSERT_VALUES_EQUAL("foo", errorNotifications[0]);
 
+            TVector<NProto::TUserNotification> userNotifications;
+            UNIT_ASSERT(db.ReadUserNotifications(userNotifications));
+            UNIT_ASSERT_VALUES_EQUAL(1, userNotifications.size());
+            UNIT_ASSERT(userNotifications[0].HasDiskError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "foo",
+                userNotifications[0].GetDiskError().GetDiskId());
+            UNIT_ASSERT(userNotifications[0].GetHasLegacyCopy());
+
             TVector<TString> outdatedVolumeConfigs;
             UNIT_ASSERT(db.ReadOutdatedVolumeConfigs(outdatedVolumeConfigs));
             UNIT_ASSERT_VALUES_EQUAL(0, outdatedVolumeConfigs.size());
@@ -9442,6 +9451,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 std::move(dirtyDevices),
                 std::move(disksToCleanup),
                 std::move(errorNotifications),
+                std::move(userNotifications),
                 std::move(outdatedVolumeConfigs),
                 std::move(suspendedDevices),
                 std::move(automaticallyReplacedDevices),
@@ -9500,6 +9510,29 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 return d.GetNodeId() == 0;
             }));
         }
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> errorNotifications;
+            UNIT_ASSERT(db.ReadErrorNotifications(errorNotifications));
+            UNIT_ASSERT_VALUES_EQUAL(1, errorNotifications.size());
+            UNIT_ASSERT_VALUES_EQUAL("foo", errorNotifications[0]);
+
+            TVector<NProto::TUserNotification> userNotifications;
+            UNIT_ASSERT(db.ReadUserNotifications(userNotifications));
+            UNIT_ASSERT_VALUES_EQUAL(2, userNotifications.size());
+
+            UNIT_ASSERT(userNotifications[0].HasDiskError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "foo",
+                userNotifications[0].GetDiskError().GetDiskId());
+            UNIT_ASSERT(userNotifications[0].GetHasLegacyCopy());
+
+            UNIT_ASSERT(userNotifications[1].HasDiskBackOnline());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "foo",
+                userNotifications[1].GetDiskBackOnline().GetDiskId());
+            UNIT_ASSERT(!userNotifications[1].GetHasLegacyCopy());
+        });
     }
 
     Y_UNIT_TEST(ShouldUpdateMediaKind)
@@ -9652,6 +9685,114 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         changeAgentState(NProto::AGENT_STATE_UNAVAILABLE, TInstant::Days(80));
         testCounter(TInstant::Days(16));
+    }
+
+    Y_UNIT_TEST(ShouldSuppressAddingRepeatingUserNotificationDuplicates)
+    {
+        NDiskRegistry::TNotificationSystem state(
+            CreateStorageConfig(CreateDefaultStorageConfigProto()),
+            {},
+            {},
+            {},
+            {},
+            0,
+            {});
+
+        TTestExecutor executor;
+        executor.WriteTx([] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const TString diskId = "disk";
+
+        executor.WriteTx([&state, &diskId] (TDiskRegistryDatabase db) {
+            NProto::TUserNotification error;
+            error.MutableDiskError()->SetDiskId(diskId);
+
+            NProto::TUserNotification online;
+            online.MutableDiskBackOnline()->SetDiskId(diskId);
+
+            ui64 seqNo = 0;
+            auto add = [&state, &db, &seqNo] (auto notif) {
+                notif.SetSeqNo(++seqNo);
+                state.AddUserNotification(db, std::move(notif));
+            };
+
+            state.AllowNotifications(diskId);
+
+            add(error);
+            add(error);
+            add(error);
+
+            add(online);
+            add(online);
+            add(online);
+            add(online);
+
+            add(error);
+
+            add(online);
+            add(online);
+        });
+
+        TVector<NProto::TUserNotification> userNotifications;
+        state.GetUserNotifications(userNotifications);
+        // Account for possible future implementation changes
+        SortBy(userNotifications, [] (const auto& notif) {
+            return notif.GetSeqNo();
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(4, userNotifications.size());
+        UNIT_ASSERT(userNotifications[0].HasDiskError());
+        UNIT_ASSERT(userNotifications[1].HasDiskBackOnline());
+        UNIT_ASSERT(userNotifications[2].HasDiskError());
+        UNIT_ASSERT(userNotifications[3].HasDiskBackOnline());
+
+        executor.ReadTx([&diskId] (TDiskRegistryDatabase db) {
+            TVector<TString> errorNotifications;
+            UNIT_ASSERT(db.ReadErrorNotifications(errorNotifications));
+            UNIT_ASSERT_VALUES_EQUAL(1, errorNotifications.size());
+            UNIT_ASSERT_VALUES_EQUAL(diskId, errorNotifications[0]);
+
+            TVector<NProto::TUserNotification> userNotifications;
+            UNIT_ASSERT(db.ReadUserNotifications(userNotifications));
+            UNIT_ASSERT_VALUES_EQUAL(4, userNotifications.size());
+
+            auto count = CountIf(userNotifications, [] (const auto& notif) {
+                return notif.HasDiskError() && notif.GetHasLegacyCopy();
+            });
+            UNIT_ASSERT_VALUES_EQUAL(2, count);
+        });
+    }
+
+    Y_UNIT_TEST(ShouldPullInLegacyDiskErrorUserNotifications)
+    {
+        TDiskRegistryStateBuilder builder;
+        builder.ErrorNotifications.assign({"disk0", "disk1", "disk2"});
+        auto state = builder.Build();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetUserNotifications().Count);
+
+        TVector<NProto::TUserNotification> userNotifications;
+        state.GetUserNotifications(userNotifications);
+
+        SortBy(userNotifications, [] (const auto& notif) -> decltype(auto) {
+            return notif.GetDiskError().GetDiskId();
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, userNotifications.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+                "disk0",
+                userNotifications[0].GetDiskError().GetDiskId());
+        UNIT_ASSERT(userNotifications[0].GetHasLegacyCopy());
+        UNIT_ASSERT_VALUES_EQUAL(
+                "disk1",
+                userNotifications[1].GetDiskError().GetDiskId());
+        UNIT_ASSERT(userNotifications[1].GetHasLegacyCopy());
+        UNIT_ASSERT_VALUES_EQUAL(
+                "disk2",
+                userNotifications[2].GetDiskError().GetDiskId());
+        UNIT_ASSERT(userNotifications[2].GetHasLegacyCopy());
     }
 }
 

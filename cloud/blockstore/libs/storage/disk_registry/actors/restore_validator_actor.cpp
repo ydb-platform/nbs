@@ -1,5 +1,6 @@
 #include "restore_validator_actor.h"
 
+#include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 #include <library/cpp/actors/core/hfunc.h>
@@ -68,6 +69,30 @@ bool NormalizeLoadState(
         return true;
     };
 
+    auto sortAndTestUniqueCmp3Way =
+        [&ctx, component] (auto& container, auto&& cmp3Way) {
+            Sort(container, [&cmp3Way] (const auto& left, const auto& right) {
+                return cmp3Way(left, right) < 0;
+            });
+
+            auto itr = std::adjacent_find(
+                container.begin(),
+                container.end(),
+                [&cmp3Way] (const auto& left, const auto& right) {
+                    return cmp3Way(left, right) == 0;
+                });
+
+            if (itr != container.end()) {
+                LOG_WARN_S(
+                    ctx,
+                    component,
+                    RESTORE_PREFIX << " Not unique: " << *itr);
+                return false;
+            }
+
+            return true;
+        };
+
     // if new fields are added to TDiskRegistryStateSnapshot
     // there will be a compilation error.
     auto& [
@@ -84,6 +109,7 @@ bool NormalizeLoadState(
         diskAllocationAllowed,
         disksToCleanup,
         errorNotifications,
+        userNotifications,
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
@@ -166,6 +192,20 @@ bool NormalizeLoadState(
         errorNotifications,
         [] (const auto& disk) {
             return disk;
+        });
+
+    result &= sortAndTestUniqueCmp3Way(
+        userNotifications,
+        [] (const auto& l, const auto& r) {
+            if (l.GetSeqNo() < r.GetSeqNo()) {
+                return -1;
+            }
+
+            if (l.GetSeqNo() > r.GetSeqNo()) {
+                return 1;
+            }
+
+            return GetEntityId(l).compare(GetEntityId(r));
         });
 
     result &= sortAndTestUnique(

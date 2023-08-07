@@ -12,6 +12,7 @@ target_link_libraries(storage-disk_registry-actors PUBLIC
   contrib-libs-cxxsupp
   yutil
   libs-storage-api
+  storage-disk_registry-model
   core-libs-actors
   cpp-actors-core
 )

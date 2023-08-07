@@ -11,6 +11,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/system/type_name.h>
+
 #include <chrono>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -31,13 +33,13 @@ class TFakeNotifyService
     : public NNotify::IService
 {
 public:
-    TVector<NNotify::TDiskErrorNotification> Requests;
+    TVector<NNotify::TNotification> Requests;
 
     NProto::TError Error;
 
 public:
-    TFuture<NProto::TError> NotifyDiskError(
-        const NNotify::TDiskErrorNotification& data) override
+    TFuture<NProto::TError> Notify(
+        const NNotify::TNotification& data) override
     {
         Requests.push_back(std::move(data));
 
@@ -51,7 +53,28 @@ public:
     {}
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename... Ts>
+TString GetAlternativeTypeName(const std::variant<Ts...>& v)
+{
+    return std::visit(
+        [] <typename T> (const T&) { return TypeName<T>(); },
+        v);
+}
+
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL(                         \
+            value, event, eventType, field)                                    \
+    do {                                                                       \
+        UNIT_ASSERT_C(std::holds_alternative<NNotify::eventType>(event),       \
+            "expected, but variant holds " << GetAlternativeTypeName(event));  \
+        UNIT_ASSERT_VALUES_EQUAL(value,                                        \
+            std::get<NNotify::eventType>(event).field);                        \
+    } while (false)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,7 +110,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->SetObserverFunc(
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvDiskRegistryPrivate::EvNotifyDiskErrorRequest: {
+                    case TEvDiskRegistryPrivate::EvNotifyUserEventRequest: {
                         ++notifications;
                         break;
                     }
@@ -110,7 +133,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs", notifyService->Requests[0].CloudId);
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs.folder", notifyService->Requests[0].FolderId);
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol", notifyService->Requests[0].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol",
+            notifyService->Requests[0].Event, TDiskError, DiskId);
         UNIT_ASSERT_VALUES_EQUAL("", notifyService->Requests[0].UserId);
 
         runtime->AdvanceCurrentTime(10s);
@@ -154,7 +178,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->SetObserverFunc(
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvDiskRegistryPrivate::EvNotifyDiskErrorRequest: {
+                    case TEvDiskRegistryPrivate::EvNotifyUserEventRequest: {
                         ++notifications;
                         break;
                     }
@@ -169,7 +193,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs", notifyService->Requests[0].CloudId);
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs.folder", notifyService->Requests[0].FolderId);
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol", notifyService->Requests[0].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol",
+            notifyService->Requests[0].Event, TDiskError, DiskId);
         UNIT_ASSERT_VALUES_EQUAL("vasya", notifyService->Requests[0].UserId);
 
         runtime->AdvanceCurrentTime(10s);
@@ -217,7 +242,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs", notifyService->Requests[0].CloudId);
         UNIT_ASSERT_VALUES_EQUAL("yc-nbs.folder", notifyService->Requests[0].FolderId);
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol", notifyService->Requests[0].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol",
+            notifyService->Requests[0].Event, TDiskError, DiskId);
 
         runtime->AdvanceCurrentTime(10s);
         runtime->DispatchEvents({}, 10ms);
@@ -267,13 +293,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
 
         UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-1", notifyService->Requests[0].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol-1",
+            notifyService->Requests[0].Event, TDiskError, DiskId);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(2, notifyService->Requests.size());
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-1", notifyService->Requests[1].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol-1",
+            notifyService->Requests[1].Event, TDiskError, DiskId);
 
         UNIT_ASSERT_VALUES_EQUAL(0, userNotificationError->Val());
 
@@ -283,7 +311,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(3, notifyService->Requests.size());
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-1", notifyService->Requests[2].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol-1",
+            notifyService->Requests[2].Event, TDiskError, DiskId);
 
         notifyService->Error = MakeError(E_REJECTED);
 
@@ -292,13 +321,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(4, notifyService->Requests.size());
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-2", notifyService->Requests[3].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol-2",
+            notifyService->Requests[3].Event, TDiskError, DiskId);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(5, notifyService->Requests.size());
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-2", notifyService->Requests[4].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol-2",
+            notifyService->Requests[4].Event, TDiskError, DiskId);
 
         UNIT_ASSERT_VALUES_EQUAL(0, userNotificationError->Val());
         notifyService->Error = MakeError(E_FAIL);
@@ -307,7 +338,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(6, notifyService->Requests.size());
-        UNIT_ASSERT_VALUES_EQUAL("nonrepl-vol-2", notifyService->Requests[5].DiskId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol-2",
+            notifyService->Requests[5].Event, TDiskError, DiskId);
         UNIT_ASSERT_VALUES_EQUAL(1, userNotificationError->Val());
 
         runtime->AdvanceCurrentTime(5s);
@@ -379,6 +411,96 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, 10ms);
         runtime->Send(delayedRequest.Release());
         runtime->DispatchEvents({}, 10ms);
+    }
+
+    Y_UNIT_TEST(ShouldNotifyAboutReturningDiskBackOnline)
+    {
+        auto notifyService = std::make_shared<TFakeNotifyService>();
+
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            }),
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .With(notifyService)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        diskRegistry.AllocateDisk("nonrepl-vol", 10_GB, 4_KB, "", 0, "", "");
+
+        int notifications = 0;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvNotifyUserEventRequest: {
+                        ++notifications;
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_ONLINE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_ONLINE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, notifications);
+        UNIT_ASSERT_VALUES_EQUAL(0, notifyService->Requests.size());
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(6, notifications);
+        UNIT_ASSERT_VALUES_EQUAL(0, notifyService->Requests.size());
+
+        diskRegistry.AllocateDisk("nonrepl-vol", 10_GB, 4_KB, "", 0, "yc-nbs", "yc-nbs.folder");
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(11, notifications);
+        UNIT_ASSERT_VALUES_EQUAL(5, notifyService->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL("yc-nbs", notifyService->Requests[1].CloudId);
+        UNIT_ASSERT_VALUES_EQUAL("yc-nbs.folder", notifyService->Requests[1].FolderId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL("nonrepl-vol",
+            notifyService->Requests[1].Event, TDiskBackOnline, DiskId);
+        UNIT_ASSERT_VALUES_EQUAL("", notifyService->Requests[1].UserId);
+
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(11, notifications);
+        UNIT_ASSERT_VALUES_EQUAL(5, notifyService->Requests.size());
+
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_ONLINE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_ONLINE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_ONLINE);
+
+        notifyService->Requests.clear();
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(4, notifyService->Requests.size());
+        auto backOnlineCount = CountIf(notifyService->Requests, [] (const auto& n) {
+            return std::holds_alternative<NNotify::TDiskBackOnline>(n.Event);
+        });
+        UNIT_ASSERT_VALUES_EQUAL(2, backOnlineCount);
     }
 }
 

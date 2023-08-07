@@ -86,7 +86,7 @@ private:
 
     TVector<TString> DisksBeingDestroyed;
     TVector<TDiskNotification> DisksBeingNotified;
-    TVector<TString> ErrorNotifications;
+    TVector<NProto::TUserNotification> UserNotificationsBeingProcessed;
 
     TInstant BrokenDisksDestructionStartTs;
     TInstant DisksNotificationStartTs;
@@ -234,7 +234,7 @@ private:
     void RenderMigrationList(IOutputStream& out) const;
     void RenderBrokenDiskList(IOutputStream& out) const;
     void RenderDisksToNotify(IOutputStream& out) const;
-    void RenderErrorNotifications(IOutputStream& out) const;
+    void RenderUserNotifications(IOutputStream& out) const;
     void RenderPlacementGroupList(IOutputStream& out, ui32 limit) const;
     void RenderRacks(IOutputStream& out, ui32 limit) const;
     void RenderAgentList(TInstant now, IOutputStream& out, ui32 limit) const;

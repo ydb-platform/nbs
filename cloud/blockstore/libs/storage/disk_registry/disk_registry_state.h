@@ -242,7 +242,8 @@ public:
         ui64 diskStateSeqNo,
         TVector<TDirtyDevice> dirtyDevices,
         TVector<TString> disksToCleanup,
-        TVector<TDiskId> errorNotifications,
+        TVector<TString> errorNotifications,
+        TVector<NProto::TUserNotification> userNotifications,
         TVector<TString> outdatedVolumeConfigs,
         TVector<TDeviceId> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
@@ -406,9 +407,19 @@ public:
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
-    void AddErrorNotification(TDiskRegistryDatabase& db, TDiskId diskId);
-    void DeleteErrorNotification(TDiskRegistryDatabase& db, const TDiskId& diskId);
-    const THashSet<TDiskId>& GetErrorNotifications() const;
+    void AddUserNotification(
+        TDiskRegistryDatabase& db,
+        NProto::TUserNotification notification);
+    void DeleteUserNotification(
+        TDiskRegistryDatabase& db,
+        const TString& entityId,
+        ui64 seqNo);
+    void GetUserNotifications(
+        TVector<NProto::TUserNotification>& notifications) const;
+    decltype(auto) GetUserNotifications() const
+    {
+        return NotificationSystem.GetUserNotifications();
+    }
 
     TVector<TString> CollectBrokenDevices(const NProto::TAgentStats& stats) const;
     NProto::TError UpdateAgentCounters(const NProto::TAgentStats& source);

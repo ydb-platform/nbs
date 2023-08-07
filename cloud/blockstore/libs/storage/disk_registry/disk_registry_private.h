@@ -59,6 +59,21 @@ struct TDiskStateUpdate
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TUserNotificationKey
+{
+    TString EntityId;
+    ui64 SeqNo = 0;
+
+    TUserNotificationKey() = default;
+
+    TUserNotificationKey(TString entityId, ui64 seqNo)
+        : EntityId(std::move(entityId))
+        , SeqNo(seqNo)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBrokenDiskInfo
 {
     TString DiskId;
@@ -92,6 +107,7 @@ struct TDiskRegistryStateSnapshot
     bool WritableState = false;
     TVector<TString> DisksToCleanup;
     TVector<TString> ErrorNotifications;
+    TVector<NProto::TUserNotification> UserNotifications;
     TVector<TString> OutdatedVolumeConfigs;
     TVector<TString> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
@@ -112,6 +128,7 @@ struct TDiskRegistryStateSnapshot
         WritableState = false;
         DisksToCleanup.clear();
         ErrorNotifications.clear();
+        UserNotifications.clear();
         OutdatedVolumeConfigs.clear();
         SuspendedDevices.clear();
         AutomaticallyReplacedDevices.clear();
@@ -144,7 +161,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(PublishDiskStates,                          __VA_ARGS__)               \
     xxx(StartMigration,                             __VA_ARGS__)               \
     xxx(NotifyUsers,                                __VA_ARGS__)               \
-    xxx(NotifyDiskError,                            __VA_ARGS__)               \
+    xxx(NotifyUserEvent,                            __VA_ARGS__)               \
     xxx(UpdateVolumeConfig,                         __VA_ARGS__)               \
     xxx(FinishVolumeConfigUpdate,                   __VA_ARGS__)               \
     xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
@@ -558,8 +575,8 @@ struct TEvDiskRegistryPrivate
     struct TNotifyUsersResponse
     {
         TCallContextPtr CallContext;
-        TVector<TString> Succeeded;
-        TVector<TString> Failures;
+        TVector<TUserNotificationKey> Succeeded;
+        TVector<TUserNotificationKey> Failures;
 
         TNotifyUsersResponse() = default;
 
@@ -571,25 +588,25 @@ struct TEvDiskRegistryPrivate
     };
 
     //
-    // NotifyDiskError
+    // NotifyUserEvent
     //
 
-    struct TNotifyDiskErrorRequest
+    struct TNotifyUserEventRequest
     {
-        TString DiskId;
+        NProto::TUserNotification Notification;
 
-        explicit TNotifyDiskErrorRequest(TString diskId)
-            : DiskId(std::move(diskId))
+        explicit TNotifyUserEventRequest(NProto::TUserNotification notification)
+            : Notification(std::move(notification))
         {}
     };
 
-    struct TNotifyDiskErrorResponse
+    struct TNotifyUserEventResponse
     {
         TCallContextPtr CallContext;
 
-        TNotifyDiskErrorResponse() = default;
+        TNotifyUserEventResponse() = default;
 
-        TNotifyDiskErrorResponse(
+        TNotifyUserEventResponse(
                 TCallContextPtr callContext)
             : CallContext(std::move(callContext))
         {}

@@ -180,6 +180,7 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<Id>;
     };
 
+    // Obsolete. TODO: Remove legacy compatibility in next release
     struct ErrorNotifications
         : public TTableSchema<11>
     {
@@ -289,6 +290,22 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<AgentId, Params>;
     };
 
+    struct UserNotifications
+        : public TTableSchema<18>
+    {
+        struct SeqNo
+            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        {};
+
+        struct Notification
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TUserNotification;
+        };
+
+        using TKey = TableKey<SeqNo>;
+        using TColumns = TableColumns<SeqNo, Notification>;
+    };
 
     using TTables = SchemaTables<
         Agents,
@@ -305,7 +322,8 @@ struct TDiskRegistrySchema
         AgentById,
         SuspendedDevices,
         AutomaticallyReplacedDevices,
-        DiskRegistryAgentListParams
+        DiskRegistryAgentListParams,
+        UserNotifications
     >;
 };
 

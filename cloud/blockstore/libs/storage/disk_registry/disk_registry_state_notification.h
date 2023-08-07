@@ -10,11 +10,33 @@ class TNotificationSystem
 {
     using TDiskId = TString;
 
+    struct TUserNotifications
+    {
+        struct TPerEntityData
+        {
+            TVector<NProto::TUserNotification> Notifications;
+            // Protect from duplicate AddUserNotification() calls, just in case
+            NProto::TUserNotification::EventCase LatestEvent =
+                NProto::TUserNotification::EventCase::EVENT_NOT_SET;
+        };
+
+        THashMap<TString, TPerEntityData> Storage;
+        size_t Count = 0;
+
+        TUserNotifications() = default;
+
+        TUserNotifications(size_t sizeHint)
+            : Storage(sizeHint)
+        {}
+    };
+
 private:
+    const TStorageConfigPtr StorageConfig;
+
     THashSet<TDiskId> SupportsNotifications;
 
     // notify users
-    THashSet<TDiskId> ErrorNotifications;
+    TUserNotifications UserNotifications;
 
     // notify volumes (reallocate)
     THashMap<TDiskId, ui64> DisksToReallocate;
@@ -30,7 +52,9 @@ private:
 
 public:
     TNotificationSystem(
-        TVector<TDiskId> errorNotifications,
+        TStorageConfigPtr storageConfig,
+        TVector<TString> errorNotifications,
+        TVector<NProto::TUserNotification> userNotifications,
         TVector<TDiskId> disksToReallocate,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
@@ -39,15 +63,23 @@ public:
     void AllowNotifications(const TDiskId& diskId);
     void DeleteDisk(TDiskRegistryDatabase& db, const TDiskId& diskId);
 
-    void AddErrorNotification(
+    void AddUserNotification(
         TDiskRegistryDatabase& db,
-        const TDiskId& diskId);
+        NProto::TUserNotification notification);
 
-    void DeleteErrorNotification(
+    void DeleteUserNotification(
         TDiskRegistryDatabase& db,
-        const TDiskId& diskId);
+        const TString& entityId,
+        ui64 seqNo);
 
-    auto GetErrorNotifications() const -> const THashSet<TDiskId>&;
+    void DeleteUserNotifications(
+        TDiskRegistryDatabase& db,
+        const TString& entityId);
+
+    void GetUserNotifications(
+        TVector<NProto::TUserNotification>& notifications) const;
+
+    auto GetUserNotifications() const -> const TUserNotifications&;
 
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TDiskId& diskId);
     ui64 AddReallocateRequest(const TDiskId& diskId);
@@ -68,7 +100,9 @@ public:
     void OnDiskStateChanged(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
-        NProto::EDiskState newState);
+        NProto::EDiskState oldState,
+        NProto::EDiskState newState,
+        TInstant timestamp);
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
@@ -83,6 +117,11 @@ public:
     void DeleteOutdatedVolumeConfig(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId);
+
+private:
+    void PullInUserNotifications(
+        TVector<TString> errorNotifications,
+        TVector<NProto::TUserNotification> userNotifications);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskRegistry

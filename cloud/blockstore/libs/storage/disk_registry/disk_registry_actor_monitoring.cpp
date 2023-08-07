@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -109,13 +110,18 @@ void GenerateVolumeActionsJS(IOutputStream& out)
     )html";
 }
 
-template <typename C>
-void DumpSize(IOutputStream& out, const C& c)
+void DumpSize(IOutputStream& out, size_t size)
 {
-    const auto size = std::size(c);
     if (size) {
         out << " <font color=gray>" << size << "</font>";
     }
+}
+
+template <typename C>
+    requires requires(const C& c) { std::size(c); }
+void DumpSize(IOutputStream& out, const C& c)
+{
+    DumpSize(out, std::size(c));
 }
 
 void DumpActionLink(
@@ -890,30 +896,50 @@ void TDiskRegistryActor::RenderDisksToNotify(IOutputStream& out) const
     }
 }
 
-void TDiskRegistryActor::RenderErrorNotifications(IOutputStream& out) const
+void TDiskRegistryActor::RenderUserNotifications(IOutputStream& out) const
 {
     HTML(out) {
+        const auto& notifications = State->GetUserNotifications();
+
         TAG(TH3) {
-            out << "Error notifications";
-            DumpSize(out, State->GetErrorNotifications());
+            out << "User notifications";
+            DumpSize(out, notifications.Count);
         }
 
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Disk"; }
+                    TABLEH() { out << "Event"; }
+                    // tablesorter's default parsers can't handle iso date+time
+                    // 'sorter-usLongDate' works by luck,
+                    // but looks more like a hack
+                    TABLEH_CLASS("sorter-text") { out << "Timestamp"; }
+                    TABLEH() { out << "SeqNo"; }
                     TABLEH() { out << "Notification scheduled"; }
                 }
             }
 
-            for (const auto& diskId: State->GetErrorNotifications()) {
-                TABLER() {
-                    TABLED() { DumpDiskLink(out, TabletID(), diskId); }
+            for (auto&& [id, data]: notifications.Storage) {
+                for (const auto& notif: data.Notifications) {
+                    TABLER() {
+                        TABLED() { DumpDiskLink(out, TabletID(), id); }
+                        TABLED() { out << GetEventName(notif); }
+                        TABLED() { out
+                            << TInstant::MicroSeconds(notif.GetTimestamp()); }
+                        TABLED() { out << notif.GetSeqNo(); }
 
-                    if (FindPtr(ErrorNotifications, diskId)) {
-                        TABLED() { out << UsersNotificationStartTs; }
-                    } else {
-                        TABLED() { out << "notification not started"; }
+                        if (FindIfPtr(UserNotificationsBeingProcessed,
+                            [&id = id, seqNo = notif.GetSeqNo()]
+                            (const auto& n) {
+                                return (n.GetSeqNo() == seqNo)
+                                    && (GetEntityId(n) == id);
+                            }))
+                        {
+                            TABLED() { out << UsersNotificationStartTs; }
+                        } else {
+                            TABLED() { out << "notification not started"; }
+                        }
                     }
                 }
             }
@@ -953,7 +979,7 @@ void TDiskRegistryActor::RenderDisks(IOutputStream& out, ui32 limit) const
     RenderMigrationList(out);
     RenderBrokenDiskList(out);
     RenderDisksToNotify(out);
-    RenderErrorNotifications(out);
+    RenderUserNotifications(out);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
