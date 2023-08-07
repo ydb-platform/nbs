@@ -16,6 +16,24 @@
 
 #include <util/generic/size_literals.h>
 
+using TVolumeParamMap = ::google::protobuf::Map<
+    TString,
+    NCloud::NBlockStore::NProto::TUpdateVolumeParamsMapValue>;
+
+bool operator==(const TVolumeParamMap& lhs,
+                const TVolumeParamMap& rhs)
+{
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+
+    return std::all_of(lhs.begin(), lhs.end(), [&](const auto& elem){
+        const auto& a = elem.second;
+        const auto& b = rhs.at(elem.first);
+        return a.GetValue() == b.GetValue() && a.GetTtlMs() == b.GetTtlMs();
+    });
+}
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NKikimr;
@@ -1086,6 +1104,72 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetIsFillFinished());
     }
+
+    Y_UNIT_TEST(ShouldUpdateVolumeParams)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(
+            DefaultDiskId,
+            100_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",
+            "",
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        TVolumeParamMap volumeParams;
+        NProto::TUpdateVolumeParamsMapValue protoParam;
+        protoParam.SetValue("10s");
+        protoParam.SetTtlMs(100'000'000);
+        volumeParams.insert({"max-timed-out-device-state-duration", protoParam});
+
+        bool requestReceived = false;
+        env.GetRuntime().SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvVolume::EvUpdateVolumeParamsRequest) {
+                    auto* msg = event->Get<TEvVolume::TEvUpdateVolumeParamsRequest>();
+
+                    UNIT_ASSERT_VALUES_EQUAL(msg->Record.GetDiskId(), DefaultDiskId);
+                    UNIT_ASSERT_VALUES_EQUAL(msg->Record.GetVolumeParams(), volumeParams);
+                    requestReceived = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        NProto::TUpdateVolumeParamsRequest request;
+        request.SetDiskId(DefaultDiskId);
+        *request.MutableVolumeParams() = volumeParams;
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+        service.ExecuteAction("UpdateVolumeParams", buf);
+
+        UNIT_ASSERT(requestReceived);
+
+        service.DestroyVolume();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
+
+
+template <>
+void Out<TVolumeParamMap>(
+    IOutputStream& out,
+    const TVolumeParamMap& paramMap)
+{
+    out << '[';
+    for (const auto& [key,value]: paramMap) {
+        out << '{'
+            << "Key: " << key << ", "
+            << "Value: " << value.GetValue() << ", "
+            << "Ttl: " << value.GetTtlMs()
+            << '}';
+    }
+    out << ']';
+}

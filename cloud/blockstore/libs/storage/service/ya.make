@@ -38,6 +38,7 @@ SRCS(
     service_actor_actions_update_disk_registry_params.cpp
     service_actor_actions_update_placement_group_settings.cpp
     service_actor_actions_update_used_blocks.cpp
+    service_actor_actions_update_volume_params.cpp
     service_actor_actions_writable_state.cpp
     service_actor_actions.cpp
     service_actor_alter.cpp

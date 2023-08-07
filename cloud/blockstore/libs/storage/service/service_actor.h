@@ -346,6 +346,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateFinishFillDiskActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateUpdateVolumeParamsActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

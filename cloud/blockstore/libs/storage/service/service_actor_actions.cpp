@@ -70,6 +70,7 @@ void TServiceActor::HandleExecuteAction(
         {"updatediskblocksize",               &TServiceActor::CreateUpdateDiskBlockSizeActionActor         },
         {"updatediskreplicacount",            &TServiceActor::CreateUpdateDiskReplicaCountActionActor      },
         {"updateplacementgroupsettings",      &TServiceActor::CreateUpdatePlacementGroupSettingsActor      },
+        {"updatevolumeparams",                &TServiceActor::CreateUpdateVolumeParamsActor                },
         {"updateusedblocks",                  &TServiceActor::CreateUpdateUsedBlocksActionActor            },
         {"getdiskregistrytabletinfo",         &TServiceActor::CreateGetDiskRegistryTabletInfo              },
         {"creatediskfromdevices",             &TServiceActor::CreateCreateDiskFromDevicesActionActor       },

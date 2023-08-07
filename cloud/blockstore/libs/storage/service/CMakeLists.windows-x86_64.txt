@@ -75,6 +75,7 @@ target_sources(libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_disk_registry_params.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_placement_group_settings.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_used_blocks.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_volume_params.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_writable_state.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_alter.cpp
