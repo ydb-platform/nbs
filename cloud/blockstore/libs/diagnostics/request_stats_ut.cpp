@@ -46,7 +46,9 @@ void AddRequestStats(
             request.RequestBytes,
             EDiagnosticsErrorKind::Success,
             NCloud::NProto::EF_NONE,
-            false);
+            false,
+            ECalcMaxTime::ENABLE,
+            0);
     }
 }
 
@@ -433,7 +435,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 1_MB,
                 EDiagnosticsErrorKind::ErrorSilent,
                 NCloud::NProto::EF_SILENT, // a stub at the moment
-                false);
+                false,
+                ECalcMaxTime::ENABLE,
+                0);
         };
 
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD);
@@ -476,7 +480,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                     1_MB,
                     EDiagnosticsErrorKind::ErrorSilent,
                     NCloud::NProto::EF_HW_PROBLEMS_DETECTED,
-                    false);
+                    false,
+                    ECalcMaxTime::ENABLE,
+                    0);
             }
         };
 

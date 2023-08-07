@@ -30,6 +30,14 @@ void TCallContextBase::SetPostponeCycles(ui64 cycles)
     AtomicSet(PostponeTs, cycles);
 }
 
+ui64 TCallContextBase::GetResponseSentCycles() const {
+    return AtomicGet(ResponseSentCycles);
+}
+
+void TCallContextBase::SetResponseSentCycles(ui64 cycles) {
+    AtomicSet(ResponseSentCycles, cycles);
+}
+
 void TCallContextBase::Postpone(ui64 nowCycles)
 {
     Y_VERIFY_DEBUG(

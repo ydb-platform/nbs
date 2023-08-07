@@ -31,9 +31,12 @@ TRequestTime TCallContext::CalcRequestTime(ui64 nowCycles) const
     const auto postponeDuration = Time(EProcessingStage::Postponed);
     const auto backoffTime = Time(EProcessingStage::Backoff);
 
-    requestTime.ExecutionTime = CyclesToDurationSafe(nowCycles - startCycles)
-        - postponeDuration - backoffTime
-        - GetPossiblePostponeDuration();
+    auto responseSentCycles = GetResponseSentCycles();
+    auto responseDuration = CyclesToDurationSafe(
+        (responseSentCycles ? responseSentCycles : nowCycles) - startCycles);
+
+    requestTime.ExecutionTime = responseDuration - postponeDuration -
+        backoffTime - GetPossiblePostponeDuration();
 
     return requestTime;
 }

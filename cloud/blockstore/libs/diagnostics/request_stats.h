@@ -35,13 +35,14 @@ struct IRequestStats
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calcMaxTime = ECalcMaxTime::ENABLE) = 0;
+        ECalcMaxTime calcMaxTime,
+        ui64 responseSent) = 0;
 
     virtual void AddIncompleteStats(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime = ECalcMaxTime::ENABLE) = 0;
+        ECalcMaxTime calcMaxTime) = 0;
 
     virtual void AddRetryStats(
         NCloud::NProto::EStorageMediaKind mediaKind,

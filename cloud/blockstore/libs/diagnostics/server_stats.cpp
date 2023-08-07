@@ -371,6 +371,8 @@ void TServerStats::ResponseSent(
     TMetricRequest& req,
     TCallContext& callContext)
 {
+    auto responseSentCycles = GetCycleCount();
+    callContext.SetResponseSentCycles(responseSentCycles);
     LWTRACK(
         ResponseSent,
         callContext.LWOrbit,
@@ -403,6 +405,8 @@ void TServerStats::RequestCompleted(
     auto calcMaxTime = req.VolumeInfo && req.VolumeInfo->HasThrottlerRejects() ?
         ECalcMaxTime::DISABLE: ECalcMaxTime::ENABLE;
 
+    const auto responseSentCycles = callContext.GetResponseSentCycles();
+
     const auto requestTime = RequestStats->RequestCompleted(
         req.MediaKind,
         req.RequestType,
@@ -412,7 +416,8 @@ void TServerStats::RequestCompleted(
         errorKind,
         errorFlags,
         req.Unaligned,
-        calcMaxTime);
+        calcMaxTime,
+        responseSentCycles);
 
     ui32 blockSize = DefaultBlockSize;
 
@@ -426,7 +431,8 @@ void TServerStats::RequestCompleted(
             req.RequestBytes,
             errorKind,
             errorFlags,
-            req.Unaligned);
+            req.Unaligned,
+            responseSentCycles);
     }
 
     if (ProfileLog) {

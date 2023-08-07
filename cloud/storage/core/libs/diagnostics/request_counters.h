@@ -74,7 +74,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calMaxTime = ECalcMaxTime::ENABLE);
+        ECalcMaxTime calcMaxTime,
+        ui64 responseSent);
 
     void AddRetryStats(
         TRequestType requestType,
@@ -92,7 +93,7 @@ public:
         TRequestType requestType,
         TDuration executionTime,
         TDuration totalTime,
-        ECalcMaxTime calcMaxTime = ECalcMaxTime::ENABLE);
+        ECalcMaxTime calcMaxTime);
 
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;
@@ -116,12 +117,13 @@ private:
     void RequestCompletedImpl(
         TRequestType requestType,
         TDuration requestTime,
+        TDuration requestCompletionTime,
         TDuration postponedTime,
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calMaxTime = ECalcMaxTime::ENABLE);
+        ECalcMaxTime calcMaxTime);
 
     bool ShouldReport(TRequestType requestType) const;
 

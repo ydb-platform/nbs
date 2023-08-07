@@ -258,6 +258,10 @@ struct TRequestCounters::TStatCounters
     TTimeHist ExecutionTimeHistUnaligned;
     TRequestPercentiles ExecutionTimePercentiles;
 
+    TTimeHist RequestCompletionTimeHist;
+    TTimeHist RequestCompletionTimeHistUnaligned;
+    TRequestPercentiles RequestCompletionTimePercentiles;
+
     TTimeHist PostponedTimeHist;
     TRequestPercentiles PostponedTimePercentiles;
 
@@ -339,8 +343,14 @@ struct TRequestCounters::TStatCounters
                     *counters.GetSubgroup("histogram", "ExecutionTime"));
                 ExecutionTimeHistUnaligned.Register(
                     *unalignedClassGroup->GetSubgroup("histogram", "ExecutionTime"));
+                RequestCompletionTimeHist.Register(
+                    *counters.GetSubgroup("histogram", "RequestCompletionTime"));
+                RequestCompletionTimeHistUnaligned.Register(
+                    *unalignedClassGroup->GetSubgroup("histogram", "RequestCompletionTime"));
             } else {
                 SizePercentiles.Register(*counters.GetSubgroup("percentiles", "Size"));
+                RequestCompletionTimePercentiles.Register(
+                    *counters.GetSubgroup("percentiles", "RequestCompletionTime"));
                 ExecutionTimePercentiles.Register(
                     *counters.GetSubgroup("percentiles", "ExecutionTime"));
                 PostponedTimePercentiles.Register(
@@ -408,6 +418,7 @@ struct TRequestCounters::TStatCounters
 
     void AddStats(
         TDuration requestTime,
+        TDuration requestCompletionTime,
         TDuration postponedTime,
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
@@ -449,13 +460,24 @@ struct TRequestCounters::TStatCounters
                 break;
         }
 
-        auto execTime = requestTime - postponedTime;
-        Time->Add(requestTime.MicroSeconds());
-        TimeHist.Increment(requestTime);
+        const auto time = requestTime - requestCompletionTime;
+        const auto execTime = time - postponedTime;
+
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(execTime.MicroSeconds());
         }
         MaxTotalTimeCalc.Add(requestTime.MicroSeconds());
+
+        Time->Add(time.MicroSeconds());
+        TimeHist.Increment(time);
+
+        if (requestCompletionTime != TDuration::Zero()) {
+            if (unaligned) {
+                RequestCompletionTimeHistUnaligned.Increment(
+                    requestCompletionTime);
+            }
+            RequestCompletionTimeHist.Increment(requestCompletionTime);
+        }
 
         if (IsReadWriteRequest) {
             MaxCountCalc.Add(1);
@@ -467,7 +489,7 @@ struct TRequestCounters::TStatCounters
 
             if (unaligned) {
                 UnalignedCount->Inc();
-                TimeHistUnaligned.Increment(requestTime);
+                TimeHistUnaligned.Increment(time);
                 ExecutionTimeHistUnaligned.Increment(execTime);
             }
 
@@ -583,7 +605,7 @@ struct TRequestCounters::TStatCounters
     void AddIncompleteStats(
         TDuration executionTime,
         TDuration totalTime,
-        ECalcMaxTime calcMaxTime = ECalcMaxTime::ENABLE)
+        ECalcMaxTime calcMaxTime)
     {
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(executionTime.MicroSeconds());
@@ -608,6 +630,7 @@ struct TRequestCounters::TStatCounters
                 SizePercentiles.Update(SizeHist.GetBuckets());
                 TimePercentiles.Update(TimeHist.GetBuckets());
                 ExecutionTimePercentiles.Update(ExecutionTimeHist.GetBuckets());
+                RequestCompletionTimePercentiles.Update(RequestCompletionTimeHist.GetBuckets());
                 PostponedTimePercentiles.Update(PostponedTimeHist.GetBuckets());
             }
         } else if (updatePercentiles && !ReportControlPlaneHistogram) {
@@ -683,18 +706,26 @@ TDuration TRequestCounters::RequestCompleted(
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
     bool unaligned,
-    ECalcMaxTime calcMaxTime)
+    ECalcMaxTime calcMaxTime,
+    ui64 responseSent)
 {
-    auto requestTime = CyclesToDurationSafe(GetCycleCount() - requestStarted);
+    auto requestCompleted = GetCycleCount();
+    auto requestTime = CyclesToDurationSafe(requestCompleted - requestStarted);
+    auto requestCompletionTime = responseSent ?
+        CyclesToDurationSafe(requestCompleted - responseSent) :
+        TDuration::Zero();
+
     RequestCompletedImpl(
         requestType,
         requestTime,
+        requestCompletionTime,
         postponedTime,
         requestBytes,
         errorKind,
         errorFlags,
         unaligned,
         calcMaxTime);
+
     return requestTime;
 }
 
@@ -840,6 +871,7 @@ void TRequestCounters::RequestStartedImpl(
 void TRequestCounters::RequestCompletedImpl(
     TRequestType requestType,
     TDuration requestTime,
+    TDuration requestCompletionTime,
     TDuration postponedTime,
     ui32 requestBytes,
     EDiagnosticsErrorKind errorKind,
@@ -855,6 +887,7 @@ void TRequestCounters::RequestCompletedImpl(
         CountersByRequest[requestType].Completed(requestBytes);
         CountersByRequest[requestType].AddStats(
             requestTime,
+            requestCompletionTime,
             postponedTime,
             requestBytes,
             errorKind,
@@ -865,6 +898,7 @@ void TRequestCounters::RequestCompletedImpl(
         &TRequestCounters::RequestCompletedImpl,
         requestType,
         requestTime,
+        requestCompletionTime,
         postponedTime,
         requestBytes,
         errorKind,

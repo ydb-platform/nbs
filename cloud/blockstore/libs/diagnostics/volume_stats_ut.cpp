@@ -112,7 +112,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,
-                false);
+                false,
+                0);
         };
 
         auto readData = [](auto volume, auto type){
@@ -127,7 +128,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,
-                false);
+                false,
+                0);
         };
 
         Mount(
@@ -332,7 +334,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 1024 * 1024,
                 errorKind,
                 NCloud::NProto::EF_NONE,
-                false);
+                false,
+                0);
         };
 
         Mount(
@@ -428,7 +431,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 1024 * 1024,
                 errorKind,
                 errorFlags,
-                false);
+                false,
+                0);
         };
 
         auto mount = [&volumeStats, &getCounters] (
@@ -615,7 +619,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1024 * 1024,
             {},
             NCloud::NProto::EF_NONE,
-            false);
+            false,
+            0);
 
         volumeStats->UpdateStats(false);
 
@@ -680,7 +685,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1024,
             {},
             NCloud::NProto::EF_NONE,
-            false);
+            false,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(
             postponeDuration,
             volumeInfos[0]->GetPossiblePostponeDuration());
@@ -704,7 +710,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1024,
             {},
             NCloud::NProto::EF_NONE,
-            false);
+            false,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(
             postponeDuration,
             volumeInfos[0]->GetPossiblePostponeDuration());
@@ -771,7 +778,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1024,
             {},
             NCloud::NProto::EF_NONE,
-            false);
+            false,
+            0);
 
         volumeStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("DownDisks")->Val());

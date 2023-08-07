@@ -405,7 +405,8 @@ public:
         ui32 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
-        bool unaligned) override
+        bool unaligned,
+        ui64 responseSent) override
     {
         VolumeBase->BusyIdleCalc.OnRequestCompleted();
         VolumeBase->PerfCalc.OnRequestCompleted(
@@ -432,7 +433,9 @@ public:
             requestBytes,
             errorKind,
             errorFlags,
-            unaligned);
+            unaligned,
+            ECalcMaxTime::ENABLE,
+            responseSent);
     }
 
     void AddIncompleteStats(
@@ -443,7 +446,8 @@ public:
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),
             requestTime.ExecutionTime,
-            requestTime.TotalTime);
+            requestTime.TotalTime,
+            ECalcMaxTime::ENABLE);
         VolumeBase->DowntimeCalculator.AddIncompleteStats(
             TranslateLocalRequestType(requestType),
             requestTime.ExecutionTime);
