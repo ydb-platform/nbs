@@ -1101,6 +1101,22 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
         }
 
+        {
+            // Incorrect FillToken.
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetFillToken("svartmetal");
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("FinishFillDisk", buf);
+            auto response = service.RecvExecuteActionResponse();
+
+            ui32 errCode = MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPreconditionFailed);
+            UNIT_ASSERT_VALUES_EQUAL(errCode, response->GetStatus());
+        }
+
         auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetIsFillFinished());
     }
