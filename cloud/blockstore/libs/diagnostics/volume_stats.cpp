@@ -558,6 +558,7 @@ private:
     TDynamicCountersPtr Counters;
     std::shared_ptr<NUserCounter::TUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
+    std::unique_ptr<TSufferCounters> SmoothSufferCounters;
 
     std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
     TVolumeHolderMap Volumes;
@@ -793,10 +794,19 @@ public:
                 SufferCounters->OnDiskSuffer(
                     volumeBase.Volume.GetStorageMediaKind());
             }
+            if (SmoothSufferCounters &&
+                volumeBase.PerfCalc.IsSufferingSmooth())
+            {
+                SmoothSufferCounters->OnDiskSuffer(
+                    volumeBase.Volume.GetStorageMediaKind());
+            }
         }
 
         if (SufferCounters) {
             SufferCounters->PublishCounters();
+        }
+        if (SmoothSufferCounters) {
+            SmoothSufferCounters->PublishCounters();
         }
 
         if (updateIntervalFinished) {
@@ -939,6 +949,11 @@ private:
         switch (Type) {
             case EVolumeStatsType::EServerStats: {
                 SufferCounters = std::make_unique<TSufferCounters>(
+                    "DisksSuffer",
+                    Counters->GetSubgroup("component", "server"));
+
+                SmoothSufferCounters = std::make_unique<TSufferCounters>(
+                    "SmoothDisksSuffer",
                     Counters->GetSubgroup("component", "server"));
 
                 TotalDownDisksCounter =

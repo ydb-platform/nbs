@@ -259,7 +259,8 @@ void TestSuffer(
     TDynamicCountersPtr counters,
     TDuration requestTime,
     TDuration waitDuration,
-    ui32 expected)
+    ui32 expected,
+    ui32 expectedSmooth)
 {
     calc.OnRequestCompleted(
         EBlockStoreRequest::WriteBlocks,
@@ -272,6 +273,8 @@ void TestSuffer(
 
     auto sufferCounter = counters->GetCounter("Suffer", false);
     UNIT_ASSERT_VALUES_EQUAL(expected, sufferCounter->Val());
+    auto smoothSufferCounter = counters->GetCounter("SmoothSuffer", false);
+    UNIT_ASSERT_VALUES_EQUAL(expectedSmooth, smoothSufferCounter->Val());
 }
 
 void TestSuffer(
@@ -279,7 +282,8 @@ void TestSuffer(
     TDynamicCountersPtr counters,
     TDuration waitDuration,
     bool slowRequest,
-    ui32 expected)
+    ui32 expected,
+    ui32 expectedSmooth)
 {
     TDuration extraTime;
     if (slowRequest) {
@@ -288,14 +292,21 @@ void TestSuffer(
 
     auto requestTime = calc.GetExpectedWriteCost(1024 * 1024) + extraTime;
 
-    TestSuffer(calc, counters, requestTime, waitDuration, expected);
+    TestSuffer(
+        calc,
+        counters,
+        requestTime,
+        waitDuration,
+        expected,
+        expectedSmooth);
 }
 
 void TestSufferCount(
     TVolumePerformanceCalculator& calc,
     TDuration requestTime,
     TDuration waitDuration,
-    ui32 expected)
+    ui32 expected,
+    ui32 expectedSmooth)
 {
     calc.OnRequestCompleted(
         EBlockStoreRequest::WriteBlocks,
@@ -307,6 +318,7 @@ void TestSufferCount(
     Wait(calc, waitDuration);
 
     UNIT_ASSERT_VALUES_EQUAL(expected, calc.GetSufferCount());
+    UNIT_ASSERT_VALUES_EQUAL(expectedSmooth, calc.GetSmoothSufferCount());
 }
 
 void TestSufferCount(
@@ -314,7 +326,8 @@ void TestSufferCount(
     TDuration requestTime,
     TDuration postponedTime,
     TDuration waitDuration,
-    ui32 expected)
+    ui32 expected,
+    ui32 expectedSmooth)
 {
     calc.OnRequestCompleted(
         EBlockStoreRequest::WriteBlocks,
@@ -326,13 +339,15 @@ void TestSufferCount(
     Wait(calc, waitDuration);
 
     UNIT_ASSERT_VALUES_EQUAL(expected, calc.GetSufferCount());
+    UNIT_ASSERT_VALUES_EQUAL(expectedSmooth, calc.GetSmoothSufferCount());
 }
 
 void TestSufferCount(
     TVolumePerformanceCalculator& calc,
     TDuration waitDuration,
     bool slowRequest,
-    ui32 expected)
+    ui32 expected,
+    ui32 expectedSmooth)
 {
     TDuration extraTime;
     if (slowRequest) {
@@ -341,19 +356,26 @@ void TestSufferCount(
 
     auto requestTime = calc.GetExpectedWriteCost(1024 * 1024) + extraTime;
 
-    TestSufferCount(calc, requestTime, waitDuration, expected);
+    TestSufferCount(calc, requestTime, waitDuration, expected, expectedSmooth);
 }
 
 void TestSufferCountPostponed(
     TVolumePerformanceCalculator& calc,
     TDuration waitDuration,
-    ui32 expected)
+    ui32 expected,
+    ui32 expectedSmooth)
 {
     TDuration extraTime = TDuration::MicroSeconds(10);
 
     auto requestTime = calc.GetExpectedWriteCost(1024 * 1024) + extraTime;
 
-    TestSufferCount(calc, requestTime, extraTime, waitDuration, expected);
+    TestSufferCount(
+        calc,
+        requestTime,
+        extraTime,
+        waitDuration,
+        expected,
+        expectedSmooth);
 }
 
 void CheckServerSufferCounters(
@@ -429,9 +451,11 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
 
     calc.Register(*volumeCounters, volume);
 
-    TSufferCounters sufferCounters(counters
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "server"));
+    TSufferCounters sufferCounters(
+        "DisksSuffer",
+        counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server"));
 
     auto commonKind = [&] (const auto& kind) ->auto {
         if (kind == NProto::STORAGE_MEDIA_DEFAULT ||
@@ -444,8 +468,13 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
         }
     };
 
-    auto runIO = [&] (bool slow, i64 expected) {
-        TestSufferCount(calc, TDuration::Seconds(15), slow, expected);
+    auto runIO = [&] (bool slow, i64 expected, i64 expectedSmooth) {
+        TestSufferCount(
+            calc,
+            TDuration::Seconds(15),
+            slow,
+            expected,
+            expectedSmooth);
 
         if (calc.IsSuffering()) {
             sufferCounters.OnDiskSuffer(diskKind);
@@ -469,9 +498,9 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
     };
 
     // run slow request
-    runIO(true, 1);
+    runIO(true, 1, 1);
     // run fast request
-    runIO(false, 0);
+    runIO(false, 0, 0);
 }
 
 };  //namespace
@@ -653,7 +682,13 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         volumePerfCalc.Register(*volumeCounters, volume);
 
         // run slow request
-        TestSuffer(volumePerfCalc, volumeCounters, TDuration::Seconds(15), true, 1);
+        TestSuffer(
+            volumePerfCalc,
+            volumeCounters,
+            TDuration::Seconds(15),
+            true,
+            1,
+            1);
 
         auto oldTime = volumePerfCalc.GetExpectedWriteCost(1024 * 1024);
 
@@ -668,7 +703,13 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         volumePerfCalc.Register(*volumeCounters, updatedVolume);
 
         // run previously "slow" request and make sure it is "fast enough" now.
-        TestSuffer(volumePerfCalc, volumeCounters, oldTime, TDuration::Seconds(15), 0);
+        TestSuffer(
+            volumePerfCalc,
+            volumeCounters,
+            oldTime,
+            TDuration::Seconds(15),
+            0,
+            0);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyUpdatePerformanceSettingsIfClientPerfSettingsIncreased)
@@ -706,13 +747,25 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         volumePerfCalc.Register(*volumeCounters, volumeNoSettings);
 
         // run slow request for default settings
-        TestSuffer(volumePerfCalc, volumeCounters, TDuration::Seconds(15), true, 1);
+        TestSuffer(
+            volumePerfCalc,
+            volumeCounters,
+            TDuration::Seconds(15),
+            true,
+            1,
+            1);
         auto oldTime = volumePerfCalc.GetExpectedWriteCost(1024 * 1024) + TDuration::MicroSeconds(10);
 
         // mount with settings
         volumePerfCalc.Register(*volumeCounters, volume);
         // make sure that previously slow request becomes fast
-        TestSuffer(volumePerfCalc, volumeCounters, oldTime, TDuration::Seconds(15), 0);
+        TestSuffer(
+            volumePerfCalc,
+            volumeCounters,
+            oldTime,
+            TDuration::Seconds(15),
+            0,
+            0);
 
         auto updatedVolume = CreateVolumeWithDiagnosticsProfile(
             "test1",
@@ -721,7 +774,13 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         );
         volumePerfCalc.Register(*volumeCounters, updatedVolume);
 
-        TestSuffer(volumePerfCalc, volumeCounters, oldTime, TDuration::Seconds(15), 1);
+        TestSuffer(
+            volumePerfCalc,
+            volumeCounters,
+            oldTime,
+            TDuration::Seconds(15),
+            1,
+            1);
     }
 
     Y_UNIT_TEST(ShouldTrackNumberOfSufferSeconds)
@@ -746,11 +805,11 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
         volumePerfCalc.Register(*volumeCounters, volume);
 
-        TestSufferCount(volumePerfCalc, TDuration::Seconds(1), true, 1);
-        TestSufferCount(volumePerfCalc, TDuration::Seconds(1), true, 2);
+        TestSufferCount(volumePerfCalc, TDuration::Seconds(1), true, 1, 1);
+        TestSufferCount(volumePerfCalc, TDuration::Seconds(1), true, 2, 1);
 
         Wait(volumePerfCalc, TDuration::Seconds(13));
-        TestSufferCount(volumePerfCalc, TDuration::Seconds(1), false, 1);
+        TestSufferCount(volumePerfCalc, TDuration::Seconds(1), false, 1, 1);
     }
 
     Y_UNIT_TEST(ShouldNotTurnOnSufferIfDiskIsOverloaded)
@@ -779,7 +838,9 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volumePerfCalc.OnRequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 0,
-                DurationToCyclesSafe(volumePerfCalc.GetExpectedWriteCost(4096) + TDuration::Seconds(1)),
+                DurationToCyclesSafe(
+                    volumePerfCalc.GetExpectedWriteCost(4096)
+                    + TDuration::Seconds(1)),
                 0,
                 4096);
         }
@@ -811,11 +872,13 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
         calc.Register(*volumeCounters, volume);
 
-        TSufferCounters sufferCounters(counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server"));
+        TSufferCounters sufferCounters(
+            "DisksSuffer",
+            counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server"));
 
-        TestSufferCountPostponed(calc, TDuration::Seconds(15), 0);
+        TestSufferCountPostponed(calc, TDuration::Seconds(15), 0, 0);
 
         UNIT_ASSERT_VALUES_EQUAL(false, calc.IsSuffering());
     }

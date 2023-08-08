@@ -13,6 +13,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/size_literals.h>
 
 #include <tuple>
 
@@ -608,7 +609,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             diagConfig->GetExpectedIoParallelism() * CostPerIO(
                 diagConfig->GetSsdPerfSettings().WriteIops,
                 diagConfig->GetSsdPerfSettings().WriteBandwidth,
-                1024 * 1024);
+                1_MB);
         auto durationInCycles = DurationToCyclesSafe(requestDuration);
         auto now = GetCycleCount();
 
@@ -616,7 +617,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EBlockStoreRequest::WriteBlocks,
             now - Min(now, durationInCycles),
             {},
-            1024 * 1024,
+            1_MB,
             {},
             NCloud::NProto::EF_NONE,
             false,
@@ -629,13 +630,48 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL("test1", sufferArray[0].first);
         UNIT_ASSERT_VALUES_EQUAL(1, sufferArray[0].second);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("DisksSuffer", false)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counters->GetSubgroup("type", "ssd")->GetCounter("DisksSuffer", false)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            counters->GetSubgroup("type", "hdd")->GetCounter("DisksSuffer", false)->Val());
+        auto disksSufferCounter = counters->GetCounter("DisksSuffer", false);
+        auto ssdDisksSufferCounter = counters->GetSubgroup("type", "ssd")
+            ->GetCounter("DisksSuffer", false);
+        auto hddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
+            ->GetCounter("DisksSuffer", false);
+        auto smoothDisksSufferCounter =
+            counters->GetCounter("SmoothDisksSuffer", false);
+        auto smoothSsdDisksSufferCounter = counters->GetSubgroup("type", "ssd")
+            ->GetCounter("SmoothDisksSuffer", false);
+        auto smoothHddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
+            ->GetCounter("SmoothDisksSuffer", false);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, disksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, ssdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, smoothDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, smoothSsdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, smoothHddDisksSufferCounter->Val());
+
+        // a bunch of fast requests
+        for (ui32 i = 0; i < 5; ++i) {
+            volume->RequestCompleted(
+                EBlockStoreRequest::WriteBlocks,
+                now - Min(now, DurationToCyclesSafe(TDuration::MilliSeconds(10))),
+                {},
+                1_MB,
+                {},
+                NCloud::NProto::EF_NONE,
+                false,
+                0);
+        }
+
+        volumeStats->UpdateStats(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, disksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, ssdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, smoothDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, smoothSsdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, smoothHddDisksSufferCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculatePossiblePostponeTimeForVolume)

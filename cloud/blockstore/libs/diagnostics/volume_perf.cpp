@@ -53,7 +53,8 @@ TVolumePerformanceCalculator::TVolumePerformanceCalculator(
     , ConfigSettings(GetConfigSettings(diagnosticsConfig))
     , ExpectedIoParallelism(diagnosticsConfig->GetExpectedIoParallelism())
 {
-    TIntrusivePtr<TVolumePerfSettings> settings = new TVolumePerfSettings(ConfigSettings);
+    TIntrusivePtr<TVolumePerfSettings> settings =
+        new TVolumePerfSettings(ConfigSettings);
     PerfSettings.AtomicStore(settings);
 }
 
@@ -83,11 +84,16 @@ void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
     }
 }
 
-void TVolumePerformanceCalculator::Register(TDynamicCounters& counters, const NProto::TVolume& volume)
+void TVolumePerformanceCalculator::Register(
+    TDynamicCounters& counters,
+    const NProto::TVolume& volume)
 {
     Register(volume);
     if (IsEnabled && !Counter) {
         Counter = counters.GetCounter("Suffer", false);
+    }
+    if (IsEnabled && !SmoothCounter) {
+        SmoothCounter = counters.GetCounter("SmoothSuffer", false);
     }
 }
 
@@ -120,41 +126,67 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
     }
 }
 
+bool TVolumePerformanceCalculator::DidSuffer(
+    long expectedScore,
+    long actualScore) const
+{
+    return (expectedScore < ExpectedIoParallelism * 1e6)
+        && (actualScore > expectedScore);
+}
+
 bool TVolumePerformanceCalculator::UpdateStats()
 {
-    if (IsEnabled) {
-        auto expectedScore = AtomicGet(ExpectedScore);
-        auto currentScore = AtomicGet(CurrentScore);
-
-        bool suffer = (expectedScore < ExpectedIoParallelism * 1e6) && (currentScore > expectedScore);
-
-        AtomicAdd(SufferCount, suffer - Samples[UpdateCounter]);
-        Samples[UpdateCounter] = suffer;
-        UpdateCounter = (UpdateCounter + 1) % SampleCount;
-
-        if (!UpdateCounter && Counter) {
-            *Counter = SufferCount;
-        }
-
-        AtomicSub(CurrentScore, currentScore);
-        AtomicSub(ExpectedScore, expectedScore);
-
-        return suffer;
+    if (!IsEnabled) {
+        return false;
     }
-    return false;
+
+    auto expectedScore = AtomicGet(ExpectedScore);
+    auto actualScore = AtomicGet(CurrentScore);
+    bool suffered = DidSuffer(expectedScore, actualScore);
+
+    AtomicAdd(SufferCount, suffered - Samples[UpdateCounter].Suffered);
+    Samples[UpdateCounter] = {suffered, expectedScore, actualScore};
+    UpdateCounter = (UpdateCounter + 1) % SampleCount;
+
+    ui64 windowExpectedScore = 0;
+    ui64 windowActualScore = 0;
+    for (const auto& sample: Samples) {
+        windowExpectedScore += sample.ExpectedScore;
+        windowActualScore += sample.ActualScore;
+    }
+
+    AtomicSet(
+        SmoothSufferCount,
+        DidSuffer(windowExpectedScore, windowActualScore));
+
+    if (!UpdateCounter && Counter) {
+        *Counter = SufferCount;
+    }
+
+    if (!UpdateCounter && SmoothCounter) {
+        *SmoothCounter = SmoothSufferCount;
+    }
+
+    AtomicSub(CurrentScore, actualScore);
+    AtomicSub(ExpectedScore, expectedScore);
+
+    return suffered;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 TSufferCounters::UpdateCounter(TDynamicCounterPtr& counter, TStringBuf label, ui64 value)
+ui64 TSufferCounters::UpdateCounter(
+    TDynamicCounterPtr& counter,
+    const TString& diskType,
+    ui64 value)
 {
     if (!counter && !value) {
         return 0;
     }
     if (!counter) {
         counter = Counters
-            ->GetSubgroup("type", TString(label))
-            ->GetCounter("DisksSuffer", false);
+            ->GetSubgroup("type", diskType)
+            ->GetCounter(DisksSufferCounterName, false);
     }
     *counter = value;
     return value;
@@ -199,7 +231,7 @@ void TSufferCounters::PublishCounters()
         return;
     }
     if (!Total) {
-        Total = Counters->GetCounter("DisksSuffer", false);
+        Total = Counters->GetCounter(DisksSufferCounterName, false);
     }
     *Total = total;
 
@@ -208,16 +240,24 @@ void TSufferCounters::PublishCounters()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDuration TVolumePerformanceCalculator::GetExpectedReadCost(ui32 requestBytes) const
+TDuration TVolumePerformanceCalculator::GetExpectedReadCost(
+    ui32 requestBytes) const
 {
     auto perf = PerfSettings.AtomicLoad();
-    return ExpectedIoParallelism * CostPerIO(perf->ReadIops, perf->ReadBandwidth, requestBytes);
+    return ExpectedIoParallelism * CostPerIO(
+        perf->ReadIops,
+        perf->ReadBandwidth,
+        requestBytes);
 }
 
-TDuration TVolumePerformanceCalculator::GetExpectedWriteCost(ui32 requestBytes) const
+TDuration TVolumePerformanceCalculator::GetExpectedWriteCost(
+    ui32 requestBytes) const
 {
     auto perf = PerfSettings.AtomicLoad();
-    return ExpectedIoParallelism * CostPerIO(perf->WriteIops, perf->WriteBandwidth, requestBytes);
+    return ExpectedIoParallelism * CostPerIO(
+        perf->WriteIops,
+        perf->WriteBandwidth,
+        requestBytes);
 }
 
 TDuration TVolumePerformanceCalculator::GetExpectedCost() const

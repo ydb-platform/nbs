@@ -32,22 +32,34 @@ private:
 
     ui64 UpdateCounter = 0;
     TIntrusivePtr<NMonitoring::TCounterForPtr> Counter;
+    TIntrusivePtr<NMonitoring::TCounterForPtr> SmoothCounter;
 
     bool IsEnabled = false;
     THotSwap<TVolumePerfSettings> PerfSettings;
 
-    std::array<bool, SampleCount> Samples = {0};
+    struct TSample
+    {
+        bool Suffered = false;
+        long ExpectedScore = 0;
+        long ActualScore = 0;
+    };
+    std::array<TSample, SampleCount> Samples = {};
     TAtomic SufferCount = 0;
+    TAtomic SmoothSufferCount = 0;
 
 private:
-    TVolumePerfSettings GetConfigSettings(TDiagnosticsConfigPtr diagnosticsConfig) const;
+    TVolumePerfSettings GetConfigSettings(
+        TDiagnosticsConfigPtr diagnosticsConfig) const;
+    bool DidSuffer(long expectedScore, long actualScore) const;
 
 public:
     TVolumePerformanceCalculator(
         const NProto::TVolume& volume,
         TDiagnosticsConfigPtr diagnosticsConfig);
 
-    void Register(NMonitoring::TDynamicCounters& counters, const NProto::TVolume& volume);
+    void Register(
+        NMonitoring::TDynamicCounters& counters,
+        const NProto::TVolume& volume);
     void Register(const NProto::TVolume& volume);
 
     void OnRequestCompleted(
@@ -69,6 +81,16 @@ public:
         return GetSufferCount() != 0;
     }
 
+    ui32 GetSmoothSufferCount() const
+    {
+        return AtomicGet(SmoothSufferCount);
+    }
+
+    bool IsSufferingSmooth() const
+    {
+        return GetSmoothSufferCount() != 0;
+    }
+
     // for testing purpose
     TDuration GetExpectedReadCost(ui32 requestBytes) const;
     TDuration GetExpectedWriteCost(ui32 requestBytes) const;
@@ -88,6 +110,7 @@ private:
     using TSufferArray =
         std::array<T, NCloud::NProto::EStorageMediaKind_ARRAYSIZE>;
 
+    const TString DisksSufferCounterName;
     NMonitoring::TDynamicCountersPtr Counters;
     TDynamicCounterPtr Total;
 
@@ -101,11 +124,17 @@ private:
     TDynamicCounterPtr SsdLocal;
 
 public:
-    explicit TSufferCounters(NMonitoring::TDynamicCountersPtr counters)
-        : Counters(std::move(counters))
+    explicit TSufferCounters(
+            const TString& disksSufferCounterName,
+            NMonitoring::TDynamicCountersPtr counters)
+        : DisksSufferCounterName(disksSufferCounterName)
+        , Counters(std::move(counters))
     {}
 
-    ui64 UpdateCounter(TDynamicCounterPtr& counter, TStringBuf label, ui64 value);
+    ui64 UpdateCounter(
+        TDynamicCounterPtr& counter,
+        const TString& diskType,
+        ui64 value);
 
     void PublishCounters();
 
