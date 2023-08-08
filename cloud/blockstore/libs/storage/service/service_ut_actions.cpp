@@ -1022,7 +1022,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         auto request = service.CreateCreateVolumeRequest();
-        request->Record.SetFillToken("barkovbg");
+        request->Record.SetFillGeneration(1);
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();
@@ -1035,7 +1035,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
-            request.SetFillToken("barkovbg");
+            request.SetFillGeneration(1);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1055,7 +1055,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         auto request = service.CreateCreateVolumeRequest();
-        request->Record.SetFillToken("barkovbg");
+        request->Record.SetFillGeneration(1);
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();
@@ -1066,7 +1066,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(2);
-            request.SetFillToken("barkovbg");
+            request.SetFillGeneration(1);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1079,7 +1079,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             // ConfigVersion should be supplied.
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
-            request.SetFillToken("barkovbg");
+            request.SetFillGeneration(1);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1089,7 +1089,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
 
         {
-            // FillToken should be supplied.
+            // FillGeneration should be supplied.
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
@@ -1106,7 +1106,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
-            request.SetFillToken("svartmetal");
+            request.SetFillGeneration(2);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);

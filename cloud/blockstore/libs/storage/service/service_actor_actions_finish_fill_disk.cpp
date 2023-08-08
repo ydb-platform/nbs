@@ -103,17 +103,17 @@ void TFinishFillDiskActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (!Request.GetFillToken()) {
+    if (!Request.GetFillGeneration()) {
         ReplyAndDie(
             ctx,
-            MakeError(E_ARGUMENT, "FillToken should be supplied")
+            MakeError(E_ARGUMENT, "FillGeneration should be supplied")
         );
         return;
     }
 
     VolumeConfig.SetIsFillFinished(true);
     VolumeConfig.SetVersion(Request.GetConfigVersion());
-    VolumeConfig.SetFillToken(Request.GetFillToken());
+    VolumeConfig.SetFillGeneration(Request.GetFillGeneration());
     DescribeVolume(ctx);
 }
 

@@ -449,8 +449,8 @@ message TCreateVolumeRequest
     // Takes values from 1 to PlacementPartitionCount.
     uint32 PlacementPartitionIndex = 20;
 
-    // Mount requests with incorrect FillToken will be rejected unless filling is finished.
-    string FillToken = 21;
+    // Mount requests with incorrect FillGeneration will be rejected unless filling is finished.
+    uint64 FillGeneration = 21;
 }
 
 message TCreateVolumeResponse
@@ -480,8 +480,8 @@ message TDestroyVolumeRequest
     // devices cleanup.
     bool Sync = 4;
 
-    // Delete requests with incorrect FillToken will be rejected.
-    string FillToken = 6;
+    // Delete requests with incorrect FillGeneration will be rejected.
+    uint64 FillGeneration = 6;
 }
 
 message TDestroyVolumeResponse

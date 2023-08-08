@@ -327,11 +327,11 @@ bool TCreateVolumeActor::VerifyVolume(
         return false;
     }
 
-    if (VolumeConfig.GetFillToken() != actual.GetFillToken()) {
+    if (VolumeConfig.GetFillGeneration() != actual.GetFillGeneration()) {
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
-            "Created volume FillToken mismatch: expected=%s, actual=%s",
-            VolumeConfig.GetFillToken().Quote().data(),
-            actual.GetFillToken().Quote().data());
+            "Created volume FillGeneration mismatch: expected=%lu, actual=%lu",
+            VolumeConfig.GetFillGeneration(),
+            actual.GetFillGeneration());
         return false;
     }
 

@@ -1613,7 +1613,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(syncDealloc);
     }
 
-    Y_UNIT_TEST(ShoudSaveFillToken)
+    Y_UNIT_TEST(ShoudSaveFillGeneration)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -1621,17 +1621,17 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         auto request = service.CreateCreateVolumeRequest();
-        request->Record.SetFillToken("hahahehe");
+        request->Record.SetFillGeneration(1);
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();
         UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
 
         auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
-        UNIT_ASSERT_VALUES_EQUAL("hahahehe", volumeConfig.GetFillToken());
+        UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.GetFillGeneration());
     }
 
-    Y_UNIT_TEST(ShouldCheckFillTokenIdempotence)
+    Y_UNIT_TEST(ShouldCheckFillGenerationIdempotence)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -1640,14 +1640,14 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         for (int i = 0; i < 2; i++) {
             auto request = service.CreateCreateVolumeRequest();
-            request->Record.SetFillToken("barkovbg");
+            request->Record.SetFillGeneration(1);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
             UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
         }
         auto request = service.CreateCreateVolumeRequest();
-        request->Record.SetFillToken("svartmetal");
+        request->Record.SetFillGeneration(2);
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();

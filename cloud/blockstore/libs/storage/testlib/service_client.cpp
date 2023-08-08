@@ -57,7 +57,7 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     bool isSystem,
     const TString& baseDiskId,
     const TString& baseDiskCheckpointId,
-    const TString& fillToken)
+    ui64 fillGeneration)
 {
     auto request = std::make_unique<TEvService::TEvCreateVolumeRequest>();
     PrepareRequestHeaders(*request);
@@ -75,7 +75,7 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     request->Record.SetIsSystem(isSystem);
     request->Record.SetBaseDiskId(baseDiskId);
     request->Record.SetBaseDiskCheckpointId(baseDiskCheckpointId);
-    request->Record.SetFillToken(fillToken);
+    request->Record.SetFillGeneration(fillGeneration);
     return request;
 }
 

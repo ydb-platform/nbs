@@ -28,7 +28,7 @@ type CreateVolumeOpts struct {
 	EncryptionSpec          *protos.TEncryptionSpec
 	StoragePoolName         string
 	AgentIds                []string
-	FillToken               string
+	FillGeneration          uint64
 }
 
 type MountVolumeOpts struct {
@@ -38,7 +38,7 @@ type MountVolumeOpts struct {
 	MountFlags     uint32
 	MountSeqNumber uint64
 	EncryptionSpec *protos.TEncryptionSpec
-	FillToken      string
+	FillGeneration uint64
 	FillSeqNumber  uint64
 }
 
@@ -91,7 +91,7 @@ func (client *safeClient) CreateVolume(
 		req.EncryptionSpec = opts.EncryptionSpec
 		req.StoragePoolName = opts.StoragePoolName
 		req.AgentIds = opts.AgentIds
-		req.FillToken = opts.FillToken
+		req.FillGeneration = opts.FillGeneration
 	}
 
 	_, err := client.Impl.CreateVolume(ctx, req)
@@ -102,12 +102,12 @@ func (client *safeClient) DestroyVolume(
 	ctx context.Context,
 	diskId string,
 	sync bool,
-	FillToken string,
+	FillGeneration uint64,
 ) error {
 	req := &protos.TDestroyVolumeRequest{
-		DiskId:    diskId,
-		Sync:      sync,
-		FillToken: FillToken,
+		DiskId:         diskId,
+		Sync:           sync,
+		FillGeneration: FillGeneration,
 	}
 
 	_, err := client.Impl.DestroyVolume(ctx, req)
