@@ -250,16 +250,23 @@ def run_test(
     while r.is_alive():
         time.sleep(5)
         dead = [p for p in env_processes if not p.is_alive()]
+        crashed = 0
         for p in dead:
+            if p.returncode in [-9, -15]:
+                # being killed is fine - some of our tests kill our processes
+                # e.g. tests with regular restarts
+                continue
+
+            crashed += 1
             logging.warning(
                 "Found a terminated process: {}, {}.".format(
                     p.command,
                     p.returncode
                 ))
-        if dead:
+        if crashed > 0:
             kill_all()
             raise Exception(
-                'Several ({}) processes terminated prematurely.'.format(len(dead)))
+                'Several ({}) processes terminated prematurely.'.format(crashed))
 
     r.stop()
 
