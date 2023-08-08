@@ -137,7 +137,7 @@ struct TTestEnv
             false, // markBlocksUsed
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverriden
+            false, // maxTimedOutDeviceStateDurationOverridden
             false // useSimpleMigrationBandwidthLimiter
         );
 

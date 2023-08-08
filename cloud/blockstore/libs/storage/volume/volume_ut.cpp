@@ -8360,15 +8360,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         NProto::TStorageServiceConfig storageServiceConfig;
         NProto::TFeaturesConfig featuresConfig;
 
-        struct VolumeParamValue
+        struct TVolumeParamValue
         {
             TString value;
             uint64_t ttlMs;
         };
 
-        auto initVolume = [&] (NProto::EStorageMediaKind mediaKind,
-                               TString tags = "",
-                               TMaybe<VolumeParamValue> timeoutOverride = {})
+        const auto initVolume = [&] (NProto::EStorageMediaKind mediaKind,
+                                     TString tags = "",
+                                     TMaybe<TVolumeParamValue> timeoutOverride = {})
         {
             runtime = PrepareTestActorRuntime(
                 storageServiceConfig,
@@ -8495,7 +8495,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             initVolume(
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 "max-timed-out-device-state-duration=30s",
-                VolumeParamValue{"10s",3*UpdateCountersInterval.MilliSeconds()});
+                TVolumeParamValue{"10s",3*UpdateCountersInterval.MilliSeconds()});
 
             auto stats = client->StatVolume()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(

@@ -24,7 +24,9 @@ public:
     TVolumeParams(TVector<TVolumeParamsValue> volumeParams);
 
     void Merge(THashMap<TString, TVolumeParamsValue> volumeParams);
-    TVector<TString> GetExpiredKeys(const TInstant& now) const;
+
+    // removes and returns expired keys
+    TVector<TString> ExtractExpiredKeys(const TInstant& now);
     TMaybe<TDuration> GetNextExpirationDelay(const TInstant& now) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationOverride(const TInstant& now) const;

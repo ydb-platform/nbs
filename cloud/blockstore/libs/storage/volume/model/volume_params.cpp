@@ -20,14 +20,18 @@ void TVolumeParams::Merge(THashMap<TString, TVolumeParamsValue> volumeParams)
     }
 }
 
-TVector<TString> TVolumeParams::GetExpiredKeys(const TInstant& now) const
+TVector<TString> TVolumeParams::ExtractExpiredKeys(const TInstant& now)
 {
     TVector<TString> keys;
-    for (auto& [key, param]: VolumeParams) {
+    for (const auto& [key, param]: VolumeParams) {
         if (param.ValidUntil <= now) {
             keys.emplace_back(key);
         }
     }
+    for (const auto& key: keys) {
+        VolumeParams.erase(key);
+    }
+
     return keys;
 }
 

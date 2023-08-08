@@ -140,6 +140,11 @@ const TVolumeParams& TVolumeState::GetVolumeParams() const
     return VolumeParams;
 }
 
+TVolumeParams& TVolumeState::GetVolumeParams()
+{
+    return VolumeParams;
+}
+
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 {
     Meta = std::move(meta);
@@ -151,11 +156,6 @@ void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 void TVolumeState::AddMetaHistory(TVolumeMetaHistoryItem meta)
 {
     MetaHistory.push_back(std::move(meta));
-}
-
-void TVolumeState::MergeVolumeParams(THashMap<TString, TVolumeParamsValue> volumeParams)
-{
-    VolumeParams.Merge(std::move(volumeParams));
 }
 
 void TVolumeState::ResetThrottlingPolicy(

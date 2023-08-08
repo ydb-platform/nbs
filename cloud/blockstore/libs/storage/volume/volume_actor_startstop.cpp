@@ -135,7 +135,7 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
 
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
-    const auto maxTimedOutDeviceStateDurationOverriden = !!maxTimedOutDeviceStateDuration;
+    const auto maxTimedOutDeviceStateDurationOverridden = !!maxTimedOutDeviceStateDuration;
 
     if (!maxTimedOutDeviceStateDuration) {
         maxTimedOutDeviceStateDuration = State->GetMaxTimedOutDeviceStateDuration();
@@ -170,7 +170,7 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
             State->GetMeta().GetFreshDeviceIds().begin(),
             State->GetMeta().GetFreshDeviceIds().end()),
         maxTimedOutDeviceStateDuration,
-        maxTimedOutDeviceStateDurationOverriden,
+        maxTimedOutDeviceStateDurationOverridden,
         useSimpleMigrationBandwidthLimiter);
 
     TActorId nonreplicatedActorId;

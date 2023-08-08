@@ -1434,8 +1434,8 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                     TABLED() { out << "MaxTimedOutDeviceStateDuration"; }
                     TABLED() {
                         out << config.GetMaxTimedOutDeviceStateDuration() ;
-                        if (config.IsMaxTimedOutDeviceStateDurationOverriden()) {
-                            out << "(overriden)";
+                        if (config.IsMaxTimedOutDeviceStateDurationOverridden()) {
+                            out << "(overridden)";
                         }
                     }
                 }

@@ -175,6 +175,8 @@ public:
 
     const TVolumeParams& GetVolumeParams() const;
 
+    TVolumeParams& GetVolumeParams();
+
     void UpdateMigrationIndexInMeta(ui64 migrationIndex)
     {
         Meta.SetMigrationIndex(migrationIndex);
@@ -202,7 +204,6 @@ public:
 
     void ResetMeta(NProto::TVolumeMeta meta);
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
-    void MergeVolumeParams(THashMap<TString, TVolumeParamsValue> volumeParams);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
     void Reset();
 

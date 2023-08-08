@@ -33,12 +33,13 @@ void TVolumeActor::HandleUpdateVolumeParams(
 
     THashMap<TString, TVolumeParamsValue> volumeParams;
     for (const auto& [key, param]: msg->Record.GetVolumeParams()) {
+        const auto ttl = param.HasTtlMs() ? TDuration::MilliSeconds(param.GetTtlMs()) : TDuration::Minutes(15);
         volumeParams.try_emplace(
             key,
             TVolumeParamsValue{
                 key,
                 param.GetValue(),
-                ctx.Now() + TDuration::MilliSeconds(param.GetTtlMs())
+                ctx.Now() + ttl
             }
         );
     }
@@ -47,9 +48,6 @@ void TVolumeActor::HandleUpdateVolumeParams(
         ctx,
         std::move(requestInfo),
         std::move(volumeParams));
-
-    auto response = std::make_unique<TEvVolume::TEvUpdateVolumeParamsResponse>();
-    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 void TVolumeActor::HandleRemoveExpiredVolumeParams(
@@ -64,7 +62,7 @@ void TVolumeActor::HandleRemoveExpiredVolumeParams(
 
     RemoveExpiredVolumeParamsScheduled = false;
 
-    auto expiredKeys = State->GetVolumeParams().GetExpiredKeys(ctx.Now());
+    auto expiredKeys = State->GetVolumeParams().ExtractExpiredKeys(ctx.Now());
     if (expiredKeys.empty()) {
         // means that ttl was changed and override is still valid
         ScheduleRegularUpdates(ctx);
@@ -105,7 +103,7 @@ void TVolumeActor::ExecuteUpdateVolumeParams(
 
     // This might lead to 'dirty' commit, if the same values are updated
     // from different transactions simultaneously, but we accept that risk.
-    State->MergeVolumeParams(args.VolumeParams);
+    State->GetVolumeParams().Merge(args.VolumeParams);
 
     TVector<TVolumeParamsValue> volumeParamsVec;
     for (const auto& [key, value]: args.VolumeParams) {

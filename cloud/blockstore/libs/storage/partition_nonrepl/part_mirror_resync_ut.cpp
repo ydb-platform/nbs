@@ -264,7 +264,7 @@ struct TTestEnv
             markBlocksUsed,
             std::move(freshDeviceIds),
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverriden
+            false, // maxTimedOutDeviceStateDurationOverridden
             true // useSimpleMigrationBandwidthLimiter
         );
 

@@ -63,7 +63,7 @@ struct TEnv
             false, // markBlocksUsed
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverriden
+            false, // maxTimedOutDeviceStateDurationOverridden
             useSimpleMigrationBandwidthLimiter
         );
 
@@ -100,7 +100,7 @@ struct TEnv
             false, // markBlocksUsed
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverriden
+            false, // maxTimedOutDeviceStateDurationOverridden
             useSimpleMigrationBandwidthLimiter
         );
     }
