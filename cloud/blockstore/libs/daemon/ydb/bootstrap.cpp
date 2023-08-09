@@ -15,9 +15,9 @@
 #include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
-#include <cloud/blockstore/libs/kms/compute_client.h>
-#include <cloud/blockstore/libs/kms/key_provider.h>
-#include <cloud/blockstore/libs/kms/kms_client.h>
+#include <cloud/blockstore/libs/kms/iface/compute_client.h>
+#include <cloud/blockstore/libs/kms/iface/key_provider.h>
+#include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/config.h>
@@ -341,13 +341,13 @@ void TBootstrapYdb::InitKikimrService()
     if (serverConfig->HasKmsGrpcConfig() &&
         serverConfig->HasComputeGrpcConfig())
     {
-        ComputeClient = CreateComputeClient(
-            Logging,
-            serverConfig->GetComputeGrpcConfig());
+        ComputeClient = ServerModuleFactories->ComputeClientFactory(
+            serverConfig->GetComputeGrpcConfig(),
+            Logging);
 
-        KmsClient = CreateKmsClient(
-            Logging,
-            serverConfig->GetKmsGrpcConfig());
+        KmsClient = ServerModuleFactories->KmsClientFactory(
+            serverConfig->GetKmsGrpcConfig(),
+            Logging);
 
         KmsKeyProvider = CreateKmsKeyProvider(
             Executor,

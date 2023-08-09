@@ -1,7 +1,9 @@
 #include "public.h"
 
+#include <cloud/blockstore/config/grpc_client.pb.h>
+
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
-#include <cloud/blockstore/libs/kms/public.h>
+#include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
@@ -35,6 +37,14 @@ struct TServerModuleFactories
         ILoggingServicePtr logging,
         ISchedulerPtr scheduler,
         ITimerPtr timer)> IamClientFactory;
+
+    std::function<IComputeClientPtr(
+        NProto::TGrpcClientConfig config,
+        ILoggingServicePtr logging)> ComputeClientFactory;
+
+    std::function<IKmsClientPtr(
+        NProto::TGrpcClientConfig config,
+        ILoggingServicePtr logging)> KmsClientFactory;
 
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 

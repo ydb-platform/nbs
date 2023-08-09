@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(bitbucket)
 add_subdirectory(blockstore)
 add_subdirectory(contrib)
 add_subdirectory(storage)

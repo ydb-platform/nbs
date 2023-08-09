@@ -17,6 +17,7 @@ target_link_libraries(nbsd PUBLIC
   yutil
   library-cpp-cpuid_check
   libs-daemon-ydb
+  libs-kms-iface
   libs-logbroker-iface
   libs-rdma-impl
   blockstore-libs-service
