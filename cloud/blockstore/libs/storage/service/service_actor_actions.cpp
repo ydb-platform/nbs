@@ -50,6 +50,7 @@ void TServiceActor::HandleExecuteAction(
         {"drainnode",                         &TServiceActor::CreateDrainNodeActionActor                   },
         {"finishfilldisk",                    &TServiceActor::CreateFinishFillDiskActionActor              },
         {"getcompactionstatus",               &TServiceActor::CreateGetCompactionStatusActionActor         },
+        {"getdependentdisks",                 &TServiceActor::CreateGetDependentDisksActionActor           },
         {"getpartitioninfo",                  &TServiceActor::CreateGetPartitionInfoActionActor            },
         {"getrebuildmetadatastatus",          &TServiceActor::CreateRebuildMetadataStatusActionActor       },
         {"getscandiskstatus",                 &TServiceActor::CreateScanDiskStatusActionActor              },

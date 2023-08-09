@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
@@ -1168,6 +1169,66 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT(requestReceived);
 
         service.DestroyVolume();
+    }
+
+    void shouldGetDependentDevicesTest(TVector<TString> returnedDiskIds)
+    {
+        TTestEnv env(1, 1, 4, 1, MakeIntrusive<TDiskRegistryState>());
+
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        bool requestReceived = false;
+
+        env.GetRuntime().SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvGetDependentDisksRequest: {
+                        auto* msg = event->Get<TEvDiskRegistryPrivate::TEvGetDependentDisksRequest>();
+
+                        UNIT_ASSERT_VALUES_EQUAL("localhost", msg->Host);
+
+                        requestReceived = true;
+                        break;
+                    }
+                    case TEvDiskRegistryPrivate::EvGetDependentDisksResponse: {
+                        auto* msg = event->Get<TEvDiskRegistryPrivate::TEvGetDependentDisksResponse>();
+                        msg->DependentDiskIds = returnedDiskIds;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        const auto response = service.ExecuteAction("GetDependentDisks", R"({"Host":"localhost"})");
+        UNIT_ASSERT(requestReceived);
+
+        NJson::TJsonValue responseJson;
+        if (!NJson::ReadJsonTree(response->Record.GetOutput(), &responseJson, false)) {
+            UNIT_ASSERT(false);
+        }
+
+        const auto diskIdsJson = responseJson["DependentDiskIds"].GetArray();
+        TVector<TString> responseDiskIds;
+        for (const auto& diskIdJson: diskIdsJson) {
+            responseDiskIds.emplace_back(diskIdJson.GetString());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(returnedDiskIds, responseDiskIds);
+    }
+
+
+    Y_UNIT_TEST(ShouldGetDependentDevicesNoDisks)
+    {
+        shouldGetDependentDevicesTest({});
+    }
+
+    Y_UNIT_TEST(ShouldGetDependentDevicesMultipleDisks)
+    {
+        shouldGetDependentDevicesTest({"disk1", "disk2"});
     }
 }
 

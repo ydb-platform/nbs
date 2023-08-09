@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 
 #include <ydb/core/mind/local.h>
 
@@ -121,6 +122,10 @@ private:
             HFunc(
                 TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest,
                 HandleUpdateDiskRegistryAgentListParams);
+
+            HFunc(
+                TEvDiskRegistryPrivate::TEvGetDependentDisksRequest,
+                HandleGetDependentDisks);
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -874,6 +879,16 @@ private:
             *ev,
             std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>(
                 MakeError(S_OK)));
+    }
+
+    void HandleGetDependentDisks(
+        const TEvDiskRegistryPrivate::TEvGetDependentDisksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistryPrivate::TEvGetDependentDisksResponse>());
     }
 
 };

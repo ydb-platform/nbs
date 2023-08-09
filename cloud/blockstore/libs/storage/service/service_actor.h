@@ -350,6 +350,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateUpdateVolumeParamsActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateGetDependentDisksActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
