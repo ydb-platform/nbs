@@ -793,14 +793,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        auto error = MakeError(E_ARGUMENT, "Error");
+        auto error = MakeError(E_REJECTED, "Error");
 
         TActorId target;
         TActorId source;
         ui64 cookie = 0;
-        ui32 eventCounter = 0;
-
-        using TResponseType = TEvSSProxy::TEvDescribeVolumeResponse;
 
         runtime.SetObserverFunc(
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
@@ -811,20 +808,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         cookie = ev->Cookie;
                         return TTestActorRuntime::EEventAction::DROP;
                     }
-                    case TEvServicePrivate::EvInternalMountVolumeRequest: {
-                        if (++eventCounter == 3) {
-                            auto response =
-                                std::make_unique<TResponseType>(error);
-                            runtime.Send(
-                                new IEventHandle(
-                                    target,
-                                    source,
-                                    response.release(),
-                                    0, // flags
-                                    cookie),
-                                nodeIdx);
-                        }
-                    }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
@@ -833,20 +816,33 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.SendMountVolumeRequest();
         service.SendMountVolumeRequest();
 
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvServicePrivate::EvInternalMountVolumeRequest,
+            3);
+        runtime.DispatchEvents(options);
+
+        using TResponseType = TEvSSProxy::TEvDescribeVolumeResponse;
+        auto response =
+            std::make_unique<TResponseType>(error);
+
+        runtime.Send(
+            new IEventHandle(
+                target,
+                source,
+                response.release(),
+                0, // flags
+                cookie),
+            nodeIdx);
+
         auto response1 = service.RecvMountVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(response1->GetStatus(), error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            response1->GetErrorReason(),
-            error.GetMessage());
 
         auto response2 = service.RecvMountVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(response2->GetStatus(), error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            response2->GetErrorReason(),
-            error.GetMessage());
 
         auto response3 = service.RecvMountVolumeResponse();
-        UNIT_ASSERT(FAILED(response3->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(response3->GetStatus(), error.GetCode());
     }
 
     void FailVolumeMountIfDescribeVolumeReturnsWrongInfoCommon(
