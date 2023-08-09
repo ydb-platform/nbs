@@ -384,7 +384,9 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
             TStringBuilder()
                 << "Client can not be accepted with read-write access"
                 << ", new FillSeqNumber: " << info.GetFillSeqNumber()
-                << ", current FillSeqNumber: " << Meta.GetFillSeqNumber());
+                << ", current FillSeqNumber: " << Meta.GetFillSeqNumber()
+                << ", IsFillFinished: " << Meta.GetVolumeConfig().GetIsFillFinished()
+                << ", IsFill: " << isFill);
         return res;
     }
 
@@ -670,7 +672,11 @@ bool TVolumeState::CanAcceptClient(
     bool isFill,
     ui64 newFillSeqNumber)
 {
-    return !isFill || newFillSeqNumber >= Meta.GetFillSeqNumber();
+    if (isFill && Meta.GetVolumeConfig().GetIsFillFinished()) {
+        return false;
+    }
+
+    return newFillSeqNumber >= Meta.GetFillSeqNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

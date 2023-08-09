@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/mount_token.h>
+#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -4712,6 +4713,130 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             S_OK,
             response2->GetStatus(),
             response2->GetErrorReason()
+        );
+    }
+
+    Y_UNIT_TEST(ShouldCheckIfFillFinishedOnMount)
+    {
+        TTestEnv env(1, 1);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        uint64_t fillGeneration = 1;
+        {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(fillGeneration);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+        }
+
+        ui32 mountFlagsFill = 0;
+        SetProtoFlag(mountFlagsFill, NProto::MF_THROTTLING_DISABLED);
+        SetProtoFlag(mountFlagsFill, NProto::MF_FILL);
+
+        ui32 mountFlagsNotFill = 0;
+        SetProtoFlag(mountFlagsNotFill, NProto::MF_THROTTLING_DISABLED);
+
+        // TODO: pass correct fillGeneration to mount requests in this test
+        // after we add fillGeneration param to mount request
+        auto response = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlagsFill,
+            1, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            1 // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason()
+        );
+
+        {
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetFillGeneration(fillGeneration);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("FinishFillDisk", buf);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+        }
+
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlagsFill,
+            2, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            2 // fillSeqNumber
+        );
+
+        {
+            auto response = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_PRECONDITION_FAILED,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+        }
+
+        response = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlagsNotFill,
+            3, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0 // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason()
+        );
+
+        response = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlagsFill,
+            4, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0 // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason()
         );
     }
 }
