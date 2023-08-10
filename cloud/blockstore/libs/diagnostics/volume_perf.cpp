@@ -67,7 +67,8 @@ void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
             Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
             Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
             Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-            Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()));
+            Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
+            ConfigSettings.CriticalFactor);
 
         TIntrusivePtr<TVolumePerfSettings> newSettings;
 
@@ -76,7 +77,8 @@ void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
                 Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
                 Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
                 Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-                Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()));
+                Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
+                ConfigSettings.CriticalFactor);
 
             PerfSettings.AtomicStore(newSettings);
         }
@@ -94,6 +96,9 @@ void TVolumePerformanceCalculator::Register(
     }
     if (IsEnabled && !SmoothCounter) {
         SmoothCounter = counters.GetCounter("SmoothSuffer", false);
+    }
+    if (IsEnabled && !CriticalCounter) {
+        CriticalCounter = counters.GetCounter("CriticalSuffer", false);
     }
 }
 
@@ -159,12 +164,21 @@ bool TVolumePerformanceCalculator::UpdateStats()
         SmoothSufferCount,
         DidSuffer(windowExpectedScore, windowActualScore));
 
+    ui32 criticalFactor = Max(2u, ConfigSettings.CriticalFactor);
+    AtomicSet(
+        CriticalSufferCount,
+        DidSuffer(windowExpectedScore * criticalFactor, windowActualScore));
+
     if (!UpdateCounter && Counter) {
         *Counter = SufferCount;
     }
 
     if (!UpdateCounter && SmoothCounter) {
         *SmoothCounter = SmoothSufferCount;
+    }
+
+    if (!UpdateCounter && CriticalCounter) {
+        *CriticalCounter = CriticalSufferCount;
     }
 
     AtomicSub(CurrentScore, actualScore);

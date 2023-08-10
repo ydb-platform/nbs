@@ -559,6 +559,7 @@ private:
     std::shared_ptr<NUserCounter::TUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
+    std::unique_ptr<TSufferCounters> CriticalSufferCounters;
 
     std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
     TVolumeHolderMap Volumes;
@@ -800,6 +801,12 @@ public:
                 SmoothSufferCounters->OnDiskSuffer(
                     volumeBase.Volume.GetStorageMediaKind());
             }
+            if (CriticalSufferCounters &&
+                volumeBase.PerfCalc.IsSufferingCritically())
+            {
+                CriticalSufferCounters->OnDiskSuffer(
+                    volumeBase.Volume.GetStorageMediaKind());
+            }
         }
 
         if (SufferCounters) {
@@ -807,6 +814,9 @@ public:
         }
         if (SmoothSufferCounters) {
             SmoothSufferCounters->PublishCounters();
+        }
+        if (CriticalSufferCounters) {
+            CriticalSufferCounters->PublishCounters();
         }
 
         if (updateIntervalFinished) {
@@ -954,6 +964,10 @@ private:
 
                 SmoothSufferCounters = std::make_unique<TSufferCounters>(
                     "SmoothDisksSuffer",
+                    Counters->GetSubgroup("component", "server"));
+
+                CriticalSufferCounters = std::make_unique<TSufferCounters>(
+                    "CriticalDisksSuffer",
                     Counters->GetSubgroup("component", "server"));
 
                 TotalDownDisksCounter =

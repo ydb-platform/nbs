@@ -22,6 +22,8 @@ struct TVolumePerfSettings:
     ui32 WriteIops = 0;
     ui32 WriteBandwidth = 0;
 
+    ui32 CriticalFactor = 0;
+
     TVolumePerfSettings() = default;
     TVolumePerfSettings(const TVolumePerfSettings& rhs) = default;
 
@@ -29,11 +31,13 @@ struct TVolumePerfSettings:
             ui32 readIops,
             ui32 readBandwidth,
             ui32 writeIops,
-            ui32 writeBandwidth)
+            ui32 writeBandwidth,
+            ui32 criticalFactor)
         : ReadIops(readIops)
         , ReadBandwidth(readBandwidth)
         , WriteIops(writeIops)
         , WriteBandwidth(writeBandwidth)
+        , CriticalFactor(criticalFactor)
     {}
 
     TVolumePerfSettings(const NProto::TVolumePerfSettings& settings)
@@ -41,6 +45,7 @@ struct TVolumePerfSettings:
         , ReadBandwidth(settings.GetRead().GetBandwidth())
         , WriteIops(settings.GetWrite().GetIops())
         , WriteBandwidth(settings.GetWrite().GetBandwidth())
+        , CriticalFactor(settings.GetCriticalFactor())
     {}
 
     bool IsValid() const
@@ -56,7 +61,8 @@ struct TVolumePerfSettings:
         return ReadIops == rhs.ReadIops
             && ReadBandwidth == rhs.ReadBandwidth
             && WriteIops == rhs.WriteIops
-            && WriteBandwidth == rhs.WriteBandwidth;
+            && WriteBandwidth == rhs.WriteBandwidth
+            && CriticalFactor == rhs.CriticalFactor;
     }
 
     bool operator != (const TVolumePerfSettings& rhs) const = default;

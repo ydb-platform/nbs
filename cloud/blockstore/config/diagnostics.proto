@@ -53,6 +53,7 @@ message TVolumePerfSettings
 {
     optional TOperationCoefficients Write = 1;
     optional TOperationCoefficients Read = 2;
+    optional uint32 CriticalFactor = 3;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

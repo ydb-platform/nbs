@@ -641,6 +641,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetCounter("SmoothDisksSuffer", false);
         auto smoothHddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
             ->GetCounter("SmoothDisksSuffer", false);
+        auto criticalDisksSufferCounter =
+            counters->GetCounter("CriticalDisksSuffer", false);
+        auto criticalSsdDisksSufferCounter = counters->GetSubgroup("type", "ssd")
+            ->GetCounter("CriticalDisksSuffer", false);
+        auto criticalHddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
+            ->GetCounter("CriticalDisksSuffer", false);
 
         UNIT_ASSERT_VALUES_EQUAL(1, disksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdDisksSufferCounter->Val());
@@ -649,6 +655,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, smoothDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, smoothSsdDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, smoothHddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalSsdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalHddDisksSufferCounter->Val());
 
         // a bunch of fast requests
         for (ui32 i = 0; i < 5; ++i) {
@@ -672,6 +682,37 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, smoothDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, smoothSsdDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, smoothHddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalSsdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalHddDisksSufferCounter->Val());
+
+        // a bunch of slow but not critically slow requests
+        for (ui32 i = 0; i < 20; ++i) {
+            volume->RequestCompleted(
+                EBlockStoreRequest::WriteBlocks,
+                now - Min(now, DurationToCyclesSafe(TDuration::MilliSeconds(110))),
+                {},
+                1_MB,
+                {},
+                NCloud::NProto::EF_NONE,
+                false,
+                0);
+        }
+
+        volumeStats->UpdateStats(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, disksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, ssdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, smoothDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, smoothSsdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, smoothHddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalSsdDisksSufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalHddDisksSufferCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculatePossiblePostponeTimeForVolume)

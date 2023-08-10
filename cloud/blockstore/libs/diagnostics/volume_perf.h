@@ -33,6 +33,7 @@ private:
     ui64 UpdateCounter = 0;
     TIntrusivePtr<NMonitoring::TCounterForPtr> Counter;
     TIntrusivePtr<NMonitoring::TCounterForPtr> SmoothCounter;
+    TIntrusivePtr<NMonitoring::TCounterForPtr> CriticalCounter;
 
     bool IsEnabled = false;
     THotSwap<TVolumePerfSettings> PerfSettings;
@@ -46,6 +47,7 @@ private:
     std::array<TSample, SampleCount> Samples = {};
     TAtomic SufferCount = 0;
     TAtomic SmoothSufferCount = 0;
+    TAtomic CriticalSufferCount = 0;
 
 private:
     TVolumePerfSettings GetConfigSettings(
@@ -89,6 +91,16 @@ public:
     bool IsSufferingSmooth() const
     {
         return GetSmoothSufferCount() != 0;
+    }
+
+    ui32 GetCriticalSufferCount() const
+    {
+        return AtomicGet(CriticalSufferCount);
+    }
+
+    bool IsSufferingCritically() const
+    {
+        return GetCriticalSufferCount() != 0;
     }
 
     // for testing purpose
