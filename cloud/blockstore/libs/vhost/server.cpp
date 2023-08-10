@@ -305,16 +305,15 @@ private:
             *request->CallContext);
 
         with_lock (RequestsLock) {
-            if (Stopped.test()) {
-                auto error = MakeError(E_CANCELLED, "Vhost endpoint was stopped");
-                CompleteRequest(*request, error);
-                return nullptr;
+            if (!Stopped.test()) {
+                RequestsInFlight.PushBack(request.Get());
+                return request;
             }
-
-            RequestsInFlight.PushBack(request.Get());
         }
 
-        return request;
+        auto error = MakeError(E_CANCELLED, "Vhost endpoint was stopped");
+        CompleteRequest(*request, error);
+        return nullptr;
     }
 
     void CompleteRequest(TRequest& request, const NProto::TError& error)
