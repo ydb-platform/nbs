@@ -18,6 +18,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/grpc/auth_metadata.h>
 #include <cloud/storage/core/libs/grpc/completion.h>
 #include <cloud/storage/core/libs/grpc/credentials.h>
 #include <cloud/storage/core/libs/grpc/executor.h>
@@ -79,102 +80,12 @@ TString ReadFile(const TString& fileName)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestSourceKind
-{
-    grpc::string Name;
-    NProto::ERequestSource Value;
-};
-
-const TRequestSourceKind RequestSourceKinds[] = {
+const TRequestSourceKinds RequestSourceKinds = {
     { "INSECURE_CONTROL_CHANNEL", NProto::SOURCE_INSECURE_CONTROL_CHANNEL },
     { "SECURE_CONTROL_CHANNEL",   NProto::SOURCE_SECURE_CONTROL_CHANNEL },
     { "TCP_DATA_CHANNEL",         NProto::SOURCE_TCP_DATA_CHANNEL },
     { "FD_DATA_CHANNEL",          NProto::SOURCE_FD_DATA_CHANNEL },
     { "FD_CONTROL_CHANNEL",       NProto::SOURCE_FD_CONTROL_CHANNEL },
-};
-
-grpc::string_ref GetRequestSourceName(NProto::ERequestSource source)
-{
-    Y_VERIFY(source < NProto::ERequestSource_ARRAYSIZE);
-    return RequestSourceKinds[(int)source].Name;
-}
-
-TMaybe<NProto::ERequestSource> ParseRequestSourceName(grpc::string_ref name)
-{
-    for (const auto& kind: RequestSourceKinds) {
-        if (kind.Name == name) {
-            return kind.Value;
-        }
-    }
-    return {};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// TODO: should rework all auth* details after talk to security guys.
-
-const grpc::string AUTH_HEADER = "authorization";
-const grpc::string AUTH_METHOD = "Bearer ";
-const grpc::string AUTH_PROPERTY_SOURCE = "y-auth-source";
-
-TString GetAuthToken(const std::multimap<grpc::string_ref, grpc::string_ref>& metadata)
-{
-    auto range = metadata.equal_range(AUTH_HEADER);
-    for (auto it = range.first; it != range.second; ++it) {
-        if (it->second.starts_with(AUTH_METHOD)) {
-            auto token = it->second.substr(AUTH_METHOD.size());
-            return { token.begin(), token.end() };
-        }
-    }
-
-    return {};
-}
-
-class TAuthMetadataProcessor final
-    : public grpc::AuthMetadataProcessor
-{
-private:
-    const NProto::ERequestSource RequestSource;
-
-public:
-    explicit TAuthMetadataProcessor(NProto::ERequestSource source)
-        : RequestSource(source)
-    {}
-
-    bool IsBlocking() const override
-    {
-        // unless we are doing something heavy/blocking
-        // we could do it in the caller context.
-        return false;
-    }
-
-    grpc::Status Process(
-        const InputMetadata& authMetadata,
-        grpc::AuthContext* context,
-        OutputMetadata* consumedAuthMetadata,
-        OutputMetadata* responseMetadata) override
-    {
-        Y_UNUSED(authMetadata);
-        Y_UNUSED(consumedAuthMetadata);
-        Y_UNUSED(responseMetadata);
-
-        if (context->FindPropertyValues(AUTH_PROPERTY_SOURCE).empty()) {
-            context->AddProperty(
-                AUTH_PROPERTY_SOURCE,
-                GetRequestSourceName(RequestSource));
-        }
-
-        return grpc::Status::OK;
-    }
-
-    static TMaybe<NProto::ERequestSource> GetRequestSource(
-        const grpc::AuthContext& context)
-    {
-        auto values = context.FindPropertyValues(AUTH_PROPERTY_SOURCE);
-        if (!values.empty()) {
-            return ParseRequestSourceName(values[0]);
-        }
-        return {};
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -673,7 +584,7 @@ private:
         auto authContext = Context->auth_context();
         Y_VERIFY(authContext);
 
-        auto source = TAuthMetadataProcessor::GetRequestSource(*authContext);
+        auto source = GetRequestSource(*authContext, RequestSourceKinds);
 
         if (!source) {
             ui32 fd = 0;
@@ -1058,6 +969,7 @@ void TServer::Start()
         auto credentials = CreateInsecureServerCredentials();
         credentials->SetAuthMetadataProcessor(
             std::make_shared<TAuthMetadataProcessor>(
+                RequestSourceKinds,
                 NProto::SOURCE_INSECURE_CONTROL_CHANNEL));
 
         builder.AddListeningPort(
@@ -1074,6 +986,7 @@ void TServer::Start()
         auto credentials = grpc::SslServerCredentials(sslOptions);
         credentials->SetAuthMetadataProcessor(
             std::make_shared<TAuthMetadataProcessor>(
+                RequestSourceKinds,
                 NProto::SOURCE_SECURE_CONTROL_CHANNEL));
 
         builder.AddListeningPort(
@@ -1088,6 +1001,7 @@ void TServer::Start()
         auto credentials = CreateInsecureServerCredentials();
         credentials->SetAuthMetadataProcessor(
             std::make_shared<TAuthMetadataProcessor>(
+                RequestSourceKinds,
                 NProto::SOURCE_TCP_DATA_CHANNEL));
 
         builder.AddListeningPort(

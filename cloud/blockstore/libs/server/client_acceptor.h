@@ -19,7 +19,7 @@ struct IClientAcceptor
     virtual void Accept(
         const TSocketHolder& clientSocket,
         IBlockStorePtr service,
-        NProto::ERequestSource source) = 0;
+        NCloud::NProto::ERequestSource source) = 0;
 
     virtual void Remove(const TSocketHolder& clientSocket) = 0;
 };

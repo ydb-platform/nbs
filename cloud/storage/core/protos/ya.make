@@ -11,6 +11,7 @@ SRCS(
     endpoints.proto
     error.proto
     media.proto
+    request_source.proto
     tablet.proto
     trace.proto
 )

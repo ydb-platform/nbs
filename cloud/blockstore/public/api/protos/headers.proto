@@ -1,23 +1,12 @@
 syntax = "proto3";
 
+import "cloud/storage/core/protos/request_source.proto";
 import "library/cpp/lwtrace/protos/lwtrace.proto";
 
 package NCloud.NBlockStore.NProto;
 
 option java_package = "ru.yandex.cloud.blockstore.proto";
 option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
-
-////////////////////////////////////////////////////////////////////////////////
-// Request source.
-
-enum ERequestSource
-{
-    SOURCE_INSECURE_CONTROL_CHANNEL = 0;
-    SOURCE_SECURE_CONTROL_CHANNEL = 1;
-    SOURCE_TCP_DATA_CHANNEL = 2;
-    SOURCE_FD_DATA_CHANNEL = 3;
-    SOURCE_FD_CONTROL_CHANNEL = 4;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Control plane request source.
@@ -60,7 +49,7 @@ message THeaders
         string AuthToken = 1;
 
         // From which channel this request comes from.
-        ERequestSource RequestSource = 2;
+        NCloud.NProto.ERequestSource RequestSource = 2;
 
         NLWTrace.TTraceRequest Trace = 3;
 

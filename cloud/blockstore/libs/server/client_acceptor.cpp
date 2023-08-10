@@ -12,7 +12,7 @@ struct TClientAcceptorStub final
     void Accept(
         const TSocketHolder& socket,
         IBlockStorePtr sessionService,
-        NProto::ERequestSource source) override
+        NCloud::NProto::ERequestSource source) override
     {
         Y_UNUSED(socket);
         Y_UNUSED(sessionService);

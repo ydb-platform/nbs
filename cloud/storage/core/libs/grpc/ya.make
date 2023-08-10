@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    auth_metadata.cpp
     completion.cpp
     credentials.cpp
     initializer.cpp
@@ -21,6 +22,7 @@ NO_COMPILER_WARNINGS()
 PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/protos
 
     library/cpp/deprecated/atomic
     library/cpp/grpc/common
