@@ -110,10 +110,12 @@ TAgentList::TAgentList(
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
         TVector<NProto::TAgentConfig> configs,
-        const THashMap<TString, NProto::TDiskRegistryAgentParams>& diskRegistryAgentListParams)
+        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        TLog log)
     : Config(config)
     , ComponentGroup(std::move(counters))
-    , DiskRegistryAgentListParams(diskRegistryAgentListParams)
+    , DiskRegistryAgentListParams(std::move(diskRegistryAgentListParams))
+    , Log(std::move(log))
 {
     Agents.reserve(configs.size());
 
@@ -269,6 +271,10 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
     auto* agent = FindAgent(agentConfig.GetAgentId());
 
     if (!agent) {
+        STORAGE_INFO("A brand new agent %s #%d has arrived",
+            agentConfig.GetAgentId().c_str(),
+            agentConfig.GetNodeId());
+
         return AddNewAgent(
             std::move(agentConfig),
             timestamp,
@@ -277,6 +283,11 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
     }
 
     if (agent->GetNodeId() != agentConfig.GetNodeId()) {
+        STORAGE_INFO("Agent %s changed his previous node from #%d to #%d",
+            agentConfig.GetAgentId().c_str(),
+            agent->GetNodeId(),
+            agentConfig.GetNodeId());
+
         TransferAgent(*agent, agentConfig.GetNodeId());
     }
 

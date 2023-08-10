@@ -247,7 +247,7 @@ TDiskRegistryState::TDiskRegistryState(
         StorageConfig->GetNonReplicatedAgentMaxTimeout(),
         StorageConfig->GetNonReplicatedAgentDisconnectRecoveryInterval(),
         StorageConfig->GetSerialNumberValidationEnabled(),
-    }, counters, std::move(agents), std::move(diskRegistryAgentListParams))
+    }, counters, std::move(agents), std::move(diskRegistryAgentListParams), Log)
     , DeviceList([&] {
         TVector<TDeviceId> uuids;
         uuids.reserve(dirtyDevices.size());
@@ -752,17 +752,6 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             timestamp,
             knownAgent,
             &newDevices);
-
-        if (!prevNodeId) {
-            STORAGE_INFO("A brand new agent %s #%d has arrived",
-                agent.GetAgentId().c_str(),
-                agent.GetNodeId());
-        } else if (prevNodeId != agent.GetNodeId()) {
-            STORAGE_INFO("Agent %s changed his previous node from #%d to #%d",
-                agent.GetAgentId().c_str(),
-                prevNodeId,
-                agent.GetNodeId());
-        }
 
         for (auto& d: *agent.MutableDevices()) {
             AdjustDeviceIfNeeded(d, timestamp);

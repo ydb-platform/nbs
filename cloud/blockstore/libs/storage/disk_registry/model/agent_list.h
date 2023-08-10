@@ -5,7 +5,9 @@
 #include "agent_counters.h"
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -57,12 +59,15 @@ private:
 
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
+    TLog Log;
+
 public:
     TAgentList(
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
         TVector<NProto::TAgentConfig> configs,
-        const THashMap<TString, NProto::TDiskRegistryAgentParams>& diskRegistryAgentListParams);
+        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        TLog log);
 
     const TVector<NProto::TAgentConfig>& GetAgents() const
     {

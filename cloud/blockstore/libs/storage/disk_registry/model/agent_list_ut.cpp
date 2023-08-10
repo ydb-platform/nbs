@@ -6,7 +6,11 @@
 
 #include <util/generic/size_literals.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -33,15 +37,46 @@ NProto::TDeviceConfig CreateDevice(TString id)
     return CreateDevice(std::move(id), 1_GB);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAgentListParams
+{
+    TAgentListConfig Config;
+    TVector<NProto::TAgentConfig> Agents;
+    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+};
+
+struct TFixture
+    : public NUnitTest::TBaseFixture
+{
+    IMonitoringServicePtr Monitoring = CreateMonitoringServiceStub();
+    NMonitoring::TDynamicCounterPtr Counters = Monitoring->GetCounters()
+        ->GetSubgroup("counters", "blockstore")
+        ->GetSubgroup("component", "disk_registry");
+
+    ILoggingServicePtr Logging = CreateLoggingService("console");
+
+    TAgentList CreateAgentList(TAgentListParams params = {})
+    {
+        return TAgentList {
+            std::move(params.Config),
+            Counters,
+            std::move(params.Agents),
+            std::move(params.DiskRegistryAgentListParams),
+            Logging->CreateLog("BLOCKSTORE_DISK_REGISTRY")
+        };
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TAgentListTest)
 {
-    Y_UNIT_TEST(ShouldRegisterAgent)
+    Y_UNIT_TEST_F(ShouldRegisterAgent, TFixture)
     {
-        TAgentList agentList {{}, nullptr, {}, {}};
+        TAgentList agentList = CreateAgentList();
 
         UNIT_ASSERT_VALUES_EQUAL(0, agentList.GetAgents().size());
         UNIT_ASSERT(agentList.FindAgent(42) == nullptr);
@@ -85,7 +120,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         UNIT_ASSERT_VALUES_EQUAL(expectedConfig.DevicesSize(), agent->DevicesSize());
     }
 
-    Y_UNIT_TEST(ShouldRegisterAgentAtNewNode)
+    Y_UNIT_TEST_F(ShouldRegisterAgentAtNewNode, TFixture)
     {
         NProto::TAgentConfig config;
 
@@ -95,7 +130,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         *config.AddDevices() = CreateDevice("uuid-2");
         *config.AddDevices() = CreateDevice("uuid-3");
 
-        TAgentList agentList {{}, nullptr, {config}, {}};
+        TAgentList agentList = CreateAgentList({
+            .Agents = {config}
+        });
 
         UNIT_ASSERT_VALUES_EQUAL(1, agentList.GetAgents().size());
 
@@ -134,9 +171,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldKeepRegistryDeviceFieldsUponAgentReRegistration)
+    Y_UNIT_TEST_F(ShouldKeepRegistryDeviceFieldsUponAgentReRegistration, TFixture)
     {
-        TAgentList agentList {{}, nullptr, {}, {}};
+        TAgentList agentList = CreateAgentList();
 
         NProto::TAgentConfig expectedConfig;
 
@@ -238,18 +275,20 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUpdateDevices)
+    Y_UNIT_TEST_F(ShouldUpdateDevices, TFixture)
     {
-        TAgentList agentList {{}, nullptr, [] {
-            NProto::TAgentConfig foo;
+        TAgentList agentList = CreateAgentList({
+            .Agents = [] {
+                NProto::TAgentConfig foo;
 
-            foo.SetAgentId("foo");
-            foo.SetNodeId(1000);
-            *foo.AddDevices() = CreateDevice("x");
-            *foo.AddDevices() = CreateDevice("y");
+                foo.SetAgentId("foo");
+                foo.SetNodeId(1000);
+                *foo.AddDevices() = CreateDevice("x");
+                *foo.AddDevices() = CreateDevice("y");
 
-            return TVector{foo};
-        }(), {}};
+                return TVector{foo};
+            }()
+        });
 
         {
             auto* foo = agentList.FindAgent("foo");
@@ -386,7 +425,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUpdateCounters)
+    Y_UNIT_TEST_F(ShouldUpdateCounters, TFixture)
     {
         NProto::TAgentConfig foo;
 
@@ -402,15 +441,12 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         *bar.AddDevices() = CreateDevice("uuid-3");
         *bar.AddDevices() = CreateDevice("uuid-4");
 
-        auto monitoring = CreateMonitoringServiceStub();
-        auto diskRegistryGroup = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "disk_registry");
+        TAgentList agentList = CreateAgentList({
+            .Agents = {foo, bar}
+        });
 
-        TAgentList agentList {{}, diskRegistryGroup, {foo, bar}, {}};
-
-        auto fooCounters = diskRegistryGroup->GetSubgroup("agent", foo.GetAgentId());
-        auto barCounters = diskRegistryGroup->GetSubgroup("agent", bar.GetAgentId());
+        auto fooCounters = Counters->GetSubgroup("agent", foo.GetAgentId());
+        auto barCounters = Counters->GetSubgroup("agent", bar.GetAgentId());
 
         auto uuid1Counters = fooCounters->GetSubgroup("device", "uuid-1");
         auto uuid2Counters = fooCounters->GetSubgroup("device", "uuid-2");
@@ -545,20 +581,22 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         UNIT_ASSERT_VALUES_EQUAL(1400, uuid4WriteCount->Val());
     }
 
-    Y_UNIT_TEST(ShouldUpdateSeqNumber)
+    Y_UNIT_TEST_F(ShouldUpdateSeqNumber, TFixture)
     {
-        TAgentList agentList {{}, nullptr, []{
-            NProto::TAgentConfig foo;
+        TAgentList agentList = CreateAgentList({
+            .Agents = [] {
+                NProto::TAgentConfig foo;
 
-            foo.SetAgentId("foo");
-            foo.SetNodeId(1000);
-            foo.SetSeqNumber(23);
-            foo.SetDedicatedDiskAgent(false);
-            *foo.AddDevices() = CreateDevice("uuid-1");
-            *foo.AddDevices() = CreateDevice("uuid-2");
+                foo.SetAgentId("foo");
+                foo.SetNodeId(1000);
+                foo.SetSeqNumber(23);
+                foo.SetDedicatedDiskAgent(false);
+                *foo.AddDevices() = CreateDevice("uuid-1");
+                *foo.AddDevices() = CreateDevice("uuid-2");
 
-            return TVector{foo};
-        }(), {}};
+                return TVector{foo};
+            }()
+        });
 
         {
             auto* foo = agentList.FindAgent("foo");
@@ -596,36 +634,32 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCalculateRejectAgentTimeout)
+    Y_UNIT_TEST_F(ShouldCalculateRejectAgentTimeout, TFixture)
     {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto diskRegistryGroup = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "disk_registry");
+        auto c = Counters->GetCounter("RejectAgentTimeout");
 
-        auto c = diskRegistryGroup->GetCounter("RejectAgentTimeout");
-
-        const TAgentListConfig agentListConfig {
-            2,
-            TDuration::Seconds(30),
-            TDuration::Minutes(5),
-            TDuration::Minutes(1),
-        };
-        TAgentList agentList {agentListConfig, diskRegistryGroup, {}, {}};
+        TAgentList agentList = CreateAgentList({
+            .Config = {
+                .TimeoutGrowthFactor = 2,
+                .MinRejectAgentTimeout = 30s,
+                .MaxRejectAgentTimeout = 5min,
+                .DisconnectRecoveryInterval = 1min,
+            }
+        });
 
         TInstant now = Now();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(30'000, c->Val());
 
-        now += TDuration::Hours(1);
+        now += 1h;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
@@ -634,7 +668,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(1),
+            TDuration(1min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
@@ -643,7 +677,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(2),
+            TDuration(2min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
@@ -652,7 +686,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(4),
+            TDuration(4min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
@@ -661,94 +695,98 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(5),
+            TDuration(5min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(300'000, c->Val());
 
-        now += TDuration::Minutes(1);
+        now += 1min;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(4),
+            TDuration(4min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(240'000, c->Val());
 
-        now += TDuration::Minutes(1);
+        now += 1min;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(2),
+            TDuration(2min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(120'000, c->Val());
 
-        now += TDuration::Minutes(1);
+        now += 1min;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(1),
+            TDuration(1min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(60'000, c->Val());
 
-        now += TDuration::Minutes(1);
+        now += 1min;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(30'000, c->Val());
 
-        now += TDuration::Minutes(1);
+        now += 1min;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(30'000, c->Val());
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyAccumulateRejectAgentTimeoutMultiplier)
+    Y_UNIT_TEST_F(ShouldCorrectlyAccumulateRejectAgentTimeoutMultiplier, TFixture)
     {
-        const TAgentListConfig agentListConfig {
-            2,
-            TDuration::Seconds(30),
-            TDuration::Minutes(5),
-            TDuration::Minutes(1),
-        };
-        TAgentList agentList {agentListConfig, nullptr, {}, {}};
+        TAgentList agentList = CreateAgentList({
+            .Config = {
+                .TimeoutGrowthFactor = 2,
+                .MinRejectAgentTimeout = 30s,
+                .MaxRejectAgentTimeout = 5min,
+                .DisconnectRecoveryInterval = 1min,
+            }
+        });
 
         TInstant now = Now();
 
         agentList.OnAgentDisconnected(now);
 
-        now += TDuration::Seconds(55);
+        now += 55s;
 
         agentList.OnAgentDisconnected(now);
 
-        now += TDuration::Seconds(55);
+        now += 55s;
 
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::MicroSeconds(67'347'722),
+            TDuration(67'347'722us),
             agentList.GetRejectAgentTimeout(now, ""));
     }
 
-    Y_UNIT_TEST(ShouldNotOverflowRejectAgentTimeout)
+    Y_UNIT_TEST_F(ShouldNotOverflowRejectAgentTimeout, TFixture)
     {
-        const TAgentListConfig agentListConfig {
-            2,
-            TDuration::Seconds(30),
-            TDuration::Minutes(5),
-            TDuration::Minutes(1),
-        };
-        TAgentList agentList {agentListConfig, nullptr, {}, {}};
+        const TDuration expectedMaxRejectAgentTimeout = 5min;
+
+        TAgentList agentList = CreateAgentList({
+            .Config = {
+                .TimeoutGrowthFactor = 2,
+                .MinRejectAgentTimeout = 30s,
+                .MaxRejectAgentTimeout = expectedMaxRejectAgentTimeout,
+                .DisconnectRecoveryInterval = 1min,
+            }
+        });
 
         TInstant now = Now();
 
@@ -757,25 +795,20 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
-            agentListConfig.MaxRejectAgentTimeout,
+            expectedMaxRejectAgentTimeout,
             agentList.GetRejectAgentTimeout(now, ""));
 
-        now += TDuration::Minutes(2);
+        now += 2min;
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(150),
+            TDuration(150s),
             agentList.GetRejectAgentTimeout(now, ""));
     }
 
-    Y_UNIT_TEST(ShouldValidateSerialNumbers)
+    Y_UNIT_TEST_F(ShouldValidateSerialNumbers, TFixture)
     {
-        TAgentList agentList {
-            TAgentListConfig {
-                .SerialNumberValidationEnabled = true
-            },
-            nullptr,
-            {},  // configs
-            {}   // diskRegistryAgentListParams
-        };
+        TAgentList agentList = CreateAgentList({
+            .Config = { .SerialNumberValidationEnabled = true }
+        });
 
         const NProto::TAgentConfig expectedConfig = [] {
             NProto::TAgentConfig config;
@@ -873,22 +906,19 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCalculateRejectAgentTimeoutWithUpdatedParams)
+    Y_UNIT_TEST_F(ShouldCalculateRejectAgentTimeoutWithUpdatedParams, TFixture)
     {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto diskRegistryGroup = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "disk_registry");
+        auto c = Counters->GetCounter("RejectAgentTimeout");
 
-        auto c = diskRegistryGroup->GetCounter("RejectAgentTimeout");
+        TAgentList agentList = CreateAgentList({
+            .Config = {
+                .TimeoutGrowthFactor = 2,
+                .MinRejectAgentTimeout = 30s,
+                .MaxRejectAgentTimeout = 5min,
+                .DisconnectRecoveryInterval = 1min,
+            }
+        });
 
-        const TAgentListConfig agentListConfig {
-            2,
-            TDuration::Seconds(30),
-            TDuration::Minutes(5),
-            TDuration::Minutes(1),
-        };
-        TAgentList agentList {agentListConfig, diskRegistryGroup, {}, {}};
         NProto::TDiskRegistryAgentParams params;
         params.SetNewNonReplicatedAgentMinTimeoutMs(60 * 1000);
         params.SetNewNonReplicatedAgentMaxTimeoutMs(10 * 60 * 1000);
@@ -897,24 +927,24 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         TInstant now = Now();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(1),
+            TDuration(1min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(30'000, c->Val());
 
-        now += TDuration::Hours(1);
+        now += 1h;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(1),
+            TDuration(1min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
@@ -923,11 +953,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(1),
+            TDuration(1min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(2),
+            TDuration(2min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
@@ -936,11 +966,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(2),
+            TDuration(2min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(4),
+            TDuration(4min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
@@ -949,11 +979,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(4),
+            TDuration(4min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(8),
+            TDuration(8min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
@@ -962,11 +992,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(5),
+            TDuration(5min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(10),
+            TDuration(10min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
@@ -975,11 +1005,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.OnAgentDisconnected(now);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(5),
+            TDuration(5min),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(10),
+            TDuration(10min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
@@ -987,14 +1017,14 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
         agentList.OnAgentDisconnected(now);
 
-        now += TDuration::Hours(1);
+        now += 1h;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(30),
+            TDuration(30s),
             agentList.GetRejectAgentTimeout(now, ""));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(1),
+            TDuration(1min),
             agentList.GetRejectAgentTimeout(now, "agent-1"));
 
         agentList.PublishCounters(now);
