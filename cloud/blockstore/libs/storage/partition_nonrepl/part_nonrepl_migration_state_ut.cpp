@@ -132,7 +132,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationStateTest)
         UNIT_ASSERT(state.IsMigrationStarted());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(1) / 2,
+            TDuration::Seconds(1) / 3,
             state.CalculateMigrationTimeout(
                 16,
                 4
@@ -143,7 +143,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationStateTest)
         UNIT_ASSERT(state.IsMigrationStarted());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Seconds(1) / 2,
+            TDuration::Seconds(1) / 3,
             state.CalculateMigrationTimeout(
                 16,
                 4
