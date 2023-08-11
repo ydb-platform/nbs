@@ -167,4 +167,7 @@ message TDiagnosticsConfig
     // The tracks of the requests whose processing time in ms exceeds
     // corresponding values have a chance to be logged.
     repeated NCloud.NProto.TLWTraceThreshold RequestThresholds = 43;
+
+    // We will report suffering disks from these clouds in a separate metric.
+    repeated string CloudIdsWithStrictSLA = 44;
 }

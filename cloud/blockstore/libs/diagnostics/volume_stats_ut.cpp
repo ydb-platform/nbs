@@ -59,6 +59,8 @@ public:
     void OnSummaryDouble(TInstant, NMonitoring::ISummaryDoubleSnapshotPtr) override {}
 };
 
+const TString THE_CLOUD = "cloud_id";
+
 void Mount(
     IVolumeStatsPtr volumeStats,
     const TString& name,
@@ -70,6 +72,7 @@ void Mount(
     volume.SetDiskId(name);
     volume.SetStorageMediaKind(mediaKind);
     volume.SetBlockSize(DefaultBlockSize);
+    volume.SetCloudId(THE_CLOUD);
 
     volumeStats->MountVolume(volume, client, instance);
 }
@@ -572,7 +575,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, mirror2HwProblems->Val());
     }
 
-    Y_UNIT_TEST(ShouldReportSufferMetrics)
+    void DoTestShouldReportSufferMetrics(
+        const TVector<TString>& strictSLACloudIds,
+        bool reportStrictSLA)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
@@ -587,6 +592,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         cfg.MutableSsdPerfSettings()->MutableWrite()->SetBandwidth(342000000);
         cfg.MutableSsdPerfSettings()->MutableRead()->SetIops(4200);
         cfg.MutableSsdPerfSettings()->MutableRead()->SetBandwidth(342000000);
+        for (const auto& cloudId: strictSLACloudIds) {
+            *cfg.AddCloudIdsWithStrictSLA() = cloudId;
+        }
         auto diagConfig = std::make_shared<TDiagnosticsConfig>(std::move(cfg));
 
         auto volumeStats = CreateVolumeStats(
@@ -648,6 +656,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto criticalHddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
             ->GetCounter("CriticalDisksSuffer", false);
 
+        auto strictSLADisksSufferCounter =
+            counters->GetCounter("StrictSLADisksSuffer", false);
+
         UNIT_ASSERT_VALUES_EQUAL(1, disksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, hddDisksSufferCounter->Val());
@@ -659,6 +670,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, criticalDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, criticalSsdDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, criticalHddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            reportStrictSLA ? 1 : 0,
+            strictSLADisksSufferCounter->Val());
 
         // a bunch of fast requests
         for (ui32 i = 0; i < 5; ++i) {
@@ -687,6 +702,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, criticalSsdDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, criticalHddDisksSufferCounter->Val());
 
+        UNIT_ASSERT_VALUES_EQUAL(0, strictSLADisksSufferCounter->Val());
+
         // a bunch of slow but not critically slow requests
         for (ui32 i = 0; i < 20; ++i) {
             volume->RequestCompleted(
@@ -713,6 +730,20 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, criticalDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, criticalSsdDisksSufferCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, criticalHddDisksSufferCounter->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            reportStrictSLA ? 1 : 0,
+            strictSLADisksSufferCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReportSufferMetrics)
+    {
+        DoTestShouldReportSufferMetrics({"something"}, false);
+    }
+
+    Y_UNIT_TEST(ShouldReportSufferMetricsWithStrictSLAFilter)
+    {
+        DoTestShouldReportSufferMetrics({THE_CLOUD}, true);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculatePossiblePostponeTimeForVolume)

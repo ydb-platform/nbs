@@ -37,6 +37,7 @@ namespace {
     xxx(Mirror3PerfSettings,            TVolumePerfSettings,  {}                                        )\
     xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
     xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
+    xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
     xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\
                                                                                                          \
     xxx(CpuWaitFilename,            TString, "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait" )\
@@ -90,6 +91,51 @@ ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     return ConvertRequestThresholds(value);
 }
 
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    TVector<TString> v;
+    for (const auto& x : value) {
+        v.push_back(x);
+    }
+    return v;
+}
+
+template <typename T>
+bool IsEmpty(const T& t)
+{
+    return !t;
+}
+
+bool IsEmpty(const NProto::TVolumePerfSettings& t)
+{
+    return t.ByteSizeLong() == 0;
+}
+
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+{
+    return value.empty();
+}
+
+template <typename T>
+void DumpImpl(const T& t, IOutputStream& os)
+{
+    os << t;
+}
+
+template <>
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,12 +144,12 @@ TDiagnosticsConfig::TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsCon
     : DiagnosticsConfig(std::move(diagnosticsConfig))
 {}
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                                    \
-type TDiagnosticsConfig::Get##name() const                                           \
-{                                                                                    \
-    auto has = DiagnosticsConfig.Has##name();                                        \
-    return has ? ConvertValue<type>(DiagnosticsConfig.Get##name()) : Default##name;  \
-}                                                                                    \
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
+type TDiagnosticsConfig::Get##name() const                                     \
+{                                                                              \
+    const auto& v = DiagnosticsConfig.Get##name();                             \
+    return !IsEmpty(v) ? ConvertValue<type>(v) : Default##name;                \
+}                                                                              \
 // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_DIAGNOSTICS_CONFIG(BLOCKSTORE_CONFIG_GETTER);
@@ -119,7 +165,9 @@ TRequestThresholds TDiagnosticsConfig::GetRequestThresholds() const
 void TDiagnosticsConfig::Dump(IOutputStream& out) const
 {
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": " << Get##name() << Endl;                               \
+    out << #name << ": ";                                                      \
+    DumpImpl(Get##name(), out);                                                \
+    out << Endl;                                                               \
 // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_DIAGNOSTICS_CONFIG(BLOCKSTORE_CONFIG_DUMP);
@@ -132,7 +180,7 @@ void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
     TABLER() {                                                                 \
         TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
+        TABLED() { DumpImpl(Get##name(), out); }                               \
     }                                                                          \
 // BLOCKSTORE_CONFIG_DUMP
 

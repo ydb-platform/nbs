@@ -17,6 +17,7 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/system/rwlock.h>
 
 #include <unordered_map>
@@ -554,11 +555,13 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const EVolumeStatsType Type;
     const ITimerPtr Timer;
+    const THashSet<TString> CloudIdsWithStrictSLA;
 
     TDynamicCountersPtr Counters;
     std::shared_ptr<NUserCounter::TUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
+    std::unique_ptr<TSufferCounters> StrictSLASufferCounters;
     std::unique_ptr<TSufferCounters> CriticalSufferCounters;
 
     std::unordered_map<TString, TRealInstanceId> ClientToRealInstance;
@@ -584,6 +587,9 @@ public:
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , Type(type)
         , Timer(std::move(timer))
+        , CloudIdsWithStrictSLA([] (const TVector<TString>& v) {
+            return THashSet<TString>(v.begin(), v.end());
+        }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(std::make_shared<NUserCounter::TUserCounterSupplier>())
     {
     }
@@ -800,6 +806,14 @@ public:
             {
                 SmoothSufferCounters->OnDiskSuffer(
                     volumeBase.Volume.GetStorageMediaKind());
+
+                const auto& cloudId = volumeBase.Volume.GetCloudId();
+                if (StrictSLASufferCounters
+                        && CloudIdsWithStrictSLA.contains(cloudId))
+                {
+                    StrictSLASufferCounters->OnDiskSuffer(
+                        volumeBase.Volume.GetStorageMediaKind());
+                }
             }
             if (CriticalSufferCounters &&
                 volumeBase.PerfCalc.IsSufferingCritically())
@@ -814,6 +828,9 @@ public:
         }
         if (SmoothSufferCounters) {
             SmoothSufferCounters->PublishCounters();
+        }
+        if (StrictSLASufferCounters) {
+            StrictSLASufferCounters->PublishCounters();
         }
         if (CriticalSufferCounters) {
             CriticalSufferCounters->PublishCounters();
@@ -964,6 +981,10 @@ private:
 
                 SmoothSufferCounters = std::make_unique<TSufferCounters>(
                     "SmoothDisksSuffer",
+                    Counters->GetSubgroup("component", "server"));
+
+                StrictSLASufferCounters = std::make_unique<TSufferCounters>(
+                    "StrictSLADisksSuffer",
                     Counters->GetSubgroup("component", "server"));
 
                 CriticalSufferCounters = std::make_unique<TSufferCounters>(

@@ -104,6 +104,7 @@ public:
     TVolumePerfSettings GetMirror3PerfSettings() const;
     TVolumePerfSettings GetLocalSSDPerfSettings() const;
     ui32 GetExpectedIoParallelism() const;
+    TVector<TString> GetCloudIdsWithStrictSLA() const;
 
     TString GetCpuWaitFilename() const;
 
