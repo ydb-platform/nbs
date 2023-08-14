@@ -485,8 +485,10 @@ void TStorageAdapter::TImpl::CheckIOTimeouts(
         p.TrySetValue(std::move(response));
     }
 
-    for (auto id: toDelete) {
-        inflight.erase(id);
+    with_lock (l) {
+        for (auto id: toDelete) {
+            inflight.erase(id);
+        }
     }
 }
 
