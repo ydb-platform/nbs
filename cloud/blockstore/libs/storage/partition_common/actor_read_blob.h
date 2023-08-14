@@ -1,0 +1,73 @@
+#pragma once
+
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+
+#include <ydb/core/base/blobstorage.h>
+
+#include <library/cpp/actors/core/actor_bootstrapped.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TReadBlobActor final
+    : public NActors::TActorBootstrapped<TReadBlobActor>
+{
+public:
+    using TRequest = TEvPartitionCommonPrivate::TEvReadBlobRequest;
+    using TResponse = TEvPartitionCommonPrivate::TEvReadBlobResponse;
+
+private:
+    const TRequestInfoPtr RequestInfo;
+
+    const NActors::TActorId Tablet;
+    const ui64 TabletId;
+    const ui32 BlockSize;
+    const EStorageAccessMode StorageAccessMode;
+    const std::unique_ptr<TRequest> Request;
+
+    TInstant RequestSent;
+    TInstant ResponseReceived;
+
+public:
+    TReadBlobActor(
+        TRequestInfoPtr requestInfo,
+        const NActors::TActorId& tablet,
+        ui64 tabletId,
+        ui32 blockSize,
+        const EStorageAccessMode storageAccessMode,
+        std::unique_ptr<TRequest> request);
+
+    void Bootstrap(const NActors::TActorContext& ctx);
+
+private:
+    void SendGetRequest(const NActors::TActorContext& ctx);
+    void NotifyCompleted(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+
+    void ReplyAndDie(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<TResponse> response);
+
+    void ReplyError(
+        const NActors::TActorContext& ctx,
+        const NKikimr::TEvBlobStorage::TEvGetResult& response,
+        const TString& description);
+
+private:
+    STFUNC(StateWork);
+
+    void HandleGetResult(
+        const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const NKikimr::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+};
+
+}   // namespace NCloud::NBlockStore::NStorage

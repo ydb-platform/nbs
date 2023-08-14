@@ -335,7 +335,7 @@ private:
     STFUNC(StateWork);
 
     void HandleReadBlobResponse(
-        const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -633,7 +633,7 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
+        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
             batch.BlobId,
             batch.Proxy,
             std::move(batch.BlobOffsets),
@@ -644,7 +644,7 @@ void TReadBlocksActor::ReadBlocks(
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
-                "TEvPartitionPrivate::TEvReadBlobRequest",
+                "TEvPartitionCommonPrivate::TEvReadBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
 
@@ -709,7 +709,7 @@ void TReadBlocksActor::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TReadBlocksActor::HandleReadBlobResponse(
-    const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -770,7 +770,7 @@ STFUNC(TReadBlocksActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
-        HFunc(TEvPartitionPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);

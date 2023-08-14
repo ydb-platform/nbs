@@ -521,7 +521,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReadBlobCompleted(
-        const TEvPartitionPrivate::TEvReadBlobCompleted::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteBlobCompleted(

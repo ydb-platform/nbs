@@ -809,14 +809,14 @@ public:
         return std::make_unique<TEvVolume::TEvGetUsedBlocksRequest>();
     }
 
-    std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest> CreateReadBlobRequest(
+    std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest> CreateReadBlobRequest(
         const NKikimr::TLogoBlobID& blobId,
         const ui32 bSGroupId,
         const TVector<ui16>& blobOffsets,
         TSgList sglist)
     {
         auto request =
-            std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                 blobId,
                 MakeBlobStorageProxyID(bSGroupId),
                 blobOffsets,
@@ -8733,9 +8733,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         completionStatus = msg->GetStatus();
                         break;
                     }
-                    case TEvPartitionPrivate::EvReadBlobResponse: {
+                    case TEvPartitionCommonPrivate::EvReadBlobResponse: {
                         using TEv =
-                            TEvPartitionPrivate::TEvReadBlobResponse;
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse;
                         const auto* msg = event->Get<TEv>();
                         UNIT_ASSERT(!FAILED(msg->GetStatus()));
                         ++readBlobCount;
@@ -8835,9 +8835,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         completionStatus = msg->GetStatus();
                         break;
                     }
-                    case TEvPartitionPrivate::EvReadBlobResponse: {
+                    case TEvPartitionCommonPrivate::EvReadBlobResponse: {
                         using TEv =
-                            TEvPartitionPrivate::TEvReadBlobResponse;
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse;
 
                         UNIT_ASSERT(index < brokenBlobsIndexes.size());
 

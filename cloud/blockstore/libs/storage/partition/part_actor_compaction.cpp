@@ -205,7 +205,7 @@ private:
         const TActorContext& ctx);
 
     void HandleReadBlobResponse(
-        const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWriteBlobResponse(
@@ -410,7 +410,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         auto subSgList = blobContent.CreateGuardedSgList(std::move(subset));
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
+        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
             MakeBlobId(TabletId, batch.BlobId),
             batch.Proxy,
             std::move(batch.BlobOffsets),
@@ -422,7 +422,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
-                "TEvPartitionPrivate::TEvReadBlobRequest",
+                "TEvPartitionCommonPrivate::TEvReadBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
 
@@ -754,7 +754,7 @@ void TCompactionActor::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCompactionActor::HandleReadBlobResponse(
-    const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -869,7 +869,7 @@ STFUNC(TCompactionActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
         HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvPatchBlobResponse, HandlePatchBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);

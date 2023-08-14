@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 
@@ -20,332 +21,15 @@ using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TReadBlobActor final
-    : public TActorBootstrapped<TReadBlobActor>
-{
-    using TRequest = TEvPartitionPrivate::TEvReadBlobRequest;
-    using TResponse = TEvPartitionPrivate::TEvReadBlobResponse;
-
-private:
-    const TRequestInfoPtr RequestInfo;
-
-    const TActorId Tablet;
-    const ui64 TabletId;
-    const ui32 BlockSize;
-    const EStorageAccessMode StorageAccessMode;
-    const std::unique_ptr<TRequest> Request;
-
-    TInstant RequestSent;
-    TInstant ResponseReceived;
-
-public:
-    TReadBlobActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
-        ui32 blockSize,
-        const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    void SendGetRequest(const TActorContext& ctx);
-
-    void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        std::unique_ptr<TResponse> response);
-
-    void ReplyError(
-        const TActorContext& ctx,
-        const TEvBlobStorage::TEvGetResult& response,
-        const TString& description);
-
-private:
-    STFUNC(StateWork);
-
-    void HandleGetResult(
-        const TEvBlobStorage::TEvGetResult::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TReadBlobActor::TReadBlobActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
-        ui32 blockSize,
-        const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request)
-    : RequestInfo(std::move(requestInfo))
-    , Tablet(tablet)
-    , TabletId(tabletId)
-    , BlockSize(blockSize)
-    , StorageAccessMode(storageAccessMode)
-    , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
-
-void TReadBlobActor::Bootstrap(const TActorContext& ctx)
-{
-    TRequestScope timer(*RequestInfo);
-
-    Become(&TThis::StateWork);
-
-    LWTRACK(
-        RequestReceived_PartitionWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "ReadBlob",
-        RequestInfo->CallContext->RequestId);
-
-    SendGetRequest(ctx);
-}
-
-void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
-{
-    using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
-
-    size_t blocksCount = Request->BlobOffsets.size();
-
-    TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
-    size_t queriesCount = 0;
-
-    for (size_t i = 0; i < blocksCount; ++i) {
-        if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i-1] + 1) {
-            // extend range
-            queries[queriesCount-1].Size += BlockSize;
-        } else {
-            queries[queriesCount++].Set(
-                Request->BlobId,
-                Request->BlobOffsets[i] * BlockSize,
-                BlockSize);
-        }
-    }
-
-    auto request = std::make_unique<TEvBlobStorage::TEvGet>(
-        queries,
-        queriesCount,
-        Request->Deadline,
-        Request->Async
-            ? NKikimrBlobStorage::AsyncRead
-            : NKikimrBlobStorage::FastRead);
-
-    request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
-
-    RequestSent = ctx.Now();
-
-    SendToBSProxy(
-        ctx,
-        Request->Proxy,
-        request.release());
-}
-
-void TReadBlobActor::NotifyCompleted(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobCompleted>(
-        error);
-    request->BlobId = Request->BlobId;
-    request->BytesCount = Request->BlobOffsets.size() * BlockSize;
-    request->RequestTime = ResponseReceived - RequestSent;
-    request->GroupId = Request->GroupId;
-
-    NCloud::Send(ctx, Tablet, std::move(request));
-}
-
-void TReadBlobActor::ReplyAndDie(
-    const TActorContext& ctx,
-    std::unique_ptr<TResponse> response)
-{
-    NotifyCompleted(ctx, response->GetError());
-
-    if (ResponseReceived) {
-        LWTRACK(
-            ResponseSent_Partition,
-            RequestInfo->CallContext->LWOrbit,
-            "ReadBlob",
-            RequestInfo->CallContext->RequestId);
-    }
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    Die(ctx);
-}
-
-void TReadBlobActor::ReplyError(
-    const TActorContext& ctx,
-    const TEvBlobStorage::TEvGetResult& response,
-    const TString& description)
-{
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
-        TabletId,
-        description.data(),
-        response.Print(false).data());
-
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TReadBlobActor::HandleGetResult(
-    const TEvBlobStorage::TEvGetResult::TPtr& ev,
-    const TActorContext& ctx)
-{
-    ResponseReceived = ctx.Now();
-
-    auto* msg = ev->Get();
-
-    RequestInfo->CallContext->LWOrbit = std::move(msg->Orbit);
-
-    if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason);
-        return;
-    }
-
-    auto blobId = Request->BlobId;
-    size_t blocksCount = Request->BlobOffsets.size();
-
-    if (auto guard = Request->Sglist.Acquire()) {
-        const auto& sglist = guard.Get();
-        size_t sglistIndex = 0;
-
-        for (size_t i = 0; i < msg->ResponseSz; ++i) {
-            auto& response = msg->Responses[i];
-
-            if (response.Status != NKikimrProto::OK) {
-                if (IsUnrecoverable(response.Status)
-                        && StorageAccessMode == EStorageAccessMode::Repair)
-                {
-                    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                        "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
-                        TabletId,
-                        NKikimrProto::EReplyStatus_Name(response.Status).data(),
-                        msg->Print(false).data());
-
-                    const auto marker = GetBrokenDataMarker();
-                    auto& block = sglist[sglistIndex];
-                    Y_VERIFY(block.Data());
-                    memcpy(
-                        const_cast<char*>(block.Data()),
-                        marker.Data(),
-                        Min(block.Size(), marker.Size())
-                    );
-                    ++sglistIndex;
-
-                    while (sglistIndex < sglist.size()) {
-                        const auto offset = Request->BlobOffsets[sglistIndex];
-                        const auto prevOffset = Request->BlobOffsets[sglistIndex - 1];
-                        if (offset != prevOffset + 1) {
-                            break;
-                        }
-
-                        auto& block = sglist[sglistIndex];
-                        Y_VERIFY(block.Data());
-                        memcpy(
-                            const_cast<char*>(block.Data()),
-                            marker.Data(),
-                            Min(block.Size(), marker.Size())
-                        );
-
-                        ++sglistIndex;
-                    }
-
-                    continue;
-                } else {
-                    ReplyError(ctx, *msg, "read error");
-                    return;
-                }
-            }
-
-            if (response.Id != blobId ||
-                response.Buffer.empty() ||
-                response.Buffer.size() % BlockSize != 0)
-            {
-                ReplyError(ctx, *msg, "invalid response received");
-                return;
-            }
-
-            for (auto iter = response.Buffer.begin(); iter.Valid(); ) {
-                if (sglistIndex >= sglist.size()) {
-                    ReplyError(ctx, *msg, "response is out of range");
-                    return;
-                }
-
-                Y_VERIFY(sglist[sglistIndex].Size() == BlockSize);
-                void* to = const_cast<char*>(sglist[sglistIndex].Data());
-                iter.ExtractPlainDataAndAdvance(to, BlockSize);
-                ++sglistIndex;
-            }
-        }
-
-        if (sglistIndex != blocksCount) {
-            ReplyError(ctx, *msg, "invalid response received");
-            return;
-        }
-    } else {
-        auto error =
-            MakeError(E_REJECTED, "TReadBlobActor::HandleGetResult failed");
-        ReplyAndDie(ctx, std::make_unique<TResponse>(error));
-        return;
-    }
-
-    auto response = std::make_unique<TResponse>();
-    response->ExecCycles = RequestInfo->GetExecCycles();
-    ReplyAndDie(ctx, std::move(response));
-}
-
-void TReadBlobActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    auto response = std::make_unique<TResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
-
-    ReplyAndDie(ctx, std::move(response));
-}
-
-STFUNC(TReadBlobActor::StateWork)
-{
-    TRequestScope timer(*RequestInfo);
-
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
-
-        default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
-            break;
-    }
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::HandleReadBlob(
-    const TEvPartitionPrivate::TEvReadBlobRequest::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TReadBlobMethod>(
+    auto requestInfo = CreateRequestInfo<TEvPartitionCommonPrivate::TReadBlobMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -366,7 +50,7 @@ void TPartitionActor::HandleReadBlob(
         TabletID(),
         State->GetBlockSize(),
         StorageAccessMode,
-        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(msg.Release()));
+        std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(msg.Release()));
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.
@@ -384,7 +68,7 @@ void TPartitionActor::HandleReadBlob(
 }
 
 void TPartitionActor::HandleReadBlobCompleted(
-    const TEvPartitionPrivate::TEvReadBlobCompleted::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();

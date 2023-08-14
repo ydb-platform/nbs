@@ -131,7 +131,7 @@ private:
         const TActorContext& ctx);
 
     void HandleReadBlobResponse(
-        const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -193,7 +193,7 @@ void TScanDiskActor::SendReadBlobRequest(
     const auto& blobMark = RequestsInCurrentBatch[requestIndex];
     TVector<ui16> blobOffsets{0};
 
-    auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
+    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
         blobMark.BlobId,
         MakeBlobStorageProxyID(blobMark.BSGroupId),
         std::move(blobOffsets),
@@ -218,7 +218,7 @@ STFUNC(TScanDiskActor::StateWork)
             TEvPartitionPrivate::TEvScanDiskBatchResponse,
             HandleScanDiskBatchResponse);
         HFunc(
-            TEvPartitionPrivate::TEvReadBlobResponse,
+            TEvPartitionCommonPrivate::TEvReadBlobResponse,
             HandleReadBlobResponse);
 
         default:
@@ -283,7 +283,7 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
 }
 
 void TScanDiskActor::HandleReadBlobResponse(
-    const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();

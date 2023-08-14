@@ -149,7 +149,6 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(xxx, ...)                        \
-    xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(WriteBlob,                 __VA_ARGS__)                                \
     xxx(AddBlobs,                  __VA_ARGS__)                                \
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
@@ -208,68 +207,6 @@ struct TBlockCountRebuildState
 
 struct TEvPartitionPrivate
 {
-    //
-    // ReadBlob
-    //
-
-    struct TReadBlobRequest
-    {
-        NKikimr::TLogoBlobID BlobId;
-        NActors::TActorId Proxy;
-        TVector<ui16> BlobOffsets;
-        TGuardedSgList Sglist;
-        ui32 GroupId = 0;
-        bool Async = false;
-        TInstant Deadline;
-
-        TReadBlobRequest() = default;
-
-        TReadBlobRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                NActors::TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TGuardedSgList sglist,
-                ui32 groupId,
-                bool async = false,
-                TInstant deadline = TInstant::Max())
-            : BlobId(blobId)
-            , Proxy(proxy)
-            , BlobOffsets(std::move(blobOffsets))
-            , Sglist(std::move(sglist))
-            , GroupId(groupId)
-            , Async(async)
-            , Deadline(deadline)
-        {}
-    };
-
-    struct TReadBlobResponse
-    {
-        ui64 ExecCycles = 0;
-
-        TReadBlobResponse() = default;
-    };
-
-    struct TReadBlobCompleted
-    {
-        NKikimr::TLogoBlobID BlobId;
-        ui32 BytesCount = 0;
-        TDuration RequestTime;
-        ui32 GroupId = 0;
-
-        TReadBlobCompleted() = default;
-
-        TReadBlobCompleted(
-                const NKikimr::TLogoBlobID& blobId,
-                ui32 bytesCount,
-                TDuration requestTime,
-                ui32 groupId)
-            : BlobId(blobId)
-            , BytesCount(bytesCount)
-            , RequestTime(requestTime)
-            , GroupId(groupId)
-        {}
-    };
-
     //
     // WriteBlob
     //
@@ -886,7 +823,6 @@ struct TEvPartitionPrivate
         EvSendBackpressureReport,
         EvProcessWriteQueue,
 
-        EvReadBlobCompleted,
         EvWriteBlobCompleted,
         EvReadBlocksCompleted,
         EvWriteBlocksCompleted,
@@ -916,7 +852,6 @@ struct TEvPartitionPrivate
     using TEvSendBackpressureReport = TRequestEvent<TEmpty, EvSendBackpressureReport>;
     using TEvProcessWriteQueue = TRequestEvent<TEmpty, EvProcessWriteQueue>;
 
-    using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
     using TEvWriteBlobCompleted = TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;

@@ -1,81 +1,13 @@
-#include "part2_actor.h"
+#include "actor_read_blob.h"
 
-#include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/api/public.h>
 
-#include <cloud/storage/core/libs/common/alloc.h>
-
-#include <ydb/core/base/blobstorage.h>
-
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-
-namespace NCloud::NBlockStore::NStorage::NPartition2 {
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
 using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TReadBlobActor final
-    : public TActorBootstrapped<TReadBlobActor>
-{
-    using TRequest = TEvPartitionPrivate::TEvReadBlobRequest;
-    using TResponse = TEvPartitionPrivate::TEvReadBlobResponse;
-
-private:
-    const TRequestInfoPtr RequestInfo;
-
-    const TActorId Tablet;
-    const ui64 TabletId;
-    const ui32 BlockSize;
-    const EStorageAccessMode StorageAccessMode;
-    const std::unique_ptr<TRequest> Request;
-
-    TInstant RequestSent;
-    TInstant ResponseReceived;
-
-public:
-    TReadBlobActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
-        ui32 blockSize,
-        const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    void SendGetRequest(const TActorContext& ctx);
-
-    void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        std::unique_ptr<TResponse> response);
-
-    void ReplyError(
-        const TActorContext& ctx,
-        const TEvBlobStorage::TEvGetResult& response,
-        const TString& description);
-
-private:
-    STFUNC(StateWork);
-
-    void HandleGetResult(
-        const TEvBlobStorage::TEvGetResult::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -151,11 +83,12 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 }
 
 void TReadBlobActor::NotifyCompleted(
-    const TActorContext& ctx,
+    const NActors::TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobCompleted>(
-        error);
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobCompleted>(error);
+
     request->BlobId = Request->BlobId;
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
@@ -168,7 +101,9 @@ void TReadBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    NotifyCompleted(ctx, response->GetError());
+    NotifyCompleted(
+        ctx,
+        response->GetError());
 
     if (ResponseReceived) {
         LWTRACK(
@@ -187,7 +122,7 @@ void TReadBlobActor::ReplyError(
     const TEvBlobStorage::TEvGetResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_COMMON,
         "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
         TabletId,
         description.data(),
@@ -228,7 +163,7 @@ void TReadBlobActor::HandleGetResult(
                 if (IsUnrecoverable(response.Status)
                         && StorageAccessMode == EStorageAccessMode::Repair)
                 {
-                    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+                    LOG_WARN(ctx, TBlockStoreComponents::PARTITION_COMMON,
                         "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
                         TabletId,
                         NKikimrProto::EReplyStatus_Name(response.Status).data(),
@@ -312,7 +247,7 @@ void TReadBlobActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvReadBlobResponse>(
+    auto response = std::make_unique<TResponse>(
         MakeError(E_REJECTED, "Tablet is dead"));
 
     ReplyAndDie(ctx, std::move(response));
@@ -328,131 +263,9 @@ STFUNC(TReadBlobActor::StateWork)
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_COMMON);
             break;
     }
 }
 
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TPartitionActor::HandleReadBlob(
-    const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-}
-
-void TPartitionActor::HandleReadBlob(
-    const TEvPartitionPrivate::TEvReadBlobRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto msg = ev->Release();
-
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TReadBlobMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    TRequestScope timer(*requestInfo);
-
-    LWTRACK(
-        RequestReceived_Partition,
-        requestInfo->CallContext->LWOrbit,
-        "ReadBlob",
-        requestInfo->CallContext->RequestId);
-
-    const auto blob = msg->BlobId;
-
-    auto readBlobActor = std::make_unique<TReadBlobActor>(
-        requestInfo,
-        SelfId(),
-        TabletID(),
-        State->GetBlockSize(),
-        StorageAccessMode,
-        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(msg.Release()));
-
-    if (blob.TabletID() != TabletID()) {
-        // Treat this situation as we were reading from base disk.
-        // TODO: verify that |blobTabletId| corresponds to base disk partition
-        // tablet.
-        auto actorId = NCloud::Register(ctx, std::move(readBlobActor));
-        Actors.insert(actorId);
-        return;
-    }
-
-    ui32 channel = blob.Channel();
-    State->EnqueueIORequest(channel, std::move(readBlobActor));
-    ProcessIOQueue(ctx, channel);
-}
-
-void TPartitionActor::HandleReadBlobCompleted(
-    const TEvPartitionPrivate::TEvReadBlobCompleted::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    Actors.erase(ev->Sender);
-
-    const auto& blobTabletId = msg->BlobId.TabletID();
-
-    if (FAILED(msg->GetStatus())) {
-        if (blobTabletId != TabletID()) {
-            // Treat this situation as we were reading from base disk.
-            // TODO: verify that |blobTabletId| corresponds to base disk
-            // partition tablet.
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%lu] Failed to read blob from base disk, blob tablet: %lu error: %s",
-                TabletID(),
-                blobTabletId,
-                FormatError(msg->GetError()).data());
-            return;
-        }
-
-        if (State->IncrementReadBlobErrorCount()
-                >= Config->GetMaxReadBlobErrorsBeforeSuicide())
-        {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Stop tablet because of too many ReadBlob errors: %s",
-                TabletID(),
-                FormatError(msg->GetError()).data());
-
-            ReportTabletBSFailure();
-            Suicide(ctx);
-        } else {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] ReadBlob error happened: %s",
-                TabletID(),
-                FormatError(msg->GetError()).data());
-        }
-        return;
-    }
-
-    const ui32 channel = msg->BlobId.Channel();
-    const ui32 group = msg->GroupId;
-    const bool isOverlayDisk = blobTabletId != TabletID();
-    Y_VERIFY(group != Max<ui32>());
-
-    UpdateReadThroughput(ctx, channel, group, msg->BytesCount, isOverlayDisk);
-    UpdateNetworkStats(ctx, msg->BytesCount);
-    UpdateExecutorStats(ctx);
-
-    if (blobTabletId != TabletID()) {
-        // Treat this situation as we were reading from base disk.
-        // TODO: verify that |blobTabletId| corresponds to base disk partition
-        // tablet.
-        return;
-    }
-
-    PartCounters->RequestCounters.ReadBlob.AddRequest(msg->RequestTime.MicroSeconds(), msg->BytesCount);
-
-    State->CompleteIORequest(channel);
-
-    ProcessIOQueue(ctx, channel);
-}
-
-}   // namespace NCloud::NBlockStore::NStorage::NPartition2
+}   // namespace NCloud::NBlockStore::NStorage
