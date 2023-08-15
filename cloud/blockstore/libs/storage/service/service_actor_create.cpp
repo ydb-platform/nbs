@@ -440,9 +440,7 @@ NProto::TError ValidateCreateVolumeRequest(
         }
     } else {
         const ui64 volumeSize = request.GetBlockSize() * request.GetBlocksCount();
-        const ui64 unit = request.GetStoragePoolName()
-            ? 4_KB    // custom pool can have any size
-            : GetAllocationUnit(config, mediaKind);
+        const ui64 unit = GetAllocationUnit(config, mediaKind);
 
         if (volumeSize % unit != 0) {
             return MakeError(
