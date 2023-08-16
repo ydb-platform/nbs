@@ -163,6 +163,7 @@ private:
             HFunc(TEvDiskAgent::TEvAcquireDevicesRequest, HandleAcquireDevices);
             HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevices);
             HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDevice);
+            HFunc(TEvDiskAgent::TEvEnableAgentDeviceRequest, HandleEnableAgentDevice);
 
             HFunc(TEvRegisterAgent, HandleRegisterAgent)
 
@@ -253,6 +254,16 @@ private:
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>());
+    }
+
+    void HandleEnableAgentDevice(
+        const TEvDiskAgent::TEvEnableAgentDeviceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceResponse>());
     }
 };
 

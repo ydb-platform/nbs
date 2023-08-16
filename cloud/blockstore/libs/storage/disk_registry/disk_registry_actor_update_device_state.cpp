@@ -79,6 +79,10 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
             args.AffectedDisk.c_str());
     }
 
+    if (args.State == NProto::DEVICE_STATE_ONLINE && !HasError(args.Error)) {
+        SendEnableDevice(ctx, args.DeviceId);
+    }
+
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

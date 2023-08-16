@@ -982,6 +982,25 @@ message TDisableConcreteAgentResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Eanble agent devices request/response.
+
+message TEnableAgentDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // The specified device will be enabled back after
+    // disabling via TDisableConcreteAgentRequest.
+    string DeviceUUID = 2;
+}
+
+message TEnableAgentDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Disk registry force migration request/response.
 
 message TStartForceMigrationRequest

@@ -745,14 +745,23 @@ void TDiskAgentState::ReleaseDevices(
 void TDiskAgentState::DisableDevice(const TString& uuid)
 {
     DeviceClient->DisableDevice(uuid);
-    if (auto* d = Devices.FindPtr(uuid)) {
-        d->Stats->OnError();
-    }
+    ReportDisabledDeviceError(uuid);
+}
+
+void TDiskAgentState::EnableDevice(const TString& uuid)
+{
+    DeviceClient->EnableDevice(uuid);
 }
 
 bool TDiskAgentState::IsDeviceDisabled(const TString& uuid) const
 {
     return DeviceClient->IsDeviceDisabled(uuid);
+}
+
+void TDiskAgentState::ReportDisabledDeviceError(const TString& uuid) {
+    if (auto* d = Devices.FindPtr(uuid)) {
+        d->Stats->OnError();
+    }
 }
 
 void TDiskAgentState::StopTarget()

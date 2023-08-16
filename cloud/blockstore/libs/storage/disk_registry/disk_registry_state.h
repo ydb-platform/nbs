@@ -494,6 +494,10 @@ public:
         return AgentList.FindAgent(nodeId);
     }
 
+    const NProto::TAgentConfig* FindDeviceAgent(const TDeviceId& uuid) const {
+        return FindDeviceLocation(uuid).first;
+    }
+
     TDiskId FindDisk(const TDeviceId& uuid) const;
 
     NProto::TDiskRegistryStateBackup BackupState() const;

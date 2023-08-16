@@ -1463,6 +1463,59 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(
             diskDevices[1].GetDeviceUUID(), "uuid-2.1");
     }
+
+    Y_UNIT_TEST(ShouldSendEnableDeviceWhenSwithingOnline)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1.1", "uuid-1.1", "rack-1", 93_GB, 4_KB),
+                Device("dev-1.2", "uuid-1.2", "rack-1", 93_GB, 4_KB),
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .With([] {
+                auto config = CreateDefaultStorageConfig();
+                config.SetAllocationUnitNonReplicatedSSD(93);
+                return config;
+            }())
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        TString enabledDeviceUUID;
+        runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvEnableAgentDeviceRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskAgent::TEvEnableAgentDeviceRequest>();
+                        enabledDeviceUUID = msg.Record.GetDeviceUUID();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        diskRegistry.ChangeDeviceState("uuid-1.1", NProto::DEVICE_STATE_WARNING);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL("", enabledDeviceUUID);
+
+        diskRegistry.ChangeDeviceState("uuid-1.1", NProto::DEVICE_STATE_ERROR);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL("", enabledDeviceUUID);
+
+        diskRegistry.ChangeDeviceState("uuid-1.1", NProto::DEVICE_STATE_ONLINE);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", enabledDeviceUUID);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

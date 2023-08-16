@@ -2857,7 +2857,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldDisableAgentDevices)
+    Y_UNIT_TEST(ShouldDisableAndEnableAgentDevice)
     {
         TTestBasicRuntime runtime;
 
@@ -2907,9 +2907,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             NProto::VOLUME_ACCESS_READ_WRITE
         );
 
+        // Disable device 0 and 1
         diskAgent.DisableConcreteAgent(TVector<TString>{uuids[0], uuids[1]});
-
-        using TResponse = TEvDiskAgent::TEvWriteDeviceBlocksResponse;
 
         {
             TVector<TString> blocks;
@@ -2920,41 +2919,26 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             TAutoPtr<NActors::IEventHandle> handle;
 
-            auto request = diskAgent.CreateWriteDeviceBlocksRequest(
-                uuids[0],
-                0,
-                sglist,
-                clientId);
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
-            runtime.GrabEdgeEventRethrow<TResponse>(
-                handle,
-                TDuration::Seconds(1));
-            UNIT_ASSERT(!handle);
+            // Device 0 should genereate IO error.
+            diskAgent.SendWriteDeviceBlocksRequest(uuids[0], 0, sglist, clientId);
+            auto response = diskAgent.RecvWriteDeviceBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_IO,
+                response->Record.GetError().GetCode());
 
-            request = diskAgent.CreateWriteDeviceBlocksRequest(
-                uuids[1],
-                0,
-                sglist,
-                clientId);
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
-            runtime.GrabEdgeEventRethrow<TResponse>(
-                handle,
-                TDuration::Seconds(1));
-            UNIT_ASSERT(!handle);
+            // Device 1 should genereate IO error.
+            diskAgent.SendWriteDeviceBlocksRequest(uuids[1], 0, sglist, clientId);
+            response = diskAgent.RecvWriteDeviceBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_IO,
+                response->Record.GetError().GetCode());
 
-            request = diskAgent.CreateWriteDeviceBlocksRequest(
-                uuids[2],
-                0,
-                sglist,
-                clientId);
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
-            runtime.GrabEdgeEventRethrow<TResponse>(
-                handle,
-                TDuration::Seconds(1));
-            UNIT_ASSERT(handle);
-            auto response = std::unique_ptr<TResponse>(
-                handle->Release<TResponse>().Release());
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            // Device 2 has not been disabled and should be able to handle requests
+            response =
+                diskAgent.WriteDeviceBlocks(uuids[2], 0, sglist, clientId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->Record.GetError().GetCode());
         }
 
         {
@@ -2968,9 +2952,45 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 return x.GetDeviceUUID();
             });
 
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetDeviceStats(0).GetErrors());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetDeviceStats(1).GetErrors());
+            // Here we get two erros for disabled devices.
+            // First for DisableConcreteAgent, second for failed request.
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetDeviceStats(0).GetErrors());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetDeviceStats(1).GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
+        }
+
+        // Enable device 1 back
+        diskAgent.EnableAgentDevice(uuids[1]);
+
+        {
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                blocksCount,
+                TString(blockSize, 'X'));
+
+            TAutoPtr<NActors::IEventHandle> handle;
+
+            // Device 0 should genereate IO error.
+            diskAgent.SendWriteDeviceBlocksRequest(uuids[0], 0, sglist, clientId);
+            auto response = diskAgent.RecvWriteDeviceBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_IO,
+                response->Record.GetError().GetCode());
+
+            // Device 1 has been enabled and should be able to handle requests
+            response =
+                diskAgent.WriteDeviceBlocks(uuids[1], 0, sglist, clientId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->Record.GetError().GetCode());
+
+            // Device 2 has not been disabled and should be able to handle requests
+            response =
+                diskAgent.WriteDeviceBlocks(uuids[2], 0, sglist, clientId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->Record.GetError().GetCode());
         }
     }
 

@@ -595,6 +595,9 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse,
             HandleRestoreDiskRegistryValidationResponse);
 
+        HFunc(TEvDiskAgent::TEvEnableAgentDeviceResponse,
+            HandleEnableDeviceResponse);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);

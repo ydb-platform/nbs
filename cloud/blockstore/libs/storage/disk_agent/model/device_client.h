@@ -75,6 +75,7 @@ public:
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
 
     void DisableDevice(const TString& uuid) const;
+    void EnableDevice(const TString& uuid) const;
     bool IsDeviceDisabled(const TString& uuid) const;
 
 private:

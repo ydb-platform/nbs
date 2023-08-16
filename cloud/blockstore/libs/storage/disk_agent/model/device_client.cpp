@@ -246,6 +246,14 @@ void TDeviceClient::DisableDevice(const TString& uuid) const
     }
 }
 
+void TDeviceClient::EnableDevice(const TString& uuid) const
+{
+    if (auto* deviceState = GetDeviceState(uuid)) {
+        TWriteGuard g(deviceState->Lock);
+        deviceState->Disabled = false;
+    }
+}
+
 bool TDeviceClient::IsDeviceDisabled(const TString& uuid) const
 {
     if (auto* deviceState = GetDeviceState(uuid)) {

@@ -259,7 +259,7 @@ private:
                 LogThrottler,
                 "[" << uuid << "/" << clientId << "] Device disabled. Drop request.");
 
-            ythrow TServiceError(E_ARGUMENT);
+            ythrow TServiceError(MakeError(E_IO, "Device disabled"));
         }
 
         NProto::TError error =

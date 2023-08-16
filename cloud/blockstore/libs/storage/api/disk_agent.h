@@ -26,6 +26,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(SecureEraseDevice,        __VA_ARGS__)                                 \
     xxx(ChecksumDeviceBlocks,     __VA_ARGS__)                                 \
     xxx(DisableConcreteAgent,     __VA_ARGS__)                                 \
+    xxx(EnableAgentDevice,        __VA_ARGS__)                                 \
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO
 
 #define BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, ...)                               \
@@ -83,6 +84,9 @@ struct TEvDiskAgent
 
         EvDisableConcreteAgentRequest = EvBegin + 17,
         EvDisableConcreteAgentResponse = EvBegin + 18,
+
+        EvEnableAgentDeviceRequest = EvBegin + 19,
+        EvEnableAgentDeviceResponse = EvBegin + 20,
 
         EvEnd
     };

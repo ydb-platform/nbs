@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
+#include <util/string/join.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -19,16 +21,7 @@ void TDiskAgentActor::HandleDisableConcreteAgent(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
         "DisableConcreteAgentRequest received, DeviceUUIDs=%s",
-        [&] {
-            TStringStream out;
-            for (auto& d: record.GetDeviceUUIDs()) {
-                if (out.Str()) {
-                    out << " ";
-                }
-                out << d;
-            }
-            return out.Str();
-        }().c_str());
+        JoinSeq(" ", record.GetDeviceUUIDs()).c_str());
 
     if (record.DeviceUUIDsSize()) {
         for (const auto& d: record.GetDeviceUUIDs()) {
@@ -42,6 +35,27 @@ void TDiskAgentActor::HandleDisableConcreteAgent(
         ctx,
         *ev,
         std::make_unique<TEvDiskAgent::TEvDisableConcreteAgentResponse>());
+}
+
+void TDiskAgentActor::HandleEnableAgentDevice(
+    const TEvDiskAgent::TEvEnableAgentDeviceRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& record = msg->Record;
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "EnableAgentDevice received, DeviceUUID=%s",
+        record.GetDeviceUUID().c_str());
+
+    State->EnableDevice(record.GetDeviceUUID());
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceResponse>());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

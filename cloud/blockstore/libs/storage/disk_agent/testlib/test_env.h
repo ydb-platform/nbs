@@ -197,6 +197,15 @@ public:
         return request;
     }
 
+    auto CreateEnableAgentDeviceRequest(const TString deviceId)
+    {
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceRequest>();
+
+        request->Record.SetDeviceUUID(deviceId);
+        return request;
+    }
+
     auto CreateReadDeviceBlocksRequest(
         const TString& uuid,
         ui64 startIndex,

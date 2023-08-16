@@ -115,6 +115,29 @@ void TDiskRegistryActor::HandleDisableAgent(
         true);
 }
 
+void TDiskRegistryActor::SendEnableDevice(
+    const TActorContext& ctx,
+    const TString& deviceId)
+{
+    if (const auto* agent = State->FindDeviceAgent(deviceId)) {
+        auto agentRequest =
+            std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceRequest>();
+        agentRequest->Record.SetDeviceUUID(deviceId);
+        NCloud::Send(
+            ctx,
+            MakeDiskAgentServiceId(agent->GetNodeId()),
+            std::move(agentRequest));
+    }
+}
+
+void TDiskRegistryActor::HandleEnableDeviceResponse(
+    const TEvDiskAgent::TEvEnableAgentDeviceResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TDiskRegistryActor::PrepareUpdateAgentState(

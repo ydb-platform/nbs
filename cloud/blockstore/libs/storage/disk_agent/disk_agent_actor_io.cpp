@@ -129,16 +129,6 @@ void TDiskAgentActor::PerformIO(
     const auto deviceUUID = record.GetDeviceUUID();
     const auto clientId = record.GetHeaders().GetClientId();
 
-    if (State->IsDeviceDisabled(deviceUUID)) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT,
-            "Dropped %s request to device %s, session %s",
-            TMethod::Name,
-            deviceUUID.c_str(),
-            clientId.c_str());
-
-        return;
-    }
-
     LWTRACK(
         RequestReceived_DiskAgent,
         requestInfo->CallContext->LWOrbit,
@@ -173,6 +163,17 @@ void TDiskAgentActor::PerformIO(
             deviceUUID,
             started);
     };
+
+    if (State->IsDeviceDisabled(deviceUUID)) {
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT,
+            "Dropped %s request to device %s, session %s",
+            TMethod::Name,
+            deviceUUID.c_str(),
+            clientId.c_str());
+        State->ReportDisabledDeviceError(deviceUUID);
+        replyError(E_IO, "Device disabled");
+        return;
+    }
 
     LOG_TRACE(ctx, TBlockStoreComponents::DISK_AGENT,
         "%s [%s / %s]",

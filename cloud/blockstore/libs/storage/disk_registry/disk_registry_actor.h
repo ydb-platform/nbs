@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -20,6 +21,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/model/composite_task_waiter.h>
+
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <ydb/core/base/tablet_pipe.h>
@@ -179,6 +181,10 @@ private:
 
     void ReallocateDisks(const NActors::TActorContext& ctx);
     void NotifyUsers(const NActors::TActorContext& ctx);
+
+    void SendEnableDevice(
+        const NActors::TActorContext& ctx,
+        const TString& deviceId);
 
     void UpdateVolumeConfigs(
         const NActors::TActorContext& ctx,
@@ -417,6 +423,10 @@ private:
 
     void HandleDiskRegistryAgentListExpiredParamsCleanup(
         const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleEnableDeviceResponse(
+        const TEvDiskAgent::TEvEnableAgentDeviceResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)
