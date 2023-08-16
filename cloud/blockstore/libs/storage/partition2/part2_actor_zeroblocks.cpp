@@ -297,13 +297,10 @@ void TPartitionActor::HandleZeroBlocks(
                 0,  // deletion marker
                 blobIndex++);
 
-            auto range = TBlockRange32(
+            auto range = TBlockRange32::MakeClosedIntervalWithLimit(
                 blockIndex,
-                Min<ui64>(
-                    blockIndex + State->GetMaxBlocksInBlob() - 1,
-                    writeRange.End
-                )
-            );
+                blockIndex + State->GetMaxBlocksInBlob() - 1,
+                writeRange.End);
 
             TVector<TBlock> blocks(Reserve(range.Size()));
             for (ui32 blockIndex: xrange(range)) {

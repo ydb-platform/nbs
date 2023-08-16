@@ -1183,13 +1183,10 @@ void TPartitionActor::HandleCompaction(
     for (const auto& x: tops) {
         const ui32 rangeIdx = cm.GetRangeIndex(x.BlockIndex);
 
-        const TBlockRange32 blockRange(
+        const auto blockRange = TBlockRange32::MakeClosedIntervalWithLimit(
             x.BlockIndex,
-            Min(
-                State->GetBlocksCount(),
-                static_cast<ui64>(x.BlockIndex) + cm.GetRangeSize()
-            ) - 1
-        );
+            static_cast<ui64>(x.BlockIndex) + cm.GetRangeSize() - 1,
+            State->GetBlocksCount() - 1);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Start compaction @%lu (range: %s, blobs: %u, blocks: %u"

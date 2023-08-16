@@ -87,10 +87,11 @@ public:
         }
 
         storageBlockRange.Storage = CurrentStorage;
-        storageBlockRange.BlockRange = TBlockRange64(
-            StorageBlockOffset,
-            Min(Blocks(CurrentStorage), EndBlock - StartOffset(CurrentStorage)) - 1
-        );
+        storageBlockRange.BlockRange =
+            TBlockRange64::MakeClosedIntervalWithLimit(
+                StorageBlockOffset,
+                Blocks(CurrentStorage) - 1,
+                EndBlock - StartOffset(CurrentStorage) - 1);
 
         ++CurrentStorage;
         StorageBlockOffset = 0;

@@ -468,13 +468,10 @@ void TPartitionActor::WriteMergedBlocks(
         Reserve(1 + writeRange.Size() / maxBlocksInBlob));
 
     for (ui64 blockIndex: xrange(writeRange, maxBlocksInBlob)) {
-        auto range = TBlockRange32(
+        auto range = TBlockRange32::MakeClosedIntervalWithLimit(
             blockIndex,
-            Min<ui64>(
-                blockIndex + maxBlocksInBlob - 1,
-                writeRange.End
-            )
-        );
+            blockIndex + maxBlocksInBlob - 1,
+            writeRange.End);
 
         auto blobId = State->GenerateBlobId(
             EChannelDataKind::Merged,

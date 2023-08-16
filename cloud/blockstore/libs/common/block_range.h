@@ -56,6 +56,24 @@ struct TBlockRange
         return TBlockRange{start, includedEnd};
     }
 
+    // Create range [start, Min(includedEnd, upperLimit)].
+    // It is guaranteed that there will be no overflow for the end of the
+    // interval. Therefore, the constructed range may be shorter than the
+    // requested one.
+    static TBlockRange MakeClosedIntervalWithLimit(
+        TBlockIndex start,
+        ui64 includedEnd,
+        ui64 upperLimit)
+    {
+        ui64 end = Min(includedEnd, upperLimit);
+        if (end > MaxIndex) {
+            end = MaxIndex;
+        }
+        return TBlockRange::MakeClosedInterval(
+            start,
+            static_cast<TBlockIndex>(end));
+    }
+
     // Create half interval range [start, excludedEnd).
     static TBlockRange MakeHalfOpenInterval(
         TBlockIndex start,
@@ -212,15 +230,14 @@ using TBlockRange64Builder = TBlockRangeBuilder<ui64>;
 
 inline TBlockRange32 ConvertRangeSafe(const TBlockRange64& range)
 {
-    return {
+    return TBlockRange32::MakeClosedInterval(
         IntegerCast<ui32>(range.Start),
-        IntegerCast<ui32>(range.End),
-    };
+        IntegerCast<ui32>(range.End));
 }
 
 inline TBlockRange64 ConvertRangeSafe(const TBlockRange32& range)
 {
-    return {range.Start, range.End};
+    return TBlockRange64::MakeClosedInterval(range.Start, range.End);
 }
 
 }   // namespace NCloud::NBlockStore

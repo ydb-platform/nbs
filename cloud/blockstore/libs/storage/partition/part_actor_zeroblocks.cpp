@@ -308,13 +308,10 @@ void TPartitionActor::HandleZeroBlocks(
 
         ui32 blobIndex = 0;
         for (ui64 blockIndex: xrange(writeRange, State->GetMaxBlocksInBlob())) {
-            auto range = TBlockRange32(
+            auto range = TBlockRange32::MakeClosedIntervalWithLimit(
                 blockIndex,
-                Min<ui64>(
-                    blockIndex + State->GetMaxBlocksInBlob() - 1,
-                    writeRange.End
-                )
-            );
+                blockIndex + State->GetMaxBlocksInBlob() - 1,
+                writeRange.End);
 
             auto blobId = State->GenerateBlobId(
                 EChannelDataKind::Merged,

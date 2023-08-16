@@ -265,9 +265,10 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         return;
     }
 
-    TBlockRange32 blockRange(
+    auto blockRange = TBlockRange32::MakeClosedIntervalWithLimit(
         msg->Begin,
-        Min(State->GetBlocksCount(), ui64(msg->End)) - 1);
+        State->GetBlocksCount() - 1,
+        static_cast<ui64>(msg->End) - 1);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] Start metadata rebuild for used blocks(range: %s)",
