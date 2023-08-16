@@ -180,7 +180,8 @@ void TPartitionState::InitChannels()
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
     Y_VERIFY_DEBUG(Config.GetBlocksCount() <= Max<ui32>());
-    const TBlockRange64 validRange(0, Config.GetBlocksCount() - 1);
+    const auto validRange =
+        TBlockRange64::WithLength(0, Config.GetBlocksCount());
     return validRange.Contains(range);
 }
 

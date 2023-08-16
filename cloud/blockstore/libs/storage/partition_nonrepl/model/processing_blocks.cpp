@@ -16,7 +16,7 @@ TProcessingBlocks::TProcessingBlocks(
     CurrentProcessingIndex = initialProcessingIndex;
     NextProcessingIndex = CalculateNextProcessingIndex();
     if (CurrentProcessingIndex) {
-        MarkProcessed(TBlockRange64(0, CurrentProcessingIndex - 1));
+        MarkProcessed(TBlockRange64::WithLength(0, CurrentProcessingIndex));
     }
 }
 

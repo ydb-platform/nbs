@@ -100,7 +100,7 @@ static TBlocksInfo ConvertRangeToBlocks(
     ui64 endOffset = blocksCount * blockSize - realLength;
 
     TBlocksInfo res;
-    res.Range = TBlockRange64(startIndex, startIndex + blocksCount - 1);
+    res.Range = TBlockRange64::WithLength(startIndex, blocksCount);
     res.BeginOffset = beginOffset;
     res.EndOffset = endOffset;
     return res;

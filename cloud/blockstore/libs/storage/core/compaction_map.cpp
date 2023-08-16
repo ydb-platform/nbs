@@ -547,7 +547,9 @@ ui32 TCompactionMap::GetRangeIndex(TBlockRange32 blockRange) const
 
 TBlockRange32 TCompactionMap::GetBlockRange(ui32 rangeIdx) const
 {
-    return { rangeIdx * Impl->RangeSize, (rangeIdx + 1) * Impl->RangeSize - 1 };
+    return TBlockRange32::WithLength(
+        rangeIdx * Impl->RangeSize,
+        Impl->RangeSize);
 }
 
 ui32 TCompactionMap::GetRangeSize() const

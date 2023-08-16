@@ -16,8 +16,7 @@ TBlockRange64 RangeId2BlockRange(ui32 rangeId, ui32 blockSize)
 {
     const auto resyncRangeBlockCount = ResyncRangeSize / blockSize;
     ui64 start = rangeId * resyncRangeBlockCount;
-    ui64 end = start + resyncRangeBlockCount - 1;
-    return TBlockRange64(start, end);
+    return TBlockRange64::WithLength(start, resyncRangeBlockCount);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

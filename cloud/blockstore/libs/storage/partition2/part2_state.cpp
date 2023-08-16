@@ -207,7 +207,7 @@ TPartitionState::TPartitionState(
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
     Y_VERIFY_DEBUG(Config.GetBlocksCount() <= Max<ui32>());
-    TBlockRange64 validRange(0, Config.GetBlocksCount() - 1);
+    auto validRange = TBlockRange64::WithLength(0, Config.GetBlocksCount());
     return validRange.Contains(range);
 }
 
@@ -842,7 +842,9 @@ void TPartitionState::WriteBlob(
     auto blockRanges = BuildRanges(blocks, MaxRangesPerBlob);
 
     Blobs.ApplyUpdates(
-        {blocks.front().BlockIndex, blocks.back().BlockIndex},
+        TBlockRange32::MakeClosedInterval(
+            blocks.front().BlockIndex,
+            blocks.back().BlockIndex),
         blocks);
 
     // rebase blocks
@@ -953,7 +955,9 @@ bool TPartitionState::UpdateBlob(
     }
 
     const ui32 updateCount = Blobs.ApplyUpdates(
-        {blob->BlockRanges.front().Start, blob->BlockRanges.back().End},
+        TBlockRange32::MakeClosedInterval(
+            blob->BlockRanges.front().Start,
+            blob->BlockRanges.back().End),
         blocks);
 
     if (fastPathAllowed && updateCount == 0) {
@@ -1249,10 +1253,9 @@ void TPartitionState::UpdateIndex(
         TBlockRanges blockRanges;
         blockRanges.reserve(item.BlobMeta.StartIndicesSize());
         for (ui32 i = 0; i < item.BlobMeta.StartIndicesSize(); ++i) {
-            blockRanges.emplace_back(
+            blockRanges.push_back(TBlockRange32::MakeClosedInterval(
                 item.BlobMeta.GetStartIndices(i),
-                item.BlobMeta.GetEndIndices(i)
-            );
+                item.BlobMeta.GetEndIndices(i)));
         }
 
         auto addedBlobInfo = Blobs.AddBlob(
