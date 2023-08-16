@@ -189,6 +189,8 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
         // migration might be in progress even for an unmounted volume
         acquired = !IsReadWriteMode(accessMode)
             || deviceState->WriterSession.Id.empty();
+    } else if (clientId == CheckHealthClientId) {
+        acquired = accessMode == NProto::VOLUME_ACCESS_READ_ONLY;
     } else {
         acquired = clientId == deviceState->WriterSession.Id;
 

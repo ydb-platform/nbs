@@ -155,7 +155,7 @@ void TStatsActor::CheckDevicesHealth(const TActorContext& ctx)
     for (const auto& device: Devices) {
         auto request = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
         auto& rec = request->Record;
-        rec.MutableHeaders()->SetClientId(TString(BackgroundOpsClientId));
+        rec.MutableHeaders()->SetClientId(TString(CheckHealthClientId));
         rec.SetDeviceUUID(device.GetDeviceUUID());
         rec.SetStartIndex(Rng.Uniform(device.GetBlocksCount()));
         rec.SetBlockSize(device.GetBlockSize());
