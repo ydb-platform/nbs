@@ -199,7 +199,9 @@ bool TPartitionActor::PrepareDescribeBlob(
     }
 
     auto blocks = blockList->GetBlocks();
-    TBlockRange32 blobRange(blocks.front().BlockIndex, blocks.back().BlockIndex);
+    auto blobRange = TBlockRange32::MakeClosedInterval(
+        blocks.front().BlockIndex,
+        blocks.back().BlockIndex);
     if (!State->InitIndex(db, blobRange)) {
         return false;
     }

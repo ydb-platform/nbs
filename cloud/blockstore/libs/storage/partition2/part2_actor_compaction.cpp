@@ -792,7 +792,8 @@ void TPartitionActor::HandleCompaction(
             static_cast<ui64>(startIndex) + cm.GetRangeSize() - 1
         );
 
-        auto blockRange = TBlockRange32(startIndex, endIndex);
+        auto blockRange =
+            TBlockRange32::MakeClosedInterval(startIndex, endIndex);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Start compaction "
@@ -923,8 +924,7 @@ bool TPartitionActor::PrepareCompaction(
 
         return State->InitIndex(
             db,
-            {firstBlock, lastBlock}
-        );
+            TBlockRange32::MakeClosedInterval(firstBlock, lastBlock));
     } else {
         if (!State->InitIndex(db, args.BlockRange)) {
             return false;
@@ -1011,10 +1011,9 @@ bool TPartitionActor::PrepareCompaction(
             Y_VERIFY(blockList.Defined());
 
             auto blocks = blockList->GetBlocks();
-            const TBlockRange32 blobRange(
+            const auto blobRange = TBlockRange32::MakeClosedInterval(
                 blocks.front().BlockIndex,
-                blocks.back().BlockIndex
-            );
+                blocks.back().BlockIndex);
             ready &= State->InitIndex(db, blobRange);
 
             if (ready) {

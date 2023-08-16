@@ -72,7 +72,7 @@ bool TPartitionDatabase::ReadFreshBlockUpdates(TFreshBlockUpdates& updates)
 
     while (it.IsValid()) {
         auto commitId = it.template GetValue<typename TTable::CommitId>();
-        auto blockRange = TBlockRange32(
+        auto blockRange = TBlockRange32::MakeClosedInterval(
             it.template GetValue<typename TTable::StartIndex>(),
             it.template GetValue<typename TTable::EndIndex>());
 
@@ -395,7 +395,7 @@ bool ReadBlobUpdatesImpl(
     while (it.IsValid()) {
         auto deletionId = it.template GetValue<typename TTable::DeletionId>();
         auto commitId = it.template GetValue<typename TTable::CommitId>();
-        auto blockRange = TBlockRange32(
+        auto blockRange = TBlockRange32::MakeClosedInterval(
             it.template GetValue<typename TTable::StartIndex>(),
             it.template GetValue<typename TTable::EndIndex>());
 

@@ -72,11 +72,9 @@ bool TPartitionActor::PrepareAddBlobs(
         Y_VERIFY_DEBUG(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
         ready &= State->InitIndex(
             db,
-            TBlockRange32(
+            TBlockRange32::MakeClosedInterval(
                 blob.Blocks.front().BlockIndex,
-                blob.Blocks.back().BlockIndex
-            )
-        );
+                blob.Blocks.back().BlockIndex));
     }
 
     return ready;
@@ -127,7 +125,7 @@ void TPartitionActor::ExecuteAddBlobs(
         Y_VERIFY(blob.Blocks.size());
         Y_VERIFY(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
 
-        auto blockRange = TBlockRange32(
+        auto blockRange = TBlockRange32::MakeClosedInterval(
             blob.Blocks.front().BlockIndex,
             blob.Blocks.back().BlockIndex);
 

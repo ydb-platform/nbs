@@ -112,7 +112,9 @@ NProto::TError ParseFreshBlobContent(
         auto start = meta.GetStartIndices(i);
         auto end = meta.GetEndIndices(i);
 
-        for (auto blockIndex: xrange(TBlockRange32(start, end))) {
+        for (auto blockIndex:
+             xrange(TBlockRange32::MakeClosedInterval(start, end)))
+        {
             auto block = TBlock(blockIndex, commitId, IsStoredInDb);
 
             if (meta.GetIsZero()) {

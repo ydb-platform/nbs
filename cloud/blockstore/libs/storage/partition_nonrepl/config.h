@@ -302,10 +302,9 @@ private:
             const auto interrupted = visitor(
                 i,
                 subRange,
-                TBlockRange64(
+                TBlockRange64::MakeClosedInterval(
                     subRange.Start - BlockIndices[i],
-                    subRange.End - BlockIndices[i]
-                ));
+                    subRange.End - BlockIndices[i]));
 
             if (interrupted) {
                 return false;

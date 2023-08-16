@@ -2085,7 +2085,9 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
     Y_VERIFY(blocks.size());
 
     if (maxRanges <= 1) {
-        return {{blocks.front().BlockIndex, blocks.back().BlockIndex}};
+        return {TBlockRange32::MakeClosedInterval(
+            blocks.front().BlockIndex,
+            blocks.back().BlockIndex)};
     }
 
     struct THole
@@ -2113,10 +2115,9 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
 
     TBlockRanges holeRanges;
     while (!holes.empty()) {
-        holeRanges.emplace_back(
+        holeRanges.push_back(TBlockRange32::MakeHalfOpenInterval(
             blocks[holes.top().FirstBlock].BlockIndex + 1,
-            blocks[holes.top().FirstBlock + 1].BlockIndex - 1
-        );
+            blocks[holes.top().FirstBlock + 1].BlockIndex));
         holes.pop();
     }
 
@@ -2127,10 +2128,13 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
     TBlockRanges blockRanges;
     ui32 blockIndex = blocks.front().BlockIndex;
     for (const auto& holeRange: holeRanges) {
-        blockRanges.emplace_back(blockIndex, holeRange.Start - 1);
+        blockRanges.push_back(
+            TBlockRange32::MakeHalfOpenInterval(blockIndex, holeRange.Start));
         blockIndex = holeRange.End + 1;
     }
-    blockRanges.emplace_back(blockIndex, blocks.back().BlockIndex);
+    blockRanges.push_back(TBlockRange32::MakeClosedInterval(
+        blockIndex,
+        blocks.back().BlockIndex));
 
     return blockRanges;
 }

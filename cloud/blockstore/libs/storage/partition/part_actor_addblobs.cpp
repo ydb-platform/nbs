@@ -378,10 +378,9 @@ private:
     {
         const auto& cm = State.GetCompactionMap();
 
-        TBlockRange32 range(
+        auto range = TBlockRange32::MakeClosedInterval(
             cm.GetRangeStart(blob.BlockRange.Start),
-            cm.GetRangeStart(blob.BlockRange.End)
-        );
+            cm.GetRangeStart(blob.BlockRange.End));
 
         for (const ui64 blockIndex: xrange(range, cm.GetRangeSize())) {
             auto& rangeStat = AccessRangeStat(blockIndex);

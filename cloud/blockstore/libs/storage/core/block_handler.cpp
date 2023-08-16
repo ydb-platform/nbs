@@ -394,7 +394,7 @@ public:
 
             blockIndex = Max(itRange.Start, range.Start);
             auto sgList = itHandler->GetBlocks(
-                TBlockRange64(blockIndex, endIndex));
+                TBlockRange64::MakeClosedInterval(blockIndex, endIndex));
             sgLists.push_back(std::move(sgList));
         }
 

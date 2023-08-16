@@ -55,7 +55,7 @@ NProto::TError ParseFreshBlobContent(
         auto end = meta.GetEndIndices(i);
         auto deletionId = meta.GetDeletionIds(i);
 
-        auto blockRange = TBlockRange32(start, end);
+        auto blockRange = TBlockRange32::MakeClosedInterval(start, end);
 
         for (auto blockIndex: xrange(blockRange)) {
             auto block = TBlock(blockIndex, commitId, InvalidCommitId, false);

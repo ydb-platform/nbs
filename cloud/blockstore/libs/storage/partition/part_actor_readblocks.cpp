@@ -895,7 +895,9 @@ TMaybe<TBlockRange32> ComputeDescribeBlocksRange(
     const auto firstEmptyBlockIndex = startBlockIndex + firstEmptyIndexFromBegin;
     const auto lastEmptyBlockIndex = startBlockIndex + lastEmptyIndexFromBegin;
 
-    return TBlockRange32(firstEmptyBlockIndex, lastEmptyBlockIndex);
+    return TBlockRange32::MakeClosedInterval(
+        firstEmptyBlockIndex,
+        lastEmptyBlockIndex);
 }
 
 }   // namespace

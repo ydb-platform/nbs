@@ -260,7 +260,9 @@ void TPartitionActor::ExecuteCleanup(
         } else if (blobMeta.HasMergedBlocks()) {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();
 
-            TBlockRange32 blockRange(mergedBlocks.GetStart(), mergedBlocks.GetEnd());
+            auto blockRange = TBlockRange32::MakeClosedInterval(
+                mergedBlocks.GetStart(),
+                mergedBlocks.GetEnd());
             db.DeleteMergedBlocks(item.BlobId, blockRange);
 
             ++mergedBlobsCount;

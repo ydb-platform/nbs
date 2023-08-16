@@ -210,10 +210,9 @@ bool TPartitionActor::PrepareCleanup(
     }
 
     for (const auto& blocklist: args.BlockLists) {
-        const TBlockRange32 blobRange(
+        const auto blobRange = TBlockRange32::MakeClosedInterval(
             blocklist.front().BlockIndex,
-            blocklist.back().BlockIndex
-        );
+            blocklist.back().BlockIndex);
 
         ready &= State->InitIndex(db, blobRange);
     }

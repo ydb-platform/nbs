@@ -148,7 +148,8 @@ struct TDisjointRangeMap::TBinaryTreeMap
     {
         auto it = Data.lower_bound(blockRange.Start);
         while (it != Data.end()) {
-            const TBlockRange32 range(it->second.Start, it->first);
+            const auto range =
+                TBlockRange32::MakeClosedInterval(it->second.Start, it->first);
             if (!blockRange.Overlaps(range)) {
                 break;
             }
@@ -167,7 +168,7 @@ struct TDisjointRangeMap::TBinaryTreeMap
     void Visit(const TRangeVisitor& visitor) const
     {
         for (const auto& x: Data) {
-            visitor(TBlockRange32(x.second.Start, x.first));
+            visitor(TBlockRange32::MakeClosedInterval(x.second.Start, x.first));
         }
     }
 

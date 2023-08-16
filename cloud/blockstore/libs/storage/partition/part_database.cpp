@@ -45,13 +45,14 @@ TVector<TBlockRange32> SplitInRanges(
         if (blocks[i] - rangeStart < rangeSize) {
             rangeEnd = blocks[i];
         } else {
-            result.emplace_back(rangeStart, rangeEnd);
+            result.push_back(
+                TBlockRange32::MakeClosedInterval(rangeStart, rangeEnd));
             rangeStart = blocks[i];
             rangeEnd = blocks[i];
         }
     }
 
-    result.emplace_back(rangeStart, rangeEnd);
+    result.push_back(TBlockRange32::MakeClosedInterval(rangeStart, rangeEnd));
     return result;
 }
 
@@ -388,7 +389,7 @@ bool TPartitionDatabase::FindMergedBlocks(
     }
 
     while (it.IsValid()) {
-        TBlockRange32 range(
+        auto range = TBlockRange32::MakeClosedInterval(
             it.GetValue<TTable::RangeStart>(),
             it.GetValue<TTable::RangeEnd>());
 
@@ -477,7 +478,7 @@ bool TPartitionDatabase::FindMergedBlocks(
         }
 
         while (it.IsValid()) {
-            TBlockRange32 range(
+            auto range = TBlockRange32::MakeClosedInterval(
                 it.GetValue<TTable::RangeStart>(),
                 it.GetValue<TTable::RangeEnd>());
 
@@ -1228,7 +1229,7 @@ bool TPartitionDatabase::ReadUnconfirmedBlobs(TUnconfirmedBlobs& blobs)
     while (it.IsValid()) {
         auto commitId = it.GetValue<TTable::CommitId>();
         auto uniqueId = it.GetValue<TTable::BlobId>();
-        TBlockRange32 blockRange(
+        auto blockRange = TBlockRange32::MakeClosedInterval(
             it.GetValue<TTable::RangeStart>(),
             it.GetValue<TTable::RangeEnd>());
 
