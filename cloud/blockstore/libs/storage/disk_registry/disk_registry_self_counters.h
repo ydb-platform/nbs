@@ -6,6 +6,8 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/generic/hash.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,12 +71,13 @@ struct TDiskRegistrySelfCounters
 
     TCumulativeCounter QueryAvailableStorageErrors;
 
-    TDevicePoolCounters DefaultPoolCounters;
-    TDevicePoolCounters LocalPoolCounters;
+    THashMap<TString, TDevicePoolCounters> PoolName2Counters;
 
     TVector<TNonreplMetricsCounter> NonreplMetricsCounter;
 
-    void Init(NMonitoring::TDynamicCountersPtr counters);
+    void Init(
+        const TVector<TString>& poolNames,
+        NMonitoring::TDynamicCountersPtr counters);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -6,7 +6,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistrySelfCounters::Init(NMonitoring::TDynamicCountersPtr counters)
+void TDiskRegistrySelfCounters::Init(
+    const TVector<TString>& poolNames,
+    NMonitoring::TDynamicCountersPtr counters)
 {
     FreeBytes = counters->GetCounter("FreeBytes");
     TotalBytes = counters->GetCounter("TotalBytes");
@@ -50,8 +52,9 @@ void TDiskRegistrySelfCounters::Init(NMonitoring::TDynamicCountersPtr counters)
 
     QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
 
-    DefaultPoolCounters.Init(counters->GetSubgroup("pool", "default"));
-    LocalPoolCounters.Init(counters->GetSubgroup("pool", "local"));
+    for (const auto& poolName: poolNames) {
+        PoolName2Counters[poolName].Init(counters->GetSubgroup("pool", poolName));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

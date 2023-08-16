@@ -269,6 +269,10 @@ struct TDiskRegistryStateBuilder
         TString id,
         TVector<TString> disks);
 
+    TDiskRegistryStateBuilder& AddDevicePoolConfig(
+        TString name,
+        ui64 allocationUnit,
+        NProto::EDevicePoolKind kind);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskRegistryStateTest

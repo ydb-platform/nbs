@@ -1285,6 +1285,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
+            .AddDevicePoolConfig("local-ssd", 93, NProto::DEVICE_POOL_KIND_LOCAL)
             .Build();
 
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;

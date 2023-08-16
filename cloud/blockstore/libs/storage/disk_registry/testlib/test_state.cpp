@@ -534,4 +534,18 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::AddPlacementGroup(
     return *this;
 }
 
+
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::AddDevicePoolConfig(
+    TString name,
+    ui64 allocationUnit,
+    NProto::EDevicePoolKind kind)
+{
+    NProto::TDevicePoolConfig& pool = *Config.AddDevicePoolConfigs();
+    pool.SetName(std::move(name));
+    pool.SetAllocationUnit(allocationUnit);
+    pool.SetKind(kind);
+
+    return *this;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NDiskRegistryStateTest

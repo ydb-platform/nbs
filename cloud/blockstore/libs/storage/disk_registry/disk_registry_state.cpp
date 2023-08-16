@@ -213,6 +213,21 @@ void SetDevicePoolCounters(
     counters.DevicesInErrorState->Set(values.DevicesInErrorState);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetPoolNameForCounters(
+    const TString& poolName,
+    const NProto::EDevicePoolKind poolKind)
+{
+    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+        return "local";
+    } else if (poolKind == NProto::DEVICE_POOL_KIND_DEFAULT) {
+        return "default";
+    }
+
+    return poolName;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -274,10 +289,6 @@ TDiskRegistryState::TDiskRegistryState(
         AutomaticallyReplacedDeviceIds.insert(x.DeviceId);
     }
 
-    if (Counters) {
-        SelfCounters.Init(Counters);
-    }
-
     ProcessConfig(CurrentConfig);
     ProcessDisks(std::move(disks));
     ProcessPlacementGroups(std::move(placementGroups));
@@ -286,6 +297,16 @@ TDiskRegistryState::TDiskRegistryState(
     ProcessDirtyDevices(std::move(dirtyDevices));
 
     FillMigrations();
+
+    if (Counters) {
+        TVector<TString> poolNames;
+        for (const auto& x: DevicePoolConfigs) {
+            const auto& pool = x.second;
+            poolNames.push_back(
+                GetPoolNameForCounters(pool.GetName(), pool.GetKind()));
+        }
+        SelfCounters.Init(poolNames, Counters);
+    }
 }
 
 void TDiskRegistryState::AllowNotifications(
@@ -759,7 +780,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             const auto& uuid = d.GetDeviceUUID();
 
             if (!StorageConfig->GetNonReplicatedDontSuspendDevices()
-                    && d.GetPoolKind() != NProto::DEVICE_POOL_KIND_DEFAULT
+                    && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
                     && newDevices.contains(uuid))
             {
                 DeviceList.SuspendDevice(uuid);
@@ -3027,8 +3048,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     AgentList.PublishCounters(now);
 
-    TDevicePoolCounters defaultPoolCounters;
-    TDevicePoolCounters localPoolCounters;
+    THashMap<TString, TDevicePoolCounters> poolName2Counters;
 
     ui32 allocatedDisks = 0;
     ui32 agentsInOnlineState = 0;
@@ -3065,9 +3085,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             const bool allocated = !DeviceList.FindDiskId(device.GetDeviceUUID()).empty();
             const bool dirty = DeviceList.IsDirtyDevice(device.GetDeviceUUID());
 
-            auto& pool = device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
-                ? localPoolCounters
-                : defaultPoolCounters;
+            const auto poolName = GetPoolNameForCounters(
+                device.GetPoolName(),
+                device.GetPoolKind());
+            auto& pool = poolName2Counters[poolName];
 
             pool.TotalBytes += deviceBytes;
 
@@ -3103,22 +3124,20 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     placementGroups = PlacementGroups.size();
 
-    for (auto& x: PlacementGroups) {
-        allocatedDisksInGroups += x.second.Config.DisksSize();
+    for (auto& [_, pg]: PlacementGroups) {
+        allocatedDisksInGroups += pg.Config.DisksSize();
 
         const auto limit =
-            GetMaxDisksInPlacementGroup(*StorageConfig, x.second.Config);
-        if (x.second.Config.DisksSize() >= limit
-                || x.second.Config.DisksSize() == 0)
-        {
+            GetMaxDisksInPlacementGroup(*StorageConfig, pg.Config);
+        if (pg.Config.DisksSize() >= limit || pg.Config.DisksSize() == 0) {
             continue;
         }
 
-        x.second.BiggestDiskId = {};
-        x.second.BiggestDiskSize = 0;
-        x.second.Full = false;
+        pg.BiggestDiskId = {};
+        pg.BiggestDiskSize = 0;
+        pg.Full = false;
         ui32 logicalBlockSize = 0;
-        for (const auto& diskInfo: x.second.Config.GetDisks()) {
+        for (const auto& diskInfo: pg.Config.GetDisks()) {
             auto* disk = Disks.FindPtr(diskInfo.GetDiskId());
 
             if (!disk) {
@@ -3145,10 +3164,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                 diskSize += device->GetBlockSize() * device->GetBlocksCount();
             }
 
-            if (diskSize > x.second.BiggestDiskSize) {
+            if (diskSize > pg.BiggestDiskSize) {
                 logicalBlockSize = disk->LogicalBlockSize;
-                x.second.BiggestDiskId = diskInfo.GetDiskId();
-                x.second.BiggestDiskSize = diskSize;
+                pg.BiggestDiskId = diskInfo.GetDiskId();
+                pg.BiggestDiskSize = diskSize;
             }
         }
 
@@ -3157,21 +3176,27 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
 
         THashSet<TString> forbiddenRacks;
-        CollectForbiddenRacks(x.second.Config, &forbiddenRacks);
+        CollectForbiddenRacks(pg.Config, &forbiddenRacks);
 
-        const TDeviceList::TAllocationQuery query {
-            .ForbiddenRacks = std::move(forbiddenRacks),
-            .LogicalBlockSize = logicalBlockSize,
-            .BlockCount = x.second.BiggestDiskSize / logicalBlockSize,
-            .PoolName = {},
-            // TODO (NBS-3392): handle other kinds
-            .PoolKind = NProto::DEVICE_POOL_KIND_DEFAULT,
-            .NodeIds = {}
-        };
+        for (const auto& [_, pool]: DevicePoolConfigs) {
+            if (pool.GetKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+                continue;
+            }
 
-        if (!DeviceList.CanAllocateDevices(query)) {
-            ++fullPlacementGroups;
-            x.second.Full = true;
+            const TDeviceList::TAllocationQuery query {
+                .ForbiddenRacks = std::move(forbiddenRacks),
+                .LogicalBlockSize = logicalBlockSize,
+                .BlockCount = pg.BiggestDiskSize / logicalBlockSize,
+                .PoolName = pool.GetName(),
+                .PoolKind = pool.GetKind(),
+                .NodeIds = {}
+            };
+
+            if (!DeviceList.CanAllocateDevices(query)) {
+                ++fullPlacementGroups;
+                pg.Full = true;
+                break;
+            }
         }
     }
 
@@ -3179,8 +3204,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     TDuration maxMigrationTime;
 
-    for (const auto& x: Disks) {
-        switch (x.second.State) {
+    for (const auto& [_, disk]: Disks) {
+        switch (disk.State) {
             case NProto::DISK_STATE_ONLINE: {
                 ++disksInOnlineState;
                 break;
@@ -3188,7 +3213,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             case NProto::DISK_STATE_MIGRATION: {
                 ++disksInMigrationState;
 
-                maxMigrationTime = std::max(maxMigrationTime, now - x.second.StateTs);
+                maxMigrationTime = std::max(maxMigrationTime, now - disk.StateTs);
 
                 break;
             }
@@ -3204,23 +3229,34 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
     }
 
-    SetDevicePoolCounters(SelfCounters.DefaultPoolCounters, defaultPoolCounters);
-    SetDevicePoolCounters(SelfCounters.LocalPoolCounters, localPoolCounters);
+    ui64 freeBytes = 0;
+    ui64 totalBytes = 0;
+    ui64 allocatedDevices = 0;
+    ui64 dirtyDevices = 0;
+    ui64 devicesInOnlineState = 0;
+    ui64 devicesInWarningState = 0;
+    ui64 devicesInErrorState = 0;
+    for (const auto& [poolName, counterValues]: poolName2Counters) {
+        if (auto* pc = SelfCounters.PoolName2Counters.FindPtr(poolName)) {
+            SetDevicePoolCounters(*pc, counterValues);
+        }
 
-    SelfCounters.FreeBytes->Set(
-        defaultPoolCounters.FreeBytes + localPoolCounters.FreeBytes);
-    SelfCounters.TotalBytes->Set(
-        defaultPoolCounters.TotalBytes + localPoolCounters.TotalBytes);
-    SelfCounters.AllocatedDevices->Set(
-        defaultPoolCounters.AllocatedDevices + localPoolCounters.AllocatedDevices);
-    SelfCounters.DirtyDevices->Set(
-        defaultPoolCounters.DirtyDevices + localPoolCounters.DirtyDevices);
-    SelfCounters.DevicesInOnlineState->Set(
-        defaultPoolCounters.DevicesInOnlineState + localPoolCounters.DevicesInOnlineState);
-    SelfCounters.DevicesInWarningState->Set(
-        defaultPoolCounters.DevicesInWarningState + localPoolCounters.DevicesInWarningState);
-    SelfCounters.DevicesInErrorState->Set(
-        defaultPoolCounters.DevicesInErrorState + localPoolCounters.DevicesInErrorState);
+        freeBytes += counterValues.FreeBytes;
+        totalBytes += counterValues.TotalBytes;
+        allocatedDevices += counterValues.AllocatedDevices;
+        dirtyDevices += counterValues.DirtyDevices;
+        devicesInOnlineState += counterValues.DevicesInOnlineState;
+        devicesInWarningState += counterValues.DevicesInWarningState;
+        devicesInErrorState += counterValues.DevicesInErrorState;
+    }
+
+    SelfCounters.FreeBytes->Set(freeBytes);
+    SelfCounters.TotalBytes->Set(totalBytes);
+    SelfCounters.AllocatedDevices->Set(allocatedDevices);
+    SelfCounters.DirtyDevices->Set(dirtyDevices);
+    SelfCounters.DevicesInOnlineState->Set(devicesInOnlineState);
+    SelfCounters.DevicesInWarningState->Set(devicesInWarningState);
+    SelfCounters.DevicesInErrorState->Set(devicesInErrorState);
 
     SelfCounters.AllocatedDisks->Set(allocatedDisks);
     SelfCounters.AgentsInOnlineState->Set(agentsInOnlineState);
