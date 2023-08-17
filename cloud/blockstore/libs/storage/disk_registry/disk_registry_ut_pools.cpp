@@ -222,6 +222,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         diskRegistry.ResumeDevice("agent-1", "dev-2");
+        UNIT_ASSERT_VALUES_EQUAL(4, GetSuspendedDeviceCount(diskRegistry));
+
+        WaitForSecureErase(*runtime, 1);
+
         UNIT_ASSERT_VALUES_EQUAL(3, GetSuspendedDeviceCount(diskRegistry));
 
         {
@@ -254,8 +258,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.ResumeDevice("agent-3", "dev-1");
         diskRegistry.ResumeDevice("agent-3", "dev-2");
 
-        UNIT_ASSERT_VALUES_EQUAL(0, GetSuspendedDeviceCount(diskRegistry));
         WaitForSecureErase(*runtime, GetDirtyDeviceCount(diskRegistry));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, GetSuspendedDeviceCount(diskRegistry));
 
         {
             auto msg = query({"agent-1", "agent-2", "agent-3", "agent-2"}, "foo");

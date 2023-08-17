@@ -9419,7 +9419,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT(db.ReadOutdatedVolumeConfigs(outdatedVolumeConfigs));
             UNIT_ASSERT_VALUES_EQUAL(0, outdatedVolumeConfigs.size());
 
-            TVector<TString> suspendedDevices;
+            TVector<NProto::TSuspendedDevice> suspendedDevices;
             UNIT_ASSERT(db.ReadSuspendedDevices(suspendedDevices));
             UNIT_ASSERT_VALUES_EQUAL(0, suspendedDevices.size());
 

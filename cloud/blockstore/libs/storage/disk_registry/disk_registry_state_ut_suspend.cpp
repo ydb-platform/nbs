@@ -68,6 +68,13 @@ struct TFixture
             func(db);
         });
     }
+
+    void ReadTx(auto func)
+    {
+        Executor.ReadTx([func = std::move(func)] (TDiskRegistryDatabase db) {
+            func(db);
+        });
+    }
 };
 
 }   // namespace
@@ -166,20 +173,37 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             );
         });
 
-        WriteTx([&] (auto db) {
-            state.ResumeDevices(Now(), db, {"uuid-2.1", "uuid-2.2"});
+        ReadTx([&] (auto db) {
+            TVector<NProto::TSuspendedDevice> devices;
+            UNIT_ASSERT(db.ReadSuspendedDevices(devices));
+            UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
+        });
 
+        WriteTx([&] (auto db) {
+            state.ResumeDevices(Now(), db, {"uuid-2.1"});
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
+
+            state.ResumeDevices(Now(), db, {"uuid-2.2"});
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
-            UNIT_ASSERT(!state.IsSuspendedDevice("uuid-2.1"));
-            UNIT_ASSERT(!state.IsSuspendedDevice("uuid-2.2"));
-            UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.3"));
-            UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.4"));
+            UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.1"));
+            UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.2"));
 
             state.MarkDeviceAsClean(Now(), db, "uuid-2.1");
             state.MarkDeviceAsClean(Now(), db, "uuid-2.2");
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+            UNIT_ASSERT(!state.IsSuspendedDevice("uuid-2.1"));
+            UNIT_ASSERT(!state.IsSuspendedDevice("uuid-2.2"));
+            UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.3"));
+            UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.4"));
+        });
+
+        ReadTx([&] (auto db) {
+            TVector<NProto::TSuspendedDevice> devices;
+            UNIT_ASSERT(db.ReadSuspendedDevices(devices));
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
         });
 
         WriteTx([&] (auto db) {
@@ -201,14 +225,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
-            for (const auto& d: Agents[1].GetDevices()) {
-                UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));
-            }
-
             state.MarkDeviceAsClean(Now(), db, "uuid-2.3");
             state.MarkDeviceAsClean(Now(), db, "uuid-2.4");
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+            for (const auto& d: Agents[1].GetDevices()) {
+                UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));
+            }
+        });
+
+        ReadTx([&] (auto db) {
+            TVector<NProto::TSuspendedDevice> devices;
+            UNIT_ASSERT(db.ReadSuspendedDevices(devices));
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
         });
 
         WriteTx([&] (auto db) {

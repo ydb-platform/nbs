@@ -46,7 +46,7 @@ private:
     THashMap<TNodeId, TFreeDevices> FreeDevices;
     THashMap<TDeviceId, TDiskId> AllocatedDevices;
     THashSet<TDeviceId> DirtyDevices;
-    THashSet<TDeviceId> SuspendedDevices;
+    THashMap<TDeviceId, NProto::TSuspendedDevice> SuspendedDevices;
 
 public:
     struct TAllocationQuery
@@ -69,7 +69,7 @@ public:
 
     explicit TDeviceList(
         TVector<TDeviceId> dirtyDevices,
-        TVector<TDeviceId> suspendedDevices);
+        TVector<NProto::TSuspendedDevice> suspendedDevices);
 
     size_t Size() const
     {
@@ -112,9 +112,9 @@ public:
     bool IsDirtyDevice(const TDeviceId& uuid) const;
 
     void SuspendDevice(const TDeviceId& ids);
-    void ResumeDevice(const TDeviceId& id);
+    bool ResumeDevice(const TDeviceId& id);
     bool IsSuspendedDevice(const TDeviceId& id) const;
-    TVector<TDeviceId> GetSuspendedDevices() const;
+    TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
     ui64 GetDeviceByteCount(const TDeviceId& id) const;
 

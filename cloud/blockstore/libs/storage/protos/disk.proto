@@ -159,6 +159,14 @@ message TDeviceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TSuspendedDevice
+{
+    string Id = 1;
+    bool ResumeAfterErase = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDeviceMigration
 {
     // Migration source device id.
@@ -439,7 +447,9 @@ message TDiskRegistryStateBackup
     repeated string ErrorNotifications = 11;
 
     repeated string OutdatedVolumeConfigs = 12;
-    repeated string SuspendedDevices = 13;
+
+    // deprecated
+    repeated string OldSuspendedDevices = 13;
 
     message TDirtyDevice
     {
@@ -460,6 +470,8 @@ message TDiskRegistryStateBackup
     map<string, TDiskRegistryAgentParams> DiskRegistryAgentListParams = 16;
 
     repeated TUserNotification UserNotifications = 17;
+
+    repeated TSuspendedDevice SuspendedDevices = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

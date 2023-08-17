@@ -55,14 +55,16 @@ auto FindDeviceRange(
 
 TDeviceList::TDeviceList(
         TVector<TDeviceId> dirtyDevices,
-        TVector<TDeviceId> suspendedDevices)
+        TVector<NProto::TSuspendedDevice> suspendedDevices)
     : DirtyDevices(
         std::make_move_iterator(dirtyDevices.begin()),
         std::make_move_iterator(dirtyDevices.end()))
-    , SuspendedDevices(
-        std::make_move_iterator(suspendedDevices.begin()),
-        std::make_move_iterator(suspendedDevices.end()))
-{}
+{
+    for (auto& device: suspendedDevices) {
+        auto id = device.GetId();
+        SuspendedDevices.emplace(std::move(id), std::move(device));
+    }
+}
 
 void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent, TNodeId prevNodeId)
 {
@@ -444,6 +446,11 @@ bool TDeviceList::ReleaseDevice(const TDeviceId& id)
 
 bool TDeviceList::MarkDeviceAsClean(const TDeviceId& id)
 {
+    auto it = SuspendedDevices.find(id);
+    if (it != SuspendedDevices.end() && it->second.GetResumeAfterErase()) {
+        SuspendedDevices.erase(it);
+    }
+
     return DirtyDevices.erase(id) != 0;
 }
 
@@ -500,7 +507,8 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
     devices.reserve(DirtyDevices.size());
 
     for (const auto& id: DirtyDevices) {
-        if (SuspendedDevices.contains(id)) {
+        auto it = SuspendedDevices.find(id);
+        if (it != SuspendedDevices.end() && !it->second.GetResumeAfterErase()) {
             continue;
         }
 
@@ -520,13 +528,27 @@ bool TDeviceList::IsDirtyDevice(const TDeviceId& uuid) const
 
 void TDeviceList::SuspendDevice(const TDeviceId& id)
 {
-    SuspendedDevices.insert(id);
+    NProto::TSuspendedDevice device;
+    device.SetId(id);
+    SuspendedDevices.emplace(id, device);
     RemoveDeviceFromFreeList(id);
 }
 
-void TDeviceList::ResumeDevice(const TDeviceId& id)
+bool TDeviceList::ResumeDevice(const TDeviceId& id)
 {
-    SuspendedDevices.erase(id);
+    auto it = SuspendedDevices.find(id);
+    if (it == SuspendedDevices.end()) {
+        return true;
+    }
+
+    if (IsDirtyDevice(id)) {
+        it->second.SetResumeAfterErase(true);
+        return false;
+    }
+
+    SuspendedDevices.erase(it);
+
+    return true;
 }
 
 bool TDeviceList::IsSuspendedDevice(const TDeviceId& id) const
@@ -534,12 +556,15 @@ bool TDeviceList::IsSuspendedDevice(const TDeviceId& id) const
     return SuspendedDevices.contains(id);
 }
 
-auto TDeviceList::GetSuspendedDevices() const -> TVector<TDeviceId>
+TVector<NProto::TSuspendedDevice> TDeviceList::GetSuspendedDevices() const
 {
-    return {
-        SuspendedDevices.begin(),
-        SuspendedDevices.end()
-    };
+    TVector<NProto::TSuspendedDevice> devices;
+    devices.reserve(SuspendedDevices.size());
+    for (auto& [_, device]: SuspendedDevices) {
+        devices.push_back(device);
+    }
+
+    return devices;
 }
 
 ui64 TDeviceList::GetDeviceByteCount(const TDeviceId& id) const

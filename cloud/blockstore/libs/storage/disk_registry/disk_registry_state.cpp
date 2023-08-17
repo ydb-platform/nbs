@@ -249,7 +249,7 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications,
         TVector<TString> outdatedVolumeConfigs,
-        TVector<TDeviceId> suspendedDevices,
+        TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams)
     : Log(logging->CreateLog("BLOCKSTORE_DISK_REGISTRY"))
@@ -783,8 +783,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                     && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
                     && newDevices.contains(uuid))
             {
-                DeviceList.SuspendDevice(uuid);
-                db.UpdateSuspendedDevice(uuid);
+                SuspendDevice(db, uuid);
             }
         }
 
@@ -2936,6 +2935,10 @@ TString TDiskRegistryState::MarkDeviceAsClean(
 {
     DeviceList.MarkDeviceAsClean(uuid);
     db.DeleteDirtyDevice(uuid);
+
+    if (!DeviceList.IsSuspendedDevice(uuid)) {
+        db.DeleteSuspendedDevice(uuid);
+    }
 
     TryUpdateDevice(now, db, uuid);
 
@@ -5343,7 +5346,10 @@ NProto::TError TDiskRegistryState::SuspendDevice(
     }
 
     DeviceList.SuspendDevice(id);
-    db.UpdateSuspendedDevice(id);
+
+    NProto::TSuspendedDevice device;
+    device.SetId(id);
+    db.UpdateSuspendedDevice(std::move(device));
 
     return {};
 }
@@ -5354,11 +5360,15 @@ void TDiskRegistryState::ResumeDevices(
     const TVector<TDeviceId>& ids)
 {
     for (const auto& id: ids) {
-        DeviceList.ResumeDevice(id);
-        db.DeleteSuspendedDevice(id);
+        if (DeviceList.ResumeDevice(id)) {
+            db.DeleteSuspendedDevice(id);
 
-        if (!DeviceList.IsDirtyDevice(id)) {
             TryUpdateDevice(now, db, id);
+        } else {
+            NProto::TSuspendedDevice device;
+            device.SetId(id);
+            device.SetResumeAfterErase(true);
+            db.UpdateSuspendedDevice(device);
         }
     }
 }
@@ -5368,7 +5378,7 @@ bool TDiskRegistryState::IsSuspendedDevice(const TDeviceId& id) const
     return DeviceList.IsSuspendedDevice(id);
 }
 
-auto TDiskRegistryState::GetSuspendedDevices() const -> TVector<TDeviceId>
+TVector<NProto::TSuspendedDevice> TDiskRegistryState::GetSuspendedDevices() const
 {
     return DeviceList.GetSuspendedDevices();
 }

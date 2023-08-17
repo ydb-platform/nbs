@@ -245,7 +245,7 @@ public:
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications,
         TVector<TString> outdatedVolumeConfigs,
-        TVector<TDeviceId> suspendedDevices,
+        TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
@@ -588,7 +588,7 @@ public:
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& ids);
     bool IsSuspendedDevice(const TDeviceId& id) const;
-    TVector<TDeviceId> GetSuspendedDevices() const;
+    TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
     const TDeque<TAutomaticallyReplacedDeviceInfo>& GetAutomaticallyReplacedDevices() const
     {

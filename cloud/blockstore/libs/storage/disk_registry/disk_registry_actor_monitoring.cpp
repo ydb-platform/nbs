@@ -1710,8 +1710,8 @@ void TDiskRegistryActor::RenderDirtyDeviceList(IOutputStream& out) const
 
 void TDiskRegistryActor::RenderSuspendedDeviceList(IOutputStream& out) const
 {
-    const auto uuids = State->GetSuspendedDevices();
-    if (uuids.empty()) {
+    const auto devices = State->GetSuspendedDevices();
+    if (devices.empty()) {
         return;
     }
 
@@ -1719,9 +1719,14 @@ void TDiskRegistryActor::RenderSuspendedDeviceList(IOutputStream& out) const
         TAG(TH3) { out << "Suspended devices"; }
 
         UL() {
-            for (const auto& uuid: uuids) {
+            for (const auto& device: devices) {
+                const auto& uuid = device.GetId();
                 LI() {
                     DumpDeviceLink(out, TabletID(), uuid);
+                    if (device.GetResumeAfterErase()) {
+                        out << " [resuming]";
+                    }
+
                     auto config = State->GetDevice(uuid);
                     if (config.GetNodeId() != 0) {
                         out << " (#" << config.GetNodeId() << " )";

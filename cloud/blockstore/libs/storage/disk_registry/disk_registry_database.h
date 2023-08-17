@@ -105,8 +105,8 @@ public:
     void DeleteOutdatedVolumeConfig(const TString& diskId);
     bool ReadOutdatedVolumeConfigs(TVector<TString>& diskIds);
 
-    bool ReadSuspendedDevices(TVector<TString>& suspendedDevices);
-    void UpdateSuspendedDevice(const TString& uuid);
+    bool ReadSuspendedDevices(TVector<NProto::TSuspendedDevice>& suspendedDevices);
+    void UpdateSuspendedDevice(const NProto::TSuspendedDevice& device);
     void DeleteSuspendedDevice(const TString& uuid);
 
     bool ReadRestoreState(bool& state);

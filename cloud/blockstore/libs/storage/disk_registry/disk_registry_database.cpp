@@ -575,7 +575,8 @@ bool TDiskRegistryDatabase::ReadOutdatedVolumeConfigs(TVector<TString>& diskIds)
     return true;
 }
 
-bool TDiskRegistryDatabase::ReadSuspendedDevices(TVector<TString>& suspendedDevices)
+bool TDiskRegistryDatabase::ReadSuspendedDevices(
+    TVector<NProto::TSuspendedDevice>& suspendedDevices)
 {
     using TTable = TDiskRegistrySchema::SuspendedDevices;
 
@@ -588,7 +589,7 @@ bool TDiskRegistryDatabase::ReadSuspendedDevices(TVector<TString>& suspendedDevi
     }
 
     while (it.IsValid()) {
-        suspendedDevices.emplace_back(it.GetValue<TTable::Id>());
+        suspendedDevices.emplace_back(it.GetValue<TTable::Config>());
 
         if (!it.Next()) {
             return false;   // not ready
@@ -598,13 +599,14 @@ bool TDiskRegistryDatabase::ReadSuspendedDevices(TVector<TString>& suspendedDevi
     return true;
 }
 
-void TDiskRegistryDatabase::UpdateSuspendedDevice(const TString& uuid)
+void TDiskRegistryDatabase::UpdateSuspendedDevice(
+    const NProto::TSuspendedDevice& device)
 {
     using TTable = TDiskRegistrySchema::SuspendedDevices;
 
     Table<TTable>()
-        .Key(uuid)
-        .Update();
+        .Key(device.GetId())
+        .Update<TTable::Config>(device);
 }
 
 void TDiskRegistryDatabase::DeleteSuspendedDevice(const TString& uuid)

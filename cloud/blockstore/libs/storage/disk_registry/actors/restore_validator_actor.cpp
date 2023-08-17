@@ -217,7 +217,7 @@ bool NormalizeLoadState(
     result &= sortAndTestUnique(
         suspendedDevices,
         [] (const auto& device) {
-            return device;
+            return device.GetId();
         });
 
     result &= sortAndTestUnique(

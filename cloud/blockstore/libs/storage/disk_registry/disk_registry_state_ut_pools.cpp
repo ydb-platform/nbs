@@ -491,6 +491,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             auto [infos, error] = state.QueryAvailableStorage(
                 agent.GetAgentId(), TString {}, NProto::DEVICE_POOL_KIND_LOCAL);
             UNIT_ASSERT(!HasError(error));
+            UNIT_ASSERT_VALUES_EQUAL(0, infos.size());
+        }
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            for (auto& d: agent.GetDevices()) {
+                state.MarkDeviceAsClean(Now(), db, d.GetDeviceUUID());
+            }
+        });
+
+        {
+            auto [infos, error] = state.QueryAvailableStorage(
+                agent.GetAgentId(), TString {}, NProto::DEVICE_POOL_KIND_LOCAL);
+            UNIT_ASSERT(!HasError(error));
 
             SortBy(infos, [] (auto& info) {
                 return info.ChunkSize;

@@ -229,7 +229,7 @@ struct TDiskRegistryStateBuilder
     TVector<TDirtyDevice> DirtyDevices;
     TVector<TString> DisksToCleanup;
     TVector<TString> OutdatedVolumeConfigs;
-    TVector<TString> SuspendedDevices;
+    TVector<NProto::TSuspendedDevice> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 

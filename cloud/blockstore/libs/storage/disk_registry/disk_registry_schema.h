@@ -228,8 +228,14 @@ struct TDiskRegistrySchema
             : public Column<1, NKikimr::NScheme::NTypeIds::String>
         {};
 
+        struct Config
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TSuspendedDevice;
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id>;
+        using TColumns = TableColumns<Id, Config>;
     };
 
     struct AutomaticallyReplacedDevices

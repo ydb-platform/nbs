@@ -395,20 +395,20 @@ void RestoreOutdatedVolumeConfigs(
 }
 
 void RestoreSuspendedDevices(
-    TVector<TString> newSuspendedDevices,
-    TVector<TString> currentSuspendedDevices,
+    TVector<NProto::TSuspendedDevice> newSuspendedDevices,
+    TVector<NProto::TSuspendedDevice> currentSuspendedDevices,
     TOperations& operations)
 {
-    for (auto&& disk: currentSuspendedDevices) {
+    for (auto& device: currentSuspendedDevices) {
         operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteSuspendedDevice(disk);
+            [uuid = device.GetId()](TDiskRegistryDatabase& db) {
+                db.DeleteSuspendedDevice(uuid);
             });
     }
-    for (auto&& disk: newSuspendedDevices) {
+    for (auto&& device: newSuspendedDevices) {
         operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.UpdateSuspendedDevice(disk);
+            [device = std::move(device)](TDiskRegistryDatabase& db) {
+                db.UpdateSuspendedDevice(device);
             });
     }
 }
