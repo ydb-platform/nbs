@@ -176,7 +176,7 @@ class Qemu:
 
         self.qemu_bin = Daemon(
             cmd,
-            yatest.common.output_path(),
+            yatest.common.work_path(),
             timeout=180,
             **daemon_log_files(prefix="qemu-bin", id=id, cwd=yatest.common.output_path()))
         self.qemu_bin.start()
@@ -271,7 +271,7 @@ class Qemu:
 
         self.qemu_bin = Daemon(
             cmd,
-            yatest.common.output_path(),
+            yatest.common.work_path(),
             timeout=180,
             **daemon_log_files(prefix="qemu-bin", id=0, cwd=yatest.common.output_path()))
         self.qemu_bin.start()
