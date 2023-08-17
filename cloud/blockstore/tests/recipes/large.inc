@@ -7,7 +7,6 @@ TAG(
     sb:ttl=3
     sb:logs_ttl=3
     sb:ssd
-    sb:MULTISLOT
     sb:cores=16
 )
 
