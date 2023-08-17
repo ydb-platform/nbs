@@ -186,6 +186,9 @@ struct TTestStorage: IStorage
         Y_UNUSED(bytesCount);
         return nullptr;
     }
+
+    void ReportIOError() override
+    {}
 };
 
 struct TTestStorageProvider: IStorageProvider

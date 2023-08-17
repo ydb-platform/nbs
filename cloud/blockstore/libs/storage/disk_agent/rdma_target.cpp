@@ -259,6 +259,9 @@ private:
                 LogThrottler,
                 "[" << uuid << "/" << clientId << "] Device disabled. Drop request.");
 
+            if (auto* deviceData = Devices.FindPtr(uuid)) {
+                deviceData->Device->ReportIOError();
+            }
             ythrow TServiceError(MakeError(E_IO, "Device disabled"));
         }
 

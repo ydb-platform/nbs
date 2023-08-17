@@ -153,6 +153,9 @@ struct THashTableStorage final
         Y_UNUSED(bytesCount);
         return nullptr;
     }
+
+    void ReportIOError() override
+    {}
 };
 
 }   // namespace

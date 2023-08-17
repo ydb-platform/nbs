@@ -375,6 +375,9 @@ public:
         return nullptr;
     }
 
+    void ReportIOError() override
+    {}
+
     void Init(NRdma::IClientEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);

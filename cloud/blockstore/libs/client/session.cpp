@@ -183,6 +183,8 @@ public:
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
 
+    void ReportIOError() override;
+
 private:
     void SendMountRequest(
         TCallContextPtr callContext,
@@ -511,6 +513,9 @@ TStorageBuffer TSession::AllocateBuffer(size_t bytesCount)
 {
     return Client->AllocateBuffer(bytesCount);
 }
+
+void TSession::ReportIOError()
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -35,6 +35,8 @@ namespace NCloud::NBlockStore {
 struct TTestStorage
     : public IStorage
 {
+    ui32 ErrorCount = 0;
+
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks)
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal)
     BLOCKSTORE_DECLARE_METHOD(WriteBlocksLocal)
@@ -50,6 +52,11 @@ struct TTestStorage
     {
         Y_UNUSED(bytesCount);
         return nullptr;
+    }
+
+    void ReportIOError() override
+    {
+        ++ErrorCount;
     }
 };
 

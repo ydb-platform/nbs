@@ -35,6 +35,8 @@ struct IStorage
 
     // nullptr means client could use own buffer
     virtual TStorageBuffer AllocateBuffer(size_t bytesCount) = 0;
+
+    virtual void ReportIOError() = 0;
 };
 
 IStoragePtr CreateStorageStub();
@@ -80,6 +82,8 @@ public:
         NProto::EDeviceEraseMethod method) const;
 
     void CheckIOTimeouts(TInstant now);
+
+    void ReportIOError();
 };
 
 }   // namespace NCloud::NBlockStore

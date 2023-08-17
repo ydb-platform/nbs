@@ -78,6 +78,9 @@ struct TTestStorage final
         return MakeFuture(NProto::TError());
     }
 
+    void ReportIOError() override
+    {}
+
 private:
     template <typename T>
     TFuture<T> CreateResponse()
@@ -244,6 +247,17 @@ Y_UNIT_TEST_SUITE(TStorageWithIoStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(requestCount, AtomicGet(stats->NumReadOps));
         UNIT_ASSERT_VALUES_EQUAL(0, AtomicGet(stats->BytesRead));
         UNIT_ASSERT_VALUES_EQUAL(requestCount * 3, AtomicGet(stats->Errors));
+    }
+
+    Y_UNIT_TEST(ShouldCountExplicitErrors)
+    {
+        auto stats = std::make_shared<TStorageIoStats>();
+        auto storage = CreateErrorStorage(stats);
+
+        storage->ReportIOError();
+        storage->ReportIOError();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, AtomicGet(stats->Errors));
     }
 }
 

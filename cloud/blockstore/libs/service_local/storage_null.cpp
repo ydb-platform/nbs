@@ -59,6 +59,9 @@ public:
         Y_UNUSED(bytesCount);
         return nullptr;
     }
+
+    void ReportIOError() override
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////

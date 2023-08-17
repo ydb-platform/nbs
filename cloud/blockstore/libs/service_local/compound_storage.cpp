@@ -322,6 +322,8 @@ public:
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
 
+    void ReportIOError() override;
+
 private:
     void OnReadRequestFastPathHits()
     {
@@ -576,6 +578,14 @@ TStorageBuffer TCompoundStorage::AllocateBuffer(size_t bytesCount)
 
     return Storages.front()->AllocateBuffer(bytesCount);
 }
+
+void TCompoundStorage::ReportIOError()
+{
+    for (const auto& storage: Storages) {
+        storage->ReportIOError();
+    }
+}
+
 
 }   // namespace
 

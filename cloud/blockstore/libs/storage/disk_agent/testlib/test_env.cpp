@@ -541,6 +541,9 @@ struct TErrorStorage final
         Y_UNUSED(bytesCount);
         return nullptr;
     }
+
+    void ReportIOError() override
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -597,6 +600,11 @@ struct TTestStorage final
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
         return Impl->AllocateBuffer(bytesCount);
+    }
+
+    void ReportIOError() override
+    {
+        Impl->ReportIOError();
     }
 };
 

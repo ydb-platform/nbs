@@ -135,6 +135,9 @@ struct TTestSession final
         Y_UNUSED(bytesCount);
         return nullptr;
     }
+
+    void ReportIOError() override
+    {}
 };
 
 }   // namespace NCloud::NBlockStore::NClient

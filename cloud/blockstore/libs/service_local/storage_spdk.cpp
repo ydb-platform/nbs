@@ -68,6 +68,8 @@ public:
         NProto::EDeviceEraseMethod method) override;
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
+
+    void ReportIOError() override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,6 +183,9 @@ TStorageBuffer TSpdkStorage::AllocateBuffer(size_t bytesCount)
         alloc->Release(block);
     }};
 }
+
+void TSpdkStorage::ReportIOError()
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 

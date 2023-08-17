@@ -70,6 +70,9 @@ public:
         return nullptr;
     }
 
+    void ReportIOError() override
+    {}
+
 private:
     template <typename T>
     void PrepareRequest(T& request)

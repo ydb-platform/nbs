@@ -130,6 +130,11 @@ struct TStorageWithIoStats final
     {
         return Storage->AllocateBuffer(bytesCount);
     }
+
+    void ReportIOError() override
+    {
+        Stats->OnError();
+    }
 };
 
 }   // namespace

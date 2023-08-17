@@ -106,6 +106,9 @@ public:
         return nullptr;
     }
 
+    void ReportIOError() override
+    {}
+
     bool CompleteRequest(NProto::TError error)
     {
         TPromise<NProto::TError> promise;

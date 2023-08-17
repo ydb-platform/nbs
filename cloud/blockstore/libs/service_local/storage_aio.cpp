@@ -494,6 +494,8 @@ public:
 
     TStorageBuffer AllocateBuffer(size_t byteCount) override;
 
+    void ReportIOError() override;
+
     TFuture<NProto::TError> EraseDevice(NProto::EDeviceEraseMethod method) override;
 };
 
@@ -666,6 +668,9 @@ TStorageBuffer TAioStorage::AllocateBuffer(size_t byteCount)
 {
     return AllocateUninitialized(byteCount);
 }
+
+void TAioStorage::ReportIOError()
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 

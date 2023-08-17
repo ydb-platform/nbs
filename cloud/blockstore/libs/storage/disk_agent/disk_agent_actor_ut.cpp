@@ -3073,6 +3073,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 (NProto::EDeviceEraseMethod),
                 (override));
             MOCK_METHOD(TStorageBuffer, AllocateBuffer, (size_t), (override));
+            MOCK_METHOD(void, ReportIOError, (), (override));
         };
 
         struct TMockStorageProvider: public IStorageProvider

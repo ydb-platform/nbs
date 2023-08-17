@@ -116,6 +116,9 @@ struct TTestStorage final
 
         return MakeFuture(NProto::TError());
     }
+
+    void ReportIOError() override
+    {}
 };
 
 template <typename R>
