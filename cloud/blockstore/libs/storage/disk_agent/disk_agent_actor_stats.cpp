@@ -242,13 +242,20 @@ void TStatsActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
-            "Broken device found: " << FormatError(msg->GetError()));
-    } else {
+    if (!HasError(msg->GetError())) {
         LOG_TRACE_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
             "Everything fine!");
+        return;
     }
+
+    if (msg->GetError().GetCode() == E_REJECTED) {
+        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+            "Got error from reading device blocks: " << FormatError(msg->GetError()));
+        return;
+    }
+
+    LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+        "Broken device found: " << FormatError(msg->GetError()));
 }
 
 STFUNC(TStatsActor::StateWork)
