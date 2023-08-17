@@ -12,7 +12,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TAllocationQueryKey = std::pair<NProto::EDevicePoolKind, ui32>;
+using TAllocationQueryKey = std::tuple<
+    NProto::EDevicePoolKind,
+    TString,
+    ui32>;
 
 struct TByAllocationQueryKey
 {
@@ -20,6 +23,7 @@ struct TByAllocationQueryKey
     {
         return TAllocationQueryKey {
             config.GetPoolKind(),
+            config.GetPoolName(),
             config.GetBlockSize()
         };
     }
@@ -27,14 +31,15 @@ struct TByAllocationQueryKey
 
 auto FindDeviceRange(
     const TDeviceList::TAllocationQuery& query,
+    const TString& poolName,
     const TVector<NProto::TDeviceConfig>& devices)
 {
     auto begin = LowerBoundBy(
         devices.begin(),
         devices.end(),
-        query.PoolKind,
+        std::make_pair(query.PoolKind, poolName),
         [] (const auto& d) {
-            return d.GetPoolKind();
+            return std::make_pair(d.GetPoolKind(), d.GetPoolName());
         });
 
     auto end = UpperBoundBy(
@@ -42,6 +47,7 @@ auto FindDeviceRange(
         devices.end(),
         TAllocationQueryKey {
             query.PoolKind,
+            poolName,
             query.LogicalBlockSize
         },
         TByAllocationQueryKey());
@@ -124,6 +130,13 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
             !SuspendedDevices.contains(uuid))
         {
             freeDevices.Devices.push_back(device);
+        }
+
+        auto& poolNames = PoolKind2PoolNames[device.GetPoolKind()];
+        auto it =
+            Find(poolNames.begin(), poolNames.end(), device.GetPoolName());
+        if (it == poolNames.end()) {
+            poolNames.push_back(device.GetPoolName());
         }
     }
 
@@ -279,7 +292,9 @@ void TDeviceList::MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id
     AllocatedDevices.emplace(id, diskId);
 }
 
-auto TDeviceList::SelectRacks(const TAllocationQuery& query) const -> TVector<TRack>
+auto TDeviceList::SelectRacks(
+    const TAllocationQuery& query,
+    const TString& poolName) const -> TVector<TRack>
 {
     THashMap<TString, TRack> racks;
 
@@ -311,7 +326,7 @@ auto TDeviceList::SelectRacks(const TAllocationQuery& query) const -> TVector<TR
             const auto* freeDevices = FreeDevices.FindPtr(nodeId);
             Y_VERIFY(freeDevices);
 
-            auto r = FindDeviceRange(query, freeDevices->Devices);
+            auto r = FindDeviceRange(query, poolName, freeDevices->Devices);
 
             for (const auto& device: MakeIteratorRange(r)) {
                 rack.FreeSpace += device.GetBlockSize() * device.GetBlocksCount();
@@ -349,7 +364,8 @@ auto TDeviceList::SelectRacks(const TAllocationQuery& query) const -> TVector<TR
 }
 
 TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
-    const TAllocationQuery& query)
+    const TAllocationQuery& query,
+    const TString& poolName)
 {
     if (!query.BlockCount || !query.LogicalBlockSize) {
         return {};
@@ -358,12 +374,13 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
     TVector<TDeviceRange> ranges;
     ui64 totalSize = query.GetTotalByteCount();
 
-    for (const auto& rack: SelectRacks(query)) {
+    for (const auto& rack: SelectRacks(query, poolName)) {
         for (const auto& nodeId: rack.Nodes) {
             const auto* freeDevices = FreeDevices.FindPtr(nodeId);
             Y_VERIFY(freeDevices);
 
-            auto [begin, end] = FindDeviceRange(query, freeDevices->Devices);
+            auto [begin, end] =
+                FindDeviceRange(query, poolName, freeDevices->Devices);
 
             auto it = begin;
             for (; it != end; ++it) {
@@ -395,6 +412,24 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
 
                 ranges.clear();
                 totalSize = query.GetTotalByteCount();
+            }
+        }
+    }
+
+    return {};
+}
+
+TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
+    const TAllocationQuery& query)
+{
+    if (query.PoolName) {
+        return CollectDevices(query, query.PoolName);
+    }
+
+    if (auto* poolNames = PoolKind2PoolNames.FindPtr(query.PoolKind)) {
+        for (const auto& poolName: *poolNames) {
+            if (auto collected = CollectDevices(query, poolName)) {
+                return collected;
             }
         }
     }

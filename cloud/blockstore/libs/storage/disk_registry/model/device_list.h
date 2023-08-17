@@ -47,6 +47,7 @@ private:
     THashMap<TDeviceId, TDiskId> AllocatedDevices;
     THashSet<TDeviceId> DirtyDevices;
     THashMap<TDeviceId, NProto::TSuspendedDevice> SuspendedDevices;
+    THashMap<NProto::EDevicePoolKind, TVector<TString>> PoolKind2PoolNames;
 
 public:
     struct TAllocationQuery
@@ -119,8 +120,13 @@ public:
     ui64 GetDeviceByteCount(const TDeviceId& id) const;
 
 private:
+    TVector<TDeviceRange> CollectDevices(
+        const TAllocationQuery& query,
+        const TString& poolName);
     TVector<TDeviceRange> CollectDevices(const TAllocationQuery& query);
-    TVector<TRack> SelectRacks(const TAllocationQuery& query) const;
+    TVector<TRack> SelectRacks(
+        const TAllocationQuery& query,
+        const TString& poolName) const;
     void RemoveDeviceFromFreeList(const TDeviceId& id);
 };
 

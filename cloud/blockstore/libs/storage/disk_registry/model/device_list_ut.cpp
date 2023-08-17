@@ -19,7 +19,11 @@ const TString DefaultPoolName;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateAgentConfig(const TString& id, ui32 nodeId, const TString& rack)
+auto CreateAgentConfig(
+    const TString& id,
+    ui32 nodeId,
+    const TString& rack,
+    const TString& poolName = "")
 {
     NProto::TAgentConfig agent;
     agent.SetAgentId(id);
@@ -33,6 +37,10 @@ auto CreateAgentConfig(const TString& id, ui32 nodeId, const TString& rack)
         device->SetRack(rack);
         device->SetNodeId(agent.GetNodeId());
         device->SetDeviceUUID(id + "-" + ToString(i + 1));
+        if (poolName) {
+            device->SetPoolKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+            device->SetPoolName(poolName);
+        }
     }
 
     return agent;
@@ -573,7 +581,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount,
                     .PoolKind = NProto::DEVICE_POOL_KIND_LOCAL,
-                    .NodeIds = { 1, 2, 3 }
+                    .NodeIds = { 1, 2, 3 },
                 }
             );
         };
@@ -592,6 +600,68 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             auto devices = allocate(1);
             UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
             UNIT_ASSERT_VALUES_EQUAL(localPoolName, devices[0].GetPoolName());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAllocateFromGlobalPoolByPoolName)
+    {
+        const TString rotPoolName = "rot";
+        const TString otherPoolName = "other";
+
+        TDeviceList deviceList({}, {});
+
+        TVector agents {
+            CreateAgentConfig("agent1", 1, "rack1"),
+            CreateAgentConfig("agent2", 2, "rack2"),
+            CreateAgentConfig("agent3", 3, "rack2", rotPoolName),
+            CreateAgentConfig("agent4", 4, "rack2", otherPoolName),
+            CreateAgentConfig("agent5", 5, "rack3", otherPoolName),
+            CreateAgentConfig("agent6", 6, "rack3", rotPoolName),
+        };
+
+        for (const auto& agent: agents) {
+            deviceList.UpdateDevices(agent);
+        }
+
+        auto allocate = [&] (ui32 n) {
+            return deviceList.AllocateDevices(
+                "disk-id",
+                {
+                    .ForbiddenRacks = {},
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = n * DefaultBlockCount,
+                    .PoolName = rotPoolName,
+                    .PoolKind = NProto::DEVICE_POOL_KIND_GLOBAL,
+                }
+            );
+        };
+
+        auto check = [&] (const TVector<NProto::TDeviceConfig>& devices) {
+            for (ui32 i = 0; i < devices.size(); ++i) {
+                const auto& device = devices[i];
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    rotPoolName,
+                    device.GetPoolName(),
+                    TStringBuilder() << "device " << i << "/" << devices.size()
+                        << ", agent " << device.GetAgentId());
+            }
+        };
+
+        {
+            auto devices = allocate(25);
+            UNIT_ASSERT_VALUES_EQUAL(25, devices.size());
+            check(devices);
+        }
+
+        {
+            auto devices = allocate(6);
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        }
+
+        {
+            auto devices = allocate(5);
+            UNIT_ASSERT_VALUES_EQUAL(5, devices.size());
+            check(devices);
         }
     }
 }
