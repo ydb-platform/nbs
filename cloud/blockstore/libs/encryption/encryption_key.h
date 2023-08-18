@@ -59,7 +59,7 @@ struct IKmsKeyProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IKmsKeyProviderPtr CreateNullKmsKeyProvider();
+IKmsKeyProviderPtr CreateKmsKeyProviderStub();
 
 IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
     IKmsKeyProviderPtr kmsKeyProvider);

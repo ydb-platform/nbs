@@ -209,14 +209,13 @@ TFuture<NProto::TMountVolumeResponse> TEncryptionClient::MountVolume(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TMountVolumeRequest> request)
 {
-    const auto& encryptionSpec = request->GetEncryptionSpec();
-    if (encryptionSpec.GetKeyHash()) {
+    auto& encryption = *request->MutableEncryptionSpec();
+    if (encryption.GetKeyHash()) {
         return FutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             "More than one encryption layer on data path");
     }
 
-    auto& encryption = *request->MutableEncryptionSpec();
     encryption.SetMode(EncryptionDesc.GetMode());
     encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 
@@ -709,18 +708,17 @@ TFuture<NProto::TMountVolumeResponse> TSnapshotEncryptionClient::MountVolume(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TMountVolumeRequest> request)
 {
-    const auto& encryptionSpec = request->GetEncryptionSpec();
-    if (encryptionSpec.GetKeyHash() &&
-        encryptionSpec.GetKeyHash() != EncryptionDesc.GetKeyHash())
+    auto& encryption = *request->MutableEncryptionSpec();
+    if (encryption.GetKeyHash() &&
+        encryption.GetKeyHash() != EncryptionDesc.GetKeyHash())
     {
         return FutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             TStringBuilder() << "Invalid mount encryption key hash"
-                << ", actual " << encryptionSpec.GetKeyHash()
+                << ", actual " << encryption.GetKeyHash()
                 << ", expected " << EncryptionDesc.GetKeyHash());
     }
 
-    auto& encryption = *request->MutableEncryptionSpec();
     encryption.SetMode(EncryptionDesc.GetMode());
     encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 

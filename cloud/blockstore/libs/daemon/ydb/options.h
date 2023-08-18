@@ -20,6 +20,8 @@ struct TOptionsYdb final
     TString LogbrokerConfig;
     TString NotifyConfig;
     TString IamConfig;
+    TString KmsConfig;
+    TString ComputeConfig;
 
     TOptionsYdb();
 

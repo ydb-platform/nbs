@@ -174,6 +174,8 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitLogbrokerConfig();
     Configs->InitNotifyConfig();
     Configs->InitIamClientConfig();
+    Configs->InitKmsClientConfig();
+    Configs->InitComputeClientConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -337,26 +339,21 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("StatsUploader initialized");
 
-    auto serverConfig = Configs->ServerConfig->GetServerConfig();
-    if (serverConfig->HasKmsGrpcConfig() &&
-        serverConfig->HasComputeGrpcConfig())
-    {
-        ComputeClient = ServerModuleFactories->ComputeClientFactory(
-            serverConfig->GetComputeGrpcConfig(),
-            Logging);
+    ComputeClient = ServerModuleFactories->ComputeClientFactory(
+        Configs->ComputeClientConfig,
+        logging);
 
-        KmsClient = ServerModuleFactories->KmsClientFactory(
-            serverConfig->GetKmsGrpcConfig(),
-            Logging);
+    KmsClient = ServerModuleFactories->KmsClientFactory(
+        Configs->KmsClientConfig,
+        logging);
 
-        KmsKeyProvider = CreateKmsKeyProvider(
-            Executor,
-            IamTokenClient,
-            ComputeClient,
-            KmsClient);
+    KmsKeyProvider = CreateKmsKeyProvider(
+        Executor,
+        IamTokenClient,
+        ComputeClient,
+        KmsClient);
 
-        STORAGE_INFO("KmsKeyProvider initialized");
-    }
+    STORAGE_INFO("KmsKeyProvider initialized");
 
     auto discoveryConfig = Configs->DiscoveryConfig;
     if (discoveryConfig->GetConductorGroups()

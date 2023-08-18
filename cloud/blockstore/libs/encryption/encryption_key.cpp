@@ -147,11 +147,11 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNullKmsKeyProvider
+class TKmsKeyProviderStub
     : public IKmsKeyProvider
 {
 public:
-    TNullKmsKeyProvider()
+    TKmsKeyProviderStub()
     {}
 
     TFuture<TResponse> GetKey(
@@ -161,7 +161,7 @@ public:
         Y_UNUSED(kmsKey);
         Y_UNUSED(diskId);
         return MakeFuture<TResponse>(
-            MakeError(E_ARGUMENT, "KmsKeyProvider is not set"));
+            MakeError(E_ARGUMENT, "KmsKeyProviderStub can't get key"));
     }
 };
 
@@ -190,9 +190,9 @@ TString TEncryptionKey::GetHash() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IKmsKeyProviderPtr CreateNullKmsKeyProvider()
+IKmsKeyProviderPtr CreateKmsKeyProviderStub()
 {
-    return std::make_shared<TNullKmsKeyProvider>();
+    return std::make_shared<TKmsKeyProviderStub>();
 }
 
 IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
@@ -204,7 +204,7 @@ IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
 
 IEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider()
 {
-    return CreateEncryptionKeyProvider(CreateNullKmsKeyProvider());
+    return CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
 }
 
 }   // namespace NCloud::NBlockStore

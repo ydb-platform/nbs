@@ -127,6 +127,28 @@ void TConfigInitializerYdb::InitIamClientConfig()
         std::move(config));
 }
 
+void TConfigInitializerYdb::InitKmsClientConfig()
+{
+    NProto::TGrpcClientConfig config;
+
+    if (Options->KmsConfig) {
+        ParseProtoTextFromFile(Options->KmsConfig, config);
+    }
+
+    KmsClientConfig = std::move(config);
+}
+
+void TConfigInitializerYdb::InitComputeClientConfig()
+{
+    NProto::TGrpcClientConfig config;
+
+    if (Options->ComputeConfig) {
+        ParseProtoTextFromFile(Options->ComputeConfig, config);
+    }
+
+    ComputeClientConfig = std::move(config);
+}
+
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
 {
     if (!StorageConfig) {
@@ -289,6 +311,22 @@ void TConfigInitializerYdb::ApplyIamClientConfig(const TString& text)
         std::move(config));
 }
 
+void TConfigInitializerYdb::ApplyKmsClientConfig(const TString& text)
+{
+    NProto::TGrpcClientConfig config;
+    ParseProtoTextFromString(text, config);
+
+    KmsClientConfig = std::move(config);
+}
+
+void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
+{
+    NProto::TGrpcClientConfig config;
+    ParseProtoTextFromString(text, config);
+
+    ComputeClientConfig = std::move(config);
+}
+
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
 {
     using TSelf = TConfigInitializerYdb;
@@ -312,6 +350,8 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "StorageServiceConfig",    &TSelf::ApplyStorageServiceConfig    },
         { "YdbStatsConfig",          &TSelf::ApplyYdbStatsConfig          },
         { "IamClientConfig",         &TSelf::ApplyIamClientConfig         },
+        { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
+        { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
     };
 
     for (auto& item : config.GetNamedConfigs()) {

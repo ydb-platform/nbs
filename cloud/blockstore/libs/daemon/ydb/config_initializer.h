@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/grpc_client.pb.h>
+
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -55,6 +57,8 @@ struct TConfigInitializerYdb final
     NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
     NNotify::TNotifyConfigPtr NotifyConfig;
     NIamClient::TIamClientConfigPtr IamClientConfig;
+    NProto::TGrpcClientConfig KmsClientConfig;
+    NProto::TGrpcClientConfig ComputeClientConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -64,6 +68,8 @@ struct TConfigInitializerYdb final
     void InitStatsUploadConfig();
     void InitStorageConfig();
     void InitIamClientConfig();
+    void InitKmsClientConfig();
+    void InitComputeClientConfig();
 
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
@@ -85,6 +91,8 @@ private:
     void ApplyStorageServiceConfig(const TString& text);
     void ApplyYdbStatsConfig(const TString& text);
     void ApplyIamClientConfig(const TString& text);
+    void ApplyKmsClientConfig(const TString& text);
+    void ApplyComputeClientConfig(const TString& text);
 };
 
 }   // namespace NCloud::NBlockStore::NServer

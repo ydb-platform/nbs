@@ -325,7 +325,7 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
 
     if (!KmsKeyProvider) {
-        KmsKeyProvider = CreateNullKmsKeyProvider();
+        KmsKeyProvider = CreateKmsKeyProviderStub();
     }
 
     auto encryptionClientFactory = CreateEncryptionClientFactory(

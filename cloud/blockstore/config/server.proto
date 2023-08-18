@@ -169,12 +169,6 @@ message TServerConfig
 
     // Path to vhost server executable.
     optional string VhostServerPath = 108;
-
-    // KMS client details.
-    optional TGrpcClientConfig KmsGrpcConfig = 109;
-
-    // Compute client details.
-    optional TGrpcClientConfig ComputeGrpcConfig = 110;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

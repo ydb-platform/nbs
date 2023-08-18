@@ -32,6 +32,14 @@ TOptionsYdb::TOptionsYdb()
     Opts.AddLongOption("iam-file")
         .RequiredArgument("PATH")
         .StoreResult(&IamConfig);
+
+    Opts.AddLongOption("kms-file")
+        .RequiredArgument("PATH")
+        .StoreResult(&KmsConfig);
+
+    Opts.AddLongOption("compute-file")
+        .RequiredArgument("PATH")
+        .StoreResult(&ComputeConfig);
 }
 
 void TOptionsYdb::Parse(int argc, char** argv)
