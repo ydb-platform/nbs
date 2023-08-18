@@ -1,6 +1,7 @@
 #include "encryption_service.h"
 
 #include "encryption_client.h"
+#include "encryption_key.h"
 
 #include <cloud/blockstore/public/api/protos/io.pb.h>
 #include <cloud/blockstore/public/api/protos/encryption.pb.h>
@@ -238,6 +239,47 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
         }
 
         UnmountVolume(multipleService, clientId1);
+    }
+
+    Y_UNIT_TEST(ShouldCreateEncryptedDisk)
+    {
+        auto logging = CreateLoggingService("console");
+
+        auto clientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider());
+
+        auto service = std::make_shared<TTestService>();
+        service->CreateVolumeHandler =
+            [&] (std::shared_ptr<NProto::TCreateVolumeRequest> request) {
+                auto encryptionSpec = request->GetEncryptionSpec();
+                UNIT_ASSERT(NProto::ENCRYPTION_AES_XTS == encryptionSpec.GetMode());
+                UNIT_ASSERT_VALUES_EQUAL("", encryptionSpec.GetKeyHash());
+                UNIT_ASSERT_C(!encryptionSpec.HasKeyPath(), encryptionSpec.GetKeyPath());
+
+                return MakeFuture(NProto::TCreateVolumeResponse());
+            };
+
+        auto multipleService = CreateMultipleEncryptionService(
+            service,
+            logging,
+            clientFactory);
+
+        auto request = std::make_shared<NProto::TCreateVolumeRequest>();
+        auto& encryptionSpec = *request->MutableEncryptionSpec();
+        encryptionSpec.SetMode(NProto::ENCRYPTION_AES_XTS);
+        auto& keyPath = *encryptionSpec.MutableKeyPath();
+        auto& kmsKey = *keyPath.MutableKmsKey();
+        kmsKey.SetKekId("kek-id");
+        kmsKey.SetEncryptedDEK("encrypted-dek");
+        kmsKey.SetTaskId("task-id");
+
+        auto future = multipleService->CreateVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
 }
 

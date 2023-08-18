@@ -65,7 +65,10 @@ private:
         auto iamFuture = IamTokenClient->GetTokenAsync();
         auto iamResponse = Executor->WaitFor(iamFuture);
         if (HasError(iamResponse)) {
-            return TErrorResponse(iamResponse.GetError());
+            const auto& err = iamResponse.GetError();
+            return MakeError(err.GetCode(), TStringBuilder()
+                << "failed to get iam-token for disk " << diskId
+                << ", error: " << err.GetMessage());
         }
 
         auto computeFuture = ComputeClient->CreateTokenForDEK(
@@ -74,7 +77,10 @@ private:
             iamResponse.GetResult().Token);
         auto computeResponse = Executor->WaitFor(computeFuture);
         if (HasError(computeResponse)) {
-            return TErrorResponse(computeResponse.GetError());
+            const auto& err = computeResponse.GetError();
+            return MakeError(err.GetCode(), TStringBuilder()
+                << "failed to create token for disk " << diskId
+                << ", error: " << err.GetMessage());
         }
 
         auto kmsFuture = KmsClient->Decrypt(
@@ -83,7 +89,10 @@ private:
             computeResponse.GetResult());
         auto kmsResponse = Executor->WaitFor(kmsFuture);
         if (HasError(kmsResponse)) {
-            return TErrorResponse(kmsResponse.GetError());
+            const auto& err = kmsResponse.GetError();
+            return MakeError(err.GetCode(), TStringBuilder()
+                << "failed to decrypt dek for disk " << diskId
+                << ", error: " << err.GetMessage());
         }
 
         return TEncryptionKey(kmsResponse.ExtractResult());

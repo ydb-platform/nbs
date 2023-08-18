@@ -4,6 +4,7 @@
 #include "encryption_key.h"
 
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -94,6 +95,20 @@ public:
         Log = logging->CreateLog("BLOCKSTORE_SERVER");
     }
 
+    TFuture<NProto::TCreateVolumeResponse> CreateVolume(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TCreateVolumeRequest> request) override
+    {
+        auto& encryptionSpec = *request->MutableEncryptionSpec();
+        if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION &&
+            encryptionSpec.HasKeyPath())
+        {
+            encryptionSpec.ClearKeyPath();
+        }
+
+        return Service->CreateVolume(std::move(ctx), std::move(request));
+    }
+
     TFuture<NProto::TMountVolumeResponse> MountVolume(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
@@ -107,6 +122,14 @@ public:
         if (session) {
             return session->MountVolume(std::move(ctx), std::move(request));
         }
+
+        STORAGE_INFO(
+            TRequestInfo(
+                EBlockStoreRequest::MountVolume,
+                ctx->RequestId,
+                request->GetDiskId(),
+                request->GetHeaders().GetClientId())
+            << " create encryption client " << encryptionSpec);
 
         auto future = EncryptionClientFactory->CreateEncryptionClient(
             Service,
