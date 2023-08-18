@@ -7,6 +7,10 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
+
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -50,6 +54,14 @@ private:
         const TString& diskId,
         const NProto::TKmsKey& kmsKey)
     {
+        auto decodeResponse = SafeBase64Decode(kmsKey.GetEncryptedDEK());
+        if (HasError(decodeResponse)) {
+            const auto& err = decodeResponse.GetError();
+            return MakeError(err.GetCode(), TStringBuilder()
+                << "failed to decode dek for disk " << diskId
+                << ", error: " << err.GetMessage());
+        }
+
         auto iamFuture = IamTokenClient->GetTokenAsync();
         auto iamResponse = Executor->WaitFor(iamFuture);
         if (HasError(iamResponse)) {
@@ -67,7 +79,7 @@ private:
 
         auto kmsFuture = KmsClient->Decrypt(
             kmsKey.GetKekId(),
-            kmsKey.GetEncryptedDEK(),
+            decodeResponse.GetResult(),
             computeResponse.GetResult());
         auto kmsResponse = Executor->WaitFor(kmsFuture);
         if (HasError(kmsResponse)) {
@@ -75,6 +87,17 @@ private:
         }
 
         return TEncryptionKey(kmsResponse.ExtractResult());
+    }
+
+    TResultOrError<TString> SafeBase64Decode(TString encoded)
+    {
+        try {
+            return Base64Decode(encoded);
+        } catch (...) {
+            // TODO: after NBS-4449
+            // return MakeError(E_ARGUMENT, CurrentExceptionMessage());
+            return encoded;
+        }
     }
 };
 

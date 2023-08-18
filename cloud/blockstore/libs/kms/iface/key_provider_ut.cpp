@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/scope.h>
@@ -128,9 +129,11 @@ Y_UNIT_TEST_SUITE(TKmsKeyProviderTest)
 {
     Y_UNIT_TEST(ShouldProvideEncryptionKeyFromKMS)
     {
+        auto encryptedDEK = "testEncryptedDEK";
+
         NProto::TKmsKey kmsKey;
         kmsKey.SetKekId("testKekId");
-        kmsKey.SetEncryptedDEK("testEncryptedDEK");
+        kmsKey.SetEncryptedDEK(Base64Encode(encryptedDEK));
         kmsKey.SetTaskId("testTaskId");
         TString diskId = "testDiskId";
         TString nbsToken = "testNbsToken";
@@ -147,7 +150,7 @@ Y_UNIT_TEST_SUITE(TKmsKeyProviderTest)
 
         auto kmsClient = std::make_shared<TTestKmsClient>(dek);
         kmsClient->ExpectedKeyId = kmsKey.GetKekId();
-        kmsClient->ExpectedCiphertext = kmsKey.GetEncryptedDEK();
+        kmsClient->ExpectedCiphertext = encryptedDEK;
         kmsClient->ExpectedToken = computeToken;
 
         auto executor = TExecutor::Create("TestService");
