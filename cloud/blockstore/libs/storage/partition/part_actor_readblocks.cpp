@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_read_blocks_from_base_disk.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -19,17 +20,11 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
 
+using namespace NBlobMarkers;
+
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 using namespace NTabletFlatExecutor::NFlatExecutorSetup;
-
-using TFreshMark = TTxPartition::TReadBlocks::TFreshMark;
-using TZeroMark = TTxPartition::TReadBlocks::TZeroMark;
-using TEmptyMark = TTxPartition::TReadBlocks::TEmptyMark;
-using TBlobMark = TTxPartition::TReadBlocks::TBlobMark;
-
-using TBlockMark = TTxPartition::TReadBlocks::TBlockMark;
-using TBlockMarks = TTxPartition::TReadBlocks::TBlockMarks;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -262,22 +257,14 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 BlockSize;
     const ui32 CompactionRangeSize;
-    const TString BaseDiskId;
-    const TString BaseDiskCheckpointId;
 
     const TActorId Tablet;
-
-    const TMaybe<TBlockRange32> DescribeBlocksRange;
 
     const IReadBlocksHandlerPtr ReadHandler;
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
 
     const ui64 CommitId;
-
-    TBlockMarks BlockMarks;
-
-    bool DescribeBlocksInProgress = false;
 
     TVector<TCallContextPtr> ForkedCallContexts;
 
@@ -288,36 +275,26 @@ private:
     size_t RequestsScheduled = 0;
     size_t RequestsCompleted = 0;
 
+    bool WaitBaseDiskRequests = false;
+
 public:
     TReadBlocksActor(
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
         ui32 compactionRangeSize,
-        const TString& baseDiskId,
-        const TString& baseDiskCheckpointId,
         const TActorId& tablet,
-        const TMaybe<TBlockRange32>& describeBlocksRange,
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
         ui64 commitId,
-        TBlockMarks inputBlockMarks,
         TReadBlocksRequests ownRequests,
-        TVector<IProfileLog::TBlockInfo> blockInfos);
+        TVector<IProfileLog::TBlockInfo> blockInfos,
+        bool waitBaseDiskRequests);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void DescribeBlocks(const TActorContext& ctx);
-    NProto::TError ValidateDescribeBlocksResponse(
-        const TEvVolume::TEvDescribeBlocksResponse& response);
-    TMaybe<TReadBlocksRequests> ProcessDescribeBlocksResponse(
-        const TEvVolume::TEvDescribeBlocksResponse& response);
-    void HandleDescribeBlocksResponse(
-        const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
-        const TActorContext& ctx);
-
     void ReadBlocks(
         const TActorContext& ctx,
         TReadBlocksRequests requests,
@@ -338,6 +315,10 @@ private:
         const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleBaseDiskDescribeCompleted(
+        const TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -350,32 +331,26 @@ TReadBlocksActor::TReadBlocksActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
         ui32 compactionRangeSize,
-        const TString& baseDiskId,
-        const TString& baseDiskCheckpointId,
         const TActorId& tablet,
-        const TMaybe<TBlockRange32>& describeBlocksRange,
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
         ui64 commitId,
-        TBlockMarks inputBlockMarks,
         TReadBlocksRequests ownRequests,
-        TVector<IProfileLog::TBlockInfo> blockInfos)
+        TVector<IProfileLog::TBlockInfo> blockInfos,
+        bool waitBaseDiskRequests)
     : RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
     , CompactionRangeSize(compactionRangeSize)
-    , BaseDiskId(baseDiskId)
-    , BaseDiskCheckpointId(baseDiskCheckpointId)
     , Tablet(tablet)
-    , DescribeBlocksRange(describeBlocksRange)
     , ReadHandler(std::move(readHandler))
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
     , CommitId(commitId)
-    , BlockMarks(std::move(inputBlockMarks))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
+    , WaitBaseDiskRequests(waitBaseDiskRequests)
 {
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
@@ -392,199 +367,9 @@ void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
         "ReadBlocks",
         RequestInfo->CallContext->RequestId);
 
-    if (DescribeBlocksRange.Defined()) {
-        DescribeBlocks(ctx);
-    }
-
     Sort(OwnRequests, TCompareByBlobIdAndOffset());
     FillReadStats(OwnRequests, CompactionRangeSize, &ReadStats);
     ReadBlocks(ctx, std::move(OwnRequests), false);
-}
-
-void TReadBlocksActor::DescribeBlocks(const TActorContext& ctx)
-{
-    Y_VERIFY_DEBUG(DescribeBlocksRange);
-    Y_VERIFY_DEBUG(DescribeBlocksRange->Size());
-    Y_VERIFY_DEBUG(BaseDiskId);
-    Y_VERIFY_DEBUG(BaseDiskCheckpointId);
-    Y_VERIFY_DEBUG(ReadRange.Size());
-    Y_VERIFY_DEBUG(BlockMarks.size() == ReadRange.Size());
-    Y_VERIFY_DEBUG(ReadRange.Contains(*DescribeBlocksRange));
-
-    DescribeBlocksInProgress = true;
-
-    auto request = std::make_unique<TEvVolume::TEvDescribeBlocksRequest>();
-
-    request->Record.SetStartIndex(DescribeBlocksRange->Start);
-    request->Record.SetBlocksCount(DescribeBlocksRange->Size());
-    request->Record.SetDiskId(BaseDiskId);
-    request->Record.SetCheckpointId(BaseDiskCheckpointId);
-
-    request->Record.SetBlocksCountToRead(
-        CountIf(BlockMarks, [](const auto& mark) { return std::holds_alternative<TEmptyMark>(mark); }));
-
-    TAutoPtr<IEventHandle> event = new IEventHandle(
-        MakeVolumeProxyServiceId(),
-        SelfId(),
-        request.release());
-
-    ctx.Send(event);
-}
-
-NProto::TError TReadBlocksActor::ValidateDescribeBlocksResponse(
-    const TEvVolume::TEvDescribeBlocksResponse& response)
-{
-    Y_VERIFY_DEBUG(DescribeBlocksRange);
-
-    const auto& record = response.Record;
-
-    for (const auto& range: record.GetFreshBlockRanges()) {
-        const auto rangeToValidate =
-            TBlockRange32::WithLength(
-                range.GetStartIndex(), range.GetBlocksCount());
-
-        if (!DescribeBlocksRange->Contains(rangeToValidate)) {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder() <<
-                "DescribeBlocks error. Fresh block is out of range"
-                " DescribeBlocksRange: " << DescribeRange(*DescribeBlocksRange) <<
-                " rangeToValidate start: " << DescribeRange(rangeToValidate));
-
-        }
-
-        const auto& contentToValidate = range.GetBlocksContent();
-
-        if (contentToValidate.size() != rangeToValidate.Size() * BlockSize) {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder() <<
-                "DescribeBlocks error. Fresh block content has invalid size."
-                " rangeToValidate: " << DescribeRange(rangeToValidate) <<
-                " BlockSize: " << BlockSize <<
-                " contentToValidate size: " << contentToValidate.size());
-        }
-    }
-
-    for (const auto& piece: record.GetBlobPieces()) {
-        for (const auto& range: piece.GetRanges()) {
-            const auto blockRange = TBlockRange32::WithLength(
-                range.GetBlockIndex(),
-                range.GetBlocksCount());
-            if (!DescribeBlocksRange->Contains(blockRange)) {
-                return MakeError(
-                    E_FAIL,
-                    TStringBuilder() <<
-                    "DescribeBlocks error. Blob range is out of bounds."
-                    " DescribeBlocksRange: " << DescribeRange(*DescribeBlocksRange) <<
-                    " blockRange:" << DescribeRange(blockRange)
-                );
-            }
-        }
-    }
-
-    return {};
-}
-
-TMaybe<TReadBlocksRequests> TReadBlocksActor::ProcessDescribeBlocksResponse(
-    const TEvVolume::TEvDescribeBlocksResponse& response)
-{
-    Y_VERIFY_DEBUG(DescribeBlocksRange);
-
-    const auto startIndex = ReadRange.Start;
-    auto& handler = *ReadHandler;
-    const auto& record = response.Record;
-
-    for (const auto& range : record.GetFreshBlockRanges()) {
-        for (size_t index = 0; index < range.GetBlocksCount(); ++index) {
-            const char* startingByte =
-                range.GetBlocksContent().data() + index * BlockSize;
-
-            TStringBuf blockContent(startingByte, BlockSize);
-
-            const auto blockIndex = range.GetStartIndex() + index;
-            const auto blockMarkIndex = blockIndex - startIndex;
-
-            if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex])) {
-                BlockMarks[blockMarkIndex] = TFreshMark();
-                if (!handler.SetBlock(
-                        blockIndex,
-                        TBlockDataRef(blockContent.Data(),
-                        blockContent.Size()),
-                        true))
-                {
-                    return {};
-                }
-            }
-        }
-    }
-
-    TReadBlocksRequests requests;
-
-    for (const auto& piece: record.GetBlobPieces()) {
-        const auto& blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
-        const auto group = piece.GetBSGroupId();
-
-        for (const auto& range: piece.GetRanges()) {
-            for (size_t i = 0; i < range.GetBlocksCount(); ++i) {
-                const auto blobOffset = range.GetBlobOffset() + i;
-                const auto blockIndex = range.GetBlockIndex() + i;
-                const auto blockMarkIndex = blockIndex - startIndex;
-
-                if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex])) {
-                    requests.emplace_back(
-                        blobId,
-                        MakeBlobStorageProxyID(group),
-                        blobOffset,
-                        blockIndex,
-                        group);
-                }
-            }
-        }
-    }
-
-    return requests;
-}
-
-void TReadBlocksActor::HandleDescribeBlocksResponse(
-    const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    DescribeBlocksInProgress = false;
-
-    const auto* msg = ev->Get();
-
-    if (HandleError(ctx, msg->GetError())) {
-        return;
-    }
-
-    if (HandleError(ctx, ValidateDescribeBlocksResponse(msg->Record))) {
-        return;
-    }
-
-    auto requests = ProcessDescribeBlocksResponse(msg->Record);
-    if (!requests) {
-        HandleError(ctx, MakeError(E_REJECTED, "DescribeBlocks response processing failed"));
-        return;
-    }
-
-    if (requests->empty()) {
-        if (RequestsCompleted == RequestsScheduled) {
-            auto response = CreateReadBlocksResponse(
-                ReadRange,
-                *BlockDigestGenerator,
-                BlockSize,
-                ReplyLocal,
-                BlockInfos,
-                *ReadHandler
-            );
-            ReplyAndDie(ctx, std::move(response), {});
-        }
-        return;
-    }
-
-    Sort(*requests, TCompareByBlobIdAndOffset());
-    ReadBlocks(ctx, std::move(*requests), true);
 }
 
 void TReadBlocksActor::ReadBlocks(
@@ -732,7 +517,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
         return;
     }
 
-    if (DescribeBlocksInProgress) {
+    if (WaitBaseDiskRequests) {
         return;
     }
 
@@ -749,6 +534,58 @@ void TReadBlocksActor::HandleReadBlobResponse(
         *ReadHandler
     );
     ReplyAndDie(ctx, std::move(response), {});
+}
+
+void TReadBlocksActor::HandleBaseDiskDescribeCompleted(
+    const TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (HandleError(ctx, error)) {
+        return;
+    }
+
+    WaitBaseDiskRequests = false;
+
+    TReadBlocksRequests requests;
+    for (auto&& blockMark: std::move(msg->BlockMarks)) {
+        if (std::holds_alternative<TFreshMarkOnBaseDisk>(blockMark)) {
+            auto& value = std::get<TFreshMarkOnBaseDisk>(blockMark);
+            ReadHandler->SetBlock(
+                value.BlockIndex,
+                std::move(value.RefToData),
+                true);
+        }
+        if (std::holds_alternative<TBlobMarkOnBaseDisk>(blockMark)) {
+            auto& value = std::get<TBlobMarkOnBaseDisk>(blockMark);
+            requests.emplace_back(
+                value.BlobId,
+                MakeBlobStorageProxyID(value.BSGroupId),
+                value.BlobOffset,
+                value.BlockIndex,
+                value.BSGroupId);
+        }
+    }
+
+    if (requests.empty()) {
+        if (RequestsCompleted == RequestsScheduled) {
+            auto response = CreateReadBlocksResponse(
+                ReadRange,
+                *BlockDigestGenerator,
+                BlockSize,
+                ReplyLocal,
+                BlockInfos,
+                *ReadHandler
+            );
+            ReplyAndDie(ctx, std::move(response), {});
+        }
+        return;
+    }
+
+    Sort(requests, TCompareByBlobIdAndOffset());
+    ReadBlocks(ctx, std::move(requests), true);
 }
 
 void TReadBlocksActor::HandlePoisonPill(
@@ -769,8 +606,10 @@ STFUNC(TReadBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse,
+            HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted,
+            HandleBaseDiskDescribeCompleted);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
@@ -868,7 +707,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TMaybe<TBlockRange32> ComputeDescribeBlocksRange(
+TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
     const TBlockRange32& readRange,
     const TBlockMarks& marks)
 {
@@ -895,7 +734,7 @@ TMaybe<TBlockRange32> ComputeDescribeBlocksRange(
     const auto firstEmptyBlockIndex = startBlockIndex + firstEmptyIndexFromBegin;
     const auto lastEmptyBlockIndex = startBlockIndex + lastEmptyIndexFromBegin;
 
-    return TBlockRange32::MakeClosedInterval(
+    return TBlockRange64::MakeClosedInterval(
         firstEmptyBlockIndex,
         lastEmptyBlockIndex);
 }
@@ -1181,7 +1020,7 @@ void TPartitionActor::CompleteReadBlocks(
         ++blockIndex;
     }
 
-    TMaybe<TBlockRange32> describeBlocksRange;
+    TMaybe<TBlockRange64> describeBlocksRange;
 
     if (State->GetBaseDiskId()) {
         describeBlocksRange =
@@ -1189,31 +1028,41 @@ void TPartitionActor::CompleteReadBlocks(
     }
 
     if (describeBlocksRange.Defined() || requests) {
-        TBlockMarks marks;
-
-        if (describeBlocksRange.Defined()) {
-            marks = std::move(args.BlockMarks);
-        }
-
-        auto actor = NCloud::Register<TReadBlocksActor>(
+        auto selfActor = NCloud::Register<TReadBlocksActor>(
             ctx,
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),
             State->GetCompactionMap().GetRangeSize(),
-            State->GetBaseDiskId(),
-            State->GetBaseDiskCheckpointId(),
             SelfId(),
-            describeBlocksRange,
             args.ReadHandler,
             args.ReadRange,
             args.ReplyLocal,
             args.CommitId,
-            std::move(marks),
             std::move(requests),
-            std::move(args.BlockInfos));
+            std::move(args.BlockInfos),
+            describeBlocksRange.Defined());
+        Actors.insert(selfActor);
 
-        Actors.insert(actor);
+        if (describeBlocksRange.Defined()) {
+            auto requestInfo = CreateRequestInfo(
+                selfActor,
+                args.RequestInfo->Cookie,
+                args.RequestInfo->CallContext);
+
+            auto baseDiskActor = NCloud::Register<TReadBlocksFromBaseDiskActor>(
+                ctx,
+                requestInfo,
+                State->GetBaseDiskId(),
+                State->GetBaseDiskCheckpointId(),
+                ConvertRangeSafe(args.ReadRange),
+                *describeBlocksRange,
+                std::move(args.BlockMarks),
+                State->GetBlockSize());
+
+            Actors.insert(baseDiskActor);
+        }
+
         return;
     }
 

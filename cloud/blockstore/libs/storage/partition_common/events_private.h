@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
@@ -123,6 +124,20 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // BaseDiskDescribeCompleted
+    //
+
+    struct TBaseDiskDescribeCompleted
+    {
+        NBlobMarkers::TBlockMarks BlockMarks;
+
+        TBaseDiskDescribeCompleted(
+                NBlobMarkers::TBlockMarks blockMarks)
+            : BlockMarks(std::move(blockMarks))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -135,6 +150,7 @@ struct TEvPartitionCommonPrivate
         EvLoadFreshBlobsCompleted,
         EvTrimFreshLogCompleted,
         EvReadBlobCompleted,
+        EvTBaseDiskDescribeCompleted,
 
         EvEnd
     };
@@ -147,6 +163,7 @@ struct TEvPartitionCommonPrivate
     using TEvLoadFreshBlobsCompleted = TResponseEvent<TLoadFreshBlobsCompleted, EvLoadFreshBlobsCompleted>;
     using TEvTrimFreshLogCompleted = TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
+    using TEvBaseDiskDescribeCompleted = TResponseEvent<TBaseDiskDescribeCompleted, EvTBaseDiskDescribeCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

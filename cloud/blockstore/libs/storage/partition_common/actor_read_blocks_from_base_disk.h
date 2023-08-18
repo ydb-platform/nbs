@@ -1,0 +1,69 @@
+#pragma once
+
+#include <cloud/blockstore/libs/common/block_range.h>
+
+#include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/block_handler.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+
+#include <ydb/core/base/blobstorage.h>
+
+#include <library/cpp/actors/core/actor_bootstrapped.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TReadBlocksFromBaseDiskActor final
+    : public NActors::TActorBootstrapped<TReadBlocksFromBaseDiskActor>
+{
+private:
+    const TRequestInfoPtr RequestInfo;
+
+    const TString BaseDiskId;
+    const TString BaseDiskCheckpointId;
+    const TBlockRange64 BlocksRange;
+    const TBlockRange64 BaseDiskBlocksRange;
+    const ui32 BlockSize;
+
+    NBlobMarkers::TBlockMarks BlockMarks;
+
+public:
+    TReadBlocksFromBaseDiskActor(
+        TRequestInfoPtr requestInfo,
+        TString baseDiskId,
+        TString baseDiskCheckpointId,
+        TBlockRange64 blocksRange,
+        TBlockRange64 baseDiskBlocksRange,
+        NBlobMarkers::TBlockMarks blockMarks,
+        ui32 blockSize);
+
+    void Bootstrap(const NActors::TActorContext& ctx);
+
+private:
+    void DescribeBlocks(const NActors::TActorContext& ctx);
+    NProto::TError ValidateDescribeBlocksResponse(
+        const TEvVolume::TEvDescribeBlocksResponse& response);
+    void ProcessDescribeBlocksResponse(
+        TEvVolume::TEvDescribeBlocksResponse&& response);
+
+    void ReplyAndDie(
+        const NActors::TActorContext& ctx,
+        NProto::TError error = MakeError(S_OK));
+
+private:
+    STFUNC(StateWork);
+
+    void HandleDescribeBlocksResponse(
+        const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const NKikimr::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+};
+
+}   // namespace NCloud::NBlockStore::NStorage

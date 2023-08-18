@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/unconfirmed_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
@@ -66,6 +67,9 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 struct TTxPartition
 {
+    using TBlockMark = NBlobMarkers::TBlockMark;
+    using TBlockMarks = NBlobMarkers::TBlockMarks;
+
     //
     // InitSchema
     //
@@ -228,31 +232,6 @@ struct TTxPartition
         const bool ReplyLocal;
         bool Interrupted = false;
 
-        struct TEmptyMark {};
-
-        struct TFreshMark {};
-
-        struct TZeroMark {};
-
-        struct TBlobMark
-        {
-            TBlobMark(
-                    const NKikimr::TLogoBlobID& blobId,
-                    ui32 bSGroupId,
-                    ui16 blobOffset)
-                : BlobId(blobId)
-                , BSGroupId(bSGroupId)
-                , BlobOffset(blobOffset)
-            {}
-
-            NKikimr::TLogoBlobID BlobId;
-            ui32 BSGroupId;
-            ui16 BlobOffset;
-        };
-
-        using TBlockMark = std::variant<TEmptyMark, TFreshMark, TZeroMark, TBlobMark>;
-        using TBlockMarks = TVector<TBlockMark>;
-
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
 
@@ -276,7 +255,7 @@ struct TTxPartition
         void Clear()
         {
             ReadHandler->Clear();
-            std::fill(BlockMarks.begin(), BlockMarks.end(), TEmptyMark());
+            std::fill(BlockMarks.begin(), BlockMarks.end(), NBlobMarkers::TEmptyMark());
             std::fill(BlockMarkCommitIds.begin(), BlockMarkCommitIds.end(), 0);
             BlockInfos.clear();
         }

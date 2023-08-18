@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     actor_read_blob.cpp
+    actor_read_blocks_from_base_disk.cpp
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
     drain_actor_companion.cpp
