@@ -207,8 +207,13 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
 
     config.SetPlacementGroupId(Request.GetPlacementGroupId());
     config.SetPlacementPartitionIndex(Request.GetPlacementPartitionIndex());
-    // TODO: SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
-    config.SetStoragePoolName(Request.GetStoragePoolName());
+    if (Request.GetStoragePoolName()) {
+        config.SetStoragePoolName(Request.GetStoragePoolName());
+    } else if (volumeParams.MediaKind
+            == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    {
+        config.SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
+    }
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 
     const auto& encryptionSpec = Request.GetEncryptionSpec();

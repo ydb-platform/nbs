@@ -174,6 +174,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         config.SetAllocationUnitNonReplicatedSSD(1024);
         config.SetAllocationUnitMirror2SSD(1024);
         config.SetAllocationUnitMirror3SSD(1024);
+        config.SetAllocationUnitNonReplicatedHDD(1024);
         ui32 nodeIdx = SetupTestEnv(env, config);
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -182,6 +183,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
         };
 
         for (const auto mediaKind: mediaKinds) {
@@ -414,6 +416,21 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.RecvCreateVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
+
+        {
+            auto request = service.CreateCreateVolumeRequest(
+                "hdd_nrd0",
+                93_GB / 512,
+                512,
+                {}, // folderId
+                {}, // cloudId
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+            );
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldCreateVolumeWithAutoComputedChannelsCount)
@@ -447,6 +464,51 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             });
 
         service.CreateVolume();
+        UNIT_ASSERT(detectedCreateVolumeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldSetStoragePoolNameForNonreplicatedHddDisks)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        bool detectedCreateVolumeRequest = false;
+
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvModifySchemeRequest: {
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        if (msg->ModifyScheme.GetOperationType() ==
+                            NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
+                        {
+                            detectedCreateVolumeRequest = true;
+                            const auto& createRequest =
+                                msg->ModifyScheme.GetCreateBlockStoreVolume();
+                            const auto& volumeConfig =
+                                createRequest.GetVolumeConfig();
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                "rot",
+                                volumeConfig.GetStoragePoolName());
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        service.CreateVolume(
+            "hdd_nrd0",
+            93_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "", // folderId
+            "", // cloudId
+            NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
@@ -1263,6 +1325,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         config.SetAllocationUnitNonReplicatedSSD(1);
         config.SetAllocationUnitMirror2SSD(1);
         config.SetAllocationUnitMirror3SSD(1);
+        config.SetAllocationUnitNonReplicatedHDD(1);
         ui32 nodeIdx = SetupTestEnv(env, config);
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -1271,6 +1334,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
         };
 
         ui32 markedDisks = 0;
