@@ -2759,6 +2759,12 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         return MakeError(E_INVALID_STATE, "Destructive configuration change");
     }
 
+    if (Counters) {
+        for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
+            SelfCounters.RegisterPool(pool.GetName(), Counters);
+        }
+    }
+
     newConfig.SetVersion(CurrentConfig.GetVersion() + 1);
     ProcessConfig(newConfig);
 

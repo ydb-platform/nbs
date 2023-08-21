@@ -53,8 +53,15 @@ void TDiskRegistrySelfCounters::Init(
     QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
 
     for (const auto& poolName: poolNames) {
-        PoolName2Counters[poolName].Init(counters->GetSubgroup("pool", poolName));
+        RegisterPool(poolName, counters);
     }
+}
+
+void TDiskRegistrySelfCounters::RegisterPool(
+    const TString& poolName,
+    NMonitoring::TDynamicCountersPtr counters)
+{
+    PoolName2Counters[poolName].Init(counters->GetSubgroup("pool", poolName));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -200,7 +200,8 @@ def setup_disk_agent_config(
         device_erase_method,
         dedicated_disk_agent=False,
         agent_id="localhost",
-        node_type='disk-agent'):
+        node_type='disk-agent',
+        storage_pool_name=None):
 
     config = TDiskAgentConfig()
     config.Enabled = True
@@ -226,6 +227,9 @@ def setup_disk_agent_config(
             arg.DeviceId = device.uuid
             arg.BlockSize = device.block_size
             arg.BlocksCount = device.block_count
+
+        if storage_pool_name is not None:
+            arg.PoolName = storage_pool_name
 
     update_cms_config(kikimr, 'DiskAgentConfig', config, node_type=node_type)
 
@@ -257,6 +261,17 @@ def setup_disk_registry_config(
         nbs_port,
         nbs_client_binary_path):
     tmp_file = tempfile.NamedTemporaryFile(suffix=".nonrepl")
+
+    # configuring rot pool with 1GiB allocation unit (small enough for all
+    # scenarios)
+    tmp_file.write(
+        '''
+        KnownDevicePools <
+            Name: "rot"
+            AllocationUnit: 1073741824
+            Kind: DEVICE_POOL_KIND_GLOBAL
+        >
+        '''.encode("utf8"))
 
     for agent_info in agent_infos:
         tmp_file.write(b'KnownAgents {\n')
@@ -316,7 +331,8 @@ def setup_nonreplicated(
         devices_per_agent,
         device_erase_method=None,
         dedicated_disk_agent=False,
-        agent_count=1):
+        agent_count=1,
+        storage_pool_name=None):
     enable_custom_cms_configs(kikimr_client)
     setup_disk_registry_proxy_config(kikimr_client)
     for i in range(agent_count):
@@ -326,4 +342,5 @@ def setup_nonreplicated(
             device_erase_method,
             dedicated_disk_agent,
             agent_id=make_agent_id(i),
-            node_type=make_agent_node_type(i))
+            node_type=make_agent_node_type(i),
+            storage_pool_name=storage_pool_name)

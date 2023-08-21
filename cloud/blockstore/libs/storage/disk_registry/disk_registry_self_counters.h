@@ -78,6 +78,10 @@ struct TDiskRegistrySelfCounters
     void Init(
         const TVector<TString>& poolNames,
         NMonitoring::TDynamicCountersPtr counters);
+
+    void RegisterPool(
+        const TString& poolName,
+        NMonitoring::TDynamicCountersPtr counters);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
