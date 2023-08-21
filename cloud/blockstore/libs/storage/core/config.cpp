@@ -472,6 +472,14 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
 
 // BLOCKSTORE_DURATION_FEATURES
 
+#define BLOCKSTORE_STRING_FEATURES(xxx)                                        \
+    xxx(SSDSystemChannelPoolKind                                              )\
+    xxx(SSDLogChannelPoolKind                                                 )\
+    xxx(SSDIndexChannelPoolKind                                               )\
+    xxx(SSDFreshChannelPoolKind                                               )\
+
+// BLOCKSTORE_STRING_FEATURES
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -658,7 +666,7 @@ type TStorageConfig::Get##name() const                                         \
 {                                                                              \
     ui64 value = Impl->Control##name;                                          \
     if (!value) value = Impl->StorageServiceConfig.Get##name();                \
-    return value ? ConvertValue<type>(value) : Default##name;        \
+    return value ? ConvertValue<type>(value) : Default##name;                  \
 }                                                                              \
 // BLOCKSTORE_CONFIG_GETTER
 
@@ -731,6 +739,20 @@ TDuration TStorageConfig::Get##name##FeatureValue(                             \
     BLOCKSTORE_DURATION_FEATURES(BLOCKSTORE_DURATION_FEATURE_GETTER)
 
 #undef BLOCKSTORE_DURATION_FEATURE_GETTER
+
+#define BLOCKSTORE_STRING_FEATURE_GETTER(name)                                 \
+TString TStorageConfig::Get##name##FeatureValue(                               \
+    const TString& cloudId,                                                    \
+    const TString& folderId) const                                             \
+{                                                                              \
+    return Impl->FeaturesConfig->GetFeatureValue(cloudId, folderId, #name);    \
+}                                                                              \
+
+// BLOCKSTORE_STRING_FEATURE_GETTER
+
+    BLOCKSTORE_STRING_FEATURES(BLOCKSTORE_STRING_FEATURE_GETTER)
+
+#undef BLOCKSTORE_STRING_FEATURE_GETTER
 
 ui64 GetAllocationUnit(
     const TStorageConfig& config,

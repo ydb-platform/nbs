@@ -303,6 +303,19 @@ public:
         const TString& cloudId,
         const TString& folderId) const;
 
+    TString GetSSDSystemChannelPoolKindFeatureValue(
+        const TString& cloudId,
+        const TString& folderId) const;
+    TString GetSSDLogChannelPoolKindFeatureValue(
+        const TString& cloudId,
+        const TString& folderId) const;
+    TString GetSSDIndexChannelPoolKindFeatureValue(
+        const TString& cloudId,
+        const TString& folderId) const;
+    TString GetSSDFreshChannelPoolKindFeatureValue(
+        const TString& cloudId,
+        const TString& folderId) const;
+
     ui32 GetDefaultTabletVersion() const;
 
     bool GetAcquireNonReplicatedDevices() const;

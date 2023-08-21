@@ -211,7 +211,9 @@ struct TPoolKinds
 
 TPoolKinds GetPoolKinds(
     const TStorageConfig& config,
-    const NCloud::NProto::EStorageMediaKind mediaKind)
+    const NCloud::NProto::EStorageMediaKind mediaKind,
+    const TString& cloudId,
+    const TString& folderId)
 {
     switch (mediaKind) {
         case NCloud::NProto::STORAGE_MEDIA_HDD: {
@@ -226,13 +228,36 @@ TPoolKinds GetPoolKinds(
         }
 
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
+            auto systemChannelPoolKind =
+                config.GetSSDSystemChannelPoolKindFeatureValue(
+                    cloudId, folderId);
+            if (systemChannelPoolKind.Empty()) {
+                systemChannelPoolKind = config.GetSSDSystemChannelPoolKind();
+            }
+            auto logChannelPoolKind =
+                config.GetSSDLogChannelPoolKindFeatureValue(cloudId, folderId);
+            if (logChannelPoolKind.Empty()) {
+                logChannelPoolKind = config.GetSSDLogChannelPoolKind();
+            }
+            auto indexChannelPoolKind =
+                config.GetSSDIndexChannelPoolKindFeatureValue(
+                    cloudId, folderId);
+            if (indexChannelPoolKind.Empty()) {
+                indexChannelPoolKind = config.GetSSDIndexChannelPoolKind();
+            }
+            auto freshChannelPoolKind =
+                config.GetSSDFreshChannelPoolKindFeatureValue(
+                    cloudId, folderId);
+            if (freshChannelPoolKind.Empty()) {
+                freshChannelPoolKind = config.GetSSDFreshChannelPoolKind();
+            }
             return {
-                config.GetSSDSystemChannelPoolKind(),
-                config.GetSSDLogChannelPoolKind(),
-                config.GetSSDIndexChannelPoolKind(),
+                std::move(systemChannelPoolKind),
+                std::move(logChannelPoolKind),
+                std::move(indexChannelPoolKind),
                 config.GetSSDMixedChannelPoolKind(),
                 config.GetSSDMergedChannelPoolKind(),
-                config.GetSSDFreshChannelPoolKind()
+                std::move(freshChannelPoolKind)
             };
         }
 
@@ -261,7 +286,8 @@ void SetExplicitChannelProfiles(
     const NPrivateProto::TVolumeChannelsToPoolsKinds& volumeChannelsToPoolsKinds)
 {
     const auto unit = GetAllocationUnit(config, mediaKind);
-    const auto poolKinds = GetPoolKinds(config, mediaKind);
+    const auto poolKinds = GetPoolKinds(
+        config, mediaKind, volumeConfig.GetCloudId(), volumeConfig.GetFolderId());
     const ui64 freshChannelSize = 128_MB;
 
     AddOrModifyChannel(
@@ -382,7 +408,11 @@ void SetVolumeExplicitChannelProfiles(
     const TStorageConfig& config,
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
-    const auto poolKinds = GetPoolKinds(config, NCloud::NProto::STORAGE_MEDIA_SSD);
+    const auto poolKinds = GetPoolKinds(
+        config,
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+        volumeConfig.GetCloudId(),
+        volumeConfig.GetFolderId());
 
     SetupVolumeChannel(
         poolKinds.System,

@@ -1021,6 +1021,48 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         DoTestExplicitChannelAllocationSettings(*config);
     }
 
+    Y_UNIT_TEST(ShouldGetSSDChannelsFromFeaturesConfig)
+    {
+        NProto::TFeaturesConfig featuresConfig;
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto* feature = featuresConfig.AddFeatures();
+        feature->SetName("SSDLogChannelPoolKind");
+        feature->SetValue("ssdmirror");
+        auto* wl = feature->MutableWhitelist();
+        wl->AddFolderIds("folder_id");
+        wl->AddCloudIds("cloud_id");
+
+        auto config = CreateTestStorageConfig(
+            std::move(storageServiceConfig), std::move(featuresConfig));
+
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        volumeConfig.SetCloudId("cloud_id");
+        volumeConfig.SetFolderId("folder_id");
+        TVolumeParams params;
+        params.BlockSize = DefaultBlockSize;
+        params.BlocksCountPerPartition = 1;
+        params.PartitionsCount = 1;
+        params.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        //System PoolKind of channel should be from StorageConfig
+        CHECK_CHANNEL(
+            0,
+            config->GetSSDSystemChannelPoolKind(),
+            EChannelDataKind::System,
+            128_MB
+        );
+
+        // Log PoolKind should be from FeaturesConfig
+        CHECK_CHANNEL(
+            1,
+            "ssdmirror",
+            EChannelDataKind::Log,
+            128_MB
+        );
+    }
+
     Y_UNIT_TEST(ShouldAddMixedChannels)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
