@@ -464,6 +464,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseRdma)                                                               \
     xxx(ChangeThrottlingPolicy)                                                \
     xxx(ReplaceDevice)                                                         \
+    xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 

@@ -298,6 +298,9 @@ public:
     bool IsReplaceDeviceFeatureEnabled(
         const TString& cloudId,
         const TString& folderId) const;
+    bool IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,

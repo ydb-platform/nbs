@@ -103,6 +103,21 @@ ui32 TCreateVolumeActor::GetBlockSize() const
 
 NCloud::NProto::EStorageMediaKind TCreateVolumeActor::GetStorageMediaKind() const
 {
+    const bool useNonReplicatedHdd =
+        Config->IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
+            Request.GetCloudId(),
+            Request.GetFolderId());
+
+    if (useNonReplicatedHdd) {
+        switch (Request.GetStorageMediaKind()) {
+            case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
+            case NCloud::NProto::STORAGE_MEDIA_HDD:
+            case NCloud::NProto::STORAGE_MEDIA_HYBRID:
+                return NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+            default: break;
+        }
+    }
+
     switch (Request.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
             return NCloud::NProto::STORAGE_MEDIA_HDD;

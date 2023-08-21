@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -467,7 +468,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
-    Y_UNIT_TEST(ShouldSetStoragePoolNameForNonreplicatedHddDisks)
+    Y_UNIT_TEST(ShouldSetStoragePoolNameForNonReplicatedHddDisks)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -510,6 +511,40 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             "", // cloudId
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
         UNIT_ASSERT(detectedCreateVolumeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldCreateNonReplicatedHddInsteadOfReplicatedIfFeatureIsEnabled)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        NProto::TFeaturesConfig featuresConfig;
+        auto* feature = featuresConfig.AddFeatures();
+        feature->SetName("UseNonReplicatedHDDInsteadOfReplicated");
+        auto* whitelist = feature->MutableWhitelist();
+        *whitelist->AddCloudIds() = "cloud_id";
+        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume(
+            "hdd_nrd0",
+            93_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "", // folderId
+            "cloud_id");
+
+        {
+            auto response = service.DescribeVolume("hdd_nrd0");
+            const auto& volume = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::STORAGE_MEDIA_HDD_NONREPLICATED),
+                static_cast<int>(volume.GetStorageMediaKind()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                93_GB / DefaultDeviceBlockCount / DefaultDeviceBlockSize,
+                volume.GetDevices().size());
+        }
     }
 
     Y_UNIT_TEST(ShouldCreateVolumeWithMultiplePartitions)
