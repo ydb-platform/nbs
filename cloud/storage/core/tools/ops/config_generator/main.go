@@ -45,7 +45,6 @@ func getNbsConfigMap() configurator.ConfigMap {
 		"nbs-logbroker.txt":           {Proto: &nbsProto.TLogbrokerConfig{}, FileName: "logbroker.txt"},
 		"nbs-notify.txt":              {Proto: &nbsProto.TNotifyConfig{}, FileName: "notify.txt"},
 		"nbs-disk-registry-proxy.txt": {Proto: &nbsProto.TDiskRegistryProxyConfig{}, FileName: "disk-registry.txt"},
-		"nbs-http-proxy.txt":          {Proto: &nbsProto.THttpProxyConfig{}, FileName: "http-proxy.txt"},
 		"nbs-disk-agent.txt":          {Proto: &nbsProto.TDiskAgentConfig{}, FileName: "disk-agent.txt"},
 		"nbs-disk-registry.txt":       {Proto: &nbsApiProto.TUpdateDiskRegistryConfigRequest{}, FileName: "update-disk-registry.txt"},
 		"nbs-iam.txt":                 {Proto: &coreProto.TIamClientConfig{}, FileName: "iam.txt"},
@@ -63,11 +62,10 @@ func getNbsConfigMap() configurator.ConfigMap {
 
 func getNfsConfigMap() configurator.ConfigMap {
 	return configurator.ConfigMap{
-		"nfs-server.txt":     {Proto: &nfsProto.TServerAppConfig{}, FileName: "server.txt"},
-		"nfs-storage.txt":    {Proto: &nfsProto.TStorageConfig{}, FileName: "storage.txt"},
-		"nfs-diag.txt":       {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
-		"nfs-http-proxy.txt": {Proto: &nfsProto.THttpProxyConfig{}, FileName: "http-proxy.txt"},
-		"nfs-vhost.txt":      {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
+		"nfs-server.txt":  {Proto: &nfsProto.TServerAppConfig{}, FileName: "server.txt"},
+		"nfs-storage.txt": {Proto: &nfsProto.TStorageConfig{}, FileName: "storage.txt"},
+		"nfs-diag.txt":    {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
+		"nfs-vhost.txt":   {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
 
 		// for kikimr initializer configs used custom protobuf files
 		// from cloud/storage/core/tools/common/go/configurator/kikimr-proto
