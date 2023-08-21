@@ -445,7 +445,8 @@ void TVolumeActor::ExecuteAddClient(
 
         db.WriteClient(args.Info);
 
-        if (IsReadWriteMode(args.Info.GetVolumeAccessMode())) {
+        if (HasProtoFlag(args.Info.GetMountFlags(), NProto::MF_FILL) &&
+                IsReadWriteMode(args.Info.GetVolumeAccessMode())) {
             State->UpdateFillSeqNumberInMeta(args.Info.GetFillSeqNumber());
             db.WriteMeta(State->GetMeta());
         }
