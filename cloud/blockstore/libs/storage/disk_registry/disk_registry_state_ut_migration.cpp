@@ -376,6 +376,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(3, state.BuildMigrationList().size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "foo"));
             auto error = state.DeallocateDisk(db, "foo");
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         });
@@ -383,6 +384,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(2, state.BuildMigrationList().size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "bar"));
             auto error = state.DeallocateDisk(db, "bar");
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         });

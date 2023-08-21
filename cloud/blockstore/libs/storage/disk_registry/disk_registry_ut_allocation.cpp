@@ -794,6 +794,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.MarkDiskForCleanup("disk-0");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-0"));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, deallocate("disk-0"));
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, deallocate("disk-1"));
     }
 
     Y_UNIT_TEST(ShouldAwaitSchemaResponseForAlterDisk)

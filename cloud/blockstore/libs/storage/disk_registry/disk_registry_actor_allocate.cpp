@@ -303,32 +303,23 @@ void TDiskRegistryActor::ExecuteRemoveDisk(
     TTransactionContext& tx,
     TTxDiskRegistry::TRemoveDisk& args)
 {
-    if (!State->IsReadyForCleanup(args.DiskId)) {
-        ReportNrdDestructionError();
-
-        args.Error = MakeError(E_INVALID_STATE, TStringBuilder() <<
-            "attempting to clean up unmarked disk");
-
-        return;
-    }
+    Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
     args.Error = State->DeallocateDisk(db, args.DiskId);
-
-    if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "RemoveDisk error: %s. DiskId=%s",
-            FormatError(args.Error).c_str(),
-            args.DiskId.Quote().c_str());
-
-        return;
-    }
 }
 
 void TDiskRegistryActor::CompleteRemoveDisk(
     const TActorContext& ctx,
     TTxDiskRegistry::TRemoveDisk& args)
 {
+    if (HasError(args.Error)) {
+        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            "RemoveDisk error: %s. DiskId=%s",
+            FormatError(args.Error).c_str(),
+            args.DiskId.Quote().c_str());
+    }
+
     auto response = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>();
     *response->Record.MutableError() = args.Error;
 

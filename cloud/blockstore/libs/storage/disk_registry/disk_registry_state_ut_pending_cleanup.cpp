@@ -105,6 +105,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "vol0"));
             auto error = state.DeallocateDisk(db, "vol0");
             UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), S_OK, error);
         });

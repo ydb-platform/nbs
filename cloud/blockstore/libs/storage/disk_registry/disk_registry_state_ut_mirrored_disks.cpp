@@ -154,7 +154,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-1", diskIds[0]);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
         });
 
         group = state.FindPlacementGroup("disk-1/g");
@@ -307,7 +308,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-2", diskIds[0]);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-2");
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-2"));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-2"));
         });
 
         group = state.FindPlacementGroup("disk-2/g");
@@ -423,7 +425,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
         });
     }
 

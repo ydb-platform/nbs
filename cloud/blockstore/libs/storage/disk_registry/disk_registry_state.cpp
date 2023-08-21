@@ -2161,6 +2161,13 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
             "disk " << diskId.Quote() << " not found");
     }
 
+    if (!IsReadyForCleanup(diskId)) {
+        auto message = ReportNrdDestructionError(TStringBuilder()
+            << "attempting to clean up unmarked disk " << diskId.Quote());
+
+        return MakeError(E_INVALID_STATE, std::move(message));
+    }
+
     if (disk->ReplicaCount) {
         const TString groupId = GetMirroredDiskGroupId(diskId);
         TVector<TString> affectedDisks;
