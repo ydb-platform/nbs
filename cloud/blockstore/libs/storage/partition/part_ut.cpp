@@ -2758,7 +2758,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event->Get<TEvStatsService::TEvVolumePartCounters>();
                         const auto& cc = msg->DiskCounters->Cumulative;
                         compactionByBlobCount =
-                            cc.CompactionByBlobCount.Value;
+                            cc.CompactionByBlobCountPerRange.Value;
                         compactionByReadStats = cc.CompactionByReadStats.Value;
                     }
                 }
@@ -3125,7 +3125,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                         const auto& cc = msg->DiskCounters->Cumulative;
                         compactionByBlobCount =
-                            cc.CompactionByBlobCount.Value;
+                            cc.CompactionByBlobCountPerRange.Value;
                         compactionByReadStats = cc.CompactionByReadStats.Value;
                     }
                 }
@@ -3172,6 +3172,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        ui64 compactionByGarbageBlocksPerRange = 0;
+        ui64 compactionByGarbageBlocksPerDisk = 0;
         bool compactionRequestObserved = false;
         runtime->SetObserverFunc(
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
@@ -3181,6 +3183,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
                             compactionRequestObserved = true;
                         }
+                        break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Cumulative;
+                        compactionByGarbageBlocksPerRange =
+                            cc.CompactionByGarbageBlocksPerRange.Value;
+                        compactionByGarbageBlocksPerDisk =
+                            cc.CompactionByGarbageBlocksPerDisk.Value;
                         break;
                     }
                 }
@@ -3231,6 +3243,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         UNIT_ASSERT(compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT(compactionByGarbageBlocksPerDisk > 0);
+        UNIT_ASSERT_EQUAL(0, compactionByGarbageBlocksPerRange);
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyRunGarbageCompactionForSuperDirtyRanges)
@@ -3246,6 +3270,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        ui64 compactionByGarbageBlocksPerRange = 0;
+        ui64 compactionByGarbageBlocksPerDisk = 0;
         bool compactionRequestObserved = false;
         runtime->SetObserverFunc(
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
@@ -3255,6 +3281,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
                             compactionRequestObserved = true;
                         }
+                        break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Cumulative;
+                        compactionByGarbageBlocksPerRange =
+                            cc.CompactionByGarbageBlocksPerRange.Value;
+                        compactionByGarbageBlocksPerDisk =
+                            cc.CompactionByGarbageBlocksPerDisk.Value;
                         break;
                     }
                 }
@@ -3364,6 +3400,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // garbage == 2 * used => compaction
         UNIT_ASSERT(compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_EQUAL(0, compactionByGarbageBlocksPerDisk);
+        UNIT_ASSERT(compactionByGarbageBlocksPerRange > 0);
     }
 
     Y_UNIT_TEST(CompactionShouldTakeCareOfFreshBlocks)
@@ -9603,6 +9651,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        ui64 compactionByBlobCount = 0;
         bool compactionRequestObserved = false;
         runtime->SetObserverFunc(
             [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
@@ -9610,6 +9659,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         compactionRequestObserved = true;
                         break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Cumulative;
+                        compactionByBlobCount =
+                            cc.CompactionByBlobCountPerDisk.Value;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
@@ -9619,6 +9675,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         for (size_t i = 0; i < 6; ++i) {
             partition.WriteBlocks(TBlockRange32(i * 1024, (i + 1) * 1024 - 1), i);
         }
+
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_EQUAL(0, compactionByBlobCount);
 
         // wait for background operations completion
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -9635,6 +9702,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // blob count is greater than threshold on disk => compaction
         UNIT_ASSERT(compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT(0 < compactionByBlobCount);
     }
 }
 

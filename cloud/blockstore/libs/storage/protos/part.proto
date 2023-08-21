@@ -116,7 +116,10 @@ message TPartitionStats
 
     // Compaction reading and blobs count triggers counters
     uint64 CompactionByReadStats = 17;
-    uint64 CompactionByBlobCount = 18;
+    uint64 CompactionByBlobCountPerRange = 18;
+    uint64 CompactionByBlobCountPerDisk = 19;
+    uint64 CompactionByGarbageBlocksPerRange = 20;
+    uint64 CompactionByGarbageBlocksPerDisk = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

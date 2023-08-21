@@ -70,8 +70,11 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(ThrottlerSkippedRequests,    __VA_ARGS__)                              \
     xxx(UncompressedWrite_Throughput,__VA_ARGS__)                              \
     xxx(CompressedWrite_Throughput,  __VA_ARGS__)                              \
-    xxx(CompactionByReadStats_Throughput, __VA_ARGS__)                         \
-    xxx(CompactionByBlobCount_Throughput, __VA_ARGS__)                         \
+    xxx(CompactionByReadStats_Throughput,             __VA_ARGS__)             \
+    xxx(CompactionByBlobCountPerRange_Throughput,     __VA_ARGS__)             \
+    xxx(CompactionByBlobCountPerDisk_Throughput,      __VA_ARGS__)             \
+    xxx(CompactionByGarbageBlocksPerRange_Throughput, __VA_ARGS__)             \
+    xxx(CompactionByGarbageBlocksPerDisk_Throughput,  __VA_ARGS__)             \
 // YDB_CUMULATIVE_COUNTERS
 
 #define YDB_DEFINE_CUMULATIVE_COUNTER(name, ...)                               \

@@ -1026,6 +1026,9 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
                 // really not enough garbage in this range, see NBS-1045
                 return;
             }
+            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(1);
+        } else {
+            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
         }
 
         mode = TEvPartitionPrivate::GarbageCompaction;
@@ -1035,10 +1038,12 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     State->GetCompactionState().SetStatus(EOperationStatus::Enqueued);
 
-    if (mode != TEvPartitionPrivate::GarbageCompaction) {
+    if (topRange.Stat.CompactionScore.Score <= 0 && diskBlobCountOverThreshold) {
+        PartCounters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
+    } else if (mode != TEvPartitionPrivate::GarbageCompaction) {
         switch (topRange.Stat.CompactionScore.Type) {
             case TCompactionScore::EType::BlobCount: {
-                PartCounters->Cumulative.CompactionByBlobCount.Increment(1);
+                PartCounters->Cumulative.CompactionByBlobCountPerRange.Increment(1);
                 break;
             }
             case TCompactionScore::EType::Read: {

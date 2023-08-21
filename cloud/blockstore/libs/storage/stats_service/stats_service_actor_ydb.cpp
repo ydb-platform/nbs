@@ -136,10 +136,16 @@ NYdbStats::TYdbRow BuildStatsForUpload(
         BLOCKSTORE_CUMULATIVE_COUNTER(UncompressedBytesWritten);
     out.CompressedWrite_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(CompressedBytesWritten);
-    out.CompactionByBlobCount_Throughput =
-        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByBlobCount);
     out.CompactionByReadStats_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByReadStats);
+    out.CompactionByBlobCountPerRange_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByBlobCountPerRange);
+    out.CompactionByBlobCountPerDisk_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByBlobCountPerDisk);
+    out.CompactionByGarbageBlocksPerRange_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByGarbageBlocksPerRange);
+    out.CompactionByGarbageBlocksPerDisk_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByGarbageBlocksPerDisk);
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
