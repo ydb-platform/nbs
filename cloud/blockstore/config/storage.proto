@@ -287,7 +287,7 @@ message TStorageServiceConfig
     // Blob size limit in bytes.
     optional uint32 MaxBlobSize = 104;
 
-    // Size of allocation unit for non-replicated SSD drives (in Gb).
+    // Size of allocation unit for non-replicated SSD drives (in GiB).
     optional uint32 AllocationUnitNonReplicatedSSD = 105;
 
     // Performance per allocation unit for nonreplicated volumes.
@@ -606,7 +606,7 @@ message TStorageServiceConfig
     // Maximum number of compaction ranges to cache for partition v1 network-ssd.
     optional uint32 MixedIndexCacheV1SizeSSD = 229;
 
-    // Size of allocation unit for mirror2 SSD drives (in Gb).
+    // Size of allocation unit for mirror2 SSD drives (in GiB).
     optional uint32 AllocationUnitMirror2SSD = 230;
 
     // Performance per allocation unit for mirror2 volumes.
@@ -650,7 +650,7 @@ message TStorageServiceConfig
     // Initial pull timeout for preempted volumes.
     optional uint32 InitialPullDelay = 249;
 
-    // Size of allocation unit for local SSD (in Gb).
+    // Size of allocation unit for local SSD (in GiB).
     // optional uint32 AllocationUnitLocalSSD = 250; // obsolete
 
     // Rdma port @ DiskAgent.
@@ -659,7 +659,7 @@ message TStorageServiceConfig
     // Use rdma for main NRD datapath.
     optional bool UseNonreplicatedRdmaActor = 252;
 
-    // Size of allocation unit for mirror3 SSD drives (in Gb).
+    // Size of allocation unit for mirror3 SSD drives (in GiB).
     optional uint32 AllocationUnitMirror3SSD = 253;
 
     // Performance per allocation unit for mirror3 volumes.
@@ -832,7 +832,7 @@ message TStorageServiceConfig
     // Cleanup interval for disk registry param overrides for agents.
     optional uint32 AgentListExpiredParamsCleanupInterval = 316;
 
-    // Size of allocation unit for non-replicated HDD drives (in Gb).
+    // Size of allocation unit for non-replicated HDD drives (in GiB).
     optional uint32 AllocationUnitNonReplicatedHDD = 317;
 
     // Performance per allocation unit for nonreplicated volumes.
