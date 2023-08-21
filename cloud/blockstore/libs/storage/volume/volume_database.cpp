@@ -587,10 +587,10 @@ bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
 }
 
 
-///////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeDatabase::WriteVolumeParams(
-    const TVector<TVolumeParamsValue>& volumeParams)
+    const TVector<TRuntimeVolumeParamsValue>& volumeParams)
 {
     using TTable = TVolumeSchema::VolumeParams;
 
@@ -599,8 +599,8 @@ void TVolumeDatabase::WriteVolumeParams(
             .Key(param.Key)
             .Update(
                 NIceDb::TUpdate<TTable::Value>(param.Value),
-                NIceDb::TUpdate<TTable::ValidUntil>(param.ValidUntil.MicroSeconds())
-            );
+                NIceDb::TUpdate<TTable::ValidUntil>(
+                    param.ValidUntil.MicroSeconds()));
     }
 }
 
@@ -615,7 +615,9 @@ void TVolumeDatabase::DeleteVolumeParams(const TVector<TString>& keys)
     }
 }
 
-bool TVolumeDatabase::ReadVolumeParams(TVector<TVolumeParamsValue>& volumeParams) {
+bool TVolumeDatabase::ReadVolumeParams(
+    TVector<TRuntimeVolumeParamsValue>& volumeParams)
+{
     using TTable = TVolumeSchema::VolumeParams;
 
     volumeParams.clear();

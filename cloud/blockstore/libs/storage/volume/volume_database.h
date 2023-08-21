@@ -135,9 +135,10 @@ public:
     // VolumeParams
     //
 
-    void WriteVolumeParams(const TVector<TVolumeParamsValue>& volumeParams);
+    void WriteVolumeParams(
+        const TVector<TRuntimeVolumeParamsValue>& volumeParams);
     void DeleteVolumeParams(const TVector<TString>& keys);
-    bool ReadVolumeParams(TVector<TVolumeParamsValue>& volumeParams);
+    bool ReadVolumeParams(TVector<TRuntimeVolumeParamsValue>& volumeParams);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

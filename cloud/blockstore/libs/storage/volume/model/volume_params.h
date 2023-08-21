@@ -11,19 +11,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumeParamsValue
+struct TRuntimeVolumeParamsValue
 {
     TString Key;
     TString Value;
     TInstant ValidUntil;
 };
 
-class TVolumeParams
+class TRuntimeVolumeParams
 {
 public:
-    TVolumeParams(TVector<TVolumeParamsValue> volumeParams);
+    TRuntimeVolumeParams(TVector<TRuntimeVolumeParamsValue> volumeParams);
 
-    void Merge(THashMap<TString, TVolumeParamsValue> volumeParams);
+    void Merge(THashMap<TString, TRuntimeVolumeParamsValue> volumeParams);
 
     // removes and returns expired keys
     TVector<TString> ExtractExpiredKeys(const TInstant& now);
@@ -32,7 +32,7 @@ public:
     TDuration GetMaxTimedOutDeviceStateDurationOverride(const TInstant& now) const;
 
 private:
-    THashMap<TString, TVolumeParamsValue> VolumeParams;
+    THashMap<TString, TRuntimeVolumeParamsValue> VolumeParams;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

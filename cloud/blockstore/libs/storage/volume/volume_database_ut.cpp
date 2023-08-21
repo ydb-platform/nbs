@@ -11,9 +11,15 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-bool operator==(const TVolumeParamsValue& lhs, const TVolumeParamsValue& rhs)
+////////////////////////////////////////////////////////////////////////////////
+
+bool operator==(
+    const TRuntimeVolumeParamsValue& lhs,
+    const TRuntimeVolumeParamsValue& rhs)
 {
-    return lhs.Key == rhs.Key && lhs.Value == rhs.Value && lhs.ValidUntil == rhs.ValidUntil;
+    return lhs.Key == rhs.Key
+        && lhs.Value == rhs.Value
+        && lhs.ValidUntil == rhs.ValidUntil;
 }
 
 namespace {
@@ -1020,8 +1026,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         const TInstant validUntilOld = TInstant::MicroSeconds(100);
         const TInstant validUntilNew = TInstant::MicroSeconds(200);
 
-        const auto paramVecToMap = [](const TVector<TVolumeParamsValue>& params) {
-            THashMap<TString, TVolumeParamsValue> map;
+        const auto paramVecToMap = [](const TVector<TRuntimeVolumeParamsValue>& params) {
+            THashMap<TString, TRuntimeVolumeParamsValue> map;
             for (const auto& param: params) {
                 map.try_emplace(param.Key, param);
             }
@@ -1041,7 +1047,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             });
         });
 
-        TVector<TVolumeParamsValue> volumeParams;
+        TVector<TRuntimeVolumeParamsValue> volumeParams;
         executor.ReadTx([&] (TVolumeDatabase db) {
             UNIT_ASSERT(db.ReadVolumeParams(volumeParams));
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1092,9 +1098,9 @@ void Out<NCloud::NBlockStore::NStorage::THistoryLogKey>(
 }
 
 template <>
-void Out<NCloud::NBlockStore::NStorage::TVolumeParamsValue>(
+void Out<NCloud::NBlockStore::NStorage::TRuntimeVolumeParamsValue>(
     IOutputStream& out,
-    const NCloud::NBlockStore::NStorage::TVolumeParamsValue& value)
+    const NCloud::NBlockStore::NStorage::TRuntimeVolumeParamsValue& value)
 {
     out << '{'
         << "Key: " << value.Key << ", "

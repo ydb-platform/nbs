@@ -89,7 +89,7 @@ TVolumeState::TVolumeState(
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
-        TVector<TVolumeParamsValue> volumeParams,
+        TVector<TRuntimeVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
         TDeque<THistoryLogItem> history,
@@ -135,12 +135,12 @@ TVolumeState::TVolumeState(
     }
 }
 
-const TVolumeParams& TVolumeState::GetVolumeParams() const
+const TRuntimeVolumeParams& TVolumeState::GetVolumeParams() const
 {
     return VolumeParams;
 }
 
-TVolumeParams& TVolumeState::GetVolumeParams()
+TRuntimeVolumeParams& TVolumeState::GetVolumeParams()
 {
     return VolumeParams;
 }

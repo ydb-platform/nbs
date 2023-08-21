@@ -69,7 +69,7 @@ struct TTxVolume
 
         TMaybe<NProto::TVolumeMeta> Meta;
         TVector<TVolumeMetaHistoryItem> MetaHistory;
-        TVector<TVolumeParamsValue> VolumeParams;
+        TVector<TRuntimeVolumeParamsValue> VolumeParams;
         TMaybe<bool> StartPartitionsNeeded;
         THashMap<TString, TVolumeClientState> Clients;
         ui64 MountSeqNumber;
@@ -572,11 +572,11 @@ struct TTxVolume
     struct TUpdateVolumeParams
     {
         const TRequestInfoPtr RequestInfo;
-        const THashMap<TString, TVolumeParamsValue> VolumeParams;
+        const THashMap<TString, TRuntimeVolumeParamsValue> VolumeParams;
 
         TUpdateVolumeParams(
                 TRequestInfoPtr requestInfo,
-                THashMap<TString, TVolumeParamsValue> volumeParams)
+                THashMap<TString, TRuntimeVolumeParamsValue> volumeParams)
             : RequestInfo(std::move(requestInfo))
             , VolumeParams(std::move(volumeParams))
         {}

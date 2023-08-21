@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TVolumeParamsTest)
+Y_UNIT_TEST_SUITE(TRuntimeVolumeParamsTest)
 {
     Y_UNIT_TEST(MaxTimedOutDeviceStateDurationOverrideValue)
     {
@@ -63,7 +63,7 @@ Y_UNIT_TEST_SUITE(TVolumeParamsTest)
         const auto performTest = [&](const auto& testParam) {
             Cerr << "Test id: " << testParam.Id << "\n";
 
-            TVolumeParams params{{{
+            TRuntimeVolumeParams params{{{
                 .Key = testParam.Key,
                 .Value = testParam.Value,
                 .ValidUntil = testParam.ValidUntil,
@@ -83,7 +83,7 @@ Y_UNIT_TEST_SUITE(TVolumeParamsTest)
     {
         struct TTestParam
         {
-            TVector<TVolumeParamsValue> ParamValues;
+            TVector<TRuntimeVolumeParamsValue> ParamValues;
             TMaybe<TDuration> ExpectedDelay;
             TString Id;
         };
@@ -134,7 +134,7 @@ Y_UNIT_TEST_SUITE(TVolumeParamsTest)
         const auto performTest = [&](const auto& testParam) {
             Cerr << "Test id: " << testParam.Id << "\n";;
 
-            TVolumeParams params(testParam.ParamValues);
+            TRuntimeVolumeParams params(testParam.ParamValues);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 testParam.ExpectedDelay,

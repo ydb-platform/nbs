@@ -5,7 +5,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeParams::TVolumeParams(TVector<TVolumeParamsValue> volumeParams)
+TRuntimeVolumeParams::TRuntimeVolumeParams(
+    TVector<TRuntimeVolumeParamsValue> volumeParams)
 {
     for (auto& value: volumeParams) {
         auto key = value.Key;
@@ -13,14 +14,15 @@ TVolumeParams::TVolumeParams(TVector<TVolumeParamsValue> volumeParams)
     }
 }
 
-void TVolumeParams::Merge(THashMap<TString, TVolumeParamsValue> volumeParams)
+void TRuntimeVolumeParams::Merge(
+    THashMap<TString, TRuntimeVolumeParamsValue> volumeParams)
 {
     for (auto& [key, param]: volumeParams) {
         VolumeParams.insert_or_assign(std::move(key), std::move(param));
     }
 }
 
-TVector<TString> TVolumeParams::ExtractExpiredKeys(const TInstant& now)
+TVector<TString> TRuntimeVolumeParams::ExtractExpiredKeys(const TInstant& now)
 {
     TVector<TString> keys;
     for (const auto& [key, param]: VolumeParams) {
@@ -35,7 +37,8 @@ TVector<TString> TVolumeParams::ExtractExpiredKeys(const TInstant& now)
     return keys;
 }
 
-TMaybe<TDuration> TVolumeParams::GetNextExpirationDelay(const TInstant& now) const
+TMaybe<TDuration> TRuntimeVolumeParams::GetNextExpirationDelay(
+    const TInstant& now) const
 {
     if (VolumeParams.empty()) {
         return Nothing();
@@ -52,7 +55,8 @@ TMaybe<TDuration> TVolumeParams::GetNextExpirationDelay(const TInstant& now) con
     return minTime <= now ? defaultDelay : minTime - now;
 }
 
-TDuration TVolumeParams::GetMaxTimedOutDeviceStateDurationOverride(const TInstant& now) const
+TDuration TRuntimeVolumeParams::GetMaxTimedOutDeviceStateDurationOverride(
+    const TInstant& now) const
 {
     const auto* maxTimeoutParam = VolumeParams.FindPtr(
         "max-timed-out-device-state-duration");

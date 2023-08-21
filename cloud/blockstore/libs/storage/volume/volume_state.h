@@ -104,7 +104,7 @@ private:
     NProto::TVolumeMeta Meta;
     TVector<TVolumeMetaHistoryItem> MetaHistory;
     const NProto::TPartitionConfig* Config;
-    TVolumeParams VolumeParams;
+    TRuntimeVolumeParams VolumeParams;
     ui64 BlockCount = 0;
 
     TPartitionInfoList Partitions;
@@ -156,7 +156,7 @@ public:
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
-        TVector<TVolumeParamsValue> volumeParams,
+        TVector<TRuntimeVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
         TDeque<THistoryLogItem> history,
@@ -173,9 +173,9 @@ public:
         return MetaHistory;
     }
 
-    const TVolumeParams& GetVolumeParams() const;
+    const TRuntimeVolumeParams& GetVolumeParams() const;
 
-    TVolumeParams& GetVolumeParams();
+    TRuntimeVolumeParams& GetVolumeParams();
 
     void UpdateMigrationIndexInMeta(ui64 migrationIndex)
     {

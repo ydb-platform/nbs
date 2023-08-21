@@ -31,12 +31,14 @@ void TVolumeActor::HandleUpdateVolumeParams(
 
     auto* msg = ev->Get();
 
-    THashMap<TString, TVolumeParamsValue> volumeParams;
+    THashMap<TString, TRuntimeVolumeParamsValue> volumeParams;
     for (const auto& [key, param]: msg->Record.GetVolumeParams()) {
-        const auto ttl = param.HasTtlMs() ? TDuration::MilliSeconds(param.GetTtlMs()) : TDuration::Minutes(15);
+        const auto ttl = param.HasTtlMs()
+            ? TDuration::MilliSeconds(param.GetTtlMs())
+            : TDuration::Minutes(15);
         volumeParams.try_emplace(
             key,
-            TVolumeParamsValue{
+            TRuntimeVolumeParamsValue{
                 key,
                 param.GetValue(),
                 ctx.Now() + ttl
@@ -105,7 +107,7 @@ void TVolumeActor::ExecuteUpdateVolumeParams(
     // from different transactions simultaneously, but we accept that risk.
     State->GetVolumeParams().Merge(args.VolumeParams);
 
-    TVector<TVolumeParamsValue> volumeParamsVec;
+    TVector<TRuntimeVolumeParamsValue> volumeParamsVec;
     for (const auto& [key, value]: args.VolumeParams) {
         volumeParamsVec.emplace_back(value);
     }
