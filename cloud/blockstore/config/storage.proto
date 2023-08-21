@@ -829,5 +829,22 @@ message TStorageServiceConfig
     optional uint32 SSDMaxBlobsPerUnit = 314;
     optional uint32 HDDMaxBlobsPerUnit = 315;
 
+    // Cleanup interval for disk registry param overrides for agents.
     optional uint32 AgentListExpiredParamsCleanupInterval = 316;
+
+    // Size of allocation unit for non-replicated HDD drives (in Gb).
+    optional uint32 AllocationUnitNonReplicatedHDD = 317;
+
+    // Performance per allocation unit for nonreplicated volumes.
+    optional uint32 NonReplicatedHDDUnitReadBandwidth = 318;    // in MiB/s
+    optional uint32 NonReplicatedHDDUnitWriteBandwidth = 319;   // in MiB/s
+    optional uint32 NonReplicatedHDDMaxReadBandwidth = 320;     // in MiB/s
+    optional uint32 NonReplicatedHDDMaxWriteBandwidth = 321;    // in MiB/s
+    optional uint32 NonReplicatedHDDUnitReadIops = 322;
+    optional uint32 NonReplicatedHDDUnitWriteIops = 323;
+    optional uint32 NonReplicatedHDDMaxReadIops = 324;
+    optional uint32 NonReplicatedHDDMaxWriteIops = 325;
+
+    // DiskRegistry/Agent pool name to use for nonreplicated hdd disks.
+    optional string NonReplicatedHDDPoolName = 326;
 }

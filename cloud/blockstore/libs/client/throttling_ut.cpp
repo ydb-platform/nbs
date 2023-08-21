@@ -476,6 +476,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 performanceProfile.GetNonreplProfile().GetMaxReadIops(),
                 performanceProfile.GetNonreplProfile().GetMaxReadBandwidth())
         );
+        // TODO: STORAGE_MEDIA_HDD_NONREPLICATED
 
 #undef DO_TEST
     }

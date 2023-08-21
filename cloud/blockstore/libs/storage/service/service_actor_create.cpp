@@ -207,6 +207,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
 
     config.SetPlacementGroupId(Request.GetPlacementGroupId());
     config.SetPlacementPartitionIndex(Request.GetPlacementPartitionIndex());
+    // TODO: SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
     config.SetStoragePoolName(Request.GetStoragePoolName());
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 

@@ -29,7 +29,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const auto* msg = ev->Get();
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
-    auto encryptedNonreplicatedVolume =
+    auto encryptedDiskRegistryBasedVolume =
         IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind()) &&
         volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
 
@@ -43,7 +43,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
-                encryptedNonreplicatedVolume,
+                encryptedDiskRegistryBasedVolume,
                 volumeRequestId,
                 partActorId,
                 TabletID(),
@@ -55,7 +55,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
     if constexpr (IsReadMethod<TMethod>) {
         if (State->GetMaskUnusedBlocks() && State->GetUsedBlocks() ||
-            encryptedNonreplicatedVolume)
+            encryptedDiskRegistryBasedVolume)
         {
             THashSet<ui64> unusedIndices;
 
@@ -74,7 +74,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     std::move(msg->Record),
                     std::move(unusedIndices),
                     State->GetMaskUnusedBlocks(),
-                    encryptedNonreplicatedVolume,
+                    encryptedDiskRegistryBasedVolume,
                     partActorId,
                     TabletID(),
                     SelfId());

@@ -131,6 +131,7 @@ private:
     TDynamicCounterPtr Hdd;
     TDynamicCounterPtr Ssd;
     TDynamicCounterPtr SsdNonrepl;
+    TDynamicCounterPtr HddNonrepl;
     TDynamicCounterPtr SsdMirror2;
     TDynamicCounterPtr SsdMirror3;
     TDynamicCounterPtr SsdLocal;

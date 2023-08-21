@@ -151,9 +151,14 @@ private:
             volumeDescr.SetName(ToString(path));
 
             auto& config = *volumeDescr.MutableVolumeConfig();
-            if (path.StartsWith("nonrepl-") || path.StartsWith("mirror")) {
+            if (path.StartsWith("nonrepl-")
+                    || path.StartsWith("hdd-nonrepl-")
+                    || path.StartsWith("mirror"))
+            {
                 config.SetStorageMediaKind(path.StartsWith("nonrepl-")
                     ? NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+                    : path.StartsWith("hdd-nonrepl-")
+                    ? NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
                     : path.StartsWith("mirror2-")
                     ? NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
                     : NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);

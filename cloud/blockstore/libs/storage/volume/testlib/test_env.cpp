@@ -1,5 +1,7 @@
 #include "test_env.h"
 
+#include <cloud/storage/core/libs/common/media.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -198,7 +200,7 @@ std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdat
     volumeConfig.SetPerformanceProfileMaxPostponedWeight(maxPostponedWeight);
     volumeConfig.SetPerformanceProfileThrottlingEnabled(throttlingEnabled);
 
-    if (mediaKind != NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED) {
+    if (!IsDiskRegistryMediaKind(mediaKind)) {
         for (ui32 i = 0; i < partitionCount; ++i) {
             auto* part = request->Record.AddPartitions();
             part->SetPartitionId(i);

@@ -321,6 +321,7 @@ void TDiskRegistryState::AllowNotifications(
     }
 
     if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_NONREPLICATED ||
+        disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED ||
         disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL)
     {
         NotificationSystem.AllowNotifications(diskId);

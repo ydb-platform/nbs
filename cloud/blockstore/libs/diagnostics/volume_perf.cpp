@@ -26,6 +26,9 @@ TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
             return diagnosticsConfig->GetNonreplPerfSettings();
         }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            return diagnosticsConfig->GetHddNonreplPerfSettings();
+        }
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
             return diagnosticsConfig->GetMirror2PerfSettings();
         }
@@ -219,6 +222,11 @@ void TSufferCounters::PublishCounters()
         SsdNonrepl,
         "ssd_nonrepl",
         RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED]);
+
+    total += UpdateCounter(
+        HddNonrepl,
+        "hdd_nonrepl",
+        RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED]);
 
     total += UpdateCounter(
         SsdMirror2,

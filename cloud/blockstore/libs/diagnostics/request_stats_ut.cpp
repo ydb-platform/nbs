@@ -88,6 +88,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             ->GetSubgroup("request", "WriteBlocks");
         auto ssdNonreplCount = ssdNonreplCounters->GetCounter("Count");
 
+        auto hddNonreplCounters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("type", "hdd_nonrepl")
+            ->GetSubgroup("request", "WriteBlocks");
+        auto hddNonreplCount = hddNonreplCounters->GetCounter("Count");
+
         auto ssdMirror2Counters = monitoring
             ->GetCounters()
             ->GetSubgroup("type", "ssd_mirror2")
@@ -104,6 +110,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         UNIT_ASSERT_EQUAL(ssdCount->Val(), 0);
         UNIT_ASSERT_EQUAL(hddCount->Val(), 0);
         UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 0);
+        UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 0);
         UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 0);
         UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 0);
 
@@ -120,6 +127,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
             UNIT_ASSERT_EQUAL(hddCount->Val(), 0);
             UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 0);
+            UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 0);
             UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 0);
             UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 0);
         }
@@ -137,6 +145,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
             UNIT_ASSERT_EQUAL(hddCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 0);
+            UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 0);
             UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 0);
             UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 0);
         }
@@ -154,6 +163,25 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
             UNIT_ASSERT_EQUAL(hddCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 1);
+            UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 0);
+            UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 0);
+            UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 0);
+        }
+
+        {
+            AddRequestStats(
+                *requestStats,
+                NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                EBlockStoreRequest::WriteBlocks,
+            {
+                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
+            });
+
+            UNIT_ASSERT_EQUAL(totalCount->Val(), 4);
+            UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
+            UNIT_ASSERT_EQUAL(hddCount->Val(), 1);
+            UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 1);
+            UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 0);
             UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 0);
         }
@@ -167,10 +195,11 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
             });
 
-            UNIT_ASSERT_EQUAL(totalCount->Val(), 4);
+            UNIT_ASSERT_EQUAL(totalCount->Val(), 5);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
             UNIT_ASSERT_EQUAL(hddCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 1);
+            UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 0);
         }
@@ -184,10 +213,11 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
             });
 
-            UNIT_ASSERT_EQUAL(totalCount->Val(), 5);
+            UNIT_ASSERT_EQUAL(totalCount->Val(), 6);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
             UNIT_ASSERT_EQUAL(hddCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdNonreplCount->Val(), 1);
+            UNIT_ASSERT_EQUAL(hddNonreplCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdMirror2Count->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdMirror3Count->Val(), 1);
         }
@@ -222,6 +252,11 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto ssdNonreplCounters = monitoring
             ->GetCounters()
             ->GetSubgroup("type", "ssd_nonrepl")
+            ->GetSubgroup("request", "WriteBlocks");
+
+        auto hddNonreplCounters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("type", "hdd_nonrepl")
             ->GetSubgroup("request", "WriteBlocks");
 
         AddRequestStats(
@@ -421,6 +456,11 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             ->GetSubgroup("type", "ssd_nonrepl")
             ->GetSubgroup("request", "WriteBlocks");
 
+        auto hddNonreplCounters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("type", "hdd_nonrepl")
+            ->GetSubgroup("request", "WriteBlocks");
+
         auto shoot = [&] (auto mediaKind) {
             auto requestStarted = requestStats->RequestStarted(
                 mediaKind,
@@ -443,16 +483,19 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD);
         shoot(NCloud::NProto::STORAGE_MEDIA_HDD);
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        shoot(NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
 
         auto totalErrors = totalCounters->GetCounter("Errors/Silent");
         auto ssdErrors = ssdCounters->GetCounter("Errors/Silent");
         auto hddErrors = hddCounters->GetCounter("Errors/Silent");
         auto ssdNonreplErrors = ssdNonreplCounters->GetCounter("Errors/Silent");
+        auto hddNonreplErrors = hddNonreplCounters->GetCounter("Errors/Silent");
 
-        UNIT_ASSERT_VALUES_EQUAL(3, totalErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, totalErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, hddErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, hddNonreplErrors->Val());
     }
 
     Y_UNIT_TEST(ShouldTrackHwProblems)
@@ -487,6 +530,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         };
 
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED, 1);
+        shoot(NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED, 8);
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD, 5);
         shoot(NCloud::NProto::STORAGE_MEDIA_HDD, 4);
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL, 7);
@@ -506,6 +550,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, getHwProblems("hdd"));
         UNIT_ASSERT_VALUES_EQUAL(0, getHwProblems("ssd"));
         UNIT_ASSERT_VALUES_EQUAL(1, getHwProblems("ssd_nonrepl"));
+        UNIT_ASSERT_VALUES_EQUAL(8, getHwProblems("hdd_nonrepl"));
         UNIT_ASSERT_VALUES_EQUAL(7, getHwProblems("ssd_local"));
         UNIT_ASSERT_VALUES_EQUAL(2, getHwProblems("ssd_mirror2"));
         UNIT_ASSERT_VALUES_EQUAL(3, getHwProblems("ssd_mirror3"));

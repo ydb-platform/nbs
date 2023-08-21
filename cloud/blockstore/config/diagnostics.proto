@@ -170,4 +170,12 @@ message TDiagnosticsConfig
 
     // We will report suffering disks from these clouds in a separate metric.
     repeated string CloudIdsWithStrictSLA = 44;
+
+    // Request duration after which it should show up in max
+    // request time alert. Thresholds are for different media kinds.
+    // Measured in milliseconds.
+    optional uint32 NonreplicatedHDDDowntimeThreshold = 45;
+
+    // Performance measurements coefficients for HDD NRD.
+    optional TVolumePerfSettings HddNonreplPerfSettings = 46;
 }

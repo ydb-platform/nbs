@@ -344,6 +344,18 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
                 return;
             }
 
+            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+                    && size % (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB) != 0)
+            {
+                Error = MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "volume size should be divisible by "
+                        << (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB)
+                );
+                ReplyAndDie(ctx);
+                return;
+            }
+
             if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
                     && size % (Config->GetAllocationUnitMirror2SSD() * 1_GB) != 0)
             {

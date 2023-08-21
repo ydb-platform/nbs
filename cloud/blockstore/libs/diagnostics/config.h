@@ -100,6 +100,7 @@ public:
     TVolumePerfSettings GetSsdPerfSettings() const;
     TVolumePerfSettings GetHddPerfSettings() const;
     TVolumePerfSettings GetNonreplPerfSettings() const;
+    TVolumePerfSettings GetHddNonreplPerfSettings() const;
     TVolumePerfSettings GetMirror2PerfSettings() const;
     TVolumePerfSettings GetMirror3PerfSettings() const;
     TVolumePerfSettings GetLocalSSDPerfSettings() const;
@@ -115,6 +116,7 @@ public:
     TDuration GetSSDDowntimeThreshold() const;
     TDuration GetHDDDowntimeThreshold() const;
     TDuration GetNonreplicatedSSDDowntimeThreshold() const;
+    TDuration GetNonreplicatedHDDDowntimeThreshold() const;
     TDuration GetMirror3SSDDowntimeThreshold() const;
     TDuration GetMirror2SSDDowntimeThreshold() const;
     TDuration GetLocalSSDDowntimeThreshold() const;

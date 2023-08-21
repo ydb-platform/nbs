@@ -85,6 +85,7 @@ TDuration MSeconds(ui32 value)
     xxx(MaxHDDGroupReadIops,           ui64,         292                      )\
     xxx(MaxHDDGroupReadBandwidth,      ui64,         66 * 1024 * 1024         )\
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
+    xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
     xxx(TabletBootInfoBackupFilePath,   TString,     ""                       )\
     xxx(PathDescriptionBackupFilePath,  TString,     ""                       )\
@@ -227,6 +228,16 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedSSDUnitWriteIops,      ui32,      5600                   )\
     xxx(NonReplicatedSSDMaxReadIops,        ui32,      75000                  )\
     xxx(NonReplicatedSSDMaxWriteIops,       ui32,      75000                  )\
+                                                                               \
+    xxx(AllocationUnitNonReplicatedHDD,     ui32,      93                     )\
+    xxx(NonReplicatedHDDUnitReadBandwidth,  ui32,      2                      )\
+    xxx(NonReplicatedHDDUnitWriteBandwidth, ui32,      2                      )\
+    xxx(NonReplicatedHDDMaxReadBandwidth,   ui32,      200                    )\
+    xxx(NonReplicatedHDDMaxWriteBandwidth,  ui32,      200                    )\
+    xxx(NonReplicatedHDDUnitReadIops,       ui32,      2                      )\
+    xxx(NonReplicatedHDDUnitWriteIops,      ui32,      10                     )\
+    xxx(NonReplicatedHDDMaxReadIops,        ui32,      200                    )\
+    xxx(NonReplicatedHDDMaxWriteIops,       ui32,      1000                   )\
                                                                                \
     xxx(AllocationUnitMirror2SSD,      ui32,      93                          )\
     xxx(Mirror2SSDUnitReadBandwidth,   ui32,      110                         )\
@@ -735,6 +746,10 @@ ui64 GetAllocationUnit(
 
         case STORAGE_MEDIA_SSD_NONREPLICATED:
             unit = config.GetAllocationUnitNonReplicatedSSD() * 1_GB;
+            break;
+
+        case STORAGE_MEDIA_HDD_NONREPLICATED:
+            unit = config.GetAllocationUnitNonReplicatedHDD() * 1_GB;
             break;
 
         case STORAGE_MEDIA_SSD_MIRROR2:

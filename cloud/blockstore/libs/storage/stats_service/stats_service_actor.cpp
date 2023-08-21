@@ -53,6 +53,7 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     auto hddCounters = totalCounters->GetSubgroup("type", "hdd");
     auto ssdCounters = totalCounters->GetSubgroup("type", "ssd");
     auto ssdNonreplCounters = totalCounters->GetSubgroup("type", "ssd_nonrepl");
+    auto hddNonreplCounters = totalCounters->GetSubgroup("type", "hdd_nonrepl");
     auto ssdMirror2Counters = totalCounters->GetSubgroup("type", "ssd_mirror2");
     auto ssdMirror3Counters = totalCounters->GetSubgroup("type", "ssd_mirror3");
     auto ssdSystemCounters = totalCounters->GetSubgroup("type", "ssd_system");
@@ -64,6 +65,7 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     State.GetHddCounters().Register(hddCounters);
     State.GetSsdCounters().Register(ssdCounters);
     State.GetSsdNonreplCounters().Register(ssdNonreplCounters);
+    State.GetHddNonreplCounters().Register(hddNonreplCounters);
     State.GetSsdMirror2Counters().Register(ssdMirror2Counters);
     State.GetSsdMirror3Counters().Register(ssdMirror3Counters);
     State.GetSsdSystemCounters().Register(ssdSystemCounters);

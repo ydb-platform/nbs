@@ -27,6 +27,8 @@ namespace {
                 return config.GetSSD ## paramName();                           \
             case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:              \
                 return config.GetNonReplicatedSSD ## paramName();              \
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:              \
+                return config.GetNonReplicatedHDD ## paramName();              \
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:                    \
                 return config.GetMirror2SSD ## paramName();                    \
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:                    \
@@ -115,6 +117,7 @@ bool GetThrottlingEnabled(
             return config.GetThrottlingEnabledSSD();
 
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED:
+        case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR2:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR3:
             return true;
@@ -134,6 +137,7 @@ auto GetThrottlingBoostUnits(
 
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_LOCAL:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED:
+        case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR2:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR3:
             return 0u;

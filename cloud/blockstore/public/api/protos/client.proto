@@ -38,6 +38,9 @@ message TClientPerformanceProfile
     optional TClientMediaKindPerformanceProfile Mirror3Profile = 5;
     // Maximum burst length in milliseconds.
     optional uint32 BurstTime = 6;
+    // Performance profile used to throttle requests to
+    // network-hdd-nonreplicated volumes.
+    optional TClientMediaKindPerformanceProfile HddNonreplProfile = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -163,6 +163,7 @@ struct TClientPercentileCalculator
     TClientRequests SsdNonrepl;
     TClientRequests SsdMirror2;
     TClientRequests SsdMirror3;
+    TClientRequests HddNonrepl;
 
     TLog Log;
 
@@ -208,6 +209,10 @@ struct TClientPercentileCalculator
                 SsdMirror3.BuildPercentiles(
                     Log,
                     clientGroup->FindSubgroup("type", "ssd_mirror3")
+                );
+                HddNonrepl.BuildPercentiles(
+                    Log,
+                    clientGroup->FindSubgroup("type", "hdd_nonrepl")
                 );
             }
         }

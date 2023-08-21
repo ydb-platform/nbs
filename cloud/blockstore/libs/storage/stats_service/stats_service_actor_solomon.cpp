@@ -83,6 +83,7 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         &State.GetSsdCounters(),
         &State.GetHddCounters(),
         &State.GetSsdNonreplCounters(),
+        &State.GetHddNonreplCounters(),
         &State.GetSsdMirror2Counters(),
         &State.GetSsdMirror3Counters(),
         &State.GetSsdSystemCounters(),

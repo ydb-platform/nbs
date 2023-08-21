@@ -209,7 +209,10 @@ private:
             StorageMediaKindArg,
             mediaKind
         );
-        if (pgId && mediaKind != NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED) {
+        if (pgId
+                && mediaKind != NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+                && mediaKind != NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+        {
             STORAGE_ERROR("Placement group id can be specified only for nonreplicated disks");
             return false;
         }

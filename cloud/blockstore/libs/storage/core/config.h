@@ -143,6 +143,17 @@ public:
     ui32 GetNonReplicatedSSDMaxReadIops() const;
     ui32 GetNonReplicatedSSDMaxWriteIops() const;
 
+    ui32 GetAllocationUnitNonReplicatedHDD() const;
+    ui32 GetNonReplicatedHDDUnitReadBandwidth() const;
+    ui32 GetNonReplicatedHDDUnitWriteBandwidth() const;
+    ui32 GetNonReplicatedHDDMaxReadBandwidth() const;
+    ui32 GetNonReplicatedHDDMaxWriteBandwidth() const;
+    ui32 GetNonReplicatedHDDUnitReadIops() const;
+    ui32 GetNonReplicatedHDDUnitWriteIops() const;
+    ui32 GetNonReplicatedHDDMaxReadIops() const;
+    ui32 GetNonReplicatedHDDMaxWriteIops() const;
+    TString GetNonReplicatedHDDPoolName() const;
+
     ui32 GetAllocationUnitMirror2SSD() const;
     ui32 GetMirror2SSDUnitReadBandwidth() const;
     ui32 GetMirror2SSDUnitWriteBandwidth() const;

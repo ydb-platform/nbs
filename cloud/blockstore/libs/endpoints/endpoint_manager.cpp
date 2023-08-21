@@ -86,12 +86,13 @@ bool CompareRequests(
     const NProto::TClientPerformanceProfile& left,
     const NProto::TClientPerformanceProfile& right)
 {
-    Y_VERIFY_DEBUG(6 == GetFieldCount<NProto::TClientPerformanceProfile>());
+    Y_VERIFY_DEBUG(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
     return CompareRequests(left.GetHDDProfile(), right.GetHDDProfile())
         && CompareRequests(left.GetSSDProfile(), right.GetSSDProfile())
         && CompareRequests(left.GetNonreplProfile(), right.GetNonreplProfile())
         && CompareRequests(left.GetMirror2Profile(), right.GetMirror2Profile())
         && CompareRequests(left.GetMirror3Profile(), right.GetMirror3Profile())
+        && CompareRequests(left.GetHddNonreplProfile(), right.GetHddNonreplProfile())
         && left.GetBurstTime() == right.GetBurstTime();
 }
 

@@ -237,6 +237,9 @@ private:
             case NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
                 return DiagnosticsConfig->GetNonreplicatedSSDDowntimeThreshold();
             }
+            case NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+                return DiagnosticsConfig->GetNonreplicatedHDDDowntimeThreshold();
+            }
             case NProto::STORAGE_MEDIA_SSD_MIRROR3: {
                 return DiagnosticsConfig->GetMirror3SSDDowntimeThreshold();
             }

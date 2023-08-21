@@ -46,6 +46,10 @@ const NProto::TVolumePerfSettings& GetPerfSettings(
             return config.GetNonreplPerfSettings();
             break;
         }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            return config.GetHddNonreplPerfSettings();
+            break;
+        }
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
             return config.GetSsdPerfSettings();
             break;
@@ -85,6 +89,17 @@ void CreateDefaultPerformanceSettings(
             write.SetBandwidth(NonreplDefaultBw);
 
             *config.MutableNonreplPerfSettings() = settings;
+            break;
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            // same params as for ssd nonrepl - for simplicity
+            read.SetIops(NonreplDefaultIops);
+            read.SetBandwidth(NonreplDefaultBw);
+
+            write.SetIops(NonreplDefaultIops);
+            write.SetBandwidth(NonreplDefaultBw);
+
+            *config.MutableHddNonreplPerfSettings() = settings;
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
@@ -184,6 +199,10 @@ NProto::TDiagnosticsConfig CreatePerformanceSettings(
     switch (type) {
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
             *config.MutableNonreplPerfSettings() = settings;
+            break;
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            *config.MutableHddNonreplPerfSettings() = settings;
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
@@ -416,6 +435,13 @@ void CheckServerSufferCounters(
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
             auto perType = serverGroup
                 ->GetSubgroup("type", "ssd_nonrepl")
+                ->GetCounter("DisksSuffer", false);
+            UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
+            break;
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            auto perType = serverGroup
+                ->GetSubgroup("type", "hdd_nonrepl")
                 ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
@@ -666,6 +692,11 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
     Y_UNIT_TEST(ShouldSetUnsetSufferForNonReplicated)
     {
         TestSufferWithMetrics(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldSetUnsetSufferForHddNonReplicated)
+    {
+        TestSufferWithMetrics(NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
     }
 
     Y_UNIT_TEST(ShouldSetUnsetSufferForMirror2)

@@ -63,6 +63,8 @@ public:
         if (config.GetStorageMediaKind() == NProto::STORAGE_MEDIA_DEFAULT) {
             config.SetStorageMediaKind(diskId.StartsWith("nonrepl-")
                 ? NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+                : diskId.StartsWith("hdd-nonrepl-")
+                ? NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
                 : diskId.StartsWith("mirror2-")
                 ? NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
                 : diskId.StartsWith("mirror3-")

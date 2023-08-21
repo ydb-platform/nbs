@@ -11,6 +11,7 @@ bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
         case NProto::STORAGE_MEDIA_SSD_MIRROR2:
         case NProto::STORAGE_MEDIA_SSD_MIRROR3:
         case NProto::STORAGE_MEDIA_SSD_LOCAL:
+        case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
             return true;
         default:
             return false;
@@ -46,6 +47,8 @@ TString MediaKindToString(NProto::EStorageMediaKind mediaKind)
             return "ssd_mirror3";
         case NProto::STORAGE_MEDIA_SSD_LOCAL:
             return "ssd_local";
+        case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+            return "hdd_nonrepl";
         default:
             return "unknown";
     }
@@ -76,6 +79,8 @@ TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind)
             return "network-ssd-mirror2";
         case NProto::STORAGE_MEDIA_SSD_MIRROR3:
             return "network-ssd-mirror3";
+        case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+            return "network-hdd-nonreplicated";
         default:
             return "unknown";
     }
@@ -97,6 +102,8 @@ bool ParseMediaKind(const TStringBuf s, NProto::EStorageMediaKind* mediaKind)
         *mediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3;
     } else if (s == "local" || s == "ssd_local") {
         *mediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
+    } else if (s == "hdd_nonrepl") {
+        *mediaKind = NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
     } else {
         return false;
     }

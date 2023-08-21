@@ -57,6 +57,9 @@ message TClientThrottlingConfig
     optional uint32 NetworkThroughputPercentage = 14;
     optional uint32 DefaultHostCpuCount = 15;
     optional uint32 DefaultNetworkMbitThroughput = 16;
+
+    // Actual settings (these ones override legacy settings)
+    optional TClientMediaKindThrottlingConfig HddNonreplThrottlingConfig = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

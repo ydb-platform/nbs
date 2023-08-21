@@ -75,6 +75,11 @@ public:
                 break;
             }
 
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+                mediaKindProfile = &Profile.GetHddNonreplProfile();
+                break;
+            }
+
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
                 mediaKindProfile = &Profile.GetMirror2Profile();
                 break;
@@ -491,10 +496,11 @@ private:
         const NProto::TClientPerformanceProfile& lft,
         const NProto::TClientPerformanceProfile& rgt)
     {
-        Y_VERIFY_DEBUG(6 == GetFieldCount<NProto::TClientPerformanceProfile>());
+        Y_VERIFY_DEBUG(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
         return ProfilesEqual(lft.GetHDDProfile(), rgt.GetHDDProfile())
             && ProfilesEqual(lft.GetSSDProfile(), rgt.GetSSDProfile())
             && ProfilesEqual(lft.GetNonreplProfile(), rgt.GetNonreplProfile())
+            && ProfilesEqual(lft.GetHddNonreplProfile(), rgt.GetHddNonreplProfile())
             && ProfilesEqual(lft.GetMirror2Profile(), rgt.GetMirror2Profile())
             && ProfilesEqual(lft.GetMirror3Profile(), rgt.GetMirror3Profile())
             && lft.GetBurstTime() == rgt.GetBurstTime();
@@ -698,6 +704,15 @@ bool PreparePerformanceProfile(
             maxBandwidthPerGuest,
             false,
             *performanceProfile.MutableNonreplProfile()
+        ),
+        PrepareMediaKindPerformanceProfile(
+            tc,
+            tc.GetHddNonreplThrottlingConfig(),
+            profile,
+            maxIopsPerGuest,
+            maxBandwidthPerGuest,
+            false,
+            *performanceProfile.MutableHddNonreplProfile()
         ),
         PrepareMediaKindPerformanceProfile(
             tc,

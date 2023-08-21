@@ -148,15 +148,15 @@ void TVolumeActor::CompleteLoadState(
 
         RegisterVolume(ctx);
 
-        const bool isNonrepl =
+        const bool isDiskRegistryBased =
             IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind());
-        if (isNonrepl) {
+        if (isDiskRegistryBased) {
             CountersPolicy = EPublishingPolicy::NonRepl;
         } else {
             CountersPolicy = EPublishingPolicy::Repl;
         }
 
-        if (isNonrepl || PendingRequests.size()) {
+        if (isDiskRegistryBased || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
         } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
             && !Config->GetDisableStartPartitionsForGc())

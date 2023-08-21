@@ -647,6 +647,15 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             false);
     }
 
+    Y_UNIT_TEST(ShouldReportBytesCountForHDDNonreplVolumes)
+    {
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::NonRepl,
+            NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+            "hdd_nonrepl",
+            false);
+    }
+
     Y_UNIT_TEST(ShouldReportBytesCountForSSDMirror2Volumes)
     {
         DoTestShouldReportBytesCount(
@@ -1069,10 +1078,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForNonreplDisks)
+    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForSsdNonreplDisks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            EPublishingPolicy::NonRepl);
+    }
+
+    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForHddNonreplDisks)
+    {
+        DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
+            NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
             EPublishingPolicy::NonRepl);
     }
 

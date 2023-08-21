@@ -466,6 +466,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             mount("local", NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
         auto [nonreplStats, nonreplErrors, nonreplHwProblems] =
             mount("nonrepl", NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        auto [hddNonreplStats, hddNonreplErrors, hddNonreplHwProblems] =
+            mount("hdd_nonrepl", NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
         auto [ssdStats, ssdErrors, ssdHwProblems] =
             mount("ssd", NCloud::NProto::STORAGE_MEDIA_SSD);
 
@@ -473,6 +475,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -485,6 +489,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -497,6 +503,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
+
+        shoot(
+            hddNonreplStats,
+            EDiagnosticsErrorKind::ErrorSilent,
+            NCloud::NProto::EF_NONE);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, localErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -509,6 +531,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -521,6 +545,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -533,6 +559,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, ssdErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
+
+        shoot(
+            hddNonreplStats,
+            EDiagnosticsErrorKind::ErrorSilent,
+            NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, localErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, localHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -545,6 +587,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
 
@@ -567,6 +611,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, localHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonreplErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, nonreplHwProblems->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddNonreplErrors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, hddNonreplHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, ssdErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdHwProblems->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, mirror2Errors->Val());

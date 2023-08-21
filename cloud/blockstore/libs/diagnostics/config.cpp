@@ -33,6 +33,7 @@ namespace {
     xxx(SsdPerfSettings,                TVolumePerfSettings,  {}                                        )\
     xxx(HddPerfSettings,                TVolumePerfSettings,  {}                                        )\
     xxx(NonreplPerfSettings,            TVolumePerfSettings,  {}                                        )\
+    xxx(HddNonreplPerfSettings,         TVolumePerfSettings,  {}                                        )\
     xxx(Mirror2PerfSettings,            TVolumePerfSettings,  {}                                        )\
     xxx(Mirror3PerfSettings,            TVolumePerfSettings,  {}                                        )\
     xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
@@ -48,6 +49,7 @@ namespace {
     xxx(SSDDowntimeThreshold,                TDuration,       TDuration::Seconds(5)                     )\
     xxx(HDDDowntimeThreshold,                TDuration,       TDuration::Seconds(15)                    )\
     xxx(NonreplicatedSSDDowntimeThreshold,   TDuration,       TDuration::Seconds(5)                     )\
+    xxx(NonreplicatedHDDDowntimeThreshold,   TDuration,       TDuration::Seconds(15)                    )\
     xxx(Mirror2SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(Mirror3SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(LocalSSDDowntimeThreshold,           TDuration,       TDuration::Seconds(5)                     )\

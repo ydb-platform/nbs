@@ -17,9 +17,9 @@
 
 namespace NCloud::NBlockStore {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TTestDumpable
     : public IDumpable
@@ -219,7 +219,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         CheckRetriableError(serverStats, monitoring, true, 1);
     }
 
-    Y_UNIT_TEST(ShouldCountHwProblems)
+    void DoTestShouldCountHwProblems(
+        const NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto timer = std::make_shared<TTestTimer>();
         auto monitoring = CreateMonitoringServiceStub();
@@ -239,21 +240,32 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             std::make_shared<TDiagnosticsConfig>(),
             monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup,timer),
+            CreateServerRequestStats(serverGroup, timer),
             std::move(volumeStats)
         );
 
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
         volume.SetDiskId("volume");
-        volume.SetStorageMediaKind(
-            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+        volume.SetStorageMediaKind(mediaKind);
         serverStats->MountVolume(volume, "client", "instance");
 
         CheckHwProblems(serverStats, monitoring, false, false, 0);
         CheckHwProblems(serverStats, monitoring, true, false, 0);
         CheckHwProblems(serverStats, monitoring, false, true, 1);
         CheckHwProblems(serverStats, monitoring, true, true, 2);
+    }
+
+    Y_UNIT_TEST(ShouldCountHwProblemsSSD)
+    {
+        DoTestShouldCountHwProblems(
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCountHwProblemsHDD)
+    {
+        DoTestShouldCountHwProblems(
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED);
     }
 }
 

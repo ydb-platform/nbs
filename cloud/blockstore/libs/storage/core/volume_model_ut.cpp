@@ -19,10 +19,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const std::array<NCloud::NProto::EStorageMediaKind, 4> MEDIA_KINDS {
+const std::array<NCloud::NProto::EStorageMediaKind, 5> MEDIA_KINDS {
     NCloud::NProto::STORAGE_MEDIA_HDD,
     NCloud::NProto::STORAGE_MEDIA_SSD,
     NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+    NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
     NCloud::NProto::STORAGE_MEDIA_HYBRID
 };
 
@@ -80,6 +81,16 @@ auto CreateConfigWithThrottlingParams(
     config.SetNonReplicatedSSDUnitWriteIops(8000);
     config.SetNonReplicatedSSDMaxReadIops(800000);
     config.SetNonReplicatedSSDMaxWriteIops(800000);
+
+    config.SetAllocationUnitNonReplicatedHDD(16);
+    config.SetNonReplicatedHDDUnitReadBandwidth(1);
+    config.SetNonReplicatedHDDUnitWriteBandwidth(5);
+    config.SetNonReplicatedHDDMaxReadBandwidth(200);
+    config.SetNonReplicatedHDDMaxWriteBandwidth(200);
+    config.SetNonReplicatedHDDUnitReadIops(2);
+    config.SetNonReplicatedHDDUnitWriteIops(5);
+    config.SetNonReplicatedHDDMaxReadIops(200);
+    config.SetNonReplicatedHDDMaxWriteIops(1000);
 
     config.SetThrottlingBoostTime(1e5);
     config.SetThrottlingBoostRefillTime(1e6);
@@ -357,17 +368,49 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             );
         }
 
+        const auto nonreplKinds = {
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+        };
+        const auto getParams = [] (
+            const NCloud::NProto::EStorageMediaKind mediaKind,
+            const TStorageConfigPtr& config) -> std::array<ui32, 8>
         {
-            auto config = CreateConfigWithThrottlingParams(
-                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-            );
+            switch (mediaKind) {
+                case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return {
+                    config->GetNonReplicatedSSDUnitReadBandwidth(),
+                    config->GetNonReplicatedSSDUnitWriteBandwidth(),
+                    config->GetNonReplicatedSSDUnitReadIops(),
+                    config->GetNonReplicatedSSDUnitWriteIops(),
+                    config->GetNonReplicatedSSDMaxReadBandwidth(),
+                    config->GetNonReplicatedSSDMaxWriteBandwidth(),
+                    config->GetNonReplicatedSSDMaxReadIops(),
+                    config->GetNonReplicatedSSDMaxWriteIops(),
+                };
+                case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return {
+                    config->GetNonReplicatedHDDUnitReadBandwidth(),
+                    config->GetNonReplicatedHDDUnitWriteBandwidth(),
+                    config->GetNonReplicatedHDDUnitReadIops(),
+                    config->GetNonReplicatedHDDUnitWriteIops(),
+                    config->GetNonReplicatedHDDMaxReadBandwidth(),
+                    config->GetNonReplicatedHDDMaxWriteBandwidth(),
+                    config->GetNonReplicatedHDDMaxReadIops(),
+                    config->GetNonReplicatedHDDMaxWriteIops(),
+                };
+                default: UNIT_ASSERT(false);
+            }
+
+            return {};
+        };
+        for (const auto mediaKind: nonreplKinds) {
+            auto config = CreateConfigWithThrottlingParams(mediaKind);
+            const auto mediaParams = getParams(mediaKind, config);
 
             TVolumeParams volumeParams;
             volumeParams.BlockSize = blockSize;
             volumeParams.BlocksCountPerPartition = blocksCount;
             volumeParams.PartitionsCount = 1;
-            volumeParams.MediaKind =
-                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+            volumeParams.MediaKind = mediaKind;
 
             NKikimrBlockStore::TVolumeConfig volumeConfig;
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
@@ -384,19 +427,19 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
-                2 * config->GetNonReplicatedSSDUnitReadBandwidth() * 1_MB,
+                2 * mediaParams[0] * 1_MB,
                 volumeConfig.GetPerformanceProfileMaxReadBandwidth()
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                2 * config->GetNonReplicatedSSDUnitWriteBandwidth() * 1_MB,
+                2 * mediaParams[1] * 1_MB,
                 volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                2 * config->GetNonReplicatedSSDUnitReadIops(),
+                2 * mediaParams[2],
                 volumeConfig.GetPerformanceProfileMaxReadIops()
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                2 * config->GetNonReplicatedSSDUnitWriteIops(),
+                2 * mediaParams[3],
                 volumeConfig.GetPerformanceProfileMaxWriteIops()
             );
 
@@ -445,19 +488,19 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
-                4_GB - 1_MB,
+                mediaParams[4] * 1_MB,
                 volumeConfig.GetPerformanceProfileMaxReadBandwidth()
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                4_GB - 1_MB,
+                mediaParams[5] * 1_MB,
                 volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                800'000,
+                mediaParams[6],
                 volumeConfig.GetPerformanceProfileMaxReadIops()
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                800'000,
+                mediaParams[7],
                 volumeConfig.GetPerformanceProfileMaxWriteIops()
             );
 
