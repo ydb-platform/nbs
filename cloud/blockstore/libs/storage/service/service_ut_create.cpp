@@ -1739,18 +1739,30 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         for (int i = 0; i < 2; i++) {
             auto request = service.CreateCreateVolumeRequest();
-            request->Record.SetFillGeneration(1);
+            request->Record.SetFillGeneration(3);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
             UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
         }
-        auto request = service.CreateCreateVolumeRequest();
-        request->Record.SetFillGeneration(2);
-        service.SendRequest(MakeStorageServiceId(), std::move(request));
 
-        auto response = service.RecvCreateVolumeResponse();
-        UNIT_ASSERT_C(response->GetStatus() == E_INVALID_STATE, response->GetStatus());
+        {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(2);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(response->GetStatus() == E_INVALID_STATE, response->GetStatus());
+        }
+
+        {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(4);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(response->GetStatus() == E_ABORTED, response->GetStatus());
+        }
     }
 }
 

@@ -514,6 +514,20 @@ void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& describedVolumeConfig = volumeDescription.GetVolumeConfig();
 
+    if (VolumeConfig.GetFillGeneration() > describedVolumeConfig.GetFillGeneration()) {
+        const auto& diskId = VolumeConfig.GetDiskId();
+        const TString errorMsg = TStringBuilder()
+            << "Volume " << diskId.Quote()
+            << " has outdated FillGeneration";
+        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY, errorMsg);
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(
+                MakeError(E_ABORTED, errorMsg)));
+        return;
+    }
+
     if (!VerifyVolume(ctx, describedVolumeConfig)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
             "Volume %s: describe after create failed: described volume config mismatch",
