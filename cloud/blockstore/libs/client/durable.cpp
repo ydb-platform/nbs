@@ -257,7 +257,23 @@ private:
                 const bool throttling =
                     (errorKind == EDiagnosticsErrorKind::ErrorThrottling);
 
-                if (!throttling) {
+                bool doLogging = true;
+                switch (errorKind) {
+                    case EDiagnosticsErrorKind::ErrorThrottling: {
+                        doLogging = false;
+                        break;
+                    }
+                    case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint: {
+                        // Do not flood in the log. One message in the log is
+                        // enough.
+                        doLogging = state->Retries == 1;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+
+                if (doLogging) {
                     STORAGE_WARN(
                         TRequestInfo(
                             T::Request,

@@ -402,8 +402,10 @@ void TServerStats::RequestCompleted(
         errorKind = EDiagnosticsErrorKind::ErrorSilent;
     }
 
-    auto calcMaxTime = req.VolumeInfo && req.VolumeInfo->HasThrottlerRejects() ?
-        ECalcMaxTime::DISABLE: ECalcMaxTime::ENABLE;
+    auto calcMaxTime =
+        req.VolumeInfo && req.VolumeInfo->HasUncountableRejects()
+            ? ECalcMaxTime::DISABLE
+            : ECalcMaxTime::ENABLE;
 
     const auto responseSentCycles = callContext.GetResponseSentCycles();
 
@@ -421,6 +423,7 @@ void TServerStats::RequestCompleted(
 
     ui32 blockSize = DefaultBlockSize;
 
+    TString maxTimeSuppressedMessage;
     if (req.VolumeInfo) {
         blockSize = req.VolumeInfo->GetInfo().GetBlockSize();
 
@@ -433,6 +436,10 @@ void TServerStats::RequestCompleted(
             errorFlags,
             req.Unaligned,
             responseSentCycles);
+
+        if (req.VolumeInfo->HasUncountableRejects()) {
+            maxTimeSuppressedMessage = ", Warning! MaxTime calculation suppressed";
+        }
     }
 
     if (ProfileLog) {
@@ -524,6 +531,7 @@ void TServerStats::RequestCompleted(
         << ", backoff: " << FormatDuration(backoffTime)
         << ", size: " << FormatByteSize(req.RequestBytes)
         << ", unaligned: " << req.Unaligned
+        << maxTimeSuppressedMessage
         << ", error: " << FormatError(error)
         << ")");
 }
@@ -595,8 +603,9 @@ void TServerStats::AddIncompleteRequest(
     EBlockStoreRequest requestType,
     TRequestTime time)
 {
-    auto calcMaxTime = volumeInfo && volumeInfo->HasThrottlerRejects() ?
-        ECalcMaxTime::DISABLE: ECalcMaxTime::ENABLE;
+    auto calcMaxTime = volumeInfo && volumeInfo->HasUncountableRejects()
+                           ? ECalcMaxTime::DISABLE
+                           : ECalcMaxTime::ENABLE;
 
     RequestStats->AddIncompleteStats(
         mediaKind,

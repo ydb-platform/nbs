@@ -267,7 +267,9 @@ struct TVolumeInfoBase
     TPostponeTimePredictorStats PostponeTimePredictorStats;
     TDowntimeCalculator DowntimeCalculator;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
+    TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
     TAtomic ThrottlerRejectsCounter = 0;
+    TAtomic CheckpointRejectsCounter = 0;
 
     TVolumeInfoBase(
             NProto::TVolume volume,
@@ -281,6 +283,7 @@ struct TVolumeInfoBase
         , PostponeTimePredictorStats(volumeGroup, timer)
         , DowntimeCalculator(diagnosticsConfig, Volume, timer)
         , ThrottlerRejects(timer)
+        , CheckpointRejects(timer)
     {
         BusyIdleCalc.Register(*volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
@@ -425,7 +428,9 @@ public:
             requestStarted,
             postponedTime);
 
-        if (errorKind == EDiagnosticsErrorKind::ErrorThrottling && VolumeBase) {
+        if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint) {
+            VolumeBase->CheckpointRejects.Add(1);
+        } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
             VolumeBase->ThrottlerRejects.Add(1);
         }
 
@@ -462,6 +467,12 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags) override
     {
+        if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint) {
+            VolumeBase->CheckpointRejects.Add(1);
+        } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
+            VolumeBase->ThrottlerRejects.Add(1);
+        }
+
         RequestCounters.AddRetryStats(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),
@@ -522,12 +533,12 @@ public:
             sizeHist);
     }
 
-    bool HasThrottlerRejects() override
+    bool HasUncountableRejects() override
     {
-        if (VolumeBase) {
-            return AtomicGet(VolumeBase->ThrottlerRejectsCounter);
-        }
-        return false;
+        return AtomicGet(VolumeBase->ThrottlerRejectsCounter) ||
+               AtomicGet(VolumeBase->ThrottlerRejects.Current) ||
+               AtomicGet(VolumeBase->CheckpointRejectsCounter) ||
+               AtomicGet(VolumeBase->CheckpointRejects.Current);
     }
 };
 
@@ -790,6 +801,9 @@ public:
             AtomicSet(
                 volumeBase.ThrottlerRejectsCounter,
                 volumeBase.ThrottlerRejects.NextValue());
+            AtomicSet(
+                volumeBase.CheckpointRejectsCounter,
+                volumeBase.CheckpointRejects.NextValue());
             if (volumeBase.DowntimeCalculator.OnUpdateStats()) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];

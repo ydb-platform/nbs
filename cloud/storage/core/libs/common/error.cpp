@@ -122,6 +122,13 @@ EDiagnosticsErrorKind GetDiagnosticsErrorKind(const NProto::TError& e)
         return EDiagnosticsErrorKind::ErrorThrottling;
     }
 
+    // NBS-4447
+    if (code == E_REJECTED &&
+        e.GetMessage().StartsWith("Checkpoint reject request."))
+    {
+        return EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint;
+    }
+
     if (HasProtoFlag(e.GetFlags(), NProto::EF_SILENT)
         || code == E_IO_SILENT) // TODO: NBS-3124#622886b937bf95501db66aad
     {

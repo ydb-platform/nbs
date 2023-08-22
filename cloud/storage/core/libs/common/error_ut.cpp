@@ -52,6 +52,19 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
             GetDiagnosticsErrorKind(e));
     }
 
+    Y_UNIT_TEST(ShouldRetrieveErrorKindRejectedByCheckpointFromErrorMessage)
+    {
+        NProto::TError e;
+        e.SetCode(E_REJECTED);
+        e.SetMessage(
+            "Checkpoint reject request. WriteBlocksLocal is not allowed if a "
+            "checkpoint exists");
+
+        UNIT_ASSERT_EQUAL(
+            EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint,
+            GetDiagnosticsErrorKind(e));
+    }
+
     Y_UNIT_TEST(ShouldWrapExceptionInResponse)
     {
         auto response = SafeExecute<TTestResponse>([] {

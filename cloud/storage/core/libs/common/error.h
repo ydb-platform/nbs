@@ -198,6 +198,7 @@ enum class EDiagnosticsErrorKind
     ErrorFatal,
     ErrorRetriable,
     ErrorThrottling,
+    ErrorWriteRejectedByCheckpoint,
     ErrorSession,
     ErrorSilent,
 };

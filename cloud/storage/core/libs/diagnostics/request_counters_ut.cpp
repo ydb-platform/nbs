@@ -449,13 +449,14 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         shoot(EDiagnosticsErrorKind::ErrorFatal);
         shoot(EDiagnosticsErrorKind::ErrorRetriable);
         shoot(EDiagnosticsErrorKind::ErrorThrottling);
+        shoot(EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint);
         shoot(EDiagnosticsErrorKind::ErrorSession);
         shoot(EDiagnosticsErrorKind::ErrorSilent);
 
         requestCounters.UpdateStats(true);
 
         auto errors = counters->GetCounter("Errors");
-        UNIT_ASSERT_VALUES_EQUAL(5, errors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(6, errors->Val());
 
         auto abort = counters->GetCounter("Errors/Aborted");
         UNIT_ASSERT_VALUES_EQUAL(1, abort->Val());
@@ -468,6 +469,9 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         auto throttling = counters->GetCounter("Errors/Throttling");
         UNIT_ASSERT_VALUES_EQUAL(1, throttling->Val());
+
+        auto rejectedByCheckpoint = counters->GetCounter("Errors/CheckpointReject");
+        UNIT_ASSERT_VALUES_EQUAL(1, rejectedByCheckpoint->Val());
 
         auto session = counters->GetCounter("Errors/Session");
         UNIT_ASSERT_VALUES_EQUAL(1, session->Val());
@@ -513,6 +517,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
         shoot(EDiagnosticsErrorKind::ErrorThrottling,
             NCloud::NProto::EF_NONE);
+        shoot(EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint,
+            NCloud::NProto::EF_NONE);
         shoot(EDiagnosticsErrorKind::ErrorSession,
             NCloud::NProto::EF_NONE);
         shoot(EDiagnosticsErrorKind::ErrorSilent,
@@ -521,7 +527,7 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         requestCounters.UpdateStats(true);
 
         auto errors = counters->GetCounter("Errors");
-        UNIT_ASSERT_VALUES_EQUAL(4, errors->Val());
+        UNIT_ASSERT_VALUES_EQUAL(5, errors->Val());
 
         auto fatal = counters->GetCounter("Errors/Fatal");
         UNIT_ASSERT_VALUES_EQUAL(1, fatal->Val());
@@ -531,6 +537,9 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         auto throttling = counters->GetCounter("Errors/Throttling");
         UNIT_ASSERT_VALUES_EQUAL(1, throttling->Val());
+
+        auto checkpointReject = counters->GetCounter("Errors/CheckpointReject");
+        UNIT_ASSERT_VALUES_EQUAL(1, checkpointReject->Val());
 
         auto session = counters->GetCounter("Errors/Session");
         UNIT_ASSERT_VALUES_EQUAL(1, session->Val());

@@ -242,6 +242,7 @@ struct TRequestCounters::TStatCounters
     TDynamicCounters::TCounterPtr ErrorsFatal;
     TDynamicCounters::TCounterPtr ErrorsRetriable;
     TDynamicCounters::TCounterPtr ErrorsThrottling;
+    TDynamicCounters::TCounterPtr ErrorsWriteRejectdByCheckpoint;
     TDynamicCounters::TCounterPtr ErrorsSession;
     TDynamicCounters::TCounterPtr ErrorsSilent;
 
@@ -317,6 +318,7 @@ struct TRequestCounters::TStatCounters
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
         ErrorsRetriable = counters.GetCounter("Errors/Retriable", true);
         ErrorsThrottling = counters.GetCounter("Errors/Throttling", true);
+        ErrorsWriteRejectdByCheckpoint = counters.GetCounter("Errors/CheckpointReject", true);
         ErrorsSession = counters.GetCounter("Errors/Session", true);
         Retries = counters.GetCounter("Retries", true);
 
@@ -450,6 +452,9 @@ struct TRequestCounters::TStatCounters
             case EDiagnosticsErrorKind::ErrorThrottling:
                 ErrorsThrottling->Inc();
                 break;
+            case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint:
+                ErrorsWriteRejectdByCheckpoint->Inc();
+                break;
             case EDiagnosticsErrorKind::ErrorSession:
                 ErrorsSession->Inc();
                 break;
@@ -549,6 +554,9 @@ struct TRequestCounters::TStatCounters
                 break;
             case EDiagnosticsErrorKind::ErrorThrottling:
                 ErrorsThrottling->Inc();
+                break;
+            case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint:
+                ErrorsWriteRejectdByCheckpoint->Inc();
                 break;
             case EDiagnosticsErrorKind::ErrorSession:
                 ErrorsSession->Inc();

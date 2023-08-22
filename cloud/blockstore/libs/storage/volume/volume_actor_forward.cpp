@@ -664,8 +664,8 @@ void TVolumeActor::ForwardRequest(
         if (RequiresReadWriteAccess<TMethod> && !CanExecuteWriteRequest()) {
             replyError(MakeError(
                 E_REJECTED,
-                TStringBuilder()
-                    << "Request " << TMethod::Name << " is not allowed "
+                TStringBuilder() // NBS-4447. Do not change message.
+                    << "Checkpoint reject request. " << TMethod::Name << " is not allowed "
                     << (State->GetNonreplicatedPartitionActor()
                             ? "if a checkpoint exists"
                             : "during checkpoint creation")));

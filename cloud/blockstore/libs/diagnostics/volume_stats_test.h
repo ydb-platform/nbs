@@ -143,7 +143,7 @@ public:
         Y_UNUSED(sizeHist);
     }
 
-    bool HasThrottlerRejects() override
+    bool HasUncountableRejects() override
     {
         return false;
     }
