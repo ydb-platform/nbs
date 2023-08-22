@@ -39,7 +39,7 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
     struct TSetupParallelEnvironment
         : public TSetupEnvironment
     {
-        TActorId WriteActor;
+        NActors::TActorId WriteActor;
 
         void SetUp(NUnitTest::TTestContext& ctx) override
         {
@@ -63,7 +63,7 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
     struct TSetupConsistentlyEnvironment
         : public TSetupEnvironment
     {
-        TActorId WriteActor;
+        NActors::TActorId WriteActor;
 
         void SetUp(NUnitTest::TTestContext& ctx) override
         {

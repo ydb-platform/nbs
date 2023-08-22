@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -15,13 +17,6 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-using namespace NActors;
-
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-
-template<class TMethod>
-concept WriteRequest = IsWriteMethod<TMethod>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
@@ -31,9 +26,12 @@ concept WriteRequest = IsWriteMethod<TMethod>;
 */
 template <WriteRequest TMethod>
 class TWriteAndMarkUsedActor final
-    : public TActorBootstrapped<TWriteAndMarkUsedActor<TMethod>>
+    : public NActors::TActorBootstrapped<TWriteAndMarkUsedActor<TMethod>>
 {
 private:
+    using TActorId = NActors::TActorId;
+    using TActorContext = NActors::TActorContext;
+
     enum EStatusFlags
     {
         WriteRequestSent,
@@ -56,7 +54,7 @@ private:
     std::bitset<Count> State;
     typename TMethod::TResponse::ProtoRecordType Record;
 
-    using TBase = TActorBootstrapped<TWriteAndMarkUsedActor<TMethod>>;
+    using TBase = NActors::TActorBootstrapped<TWriteAndMarkUsedActor<TMethod>>;
 
 public:
     TWriteAndMarkUsedActor(
@@ -99,7 +97,7 @@ private:
         const TActorContext& ctx);
 
     void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -134,7 +132,8 @@ void TWriteAndMarkUsedActor<TMethod>::Bootstrap(const TActorContext& ctx)
 
     TBase::Become(&TBase::TThis::StateWork);
 
-    LWTRACK(
+    GLOBAL_LWTRACK(
+        BLOCKSTORE_STORAGE_PROVIDER,
         RequestReceived_VolumeWorker,
         RequestInfo->CallContext->LWOrbit,
         TMethod::Name,
@@ -153,11 +152,11 @@ void TWriteAndMarkUsedActor<TMethod>::WriteBlocks(const TActorContext& ctx)
     request->CallContext = RequestInfo->CallContext;
     request->Record = Request;
 
-    auto event = std::make_unique<IEventHandle>(
+    auto event = std::make_unique<NActors::IEventHandle>(
         PartActorId,
         ctx.SelfID,
         request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
+        NActors::IEventHandle::FlagForwardOnNondelivery,
         VolumeRequestId, // cookie
         &ctx.SelfID      // forwardOnNondelivery
     );
@@ -175,11 +174,11 @@ void TWriteAndMarkUsedActor<TMethod>::MarkUsedBlocks(const TActorContext& ctx)
         Request, BlockSize));
     request->Record.SetUsed(true);
 
-    auto event = std::make_unique<IEventHandle>(
+    auto event = std::make_unique<NActors::IEventHandle>(
         VolumeActorId,
         ctx.SelfID,
         request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
+        NActors::IEventHandle::FlagForwardOnNondelivery,
         VolumeRequestId, // cookie
         &ctx.SelfID      // forwardOnNondelivery
     );
@@ -197,7 +196,8 @@ void TWriteAndMarkUsedActor<TMethod>::Done(const TActorContext& ctx)
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Record);
 
-    LWTRACK(
+    GLOBAL_LWTRACK(
+        BLOCKSTORE_STORAGE_PROVIDER,
         ResponseSent_VolumeWorker,
         RequestInfo->CallContext->LWOrbit,
         TMethod::Name,
@@ -308,7 +308,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksUndelivery(
 
 template <WriteRequest TMethod>
 void TWriteAndMarkUsedActor<TMethod>::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
+    const NActors::TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
@@ -323,7 +323,7 @@ STFUNC(TWriteAndMarkUsedActor<TMethod>::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TMethod::TResponse, HandleResponse);
         HFunc(TMethod::TRequest, HandleUndelivery);

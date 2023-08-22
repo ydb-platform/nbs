@@ -1,9 +1,11 @@
-#include "forward_read.h"
+#include "forward_read_marked.h"
 
 #include <library/cpp/actors/testlib/test_runtime.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace NBlobMarkers;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,23 +40,23 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
 
     Y_UNIT_TEST_F(ShouldReadSuccess, TSetupEnvironment)
     {
-        THashSet<ui64> unusedBlocks;
-        unusedBlocks.insert(7);
-        unusedBlocks.insert(10);
-        unusedBlocks.insert(11);
+        TBlockMarks BlockMarks(10, NBlobMarkers::TFreshMark{});
+        BlockMarks[0] = TEmptyMark{};
+        BlockMarks[7] = TEmptyMark{};
+        BlockMarks[9] = TEmptyMark{};
 
         auto request = TEvService::TReadBlocksMethod::TRequest::ProtoRecordType();
         request.SetStartIndex(0);
         request.SetBlocksCount(10);
 
         auto readActor = ActorSystem.Register(
-            new TReadActor<TEvService::TReadBlocksMethod>{
+            new TReadMarkedActor<TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
                     MakeIntrusive<TCallContext>()),
                 request,
-                unusedBlocks,
+                BlockMarks,
                 true,
                 true,
                 EdgeActor,
@@ -79,13 +81,13 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
         const auto& unencrypted = fullResponse->Record.GetUnencryptedBlockMask();
 
         for (int i = 0; i < fullBuffers.size(); ++i) {
-            const char result  = !unusedBlocks.contains(i);
+            const char result = !std::holds_alternative<TEmptyMark>(BlockMarks[i]);
             for (size_t j = 0; j < fullBuffers[i].size(); ++j) {
                 UNIT_ASSERT_EQUAL(fullBuffers[i][j], result);
             }
         }
-        UNIT_ASSERT_EQUAL(unencrypted[0], static_cast<char>(0b10000000));
-        UNIT_ASSERT_EQUAL(unencrypted[1], static_cast<char>(0b00001100));
+        UNIT_ASSERT_EQUAL(unencrypted[0], static_cast<char>(0b10000001));
+        UNIT_ASSERT_EQUAL(unencrypted[1], static_cast<char>(0b00000010));
     }
 }
 

@@ -1,6 +1,6 @@
 #include "volume_actor.h"
 
-#include "actors/forward_read.h"
+#include "actors/forward_read_marked.h"
 #include "actors/forward_write_and_mark_used.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -57,22 +57,20 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         if (State->GetMaskUnusedBlocks() && State->GetUsedBlocks() ||
             encryptedDiskRegistryBasedVolume)
         {
-            THashSet<ui64> unusedIndices;
-
-            FillUnusedIndices(
-                msg->Record,
+            auto [blockMarks, count] = MakeBlockMarks(
                 State->GetUsedBlocks(),
-                &unusedIndices);
+                TBlockRange64::WithLength(
+                    msg->Record.GetStartIndex(),
+                    msg->Record.GetBlocksCount()));
 
-            if (unusedIndices) {
-                auto requestInfo =
-                    CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+            const bool isOnlyOverlayDisk = blockMarks.size() == count;
 
-                NCloud::Register<TReadActor<TMethod>>(
+            if (!isOnlyOverlayDisk) {
+                NCloud::Register<TReadMarkedActor<TMethod>>(
                     ctx,
-                    std::move(requestInfo),
+                    CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
-                    std::move(unusedIndices),
+                    std::move(blockMarks),
                     State->GetMaskUnusedBlocks(),
                     encryptedDiskRegistryBasedVolume,
                     partActorId,

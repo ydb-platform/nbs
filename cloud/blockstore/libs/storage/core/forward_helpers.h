@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <util/generic/hash_set.h>
@@ -58,35 +59,36 @@ constexpr bool RejectRequestIfNotReady =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template<class TMethod>
+concept ReadRequest = IsReadMethod<TMethod>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<class TMethod>
+concept WriteRequest = IsWriteMethod<TMethod>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ApplyMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const NBlobMarkers::TBlockMarks& blockMarks,
     NProto::TReadBlocksRequest& request);
 void ApplyMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const NBlobMarkers::TBlockMarks& blockMarks,
     NProto::TReadBlocksResponse& response);
 void ApplyMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const NBlobMarkers::TBlockMarks& blockMarks,
     NProto::TReadBlocksLocalRequest& request);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void FillUnusedIndices(
-    const NProto::TReadBlocksRequest& request,
+std::pair<NBlobMarkers::TBlockMarks, ui64> MakeBlockMarks(
     const TCompressedBitmap* usedBlocks,
-    THashSet<ui64>* unusedIndices);
-void FillUnusedIndices(
-    const NProto::TReadBlocksLocalRequest& request,
-    const TCompressedBitmap* usedBlocks,
-    THashSet<ui64>* unusedIndices);
+    TBlockRange64 range);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void FillUnencryptedBlockMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const NBlobMarkers::TBlockMarks& blockMarks,
     NProto::TReadBlocksResponse& response);
 
 ////////////////////////////////////////////////////////////////////////////////

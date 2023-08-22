@@ -1,9 +1,12 @@
+#pragma once
+
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
@@ -14,23 +17,19 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-using namespace NActors;
-
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-
-template<class TMethod>
-concept ReadRequest = IsReadMethod<TMethod>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ReadRequest TMethod>
-class TReadActor final
-    : public TActorBootstrapped<TReadActor<TMethod>>
+class TReadMarkedActor final
+    : public NActors::TActorBootstrapped<TReadMarkedActor<TMethod>>
 {
 private:
+    using TActorId = NActors::TActorId;
+    using TActorContext = NActors::TActorContext;
+
     const TRequestInfoPtr RequestInfo;
     typename TMethod::TRequest::ProtoRecordType Request;
-    const THashSet<ui64> UnusedBlockIndices;
+    NBlobMarkers::TBlockMarks BlockMarks;
     bool MaskUnusedBlocks = false;
     bool ReplyUnencryptedBlockMask = false;
     const TActorId PartActorId;
@@ -39,13 +38,13 @@ private:
 
     typename TMethod::TResponse::ProtoRecordType Record;
 
-    using TBase = TActorBootstrapped<TReadActor<TMethod>>;
+    using TBase = NActors::TActorBootstrapped<TReadMarkedActor<TMethod>>;
 
 public:
-    TReadActor(
+    TReadMarkedActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
-        THashSet<ui64> unusedIndices,
+        NBlobMarkers::TBlockMarks blockMarks,
         bool maskUnusedBlocks,
         bool replyUnencryptedBlockMask,
         TActorId partActorId,
@@ -73,17 +72,17 @@ private:
         const TActorContext& ctx);
 
     void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ReadRequest TMethod>
-TReadActor<TMethod>::TReadActor(
+TReadMarkedActor<TMethod>::TReadMarkedActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
-        THashSet<ui64> unusedIndices,
+        NBlobMarkers::TBlockMarks blockMarks,
         bool maskUnusedBlocks,
         bool replyUnencryptedBlockMask,
         TActorId partActorId,
@@ -91,7 +90,7 @@ TReadActor<TMethod>::TReadActor(
         TActorId volumeActorId)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-    , UnusedBlockIndices(std::move(unusedIndices))
+    , BlockMarks(std::move(blockMarks))
     , MaskUnusedBlocks(maskUnusedBlocks)
     , ReplyUnencryptedBlockMask(replyUnencryptedBlockMask)
     , PartActorId(partActorId)
@@ -102,13 +101,14 @@ TReadActor<TMethod>::TReadActor(
 }
 
 template <ReadRequest TMethod>
-void TReadActor<TMethod>::Bootstrap(const TActorContext& ctx)
+void TReadMarkedActor<TMethod>::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
     TBase::Become(&TBase::TThis::StateWork);
 
-    LWTRACK(
+    GLOBAL_LWTRACK(
+        BLOCKSTORE_STORAGE_PROVIDER,
         RequestReceived_VolumeWorker,
         RequestInfo->CallContext->LWOrbit,
         TMethod::Name,
@@ -118,17 +118,17 @@ void TReadActor<TMethod>::Bootstrap(const TActorContext& ctx)
 }
 
 template <ReadRequest TMethod>
-void TReadActor<TMethod>::ReadBlocks(const TActorContext& ctx)
+void TReadMarkedActor<TMethod>::ReadBlocks(const TActorContext& ctx)
 {
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->CallContext = RequestInfo->CallContext;
     request->Record = Request;
 
-    auto event = std::make_unique<IEventHandle>(
+    auto event = std::make_unique<NActors::IEventHandle>(
         PartActorId,
         ctx.SelfID,
         request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
+        NActors::IEventHandle::FlagForwardOnNondelivery,
         0,  // cookie
         &ctx.SelfID);    // forwardOnNondelivery
 
@@ -136,27 +136,22 @@ void TReadActor<TMethod>::ReadBlocks(const TActorContext& ctx)
 }
 
 template <ReadRequest TMethod>
-void TReadActor<TMethod>::Done(const TActorContext& ctx)
+void TReadMarkedActor<TMethod>::Done(const TActorContext& ctx)
 {
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Record);
 
     if (MaskUnusedBlocks) {
-        ApplyMask(UnusedBlockIndices, GetStartIndex(Request), Request);
-        ApplyMask(
-            UnusedBlockIndices,
-            GetStartIndex(Request),
-            response->Record);
+        ApplyMask(BlockMarks, Request);
+        ApplyMask(BlockMarks, response->Record);
     }
 
     if (ReplyUnencryptedBlockMask) {
-        FillUnencryptedBlockMask(
-            UnusedBlockIndices,
-            GetStartIndex(Request),
-            response->Record);
+        FillUnencryptedBlockMask(BlockMarks, response->Record);
     }
 
-    LWTRACK(
+    GLOBAL_LWTRACK(
+        BLOCKSTORE_STORAGE_PROVIDER,
         ResponseSent_VolumeWorker,
         RequestInfo->CallContext->LWOrbit,
         TMethod::Name,
@@ -170,7 +165,7 @@ void TReadActor<TMethod>::Done(const TActorContext& ctx)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ReadRequest TMethod>
-void TReadActor<TMethod>::HandleUndelivery(
+void TReadMarkedActor<TMethod>::HandleUndelivery(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -188,7 +183,7 @@ void TReadActor<TMethod>::HandleUndelivery(
 }
 
 template <ReadRequest TMethod>
-void TReadActor<TMethod>::HandleResponse(
+void TReadMarkedActor<TMethod>::HandleResponse(
     const typename TMethod::TResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -208,8 +203,8 @@ void TReadActor<TMethod>::HandleResponse(
 }
 
 template <ReadRequest TMethod>
-void TReadActor<TMethod>::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
+void TReadMarkedActor<TMethod>::HandlePoisonPill(
+    const NActors::TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
@@ -219,12 +214,12 @@ void TReadActor<TMethod>::HandlePoisonPill(
 }
 
 template <ReadRequest TMethod>
-STFUNC(TReadActor<TMethod>::StateWork)
+STFUNC(TReadMarkedActor<TMethod>::StateWork)
 {
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TMethod::TResponse, HandleResponse);
         HFunc(TMethod::TRequest, HandleUndelivery);

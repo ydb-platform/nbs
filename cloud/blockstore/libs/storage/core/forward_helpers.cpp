@@ -2,35 +2,33 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NBlobMarkers;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void ApplyMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const TBlockMarks& blockMarks,
     NProto::TReadBlocksRequest& request)
 {
-    Y_UNUSED(unusedIndices);
-    Y_UNUSED(startIndex);
+    Y_UNUSED(blockMarks);
     Y_UNUSED(request);
 }
 
 void ApplyMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const TBlockMarks& blockMarks,
     NProto::TReadBlocksResponse& response)
 {
     auto& buffers = *response.MutableBlocks()->MutableBuffers();
-    for (int i = 0; i < buffers.size(); ++i) {
-        ui64 b = startIndex + i;
-        if (buffers[i].size() && unusedIndices.contains(b)) {
+    const size_t minSize = std::min(std::ssize(blockMarks), std::ssize(buffers));
+    for (size_t i = 0; i < minSize; ++i) {
+        if (buffers[i].data() && std::holds_alternative<TEmptyMark>(blockMarks[i])) {
             memset(buffers[i].begin(), 0, buffers[i].size());
         }
     }
 }
 
 void ApplyMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const TBlockMarks& blockMarks,
     NProto::TReadBlocksLocalRequest& request)
 {
     auto& sglist = request.Sglist;
@@ -41,10 +39,9 @@ void ApplyMask(
 
     auto& blockDatas = guard.Get();
 
-    for (ui32 i = 0; i < blockDatas.size(); ++i) {
+    for (size_t i = 0; i < blockMarks.size() && i < blockDatas.size(); ++i) {
         auto& buffer = blockDatas[i];
-        ui64 b = startIndex + i;
-        if (buffer.Size() && unusedIndices.contains(b)) {
+        if (buffer.Data() && std::holds_alternative<TEmptyMark>(blockMarks[i])) {
             memset(const_cast<char*>(buffer.Data()), 0, buffer.Size());
         }
     }
@@ -53,18 +50,20 @@ void ApplyMask(
 ////////////////////////////////////////////////////////////////////////////////
 
 void FillUnencryptedBlockMask(
-    const THashSet<ui64>& unusedIndices,
-    const ui64 startIndex,
+    const TBlockMarks& blockMarks,
     NProto::TReadBlocksResponse& response)
 {
-    if (unusedIndices.empty()) {
+    if (blockMarks.empty()) {
         return;
     }
 
     TDynBitMap bitmap;
-    for (auto unusedIndex: unusedIndices) {
-        Y_VERIFY(unusedIndex >= startIndex);
-        bitmap.Set(unusedIndex - startIndex);
+    for (size_t i = 0; i < blockMarks.size(); ++i) {
+        if (std::holds_alternative<TEmptyMark>(blockMarks[i]) ||
+            std::holds_alternative<TFreshMarkOnBaseDisk>(blockMarks[i]) ||
+            std::holds_alternative<TBlobMarkOnBaseDisk>(blockMarks[i])) {
+            bitmap.Set(i);
+        }
     }
 
     auto& blockMask = *response.MutableUnencryptedBlockMask();
@@ -75,39 +74,25 @@ void FillUnencryptedBlockMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void FillUnusedIndices(
-    const NProto::TReadBlocksRequest& request,
+std::pair<TBlockMarks, ui64> MakeBlockMarks(
     const TCompressedBitmap* usedBlocks,
-    THashSet<ui64>* unusedIndices)
+    TBlockRange64 range)
 {
+    TBlockMarks blockMarks(range.Size(), TEmptyMark{});
     if (!usedBlocks) {
-        for (ui64 i = 0; i < request.GetBlocksCount(); ++i) {
-            unusedIndices->insert(request.GetStartIndex() + i);
-        }
-        return;
+        return {blockMarks, 0};
     }
 
-    const auto b = request.GetStartIndex();
-    const auto e = request.GetStartIndex() + request.GetBlocksCount();
-    if (usedBlocks->Count(b, e) < e - b) {
-        for (ui64 i = 0; i < request.GetBlocksCount(); ++i) {
-            ui64 b = request.GetStartIndex() + i;
-            if (!usedBlocks->Test(b)) {
-                unusedIndices->insert(b);
+    const ui64 count = usedBlocks->Count(range.Start, range.End + 1);
+    if (count != 0) {
+        for (ui64 i = 0; i < range.Size(); ++i) {
+            if (usedBlocks->Test(i + range.Start)) {
+                blockMarks[i] = TFreshMark{};
             }
         }
     }
-}
 
-void FillUnusedIndices(
-    const NProto::TReadBlocksLocalRequest& request,
-    const TCompressedBitmap* usedBlocks,
-    THashSet<ui64>* unusedIndices)
-{
-    FillUnusedIndices(
-        static_cast<const NProto::TReadBlocksRequest&>(request),
-        usedBlocks,
-        unusedIndices);
+    return {blockMarks, count};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

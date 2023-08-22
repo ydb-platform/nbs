@@ -1,6 +1,9 @@
 LIBRARY()
 
-SRCS()
+SRCS(
+    forward_read_marked.cpp
+    forward_write_and_mark_used.cpp
+)
 
 PEERDIR(
     cloud/blockstore/libs/storage/core
