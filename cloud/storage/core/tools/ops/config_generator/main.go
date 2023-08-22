@@ -48,6 +48,8 @@ func getNbsConfigMap() configurator.ConfigMap {
 		"nbs-disk-agent.txt":          {Proto: &nbsProto.TDiskAgentConfig{}, FileName: "disk-agent.txt"},
 		"nbs-disk-registry.txt":       {Proto: &nbsApiProto.TUpdateDiskRegistryConfigRequest{}, FileName: "update-disk-registry.txt"},
 		"nbs-iam.txt":                 {Proto: &coreProto.TIamClientConfig{}, FileName: "iam.txt"},
+		"nbs-kms.txt":                 {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "kms.txt"},
+		"nbs-compute.txt":             {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "compute.txt"},
 
 		// for kikimr initializer configs used custom protobuf files
 		// from cloud/storage/core/tools/common/go/configurator/kikimr-proto
