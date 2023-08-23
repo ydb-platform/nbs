@@ -5007,10 +5007,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.SendReadBlocksRequest(
                 GetBlockRangeById(0),
                 clientInfo.GetClientId(),
-                "unknown_checlpoint");
+                "unknown_checkpoint");
 
             auto response = volume.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Checkpoint id=\"unknown_checkpoint\" not found",
+                response->GetError().GetMessage());
         }
         {
             // Read blocks from checkpoint and check values
@@ -5046,7 +5049,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 "c1");
 
             auto response = volume.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Not found data for checkpoint id=\"c1\"",
+                response->GetError().GetMessage());
         }
 
         // Write blocks

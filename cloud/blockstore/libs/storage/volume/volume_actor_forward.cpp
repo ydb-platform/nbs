@@ -305,19 +305,33 @@ NProto::TError TVolumeActor::ProcessAndValidateReadRequest(
     }
 
     const auto& checkpointId = record.GetCheckpointId();
-    const bool checkpointValid =
-        !checkpointId ||
-        State->GetCheckpointStore().DoesCheckpointHaveData(checkpointId) ||
-        State->GetCheckpointStore().GetCheckpointType(checkpointId)
-            .value_or(ECheckpointType::Normal) == ECheckpointType::Light;
-
-    if (checkpointValid) {
-        record.ClearCheckpointId();
-
+    if (!checkpointId) {
         return {};
     }
 
-    return MakeError(E_ARGUMENT, "Invalid checkpoint id");
+    const auto checkpointType =
+        State->GetCheckpointStore().GetCheckpointType(checkpointId);
+
+    if (!checkpointType) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Checkpoint id=" << checkpointId.Quote() << " not found");
+    }
+
+    const bool checkpointValid =
+        *checkpointType == ECheckpointType::Light ||
+        State->GetCheckpointStore().DoesCheckpointHaveData(checkpointId);
+
+    if (checkpointValid) {
+        record.ClearCheckpointId();
+        return {};
+    }
+
+    return MakeError(
+        E_NOT_FOUND,
+        TStringBuilder() << "Not found data for checkpoint id="
+                         << checkpointId.Quote());
 }
 
 template <typename TMethod>
