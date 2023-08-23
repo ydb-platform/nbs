@@ -1103,7 +1103,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
 
         {
-            // Incorrect FillToken.
+            // Incorrect FillGeneration.
             NPrivateProto::TFinishFillDiskRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);

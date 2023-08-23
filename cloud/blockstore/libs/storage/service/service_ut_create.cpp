@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
+#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -1724,7 +1725,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();
-        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
 
         auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.GetFillGeneration());
@@ -1743,7 +1744,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
+            UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
         }
 
         {
@@ -1763,6 +1764,65 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.RecvCreateVolumeResponse();
             UNIT_ASSERT_C(response->GetStatus() == E_ABORTED, response->GetStatus());
         }
+    }
+
+    Y_UNIT_TEST(ShouldCheckFillGenerationOnDestroy)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto createVolume = [&](const TString& diskId) {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetDiskId(diskId);
+            request->Record.SetFillGeneration(713);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+        };
+
+        auto failToDestroy = [&] (const TString& diskId, ui64 fillGeneration) {
+            service.SendDestroyVolumeRequest(
+                diskId,
+                false,
+                false,
+                fillGeneration);
+            auto destroyResponse = service.RecvDestroyVolumeResponse();
+            // Expect that volume is not destroyed, but request finished without error.
+            UNIT_ASSERT_C(destroyResponse->GetStatus() == S_OK, destroyResponse->GetErrorReason());
+
+            auto describeResponse = service.DescribeVolume(diskId);
+            UNIT_ASSERT_C(describeResponse->GetStatus() == S_OK, describeResponse->GetErrorReason());
+        };
+
+        auto successfullyDestroy = [&] (const TString& diskId, ui64 fillGeneration) {
+            auto destroyResponse = service.DestroyVolume(
+                diskId,
+                false,
+                false,
+                fillGeneration);
+            UNIT_ASSERT_C(destroyResponse->GetStatus() == S_OK, destroyResponse->GetErrorReason());
+
+            service.SendDescribeVolumeRequest(diskId);
+            auto describeResponse = service.RecvDescribeVolumeResponse();
+            UNIT_ASSERT_C(S_OK != describeResponse->GetStatus(), describeResponse->GetErrorReason());
+        };
+
+        createVolume("vol");
+        failToDestroy("vol", 1);
+        failToDestroy("vol", 712);
+        successfullyDestroy("vol", 713);
+
+        createVolume("vol_2");
+        successfullyDestroy("vol_2", 714);
+
+        createVolume("vol_3");
+        successfullyDestroy("vol_3", 777);
+
+        createVolume("vol_4");
+        successfullyDestroy("vol_4", 0);
     }
 }
 

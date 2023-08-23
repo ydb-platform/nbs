@@ -24,8 +24,11 @@ private:
     const TStorageConfigPtr Config;
     const EOpType OpType;
     const TString DiskId;
+
     const TString NewMountToken;
     const ui64 TokenVersion;
+
+    const ui64 FillGeneration;
 
     bool FallbackRequest = false;
 
@@ -36,7 +39,8 @@ public:
         EOpType opType,
         TString diskId,
         TString newMountToken,
-        ui64 tokenVersion);
+        ui64 tokenVersion,
+        ui64 fillGeneration);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -58,13 +62,15 @@ TModifyVolumeActor::TModifyVolumeActor(
         EOpType opType,
         TString diskId,
         TString newMountToken,
-        ui64 tokenVersion)
+        ui64 tokenVersion,
+        ui64 fillGeneration)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , OpType(opType)
     , DiskId(std::move(diskId))
     , NewMountToken(std::move(newMountToken))
     , TokenVersion(tokenVersion)
+    , FillGeneration(fillGeneration)
 {
     ActivityType = TBlockStoreActivities::SS_PROXY;
 }
@@ -115,6 +121,10 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
 
             auto* op = modifyScheme.MutableDrop();
             op->SetName(volumeName);
+
+            auto* opParams = modifyScheme.MutableDropBlockStoreVolume();
+            opParams->SetFillGeneration(FillGeneration);
+
             break;
         }
     }
@@ -201,7 +211,8 @@ void TSSProxyActor::HandleModifyVolume(
         msg->OpType,
         msg->DiskId,
         msg->NewMountToken,
-        msg->TokenVersion);
+        msg->TokenVersion,
+        msg->FillGeneration);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

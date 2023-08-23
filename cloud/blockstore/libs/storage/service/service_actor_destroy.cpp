@@ -32,6 +32,7 @@ private:
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
+    const ui64 FillGeneration;
 
     bool IsDiskRegistryBased = false;
 
@@ -42,7 +43,8 @@ public:
         TDuration attachedDiskDestructionTimeout,
         TString diskId,
         bool destroyIfBroken,
-        bool sync);
+        bool sync,
+        ui64 fillGeneration);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -89,13 +91,15 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         TDuration attachedDiskDestructionTimeout,
         TString diskId,
         bool destroyIfBroken,
-        bool sync)
+        bool sync,
+        ui64 fillGeneration)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
+    , FillGeneration(fillGeneration)
 {
     ActivityType = TBlockStoreActivities::SERVICE;
 }
@@ -132,7 +136,8 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
             TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy,
             DiskId,
             "",
-            0));
+            0,
+            FillGeneration));
 }
 
 void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
@@ -408,12 +413,14 @@ void TServiceActor::HandleDestroyVolume(
     const auto& diskId = request.GetDiskId();
     const bool destroyIfBroken = request.GetDestroyIfBroken();
     const bool sync = request.GetSync();
+    const ui64 fillGeneration = request.GetFillGeneration();
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Deleting volume: %s, %d, %d, %d",
+        "Deleting volume: diskId = %s, destroyIfBroken = %d, sync = %d, fillGeneration = %d",
         diskId.Quote().c_str(),
         destroyIfBroken,
-        sync);
+        sync,
+        fillGeneration);
 
     NCloud::Register<TDestroyVolumeActor>(
         ctx,
@@ -422,7 +429,8 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetAttachedDiskDestructionTimeout(),
         diskId,
         destroyIfBroken,
-        sync);
+        sync,
+        fillGeneration);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
