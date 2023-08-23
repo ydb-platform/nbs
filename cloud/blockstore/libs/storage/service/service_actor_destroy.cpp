@@ -339,14 +339,14 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
                     client.GetInstanceId().Quote().c_str(),
                     ToString(disconnectTimestamp).c_str());
             } else {
-                LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-                    "Volume %s is attached to instance: %s",
+                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+                    "Volume %s is attached to instance (active): %s",
                     DiskId.Quote().c_str(),
                     client.GetInstanceId().Quote().c_str());
 
                 auto e = MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder() << "attached to instance: "
+                    E_REJECTED,
+                    TStringBuilder() << "attached to an active instance: "
                         << client.GetInstanceId());
 
                 ReplyAndDie(

@@ -1564,7 +1564,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendDestroyVolumeRequest(DefaultDiskId);
         {
             auto response = service.RecvDestroyVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
 
         service.DescribeVolume();
@@ -1592,7 +1592,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendDestroyVolumeRequest(DefaultDiskId);
         {
             auto response = service.RecvDestroyVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
 
         service.DescribeVolume();
