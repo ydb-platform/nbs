@@ -3,7 +3,6 @@ import os
 import tempfile
 
 from subprocess import call
-from collections import namedtuple
 
 from google.protobuf.text_format import MessageToBytes
 
@@ -19,16 +18,15 @@ from ydb.core.protos import msgbus_pb2 as msgbus
 CFG_PREFIX = 'Cloud.NBS.'
 
 
-Device = namedtuple(
-    'Device',
-    [
-        'path',
-        'uuid',
-        'block_size',
-        'block_count',
-        'handle'
-    ]
-)
+class Device:
+
+    def __init__(self, path, uuid, block_size, block_count, handle, storage_pool_name):
+        self.path = path
+        self.uuid = uuid
+        self.block_size = block_size
+        self.block_count = block_count
+        self.handle = handle
+        self.storage_pool_name = storage_pool_name
 
 
 def enable_custom_cms_configs(client):
@@ -78,7 +76,8 @@ def create_file_device(dir, device_id, block_size, block_count_per_device):
         uuid="FileDevice-" + str(device_id),
         block_size=block_size,
         block_count=block_count_per_device,
-        handle=tmp_file
+        handle=tmp_file,
+        storage_pool_name=None,
     )
 
 
@@ -88,7 +87,8 @@ def create_memory_device(device_id, block_size, block_count_per_device):
         uuid="MemoryDevice-" + str(device_id),
         block_size=block_size,
         block_count=block_count_per_device,
-        handle=None
+        handle=None,
+        storage_pool_name=None,
     )
 
 
@@ -200,8 +200,7 @@ def setup_disk_agent_config(
         device_erase_method,
         dedicated_disk_agent=False,
         agent_id="localhost",
-        node_type='disk-agent',
-        storage_pool_name=None):
+        node_type='disk-agent'):
 
     config = TDiskAgentConfig()
     config.Enabled = True
@@ -228,8 +227,8 @@ def setup_disk_agent_config(
             arg.BlockSize = device.block_size
             arg.BlocksCount = device.block_count
 
-        if storage_pool_name is not None:
-            arg.PoolName = storage_pool_name
+        if device.storage_pool_name is not None:
+            arg.PoolName = device.storage_pool_name
 
     update_cms_config(kikimr, 'DiskAgentConfig', config, node_type=node_type)
 
@@ -331,8 +330,7 @@ def setup_nonreplicated(
         devices_per_agent,
         device_erase_method=None,
         dedicated_disk_agent=False,
-        agent_count=1,
-        storage_pool_name=None):
+        agent_count=1):
     enable_custom_cms_configs(kikimr_client)
     setup_disk_registry_proxy_config(kikimr_client)
     for i in range(agent_count):
@@ -342,5 +340,4 @@ def setup_nonreplicated(
             device_erase_method,
             dedicated_disk_agent,
             agent_id=make_agent_id(i),
-            node_type=make_agent_node_type(i),
-            storage_pool_name=storage_pool_name)
+            node_type=make_agent_node_type(i))
