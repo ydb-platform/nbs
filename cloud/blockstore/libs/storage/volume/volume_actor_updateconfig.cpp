@@ -36,6 +36,7 @@ auto BuildNewMeta(
     newMeta.SetIOMode(oldMeta.GetIOMode());
     newMeta.SetIOModeTs(oldMeta.GetIOModeTs());
     newMeta.SetResyncNeeded(oldMeta.GetResyncNeeded());
+    newMeta.SetFillSeqNumber(oldMeta.GetFillSeqNumber());
 
     Y_VERIFY(volumeConfig.PartitionsSize());
     ui64 blockCount = volumeConfig.GetPartitions(0).GetBlockCount();

@@ -4716,6 +4716,67 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldPreserveFillSeqNumberAfterVolumeConfigUpdate)
+    {
+        TTestEnv env(1, 1);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        ui32 mountFlags = 0;
+        SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
+        SetProtoFlag(mountFlags, NProto::MF_FILL);
+
+        auto response = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            0, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            1  // fillSeqNumber
+        );
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason()
+        );
+
+        // Resize volume request updates volume config
+        service.ResizeVolume(DefaultDiskId, DefaultBlocksCount * 2);
+
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            mountFlags,
+            1, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0  // fillSeqNumber
+        );
+
+        {
+            auto response = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_PRECONDITION_FAILED,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+        }
+    }
+
     Y_UNIT_TEST(ShouldCheckIfFillFinishedOnMount)
     {
         TTestEnv env(1, 1);
@@ -4781,6 +4842,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             );
         }
 
+        // Should not be able to mount when IS_FILL flag is set and fill is finished
+        // even if fillSeqNumber is big enough
         service.SendMountVolumeRequest(
             DefaultDiskId,
             TString(),
@@ -4803,6 +4866,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             );
         }
 
+        // Should be able to mount when IS_FILL flag is not set and fill is finished
+        // In particular, should not check fillSeqNumber here
         response = service.MountVolume(
             DefaultDiskId,
             TString(),

@@ -676,7 +676,7 @@ bool TVolumeState::CanAcceptClient(
         return false;
     }
 
-    return newFillSeqNumber >= Meta.GetFillSeqNumber();
+    return !isFill || newFillSeqNumber >= Meta.GetFillSeqNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
