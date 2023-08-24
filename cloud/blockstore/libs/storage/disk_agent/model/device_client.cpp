@@ -14,9 +14,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
-        TVector<TString> uuids)
+        TVector<TString> uuids,
+        TLog log)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuids)))
+    , Log(std::move(log))
 {}
 
 NCloud::NProto::TError TDeviceClient::AcquireDevices(
@@ -90,12 +92,16 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         if (!IsReadWriteMode(accessMode)) {
             if (s == ds.ReaderSessions.end()) {
                 ds.ReaderSessions.push_back({clientId, now});
+                STORAGE_INFO("Device %s was acquired by client %s for reading.",
+                    uuid.Quote().c_str(), clientId.c_str());
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
 
             if (clientId == ds.WriterSession.Id) {
                 ds.WriterSession = {};
+                STORAGE_INFO("Device %s was released by client %s for writing.",
+                    uuid.Quote().c_str(), clientId.c_str());
             }
         } else {
             ds.WriterSession.Id = clientId;
@@ -105,6 +111,13 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
 
             if (s != ds.ReaderSessions.end()) {
                 ds.ReaderSessions.erase(s);
+                STORAGE_INFO("Device %s was released by client %s for reading.",
+                    uuid.Quote().c_str(), clientId.c_str());
+            }
+
+            if (ds.WriterSession.Id != clientId) {
+                STORAGE_INFO("Device %s was acquired by client %s for writing.",
+                    uuid.Quote().c_str(), clientId.c_str());
             }
         }
     }
@@ -156,9 +169,13 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
 
         if (s != deviceState->ReaderSessions.end()) {
             deviceState->ReaderSessions.erase(s);
+            STORAGE_INFO("Device %s was released by client %s for reading.",
+                    uuid.Quote().c_str(), clientId.c_str());
         } else if (deviceState->WriterSession.Id == clientId
             || clientId == AnyWriterClientId)
         {
+            STORAGE_INFO("Device %s was released by client %s for writing.",
+                    uuid.Quote().c_str(), clientId.c_str());
             deviceState->WriterSession = {};
         }
     }

@@ -9,6 +9,7 @@
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <ydb/core/mind/bscontroller/bsc.h>
@@ -356,7 +357,7 @@ TTestEnv TTestEnvBuilder::Build()
         StorageProvider,
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
-        nullptr,    // logging
+        CreateLoggingService("console"),
         nullptr,    // rdmaServer
         NvmeManager);
 

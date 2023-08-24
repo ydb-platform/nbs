@@ -109,7 +109,7 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,    // storageProvider
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
-        nullptr,    // logging
+        CreateLoggingService("console"),
         nullptr,    // rdmaServer
         nullptr);   // nvmeManager
 }
@@ -287,7 +287,7 @@ struct TFiles
             NServer::CreateNullStorageProvider(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            nullptr,    // logging
+            CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
     }
@@ -438,7 +438,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             }),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            nullptr,    // logging
+            CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
 
@@ -649,7 +649,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     }),
                     CreateProfileLogStub(),
                     CreateBlockDigestGeneratorStub(),
-                    nullptr,    // logging
+                    CreateLoggingService("console"),
                     nullptr,    // rdmaServer
                     NvmeManager);
 
@@ -714,7 +714,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NServer::CreateNullStorageProvider(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            nullptr,    // logging
+            CreateLoggingService("console"),
             nullptr,    // rdmaServer
             std::make_shared<TTestNvmeManager>());
 
@@ -1132,7 +1132,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            nullptr,    // logging
+            CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
 

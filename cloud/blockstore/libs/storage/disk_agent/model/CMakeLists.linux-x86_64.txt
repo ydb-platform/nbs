@@ -17,6 +17,7 @@ target_link_libraries(storage-disk_agent-model PUBLIC
   blockstore-libs-service
   public-api-protos
   core-libs-common
+  core-libs-diagnostics
   storage-core-protos
 )
 target_sources(storage-disk_agent-model PRIVATE

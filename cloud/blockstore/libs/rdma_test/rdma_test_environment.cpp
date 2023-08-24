@@ -3,8 +3,6 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/hash.h>
@@ -23,8 +21,10 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
     for (const auto& [key, value]: devices) {
         uuids.push_back(key);
     }
-    auto deviceClient =
-        std::make_shared<TDeviceClient>(TDuration::MilliSeconds(100), uuids);
+    auto deviceClient = std::make_shared<TDeviceClient>(
+        TDuration::MilliSeconds(100),
+        uuids,
+        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
     deviceClient->AcquireDevices(
         uuids,
         ClientId,
@@ -49,7 +49,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
     RdmaTaget = CreateRdmaTarget(
         std::move(config),
         std::move(rdmaTargetConfig),
-        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES}),
+        Logging,
         Server,
         std::move(deviceClient),
         std::move(devices));

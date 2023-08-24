@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/rdma_test/server_test_async.h>
 #include <cloud/blockstore/libs/storage/disk_agent/rdma_target.h>
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/string.h>
@@ -29,6 +31,10 @@ struct TRdmaTestEnvironment
 
     NMonitoring::TDynamicCountersPtr Counters{
         new NMonitoring::TDynamicCounters()};
+
+    ILoggingServicePtr Logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
 
     TRdmaTestEnvironment(size_t deviceSize = 4_MB, ui32 poolSize = 1);
 

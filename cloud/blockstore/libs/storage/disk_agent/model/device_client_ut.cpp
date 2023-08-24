@@ -2,6 +2,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -121,15 +122,35 @@ auto ReleaseDevices(TDeviceClient& client, const TReleaseParamsBuilder& builder)
         builder.VolumeGeneration);
 }
 
+struct TDeviceClientParams {
+    TVector<TString> Devices;
+};
+
+struct TFixture
+    : public NUnitTest::TBaseFixture
+{
+    ILoggingServicePtr Logging = CreateLoggingService("console");
+
+    TDeviceClient CreateClient(TDeviceClientParams params = {})
+    {
+        return TDeviceClient(
+            TDuration::Seconds(10),
+            params.Devices,
+            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDeviceClientTest)
 {
-    Y_UNIT_TEST(TestAcquireReleaseAccess)
+    Y_UNIT_TEST_F(TestAcquireReleaseAccess, TFixture)
     {
-        TDeviceClient client(TDuration::Seconds(10), {"uuid1", "uuid2"});
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
 
         auto error = AcquireDevices(
             client,
@@ -262,9 +283,11 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
     }
 
-    Y_UNIT_TEST(TestAcquireAtomicity)
+    Y_UNIT_TEST_F(TestAcquireAtomicity, TFixture)
     {
-        TDeviceClient client(TDuration::Seconds(10), {"uuid1", "uuid2"});
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
 
         auto error = AcquireDevices(
             client,
@@ -302,9 +325,11 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
     }
 
-    Y_UNIT_TEST(TestAcquireAccessMultithreaded)
+    Y_UNIT_TEST_F(TestAcquireAccessMultithreaded, TFixture)
     {
-        TDeviceClient client(TDuration::Seconds(10), {"uuid1", "uuid2"});
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
 
         auto threadPool = CreateThreadPool(3);
         const auto runs = 10'000;
@@ -357,11 +382,13 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         threadPool->Stop();
     }
 
-    Y_UNIT_TEST(TestMigrationAccess)
+    Y_UNIT_TEST_F(TestMigrationAccess, TFixture)
     {
         // TODO: fix current migration access logic
         // NBS-3612
-        TDeviceClient client(TDuration::Seconds(10), {"uuid1", "uuid2"});
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
 
         auto error = client.AccessDevice(
             "uuid1",
@@ -395,9 +422,11 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
     }
 
-    Y_UNIT_TEST(TestDiskIdAndVolumeGenerationChecks)
+    Y_UNIT_TEST_F(TestDiskIdAndVolumeGenerationChecks, TFixture)
     {
-        TDeviceClient client(TDuration::Seconds(10), {"uuid1", "uuid2"});
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
 
         // initial acquire
         auto error = AcquireDevices(

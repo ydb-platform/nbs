@@ -430,7 +430,8 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize(
 
             DeviceClient = std::make_shared<TDeviceClient>(
                 AgentConfig->GetReleaseInactiveSessionsTimeout(),
-                std::move(uuids));
+                std::move(uuids),
+                Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
             InitRdmaTarget(std::move(rdmaTargetConfig));
         });

@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/datetime/base.h>
@@ -39,11 +40,13 @@ private:
 
     const TDuration ReleaseInactiveSessionsTimeout;
     const TDevicesState Devices;
+    TLog Log;
 
 public:
     TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
-        TVector<TString> uuids);
+        TVector<TString> uuids,
+        TLog Log);
 
     TDeviceClient(const TDeviceClient&) = delete;
     TDeviceClient& operator=(const TDeviceClient&) = delete;
