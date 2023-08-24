@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash_set.h>
@@ -94,6 +95,11 @@ public:
     NProto::TDeviceConfig AllocateDevice(
         const TDiskId& diskId,
         const TAllocationQuery& query);
+    TResultOrError<NProto::TDeviceConfig> AllocateSpecificDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId,
+        const TAllocationQuery& query);
+    bool IsAllocatedDevice(const TDeviceId& id) const;
     bool ValidateAllocationQuery(
         const TAllocationQuery& query,
         const TDeviceId& targetDeviceId);

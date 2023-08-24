@@ -295,6 +295,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 db,
                 "disk-1",
                 "uuid-1.2",
+                "",     // no replacement device
                 TInstant::Zero(),
                 "",     // message
                 true,   // manual
@@ -315,6 +316,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 db,
                 "disk-1",
                 "uuid-1.1",
+                "",     // no replacement device
                 TInstant::Zero(),
                 "",     // message
                 true,   // manual
@@ -369,6 +371,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 db,
                 "disk-1",
                 "uuid-1.1",
+                "",     // no replacement device
                 TInstant::Zero(),
                 "",     // message
                 true,   // manual

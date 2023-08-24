@@ -31,6 +31,7 @@ private:
 
     TString DiskId;
     TString DeviceId;
+    TString DeviceReplacementId;
 
     NProto::TError Error;
 
@@ -85,12 +86,17 @@ void TReplaceDeviceActionActor::Bootstrap(const TActorContext& ctx)
         DeviceId = input["DeviceId"].GetString();
     }
 
+    if (input.Has("DeviceReplacementId")) {
+        DeviceReplacementId = input["DeviceReplacementId"].GetString();
+    }
+
     Become(&TThis::StateWork);
 
     auto request = std::make_unique<TEvDiskRegistry::TEvReplaceDeviceRequest>();
 
     request->Record.SetDiskId(DiskId);
     request->Record.SetDeviceUUID(DeviceId);
+    request->Record.SetDeviceReplacementUUID(DeviceReplacementId);
 
     ctx.Send(MakeDiskRegistryProxyServiceId(), request.release());
 }

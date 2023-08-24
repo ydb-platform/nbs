@@ -1064,6 +1064,9 @@ message TReplaceDeviceRequest
 
     // Device to be replaced
     string DeviceUUID = 3;
+
+    // Device to use for the replacement
+    string DeviceReplacementUUID = 4;
 }
 
 message TReplaceDeviceResponse

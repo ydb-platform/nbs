@@ -895,10 +895,57 @@ void TDiskRegistryState::RebuildDiskPlacementInfo(
     diskInfo->SetPlacementPartitionIndex(disk.PlacementPartitionIndex);
 }
 
+TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::AllocateReplacementDevice(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TDeviceId& deviceReplacementId,
+    const TDeviceList::TAllocationQuery& query,
+    TInstant timestamp,
+    TString message)
+{
+    if (deviceReplacementId.empty()) {
+        auto device = DeviceList.AllocateDevice(diskId, query);
+        if (device.GetDeviceUUID().empty()) {
+            return MakeError(E_BS_DISK_ALLOCATION_FAILED, "can't allocate device");
+        }
+
+        return device;
+    }
+
+    auto [device, error] = DeviceList.AllocateSpecificDevice(
+        diskId,
+        deviceReplacementId,
+        query);
+    if (HasError(error)) {
+        return MakeError(E_BS_DISK_ALLOCATION_FAILED, TStringBuilder()
+            << "can't allocate specific device "
+            << deviceReplacementId.Quote()
+            << " : " << error.GetMessage());
+    }
+
+    // replacement device can come from dirty devices list
+    db.DeleteDirtyDevice(deviceReplacementId);
+
+    // replacement device can come from automatically replaced devices list
+    if (IsAutomaticallyReplaced(deviceReplacementId)) {
+        DeleteAutomaticallyReplacedDevice(db, deviceReplacementId);
+    }
+
+    AdjustDeviceState(
+        db,
+        device,
+        NProto::DEVICE_STATE_ONLINE,
+        timestamp,
+        std::move(message));
+
+    return device;
+}
+
 NProto::TError TDiskRegistryState::ReplaceDevice(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     const TString& deviceId,
+    const TString& deviceReplacementId,
     TInstant timestamp,
     TString message,
     bool manual,
@@ -955,10 +1002,16 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             query.NodeIds = { devicePtr->GetNodeId() };
         }
 
-        auto targetDevice = DeviceList.AllocateDevice(diskId, query);
 
-        if (targetDevice.GetDeviceUUID().empty()) {
-            return MakeError(E_BS_DISK_ALLOCATION_FAILED, "can't allocate device");
+        auto [targetDevice, error] = AllocateReplacementDevice(
+            db,
+            diskId,
+            deviceReplacementId,
+            query,
+            timestamp,
+            message);
+        if (HasError(error)) {
+            return error;
         }
 
         AdjustDeviceBlockCount(
@@ -1065,6 +1118,37 @@ void TDiskRegistryState::AdjustDeviceBlockCount(
     }
 
     source->SetBlocksCount(newBlockCount);
+
+    UpdateAgent(db, *agent);
+    DeviceList.UpdateDevices(*agent);
+
+    device = *source;
+}
+
+void TDiskRegistryState::AdjustDeviceState(
+    TDiskRegistryDatabase& db,
+    NProto::TDeviceConfig& device,
+    NProto::EDeviceState state,
+    TInstant timestamp,
+    TString message)
+{
+    if (device.GetState() == state) {
+        return;
+    }
+
+    auto [agent, source] = FindDeviceLocation(device.GetDeviceUUID());
+    if (!agent || !source) {
+        ReportDiskRegistryBadDeviceStateAdjustment(
+            TStringBuilder() << "AdjustDeviceState:DeviceId: "
+            << device.GetDeviceUUID()
+            << ", agent?: " << !!agent
+            << ", source?: " << !!source);
+        return;
+    }
+
+    source->SetState(state);
+    source->SetStateTs(timestamp.MicroSeconds());
+    source->SetStateMessage(std::move(message));
 
     UpdateAgent(db, *agent);
     DeviceList.UpdateDevices(*agent);
@@ -3939,6 +4023,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                         db,
                         diskId,
                         deviceId,
+                        "",     // no replacement device
                         timestamp,
                         MakeMirroredDiskDeviceReplacementMessage(
                             disk.MasterDiskId,
@@ -4404,6 +4489,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
                 db,
                 diskId,
                 device.GetDeviceUUID(),
+                "",     // no replacement device
                 now,
                 MakeMirroredDiskDeviceReplacementMessage(
                     disk->MasterDiskId,
@@ -5414,6 +5500,24 @@ ui32 TDiskRegistryState::DeleteAutomaticallyReplacedDevices(
     AutomaticallyReplacedDevices.erase(AutomaticallyReplacedDevices.begin(), it);
 
     return cnt;
+}
+
+void TDiskRegistryState::DeleteAutomaticallyReplacedDevice(
+    TDiskRegistryDatabase& db,
+    const TDeviceId& deviceId)
+{
+    if (!AutomaticallyReplacedDeviceIds.erase(deviceId)) {
+        return;
+    }
+
+    auto it = FindIf(AutomaticallyReplacedDevices, [&] (const auto& deviceInfo) {
+        return (deviceInfo.DeviceId == deviceId);
+    });
+    if (it != AutomaticallyReplacedDevices.end()) {
+        AutomaticallyReplacedDevices.erase(it);
+    }
+
+    db.DeleteAutomaticallyReplacedDevice(deviceId);
 }
 
 NProto::TError TDiskRegistryState::CreateDiskFromDevices(

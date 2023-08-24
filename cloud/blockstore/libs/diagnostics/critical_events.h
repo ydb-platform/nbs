@@ -56,6 +56,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryPoolDeviceRackMismatch)                                    \
     xxx(DiskRegistryAgentNotFound)                                             \
     xxx(DiskRegistryBadDeviceSizeAdjustment)                                   \
+    xxx(DiskRegistryBadDeviceStateAdjustment)                                  \
     xxx(DiskRegistryDuplicateDiskInPlacementGroup)                             \
     xxx(DiskRegistryInvalidPlacementGroupPartition)                            \
     xxx(DiskRegistryDeviceLocationNotFound)                                    \

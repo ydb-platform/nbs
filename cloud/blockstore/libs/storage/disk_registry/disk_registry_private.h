@@ -437,14 +437,17 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString DeviceId;
+        TString DeviceReplacementId;
         TInstant Timestamp;
 
         TReplaceDiskDeviceRequest(
                 TString diskId,
                 TString deviceId,
+                TString deviceReplacementId,
                 TInstant timestamp)
             : DiskId(std::move(diskId))
             , DeviceId(std::move(deviceId))
+            , DeviceReplacementId(std::move(deviceReplacementId))
             , Timestamp(timestamp)
         {}
     };

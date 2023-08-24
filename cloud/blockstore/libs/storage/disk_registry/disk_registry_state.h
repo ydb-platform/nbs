@@ -471,6 +471,7 @@ public:
         TDiskRegistryDatabase& db,
         const TString& diskId,
         const TString& deviceId,
+        const TString& deviceReplacementId,
         TInstant timestamp,
         TString message,
         bool manual,
@@ -603,6 +604,10 @@ public:
     ui32 DeleteAutomaticallyReplacedDevices(
         TDiskRegistryDatabase& db,
         const TInstant until);
+
+    void DeleteAutomaticallyReplacedDevice(
+        TDiskRegistryDatabase& db,
+        const TDeviceId& deviceId);
 
     NProto::TError CreateDiskFromDevices(
         TInstant now,
@@ -820,6 +825,13 @@ private:
         NProto::TDeviceConfig& device,
         ui64 newBlockCount);
 
+    void AdjustDeviceState(
+        TDiskRegistryDatabase& db,
+        NProto::TDeviceConfig& device,
+        NProto::EDeviceState state,
+        TInstant timestamp,
+        TString message);
+
     ui64 GetDeviceBlockCountWithOverrides(
         const TDiskId& diskId,
         const NProto::TDeviceConfig& device);
@@ -959,6 +971,14 @@ private:
     void SuspendLocalDevices(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    TResultOrError<NProto::TDeviceConfig> AllocateReplacementDevice(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        const TDeviceId& deviceReplacementId,
+        const TDeviceList::TAllocationQuery& query,
+        TInstant timestamp,
+        TString message);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

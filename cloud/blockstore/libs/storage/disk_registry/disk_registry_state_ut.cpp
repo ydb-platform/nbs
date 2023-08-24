@@ -4658,6 +4658,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "disk-1",
                 "uuid-2.1",
+                "",     // no replacement device
                 Now(),
                 "",     // message
                 true,   // manual
@@ -4763,6 +4764,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "disk-2",
                 device,
+                "",     // no replacement device
                 Now(),
                 "",     // message
                 true,   // manual
@@ -4785,6 +4787,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "disk-2",
                 device,
+                "",     // no replacement device
                 Now(),
                 "",     // message
                 true,   // manual
@@ -4881,6 +4884,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "disk-1",
                 "uuid-1.2",
+                "",     // no replacement device
                 Now(),
                 "",     // message
                 true,   // manual
@@ -4923,6 +4927,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "disk-1",
                 "uuid-1.2",
+                "",     // no replacement device
                 Now(),
                 "",     // message
                 true,   // manual
@@ -9809,6 +9814,162 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "disk2",
                 userNotifications[2].GetDiskError().GetDiskId());
         UNIT_ASSERT(userNotifications[2].GetHasLegacyCopy());
+    }
+
+    Y_UNIT_TEST(ReplaceSpecificDevice)
+    {
+        const auto agent1 = AgentConfig(1, {
+            Device("dev-1", "uuid-1.1", "rack-1"),
+        });
+
+        const auto agent2 = AgentConfig(2, {
+            Device("dev-1", "uuid-2.1", "rack-2"),
+            Device("dev-2", "uuid-2.2", "rack-2"),
+            Device("dev-3", "uuid-2.3", "rack-2"),
+            Device("dev-4", "uuid-2.4", "rack-2"),
+        });
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({ agent1, agent2 })
+            .WithDisks({ Disk("disk-1", { "uuid-1.1", "uuid-2.1" }) })
+            .Build();
+
+        auto moveDeviceToErrorState = [&] (auto deviceId, auto seqNum) {
+            executor.WriteTx([&](TDiskRegistryDatabase db) mutable {
+                TString affectedDisk;
+                const auto error = state.UpdateDeviceState(
+                    db,
+                    deviceId,
+                    NProto::DEVICE_STATE_ERROR,
+                    Now(),
+                    "test",
+                    affectedDisk);
+
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+
+                UNIT_ASSERT_VALUES_EQUAL(seqNum+1, state.GetDiskStateUpdates().size());
+                const auto &update = state.GetDiskStateUpdates().back();
+
+                UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
+                UNIT_ASSERT_VALUES_EQUAL(seqNum, update.SeqNo);
+            });
+        };
+
+        auto replaceDevice = [&](
+            auto fromDevId,
+            auto toDevId,
+            auto manual,
+            auto seqNum)
+        {
+            executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+                bool updated = false;
+                const auto error = state.ReplaceDevice(
+                    db,
+                    "disk-1",
+                    fromDevId,
+                    toDevId,
+                    Now(),
+                    "",     // message
+                    manual,
+                    &updated);
+
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                UNIT_ASSERT(updated);
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    seqNum + 1,
+                    state.GetDiskStateUpdates().size());
+                const auto& update = state.GetDiskStateUpdates().back();
+
+                UNIT_ASSERT_VALUES_EQUAL("disk-1", update.State.GetDiskId());
+                UNIT_ASSERT_EQUAL(
+                    NProto::DISK_STATE_ONLINE,
+                    update.State.GetState());
+                UNIT_ASSERT_VALUES_EQUAL(seqNum, update.SeqNo);
+            });
+        };
+
+        auto checkDevices = [&](
+            TVector<TString> diskDevices,
+            TVector<TString> dirtyDevices,
+            TVector<TString> autoReplacedDevices)
+        {
+            TVector<TDeviceConfig> devices;
+            const auto error = state.GetDiskDevices("disk-1", devices);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(diskDevices.size(), devices.size());
+            Sort(devices, TByDeviceUUID());
+            for (ui32 i=0; i < diskDevices.size(); i++) {
+                UNIT_ASSERT_EQUAL(
+                    NProto::DEVICE_STATE_ONLINE,
+                    devices[i].GetState());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    diskDevices[i],
+                    devices[i].GetDeviceUUID());
+            }
+
+            TDiskInfo info;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", info));
+            // device replacement list should be empty for non-mirrored disks
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, info.DeviceReplacementIds);
+
+            auto stateDirtyDevices = state.GetDirtyDevices();
+            UNIT_ASSERT_VALUES_EQUAL(
+                dirtyDevices.size(),
+                stateDirtyDevices.size());
+            Sort(stateDirtyDevices, TByDeviceUUID());
+            for (ui32 i = 0; i < dirtyDevices.size(); i++) {
+                UNIT_ASSERT_EQUAL(
+                    NProto::DEVICE_STATE_ERROR,
+                    stateDirtyDevices[i].GetState());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    dirtyDevices[i],
+                    stateDirtyDevices[i].GetDeviceUUID());
+            }
+
+            TVector<TAutomaticallyReplacedDeviceInfo> stateAutoReplacedDevices(
+                state.GetAutomaticallyReplacedDevices().begin(),
+                state.GetAutomaticallyReplacedDevices().end());
+            UNIT_ASSERT_VALUES_EQUAL(
+                autoReplacedDevices.size(),
+                stateAutoReplacedDevices.size());
+            SortBy(stateAutoReplacedDevices, [] (auto& x) { return x.DeviceId; });
+            for (ui32 i = 0; i < autoReplacedDevices.size(); i++) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    autoReplacedDevices[i],
+                    stateAutoReplacedDevices[i].DeviceId);
+            }
+        };
+
+        // replace device with replacement from free list
+        moveDeviceToErrorState("uuid-2.1", 0);
+        replaceDevice("uuid-2.1", "uuid-2.4", true /* manual */, 1);
+        // replaced device is now dirty
+        checkDevices({"uuid-1.1", "uuid-2.4"}, {"uuid-2.1"}, {});
+
+        // replace device with replacement from dirty list
+        moveDeviceToErrorState("uuid-2.4", 2);
+        replaceDevice("uuid-2.4", "uuid-2.1", true /* manual */, 3);
+        // make sure uuid-2.1 is not considered dirty anymore
+        checkDevices({"uuid-1.1", "uuid-2.1"}, {"uuid-2.4"}, {});
+
+        // replace device automatically
+        moveDeviceToErrorState("uuid-2.1", 4);
+        replaceDevice("uuid-2.1", "", false /* not manual */, 5);
+        // make sure uuid-2.1 is in dirty and automatically replaced devices list
+        checkDevices({"uuid-1.1", "uuid-2.2"}, {"uuid-2.1", "uuid-2.4"}, {"uuid-2.1"});
+
+        // replace device with replacement from automatically replaced list
+        moveDeviceToErrorState("uuid-1.1", 6);
+        replaceDevice("uuid-1.1", "uuid-2.1", true /* manual */, 7);
+        // make sure uuid-2.1 is not considered dirty or automatically replaced anymore
+        checkDevices({"uuid-2.1", "uuid-2.2"}, {"uuid-1.1", "uuid-2.4"}, {});
     }
 }
 

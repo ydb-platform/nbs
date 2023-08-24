@@ -577,6 +577,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
         const TString DeviceId;
+        const TString DeviceReplacementId;
         const TInstant Timestamp;
 
         NProto::TError Error;
@@ -585,10 +586,12 @@ struct TTxDiskRegistry
                 TRequestInfoPtr requestInfo,
                 TString diskId,
                 TString deviceId,
+                TString deviceReplacementId,
                 TInstant timestamp)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , DeviceId(std::move(deviceId))
+            , DeviceReplacementId(std::move(deviceReplacementId))
             , Timestamp(timestamp)
         {}
 

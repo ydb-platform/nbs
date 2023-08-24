@@ -246,6 +246,66 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
     return {};
 }
 
+TResultOrError<NProto::TDeviceConfig> TDeviceList::AllocateSpecificDevice(
+    const TDiskId& diskId,
+    const TDeviceId& deviceId,
+    const TAllocationQuery& query)
+{
+    const auto* config = FindDevice(deviceId);
+    if (!config) {
+        return MakeError(E_NOT_FOUND, TStringBuilder()
+            << "device not found, " << deviceId.Quote());
+    }
+
+    if (IsSuspendedDevice(deviceId)) {
+        return MakeError(E_INVALID_STATE, TStringBuilder()
+            << "device is suspended, " << deviceId.Quote());
+    }
+
+    if (IsAllocatedDevice(deviceId)) {
+        return MakeError(E_INVALID_STATE, TStringBuilder()
+            << "device is allocated, " << deviceId.Quote());
+    }
+
+    if (!query.NodeIds.empty() && !query.NodeIds.contains(config->GetNodeId())) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "device node id is not allowed, "
+            << deviceId.Quote()
+            << "NodeId: " << config->GetNodeId());
+    }
+
+    if (query.ForbiddenRacks.contains(config->GetRack())) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "device rack is forbidden, "
+            << deviceId.Quote()
+            << "Rack: " << config->GetRack());
+    }
+
+    if (query.PoolName != config->GetPoolName()) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "device pool name is not allowed, "
+            << deviceId.Quote()
+            << "PoolName: " << config->GetPoolName());
+    }
+
+    const ui64 size = config->GetBlockSize() * config->GetUnadjustedBlockCount();
+    const ui64 blockCount = size / query.LogicalBlockSize;
+
+    if (query.BlockCount > blockCount) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "device block count is too small, "
+            << deviceId.Quote()
+            << "BlockCount: " << blockCount);
+    }
+
+    if (IsDirtyDevice(deviceId)) {
+        DirtyDevices.erase(deviceId);
+    }
+
+    MarkDeviceAllocated(diskId, deviceId);
+    return *config;
+}
+
 bool TDeviceList::ValidateAllocationQuery(
     const TAllocationQuery& query,
     const TDeviceId& targetDeviceId)
@@ -589,6 +649,11 @@ bool TDeviceList::ResumeDevice(const TDeviceId& id)
 bool TDeviceList::IsSuspendedDevice(const TDeviceId& id) const
 {
     return SuspendedDevices.contains(id);
+}
+
+bool TDeviceList::IsAllocatedDevice(const TDeviceId& id) const
+{
+    return AllocatedDevices.contains(id);
 }
 
 TVector<NProto::TSuspendedDevice> TDeviceList::GetSuspendedDevices() const

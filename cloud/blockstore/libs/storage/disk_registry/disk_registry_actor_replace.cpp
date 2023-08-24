@@ -19,6 +19,7 @@ private:
     const TRequestInfoPtr Request;
     const TString DiskId;
     const TString DeviceId;
+    const TString DeviceReplacementId;
     const TInstant Timestamp;
 
 public:
@@ -27,6 +28,7 @@ public:
         TRequestInfoPtr request,
         TString diskId,
         TString deviceId,
+        TString deviceReplacementId,
         TInstant timestamp);
 
     void Bootstrap(const TActorContext& ctx);
@@ -53,11 +55,13 @@ TReplaceActor::TReplaceActor(
         TRequestInfoPtr request,
         TString diskId,
         TString deviceId,
+        TString deviceReplacementId,
         TInstant timestamp)
     : Owner(owner)
     , Request(std::move(request))
     , DiskId(std::move(diskId))
     , DeviceId(std::move(deviceId))
+    , DeviceReplacementId(std::move(deviceReplacementId))
     , Timestamp(timestamp)
 {
     ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
@@ -70,6 +74,7 @@ void TReplaceActor::Bootstrap(const TActorContext& ctx)
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvReplaceDiskDeviceRequest>(
         DiskId,
         DeviceId,
+        DeviceReplacementId,
         Timestamp);
 
     NCloud::Send(ctx, Owner, std::move(request));
@@ -151,12 +156,15 @@ void TDiskRegistryActor::HandleReplaceDevice(
 
     const auto& diskId = msg->Record.GetDiskId();
     const auto& deviceId = msg->Record.GetDeviceUUID();
+    const auto& deviceReplacementId = msg->Record.GetDeviceReplacementUUID();
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ReplaceDevice request: DiskId=%s, DeviceId=%s",
+        "[%lu] Received ReplaceDevice request: "
+        "DiskId=%s, DeviceId=%s, DeviceReplacementId=%s",
         TabletID(),
         diskId.c_str(),
-        deviceId.c_str());
+        deviceId.c_str(),
+        deviceReplacementId.c_str());
 
     auto actor = NCloud::Register<TReplaceActor>(
         ctx,
@@ -167,6 +175,7 @@ void TDiskRegistryActor::HandleReplaceDevice(
             msg->CallContext),
         diskId,
         deviceId,
+        deviceReplacementId,
         Now());
     Actors.insert(actor);
 }
@@ -191,6 +200,7 @@ void TDiskRegistryActor::HandleReplaceDiskDevice(
         std::move(requestInfo),
         std::move(msg->DiskId),
         std::move(msg->DeviceId),
+        std::move(msg->DeviceReplacementId),
         msg->Timestamp);
 }
 
@@ -219,6 +229,7 @@ void TDiskRegistryActor::ExecuteReplaceDevice(
         db,
         args.DiskId,
         args.DeviceId,
+        args.DeviceReplacementId,
         args.Timestamp,
         "replaced",
         true,   // manual
