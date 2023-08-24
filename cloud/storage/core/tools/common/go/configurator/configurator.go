@@ -37,28 +37,27 @@ type CfgFileOverride struct {
 	IcPort     string `yaml:"icPort"`
 }
 
-type ZoneCfgFileOverrides struct {
-	DefaultOverride CfgFileOverride            `yaml:"defaultOverride"`
-	ZoneOverride    map[string]CfgFileOverride `yaml:"zoneOverride"`
-}
-
 type ClusterSpec struct {
-	Targets                         []string             `yaml:"targets"`
-	Zones                           []string             `yaml:"zones"`
-	ZoneCfgOverride                 ZoneCfgFileOverrides `yaml:"zoneCfgOverride"`
-	AdditionalFiles                 []string             `yaml:"additionalFiles"`
-	AdditionalFilesPath             string               `yaml:"additionalFilesPath"`
-	AdditionalFilesPathTargetPrefix string               `yaml:"additionalFilesPathTargetPrefix"`
-	Configs                         ConfigsSpec          `yaml:"configs"`
-	Values                          ValuesSpec           `yaml:"values"`
+	Targets                         []string                   `yaml:"targets"`
+	Zones                           []string                   `yaml:"zones"`
+	ZoneCfgOverride                 map[string]CfgFileOverride `yaml:"zoneCfgOverride"`
+	ZoneCfgOverrideSeed             map[string]CfgFileOverride `yaml:"zoneCfgOverrideSeed"`
+	AdditionalFiles                 []string                   `yaml:"additionalFiles"`
+	AdditionalFilesPath             string                     `yaml:"additionalFilesPath"`
+	AdditionalFilesPathTargetPrefix string                     `yaml:"additionalFilesPathTargetPrefix"`
+	TargetForSeed                   string                     `yaml:"targetForSeed"`
+	GenerateSeed                    bool                       `yaml:"generateSeed"`
+	Configs                         ConfigsSpec                `yaml:"configs"`
+	Values                          ValuesSpec                 `yaml:"values"`
 }
 
 type Clusters map[string]ClusterSpec
 
 type ServiceSpec struct {
-	ServiceName  string              `yaml:"name"`
-	CfgFileNames map[string][]string `yaml:"cfgFileNames"`
-	Clusters     Clusters            `yaml:"clusters"`
+	ServiceName     string              `yaml:"name"`
+	CfgFileNames    map[string][]string `yaml:"cfgFileNames"`
+	Clusters        Clusters            `yaml:"clusters"`
+	DefaultOverride CfgFileOverride     `yaml:"defaultCfgOverride"`
 }
 
 type ConfigsSpec struct {
@@ -151,7 +150,8 @@ func (g *ConfigGenerator) loadAllOverrides(
 	target string,
 	cluster string,
 	zone string,
-	configMap *ConfigMap) error {
+	configMap *ConfigMap,
+	seed bool) error {
 
 	g.LogDbg(
 		ctx,
@@ -178,11 +178,24 @@ func (g *ConfigGenerator) loadAllOverrides(
 		return err
 	}
 
-	return g.loadOverrides(
+	err = g.loadOverrides(
 		ctx,
 		target,
 		path.Join(g.spec.OverridesPath, cluster, zone),
 		configMap)
+	if err != nil {
+		return err
+	}
+
+	if seed {
+		return g.loadOverrides(
+			ctx,
+			target,
+			path.Join(g.spec.OverridesPath, "common", "seed", zone),
+			configMap)
+	}
+
+	return nil
 }
 
 func (g *ConfigGenerator) dumpConfigs(
@@ -191,6 +204,7 @@ func (g *ConfigGenerator) dumpConfigs(
 	target string,
 	cluster string,
 	zone string,
+	seed bool,
 ) error {
 
 	keys := maps.Keys(*configs)
@@ -236,7 +250,7 @@ func (g *ConfigGenerator) dumpConfigs(
 			)
 		}
 
-		override := g.constructCfgOverride(cluster, zone)
+		override := g.constructCfgOverride(cluster, zone, seed)
 		var result bytes.Buffer
 		err = tmpl.Execute(&result, override)
 		if err != nil {
@@ -268,7 +282,7 @@ func (g *ConfigGenerator) dumpConfigs(
 		resultConfigs = append(resultConfigs, ResultConfig{fileName, string(fileData)})
 	}
 
-	if g.spec.ServiceSpec.Clusters[cluster].Configs.Generate {
+	if g.spec.ServiceSpec.Clusters[cluster].Configs.Generate && !seed {
 		err := g.dumpTxtConfigs(ctx, resultConfigs, path.Join(
 			g.spec.ArcadiaPath,
 			g.spec.ServiceSpec.Clusters[cluster].Configs.DumpPath,
@@ -284,22 +298,26 @@ func (g *ConfigGenerator) dumpConfigs(
 	}
 
 	if g.spec.ServiceSpec.Clusters[cluster].Values.Generate {
+		valuesTemplatePath := path.Join(g.spec.OverridesPath, g.spec.ServiceSpec.Clusters[cluster].Values.FileName)
+		configPath := path.Join(
+			g.spec.ArcadiaPath,
+			g.spec.ServiceSpec.Clusters[cluster].Values.DumpPath,
+			cluster,
+			zone)
+		targetName := target
+		if seed {
+			targetName = "seed"
+		}
 		err := g.dumpValues(
 			ctx,
 			resultConfigs,
-			path.Join(
-				g.spec.OverridesPath,
-				g.spec.ServiceSpec.Clusters[cluster].Values.FileName),
-			path.Join(
-				g.spec.ArcadiaPath,
-				g.spec.ServiceSpec.Clusters[cluster].Values.DumpPath,
-				cluster,
-				zone,
-				target),
-			target)
+			valuesTemplatePath,
+			configPath,
+			targetName)
 		if err != nil {
 			return fmt.Errorf(
-				"failed to generate values: %w",
+				"failed to generate values for target '%v': %w",
+				target,
 				err,
 			)
 		}
@@ -325,6 +343,7 @@ func (g *ConfigGenerator) dumpTxtConfigs(
 		)
 	}
 	for _, cfg := range configList {
+		g.LogDbg(ctx, "dump config %v", path.Join(configPath, cfg.FileName))
 		file, err := os.OpenFile(
 			path.Join(configPath, cfg.FileName),
 			os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
@@ -367,8 +386,8 @@ func (g *ConfigGenerator) dumpValues(
 	configPath string,
 	target string,
 ) error {
-
-	g.LogDbg(ctx, "dump values to %v", configPath)
+	dumpPath := path.Join(configPath, target)
+	g.LogDbg(ctx, "dump values to %v", dumpPath)
 
 	var resultConfigs []ResultConfig
 	for _, cfg := range configs {
@@ -389,7 +408,7 @@ func (g *ConfigGenerator) dumpValues(
 			err,
 		)
 	}
-	err = os.MkdirAll(configPath, 0755)
+	err = os.MkdirAll(dumpPath, 0755)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot create directories: %w",
@@ -397,7 +416,7 @@ func (g *ConfigGenerator) dumpValues(
 		)
 	}
 	file, err := os.OpenFile(
-		path.Join(configPath, "values.yaml"),
+		path.Join(dumpPath, "values.yaml"),
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
 		0755)
 	if err != nil {
@@ -431,25 +450,42 @@ func (g *ConfigGenerator) dumpValues(
 func (g *ConfigGenerator) constructCfgOverride(
 	cluster string,
 	zone string,
+	seed bool,
 ) CfgFileOverride {
 
-	zoneConfig := g.spec.ServiceSpec.Clusters[cluster].ZoneCfgOverride
-	override := zoneConfig.DefaultOverride
+	// default cfg file overrides for all clusters
+	override := g.spec.ServiceSpec.DefaultOverride
 
-	if zoneConfig.ZoneOverride[zone].MonAddress != "" {
-		override.MonAddress = zoneConfig.ZoneOverride[zone].MonAddress
+	// cfg file overrides for zone
+	zoneConfig := g.spec.ServiceSpec.Clusters[cluster].ZoneCfgOverride[zone]
+	if zoneConfig.MonAddress != "" {
+		override.MonAddress = zoneConfig.MonAddress
+	}
+	if zoneConfig.Domain != "" {
+		override.Domain = zoneConfig.Domain
+	}
+	if zoneConfig.MonPort != "" {
+		override.MonPort = zoneConfig.MonPort
+	}
+	if zoneConfig.IcPort != "" {
+		override.IcPort = zoneConfig.IcPort
 	}
 
-	if zoneConfig.ZoneOverride[zone].Domain != "" {
-		override.Domain = zoneConfig.ZoneOverride[zone].Domain
-	}
-
-	if zoneConfig.ZoneOverride[zone].MonPort != "" {
-		override.MonPort = zoneConfig.ZoneOverride[zone].MonPort
-	}
-
-	if zoneConfig.ZoneOverride[zone].IcPort != "" {
-		override.IcPort = zoneConfig.ZoneOverride[zone].IcPort
+	// cfg file overrides for seed
+	if seed {
+		seedConfig := g.spec.ServiceSpec.Clusters[cluster].ZoneCfgOverrideSeed[zone]
+		if seedConfig.MonAddress != "" {
+			override.MonAddress = seedConfig.MonAddress
+		}
+		if seedConfig.Domain != "" {
+			override.Domain = seedConfig.Domain
+		}
+		if seedConfig.MonPort != "" {
+			override.MonPort = seedConfig.MonPort
+		}
+		if seedConfig.IcPort != "" {
+			override.IcPort = seedConfig.IcPort
+		}
 	}
 
 	return override
@@ -460,6 +496,7 @@ func (g *ConfigGenerator) generateConfigForCluster(
 	target string,
 	cluster string,
 	zone string,
+	seed bool,
 ) error {
 
 	g.LogInfo(
@@ -473,7 +510,7 @@ func (g *ConfigGenerator) generateConfigForCluster(
 		protobuf.Proto.Reset()
 	}
 
-	err := g.loadAllOverrides(ctx, target, cluster, zone, &g.spec.ConfigMap)
+	err := g.loadAllOverrides(ctx, target, cluster, zone, &g.spec.ConfigMap, seed)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to apply overrides for cluster %v: %w",
@@ -487,7 +524,8 @@ func (g *ConfigGenerator) generateConfigForCluster(
 		&g.spec.ConfigMap,
 		target,
 		cluster,
-		zone)
+		zone,
+		seed)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to dump configs: %w",
@@ -524,12 +562,28 @@ func (g *ConfigGenerator) Generate(ctx context.Context, whileListCluster []strin
 					ctx,
 					target,
 					cluster,
-					zone)
+					zone,
+					false)
 				if err != nil {
 					return fmt.Errorf(
 						"failed to generate configs for cluster %v, target %v: %w",
 						cluster,
 						target,
+						err,
+					)
+				}
+			}
+			if g.spec.ServiceSpec.Clusters[cluster].GenerateSeed {
+				err := g.generateConfigForCluster(
+					ctx,
+					g.spec.ServiceSpec.Clusters[cluster].TargetForSeed,
+					cluster,
+					zone,
+					true)
+				if err != nil {
+					return fmt.Errorf(
+						"failed to generate seed configs for cluster %v: %w",
+						cluster,
 						err,
 					)
 				}
