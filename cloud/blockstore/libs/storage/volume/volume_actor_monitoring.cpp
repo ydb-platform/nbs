@@ -1399,6 +1399,15 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
     TStringStream out;
 
     auto meta = State->GetMeta();
+    if (!State->GetNonreplicatedPartitionConfig()) {
+        HTML(out) {
+            out << "no config, allocation result: "
+                << FormatError(StorageAllocationResult);
+        }
+
+        return;
+    }
+
     auto config = *State->GetNonreplicatedPartitionConfig();
 
     HTML(out) {
