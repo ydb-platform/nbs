@@ -306,12 +306,15 @@ struct TEvDiskRegistryPrivate
     struct TDestroyBrokenDisksResponse
     {
         TCallContextPtr CallContext;
+        TVector<TString> Disks;
 
         TDestroyBrokenDisksResponse() = default;
 
         TDestroyBrokenDisksResponse(
-                TCallContextPtr callContext)
+                TCallContextPtr callContext,
+                TVector<TString> disks)
             : CallContext(std::move(callContext))
+            , Disks(std::move(disks))
         {
         }
     };

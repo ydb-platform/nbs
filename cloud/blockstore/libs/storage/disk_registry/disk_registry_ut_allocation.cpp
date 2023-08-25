@@ -1749,6 +1749,88 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT(response);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldDestroyBrokenDisks)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", { Device("dev-1", "uuid-1") })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, agents);
+
+        TVector<TString> destroyedDiskIds;
+        TAutoPtr<IEventHandle> destroyVolumeRequest;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
+                        && event->Recipient == MakeStorageServiceId())
+                {
+                    auto* msg = event->Get<TEvService::TEvDestroyVolumeRequest>();
+                    UNIT_ASSERT(msg->Record.GetDestroyIfBroken());
+                    destroyedDiskIds.push_back(msg->Record.GetDiskId());
+                    destroyVolumeRequest = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        diskRegistry.SendAllocateDiskRequest("vol0", 1000_GB);
+
+        {
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus(),
+                response->GetError());
+        }
+
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->DiskIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", response->DiskIds[0]);
+        }
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents(TDispatchOptions {
+            .CustomFinalCondition = [&] {
+                return !!destroyVolumeRequest;
+            }});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, destroyedDiskIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("vol0", destroyedDiskIds[0]);
+
+        diskRegistry.SendAllocateDiskRequest("vol1", 1000_GB);
+
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(2, response->DiskIds.size());
+            Sort(response->DiskIds);
+            UNIT_ASSERT_VALUES_EQUAL("vol0", response->DiskIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL("vol1", response->DiskIds[1]);
+        }
+
+        runtime->Send(destroyVolumeRequest.Release());
+
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->DiskIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("vol1", response->DiskIds[0]);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

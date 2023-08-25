@@ -393,7 +393,9 @@ public:
         return BrokenDisks;
     }
 
-    void DeleteBrokenDisks(TDiskRegistryDatabase& db);
+    void DeleteBrokenDisks(
+        TDiskRegistryDatabase& db,
+        TVector<TDiskId> ids);
 
     const THashMap<TString, ui64>& GetDisksToReallocate() const;
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, TString diskId);

@@ -2842,16 +2842,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_C(
                 HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 error.GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(2, state.GetBrokenDisks().size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-4", state.GetBrokenDisks()[0].DiskId);
+
+            auto brokenDisks = state.GetBrokenDisks();
+            SortBy(brokenDisks, [] (const auto& info) {
+                return info.DiskId;
+            });
+
+            UNIT_ASSERT_VALUES_EQUAL(2, brokenDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", brokenDisks[0].DiskId);
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(105),
-                state.GetBrokenDisks()[0].TsToDestroy
+                brokenDisks[0].TsToDestroy
             );
-            UNIT_ASSERT_VALUES_EQUAL("disk-5", state.GetBrokenDisks()[1].DiskId);
+            UNIT_ASSERT_VALUES_EQUAL("disk-5", brokenDisks[1].DiskId);
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(106),
-                state.GetBrokenDisks()[1].TsToDestroy
+                brokenDisks[1].TsToDestroy
             );
         });
 
@@ -2862,7 +2868,29 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL("disk-4", diskInfos[0].DiskId);
             UNIT_ASSERT_VALUES_EQUAL("disk-5", diskInfos[1].DiskId);
 
-            state.DeleteBrokenDisks(db);
+            state.DeleteBrokenDisks(db, {"disk-4"});
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-5", state.GetBrokenDisks()[0].DiskId);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TBrokenDiskInfo> diskInfos;
+            UNIT_ASSERT(db.ReadBrokenDisks(diskInfos));
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-5", diskInfos[0].DiskId);
+
+            state.DeleteBrokenDisks(db, {"unknown-1", "unknown-2"});
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-5", state.GetBrokenDisks()[0].DiskId);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TBrokenDiskInfo> diskInfos;
+            UNIT_ASSERT(db.ReadBrokenDisks(diskInfos));
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-5", diskInfos[0].DiskId);
+
+            state.DeleteBrokenDisks(db, {"disk-5"});
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDisks().size());
         });
 

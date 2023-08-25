@@ -17,6 +17,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/iterator_range.h>
+#include <util/generic/overloaded.h>
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
@@ -3725,13 +3726,36 @@ const NProto::TPlacementGroupConfig* TDiskRegistryState::FindPlacementGroup(
     return nullptr;
 }
 
-void TDiskRegistryState::DeleteBrokenDisks(TDiskRegistryDatabase& db)
+void TDiskRegistryState::DeleteBrokenDisks(
+    TDiskRegistryDatabase& db,
+    TVector<TDiskId> ids)
 {
-    for (const auto& x: BrokenDisks) {
-        db.DeleteBrokenDisk(x.DiskId);
+    for (const auto& id: ids) {
+        db.DeleteBrokenDisk(id);
     }
 
-    BrokenDisks.clear();
+    Sort(ids);
+    SortBy(BrokenDisks, [] (const auto& d) {
+        return d.DiskId;
+    });
+
+    TVector<TBrokenDiskInfo> newList;
+
+    std::set_difference(
+        BrokenDisks.begin(),
+        BrokenDisks.end(),
+        ids.begin(),
+        ids.end(),
+        std::back_inserter(newList),
+        TOverloaded {
+            [] (const TBrokenDiskInfo& lhs, const auto& rhs) {
+                return lhs.DiskId < rhs;
+            },
+            [] (const auto& lhs, const auto& rhs) {
+                return lhs < rhs.DiskId;
+            }});
+
+    BrokenDisks.swap(newList);
 }
 
 void TDiskRegistryState::UpdateAndReallocateDisk(

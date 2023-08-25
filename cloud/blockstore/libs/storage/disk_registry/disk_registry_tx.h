@@ -411,9 +411,13 @@ struct TTxDiskRegistry
     struct TDeleteBrokenDisks
     {
         const TRequestInfoPtr RequestInfo;
+        const TVector<TString> Disks;
 
-        explicit TDeleteBrokenDisks(TRequestInfoPtr requestInfo)
+        TDeleteBrokenDisks(
+                TRequestInfoPtr requestInfo,
+                TVector<TString> disks)
             : RequestInfo(std::move(requestInfo))
+            , Disks(std::move(disks))
         {}
 
         void Clear()

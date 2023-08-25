@@ -79,7 +79,8 @@ void TDestroyActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
     auto response = std::make_unique<TEvDiskRegistryPrivate::TEvDestroyBrokenDisksResponse>(
         std::move(error),
-        RequestInfo->CallContext);
+        RequestInfo->CallContext,
+        DiskIds);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -233,14 +234,10 @@ void TDiskRegistryActor::HandleDestroyBrokenDisks(
 
     BrokenDisksDestructionStartTs = ctx.Now();
 
-    auto it = State->GetBrokenDisks().begin();
-    while (it != State->GetBrokenDisks().end()) {
-        if (!DisksBeingDestroyed.empty() && it->TsToDestroy > ctx.Now()) {
-            break;
+    for (const auto& info: State->GetBrokenDisks()) {
+        if (info.TsToDestroy < BrokenDisksDestructionStartTs) {
+            DisksBeingDestroyed.push_back(info.DiskId);
         }
-
-        DisksBeingDestroyed.push_back(it->DiskId);
-        ++it;
     }
 
     auto actor = NCloud::Register<TDestroyActor>(
@@ -268,7 +265,8 @@ void TDiskRegistryActor::HandleDestroyBrokenDisksResponse(
             ev->Sender,
             ev->Cookie,
             ev->Get()->CallContext
-        )
+        ),
+        std::move(ev->Get()->Disks)
     );
 }
 
@@ -292,10 +290,9 @@ void TDiskRegistryActor::ExecuteDeleteBrokenDisks(
     TTxDiskRegistry::TDeleteBrokenDisks& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
-    State->DeleteBrokenDisks(db);
+    State->DeleteBrokenDisks(db, std::move(args.Disks));
 }
 
 void TDiskRegistryActor::CompleteDeleteBrokenDisks(
