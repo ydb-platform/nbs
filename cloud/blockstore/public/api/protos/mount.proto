@@ -81,6 +81,10 @@ message TMountVolumeRequest
     // We don't allow clients with old sequential number to mount disk for read/write
     // in order to prevent data corruption during disk filling.
     uint64 FillSeqNumber = 16;
+
+    // We don't allow clients with wrong fill generation to mount disk for read/write
+    // in order to prevent data corruption during disk filling.
+    uint64 FillGeneration = 17;
 }
 
 message TMountVolumeResponse

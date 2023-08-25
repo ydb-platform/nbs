@@ -132,7 +132,8 @@ public:
         const ui32 mountFlags = 0,
         const ui64 mountSeqNumber = 0,
         const NProto::TEncryptionDesc& encryptionDesc = {},
-        const ui64 fillSeqNumber = 0);
+        const ui64 fillSeqNumber = 0,
+        const ui64 fillGeneration = 0);
 
     std::unique_ptr<TEvService::TEvUnmountVolumeRequest> CreateUnmountVolumeRequest(
         const TString& diskId = DefaultDiskId,

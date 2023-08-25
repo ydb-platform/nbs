@@ -243,6 +243,7 @@ void TVolumeActor::HandleAddClient(
     const auto mountFlags = msg->Record.GetMountFlags();
     const auto mountSeqNumber = msg->Record.GetMountSeqNumber();
     const auto fillSeqNumber = msg->Record.GetFillSeqNumber();
+    const auto fillGeneration = msg->Record.GetFillGeneration();
     const auto& host = msg->Record.GetHost();
 
     // If event was forwarded through pipe, its recipient and recipient rewrite
@@ -265,6 +266,7 @@ void TVolumeActor::HandleAddClient(
     clientInfo.SetMountFlags(mountFlags);
     clientInfo.SetFillSeqNumber(fillSeqNumber);
     clientInfo.SetMountSeqNumber(mountSeqNumber);
+    clientInfo.SetFillGeneration(fillGeneration);
     clientInfo.SetHost(host);
     clientInfo.SetLastActivityTimestamp(ctx.Now().MicroSeconds());
 

@@ -378,15 +378,21 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
     bool isFill = HasProtoFlag(info.GetMountFlags(), NProto::MF_FILL);
     bool readWriteAccess = IsReadWriteMode(info.GetVolumeAccessMode());
 
-    if (readWriteAccess && !CanAcceptClient(isFill, info.GetFillSeqNumber())) {
+    if (readWriteAccess && !CanAcceptClient(
+                               isFill,
+                               info.GetFillSeqNumber(),
+                               info.GetFillGeneration()))
+   {
         res.Error = MakeError(
             E_PRECONDITION_FAILED,
             TStringBuilder()
                 << "Client can not be accepted with read-write access"
                 << ", new FillSeqNumber: " << info.GetFillSeqNumber()
                 << ", current FillSeqNumber: " << Meta.GetFillSeqNumber()
-                << ", IsFillFinished: " << Meta.GetVolumeConfig().GetIsFillFinished()
-                << ", IsFill: " << isFill);
+                << ", proposed FillGeneration: " << info.GetFillGeneration()
+                << ", actual FillGeneration: " << Meta.GetVolumeConfig().GetFillGeneration()
+                << ", is fill: " << isFill
+                << ", is disk filling finished: " << Meta.GetVolumeConfig().GetIsFillFinished());
         return res;
     }
 
@@ -670,13 +676,24 @@ bool TVolumeState::CanPreemptClient(
 
 bool TVolumeState::CanAcceptClient(
     bool isFill,
-    ui64 newFillSeqNumber)
+    ui64 newFillSeqNumber,
+    ui64 proposedFillGeneration)
 {
-    if (isFill && Meta.GetVolumeConfig().GetIsFillFinished()) {
+    if (!isFill) {
+        // TODO: NBS-4425: do not accept client without IS_FILL flag if fill is not finished
+        return true;
+    }
+
+    if (Meta.GetVolumeConfig().GetIsFillFinished()) {
         return false;
     }
 
-    return !isFill || newFillSeqNumber >= Meta.GetFillSeqNumber();
+    if (proposedFillGeneration > 0 &&
+            proposedFillGeneration != Meta.GetVolumeConfig().GetFillGeneration()) {
+        return false;
+    }
+
+    return newFillSeqNumber >= Meta.GetFillSeqNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

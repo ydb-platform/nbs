@@ -147,7 +147,8 @@ std::unique_ptr<TEvService::TEvMountVolumeRequest> TServiceClient::CreateMountVo
     const ui32 mountFlags,
     const ui64 mountSeqNumber,
     const NProto::TEncryptionDesc& encryptionDesc,
-    const ui64 fillSeqNumber)
+    const ui64 fillSeqNumber,
+    const ui64 fillGeneration)
 {
     auto request = std::make_unique<TEvService::TEvMountVolumeRequest>();
     PrepareRequestHeaders(*request);
@@ -163,6 +164,7 @@ std::unique_ptr<TEvService::TEvMountVolumeRequest> TServiceClient::CreateMountVo
     spec.SetMode(encryptionDesc.GetMode());
     spec.SetKeyHash(encryptionDesc.GetKeyHash());
     request->Record.SetFillSeqNumber(fillSeqNumber);
+    request->Record.SetFillGeneration(fillGeneration);
     return request;
 }
 

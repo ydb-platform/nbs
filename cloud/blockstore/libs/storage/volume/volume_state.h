@@ -590,7 +590,8 @@ private:
 
     bool CanAcceptClient(
         bool isFill,
-        ui64 newFillSeqNumber);
+        ui64 newFillSeqNumber,
+        ui64 proposedFillGeneration);
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 };

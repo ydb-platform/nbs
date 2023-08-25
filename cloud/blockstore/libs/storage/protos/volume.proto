@@ -50,6 +50,10 @@ message TVolumeClientInfo
     // We don't allow clients with old sequential number to mount disk for read/write
     // in order to prevent data corruption during disk filling.
     uint64 FillSeqNumber = 11;
+
+    // We don't allow clients with wrong fill generation to mount disk for read/write
+    // in order to prevent data corruption during disk filling.
+    uint64 FillGeneration = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,6 +90,9 @@ message TAddClientRequest
 
     // Expected mount seq number for disk filling.
     uint64 FillSeqNumber = 10;
+
+    // Expected fill generation.
+    uint64 FillGeneration = 11;
 }
 
 message TAddClientResponse
