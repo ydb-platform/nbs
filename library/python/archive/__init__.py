@@ -14,10 +14,10 @@ import libarchive._libarchive as _libarchive
 
 logger = logging.getLogger(__name__)
 
-GZIP = 'gzip'
-ZSTD = 'zstd'
+GZIP = "gzip"
+ZSTD = "zstd"
 
-ENCODING = 'utf-8'
+ENCODING = "utf-8"
 
 
 class ConfigureError(Exception):
@@ -49,7 +49,7 @@ def get_compression_level(filter_name, l):
                 Compression.Fast: 1,
                 Compression.Default: 3,
                 Compression.Best: 22,
-            }
+            },
         }[filter_name][l]
     return l
 
@@ -78,18 +78,35 @@ def extract_tar(tar_file_path, output_dir):
                 _symlink(e.linkname, dest)
                 continue
 
-            with open(dest, 'wb') as f:
-                if hasattr(os, 'fchmod'):
+            with open(dest, "wb") as f:
+                if hasattr(os, "fchmod"):
                     os.fchmod(f.fileno(), e.mode & 0o7777)
-                libarchive.call_and_check(_libarchive.archive_read_data_into_fd, tarfile._a, tarfile._a, f.fileno())
+                libarchive.call_and_check(
+                    _libarchive.archive_read_data_into_fd,
+                    tarfile._a,
+                    tarfile._a,
+                    f.fileno(),
+                )
 
 
-def tar(paths, output, compression_filter=None, compression_level=None, fixed_mtime=None, onerror=None, postprocess=None, dereference=False):
+def tar(
+    paths,
+    output,
+    compression_filter=None,
+    compression_level=None,
+    fixed_mtime=None,
+    onerror=None,
+    postprocess=None,
+    dereference=False,
+):
     if isinstance(paths, six.string_types):
         paths = [paths]
 
     if isinstance(output, six.string_types):
-        temp_tar_path, stream = output + "." + "".join(random.sample(string.ascii_lowercase, 8)), None
+        temp_tar_path, stream = (
+            output + "." + "".join(random.sample(string.ascii_lowercase, 8)),
+            None,
+        )
     else:
         temp_tar_path, stream = None, output
 
@@ -108,7 +125,14 @@ def tar(paths, output, compression_filter=None, compression_level=None, fixed_mt
         else:
             filter_name = filter_opts = None
 
-        with libarchive.Archive(stream or temp_tar_path, mode="wb", format="gnu", filter=filter_name, filter_opts=filter_opts, fixed_mtime=fixed_mtime) as tarfile:
+        with libarchive.Archive(
+            stream or temp_tar_path,
+            mode="wb",
+            format="gnu",
+            filter=filter_name,
+            filter_opts=filter_opts,
+            fixed_mtime=fixed_mtime,
+        ) as tarfile:
             # determine order if fixed_mtime is specified to produce stable archive
             paths = paths if fixed_mtime is None else sorted(paths)
 
@@ -127,7 +151,14 @@ def tar(paths, output, compression_filter=None, compression_level=None, fixed_mt
 
                         reldir = os.path.relpath(root, path)
                         for f in entries:
-                            _writepath(tarfile, os.path.join(root, f), os.path.normpath(os.path.join(arcname, reldir, f)), onerror, postprocess, dereference)
+                            _writepath(
+                                tarfile,
+                                os.path.join(root, f),
+                                os.path.normpath(os.path.join(arcname, reldir, f)),
+                                onerror,
+                                postprocess,
+                                dereference,
+                            )
                 else:
                     if not os.path.exists(path):
                         raise OSError("Specified path doesn't exist: {}".format(path))
@@ -159,7 +190,10 @@ def _writepath(tarfile, src, dst, onerror, postprocess, dereference):
         return tar_writepath(src, dst)
     except Exception as e:
         if isinstance(e, OSError) and e.errno == errno.ENOENT:
-            logger.debug("Skipping missing file '%s' - looks like directory content has changed during archiving", src)
+            logger.debug(
+                "Skipping missing file '%s' - looks like directory content has changed during archiving",
+                src,
+            )
             return
 
         if onerror:
@@ -184,14 +218,14 @@ def _make_dirs(path):
 
 
 def _hardlink(src, dst):
-    if hasattr(os, 'link'):
+    if hasattr(os, "link"):
         os.link(src, dst)
     else:
         shutil.copyfile(src, dst)
 
 
 def _symlink(src, dst):
-    if hasattr(os, 'symlink'):
+    if hasattr(os, "symlink"):
         os.symlink(src, dst)
     else:
         # Windows specific case - we cannot copy file right now,
@@ -204,7 +238,7 @@ def _symlink(src, dst):
 def get_archive_filter_name(filename):
     filters = libarchive.get_archive_filter_names(filename)
     # https://a.yandex-team.ru/arc/trunk/arcadia/contrib/libs/libarchive/libarchive/archive_read.c?rev=5800047#L522
-    assert filters[-1] == 'none', filters
+    assert filters[-1] == "none", filters
     if len(filters) == 1:
         return None
     if len(filters) == 2:
