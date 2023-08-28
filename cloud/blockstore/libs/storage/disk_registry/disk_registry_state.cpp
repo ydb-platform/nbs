@@ -3286,7 +3286,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             }
 
             const TDeviceList::TAllocationQuery query {
-                .ForbiddenRacks = std::move(forbiddenRacks),
+                .ForbiddenRacks = forbiddenRacks,
                 .LogicalBlockSize = logicalBlockSize,
                 .BlockCount = pg.BiggestDiskSize / logicalBlockSize,
                 .PoolName = pool.GetName(),
