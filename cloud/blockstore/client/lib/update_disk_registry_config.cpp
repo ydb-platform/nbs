@@ -69,11 +69,6 @@ private:
     bool CheckOpts() const
     {
         // TODO
-
-        if (!Proto) {
-            return false;
-        }
-
         return true;
     }
 };
