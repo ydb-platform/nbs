@@ -2,7 +2,7 @@ import tempfile
 import time
 
 from subprocess import run, PIPE
-from concurrent.futures.thread import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import yatest.common as yatest_common
 
@@ -42,8 +42,8 @@ def test_load():
 
         cnt = 0
         while future.running():
-            tmp_file.seek(cnt * _REQUEST_SIZE)
-            block = '0' * _REQUEST_SIZE
+            tmp_file.seek(int(cnt * _REQUEST_SIZE))
+            block = b'0' * _REQUEST_SIZE
             tmp_file.write(block)
             cnt += 1
             cnt %= _REQUEST_COUNT

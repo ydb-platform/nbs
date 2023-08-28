@@ -1,4 +1,4 @@
-PY2TEST()
+PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
 
@@ -8,10 +8,6 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/blockstore/tools/testing/eternal-tests/eternal-load/bin
-)
-
-PEERDIR(
-    contrib/deprecated/python/futures
 )
 
 END()
