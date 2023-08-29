@@ -28,6 +28,8 @@ func (client *Client) MountVolume(
 		req.VolumeMountMode = opts.MountMode
 		req.MountFlags = opts.MountFlags
 		req.EncryptionSpec = opts.EncryptionSpec
+		req.FillGeneration = opts.FillGeneration
+		req.FillSeqNumber = opts.FillSeqNumber
 	}
 
 	resp, err := client.Impl.MountVolume(ctx, req)
