@@ -48,7 +48,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
                 // backwards compat
                 && volumeGeneration)
         {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
+            return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
                 << "AcquireDevices: "
                 << "Outdated volume generation, DiskId=" << diskId.Quote()
                 << ", VolumeGeneration: " << volumeGeneration

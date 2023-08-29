@@ -459,7 +459,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetNow(TInstant::Seconds(12))
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
+            E_BS_INVALID_SESSION,
             error.GetCode(),
             error.GetMessage());
 
@@ -473,7 +473,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetNow(TInstant::Seconds(23))
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
+            E_BS_INVALID_SESSION,
             error.GetCode(),
             error.GetMessage());
 
