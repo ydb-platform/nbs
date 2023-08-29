@@ -122,7 +122,8 @@ auto ReleaseDevices(TDeviceClient& client, const TReleaseParamsBuilder& builder)
         builder.VolumeGeneration);
 }
 
-struct TDeviceClientParams {
+struct TDeviceClientParams
+{
     TVector<TString> Devices;
 };
 
