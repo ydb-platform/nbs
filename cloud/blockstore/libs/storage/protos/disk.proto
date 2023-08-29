@@ -79,6 +79,9 @@ message TAgentConfig
 
     // Mean time between failures.
     TMeanTimeBetweenFailures TimeBetweenFailures = 11;
+
+    // Unallowed devices attached to the agent.
+    repeated TDeviceConfig UnknownDevices = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -54,52 +54,33 @@ struct TByUUID
     }
 };
 
-template <typename T>
-T SetDifference(const T& a, const T& b)
+void PrepareConfig(
+    NProto::TAgentConfig& agentConfig,
+    const TKnownAgent& knownAgent)
 {
-    T diff;
-
-    std::set_difference(
-        a.cbegin(), a.cend(),
-        b.cbegin(), b.cend(),
-        RepeatedPtrFieldBackInserter(&diff),
-        TByUUID());
-
-    return diff;
-}
-
-template <typename T>
-T SetIntersection(const T& a, const T& b)
-{
-    T comm;
-
-    std::set_intersection(
-        a.cbegin(), a.cend(),
-        b.cbegin(), b.cend(),
-        RepeatedPtrFieldBackInserter(&comm),
-        TByUUID());
-
-    return comm;
-}
-
-NProto::TDeviceConfig& EnsureDevice(
-    NProto::TAgentConfig& agent,
-    const TString& uuid)
-{
-    auto& devices = *agent.MutableDevices();
-
-    auto it = LowerBoundBy(
-        devices.begin(),
-        devices.end(),
-        uuid,
-        [] (const auto& x) -> const TString& {
-            return x.GetDeviceUUID();
+    auto it = std::partition(
+        agentConfig.MutableDevices()->begin(),
+        agentConfig.MutableDevices()->end(),
+        [&] (const auto& d) {
+            return knownAgent.Devices.contains(d.GetDeviceUUID());
         });
 
-    Y_VERIFY_DEBUG(it != devices.end());
-    Y_VERIFY_DEBUG(it->GetDeviceUUID() == uuid);
+    agentConfig.MutableUnknownDevices()->Assign(
+        it,
+        agentConfig.MutableDevices()->end());
 
-    return *it;
+    agentConfig.MutableDevices()->erase(it, agentConfig.MutableDevices()->end());
+}
+
+bool IsAllowedDevice(
+    const NProto::TAgentConfig& agent,
+    const NProto::TDeviceConfig device)
+{
+    return !FindIfPtr(
+        agent.GetUnknownDevices(),
+        [&] (const auto& d) {
+            return d.GetDeviceUUID() == device.GetDeviceUUID();
+        });
 }
 
 }   // namespace
@@ -260,6 +241,108 @@ bool TAgentList::ValidateSerialNumber(
         && knownDevice->GetSerialNumber() == config.GetSerialNumber();
 }
 
+void TAgentList::UpdateDevice(
+    NProto::TDeviceConfig& oldDevice,
+    const NProto::TAgentConfig& agent,
+    const TKnownAgent& knownAgent,
+    TInstant timestamp,
+    const NProto::TDeviceConfig& newDevice)
+{
+    if (oldDevice.GetUnadjustedBlockCount() == 0) {
+        oldDevice.SetUnadjustedBlockCount(oldDevice.GetBlocksCount());
+    }
+
+    // update volatile fields
+    oldDevice.SetBaseName(newDevice.GetBaseName());
+    oldDevice.SetTransportId(newDevice.GetTransportId());
+    oldDevice.SetNodeId(agent.GetNodeId());
+    oldDevice.SetAgentId(agent.GetAgentId());
+    oldDevice.SetRack(newDevice.GetRack());
+    oldDevice.MutableRdmaEndpoint()->CopyFrom(newDevice.GetRdmaEndpoint());
+    oldDevice.SetPoolName(newDevice.GetPoolName());
+
+    if (newDevice.GetState() == NProto::DEVICE_STATE_ERROR) {
+        oldDevice.SetState(newDevice.GetState());
+        oldDevice.SetStateTs(newDevice.GetStateTs());
+        oldDevice.SetStateMessage(newDevice.GetStateMessage());
+
+        return;
+    }
+
+    if (!ValidateSerialNumber(knownAgent, newDevice)) {
+        SetInvalidSerialNumberError(oldDevice, timestamp);
+
+        return;
+    }
+
+    oldDevice.SetSerialNumber(newDevice.GetSerialNumber());
+
+    if (oldDevice.GetBlockSize() != newDevice.GetBlockSize()
+        || oldDevice.GetUnadjustedBlockCount() != newDevice.GetBlocksCount())
+    {
+        oldDevice.SetState(NProto::DEVICE_STATE_ERROR);
+        oldDevice.SetStateTs(timestamp.MicroSeconds());
+        oldDevice.SetStateMessage(TStringBuilder() <<
+            "configuration changed: "
+                << oldDevice.GetBlockSize() << "x" << oldDevice.GetUnadjustedBlockCount()
+                << " -> "
+                << newDevice.GetBlockSize() << "x" << newDevice.GetBlocksCount()
+        );
+
+        return;
+    }
+}
+
+void TAgentList::AddUpdatedDevice(
+    NProto::TAgentConfig& agent,
+    const TKnownAgent& knownAgent,
+    TInstant timestamp,
+    NProto::TDeviceConfig oldDevice,
+    const NProto::TDeviceConfig& newDevice)
+{
+    UpdateDevice(oldDevice, agent, knownAgent, timestamp, newDevice);
+
+    agent.MutableDevices()->Add(std::move(oldDevice));
+}
+
+void TAgentList::AddLostDevice(
+    NProto::TAgentConfig& agent,
+    TInstant timestamp,
+    NProto::TDeviceConfig device)
+{
+    device.SetNodeId(agent.GetNodeId());
+    device.SetAgentId(agent.GetAgentId());
+
+    if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
+        device.SetState(NProto::DEVICE_STATE_ERROR);
+        device.SetStateTs(timestamp.MicroSeconds());
+        device.SetStateMessage("lost");
+    }
+
+    agent.MutableDevices()->Add(std::move(device));
+}
+
+void TAgentList::AddNewDevice(
+    NProto::TAgentConfig& agent,
+    const TKnownAgent& knownAgent,
+    TInstant timestamp,
+    NProto::TDeviceConfig device)
+{
+    device.SetStateTs(timestamp.MicroSeconds());
+    device.SetUnadjustedBlockCount(device.GetBlocksCount());
+
+    device.SetNodeId(agent.GetNodeId());
+    device.SetAgentId(agent.GetAgentId());
+
+    if (device.GetState() != NProto::DEVICE_STATE_ERROR
+            && !ValidateSerialNumber(knownAgent, device))
+    {
+        SetInvalidSerialNumberError(device, timestamp);
+    }
+
+    agent.MutableDevices()->Add(std::move(device));
+}
+
 NProto::TAgentConfig& TAgentList::RegisterAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
@@ -267,6 +350,8 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
     THashSet<TDeviceId>* newDeviceIds)
 {
     Y_VERIFY(newDeviceIds);
+
+    PrepareConfig(agentConfig, knownAgent);
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
 
@@ -293,89 +378,70 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
 
     agent->SetSeqNumber(agentConfig.GetSeqNumber());
     agent->SetDedicatedDiskAgent(agentConfig.GetDedicatedDiskAgent());
+    *agent->MutableUnknownDevices()
+        = std::move(*agentConfig.MutableUnknownDevices());
 
     auto& newList = *agentConfig.MutableDevices();
     Sort(newList, TByUUID());
 
-    auto newDevices = SetDifference(newList, agent->GetDevices());
-    auto oldDevices = SetIntersection(newList, agent->GetDevices());
-    auto removedDevices = SetDifference(agent->GetDevices(), newList);
+    auto oldList = std::move(*agent->MutableDevices());
+    Sort(oldList, TByUUID());
 
-    for (const auto& config: removedDevices) {
-        auto& device = EnsureDevice(*agent, config.GetDeviceUUID());
+    agent->MutableDevices()->Clear();
 
-        device.SetNodeId(agent->GetNodeId());
-        device.SetAgentId(agent->GetAgentId());
-        if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
-            device.SetState(NProto::DEVICE_STATE_ERROR);
-            device.SetStateTs(timestamp.MicroSeconds());
-            device.SetStateMessage("lost");
+    int i = 0;
+    int j = 0;
+
+    while (i != newList.size() && j != oldList.size()) {
+        auto& newDevice = newList[i];
+        auto& oldDevice = oldList[j];
+
+        const int cmp = newDevice.GetDeviceUUID()
+            .compare(oldDevice.GetDeviceUUID());
+
+        if (cmp == 0) {
+            AddUpdatedDevice(
+                *agent,
+                knownAgent,
+                timestamp,
+                std::move(oldDevice),
+                newDevice);
+
+            ++i;
+            ++j;
+
+            continue;
         }
+
+        if (cmp < 0) {
+            newDeviceIds->insert(newDevice.GetDeviceUUID());
+
+            AddNewDevice(*agent, knownAgent, timestamp, std::move(newDevice));
+
+            ++i;
+
+            continue;
+        }
+
+        if (IsAllowedDevice(*agent, oldDevice)) {
+            AddLostDevice(*agent, timestamp, std::move(oldDevice));
+        }
+
+        ++j;
     }
 
-    for (auto& config: oldDevices) {
-        auto& device = EnsureDevice(*agent, config.GetDeviceUUID());
+    for (; i < newList.size(); ++i) {
+        auto& newDevice = newList[i];
+        newDeviceIds->insert(newDevice.GetDeviceUUID());
 
-        if (device.GetUnadjustedBlockCount() == 0) {
-            device.SetUnadjustedBlockCount(device.GetBlocksCount());
-        }
-
-        // update volatile fields
-        device.SetBaseName(config.GetBaseName());
-        device.SetTransportId(config.GetTransportId());
-        device.SetNodeId(agent->GetNodeId());
-        device.SetAgentId(agent->GetAgentId());
-        device.SetRack(config.GetRack());
-        device.MutableRdmaEndpoint()->CopyFrom(config.GetRdmaEndpoint());
-
-        if (config.GetState() == NProto::DEVICE_STATE_ERROR) {
-            device.SetState(config.GetState());
-            device.SetStateTs(config.GetStateTs());
-            device.SetStateMessage(config.GetStateMessage());
-
-            continue;
-        }
-
-        if (!ValidateSerialNumber(knownAgent, config)) {
-            SetInvalidSerialNumberError(config, timestamp);
-
-            continue;
-        }
-
-        device.SetSerialNumber(config.GetSerialNumber());
-
-        if (device.GetBlockSize() != config.GetBlockSize()
-            || device.GetUnadjustedBlockCount() != config.GetBlocksCount())
-        {
-            device.SetState(NProto::DEVICE_STATE_ERROR);
-            device.SetStateTs(timestamp.MicroSeconds());
-            device.SetStateMessage(TStringBuilder() <<
-                "configuration changed: "
-                    << device.GetBlockSize() << "x" << device.GetUnadjustedBlockCount()
-                    << " -> "
-                    << config.GetBlockSize() << "x" << config.GetBlocksCount()
-            );
-
-            continue;
-        }
+        AddNewDevice(*agent, knownAgent, timestamp, std::move(newDevice));
     }
 
-    for (auto& device: newDevices) {
-        newDeviceIds->insert(device.GetDeviceUUID());
-
-        device.SetStateTs(timestamp.MicroSeconds());
-        device.SetUnadjustedBlockCount(device.GetBlocksCount());
-
-        device.SetNodeId(agent->GetNodeId());
-        device.SetAgentId(agent->GetAgentId());
-
-        if (device.GetState() != NProto::DEVICE_STATE_ERROR
-                && !ValidateSerialNumber(knownAgent, device))
-        {
-            SetInvalidSerialNumberError(device, timestamp);
+    for (; j < oldList.size(); ++j) {
+        auto& oldDevice = oldList[j];
+        if (IsAllowedDevice(*agent, oldDevice)) {
+            AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
-
-        *agent->MutableDevices()->Add() = std::move(device);
     }
 
     Sort(*agent->MutableDevices(), TByUUID());

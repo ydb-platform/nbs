@@ -129,6 +129,31 @@ private:
     bool ValidateSerialNumber(
         const TKnownAgent& knownAgent,
         const NProto::TDeviceConfig& config);
+
+    void UpdateDevice(
+        NProto::TDeviceConfig& device,
+        const NProto::TAgentConfig& agent,
+        const TKnownAgent& knownAgent,
+        TInstant timestamp,
+        const NProto::TDeviceConfig& newConfig);
+
+    void AddUpdatedDevice(
+        NProto::TAgentConfig& agent,
+        const TKnownAgent& knownAgent,
+        TInstant timestamp,
+        NProto::TDeviceConfig device,
+        const NProto::TDeviceConfig& newConfig);
+
+    void AddLostDevice(
+        NProto::TAgentConfig& agent,
+        TInstant timestamp,
+        NProto::TDeviceConfig device);
+
+    void AddNewDevice(
+        NProto::TAgentConfig& agent,
+        const TKnownAgent& knownAgent,
+        TInstant timestamp,
+        NProto::TDeviceConfig device);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

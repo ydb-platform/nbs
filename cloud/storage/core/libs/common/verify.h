@@ -35,6 +35,7 @@ struct TWellKnownEntityTypes
     static constexpr TStringBuf ENDPOINT = "Endpoint";
     static constexpr TStringBuf DEVICE = "Device";
     static constexpr TStringBuf FILESYSTEM = "Filesystem";
+    static constexpr TStringBuf AGENT = "Agent";
 };
 
 }   // namespace NCloud

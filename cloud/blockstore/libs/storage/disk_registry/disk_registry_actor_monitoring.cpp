@@ -210,8 +210,10 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     TABLED() { out << device.GetStateMessage(); }
                     TABLED() { out << device.GetBlockSize(); }
                     TABLED() {
-                        out << device.GetBlocksCount()
-                            << " (" << device.GetUnadjustedBlockCount() << ")";
+                        out << device.GetBlocksCount();
+                        if (device.GetUnadjustedBlockCount()) {
+                            out << " (" << device.GetUnadjustedBlockCount() << ")";
+                        }
                     }
                     TABLED() {
                         const auto bytes =
@@ -223,8 +225,8 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     }
                     TABLED() { out << device.GetTransportId(); }
                     TABLED() {
-                        if (device.HasRdmaEndpoint()) {
-                            auto e = device.GetRdmaEndpoint();
+                        const auto& e = device.GetRdmaEndpoint();
+                        if (e.GetHost() || e.GetPort()) {
                             out << e.GetHost() << ":" << e.GetPort();
                         }
                     }
@@ -435,6 +437,13 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         }
 
         RenderDevicesWithDetails(out, agent->GetDevices(), {});
+
+        if (agent->UnknownDevicesSize()) {
+            RenderDevicesWithDetails(
+                out,
+                agent->GetUnknownDevices(),
+                "Unknown devices");
+        }
     }
 }
 

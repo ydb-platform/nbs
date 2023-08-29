@@ -568,17 +568,17 @@ const TVector<NProto::TAgentConfig>& TDiskRegistryState::GetAgents() const
     return AgentList.GetAgents();
 }
 
-auto TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
-    -> const TKnownAgent&
+NProto::TError TDiskRegistryState::ValidateAgent(
+    const NProto::TAgentConfig& agent) const
 {
     const auto& agentId = agent.GetAgentId();
 
     if (agentId.empty()) {
-        throw TServiceError(E_ARGUMENT) << "empty agent id";
+        return MakeError(E_ARGUMENT, "empty agent id");
     }
 
     if (agent.GetNodeId() == 0) {
-        throw TServiceError(E_ARGUMENT) << "empty node id";
+        return MakeError(E_ARGUMENT, "empty node id");
     }
 
     auto* buddy = AgentList.FindAgent(agent.GetNodeId());
@@ -587,9 +587,9 @@ auto TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
         && buddy->GetAgentId() != agentId
         && buddy->GetState() != NProto::AGENT_STATE_UNAVAILABLE)
     {
-        throw TServiceError(E_INVALID_STATE)
+        return MakeError(E_INVALID_STATE, TStringBuilder()
             << "Agent " << buddy->GetAgentId().Quote()
-            << " already registered at node #" << agent.GetNodeId();
+            << " already registered at node #" << agent.GetNodeId());
     }
 
     buddy = AgentList.FindAgent(agentId);
@@ -598,16 +598,16 @@ auto TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
         && buddy->GetSeqNumber() > agent.GetSeqNumber()
         && buddy->GetState() != NProto::AGENT_STATE_UNAVAILABLE)
     {
-        throw TServiceError(E_INVALID_STATE)
+        return MakeError(E_INVALID_STATE, TStringBuilder()
             << "Agent " << buddy->GetAgentId().Quote()
             << " already registered with a greater SeqNo "
-            << "(" << buddy->GetSeqNumber() << " > " << agent.GetSeqNumber() << ")";
+            << "(" << buddy->GetSeqNumber() << " > " << agent.GetSeqNumber() << ")");
     }
 
     const TKnownAgent* knownAgent = KnownAgents.FindPtr(agentId);
 
     if (!knownAgent) {
-        throw TServiceError(E_INVALID_STATE) << "agent not allowed";
+        return {};
     }
 
     TString rack;
@@ -616,22 +616,16 @@ auto TDiskRegistryState::ValidateAgent(const NProto::TAgentConfig& agent)
     }
 
     for (const auto& device: agent.GetDevices()) {
-        const auto& uuid = device.GetDeviceUUID();
-        if (!knownAgent->Devices.contains(uuid)) {
-            throw TServiceError(E_INVALID_STATE)
-                << "device " << uuid.Quote() << " not allowed";
-        }
-
         // right now we suppose that each agent presents devices
         // from one rack only
         if (rack != device.GetRack()) {
-            throw TServiceError(E_ARGUMENT)
+            return MakeError(E_ARGUMENT, TStringBuilder()
                 << "all agent devices should come from the same rack, mismatch: "
-                << rack << " != " << device.GetRack();
+                << rack << " != " << device.GetRack());
         }
     }
 
-    return *knownAgent;
+    return {};
 }
 
 auto TDiskRegistryState::FindDisk(const TDeviceId& uuid) const -> TDiskId
@@ -744,9 +738,11 @@ NProto::TError TDiskRegistryState::RegisterAgent(
     TVector<TDiskId>* affectedDisks,
     TVector<TDiskId>* disksToReallocate)
 {
-    try {
-        const TKnownAgent& knownAgent = ValidateAgent(config);
+    if (auto error = ValidateAgent(config); HasError(error)) {
+        return error;
+    }
 
+    try {
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
                 buddy && buddy->GetAgentId() != config.GetAgentId())
         {
@@ -765,6 +761,10 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                 affectedDisks,
                 disksToReallocate);
         }
+
+        const auto& knownAgent = KnownAgents.Value(
+            config.GetAgentId(),
+            TKnownAgent {});
 
         const auto prevNodeId = AgentList.FindNodeId(config.GetAgentId());
 
@@ -2809,7 +2809,7 @@ NProto::TError TDiskRegistryState::UpdateConfig(
 
         for (const auto& device: agent.GetDevices()) {
             knownAgent.Devices.emplace(device.GetDeviceUUID(), device);
-            auto [it, ok] = allDevices.insert(device.GetDeviceUUID());
+            auto [_, ok] = allDevices.insert(device.GetDeviceUUID());
             if (!ok) {
                 return MakeError(E_ARGUMENT, "bad config");
             }
@@ -2817,18 +2817,18 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     }
 
     TVector<TString> removedDevices;
-    TVector<TString> removedAgents;
+    THashSet<TString> updatedAgents;
 
     for (const auto& [id, knownAgent]: KnownAgents) {
-        for (const auto& [uuid, device]: knownAgent.Devices) {
-            Y_UNUSED(device);
+        for (const auto& [uuid, _]: knownAgent.Devices) {
             if (!allDevices.contains(uuid)) {
                 removedDevices.push_back(uuid);
+                updatedAgents.insert(id);
             }
         }
 
         if (!newKnownAgents.contains(id)) {
-            removedAgents.push_back(id);
+            updatedAgents.insert(id);
         }
     }
 
@@ -2860,8 +2860,27 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     newConfig.SetVersion(CurrentConfig.GetVersion() + 1);
     ProcessConfig(newConfig);
 
-    for (const auto& id: removedAgents) {
-        RemoveAgent(db, id);
+    TVector<TDiskId> disksToReallocate;
+    for (const auto& agentId: updatedAgents) {
+        const auto* agent = AgentList.FindAgent(agentId);
+        if (agent) {
+            const auto ts = TInstant::MicroSeconds(agent->GetStateTs());
+            auto config = *agent;
+
+            auto error = RegisterAgent(
+                db,
+                config,
+                ts,
+                &affectedDisks,
+                &disksToReallocate);
+
+            STORAGE_VERIFY_C(
+                !HasError(error),
+                TWellKnownEntityTypes::AGENT,
+                config.GetAgentId(),
+                "agent update failure: " << FormatError(error) << ". Config: "
+                    << config);
+        }
     }
 
     db.WriteDiskRegistryConfig(newConfig);
@@ -5438,11 +5457,14 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
 
 void TDiskRegistryState::UpdateAgent(
     TDiskRegistryDatabase& db,
-    const NProto::TAgentConfig& config)
+    NProto::TAgentConfig config)
 {
     if (config.GetNodeId() != 0) {
         db.UpdateOldAgent(config);
     }
+
+    // don't persist unknown devices
+    config.MutableUnknownDevices()->Clear();
 
     db.UpdateAgent(config);
 }

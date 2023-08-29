@@ -62,7 +62,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
     }
 
-    Y_UNIT_TEST(ShouldRejectUnallowedAgent)
+    Y_UNIT_TEST(ShouldAcceptUnallowedAgent)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -85,14 +85,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config1));
-
-            auto error = RegisterAgent(state, db, config2);
-
-            UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_INVALID_STATE);
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config2));
         });
+
+        auto* agent = state.FindAgent(config2.GetAgentId());
+        UNIT_ASSERT(agent);
+        UNIT_ASSERT_VALUES_EQUAL(0, agent->DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, agent->UnknownDevicesSize());
     }
 
-    Y_UNIT_TEST(ShouldRejectAgentWithUnallowedDevice)
+    Y_UNIT_TEST(ShouldAcceptAgentWithUnallowedDevice)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -115,10 +117,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto error = RegisterAgent(state, db, config2);
-
-            UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_INVALID_STATE);
-            UNIT_ASSERT(error.GetMessage().Contains("uuid-2"));
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config2));
+            auto* agent = state.FindAgent(config2.GetAgentId());
+            UNIT_ASSERT(agent);
+            UNIT_ASSERT_VALUES_EQUAL(1, agent->DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-1",
+                agent->GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, agent->UnknownDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-2",
+                agent->GetUnknownDevices(0).GetDeviceUUID());
         });
     }
 
@@ -145,22 +154,49 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config1));
 
+            {
+                auto* agent = state.FindAgent(config2.GetAgentId());
+                UNIT_ASSERT(agent);
+                UNIT_ASSERT_VALUES_EQUAL(2, agent->DevicesSize());
+                UNIT_ASSERT_VALUES_EQUAL(0, agent->UnknownDevicesSize());
+            }
+
             UpdateConfig(state, db, { config2 });
 
-            auto error = RegisterAgent(state, db, config1);
-            UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_INVALID_STATE);
+            {
+                auto* agent = state.FindAgent(config2.GetAgentId());
+                UNIT_ASSERT(agent);
+                UNIT_ASSERT_VALUES_EQUAL(0, agent->DevicesSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, agent->UnknownDevicesSize());
+            }
+
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config1));
+
+            {
+                auto* agent = state.FindAgent(config2.GetAgentId());
+                UNIT_ASSERT(agent);
+                UNIT_ASSERT_VALUES_EQUAL(0, agent->DevicesSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, agent->UnknownDevicesSize());
+            }
 
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config2));
+
+            {
+                auto* agent = state.FindAgent(config2.GetAgentId());
+                UNIT_ASSERT(agent);
+                UNIT_ASSERT_VALUES_EQUAL(1, agent->DevicesSize());
+                UNIT_ASSERT_VALUES_EQUAL(0, agent->UnknownDevicesSize());
+            }
         });
 
         const auto current = state.GetConfig();
-        UNIT_ASSERT_VALUES_EQUAL(current.KnownAgentsSize(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, current.KnownAgentsSize());
 
         const auto& agents = current.GetKnownAgents(0);
 
-        UNIT_ASSERT_VALUES_EQUAL(agents.GetAgentId(), "agent-1");
-        UNIT_ASSERT_VALUES_EQUAL(agents.DevicesSize(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(agents.GetDevices(0).GetDeviceUUID(), "uuid-3");
+        UNIT_ASSERT_VALUES_EQUAL("agent-1", agents.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(1, agents.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-3", agents.GetDevices(0).GetDeviceUUID());
     }
 
     Y_UNIT_TEST(ShouldCorrectlyReRegisterAgent)
@@ -389,8 +425,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             TVector<NProto::TAgentConfig> agents;
 
             db.ReadAgents(agents);
-            UNIT_ASSERT_VALUES_EQUAL(1, agents.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, agents.size());
+
             UNIT_ASSERT_VALUES_EQUAL(1, agents[0].GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(2, agents[0].DevicesSize());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, agents[1].GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(0, agents[1].DevicesSize());
         });
     }
 

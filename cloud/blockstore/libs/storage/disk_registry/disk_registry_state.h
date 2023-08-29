@@ -703,7 +703,8 @@ private:
         const TDiskState& disk,
         TDiskInfo& diskInfo) const;
 
-    auto ValidateAgent(const NProto::TAgentConfig& agent) -> const TKnownAgent&;
+    [[nodiscard]] NProto::TError ValidateAgent(
+        const NProto::TAgentConfig& agent) const;
 
     bool IsKnownDevice(const TDeviceId& uuid) const;
 
@@ -868,7 +869,7 @@ private:
         const TVector<NProto::TDeviceConfig>& diskDevices,
         const TAllocateDiskParams& params);
 
-    void UpdateAgent(TDiskRegistryDatabase& db, const NProto::TAgentConfig& config);
+    void UpdateAgent(TDiskRegistryDatabase& db, NProto::TAgentConfig config);
 
     ui64 GetAllocationUnit(const TString& poolName) const;
     NProto::EDevicePoolKind GetDevicePoolKind(const TString& poolName) const;
