@@ -2521,7 +2521,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-2", group->GetDisks(1).GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL("disk-4", group->GetDisks(2).GetDiskId());
 
-        auto racksInfo = state.GatherRacksInfo();
+        auto racksInfo = state.GatherRacksInfo("" /* poolName */);
         UNIT_ASSERT_VALUES_EQUAL(3, racksInfo.size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, racksInfo[0].AgentInfos.size());
@@ -2751,7 +2751,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-5", group->GetDisks(3).GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL("disk-6", group->GetDisks(4).GetDiskId());
 
-        auto racksInfo = state.GatherRacksInfo();
+        auto racksInfo = state.GatherRacksInfo("" /* poolName */);
         UNIT_ASSERT_VALUES_EQUAL(3, racksInfo.size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, racksInfo[0].AgentInfos.size());
@@ -7081,29 +7081,60 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         const TVector agents {
             AgentConfig(1000, {
                 Device("dev-1", "uuid-1.1", "rack-1"),
-                Device("dev-2", "uuid-1.2", "rack-1")
+                Device("dev-2", "uuid-1.2", "rack-1"),
             }),
             AgentConfig(2000, {
                 Device("dev-1", "uuid-2.1", "rack-2"),
-                Device("dev-2", "uuid-2.2", "rack-2")
+                Device("dev-2", "uuid-2.2", "rack-2"),
             }),
             AgentConfig(3000, {
                 Device("dev-1", "uuid-3.1", "rack-2"),
                 Device("dev-2", "uuid-3.2", "rack-2"),
                 Device("dev-3", "uuid-3.3", "rack-2"),
-            })
+                Device("dev-4", "uuid-3.4", "rack-2", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+                Device("dev-5", "uuid-3.5", "rack-2", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+                Device("dev-6", "uuid-3.6", "rack-2", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+                Device("dev-7", "uuid-3.7", "rack-2", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(4000, {
+                Device("dev-1", "uuid-4.1", "rack-3")
+                    | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+                Device("dev-2", "uuid-4.2", "rack-3")
+                    | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+            }),
+            AgentConfig(5000, {
+                Device("dev-1", "uuid-5.1", "rack-3", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+                Device("dev-2", "uuid-5.2", "rack-3", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
         };
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1"}),
-                Disk("disk-2", {"uuid-2.2"})
+                Disk("disk-2", {"uuid-2.2"}),
+                Disk("disk-3", {"uuid-3.4", "uuid-3.5"}),
+                Disk("disk-4", {"uuid-4.1"}),
             })
-            .WithDirtyDevices({"uuid-2.1", "uuid-3.3"})
+            .WithDirtyDevices({"uuid-2.1", "uuid-3.3", "uuid-3.6", "uuid-5.2"})
+            .AddDevicePoolConfig("local-ssd", 10, NProto::DEVICE_POOL_KIND_LOCAL)
+            .AddDevicePoolConfig("rot", 10, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
 
-        auto info = state.GatherRacksInfo();
+        const auto poolNames = state.GetPoolNames();
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"", "local-ssd", "rot"}),
+            poolNames);
+
+        // default pool
+
+        auto info = state.GatherRacksInfo("");
 
         UNIT_ASSERT_VALUES_EQUAL(2, info.size());
         SortBy(info, [] (auto& x) { return x.Name; });
@@ -7147,6 +7178,67 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(0, agent2.AllocatedDevices);
             UNIT_ASSERT_VALUES_EQUAL(0, agent2.BrokenDevices);
             UNIT_ASSERT_VALUES_EQUAL(3, agent2.TotalDevices);
+        }
+
+        // local-ssd pool
+
+        info = state.GatherRacksInfo("local-ssd");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, info.size());
+
+        {
+            auto& rack = info[0];
+            UNIT_ASSERT_VALUES_EQUAL("rack-3", rack.Name);
+            UNIT_ASSERT_VALUES_EQUAL(10_GB, rack.FreeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(20_GB, rack.TotalBytes);
+            UNIT_ASSERT_VALUES_EQUAL(1, rack.AgentInfos.size());
+
+            auto& agent = rack.AgentInfos[0];
+            UNIT_ASSERT_VALUES_EQUAL("agent-4000", agent.AgentId);
+            UNIT_ASSERT_VALUES_EQUAL(4000, agent.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(1, agent.FreeDevices);
+            UNIT_ASSERT_VALUES_EQUAL(1, agent.AllocatedDevices);
+            UNIT_ASSERT_VALUES_EQUAL(0, agent.BrokenDevices);
+            UNIT_ASSERT_VALUES_EQUAL(2, agent.TotalDevices);
+        }
+
+        // rot pool
+
+        info = state.GatherRacksInfo("rot");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, info.size());
+        SortBy(info, [] (auto& x) { return x.Name; });
+
+        {
+            auto& rack = info[0];
+            UNIT_ASSERT_VALUES_EQUAL("rack-2", rack.Name);
+            UNIT_ASSERT_VALUES_EQUAL(100_GB, rack.FreeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(400_GB, rack.TotalBytes);
+            UNIT_ASSERT_VALUES_EQUAL(1, rack.AgentInfos.size());
+
+            auto& agent = rack.AgentInfos[0];
+            UNIT_ASSERT_VALUES_EQUAL("agent-3000", agent.AgentId);
+            UNIT_ASSERT_VALUES_EQUAL(3000, agent.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(1, agent.FreeDevices);
+            UNIT_ASSERT_VALUES_EQUAL(2, agent.AllocatedDevices);
+            UNIT_ASSERT_VALUES_EQUAL(0, agent.BrokenDevices);
+            UNIT_ASSERT_VALUES_EQUAL(4, agent.TotalDevices);
+        }
+
+        {
+            auto& rack = info[1];
+            UNIT_ASSERT_VALUES_EQUAL("rack-3", rack.Name);
+            UNIT_ASSERT_VALUES_EQUAL(100_GB, rack.FreeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(200_GB, rack.TotalBytes);
+            UNIT_ASSERT_VALUES_EQUAL(1, rack.AgentInfos.size());
+
+            auto& agent = rack.AgentInfos[0];
+            UNIT_ASSERT_VALUES_EQUAL("agent-5000", agent.AgentId);
+            UNIT_ASSERT_VALUES_EQUAL(5000, agent.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(1, agent.FreeDevices);
+            UNIT_ASSERT_VALUES_EQUAL(0, agent.AllocatedDevices);
+            UNIT_ASSERT_VALUES_EQUAL(0, agent.BrokenDevices);
+            UNIT_ASSERT_VALUES_EQUAL(2, agent.TotalDevices);
         }
     }
 

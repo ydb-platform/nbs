@@ -483,7 +483,7 @@ public:
     TString GetAgentId(TNodeId nodeId) const;
 
     ui32 CalculateRackCount() const;
-    TDeque<TRackInfo> GatherRacksInfo() const;
+    TDeque<TRackInfo> GatherRacksInfo(const TString& poolName) const;
     THashMap<TString, TBrokenGroupInfo> GatherBrokenGroupsInfo(
         TInstant now,
         TDuration period) const;
@@ -652,6 +652,8 @@ public:
     void CleanupExpiredAgentListParams(
         TDiskRegistryDatabase& db,
         TInstant now);
+
+    TVector<TString> GetPoolNames() const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

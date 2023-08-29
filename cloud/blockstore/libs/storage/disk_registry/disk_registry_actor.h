@@ -243,6 +243,7 @@ private:
     void RenderUserNotifications(IOutputStream& out) const;
     void RenderPlacementGroupList(IOutputStream& out, ui32 limit) const;
     void RenderRacks(IOutputStream& out, ui32 limit) const;
+    void RenderPoolRacks(IOutputStream& out, const TString& poolName) const;
     void RenderAgentList(TInstant now, IOutputStream& out, ui32 limit) const;
     void RenderConfig(IOutputStream& out, ui32 limit) const;
     void RenderDirtyDeviceList(IOutputStream& out) const;

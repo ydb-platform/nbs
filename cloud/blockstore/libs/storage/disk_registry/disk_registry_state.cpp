@@ -1442,7 +1442,8 @@ ui32 TDiskRegistryState::CalculateRackCount() const
     return racks.size();
 }
 
-TDeque<TRackInfo> TDiskRegistryState::GatherRacksInfo() const
+TDeque<TRackInfo> TDiskRegistryState::GatherRacksInfo(
+    const TString& poolName) const
 {
     TDeque<TRackInfo> racks;
     THashMap<TString, TRackInfo*> m;
@@ -1451,6 +1452,10 @@ TDeque<TRackInfo> TDiskRegistryState::GatherRacksInfo() const
         TRackInfo::TAgentInfo* agentInfo = nullptr;
 
         for (const auto& device: agent.GetDevices()) {
+            if (device.GetPoolName() != poolName) {
+                continue;
+            }
+
             auto& rackPtr = m[device.GetRack()];
             if (!rackPtr) {
                 racks.emplace_back(device.GetRack());
@@ -5806,6 +5811,16 @@ void TDiskRegistryState::CleanupExpiredAgentListParams(
     for (const auto& agentId: AgentList.CleanupExpiredAgentListParams(now)) {
         db.DeleteDiskRegistryAgentListParams(agentId);
     }
+}
+
+TVector<TString> TDiskRegistryState::GetPoolNames() const
+{
+    TVector<TString> poolNames;
+    for (const auto& [poolName, _]: DevicePoolConfigs) {
+        poolNames.push_back(poolName);
+    }
+    Sort(poolNames);
+    return poolNames;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1011,14 +1011,26 @@ void TDiskRegistryActor::RenderRacks(IOutputStream& out, ui32 limit) const
         return;
     }
 
+    for (const auto& poolName: State->GetPoolNames()) {
+        RenderPoolRacks(out, poolName);
+    }
+}
+
+void TDiskRegistryActor::RenderPoolRacks(
+    IOutputStream& out,
+    const TString& poolName) const
+{
     static const char svg[] = "svg";
     static const char rect[] = "rect";
     static const char text[] = "text";
 
-    auto racks = State->GatherRacksInfo();
+    auto racks = State->GatherRacksInfo(poolName);
 
     HTML(out) {
-        TAG(TH3) { out << "Racks"; DumpSize(out, racks); }
+        TAG(TH3) {
+            out << "Racks for pool " << (poolName ? poolName : "<default>");
+            DumpSize(out, racks);
+        }
 
         ui64 totalFreeBytes = 0;
         ui64 totalBytes = 0;
