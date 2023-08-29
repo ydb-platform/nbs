@@ -117,6 +117,7 @@ public:
     void MarkDeviceAsDirty(const TDeviceId& uuid);
 
     bool IsDirtyDevice(const TDeviceId& uuid) const;
+    NProto::EDeviceState GetDeviceState(const TDeviceId& uuid) const;
 
     void SuspendDevice(const TDeviceId& ids);
     bool ResumeDevice(const TDeviceId& id);

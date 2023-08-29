@@ -1012,6 +1012,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             timestamp,
             message);
         if (HasError(error)) {
+            TryUpdateDiskState(db, diskId, timestamp);
             return error;
         }
 
@@ -2483,6 +2484,12 @@ TVector<TString> TDiskRegistryState::GetDeviceIds(
     return deviceIds;
 }
 
+NProto::EDeviceState TDiskRegistryState::GetDeviceState(
+    const TString& deviceId) const
+{
+    return DeviceList.GetDeviceState(deviceId);
+}
+
 NProto::TError TDiskRegistryState::GetDependentDisks(
     const TString& agentId,
     const TString& path,
@@ -3413,13 +3420,13 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         placementGroupsWithBrokenTwoOrMoreDisks);
 
     auto replicaCountStats = ReplicaTable.CalculateReplicaCountStats();
-    SelfCounters.Mirror2Disks->Set(replicaCountStats[2][0]);
-    SelfCounters.Mirror2DisksMinus1->Set(replicaCountStats[2][1]);
-    SelfCounters.Mirror2DisksMinus2->Set(replicaCountStats[2][2]);
-    SelfCounters.Mirror3Disks->Set(replicaCountStats[3][0]);
-    SelfCounters.Mirror3DisksMinus1->Set(replicaCountStats[3][1]);
-    SelfCounters.Mirror3DisksMinus2->Set(replicaCountStats[3][2]);
-    SelfCounters.Mirror3DisksMinus3->Set(replicaCountStats[3][3]);
+    SelfCounters.Mirror2Disks->Set(replicaCountStats.Mirror2DiskMinus0);
+    SelfCounters.Mirror2DisksMinus1->Set(replicaCountStats.Mirror2DiskMinus1);
+    SelfCounters.Mirror2DisksMinus2->Set(replicaCountStats.Mirror2DiskMinus2);
+    SelfCounters.Mirror3Disks->Set(replicaCountStats.Mirror3DiskMinus0);
+    SelfCounters.Mirror3DisksMinus1->Set(replicaCountStats.Mirror3DiskMinus1);
+    SelfCounters.Mirror3DisksMinus2->Set(replicaCountStats.Mirror3DiskMinus2);
+    SelfCounters.Mirror3DisksMinus3->Set(replicaCountStats.Mirror3DiskMinus3);
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
 
     SelfCounters.AutomaticallyReplacedDevices->Set(

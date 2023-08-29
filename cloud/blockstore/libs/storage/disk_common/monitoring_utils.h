@@ -8,17 +8,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& DumpState(
+IOutputStream& DumpAgentState(
     IOutputStream& out,
     NProto::EAgentState state);
 
-IOutputStream& DumpState(
+IOutputStream& DumpDiskState(
     IOutputStream& out,
     NProto::EDiskState state);
 
-IOutputStream& DumpState(
+IOutputStream& DumpDeviceState(
     IOutputStream& out,
     NProto::EDeviceState state,
+    bool isFresh = false,
+    bool isDisabled = false,
     TString suffix = "");
 
 }   // namespace NCloud::NBlockStore::NStorage

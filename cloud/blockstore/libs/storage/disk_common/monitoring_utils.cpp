@@ -4,7 +4,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& DumpState(
+IOutputStream& DumpAgentState(
     IOutputStream& out,
     NProto::EAgentState state)
 {
@@ -23,7 +23,7 @@ IOutputStream& DumpState(
     }
 }
 
-IOutputStream& DumpState(
+IOutputStream& DumpDiskState(
     IOutputStream& out,
     NProto::EDiskState state)
 {
@@ -44,24 +44,36 @@ IOutputStream& DumpState(
     }
 }
 
-IOutputStream& DumpState(
+IOutputStream& DumpDeviceState(
     IOutputStream& out,
     NProto::EDeviceState state,
+    bool isFresh,
+    bool isDisabled,
     TString suffix)
 {
     switch (state) {
         case NProto::DEVICE_STATE_ONLINE:
-            return out << "<font color=green>online" << suffix << "</font>";
+            out << "<font color=green>online" << suffix << "</font>";
+            break;
         case NProto::DEVICE_STATE_WARNING:
-            return out << "<font color=brown>warning" << suffix << "</font>";
+            out << "<font color=brown>warning" << suffix << "</font>";
+            break;
         case NProto::DEVICE_STATE_ERROR:
-            return out << "<font color=red>error" << suffix << "</font>";
+            out << "<font color=red>error" << suffix << "</font>";
+            break;
         default:
-            return out
+            out
                 << "(Unknown EDeviceState value "
                 << static_cast<int>(state)
-                << ")";
+                << ")" << suffix;
     }
+    if (isFresh) {
+        out << " [<font color=blue>Fresh</font>]";
+    }
+    if (isDisabled) {
+        out << " [<font color=red>Disabled</font>]";
+    }
+    return out;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

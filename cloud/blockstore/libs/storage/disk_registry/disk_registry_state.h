@@ -217,7 +217,7 @@ private:
     TSet<TDeviceMigration, TDeviceMigrationCompare> Migrations;
     ui32 DeviceMigrationsInProgress = 0;
 
-    TReplicaTable ReplicaTable;
+    TReplicaTable ReplicaTable{&DeviceList};
 
     THashMap<TString, NProto::TDevicePoolConfig> DevicePoolConfigs;
 
@@ -346,6 +346,7 @@ public:
 
     NProto::TDeviceConfig GetDevice(const TString& id) const;
     TVector<TString> GetDeviceIds(const TString& agentId, const TString& path) const;
+    NProto::EDeviceState GetDeviceState(const TString& deviceId) const;
 
     NProto::TError GetDependentDisks(
         const TString& agentId,

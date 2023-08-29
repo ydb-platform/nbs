@@ -2344,7 +2344,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         };
 
         fetchDisksToNotify();
-        ASSERT_VECTORS_EQUAL(TVector<TString>{}, disksToReallocate);
+        ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, disksToReallocate);
         ASSERT_VECTORS_EQUAL(
             TVector<NProto::TUserNotification>{},
             userNotifications);

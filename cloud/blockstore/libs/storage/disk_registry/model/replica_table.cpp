@@ -1,8 +1,14 @@
 #include "replica_table.h"
 
+#include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TReplicaTable::TReplicaTable(const TDeviceList* const deviceList)
+    : DeviceList(deviceList)
+{}
 
 void TReplicaTable::AddReplica(
     const TDiskId& diskId,
@@ -68,7 +74,11 @@ bool TReplicaTable::IsReplacementAllowed(
 
     ui32 readyDeviceCount = 0;
     for (auto& device: **cell) {
-        if (device.Id && device.Id != deviceId && !device.IsReplacement) {
+        const bool canUseDevice = device.Id && device.Id != deviceId;
+        const bool deviceOK =
+            !device.IsReplacement &&
+            DeviceList->GetDeviceState(device.Id) != NProto::DEVICE_STATE_ERROR;
+        if (canUseDevice && deviceOK) {
             ++readyDeviceCount;
         }
     }
@@ -147,30 +157,103 @@ TVector<TVector<TReplicaTable::TDeviceInfo>> TReplicaTable::AsMatrix(
     return matrix;
 }
 
-THashMap<ui32, THashMap<ui32, ui32>> TReplicaTable::CalculateReplicaCountStats() const
+TMirroredDisksStat TReplicaTable::CalculateReplicaCountStats() const
 {
-    THashMap<ui32, THashMap<ui32, ui32>> result;
+    TMirroredDisksStat result;
+    ui32 dummyField = 0;
 
-    for (const auto& x: Disks) {
-        const auto& disk = x.second;
-        if (disk.Cells.empty()) {
+    auto getCounter = [&](ui32 replicaCount, ui32 incompleteCount) -> ui32&
+    {
+        if (replicaCount == 2) {
+            switch (incompleteCount) {
+                case 0:
+                    return result.Mirror2DiskMinus0;
+                case 1:
+                    return result.Mirror2DiskMinus1;
+                case 2:
+                    return result.Mirror2DiskMinus2;
+                default:
+                    return dummyField;
+            }
+        } else if (replicaCount == 3) {
+            switch (incompleteCount) {
+                case 0:
+                    return result.Mirror3DiskMinus0;
+                case 1:
+                    return result.Mirror3DiskMinus1;
+                case 2:
+                    return result.Mirror3DiskMinus2;
+                case 3:
+                    return result.Mirror3DiskMinus3;
+                default:
+                    return dummyField;
+            }
+        }
+        return dummyField;
+    };
+
+    for (const auto& [diskId, diskState]: Disks) {
+        if (diskState.Cells.empty()) {
             continue;
         }
 
-        ui32 replicaCount = disk.Cells.front().size();
+        ui32 replicaCount = diskState.Cells.front().size();
         ui32 incompleteCount = 0;
-        for (auto& cell: disk.Cells) {
+        for (const auto& cell: diskState.Cells) {
             ui32 incompleteCountInCell = 0;
             for (const auto& device: cell) {
-                incompleteCountInCell += device.IsReplacement;
+                incompleteCountInCell +=
+                    device.IsReplacement ||
+                    DeviceList->GetDeviceState(device.Id) ==
+                        NProto::EDeviceState::DEVICE_STATE_ERROR;
             }
 
             incompleteCount = Max(incompleteCount, incompleteCountInCell);
         }
 
-        ++result[replicaCount][incompleteCount];
+        ui32& counter = getCounter(replicaCount, incompleteCount);
+        ++counter;
     }
 
+    Y_VERIFY_DEBUG(dummyField == 0);
+    return result;
+}
+
+TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
+    const TString& diskId) const
+{
+    TMirroredDiskDevicesStat result;
+    const auto* diskState = Disks.FindPtr(diskId);
+    if (!diskState) {
+        return result;
+    }
+
+    for (const auto& cell: diskState->Cells) {
+        ui32 incompleteCountInCell = 0;
+        ui32 cellReplacementCount = 0;
+        ui32 cellErrorCount = 0;
+        for (const auto& deviceInfo: cell) {
+            if (DeviceList->GetDeviceState(deviceInfo.Id) ==
+                NProto::EDeviceState::DEVICE_STATE_ERROR)
+            {
+                ++cellErrorCount;
+            } else if (deviceInfo.IsReplacement) {
+                ++cellReplacementCount;
+            }
+        }
+        ui32 replacementAndErrorCount = cellReplacementCount + cellErrorCount;
+        Y_VERIFY_DEBUG(replacementAndErrorCount < result.CellsByState.size());
+        if (replacementAndErrorCount >= result.CellsByState.size()) {
+            replacementAndErrorCount = result.CellsByState.size() - 1;
+        }
+        ++result.CellsByState[replacementAndErrorCount];
+
+        result.DeviceReadyCount += cell.size() - replacementAndErrorCount;
+        result.DeviceReplacementCount += cellReplacementCount;
+        result.DeviceErrorCount += cellErrorCount;
+        result.MaxIncompleteness =
+            Max(result.MaxIncompleteness, incompleteCountInCell);
+    }
     return result;
 }
 

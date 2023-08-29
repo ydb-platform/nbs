@@ -7,7 +7,36 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <array>
+
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceList;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMirroredDisksStat
+{
+    ui32 Mirror2DiskMinus0 = 0;
+    ui32 Mirror2DiskMinus1 = 0;
+    ui32 Mirror2DiskMinus2 = 0;
+
+    ui32 Mirror3DiskMinus0 = 0;
+    ui32 Mirror3DiskMinus1 = 0;
+    ui32 Mirror3DiskMinus2 = 0;
+    ui32 Mirror3DiskMinus3 = 0;
+};
+
+struct TMirroredDiskDevicesStat
+{
+    std::array<ui32, 4> CellsByState = {};
+    ui32 DeviceReadyCount = 0;
+    ui32 DeviceReplacementCount = 0;
+    ui32 DeviceErrorCount = 0;
+    ui32 MaxIncompleteness = 0;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -16,13 +45,19 @@ class TReplicaTable
     using TDeviceId = TString;
     using TDiskId = TString;
 
+public:
     struct TDeviceInfo
     {
         TDeviceId Id;
+
+        // Set to true when device has been replaced and data is being copied to
+        // it now.
         bool IsReplacement = false;
     };
 
 public:
+    TReplicaTable(const TDeviceList* const deviceList);
+
     void AddReplica(const TDiskId& diskId, const TVector<TDeviceId>& devices);
     void UpdateReplica(
         const TDiskId& diskId,
@@ -44,9 +79,10 @@ public:
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
 
-    // for counters
-    // returns replicaCount -> {incompleteReplicaCount -> diskCount}
-    THashMap<ui32, THashMap<ui32, ui32>> CalculateReplicaCountStats() const;
+    TMirroredDisksStat CalculateReplicaCountStats() const;
+
+    TMirroredDiskDevicesStat CalculateDiskStats(
+        const TString& diskId) const;
 
 private:
     bool ChangeDevice(
@@ -67,6 +103,7 @@ private:
     };
 
     THashMap<TDiskId, TDiskState> Disks;
+    const TDeviceList* const DeviceList = nullptr;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -621,6 +621,14 @@ bool TDeviceList::IsDirtyDevice(const TDeviceId& uuid) const
     return DirtyDevices.contains(uuid);
 }
 
+NProto::EDeviceState TDeviceList::GetDeviceState(const TDeviceId& uuid) const
+{
+    if (auto* device = AllDevices.FindPtr(uuid)) {
+        return device->GetState();
+    }
+    return NProto::EDeviceState::DEVICE_STATE_ERROR;
+}
+
 void TDeviceList::SuspendDevice(const TDeviceId& id)
 {
     NProto::TSuspendedDevice device;

@@ -76,7 +76,13 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLED() { out << uuid; }
                     TABLED() { out << config.GetSerialNumber(); }
                     TABLED() { out << config.GetDeviceName(); }
-                    TABLED() { DumpState(out, config.GetState()); }
+                    TABLED() {
+                        DumpDeviceState(
+                            out,
+                            config.GetState(),
+                            false,
+                            State->IsDeviceDisabled(uuid));
+                    }
                     TABLED() {
                         if (config.GetStateTs()) {
                             out << TInstant::MicroSeconds(config.GetStateTs());

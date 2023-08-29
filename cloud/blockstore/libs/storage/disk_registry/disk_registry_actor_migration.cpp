@@ -92,6 +92,9 @@ void TMarkReplacementDevicesActor::MarkReplacementDevices(const TActorContext& c
             std::make_unique<TEvDiskRegistry::TEvMarkReplacementDeviceRequest>();
         request->Record.SetDiskId(Request.GetDiskId());
         request->Record.SetDeviceId(m.GetTargetDeviceId());
+        // Mark that the device has completed the replacement.
+        // Explicitly setting the default value for the proto field for clarity.
+        request->Record.SetIsReplacement(false);
         NCloud::Send(
             ctx,
             Owner,

@@ -203,7 +203,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     }
                     TABLED() { out << device.GetDeviceName(); }
                     TABLED() { out << device.GetSerialNumber(); }
-                    TABLED() { DumpState(out, device.GetState()); }
+                    TABLED() { DumpDeviceState(out, device.GetState()); }
                     TABLED() {
                         out << TInstant::MicroSeconds(device.GetStateTs());
                     }
@@ -354,7 +354,7 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
             out << device.GetRack();
         }
 
-        DIV() { out << "State: "; DumpState(out, device.GetState()); }
+        DIV() { out << "State: "; DumpDeviceState(out, device.GetState()); }
         DIV() {
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(device.GetStateTs());
@@ -419,7 +419,7 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
             out << "Rack: " << rack;
         }
 
-        DIV() { out << "State: "; DumpState(out, agent->GetState()); }
+        DIV() { out << "State: "; DumpAgentState(out, agent->GetState()); }
         DIV() {
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(agent->GetStateTs());
@@ -476,6 +476,11 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             return;
         }
 
+        TDiskInfo masterDiskInfo;
+        if (info.MasterDiskId) {
+            State->GetDiskInfo(info.MasterDiskId, masterDiskInfo);
+        }
+
         const bool replaceDeviceAllowed = Config->IsReplaceDeviceFeatureEnabled(
             info.CloudId,
             info.FolderId);
@@ -502,7 +507,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 << "Search this volume"
                 << "</a>";
         }
-        DIV() { out << "State: "; DumpState(out, info.State); }
+        DIV() { out << "State: "; DumpDiskState(out, info.State); }
         DIV() { out << "State timestamp: " << info.StateTs; }
 
         if (info.PlacementGroupId) {
@@ -534,8 +539,6 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             TABLEH() { out << "State Timestamp"; }
             if (isNonrepl) {
                 TABLEH() { out << "Action"; }
-            } else {
-                TABLEH() { out << "DataState"; }
             }
         };
 
@@ -563,34 +566,31 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                             != NProto::AGENT_STATE_ONLINE)
                     {
                         out << " ";
-                        DumpState(out, agent->GetState());
+                        DumpAgentState(out, agent->GetState());
                     }
                 } else {
                     out << device.GetNodeId();
                 }
             }
             TABLED() {
-                DumpState(out, device.GetState());
+                const bool isFresh =
+                    FindPtr(
+                        info.MasterDiskId ? masterDiskInfo.DeviceReplacementIds
+                                          : info.DeviceReplacementIds,
+                        device.GetDeviceUUID()) != nullptr;
+                DumpDeviceState(out, device.GetState(), isFresh);
             }
             TABLED() {
                 out << TInstant::MicroSeconds(device.GetStateTs());
             }
-            TABLED() {
-
-                if (isNonrepl && replaceDeviceAllowed) {
-                    BuildDeviceReplaceButton(
-                        out,
-                        TabletID(),
-                        id,
-                        device.GetDeviceUUID());
-                }
-
-                if (!isNonrepl) {
-                    auto it = Find(info.DeviceReplacementIds, device.GetDeviceUUID());
-                    if (it == info.DeviceReplacementIds.end()) {
-                        out << "<font color=green>Ready</font>";
-                    } else {
-                        out << "<font color=blue>Fresh</font>";
+            if (isNonrepl) {
+                TABLED() {
+                    if (replaceDeviceAllowed) {
+                        BuildDeviceReplaceButton(
+                            out,
+                            TabletID(),
+                            id,
+                            device.GetDeviceUUID());
                     }
                 }
             }
@@ -736,7 +736,7 @@ void TDiskRegistryActor::RenderDiskList(IOutputStream& out) const
 
                 TABLER() {
                     TABLED() { DumpDiskLink(out, TabletID(), id); }
-                    TABLED() { DumpState(out, diskInfo.State); }
+                    TABLED() { DumpDiskState(out, diskInfo.State); }
                     TABLED() { out << diskInfo.StateTs; }
                     TABLED() {
                         BuildVolumeReallocateButton(out, TabletID(), id);
@@ -764,36 +764,20 @@ void TDiskRegistryActor::RenderMirroredDiskList(IOutputStream& out) const
                 }
             }
 
-            for (const auto& id: ids) {
+            for (const auto& diskId: ids) {
                 TDiskInfo diskInfo;
-                State->GetDiskInfo(id, diskInfo);
+                State->GetDiskInfo(diskId, diskInfo);
 
-                const auto cells = State->GetReplicaTable().AsMatrix(id);
-                TVector<ui32> cellsByState(diskInfo.Replicas.size() + 2);
-                ui32 readyCount = 0;
-                ui32 replacementCount = 0;
-                for (const auto& cell: cells) {
-                    ui32 cellReplacementCount = 0;
-                    for (const auto& deviceInfo: cell) {
-                        cellReplacementCount += deviceInfo.IsReplacement;
-                    }
-
-                    Y_VERIFY_DEBUG(cellReplacementCount < cellsByState.size());
-                    if (cellReplacementCount >= cellsByState.size()) {
-                        cellReplacementCount = cellsByState.size() - 1;
-                    }
-
-                    ++cellsByState[cellReplacementCount];
-                    readyCount += cell.size() - cellReplacementCount;
-                    replacementCount += cellReplacementCount;
-                }
+                auto diskStat =
+                    State->GetReplicaTable().CalculateDiskStats(diskId);
 
                 TABLER() {
-                    TABLED() { DumpDiskLink(out, TabletID(), id); }
+                    TABLED() { DumpDiskLink(out, TabletID(), diskId); }
                     TABLED() { out << diskInfo.Replicas.size() + 1; }
                     TABLED() {
-                        for (ui32 i = 0; i < cellsByState.size(); ++i) {
-                            if (i && !cellsByState[i]) {
+                        for (ui32 i = 0; i < diskStat.CellsByState.size(); ++i)
+                        {
+                            if (i && !diskStat.CellsByState[i]) {
                                 continue;
                             }
 
@@ -807,16 +791,24 @@ void TDiskRegistryActor::RenderMirroredDiskList(IOutputStream& out) const
                             }
 
                             out << "<font color=" << color << ">";
-                            out << "Minus " << i << ": " << cellsByState[i];
-                            out << "</font>";
+                            if (i) {
+                                out << "Minus " << i << ": ";
+                            } else {
+                                out << "Fine: ";
+                            }
+                            out << diskStat.CellsByState[i] << "</font>";
                         }
                     }
                     TABLED() {
                         out << "Ready: <font color=green>"
-                            << readyCount << "</font>";
-                        if (replacementCount) {
+                            << diskStat.DeviceReadyCount << "</font>";
+                        if (diskStat.DeviceReplacementCount) {
                             out << " / Fresh: <font color=blue>"
-                                << replacementCount << "</font>";
+                                << diskStat.DeviceReplacementCount << "</font>";
+                        }
+                        if (diskStat.DeviceErrorCount) {
+                            out << " / Error: <font color=red>"
+                                << diskStat.DeviceErrorCount << "</font>";
                         }
                     }
                 }
@@ -1490,7 +1482,7 @@ void TDiskRegistryActor::RenderAgentList(
                             out << config.GetSeqNumber();
                         }
                         TABLED() {
-                            DumpState(out, config.GetState());
+                            DumpAgentState(out, config.GetState());
 
                             auto it = AgentRegInfo.find(config.GetAgentId());
 
@@ -1517,22 +1509,28 @@ void TDiskRegistryActor::RenderAgentList(
                         TABLED() { out << config.GetStateMessage(); }
 
                         TABLED() {
-                            DumpState(
+                            DumpDeviceState(
                                 out,
                                 NProto::DEVICE_STATE_ONLINE,
+                                false,
+                                false,
                                 TStringBuilder() << " " << onlineDevs);
                             if (warningDevs) {
                                 out << " / ";
-                                DumpState(
+                                DumpDeviceState(
                                     out,
                                     NProto::DEVICE_STATE_WARNING,
+                                    false,
+                                    false,
                                     TStringBuilder() << " " << warningDevs);
                             }
                             if (errorDevs) {
                                 out << " / ";
-                                DumpState(
+                                DumpDeviceState(
                                     out,
                                     NProto::DEVICE_STATE_ERROR,
+                                    false,
+                                    false,
                                     TStringBuilder() << " " << errorDevs);
                             }
                         }
@@ -1701,6 +1699,10 @@ void TDiskRegistryActor::RenderDirtyDeviceList(IOutputStream& out) const
             for (const auto& device: devices) {
                 LI() {
                     DumpDeviceLink(out, TabletID(), device.GetDeviceUUID());
+                    if (State->IsAutomaticallyReplaced(device.GetDeviceUUID()))
+                    {
+                        out << " Automatically replaced ";
+                    }
                     out << " (#" << device.GetNodeId() << " )";
                 }
             }
@@ -1753,8 +1755,10 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
                 TABLER() {
                     TABLEH() { out << "DeviceId"; }
                     TABLEH() { out << "ReplacementTs"; }
+                    TABLEH() { out << "Time to erase"; }
                 }
-
+                TDuration freezeDuration =
+                    Config->GetAutomaticallyReplacedDevicesFreezePeriod();
                 for (const auto& deviceInfo: deviceInfos) {
                     TABLER() {
                         TABLED() {
@@ -1762,6 +1766,16 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
                         }
                         TABLED() {
                             out << deviceInfo.ReplacementTs;
+                        }
+                        TABLED() {
+                            if (freezeDuration) {
+                                auto timeToClean = (deviceInfo.ReplacementTs +
+                                                    freezeDuration) -
+                                                   TInstant::Now();
+                                out << timeToClean;
+                            } else {
+                                out << "+inf. (AutomaticallyReplacedDevicesFreezePeriod not set)";
+                            }
                         }
                     }
                 }
