@@ -14,54 +14,73 @@ Y_UNIT_TEST_SUITE(TRequestsInFlightTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            requestsInFlight.TryAddRequest(1, { 10, 20 }).Added);
+            requestsInFlight
+                .TryAddRequest(1, TBlockRange64::MakeClosedInterval(10, 20))
+                .Added);
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            requestsInFlight.TryAddRequest(2, { 80, 100 }).Added);
+            requestsInFlight
+                .TryAddRequest(2, TBlockRange64::MakeClosedInterval(80, 100))
+                .Added);
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            requestsInFlight.TryAddRequest(3, { 40, 50 }).Added);
+            requestsInFlight
+                .TryAddRequest(3, TBlockRange64::MakeClosedInterval(40, 50))
+                .Added);
 
-        auto addResult = requestsInFlight.TryAddRequest(4, { 5, 15 });
+        auto addResult = requestsInFlight.TryAddRequest(
+            4,
+            TBlockRange64::MakeClosedInterval(5, 15));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
             addResult.DuplicateRequestId);
 
-        addResult = requestsInFlight.TryAddRequest(5, { 25, 45 });
+        addResult = requestsInFlight.TryAddRequest(
+            5,
+            TBlockRange64::MakeClosedInterval(25, 45));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
             addResult.DuplicateRequestId);
 
-        addResult = requestsInFlight.TryAddRequest(6, { 35, 55 });
+        addResult = requestsInFlight.TryAddRequest(
+            6,
+            TBlockRange64::MakeClosedInterval(35, 55));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
             addResult.DuplicateRequestId);
 
-
-        addResult = requestsInFlight.TryAddRequest(7, { 50, 120 });
+        addResult = requestsInFlight.TryAddRequest(
+            7,
+            TBlockRange64::MakeClosedInterval(50, 120));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
             addResult.DuplicateRequestId);
 
-        addResult = requestsInFlight.TryAddRequest(8, { 40, 50 });
+        addResult = requestsInFlight.TryAddRequest(
+            8,
+            TBlockRange64::MakeClosedInterval(40, 50));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(3, addResult.DuplicateRequestId);
 
         requestsInFlight.RemoveRequest(3);
 
-        addResult = requestsInFlight.TryAddRequest(9, { 15, 75 });
+        addResult = requestsInFlight.TryAddRequest(
+            9,
+            TBlockRange64::MakeClosedInterval(15, 75));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
             addResult.DuplicateRequestId);
 
-        addResult = requestsInFlight.TryAddRequest(10, { 30, 85 });
+        addResult = requestsInFlight.TryAddRequest(
+            10,
+            TBlockRange64::MakeClosedInterval(30, 85));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
@@ -69,7 +88,9 @@ Y_UNIT_TEST_SUITE(TRequestsInFlightTest)
 
         requestsInFlight.RemoveRequest(2);
 
-        addResult = requestsInFlight.TryAddRequest(11, { 5, 95 });
+        addResult = requestsInFlight.TryAddRequest(
+            11,
+            TBlockRange64::MakeClosedInterval(5, 95));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsInFlight::InvalidRequestId,
@@ -79,9 +100,13 @@ Y_UNIT_TEST_SUITE(TRequestsInFlightTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            requestsInFlight.TryAddRequest(12, { 20, 30 }).Added);
+            requestsInFlight
+                .TryAddRequest(12, TBlockRange64::MakeClosedInterval(20, 30))
+                .Added);
 
-        addResult = requestsInFlight.TryAddRequest(13, { 25, 30 });
+        addResult = requestsInFlight.TryAddRequest(
+            13,
+            TBlockRange64::MakeClosedInterval(25, 30));
         UNIT_ASSERT(!addResult.Added);
         UNIT_ASSERT_VALUES_EQUAL(12, addResult.DuplicateRequestId);
     }

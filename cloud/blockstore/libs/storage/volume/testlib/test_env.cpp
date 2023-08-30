@@ -845,7 +845,7 @@ void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe)
     volume.AddClient(clientInfo);
 
     volume.WriteBlocksLocal(
-        TBlockRange64(0, 1024 * partCount * 7 - 1),
+        TBlockRange64::WithLength(0, 1024 * partCount * 7),
         clientInfo.GetClientId(),
         GetBlockContent(1)
     );

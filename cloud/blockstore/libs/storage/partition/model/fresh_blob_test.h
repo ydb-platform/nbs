@@ -6,7 +6,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const TBlockRange32 ZeroFreshBlocksRange { 0, 4 };
+const auto ZeroFreshBlocksRange = TBlockRange32::WithLength(0, 5);
 
 TVector<TVector<TString>> GetBuffers(ui32 bs)
 {
@@ -44,10 +44,10 @@ TVector<TVector<TString>> GetBuffers(ui32 bs)
 TVector<TBlockRange32> GetBlockRanges()
 {
     return {
-        TBlockRange32{ 0, 0 },
-        TBlockRange32{ 1000, 1000 + 7 },
-        TBlockRange32{ 2000, 2000 + 1 },
-        TBlockRange32{ 3000, 3000 + 3 },
+        TBlockRange32::MakeOneBlock(0),
+        TBlockRange32::WithLength(1000, 8),
+        TBlockRange32::WithLength(2000, 2),
+        TBlockRange32::WithLength(3000, 4),
     };
 }
 

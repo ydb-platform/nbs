@@ -34,8 +34,8 @@ Y_UNIT_TEST_SUITE(TBlockRangeTest)
             UNIT_ASSERT(result.Second == std::nullopt);
         }
         {   // cut right
-            auto result =
-                TBlockRange64::MakeClosedInterval(10, 20).Difference({16, 25});
+            auto result = TBlockRange64::MakeClosedInterval(10, 20).Difference(
+                TBlockRange64::MakeClosedInterval(16, 25));
             auto expect = TBlockRange64::MakeClosedInterval(10, 15);
             UNIT_ASSERT_VALUES_EQUAL(expect, *result.First);
             UNIT_ASSERT(result.Second == std::nullopt);
