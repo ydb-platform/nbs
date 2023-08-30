@@ -60,20 +60,12 @@ protected:
             std::move(request)));
 
         STORAGE_DEBUG("Received StatVolume response");
-        if (Proto) {
-            SerializeToTextFormat(result, output);
-            return true;
-        }
-
-        if (HasError(result)) {
+        if (!Proto && HasError(result)) {
             output << FormatError(result.GetError()) << Endl;
             return false;
         }
 
-        output << "Volume: " << Endl;
-        SerializeToTextFormat(result.GetVolume(), output);
-        output << "Stats: " << Endl;
-        SerializeToTextFormat(result.GetStats(), output);
+        SerializeToTextFormat(result, output);
         return true;
     }
 
