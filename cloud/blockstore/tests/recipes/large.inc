@@ -7,13 +7,14 @@ TAG(
     sb:ttl=3
     sb:logs_ttl=3
     sb:ssd
+    sb:MULTISLOT
     sb:cores=16
 )
 
 FORK_SUBTESTS()
-SPLIT_FACTOR(5)
+SPLIT_FACTOR(8)
 
 REQUIREMENTS(
     cpu:8
-    ram:32
+    ram:30
 )
