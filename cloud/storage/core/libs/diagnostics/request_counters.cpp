@@ -260,7 +260,6 @@ struct TRequestCounters::TStatCounters
     TRequestPercentiles ExecutionTimePercentiles;
 
     TTimeHist RequestCompletionTimeHist;
-    TTimeHist RequestCompletionTimeHistUnaligned;
     TRequestPercentiles RequestCompletionTimePercentiles;
 
     TTimeHist PostponedTimeHist;
@@ -345,14 +344,8 @@ struct TRequestCounters::TStatCounters
                     *counters.GetSubgroup("histogram", "ExecutionTime"));
                 ExecutionTimeHistUnaligned.Register(
                     *unalignedClassGroup->GetSubgroup("histogram", "ExecutionTime"));
-                RequestCompletionTimeHist.Register(
-                    *counters.GetSubgroup("histogram", "RequestCompletionTime"));
-                RequestCompletionTimeHistUnaligned.Register(
-                    *unalignedClassGroup->GetSubgroup("histogram", "RequestCompletionTime"));
             } else {
                 SizePercentiles.Register(*counters.GetSubgroup("percentiles", "Size"));
-                RequestCompletionTimePercentiles.Register(
-                    *counters.GetSubgroup("percentiles", "RequestCompletionTime"));
                 ExecutionTimePercentiles.Register(
                     *counters.GetSubgroup("percentiles", "ExecutionTime"));
                 PostponedTimePercentiles.Register(
@@ -375,6 +368,17 @@ struct TRequestCounters::TStatCounters
                 "histogram",
                 "Time",
                 visibleHistogram), visibleHistogram);
+
+            // Always enough only percentiles.
+            // Will be unused after nbd and grpc disabling: NBS-4481
+            RequestCompletionTimeHist.Register(*MakeVisibilitySubgroup(
+                    counters,
+                    "histogram",
+                    "RequestCompletionTime",
+                    TCountableBase::EVisibility::Private),
+                TCountableBase::EVisibility::Private);
+            RequestCompletionTimePercentiles.Register(
+                *counters.GetSubgroup("percentiles", "RequestCompletionTime"));
 
             PostponedQueueSize = counters.GetCounter("PostponedQueueSize");
             MaxPostponedQueueSize = counters.GetCounter("MaxPostponedQueueSize");
@@ -477,10 +481,6 @@ struct TRequestCounters::TStatCounters
         TimeHist.Increment(time);
 
         if (requestCompletionTime != TDuration::Zero()) {
-            if (unaligned) {
-                RequestCompletionTimeHistUnaligned.Increment(
-                    requestCompletionTime);
-            }
             RequestCompletionTimeHist.Increment(requestCompletionTime);
         }
 
