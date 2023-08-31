@@ -4,6 +4,7 @@
 #include "error.h"
 #include "verbs.h"
 #include "work_queue.h"
+#include "adaptive_wait.h"
 
 #include <cloud/blockstore/libs/rdma/iface/error.h>
 #include <cloud/blockstore/libs/rdma/iface/list.h>
@@ -27,7 +28,6 @@
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/system/mutex.h>
-#include <util/system/spin_wait.h>
 #include <util/system/thread.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -44,7 +44,8 @@ constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(20);
 
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 
-constexpr ui32 WAIT_TIMEOUT = 10;   // us
+constexpr ui32 ADAPTIVE_SLEEP_USEC = 100;
+constexpr ui32 ADAPTIVE_WAIT_BEFORE_SLEEP_USEC = 5000000;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1354,8 +1355,9 @@ private:
     template <EWaitMode WaitMode>
     void Execute()
     {
-        TSpinWait sw;
-        sw.T = WAIT_TIMEOUT;
+        TAdaptiveWait aw(
+            ADAPTIVE_SLEEP_USEC,
+            ADAPTIVE_WAIT_BEFORE_SLEEP_USEC);
 
         while (!ShouldStop()) {
             if (WaitMode == EWaitMode::Poll) {
@@ -1390,11 +1392,9 @@ private:
 
                 if (WaitMode == EWaitMode::AdaptiveWait) {
                     if (hasWork) {
-                        // reset spin wait
-                        sw.T = WAIT_TIMEOUT;
-                        sw.C = 0;
+                        aw.Reset();
                     } else {
-                        sw.Sleep();
+                        aw.Sleep();
                     }
                 }
             }
