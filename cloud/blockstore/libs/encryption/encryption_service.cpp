@@ -129,7 +129,7 @@ public:
                 ctx->RequestId,
                 request->GetDiskId(),
                 request->GetHeaders().GetClientId())
-            << " create encryption client " << encryptionSpec);
+            << " start creating encryption client " << encryptionSpec);
 
         auto future = EncryptionClientFactory->CreateEncryptionClient(
             Service,
@@ -141,17 +141,29 @@ public:
             ctx = std::move(ctx),
             request = std::move(request)] (const auto& f)
         {
-            const auto& sessionOrError = f.GetValue();
-            if (HasError(sessionOrError)) {
-                return MakeFuture<NProto::TMountVolumeResponse>(TErrorResponse(
-                    sessionOrError.GetError()));
-            }
-
             auto ptr = weakPtr.lock();
             if (!ptr) {
                 return MakeFuture<NProto::TMountVolumeResponse>(TErrorResponse(
                     E_REJECTED,
                     "Multiple encryption service is destroyed"));
+            }
+
+            auto& Log = ptr->Log;
+
+            const auto& sessionOrError = f.GetValue();
+
+            STORAGE_INFO(
+                TRequestInfo(
+                    EBlockStoreRequest::MountVolume,
+                    ctx->RequestId,
+                    request->GetDiskId(),
+                    request->GetHeaders().GetClientId())
+                << " finish creating encryption client: "
+                << FormatError(sessionOrError.GetError()));
+
+            if (HasError(sessionOrError)) {
+                return MakeFuture<NProto::TMountVolumeResponse>(TErrorResponse(
+                    sessionOrError.GetError()));
             }
 
             auto session = sessionOrError.GetResult();
