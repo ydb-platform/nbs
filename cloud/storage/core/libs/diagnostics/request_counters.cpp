@@ -370,7 +370,6 @@ struct TRequestCounters::TStatCounters
                 visibleHistogram), visibleHistogram);
 
             // Always enough only percentiles.
-            // Will be unused after nbd and grpc disabling: NBS-4481
             RequestCompletionTimeHist.Register(*MakeVisibilitySubgroup(
                     counters,
                     "histogram",
