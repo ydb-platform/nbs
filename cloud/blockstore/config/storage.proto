@@ -847,4 +847,8 @@ message TStorageServiceConfig
 
     // DiskRegistry/Agent pool name to use for nonreplicated hdd disks.
     optional string NonReplicatedHDDPoolName = 326;
+
+    // We will allow agent/device maintenance if it breaks no more than this
+    // number of placement group partitions in each group.
+    optional uint32 MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval = 327;
 }

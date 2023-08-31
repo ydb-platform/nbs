@@ -164,7 +164,8 @@ NProto::TError AllocateDisk(
     TVector<TDeviceConfig>& devices,
     TInstant now = TInstant::Seconds(100),
     NProto::EStorageMediaKind mediaKind =
-        NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+    TString poolName = "");
 
 NProto::TStorageServiceConfig CreateDefaultStorageConfigProto();
 

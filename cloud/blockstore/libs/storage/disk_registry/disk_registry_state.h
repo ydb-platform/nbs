@@ -779,7 +779,11 @@ private:
         TInstant timestamp,
         TVector<TDiskId>& affectedDisks);
 
-    bool HasDependentDisks(const NProto::TAgentConfig& agent) const;
+    bool HasDependentSsdDisks(const NProto::TAgentConfig& agent) const;
+    ui32 CountBrokenPlacementGroupPartitionsAfterAgentRemoval(
+        const NProto::TAgentConfig& agent) const;
+    ui32 CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
+        const THashSet<TString>& deviceIds) const;
 
     NProto::TError CheckAgentStateTransition(
         const TString& agentId,

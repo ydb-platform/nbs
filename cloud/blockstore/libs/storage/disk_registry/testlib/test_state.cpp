@@ -221,7 +221,8 @@ NProto::TError AllocateDisk(
     ui64 totalSize,
     TVector<TDeviceConfig>& devices,
     TInstant now,
-    NProto::EStorageMediaKind mediaKind)
+    NProto::EStorageMediaKind mediaKind,
+    TString poolName)
 {
     TDiskRegistryState::TAllocateDiskResult result {};
 
@@ -235,7 +236,8 @@ NProto::TError AllocateDisk(
             .BlockSize = DefaultLogicalBlockSize,
             .BlocksCount = totalSize / DefaultLogicalBlockSize,
             .ReplicaCount = 0,
-            .MediaKind = mediaKind
+            .PoolName = poolName,
+            .MediaKind = mediaKind,
         },
         &result);
 

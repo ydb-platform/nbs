@@ -330,6 +330,8 @@ public:
     ui32 GetMaxPlacementPartitionCount() const;
     ui32 GetMaxDisksInPartitionPlacementGroup() const;
 
+    ui32 GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval() const;
+
     TDuration GetBrokenDiskDestructionDelay() const;
 
     TDuration GetAutomaticallyReplacedDevicesFreezePeriod() const;

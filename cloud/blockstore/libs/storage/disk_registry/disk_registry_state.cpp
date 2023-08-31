@@ -429,7 +429,9 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
-    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL) {
+    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL
+            || disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    {
         return;
     }
 
@@ -1334,7 +1336,7 @@ void TDiskRegistryState::ChangeAgentState(
             };
 
             if (agent.GetState() != NProto::AGENT_STATE_WARNING ||
-                HasDependentDisks(agent))
+                HasDependentSsdDisks(agent))
             {
                 const TDuration workTime = agent.GetWorkTs()
                     ? (now - TInstant::Seconds(agent.GetWorkTs()))
@@ -4114,7 +4116,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
     }
 }
 
-bool TDiskRegistryState::HasDependentDisks(const NProto::TAgentConfig& agent) const
+bool TDiskRegistryState::HasDependentSsdDisks(
+    const NProto::TAgentConfig& agent) const
 {
     for (const auto& d: agent.GetDevices()) {
         if (d.GetState() >= NProto::DEVICE_STATE_ERROR) {
@@ -4130,7 +4133,12 @@ bool TDiskRegistryState::HasDependentDisks(const NProto::TAgentConfig& agent) co
         const auto* disk = Disks.FindPtr(diskId);
         if (!disk) {
             ReportDiskRegistryDiskNotFound(
-                TStringBuilder() << "HasDependentDisks:DiskId: " << diskId);
+                TStringBuilder() << "HasDependentSsdDisks:DiskId: " << diskId);
+            continue;
+        }
+
+        if (disk->MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
+            // existence of hdd disks should not directly block maintenance
             continue;
         }
 
@@ -4138,6 +4146,82 @@ bool TDiskRegistryState::HasDependentDisks(const NProto::TAgentConfig& agent) co
     }
 
     return false;
+}
+
+ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterAgentRemoval(
+    const NProto::TAgentConfig& agent) const
+{
+    THashSet<TString> deviceIds;
+    for (const auto& d: agent.GetDevices()) {
+        deviceIds.insert(d.GetDeviceUUID());
+    }
+    return CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(deviceIds);
+}
+
+ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
+    const THashSet<TString>& deviceIds) const
+{
+    ui32 maxBrokenCount = 0;
+
+    // pretty inefficient but ok for now because this method is not going to
+    // be called too often - like, several times per hour in big clusters and
+    // several times per day in small ones
+    for (const auto& [_, pg]: PlacementGroups) {
+        const auto& c = pg.Config;
+        THashSet<ui32> brokenPartitions;
+        ui32 i = 0;
+        for (const auto& diskInfo: c.GetDisks()) {
+            ++i;
+
+            auto* disk = Disks.FindPtr(diskInfo.GetDiskId());
+            Y_VERIFY_DEBUG(disk);
+            if (!disk) {
+                continue;
+            }
+
+            // for non-PARTITION placement groups each disk is treated as a
+            // separate 'partition'
+            const ui32 partitionIndex =
+                c.GetPlacementStrategy() == NProto::PLACEMENT_STRATEGY_PARTITION
+                ? diskInfo.GetPlacementPartitionIndex() : i;
+
+            if (brokenPartitions.contains(partitionIndex)) {
+                continue;
+            }
+
+            // a disk is broken if at least one of its devices is broken
+            // a device is broken if it or its agent is not online or if it or
+            // its agent is a maintenance target
+            bool broken = false;
+            for (const auto& deviceId: disk->Devices) {
+                if (deviceIds.contains(deviceId)) {
+                    broken = true;
+                    break;
+                }
+
+                const auto deviceState = DeviceList.GetDeviceState(deviceId);
+                if (deviceState != NProto::DEVICE_STATE_ONLINE) {
+                    broken = true;
+                    break;
+                }
+
+                const auto agentId = DeviceList.FindAgentId(deviceId);
+                const auto agentState = GetAgentState(agentId);
+                if (agentState != NProto::AGENT_STATE_ONLINE) {
+                    broken = true;
+                    break;
+                }
+            }
+
+            if (broken) {
+                brokenPartitions.insert(partitionIndex);
+            }
+        }
+
+        maxBrokenCount = Max<ui32>(brokenPartitions.size(), maxBrokenCount);
+    }
+
+    return maxBrokenCount;
 }
 
 NProto::TError TDiskRegistryState::UpdateCmsHostState(
@@ -4178,8 +4262,14 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     timeout = cmsTs + infraTimeout - now;
 
-    const bool hasDependentDisks = HasDependentDisks(*agent);
-    if (!hasDependentDisks) {
+    const bool hasDependentDisks = HasDependentSsdDisks(*agent);
+    const ui32 brokenPlacementGroupPartitions =
+        CountBrokenPlacementGroupPartitionsAfterAgentRemoval(*agent);
+    const ui32 maxBrokenPartitions =
+        StorageConfig->GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval();
+    if (!hasDependentDisks
+            && brokenPlacementGroupPartitions <= maxBrokenPartitions)
+    {
         // no dependent disks => we can return this host immediately
         timeout = TDuration::Zero();
     }
@@ -4461,7 +4551,21 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
         result = MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "have dependent disk: " << diskId);
+    }
 
+    const ui32 brokenPlacementGroupPartitions =
+        CountBrokenPlacementGroupPartitionsAfterDeviceRemoval({deviceId});
+    const ui32 maxBrokenPartitions =
+        StorageConfig->GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval();
+
+    if (brokenPlacementGroupPartitions > maxBrokenPartitions) {
+        result = MakeError(
+            E_TRY_AGAIN,
+            TStringBuilder() << "will break too many partitions: "
+                << brokenPlacementGroupPartitions);
+    }
+
+    if (HasError(result)) {
         cmsTs = TInstant::MicroSeconds(devicePtr->GetCmsTs());
         if (cmsTs == TInstant::Zero()
                 || cmsTs + StorageConfig->GetNonReplicatedInfraTimeout() <= now)

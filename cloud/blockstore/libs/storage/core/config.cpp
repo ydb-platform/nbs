@@ -346,6 +346,8 @@ TDuration MSeconds(ui32 value)
     xxx(MaxPlacementPartitionCount,                ui32,      5               )\
     xxx(MaxDisksInPartitionPlacementGroup,         ui32,      32              )\
                                                                                \
+    xxx(MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval, ui32, 1       )\
+                                                                               \
     xxx(BrokenDiskDestructionDelay,                     TDuration, Seconds(5) )\
     xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, {}         )\
                                                                                \

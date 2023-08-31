@@ -1171,7 +1171,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.DestroyVolume();
     }
 
-    void shouldGetDependentDevicesTest(TVector<TString> returnedDiskIds)
+    void ShouldGetDependentDevicesTest(TVector<TString> returnedDiskIds)
     {
         TTestEnv env(1, 1, 4, 1, MakeIntrusive<TDiskRegistryState>());
 
@@ -1223,12 +1223,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
     Y_UNIT_TEST(ShouldGetDependentDevicesNoDisks)
     {
-        shouldGetDependentDevicesTest({});
+        ShouldGetDependentDevicesTest({});
     }
 
     Y_UNIT_TEST(ShouldGetDependentDevicesMultipleDisks)
     {
-        shouldGetDependentDevicesTest({"disk1", "disk2"});
+        ShouldGetDependentDevicesTest({"disk1", "disk2"});
     }
 }
 
