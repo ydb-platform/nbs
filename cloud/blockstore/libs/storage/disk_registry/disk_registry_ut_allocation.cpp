@@ -1824,6 +1824,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         runtime->Send(destroyVolumeRequest.Release());
+        runtime->DispatchEvents({}, 10ms);
 
         {
             auto response = diskRegistry.ListBrokenDisks();
