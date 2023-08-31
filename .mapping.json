@@ -1,8 +1,10 @@
 {
+  "CLANG-FORMAT.md":"cloud/blockstore/github_toplevel/CLANG-FORMAT.md",
   "CODE_OF_CONDUCT.md":"cloud/blockstore/github_toplevel/CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md":"cloud/blockstore/github_toplevel/CONTRIBUTING.md",
   "LICENSE":"cloud/blockstore/github_toplevel/LICENSE",
   "README.md":"cloud/blockstore/github_toplevel/README.md",
+  "clang-format.config":"cloud/blockstore/github_toplevel/clang-format.config",
   "clang.toolchain":"cloud/blockstore/github_toplevel/clang.toolchain",
   "example/0-setup.sh":"cloud/blockstore/github_toplevel/example/0-setup.sh",
   "example/1-start_storage.sh":"cloud/blockstore/github_toplevel/example/1-start_storage.sh",
