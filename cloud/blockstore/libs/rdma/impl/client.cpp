@@ -49,9 +49,6 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 
-constexpr ui32 ADAPTIVE_SLEEP_USEC = 100;
-constexpr ui32 ADAPTIVE_WAIT_BEFORE_SLEEP_USEC = 5000000;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequest;
@@ -1455,9 +1452,7 @@ private:
     template <EWaitMode WaitMode>
     void Execute()
     {
-        TAdaptiveWait aw(
-            ADAPTIVE_SLEEP_USEC,
-            ADAPTIVE_WAIT_BEFORE_SLEEP_USEC);
+        TAdaptiveWait aw;
 
         while (!ShouldStop()) {
             if (WaitMode == EWaitMode::Poll) {

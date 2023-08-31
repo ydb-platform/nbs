@@ -44,9 +44,6 @@ constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(20);
 
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 
-constexpr ui32 ADAPTIVE_SLEEP_USEC = 100;
-constexpr ui32 ADAPTIVE_WAIT_BEFORE_SLEEP_USEC = 5000000;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequest;
@@ -1355,9 +1352,7 @@ private:
     template <EWaitMode WaitMode>
     void Execute()
     {
-        TAdaptiveWait aw(
-            ADAPTIVE_SLEEP_USEC,
-            ADAPTIVE_WAIT_BEFORE_SLEEP_USEC);
+        TAdaptiveWait aw;
 
         while (!ShouldStop()) {
             if (WaitMode == EWaitMode::Poll) {

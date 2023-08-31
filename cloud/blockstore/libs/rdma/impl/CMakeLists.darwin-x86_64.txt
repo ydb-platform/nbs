@@ -23,6 +23,7 @@ target_link_libraries(libs-rdma-impl PUBLIC
   cpp-deprecated-atomic
 )
 target_sources(libs-rdma-impl PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/adaptive_wait.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/client.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/server.cpp

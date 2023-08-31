@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    adaptive_wait.cpp
     buffer.cpp
     client.cpp
     server.cpp
