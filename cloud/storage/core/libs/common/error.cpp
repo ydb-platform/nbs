@@ -55,6 +55,7 @@ EErrorKind GetErrorKind(const NProto::TError& e)
         case E_FS_OUT_OF_SPACE:
         case E_BS_THROTTLED:
         case E_FS_THROTTLED:
+        case E_RDMA_CONNECT_FAILED:
             return EErrorKind::ErrorRetriable;
 
         case E_BS_INVALID_SESSION:
