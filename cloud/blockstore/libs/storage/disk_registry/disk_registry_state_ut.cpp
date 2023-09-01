@@ -6181,6 +6181,287 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldNotBlockMaintenanceIfIrrelevantPlacementGroupIsBroken)
+    {
+        /*
+         *  Configuring 6 agents in 6 different racks to be able to create
+         *  placement groups with 3 partitions.
+         */
+
+        const TVector agents {
+            AgentConfig(1000, {
+                Device("dev-1", "uuid-1.1", "rack-1", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(2000, {
+                Device("dev-1", "uuid-2.1", "rack-2", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(3000, {
+                Device("dev-1", "uuid-3.1", "rack-3", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(4000, {
+                Device("dev-1", "uuid-4.1", "rack-4", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(5000, {
+                Device("dev-1", "uuid-5.1", "rack-5", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(6000, {
+                Device("dev-1", "uuid-6.1", "rack-6", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+        };
+
+        NProto::TStorageServiceConfig proto;
+        proto.SetNonReplicatedInfraTimeout(TDuration::Days(1).MilliSeconds());
+        auto storageConfig = CreateStorageConfig(proto);
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(storageConfig)
+            .WithKnownAgents(agents)
+            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .Build();
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        /*
+         *  Creating our placement groups and creating a disk in each partition.
+         */
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
+                db,
+                "group-1",
+                NProto::PLACEMENT_STRATEGY_PARTITION,
+                3));
+
+            UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
+                db,
+                "group-2",
+                NProto::PLACEMENT_STRATEGY_PARTITION,
+                3));
+        });
+
+        auto ts = Now();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-1",
+                "group-1",
+                1,
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-2",
+                "group-1",
+                2,
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-3",
+                "group-1",
+                3,
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-3.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-4",
+                "group-2",
+                1,
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-4.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-5",
+                "group-2",
+                2,
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-5.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-6",
+                "group-2",
+                3,
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-6.1", devices[0].GetDeviceUUID());
+        });
+
+        /*
+         *  Breaking group-2.
+         */
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            auto error = state.UpdateAgentState(
+                db,
+                agents[3].GetAgentId(),
+                NProto::AGENT_STATE_UNAVAILABLE,
+                ts,
+                "state message",
+                affectedDisks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-4", affectedDisks[0]);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            auto error = state.UpdateAgentState(
+                db,
+                agents[4].GetAgentId(),
+                NProto::AGENT_STATE_UNAVAILABLE,
+                ts,
+                "state message",
+                affectedDisks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-5", affectedDisks[0]);
+        });
+
+        /*
+         *  Trying to start maintenance for one of the agents - maintenance
+         *  should succeed since the groups that depend on this agent won't
+         *  have 2 or more broken partitions.
+         */
+
+        TDuration cmsTimeout;
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            auto error = state.UpdateCmsHostState(
+                db,
+                agents[0].GetAgentId(),
+                NProto::AGENT_STATE_WARNING,
+                ts,
+                false, // dryRun
+                affectedDisks,
+                cmsTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+
+            /*
+             * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
+             * disks
+             */
+
+            auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
+        });
+
+        /*
+         *  Trying to start maintenance for another agent - maintenance should
+         *  not be allowed since group-1 will lose at least 2 partitions after
+         *  that.
+         */
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            auto error = state.UpdateCmsHostState(
+                db,
+                agents[1].GetAgentId(),
+                NProto::AGENT_STATE_WARNING,
+                ts,
+                false, // dryRun
+                affectedDisks,
+                cmsTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                storageConfig->GetNonReplicatedInfraTimeout(),
+                cmsTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+
+            /*
+             * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
+             * disks
+             */
+
+            auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
+        });
+    }
+
     Y_UNIT_TEST(ShouldReturnDependentDisks)
     {
         TTestExecutor executor;

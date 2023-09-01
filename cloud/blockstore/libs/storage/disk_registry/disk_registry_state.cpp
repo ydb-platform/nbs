@@ -4169,6 +4169,7 @@ ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
     for (const auto& [_, pg]: PlacementGroups) {
         const auto& c = pg.Config;
         THashSet<ui32> brokenPartitions;
+        bool dependsOnAffectedDevices = false;
         ui32 i = 0;
         for (const auto& diskInfo: c.GetDisks()) {
             ++i;
@@ -4196,6 +4197,7 @@ ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
             for (const auto& deviceId: disk->Devices) {
                 if (deviceIds.contains(deviceId)) {
                     broken = true;
+                    dependsOnAffectedDevices = true;
                     break;
                 }
 
@@ -4218,7 +4220,11 @@ ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
             }
         }
 
-        maxBrokenCount = Max<ui32>(brokenPartitions.size(), maxBrokenCount);
+        // we are interested only in those placement groups that depend on at
+        // least one of the devices that are going to be affected by maintenance
+        if (dependsOnAffectedDevices) {
+            maxBrokenCount = Max<ui32>(brokenPartitions.size(), maxBrokenCount);
+        }
     }
 
     return maxBrokenCount;
