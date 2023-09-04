@@ -21,6 +21,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <ydb/core/base/blobstorage.h>
@@ -6857,6 +6858,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
 
         partition.Flush();
 

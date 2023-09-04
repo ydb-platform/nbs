@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/partition2/model/fresh_blob.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
@@ -449,12 +451,15 @@ void TPartitionActor::WriteFreshBlocks(
         State->GetFreshBlockCount() * State->GetBlockSize();
     if (freshByteCount >= Config->GetFreshByteCountHardLimit()) {
         for (auto& r: requestsInBuffer) {
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_SILENT);
             auto response = CreateWriteBlocksResponse(
                 r.Data.ReplyLocal,
                 MakeError(
                     E_REJECTED,
                     TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                        << freshByteCount));
+                                     << freshByteCount,
+                    flags));
 
             LWTRACK(
                 ResponseSent_Partition,
