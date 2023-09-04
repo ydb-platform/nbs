@@ -197,9 +197,6 @@ ui64 TSufferCounters::UpdateCounter(
     const TString& diskType,
     ui64 value)
 {
-    if (!counter && !value) {
-        return 0;
-    }
     if (!counter) {
         counter = Counters
             ->GetSubgroup("type", diskType)

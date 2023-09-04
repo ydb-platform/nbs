@@ -932,15 +932,33 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
         calc.Register(*volumeCounters, volume);
 
-        TSufferCounters sufferCounters(
-            "DisksSuffer",
-            counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "server"));
-
         TestSufferCountPostponed(calc, TDuration::Seconds(15), 0, 0, 0);
 
         UNIT_ASSERT_VALUES_EQUAL(false, calc.IsSuffering());
+    }
+
+    Y_UNIT_TEST(ShouldReportZeroSufferCounters)
+    {
+        using namespace NCloud::NProto;
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters();
+
+        auto config = CreateDefaultPerformanceSettings();
+
+        auto serverGroup = counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server");
+
+        TSufferCounters sufferCounters("DisksSuffer", serverGroup);
+
+        sufferCounters.PublishCounters();
+
+        auto perType = serverGroup
+            ->GetSubgroup("type", "ssd_mirror3")
+            ->FindCounter("DisksSuffer");
+        UNIT_ASSERT(perType);
+        UNIT_ASSERT_VALUES_EQUAL(0, perType->Val());
     }
 }
 
