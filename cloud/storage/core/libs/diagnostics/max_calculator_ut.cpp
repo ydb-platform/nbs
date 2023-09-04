@@ -76,6 +76,17 @@ Y_UNIT_TEST_SUITE(TMaxCalculatorTest)
             1,
             calculator.NextValue());
     }
+
+    Y_UNIT_TEST(ShouldRoundUpValues)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TMaxPerSecondCalculator<DEFAULT_BUCKET_COUNT> calculator(timer);
+
+        calculator.Add(1);
+        timer->AdvanceTime(TDuration::MilliSeconds(1'001));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, calculator.NextValue());
+    }
 }
 
 }   // namespace NCloud

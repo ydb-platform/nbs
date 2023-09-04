@@ -54,7 +54,7 @@ struct TMaxCalculatorBase
             ui64 now = Timer->Now().MicroSeconds();
             ui64 started = AtomicSwap(&Started, now);
             if (now > started) {
-                current *= 1000000.0 / (now - started);
+                current = std::ceil(current * 1000000.0 / (now - started));
             }
         }
 
