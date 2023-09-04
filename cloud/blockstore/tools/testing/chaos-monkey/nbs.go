@@ -260,3 +260,49 @@ func cleanup(
 
 	return outputs, nil
 }
+
+func heal(
+	ctx context.Context,
+	brokenDevices []BriefDeviceInfo,
+	client *nbs.Client,
+) ([]string, error) {
+	var outputs []string
+
+	for _, device := range brokenDevices {
+		bytes, err := json.Marshal(ChangeStateRequest{
+			ChangeDeviceState: &ChangeDeviceStateRequest{
+				DeviceUUID: device.DeviceUUID,
+				State:      0, // DEVICE_STATE_ONLINE
+			},
+			Message: fmt.Sprintf(
+				"chaos-monkey: restoring device state"+
+					", prev state message: %v",
+				device.StateMessage,
+			),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		response, err := client.ExecuteAction(
+			ctx,
+			"diskregistrychangestate",
+			bytes,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		outputs = append(
+			outputs,
+			fmt.Sprintf(
+				"restored state for device %v: %v",
+				device.DeviceUUID,
+				string(response),
+			),
+		)
+
+	}
+
+	return outputs, nil
+}

@@ -1,23 +1,252 @@
-targets:
-[
-    {
-        "DiskId": "cga7mpius6uopt9beskc",
-        "DeviceUUIDs": null,
-        "AgentId": "sas09-ct7-28.cloud.yandex.net"
-    },
-    {
-        "DiskId": "cga7mpius6uopt9beskc_nonreplicating",
-        "DeviceUUIDs": [
-            "3765dc41e1bd0e2f08357b73827d33a4"
-        ],
-        "AgentId": "sas09-ct7-18.cloud.yandex.net"
-    }
-]
-alternative targets:
-[
-    {
-        "DiskId": "cga7mpius6uopt9beskc",
-        "DeviceUUIDs": [
+DiskInfo:
+{
+    "DiskId": "cga7mpius6uopt9beskc",
+    "MirrorCount": 2,
+    "DeviceInMirrorCount": 11,
+    "DeviceOK": 11,
+    "DeviceMinus1": 0,
+    "DeviceMinus2": 0,
+    "DeviceBad": 0,
+    "ReplicatingCount": 0,
+    "Replicas": [
+        "cga7mpius6uopt9beskc/1",
+        "cga7mpius6uopt9beskc/0"
+    ],
+    "Cells": [
+        {
+            "Index": 0,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "09bcd3a3e8162681b3d4601d76ff99ed",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "08267596b6d0a5a4231db21556a8670d",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 1,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "0b15e95e28499e8b0365f7e0bcce5f21",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "180fbf6782d5294fbd3d2289c7e56f9c",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 2,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "13d18eafb47ba22a7260c220ef309b02",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "264e2a446ff76d5d2f80844e84fcfa36",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 3,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "21e5a4f685008cb4aebc6cfbdca01c07",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "28a71af8a69ee515f6228882d485d421",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 4,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "332f7e30773a4f011a167fe43d6a89e7",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "35d973ad90a9520921681634e0db4b46",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 5,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "3ebe8b3fa091b35b33b0a404f48806f1",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "3627e6ff71cfcb088c205416cf0ad111",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 6,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "4713cbf44431b15a2c8f4daae6577c7c",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "3ecae5af722831f2d11dc3a8bfc9b584",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 7,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "604456261fb247fa61ccf4fc9030a69a",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "6ed17b82b9ea3a54d5f5e2f9c2bef8a3",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 8,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "6e5330aa68b72e862d0123a35744890f",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "7433a4b3d74df2d78ff97f4c449a4e22",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 9,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "6ee12979847dd94a8556006c2f7f15f0",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "76a3696137b7354d5f40154e3f9adda4",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        },
+        {
+            "Index": 10,
+            "GoodCount": 2,
+            "BadCount": 0,
+            "FreshCount": 0,
+            "State": "",
+            "Devices": [
+                {
+                    "AgentId": "sas09-ct7-28.cloud.yandex.net",
+                    "DeviceUUID": "76c012842084746901ca4eee7c7c8882",
+                    "State": "",
+                    "StateMessage": ""
+                },
+                {
+                    "AgentId": "sas09-ct7-26.cloud.yandex.net",
+                    "DeviceUUID": "7ec789c0b702102959477a53a531160a",
+                    "State": "",
+                    "StateMessage": ""
+                }
+            ]
+        }
+    ],
+    "Agents": {
+        "sas09-ct7-26.cloud.yandex.net": [
             "08267596b6d0a5a4231db21556a8670d",
             "180fbf6782d5294fbd3d2289c7e56f9c",
             "264e2a446ff76d5d2f80844e84fcfa36",
@@ -30,12 +259,75 @@ alternative targets:
             "76a3696137b7354d5f40154e3f9adda4",
             "7ec789c0b702102959477a53a531160a"
         ],
-        "AgentId": "sas09-ct7-26.cloud.yandex.net"
+        "sas09-ct7-28.cloud.yandex.net": [
+            "09bcd3a3e8162681b3d4601d76ff99ed",
+            "0b15e95e28499e8b0365f7e0bcce5f21",
+            "13d18eafb47ba22a7260c220ef309b02",
+            "21e5a4f685008cb4aebc6cfbdca01c07",
+            "332f7e30773a4f011a167fe43d6a89e7",
+            "3ebe8b3fa091b35b33b0a404f48806f1",
+            "4713cbf44431b15a2c8f4daae6577c7c",
+            "604456261fb247fa61ccf4fc9030a69a",
+            "6e5330aa68b72e862d0123a35744890f",
+            "6ee12979847dd94a8556006c2f7f15f0",
+            "76c012842084746901ca4eee7c7c8882"
+        ]
+    },
+    "Racks": [
+        {
+            "Rack": "sas-6:1",
+            "Replica": "cga7mpius6uopt9beskc/1",
+            "Devices": [
+                "09bcd3a3e8162681b3d4601d76ff99ed",
+                "0b15e95e28499e8b0365f7e0bcce5f21",
+                "13d18eafb47ba22a7260c220ef309b02",
+                "21e5a4f685008cb4aebc6cfbdca01c07",
+                "332f7e30773a4f011a167fe43d6a89e7",
+                "3ebe8b3fa091b35b33b0a404f48806f1",
+                "4713cbf44431b15a2c8f4daae6577c7c",
+                "604456261fb247fa61ccf4fc9030a69a",
+                "6e5330aa68b72e862d0123a35744890f",
+                "6ee12979847dd94a8556006c2f7f15f0",
+                "76c012842084746901ca4eee7c7c8882"
+            ]
+        },
+        {
+            "Rack": "sas-4:1",
+            "Replica": "cga7mpius6uopt9beskc/0",
+            "Devices": [
+                "08267596b6d0a5a4231db21556a8670d",
+                "180fbf6782d5294fbd3d2289c7e56f9c",
+                "264e2a446ff76d5d2f80844e84fcfa36",
+                "28a71af8a69ee515f6228882d485d421",
+                "35d973ad90a9520921681634e0db4b46",
+                "3627e6ff71cfcb088c205416cf0ad111",
+                "3ecae5af722831f2d11dc3a8bfc9b584",
+                "6ed17b82b9ea3a54d5f5e2f9c2bef8a3",
+                "7433a4b3d74df2d78ff97f4c449a4e22",
+                "76a3696137b7354d5f40154e3f9adda4",
+                "7ec789c0b702102959477a53a531160a"
+            ]
+        }
+    ],
+    "BrokenDevices": null
+}
+Targets to curse:
+[
+    {
+        "DiskId": "cga7mpius6uopt9beskc",
+        "DeviceUUIDs": [
+            "09bcd3a3e8162681b3d4601d76ff99ed",
+            "0b15e95e28499e8b0365f7e0bcce5f21",
+            "13d18eafb47ba22a7260c220ef309b02",
+            "21e5a4f685008cb4aebc6cfbdca01c07",
+            "332f7e30773a4f011a167fe43d6a89e7"
+        ],
+        "AgentId": "sas09-ct7-28.cloud.yandex.net",
+        "Reason": "OneDeviceForAllFine"
     }
 ]
-apply: received request: {"DisableAgent":{"AgentId":"sas09-ct7-28.cloud.yandex.net","DeviceUUIDs":null},"ChangeDeviceState":null,"Message":"chaos-monkey: disabling target DiskId=cga7mpius6uopt9beskc AgentID=sas09-ct7-28.cloud.yandex.net"}
-apply: received request: {"DisableAgent":{"AgentId":"sas09-ct7-18.cloud.yandex.net","DeviceUUIDs":["3765dc41e1bd0e2f08357b73827d33a4"]},"ChangeDeviceState":null,"Message":"chaos-monkey: disabling target DiskId=cga7mpius6uopt9beskc_nonreplicating DeviceUUID=3765dc41e1bd0e2f08357b73827d33a4 AgentID=sas09-ct7-18.cloud.yandex.net"}
+Targets to heal:
+null
+apply: received request: {"DisableAgent":{"AgentId":"sas09-ct7-28.cloud.yandex.net","DeviceUUIDs":["09bcd3a3e8162681b3d4601d76ff99ed","0b15e95e28499e8b0365f7e0bcce5f21","13d18eafb47ba22a7260c220ef309b02","21e5a4f685008cb4aebc6cfbdca01c07","332f7e30773a4f011a167fe43d6a89e7"]},"ChangeDeviceState":null,"Message":"chaos-monkey: disabling target DiskId=cga7mpius6uopt9beskc DeviceUUID=09bcd3a3e8162681b3d4601d76ff99ed DeviceUUID=0b15e95e28499e8b0365f7e0bcce5f21 DeviceUUID=13d18eafb47ba22a7260c220ef309b02 DeviceUUID=21e5a4f685008cb4aebc6cfbdca01c07 DeviceUUID=332f7e30773a4f011a167fe43d6a89e7 AgentID=sas09-ct7-28.cloud.yandex.net"}
 wait for replication start: Disk cga7mpius6uopt9beskc done
-wait for replication start: Disk cga7mpius6uopt9beskc_nonreplicating done
 wait for replication finish: Disk cga7mpius6uopt9beskc done
-wait for replication finish: Disk cga7mpius6uopt9beskc_nonreplicating done

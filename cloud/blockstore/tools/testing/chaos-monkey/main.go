@@ -16,16 +16,20 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type options struct {
-	DiskRegistryStateFile    string
-	NbsHost                  string
-	NbsPort                  int
-	NbsToken                 string
-	MaxTargets               int
-	FolderIDs                []string
-	Apply                    bool
-	WaitForReplicationStart  bool
-	WaitForReplicationFinish bool
-	Cleanup                  bool
+	DiskRegistryStateFile     string
+	DumpDiskRegistryStateFile string
+	NbsHost                   string
+	NbsPort                   int
+	NbsToken                  string
+	DiskID                    string
+	MaxTargets                int
+	CanBreakTwoDevicesInCell  bool
+	FolderIDs                 []string
+	Apply                     bool
+	WaitForReplicationStart   bool
+	WaitForReplicationFinish  bool
+	Cleanup                   bool
+	Heal                      bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,6 +64,14 @@ func run(ctx context.Context, opts *options) error {
 		}
 	}
 
+	if len(opts.DumpDiskRegistryStateFile) > 0 {
+		err = os.WriteFile(opts.DumpDiskRegistryStateFile, stateJSON, 0644)
+		if err != nil {
+			return fmt.Errorf(
+				"can't save disk registry dump file: %w", err)
+		}
+	}
+
 	var state *DiskRegistryStateBackup
 	if len(stateJSON) != 0 {
 		err = json.Unmarshal(stateJSON, &state)
@@ -85,34 +97,53 @@ func run(ctx context.Context, opts *options) error {
 		return nil
 	}
 
-	targets, alternativeTargets, err := findTestTargets(state, opts.FolderIDs)
+	if len(opts.DiskID) == 0 {
+		return fmt.Errorf("need DiskId")
+	}
 
+	var diskInfo *DiskInfo
+	diskInfo, err = describeDisk(state, opts.DiskID)
+	fmt.Println("DiskInfo:")
 	if err != nil {
 		return err
 	}
-
-	output, err := json.MarshalIndent(targets, "", "    ")
+	output, err := json.MarshalIndent(*diskInfo, "", "    ")
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("targets:")
 	fmt.Println(string(output))
 
-	output, err = json.MarshalIndent(alternativeTargets, "", "    ")
+	targetsToCurse := findAllTargetsToCurse(diskInfo, opts.MaxTargets, opts.CanBreakTwoDevicesInCell)
+	fmt.Println("Targets to curse:")
+	output, err = json.MarshalIndent(targetsToCurse, "", "    ")
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("alternative targets:")
 	fmt.Println(string(output))
 
-	if len(targets) > opts.MaxTargets {
-		targets = targets[:opts.MaxTargets]
+	targetsToHeal := findTargetsToHeal(diskInfo, opts.MaxTargets)
+	fmt.Println("Targets to heal:")
+	output, err = json.MarshalIndent(targetsToHeal, "", "    ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(output))
+
+	if opts.Heal {
+		outputs, err := heal(ctx, targetsToHeal, client)
+		if err != nil {
+			return err
+		}
+
+		for _, o := range outputs {
+			fmt.Printf("cleanup: %v\n", o)
+		}
+
+		return nil
 	}
 
 	if opts.Apply {
-		outputs, err := applyTargets(ctx, targets, client)
+		outputs, err := applyTargets(ctx, targetsToCurse, client)
 
 		if err != nil {
 			return err
@@ -124,7 +155,7 @@ func run(ctx context.Context, opts *options) error {
 	}
 
 	if opts.WaitForReplicationStart {
-		outputs, err := waitForReplicationStart(ctx, targets, client)
+		outputs, err := waitForReplicationStart(ctx, targetsToCurse, client)
 
 		if err != nil {
 			return err
@@ -136,7 +167,7 @@ func run(ctx context.Context, opts *options) error {
 	}
 
 	if opts.WaitForReplicationFinish {
-		outputs, err := waitForReplicationFinish(ctx, targets, client)
+		outputs, err := waitForReplicationFinish(ctx, targetsToCurse, client)
 
 		if err != nil {
 			return err
@@ -166,19 +197,18 @@ func main() {
 		},
 	}
 
-	/*
-		markFlagRequired := func(flag string) {
-			if err := rootCmd.MarkFlagRequired(flag); err != nil {
-				log.Fatalf("can't mark flag %v as required: %v", flag, err)
-			}
-		}
-	*/
-
 	rootCmd.Flags().StringVar(
 		&opts.DiskRegistryStateFile,
 		"dr-state",
 		"",
 		"path to DiskRegistry state file",
+	)
+
+	rootCmd.Flags().StringVar(
+		&opts.DumpDiskRegistryStateFile,
+		"dump-dr-state",
+		"",
+		"path to DiskRegistry state file to dump",
 	)
 
 	rootCmd.Flags().StringVar(
@@ -195,11 +225,25 @@ func main() {
 		"nbs port",
 	)
 
+	rootCmd.Flags().StringVar(
+		&opts.DiskID,
+		"disk-id",
+		"",
+		"disk id",
+	)
+
 	rootCmd.Flags().IntVar(
 		&opts.MaxTargets,
 		"max-targets",
 		1,
 		"max targets to process",
+	)
+
+	rootCmd.Flags().BoolVar(
+		&opts.CanBreakTwoDevicesInCell,
+		"can-break-two",
+		false,
+		"allows the monkey to break two devices in the cell",
 	)
 
 	rootCmd.Flags().BoolVar(
@@ -227,7 +271,14 @@ func main() {
 		&opts.Cleanup,
 		"cleanup",
 		false,
-		"restores state to DEVICE_STATE_ONLINE for the replaced devices",
+		"restores state to DEVICE_STATE_ONLINE for all replaced devices",
+	)
+
+	rootCmd.Flags().BoolVar(
+		&opts.Heal,
+		"heal",
+		false,
+		"restores state to DEVICE_STATE_ONLINE for the replaced devices for disk",
 	)
 
 	opts.NbsToken, _ = os.LookupEnv("NBS_TOKEN")

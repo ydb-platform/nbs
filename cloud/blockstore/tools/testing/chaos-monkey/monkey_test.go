@@ -453,7 +453,12 @@ func TestStateAnalysis(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	cmd := exec.Command(binary, "--dr-state", drStatePath)
+	cmd := exec.Command(
+		binary,
+		"--dr-state", drStatePath,
+		"--disk-id", "cga7mpius6uopt9beskc",
+		"--max-targets", "100",
+	)
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
@@ -481,7 +486,8 @@ func TestFetchAnalyzeDisable(t *testing.T) {
 		"localhost",
 		"--nbs-port",
 		strconv.Itoa(tc.Port),
-		"--max-targets", "100",
+		"--disk-id", "cga7mpius6uopt9beskc",
+		"--max-targets", "5",
 		"--apply",
 		"--wait-for-replication-start",
 		"--wait-for-replication-finish",
