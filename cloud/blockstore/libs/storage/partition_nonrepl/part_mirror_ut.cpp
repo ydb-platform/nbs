@@ -255,7 +255,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+            auto response = client.ReadBlocks(
+                TBlockRange64::MakeClosedInterval(1024, 4095));
             const auto& blocks = response->Record.GetBlocks();
 
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
@@ -272,11 +273,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             );
         }
 
-        client.WriteBlocks(TBlockRange64(1024, 4095), 1);
-        client.WriteBlocks(TBlockRange64(1024, 4023), 2);
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(1024, 4095), 1);
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(1024, 4023), 2);
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+            auto response = client.ReadBlocks(
+                TBlockRange64::MakeClosedInterval(1024, 4095));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
@@ -302,10 +304,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             );
         }
 
-        client.ZeroBlocks(TBlockRange64(2024, 3023));
+        client.ZeroBlocks(TBlockRange64::MakeClosedInterval(2024, 3023));
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+            auto response = client.ReadBlocks(
+                TBlockRange64::MakeClosedInterval(1024, 4095));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -342,11 +345,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             );
         }
 
-        client.WriteBlocks(TBlockRange64(5000, 5199), 3);
-        client.ZeroBlocks(TBlockRange64(5050, 5150));
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(5000, 5199), 3);
+        client.ZeroBlocks(TBlockRange64::MakeClosedInterval(5050, 5150));
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(5000, 5119));
+            auto response = client.ReadBlocks(
+                TBlockRange64::MakeClosedInterval(5000, 5119));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(120, blocks.BuffersSize());
             for (ui32 i = 0; i < 50; ++i) {
@@ -365,7 +369,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
 
         {
-            client.SendReadBlocksRequest(TBlockRange64(5000, 5120));
+            client.SendReadBlocksRequest(
+                TBlockRange64::MakeClosedInterval(5000, 5120));
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_INVALID_STATE,
@@ -411,9 +416,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const TBlockRange64 diskRange(0, 5119);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
 
-        const TBlockRange64 blockRange1(1024, 4095);
+        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
         client.WriteBlocksLocal(blockRange1, TString(DefaultBlockSize, 'A'));
 
         {
@@ -434,16 +439,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             }
         }
 
-        const TBlockRange64 blockRange2(5000, 5199);
+        const auto blockRange2 = TBlockRange64::MakeClosedInterval(5000, 5199);
         client.WriteBlocksLocal(blockRange2, TString(DefaultBlockSize, 'B'));
 
-        const TBlockRange64 blockRange3(5000, 5150);
+        const auto blockRange3 = TBlockRange64::MakeClosedInterval(5000, 5150);
 
         {
             TVector<TString> blocks;
 
             client.ReadBlocksLocal(
-                TBlockRange64(5000, 5119),
+                TBlockRange64::MakeClosedInterval(5000, 5119),
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     120,
@@ -547,73 +552,73 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        client.WriteBlocks(TBlockRange64(1024, 4095), 1);
-        client.ZeroBlocks(TBlockRange64(0, 3071));
+        client.WriteBlocks(TBlockRange64::WithLength(1024, 3072), 1);
+        client.ZeroBlocks(TBlockRange64::WithLength(0, 3072));
 
         UNIT_ASSERT_VALUES_EQUAL(6, device2WriteRange.size());
         UNIT_ASSERT_VALUES_EQUAL(6, device2ZeroRange.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(1024, 2047)),
+            DescribeRange(TBlockRange64::WithLength(1024, 1024)),
             DescribeRange(device2WriteRange["vasya"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 2047)),
+            DescribeRange(TBlockRange64::WithLength(0, 2048)),
             DescribeRange(device2WriteRange["petya"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(1024, 2047)),
+            DescribeRange(TBlockRange64::WithLength(1024, 1024)),
             DescribeRange(device2WriteRange["vasya#1"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 2047)),
+            DescribeRange(TBlockRange64::WithLength(0, 2048)),
             DescribeRange(device2WriteRange["petya#1"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(1024, 2047)),
+            DescribeRange(TBlockRange64::WithLength(1024, 1024)),
             DescribeRange(device2WriteRange["vasya#2"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 2047)),
+            DescribeRange(TBlockRange64::WithLength(0, 2048)),
             DescribeRange(device2WriteRange["petya#2"]));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 2047)),
+            DescribeRange(TBlockRange64::WithLength(0, 2048)),
             DescribeRange(device2ZeroRange["vasya"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 1023)),
+            DescribeRange(TBlockRange64::WithLength(0, 1024)),
             DescribeRange(device2ZeroRange["petya"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 2047)),
+            DescribeRange(TBlockRange64::WithLength(0, 2048)),
             DescribeRange(device2ZeroRange["vasya#1"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 1023)),
+            DescribeRange(TBlockRange64::WithLength(0, 1024)),
             DescribeRange(device2ZeroRange["petya#1"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 2047)),
+            DescribeRange(TBlockRange64::WithLength(0, 2048)),
             DescribeRange(device2ZeroRange["vasya#2"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 1023)),
+            DescribeRange(TBlockRange64::WithLength(0, 1024)),
             DescribeRange(device2ZeroRange["petya#2"]));
 
         device2WriteRange.clear();
 
         client.WriteBlocksLocal(
-            TBlockRange64(1000, 4000),
+            TBlockRange64::MakeClosedInterval(1000, 4000),
             TString(DefaultBlockSize, 'A'));
 
         UNIT_ASSERT_VALUES_EQUAL(6, device2WriteRange.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(1000, 2047)),
+            DescribeRange(TBlockRange64::MakeClosedInterval(1000, 2047)),
             DescribeRange(device2WriteRange["vasya"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 1952)),
+            DescribeRange(TBlockRange64::MakeClosedInterval(0, 1952)),
             DescribeRange(device2WriteRange["petya"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(1000, 2047)),
+            DescribeRange(TBlockRange64::MakeClosedInterval(1000, 2047)),
             DescribeRange(device2WriteRange["vasya#1"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 1952)),
+            DescribeRange(TBlockRange64::MakeClosedInterval(0, 1952)),
             DescribeRange(device2WriteRange["petya#1"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(1000, 2047)),
+            DescribeRange(TBlockRange64::MakeClosedInterval(1000, 2047)),
             DescribeRange(device2WriteRange["vasya#2"]));
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(TBlockRange64(0, 1952)),
+            DescribeRange(TBlockRange64::MakeClosedInterval(0, 1952)),
             DescribeRange(device2WriteRange["petya#2"]));
     }
 
@@ -645,7 +650,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // vasya should be migrated => 2 ranges
         WaitForMigrations(runtime, 2);
 
-        const TBlockRange64 diskRange(0, 5119);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
         client.WriteBlocksLocal(diskRange, TString(DefaultBlockSize, 'A'));
 
         {
@@ -917,9 +922,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const TBlockRange64 diskRange(0, 5119);
-
-        const TBlockRange64 blockRange(1024, 4095);
+        const auto blockRange = TBlockRange64::MakeClosedInterval(1024, 4095);
         client.WriteBlocksLocal(blockRange, TString(DefaultBlockSize, 'A'));
 
         env.DiskAgentState->Error = MakeError(E_IO, "io error");

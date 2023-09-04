@@ -232,7 +232,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         // petya should be migrated => 3 ranges
         WaitForMigrations(runtime, 3);
 
-        const TBlockRange64 blockRange(2048, 2048);
+        const auto blockRange = TBlockRange64::MakeOneBlock(2048);
         client.WriteBlocksLocal(blockRange, TString(DefaultBlockSize, 'A'));
 
         runtime.AdvanceCurrentTime(UpdateCountersInterval);

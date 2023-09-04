@@ -240,7 +240,7 @@ struct TTestEnv
         auto actor = std::make_unique<TResyncRangeActor>(
             std::move(requestInfo),
             DefaultBlockSize,
-            TBlockRange64(start, end),
+            TBlockRange64::MakeClosedInterval(start, end),
             std::move(replicas),
             "", // rwClientId
             BlockDigestGenerator
@@ -261,7 +261,7 @@ struct TTestEnv
     {
         TPartitionClient client(Runtime, Replicas[idx].ActorId);
 
-        TBlockRange64 range(start, end);
+        auto range = TBlockRange64::MakeClosedInterval(start, end);
         TVector<TString> blocks;
 
         client.ReadBlocksLocal(
@@ -278,7 +278,7 @@ struct TTestEnv
     void WriteReplica(int idx, ui64 start, ui64 end, char fill)
     {
         TPartitionClient client(Runtime, Replicas[idx].ActorId);
-        client.WriteBlocks(TBlockRange64(start, end), fill);
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(start, end), fill);
     }
 
     TPartitionDiskCounters GetReplicaCounters(int idx)
