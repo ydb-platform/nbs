@@ -75,7 +75,10 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
-        service.SendWriteBlocksRequest(DefaultDiskId, TBlockRange64(0, 1023), sessionId);
+        service.SendWriteBlocksRequest(
+            DefaultDiskId,
+            TBlockRange64::WithLength(0, 1024),
+            sessionId);
         auto response = service.RecvWriteBlocksResponse();
         UNIT_ASSERT_C(
            FAILED(response->GetStatus()),
@@ -114,7 +117,10 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
-        service2.SendWriteBlocksRequest(DefaultDiskId, TBlockRange64(0, 1023), sessionId);
+        service2.SendWriteBlocksRequest(
+            DefaultDiskId,
+            TBlockRange64::WithLength(0, 1024),
+            sessionId);
         auto response = service2.RecvWriteBlocksResponse();
         UNIT_ASSERT_C(
             FAILED(response->GetStatus()),
@@ -145,7 +151,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         {
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 sessionId,
                 char(1));
             auto response = service.RecvWriteBlocksResponse();
@@ -210,7 +216,11 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
 
         UNIT_ASSERT(volumeActorId);
 
-        service1.WriteBlocks(DefaultDiskId, TBlockRange64(0, 1023), sessionId, char(1));
+        service1.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::WithLength(0, 1024),
+            sessionId,
+            char(1));
         service1.UnmountVolume(DefaultDiskId, sessionId);
 
         // Re-mount in read-only mode
@@ -305,7 +315,11 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
-        service.WriteBlocks(DefaultDiskId, TBlockRange64{0, 1023}, sessionId, char(1));
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::WithLength(0, 1024),
+            sessionId,
+            char(1));
 
         UNIT_ASSERT(!detectedWriteBlocksLocalRequestSentToVolumeActor);
     }
@@ -401,7 +415,10 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        service.WriteBlocks(DefaultDiskId, TBlockRange64(0, 1023), sessionId);
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::WithLength(0, 1024),
+            sessionId);
         service.UnmountVolume(DefaultDiskId, sessionId);
 
         runtime.SetObserverFunc(
@@ -497,7 +514,10 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             service2SessionId = response->Record.GetSessionId();
         }
 
-        service2.WriteBlocks(DefaultDiskId, TBlockRange64(0, 1023), service2SessionId);
+        service2.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::WithLength(0, 1024),
+            service2SessionId);
         service2.ZeroBlocks(DefaultDiskId, 0, service2SessionId);
         service2.ReadBlocks(DefaultDiskId, 0, service2SessionId);
 
@@ -641,7 +661,10 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         }
 
         {
-            auto request = service.CreateWriteBlocksRequest(DefaultDiskId, TBlockRange64(0, 0), sessionId);
+            auto request = service.CreateWriteBlocksRequest(
+                DefaultDiskId,
+                TBlockRange64::MakeOneBlock(0),
+                sessionId);
             auto callContext = request->CallContext;
             callContext->SetPossiblePostponeDuration(
                 TDuration::MicroSeconds(1'234));

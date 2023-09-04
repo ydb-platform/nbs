@@ -52,7 +52,10 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         service.MountVolume();
 
         {
-            service.SendWriteBlocksRequest(DefaultDiskId, TBlockRange64(0, 1023), sessionId);
+            service.SendWriteBlocksRequest(
+                DefaultDiskId,
+                TBlockRange64::WithLength(0, 1024),
+                sessionId);
             auto response = service.RecvWriteBlocksResponse();
 
             UNIT_ASSERT_C(response->GetStatus() == E_BS_INVALID_SESSION, response->GetErrorReason());
@@ -114,7 +117,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                 FirstRequestActor,
                 service2.CreateWriteBlocksRequest(
                     DefaultDiskId,
-                    TBlockRange64(0, 1023),
+                    TBlockRange64::WithLength(0, 1024),
                     sessionId).release()),
             nodeIdx2);
 
@@ -124,7 +127,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                 SecondRequestActor,
                 service2.CreateWriteBlocksRequest(
                     DefaultDiskId,
-                    TBlockRange64(0, 1023),
+                    TBlockRange64::WithLength(0, 1024),
                     sessionId).release()),
             nodeIdx2);
 
@@ -175,7 +178,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         service2.SendWriteBlocksRequest(
             DefaultDiskId,
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             sessionId
         );
         auto response = service2.RecvWriteBlocksResponse();
@@ -233,7 +236,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         service2.SendWriteBlocksRequest(
             DefaultDiskId,
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             sessionId
         );
         auto response = service2.RecvWriteBlocksResponse();
@@ -256,7 +259,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         {
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 TString()
             );
             auto response = service.RecvWriteBlocksResponse();
@@ -306,7 +309,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         {
             service2.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 TString()
             );
             auto response = service2.RecvWriteBlocksResponse();
@@ -376,7 +379,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         {
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 sessionId);
             auto response = service.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -411,7 +414,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         {
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 TString()
             );
             auto response = service.RecvWriteBlocksResponse();
@@ -488,7 +491,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         {
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 sessionId
             );
             auto response = service.RecvWriteBlocksResponse();

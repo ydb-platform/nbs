@@ -587,7 +587,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         service.WriteBlocks(
             "vol0",
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             sessionId,
             char(1));
 
@@ -640,7 +640,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         service.WriteBlocks(
             "vol0",
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             sessionId,
             char(1));
 
@@ -692,7 +692,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         service.WriteBlocks(
             "vol0",
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             sessionId,
             char(1));
 
