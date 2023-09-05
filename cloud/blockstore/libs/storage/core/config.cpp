@@ -620,6 +620,11 @@ struct TStorageConfig::TImpl
     {
         FeaturesConfig = std::move(featuresConfig);
     }
+
+    void Merge(const NProto::TStorageServiceConfig& storageServiceConfig)
+    {
+        StorageServiceConfig.MergeFrom(storageServiceConfig);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -628,6 +633,11 @@ TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
     TFeaturesConfigPtr featuresConfig)
     : Impl(new TImpl(std::move(storageServiceConfig), std::move(featuresConfig)))
+{}
+
+TStorageConfig::TStorageConfig(const TStorageConfig& config)
+    : Impl(new TImpl(
+        config.Impl->StorageServiceConfig, config.Impl->FeaturesConfig))
 {}
 
 TStorageConfig::~TStorageConfig()
@@ -755,6 +765,12 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
     BLOCKSTORE_STRING_FEATURES(BLOCKSTORE_STRING_FEATURE_GETTER)
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
+
+void TStorageConfig::Merge(
+    const NProto::TStorageServiceConfig& storageServiceConfig)
+{
+    Impl->Merge(storageServiceConfig);
+}
 
 ui64 GetAllocationUnit(
     const TStorageConfig& config,

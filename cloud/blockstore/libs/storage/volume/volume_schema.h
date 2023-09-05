@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/tablet_schema.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
+#include <cloud/blockstore/config/storage.pb.h>
 
 #include <ydb/core/scheme/scheme_types_defs.h>
 #include <ydb/core/tablet_flat/flat_cxx_database.h>
@@ -34,8 +35,15 @@ struct TVolumeSchema
         {
         };
 
+        struct StorageConfig
+            : public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TStorageServiceConfig;
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id, VolumeMeta, StartPartitionsNeeded>;
+        using TColumns = TableColumns<
+            Id, VolumeMeta, StartPartitionsNeeded, StorageConfig>;
     };
 
     struct Clients

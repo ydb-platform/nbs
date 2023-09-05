@@ -81,6 +81,7 @@ struct TTxVolume
         TVector<ui64> OutdatedCheckpointRequestIds;
         TMaybe<TCompressedBitmap> UsedBlocks;
         TMaybe<TVolumeDatabase::TThrottlerStateInfo> ThrottlerStateInfo;
+        TMaybe<NProto::TStorageServiceConfig> StorageConfig;
 
         TLoadState(TInstant oldestLogEntry)
             : OldestLogEntry(oldestLogEntry)
@@ -103,6 +104,7 @@ struct TTxVolume
             OutdatedCheckpointRequestIds.clear();
             UsedBlocks.Clear();
             ThrottlerStateInfo.Clear();
+            StorageConfig.Clear();
         }
     };
 

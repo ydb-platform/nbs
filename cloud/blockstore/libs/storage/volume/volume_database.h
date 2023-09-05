@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
+#include <cloud/blockstore/config/storage.pb.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
@@ -34,6 +35,8 @@ public:
     bool ReadMeta(TMaybe<NProto::TVolumeMeta>& meta);
     void WriteStartPartitionsNeeded(const bool startPartitionsNeeded);
     bool ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNeeded);
+    void WriteStorageConfig(const NProto::TStorageServiceConfig& storageConfig);
+    bool ReadStorageConfig(TMaybe<NProto::TStorageServiceConfig>& storageConfig);
 
     //
     // MetaHistory

@@ -1080,6 +1080,36 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             );
         });
     }
+
+    Y_UNIT_TEST(ShouldStoreStorageConfig)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            db.InitSchema();
+        });
+
+        TMaybe<NProto::TStorageServiceConfig> serviceConfig;
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            UNIT_ASSERT(db.ReadStorageConfig(serviceConfig));
+
+            UNIT_ASSERT(!serviceConfig.Defined());
+        });
+
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            NProto::TStorageServiceConfig config;
+            config.SetCompactionRangeCountPerRun(100);
+            db.WriteStorageConfig(config);
+        });
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            UNIT_ASSERT(db.ReadStorageConfig(serviceConfig));
+
+            UNIT_ASSERT(serviceConfig.Defined());
+            UNIT_ASSERT_VALUES_EQUAL(
+                100, serviceConfig->GetCompactionRangeCountPerRun());
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

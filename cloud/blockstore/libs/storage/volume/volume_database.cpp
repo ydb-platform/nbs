@@ -97,6 +97,35 @@ bool TVolumeDatabase::ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNee
     return true;
 }
 
+void TVolumeDatabase::WriteStorageConfig(const NProto::TStorageServiceConfig& storageConfig)
+{
+    using TTable = TVolumeSchema::Meta;
+
+    Table<TTable>()
+        .Key(META_KEY)
+        .Update(NIceDb::TUpdate<TTable::StorageConfig>(storageConfig));
+}
+
+bool TVolumeDatabase::ReadStorageConfig(
+    TMaybe<NProto::TStorageServiceConfig>& storageConfig)
+{
+    using TTable = TVolumeSchema::Meta;
+
+    auto it = Table<TTable>()
+        .Key(META_KEY)
+        .Select<TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    if (it.IsValid()) {
+        storageConfig = it.GetValue<TTable::StorageConfig>();
+    }
+
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeDatabase::WriteMetaHistory(

@@ -180,7 +180,7 @@ public:
     };
 
 private:
-    const TStorageConfigPtr Config;
+    TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;

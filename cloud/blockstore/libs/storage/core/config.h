@@ -26,9 +26,13 @@ public:
         TFeaturesConfigPtr featuresConfig);
     ~TStorageConfig();
 
+    TStorageConfig(const TStorageConfig& config);
+
     void SetFeaturesConfig(TFeaturesConfigPtr featuresConfig);
 
     void Register(NKikimr::TControlBoard& controlBoard);
+
+    void Merge(const NProto::TStorageServiceConfig& storageServiceConfig);
 
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;

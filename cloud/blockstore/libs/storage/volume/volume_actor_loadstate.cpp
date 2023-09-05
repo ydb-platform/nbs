@@ -48,6 +48,7 @@ bool TVolumeActor::PrepareLoadState(
             args.CheckpointRequests,
             args.OutdatedCheckpointRequestIds),
         db.ReadThrottlerState(args.ThrottlerStateInfo),
+        db.ReadStorageConfig(args.StorageConfig)
     };
 
     bool ready = std::accumulate(
@@ -103,6 +104,11 @@ void TVolumeActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxVolume::TLoadState& args)
 {
+    if (args.StorageConfig.Defined()) {
+        Config = std::make_shared<TStorageConfig>(*Config);
+        Config->Merge(*args.StorageConfig.Get());
+    }
+
     if (args.Meta.Defined()) {
         TThrottlerConfig throttlerConfig(
             Config->GetMaxThrottlerDelay(),
