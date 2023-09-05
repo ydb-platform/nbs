@@ -253,9 +253,9 @@ TGuardedSgList TCompactionActor::BuildBlobContent(const TWriteRequest& req) cons
         guardedObjects.push_back(request->BlobContent.CreateGuardedSgList({}));
     }
 
-    return TGuardedSgList::CreateUnion(
-        std::move(guardedObjects),
-        std::move(joinedSglist));
+    auto result = TGuardedSgList::CreateUnion(std::move(guardedObjects));
+    result.SetSgList(std::move(joinedSglist));
+    return result;
 }
 
 TVector<TBlock> TCompactionActor::BuildBlockList(const TWriteRequest& req) const

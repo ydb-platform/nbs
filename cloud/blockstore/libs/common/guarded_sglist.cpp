@@ -4,13 +4,21 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGuardedObject final
+class TGuardedSgList::TGuardedObject final
     : public IGuardedObject
 {
 private:
+    // Refs==1 means that access is open, clients can get access by incrementing
+    // the counter.
+    // Refs==0 means that access to the object has been closed and
+    // no one should increase the counter.
+    // The transition from the value 1 to 0 is performed by the Close() method.
     TAtomic Refs = 1;
 
 public:
+    // Acquire can only be successed when Refs values are greater than zero
+    // otherwise false will be returned.
+    // This is non-blocking call.
     bool Acquire() override
     {
         while (true) {
@@ -26,11 +34,16 @@ public:
         }
     }
 
+    // Release calls must be paired with acquire calls.
+    // This is non-blocking call.
     void Release() override
     {
         AtomicSub(Refs, 1);
     }
 
+    // Close() waits until the Refs counter is equal to 1 and transfer it to 0
+    // to prohibit further successful Acquire. This call may be blocked until
+    // other threads call Release().
     void Close() override
     {
         while (true) {
@@ -58,7 +71,7 @@ class TGuardedSgList::TDependentGuardedObject final
 {
 private:
     TGuardedObject GuardedObject;
-    TIntrusivePtr<IGuardedObject> Dependee;
+    const TIntrusivePtr<IGuardedObject> Dependee;
 
 public:
     explicit TDependentGuardedObject(
@@ -98,7 +111,7 @@ class TGuardedSgList::TUnionGuardedObject final
 {
 private:
     TGuardedObject GuardedObject;
-    TVector<TGuardedSgList> GuardedSgLists;
+    const TVector<TGuardedSgList> GuardedSgLists;
 
 public:
     explicit TUnionGuardedObject(TVector<TGuardedSgList> guardedSgLists)
@@ -181,6 +194,7 @@ const TSgList& TGuardedSgList::TGuard::Get() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// static
 TGuardedSgList TGuardedSgList::CreateUnion(
     TVector<TGuardedSgList> guardedSgLists)
 {
@@ -202,25 +216,6 @@ TGuardedSgList TGuardedSgList::CreateUnion(
     for (const auto& guardedSgList: guardedSgLists) {
         const auto& sgList = guardedSgList.Sglist;
         joinedSgList.insert(joinedSgList.end(), sgList.begin(), sgList.end());
-    }
-
-    return TGuardedSgList(
-        MakeIntrusive<TUnionGuardedObject>(std::move(guardedSgLists)),
-        std::move(joinedSgList));
-}
-
-TGuardedSgList TGuardedSgList::CreateUnion(
-    TVector<TGuardedSgList> guardedSgLists,
-    TSgList joinedSgList)
-{
-    if (guardedSgLists.empty()) {
-        return TGuardedSgList(std::move(joinedSgList));
-    }
-
-    if (guardedSgLists.size() == 1) {
-        auto& guardedSgList = guardedSgLists.front();
-        guardedSgList.SetSgList(std::move(joinedSgList));
-        return std::move(guardedSgList);
     }
 
     return TGuardedSgList(

@@ -187,10 +187,11 @@ TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize)
 TResultOrError<TSgList> SgListNormalize(TSgList sglist, ui32 blockSize)
 {
     bool normalized = true;
+    size_t totalSize = 0;
     for (const auto& buffer: sglist) {
+        totalSize += buffer.Size();
         if (buffer.Size() != blockSize) {
             normalized = false;
-            break;
         }
     }
 
@@ -198,7 +199,7 @@ TResultOrError<TSgList> SgListNormalize(TSgList sglist, ui32 blockSize)
         return std::move(sglist);
     }
 
-    TSgList result(Reserve(sglist.size()));
+    TSgList result(Reserve(totalSize / blockSize));
 
     for (const auto& buffer: sglist) {
         if (!AppendBufferToSgList(result, buffer, blockSize)) {
