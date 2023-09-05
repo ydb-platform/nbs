@@ -16,7 +16,7 @@ static void BenchmarkSequence(benchmark::State& state)
 
     // Sequence of incremented ids
     for (const auto _ : state) {
-        TBlockRange64 range{0, 1023};
+        auto range = TBlockRange64::WithLength(0, 1024);
         auto result = tracker.CheckRecorded(id.Advance(), range);
         Y_VERIFY(result == EOverlapStatus::NotOverlapped);
         tracker.AddRecorded(id.Advance(), range);
@@ -42,7 +42,7 @@ static void BenchmarkSlightlyFromPastNotOverlapped(benchmark::State& state)
         } else {
             --step;
         }
-        TBlockRange64 range{step * 1024, (step + 1) * 1024 - 1};
+        auto range = TBlockRange64::WithLength(step * 1024, 1024);
         ui64 id = sequenceIdStart + step;
         auto result = tracker.CheckRecorded(id, range);
         Y_VERIFY(result == EOverlapStatus::NotOverlapped);

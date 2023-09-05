@@ -63,7 +63,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 {
     Y_UNIT_TEST(ShouldParseIOVector)
     {
-        TBlockRange64 blockRange = { 1, 3 };
+        auto blockRange = TBlockRange64::MakeClosedInterval(1, 3);
 
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
 
@@ -93,7 +93,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldParseIOVectorWithLargeParts)
     {
-        TBlockRange64 blockRange = { 1, 5 };
+        auto blockRange = TBlockRange64::MakeClosedInterval(1, 5);
 
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
 
@@ -119,7 +119,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldBuildIOVector)
     {
-        TBlockRange64 blockRange = { 1, 3 };
+        auto blockRange = TBlockRange64::MakeClosedInterval(1, 3);
 
         auto handler = CreateReadBlocksHandler(blockRange, DefaultBlockSize);
         for (ui64 blockIndex = blockRange.Start;
@@ -154,7 +154,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TString s(DefaultBlockSize, char(0));
         TGuardedSgList sglist(TSgList{{s.data(), s.size()}});
         auto handler = CreateReadBlocksHandler(
-            TBlockRange64(0, 0),
+            TBlockRange64::MakeOneBlock(0),
             sglist,
             DefaultBlockSize);
         UNIT_ASSERT(handler->SetBlock(0, {}, false));
@@ -165,7 +165,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TString s(DefaultBlockSize, char(0));
         TGuardedSgList sglist(TSgList{{s.data(), s.size()}});
         auto handler = CreateReadBlocksHandler(
-            TBlockRange64(0, 0),
+            TBlockRange64::MakeOneBlock(0),
             sglist,
             DefaultBlockSize);
         sglist.Destroy();
@@ -174,7 +174,9 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldZeroMissedBlocksInReadBlocksHandler)
     {
-        auto handler = CreateReadBlocksHandler(TBlockRange64(0, 7), DefaultBlockSize);
+        auto handler = CreateReadBlocksHandler(
+            TBlockRange64::WithLength(0, 8),
+            DefaultBlockSize);
 
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
@@ -229,7 +231,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto sgList = ResizeBlocks(blocks, 8, TString(DefaultBlockSize, 'a'));
 
         auto handler = CreateReadBlocksHandler(
-            TBlockRange64(0, blocks.size()-1),
+            TBlockRange64::WithLength(0, blocks.size()),
             TGuardedSgList(std::move(sgList)),
             DefaultBlockSize);
 
@@ -299,14 +301,14 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             holders.push_back(std::move(content));
         };
 
-        addPart(TBlockRange64(0, 1), 'a');
-        addPart(TBlockRange64(1, 3), 'b');
-        addPart(TBlockRange64(3, 4), 'c');
-        addPart(TBlockRange64(5, 6), 'd');
-        addPart(TBlockRange64(7, 7), 'e');
+        addPart(TBlockRange64::MakeClosedInterval(0, 1), 'a');
+        addPart(TBlockRange64::MakeClosedInterval(1, 3), 'b');
+        addPart(TBlockRange64::MakeClosedInterval(3, 4), 'c');
+        addPart(TBlockRange64::MakeClosedInterval(5, 6), 'd');
+        addPart(TBlockRange64::MakeClosedInterval(7, 7), 'e');
 
         auto mixedHandler = CreateMixedWriteBlocksHandler(parts);
-        auto sglist = mixedHandler->GetBlocks(TBlockRange64(0, 7));
+        auto sglist = mixedHandler->GetBlocks(TBlockRange64::WithLength(0, 8));
         auto guard = sglist.Acquire();
         UNIT_ASSERT(guard);
         auto resBlocks = guard.Get();
@@ -324,7 +326,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldDestroySgListInWriteBlocksDtor)
     {
-        TBlockRange64 blockRange = { 1, 3 };
+        auto blockRange = TBlockRange64::MakeClosedInterval(1, 3);
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
         auto& blocks = *request->Record.MutableBlocks();
 
@@ -350,7 +352,9 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldDestroySgListInReadBlocksDtor)
     {
-        auto handler = CreateReadBlocksHandler(TBlockRange64(0, 7), DefaultBlockSize);
+        auto handler = CreateReadBlocksHandler(
+            TBlockRange64::WithLength(0, 8),
+            DefaultBlockSize);
         auto guardedSgList = handler->GetGuardedSgList({4, 5}, false);
 
         {
@@ -370,7 +374,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
         ui64 startIndex = 10;
         auto handler = CreateReadBlocksHandler(
-            { startIndex, startIndex + 6 },
+            TBlockRange64::WithLength(startIndex, 7),
             DefaultBlockSize);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
@@ -410,7 +414,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto sgList = ResizeBlocks(blocks, 7, GetBlockContent());
 
         auto handler = CreateReadBlocksHandler(
-            { startIndex, startIndex + blocks.size() - 1 },
+            TBlockRange64::WithLength(startIndex, blocks.size()),
             TGuardedSgList(std::move(sgList)),
             DefaultBlockSize);
 

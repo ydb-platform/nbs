@@ -16,7 +16,7 @@ TRequestInBuffer<TWriteBufferRequestData> Req(ui32 start, ui32 end)
         end - start + 1,
         {
             nullptr,
-            {start, end},
+            TBlockRange32::MakeClosedInterval(start, end),
             nullptr,
             false
         }

@@ -41,34 +41,36 @@ Y_UNIT_TEST_SUITE(TRecentBlocksTrackerTest)
         // Insert first range.
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::NotOverlapped,
-            tracker.CheckRecorded(id.GetValue(), TBlockRange64{0, 1023}));
-        tracker.AddRecorded(id.GetValue(), TBlockRange64{0, 1023});
+            tracker.CheckRecorded(id.GetValue(), TBlockRange64::WithLength(0, 1024)));
+        tracker.AddRecorded(id.GetValue(), TBlockRange64::WithLength(0, 1024));
 
         // Same id is denied
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::Unknown,
-            tracker.CheckRecorded(id.GetValue(), TBlockRange64{0, 1023}));
+            tracker.CheckRecorded(id.GetValue(), TBlockRange64::WithLength(0, 1024)));
 
         // The overlap status for a very old request is unknown anyway.
         auto veryOldId = id.Advance();
         for (size_t i = 0; i < TRACK_DEPTH; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
                 EOverlapStatus::NotOverlapped,
-                tracker.CheckRecorded(id.Advance(), TBlockRange64{0, 1023}));
-            tracker.AddRecorded(id.GetValue(), TBlockRange64{0, 1023});
+                tracker.CheckRecorded(id.Advance(), TBlockRange64::WithLength(0, 1024)));
+            tracker.AddRecorded(
+                id.GetValue(),
+                TBlockRange64::WithLength(0, 1024));
         }
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::Unknown,
-            tracker.CheckRecorded(veryOldId, TBlockRange64{0, 1023}));
+            tracker.CheckRecorded(veryOldId, TBlockRange64::WithLength(0, 1024)));
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::Unknown,
-            tracker.CheckRecorded(veryOldId, TBlockRange64{1024, 2047}));
+            tracker.CheckRecorded(veryOldId, TBlockRange64::WithLength(1024, 1024)));
 
         // Any configuration is allowed for requests with increasing IDs
         for (int i = 0; i < 1000; ++i) {
             ui64 start = random() * 100;
             ui64 len = random() * 30;
-            TBlockRange64 range{start, start + len};
+            auto range = TBlockRange64::WithLength(start, len);
             UNIT_ASSERT_VALUES_EQUAL(
                 EOverlapStatus::NotOverlapped,
                 tracker.CheckRecorded(id.Advance(), range));
@@ -112,12 +114,12 @@ Y_UNIT_TEST_SUITE(TRecentBlocksTrackerTest)
         for (const auto& check : rangeChecks) {
             auto status = tracker.CheckRecorded(
                 check.Id,
-                TBlockRange64{check.Start, check.End});
+                TBlockRange64::MakeClosedInterval(check.Start, check.End));
             UNIT_ASSERT_VALUES_EQUAL_C(check.Status, status, check.Description);
             if (status == EOverlapStatus::NotOverlapped) {
                 tracker.AddRecorded(
                     check.Id,
-                    TBlockRange64{check.Start, check.End});
+                    TBlockRange64::MakeClosedInterval(check.Start, check.End));
             }
         }
     }
@@ -126,45 +128,51 @@ Y_UNIT_TEST_SUITE(TRecentBlocksTrackerTest)
     {
         TRecentBlocksTracker tracker("device1");
 
-        tracker.AddRecorded(100, TBlockRange64{0, 9});
-        tracker.AddRecorded(102, TBlockRange64{10, 20});
+        tracker.AddRecorded(100, TBlockRange64::WithLength(0, 10));
+        tracker.AddRecorded(102, TBlockRange64::MakeClosedInterval(10, 20));
 
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::NotOverlapped,
-            tracker.CheckRecorded(101, TBlockRange64{0, 9}));
+            tracker.CheckRecorded(101, TBlockRange64::WithLength(0, 10)));
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::Complete,
-            tracker.CheckRecorded(99, TBlockRange64{0, 9}));
+            tracker.CheckRecorded(99, TBlockRange64::WithLength(0, 10)));
 
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::Partial,
-            tracker.CheckRecorded(101, TBlockRange64{0, 20}));
+            tracker.CheckRecorded(101, TBlockRange64::WithLength(0, 20)));
         UNIT_ASSERT_VALUES_EQUAL(
             EOverlapStatus::Complete,
-            tracker.CheckRecorded(99, TBlockRange64{0, 20}));
+            tracker.CheckRecorded(99, TBlockRange64::WithLength(0, 20)));
     }
 
     Y_UNIT_TEST(InflightRequests)
     {
         TRecentBlocksTracker tracker("device1");
 
-        tracker.AddInflight(100, TBlockRange64{0, 9});
-        tracker.AddInflight(102, TBlockRange64{20, 30});
+        tracker.AddInflight(100, TBlockRange64::WithLength(0, 10));
+        tracker.AddInflight(102, TBlockRange64::MakeClosedInterval(20, 30));
 
         // Reject same id.
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            tracker.CheckInflight(100, TBlockRange64{100, 101}));
+            tracker.CheckInflight(
+                100,
+                TBlockRange64::MakeClosedInterval(100, 101)));
 
         // Detect overlapping with greater id
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            tracker.CheckInflight(99, TBlockRange64{5, 15}));
+            tracker.CheckInflight(
+                99,
+                TBlockRange64::MakeClosedInterval(5, 15)));
 
         // Ignore overlapping with smaller id
         UNIT_ASSERT_VALUES_EQUAL(
             false,
-            tracker.CheckInflight(101, TBlockRange64{5, 15}));
+            tracker.CheckInflight(
+                101,
+                TBlockRange64::MakeClosedInterval(5, 15)));
 
         // Finish request with id=100.
         tracker.RemoveInflight(100);
@@ -172,7 +180,9 @@ Y_UNIT_TEST_SUITE(TRecentBlocksTrackerTest)
         // Not overalpped with id=100 any more.
         UNIT_ASSERT_VALUES_EQUAL(
             false,
-            tracker.CheckInflight(99, TBlockRange64{5, 15}));
+            tracker.CheckInflight(
+                99,
+                TBlockRange64::MakeClosedInterval(5, 15)));
     }
 }
 
