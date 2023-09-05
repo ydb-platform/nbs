@@ -241,6 +241,16 @@ void TReadBlobActor::HandleGetResult(
     ReplyAndDie(ctx, std::move(response));
 }
 
+void TReadBlobActor::HandleUndelivered(
+    const NActors::TEvents::TEvUndelivered::TPtr &ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<TResponse>(
+        MakeError(E_REJECTED, "Get event undelivered %s", ev->Get()->Reason));
+
+    ReplyAndDie(ctx, std::move(response));
+}
+
 void TReadBlobActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -261,6 +271,7 @@ STFUNC(TReadBlobActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
+        HFunc(TEvents::TEvUndelivered, HandleUndelivered);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_COMMON);

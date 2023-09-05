@@ -22,7 +22,8 @@ void TVolumeActor::HandleUpdateUsedBlocks(
     };
 
     TCheckpointLight* checkpointLight = State->GetCheckpointLight();
-    if (!State->GetTrackUsedBlocks() && !checkpointLight) {
+    const bool isOverlay = !State->GetBaseDiskId().Empty();
+    if (!State->GetTrackUsedBlocks() && !checkpointLight && !isOverlay) {
         return replyFalse();
     }
 
@@ -64,7 +65,7 @@ void TVolumeActor::HandleUpdateUsedBlocks(
         }
     }
 
-    if (!State->GetTrackUsedBlocks()) {
+    if (!State->GetTrackUsedBlocks() && !isOverlay) {
         return replyFalse();
     }
 

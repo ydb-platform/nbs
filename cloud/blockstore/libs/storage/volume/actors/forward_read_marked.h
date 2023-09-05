@@ -30,8 +30,8 @@ private:
     const TRequestInfoPtr RequestInfo;
     typename TMethod::TRequest::ProtoRecordType Request;
     NBlobMarkers::TBlockMarks BlockMarks;
-    bool MaskUnusedBlocks = false;
-    bool ReplyUnencryptedBlockMask = false;
+    const bool MaskUnusedBlocks;
+    const bool ReplyWithUnencryptedBlockMask;
     const TActorId PartActorId;
     const ui64 VolumeTabletId;
     const TActorId VolumeActorId;
@@ -44,9 +44,9 @@ public:
     TReadMarkedActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
-        NBlobMarkers::TBlockMarks blockMarks,
+        const TCompressedBitmap* usedBlocks,
         bool maskUnusedBlocks,
-        bool replyUnencryptedBlockMask,
+        bool replyWithUnencryptedBlockMask,
         TActorId partActorId,
         ui64 volumeTabletId,
         TActorId volumeActorId);
@@ -82,22 +82,26 @@ template <ReadRequest TMethod>
 TReadMarkedActor<TMethod>::TReadMarkedActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
-        NBlobMarkers::TBlockMarks blockMarks,
+        const TCompressedBitmap* usedBlocks,
         bool maskUnusedBlocks,
-        bool replyUnencryptedBlockMask,
+        bool replyWithUnencryptedBlockMask,
         TActorId partActorId,
         ui64 volumeTabletId,
         TActorId volumeActorId)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-    , BlockMarks(std::move(blockMarks))
+    , BlockMarks(MakeBlockMarks(
+        usedBlocks,
+        TBlockRange64::WithLength(
+            Request.GetStartIndex(),
+            Request.GetBlocksCount())))
     , MaskUnusedBlocks(maskUnusedBlocks)
-    , ReplyUnencryptedBlockMask(replyUnencryptedBlockMask)
+    , ReplyWithUnencryptedBlockMask(replyWithUnencryptedBlockMask)
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
 {
-    TBase::ActivityType = TBlockStoreActivities::VOLUME;
+    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 template <ReadRequest TMethod>
@@ -109,7 +113,7 @@ void TReadMarkedActor<TMethod>::Bootstrap(const TActorContext& ctx)
 
     GLOBAL_LWTRACK(
         BLOCKSTORE_STORAGE_PROVIDER,
-        RequestReceived_VolumeWorker,
+        RequestReceived_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
@@ -146,7 +150,7 @@ void TReadMarkedActor<TMethod>::Done(const TActorContext& ctx)
         ApplyMask(BlockMarks, response->Record);
     }
 
-    if (ReplyUnencryptedBlockMask) {
+    if (ReplyWithUnencryptedBlockMask) {
         FillUnencryptedBlockMask(BlockMarks, response->Record);
     }
 

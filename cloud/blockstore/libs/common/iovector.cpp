@@ -95,10 +95,12 @@ void CopyToSgList(
         Y_VERIFY(dst.Size() % blockSize == 0);
         Y_VERIFY(dst.Size() - offsetInBytes >= blockSize);
 
-        memcpy(
-            const_cast<char*>(dst.Data()) + offsetInBytes,
-            src.data(),
-            blockSize);
+        if (dst.Data()) {
+            memcpy(
+                const_cast<char*>(dst.Data()) + offsetInBytes,
+                src.data(),
+                blockSize);
+        }
 
         offsetInBytes += blockSize;
 

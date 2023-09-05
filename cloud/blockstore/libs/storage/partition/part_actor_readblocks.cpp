@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/libs/storage/partition_common/actor_read_blocks_from_base_disk.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -315,8 +315,8 @@ private:
         const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleBaseDiskDescribeCompleted(
-        const TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted::TPtr& ev,
+    void HandleDescribeBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -536,8 +536,8 @@ void TReadBlocksActor::HandleReadBlobResponse(
     ReplyAndDie(ctx, std::move(response), {});
 }
 
-void TReadBlocksActor::HandleBaseDiskDescribeCompleted(
-    const TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted::TPtr& ev,
+void TReadBlocksActor::HandleDescribeBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -608,8 +608,8 @@ STFUNC(TReadBlocksActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse,
             HandleReadBlobResponse);
-        HFunc(TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted,
-            HandleBaseDiskDescribeCompleted);
+        HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted,
+            HandleDescribeBlocksCompleted);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
@@ -1050,7 +1050,7 @@ void TPartitionActor::CompleteReadBlocks(
                 args.RequestInfo->Cookie,
                 args.RequestInfo->CallContext);
 
-            auto baseDiskActor = NCloud::Register<TReadBlocksFromBaseDiskActor>(
+            auto baseDiskActor = NCloud::Register<TDescribeBaseDiskBlocksActor>(
                 ctx,
                 requestInfo,
                 State->GetBaseDiskId(),

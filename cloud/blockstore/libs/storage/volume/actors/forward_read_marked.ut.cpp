@@ -40,10 +40,9 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
 
     Y_UNIT_TEST_F(ShouldReadSuccess, TSetupEnvironment)
     {
-        TBlockMarks BlockMarks(10, NBlobMarkers::TFreshMark{});
-        BlockMarks[0] = TEmptyMark{};
-        BlockMarks[7] = TEmptyMark{};
-        BlockMarks[9] = TEmptyMark{};
+        TCompressedBitmap usedBlocks(10);
+        usedBlocks.Set(1, 7);
+        usedBlocks.Set(8, 9);
 
         auto request = TEvService::TReadBlocksMethod::TRequest::ProtoRecordType();
         request.SetStartIndex(0);
@@ -56,7 +55,7 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
                     0ull,
                     MakeIntrusive<TCallContext>()),
                 request,
-                BlockMarks,
+                &usedBlocks,
                 true,
                 true,
                 EdgeActor,
@@ -81,9 +80,8 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
         const auto& unencrypted = fullResponse->Record.GetUnencryptedBlockMask();
 
         for (int i = 0; i < fullBuffers.size(); ++i) {
-            const char result = !std::holds_alternative<TEmptyMark>(BlockMarks[i]);
             for (size_t j = 0; j < fullBuffers[i].size(); ++j) {
-                UNIT_ASSERT_EQUAL(fullBuffers[i][j], result);
+                UNIT_ASSERT_EQUAL(fullBuffers[i][j], usedBlocks.Test(i));
             }
         }
         UNIT_ASSERT_EQUAL(unencrypted[0], static_cast<char>(0b10000001));

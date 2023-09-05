@@ -1,4 +1,4 @@
-#include "actor_read_blocks_from_base_disk.h"
+#include "actor_describe_base_disk_blocks.h"
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -13,7 +13,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TReadBlocksFromBaseDiskActor::TReadBlocksFromBaseDiskActor(
+TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
         TRequestInfoPtr requestInfo,
         TString baseDiskId,
         TString baseDiskCheckpointId,
@@ -37,7 +37,7 @@ TReadBlocksFromBaseDiskActor::TReadBlocksFromBaseDiskActor(
     Y_VERIFY_DEBUG(BlocksRange.Contains(BaseDiskBlocksRange));
 }
 
-void TReadBlocksFromBaseDiskActor::Bootstrap(const TActorContext& ctx)
+void TDescribeBaseDiskBlocksActor::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
@@ -52,7 +52,7 @@ void TReadBlocksFromBaseDiskActor::Bootstrap(const TActorContext& ctx)
     DescribeBlocks(ctx);
 }
 
-void TReadBlocksFromBaseDiskActor::ReplyAndDie(
+void TDescribeBaseDiskBlocksActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -62,7 +62,7 @@ void TReadBlocksFromBaseDiskActor::ReplyAndDie(
         "ReadBlocks",
         RequestInfo->CallContext->RequestId);
 
-    using TEvent = TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted;
+    using TEvent = TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted;
     auto response = std::make_unique<TEvent>(
         std::move(error),
         std::move(BlockMarks));
@@ -71,7 +71,7 @@ void TReadBlocksFromBaseDiskActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TReadBlocksFromBaseDiskActor::DescribeBlocks(const TActorContext& ctx)
+void TDescribeBaseDiskBlocksActor::DescribeBlocks(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvVolume::TEvDescribeBlocksRequest>();
 
@@ -89,7 +89,7 @@ void TReadBlocksFromBaseDiskActor::DescribeBlocks(const TActorContext& ctx)
         std::move(request));
 }
 
-NProto::TError TReadBlocksFromBaseDiskActor::ValidateDescribeBlocksResponse(
+NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
     const TEvVolume::TEvDescribeBlocksResponse& response)
 {
     const auto& record = response.Record;
@@ -142,7 +142,7 @@ NProto::TError TReadBlocksFromBaseDiskActor::ValidateDescribeBlocksResponse(
     return {};
 }
 
-void TReadBlocksFromBaseDiskActor::ProcessDescribeBlocksResponse(
+void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
     TEvVolume::TEvDescribeBlocksResponse&& response)
 {
     const auto startIndex = BlocksRange.Start;
@@ -188,7 +188,7 @@ void TReadBlocksFromBaseDiskActor::ProcessDescribeBlocksResponse(
     }
 }
 
-void TReadBlocksFromBaseDiskActor::HandleDescribeBlocksResponse(
+void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
     const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -210,7 +210,7 @@ void TReadBlocksFromBaseDiskActor::HandleDescribeBlocksResponse(
     return ReplyAndDie(ctx);
 }
 
-void TReadBlocksFromBaseDiskActor::HandlePoisonPill(
+void TDescribeBaseDiskBlocksActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -219,7 +219,7 @@ void TReadBlocksFromBaseDiskActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
 }
 
-STFUNC(TReadBlocksFromBaseDiskActor::StateWork)
+STFUNC(TDescribeBaseDiskBlocksActor::StateWork)
 {
     TRequestScope timer(*RequestInfo);
 

@@ -1,7 +1,8 @@
 #include "volume_actor.h"
 
-#include "actors/forward_read_marked.h"
-#include "actors/forward_write_and_mark_used.h"
+#include <cloud/blockstore/libs/storage/volume/actors/forward_read_marked.h>
+#include <cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.h>
+#include <cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay.h>
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
@@ -29,12 +30,18 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const auto* msg = ev->Get();
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
-    auto encryptedDiskRegistryBasedVolume =
+    const bool encryptedDiskRegistryBasedDisk =
         IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind()) &&
         volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
+    const bool overlayDiskRegistryBasedDisk =
+        IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind()) &&
+        !State->GetBaseDiskId().Empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetTrackUsedBlocks() || State->GetCheckpointLight()) {
+        if (State->GetTrackUsedBlocks() ||
+            State->GetCheckpointLight() ||
+            overlayDiskRegistryBasedDisk)
+        {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
@@ -43,7 +50,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
-                encryptedDiskRegistryBasedVolume,
+                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk,
                 volumeRequestId,
                 partActorId,
                 TabletID(),
@@ -55,24 +62,42 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
     if constexpr (IsReadMethod<TMethod>) {
         if (State->GetMaskUnusedBlocks() && State->GetUsedBlocks() ||
-            encryptedDiskRegistryBasedVolume)
+            encryptedDiskRegistryBasedDisk ||
+            overlayDiskRegistryBasedDisk)
         {
-            auto [blockMarks, count] = MakeBlockMarks(
-                State->GetUsedBlocks(),
-                TBlockRange64::WithLength(
+            const TCompressedBitmap* usedBlocks = State->GetUsedBlocks();
+            const bool isOnlyOverlayDisk = usedBlocks
+                ? usedBlocks->Count(
                     msg->Record.GetStartIndex(),
-                    msg->Record.GetBlocksCount()));
+                    msg->Record.GetStartIndex() + msg->Record.GetBlocksCount())
+                        == msg->Record.GetBlocksCount()
+                : false;
 
-            const bool isOnlyOverlayDisk = blockMarks.size() == count;
+            if (overlayDiskRegistryBasedDisk && !isOnlyOverlayDisk) {
+                NCloud::Register<TReadDiskRegistryBasedOverlayActor<TMethod>>(
+                    ctx,
+                    CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                    std::move(msg->Record),
+                    State->GetUsedBlocks(),
+                    partActorId,
+                    TabletID(),
+                    State->GetBaseDiskId(),
+                    State->GetBaseDiskCheckpointId(),
+                    State->GetBlockSize(),
+                    State->GetStorageAccessMode(),
+                    encryptedDiskRegistryBasedDisk);
+
+                    return true;
+            }
 
             if (!isOnlyOverlayDisk) {
                 NCloud::Register<TReadMarkedActor<TMethod>>(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
-                    std::move(blockMarks),
+                    State->GetUsedBlocks(),
                     State->GetMaskUnusedBlocks(),
-                    encryptedDiskRegistryBasedVolume,
+                    encryptedDiskRegistryBasedDisk,
                     partActorId,
                     TabletID(),
                     SelfId());

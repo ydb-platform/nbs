@@ -65,6 +65,10 @@ private:
         const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleUndelivered(
+        const NActors::TEvents::TEvUndelivered::TPtr &ev,
+        const NActors::TActorContext& ctx);
+
     void HandlePoisonPill(
         const NKikimr::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);

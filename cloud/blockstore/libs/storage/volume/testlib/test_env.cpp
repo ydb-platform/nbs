@@ -169,7 +169,9 @@ std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdat
     TString folderId,
     ui32 partitionCount,
     ui32 blocksPerStripe,
-    TString tags)
+    TString tags,
+    TString baseDiskId,
+    TString baseDiskCheckpointId)
 {
     auto request = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfig>();
     request->Record.SetTxId(123);
@@ -183,6 +185,9 @@ std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdat
     for (ui32 i = 0; i < partitionCount; ++i) {
         volumeConfig.AddPartitions()->SetBlockCount(blockCount);
     }
+
+    volumeConfig.SetBaseDiskId(std::move(baseDiskId));
+    volumeConfig.SetBaseDiskCheckpointId(std::move(baseDiskCheckpointId));
 
     auto* cps = volumeConfig.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));

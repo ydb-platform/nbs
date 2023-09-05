@@ -290,7 +290,9 @@ public:
         TString folderId = "folder",
         ui32 partitionCount = 1,
         ui32 blocksPerStripe = 0,
-        TString tags = "");
+        TString tags = "",
+        TString baseDiskId = "",
+        TString baseDiskCheckpointId = "");
 
     auto CreateReallocateDiskRequest()
     {

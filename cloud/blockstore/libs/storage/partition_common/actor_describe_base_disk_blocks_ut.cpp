@@ -1,4 +1,4 @@
-#include "actor_read_blocks_from_base_disk.h"
+#include "actor_describe_base_disk_blocks.h"
 
 #include <cloud/blockstore/libs/common/sglist_test.h>
 
@@ -60,7 +60,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TFreshMark{}};
 
         auto readActor = ActorSystem.Register(
-            new TReadBlocksFromBaseDiskActor(
+            new TDescribeBaseDiskBlocksActor(
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -120,7 +120,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             describeResponse));
 
         auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted>();
+            TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
 
         auto newBlockMarks = std::move(fullResponse->BlockMarks);
@@ -172,7 +172,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TFreshMark{}};
 
         auto readActor = ActorSystem.Register(
-            new TReadBlocksFromBaseDiskActor(
+            new TDescribeBaseDiskBlocksActor(
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             describeResponse));
 
         auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvPartitionCommonPrivate::TEvBaseDiskDescribeCompleted>();
+            TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
     }
 }

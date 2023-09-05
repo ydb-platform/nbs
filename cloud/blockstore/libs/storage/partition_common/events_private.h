@@ -124,14 +124,14 @@ struct TEvPartitionCommonPrivate
     };
 
     //
-    // BaseDiskDescribeCompleted
+    // DescribeBlocksCompleted
     //
 
-    struct TBaseDiskDescribeCompleted
+    struct TDescribeBlocksCompleted
     {
         NBlobMarkers::TBlockMarks BlockMarks;
 
-        TBaseDiskDescribeCompleted(
+        TDescribeBlocksCompleted(
                 NBlobMarkers::TBlockMarks blockMarks)
             : BlockMarks(std::move(blockMarks))
         {}
@@ -150,7 +150,7 @@ struct TEvPartitionCommonPrivate
         EvLoadFreshBlobsCompleted,
         EvTrimFreshLogCompleted,
         EvReadBlobCompleted,
-        EvTBaseDiskDescribeCompleted,
+        EvTDescribeBlocksCompleted,
 
         EvEnd
     };
@@ -163,7 +163,7 @@ struct TEvPartitionCommonPrivate
     using TEvLoadFreshBlobsCompleted = TResponseEvent<TLoadFreshBlobsCompleted, EvLoadFreshBlobsCompleted>;
     using TEvTrimFreshLogCompleted = TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
-    using TEvBaseDiskDescribeCompleted = TResponseEvent<TBaseDiskDescribeCompleted, EvTBaseDiskDescribeCompleted>;
+    using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

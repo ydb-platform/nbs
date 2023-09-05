@@ -12,6 +12,8 @@ namespace NCloud::NBlockStore::NStorage::NBlobMarkers {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TUsedMark {};
+
 struct TEmptyMark {};
 
 struct TFreshMark {};
@@ -67,7 +69,15 @@ struct TBlobMarkOnBaseDisk {
     {}
 };
 
-using TBlockMark = std::variant<TEmptyMark, TFreshMark, TZeroMark, TBlobMark, TFreshMarkOnBaseDisk, TBlobMarkOnBaseDisk>;
+using TBlockMark = std::variant<
+    TEmptyMark,
+    TFreshMark,
+    TZeroMark,
+    TBlobMark,
+    TFreshMarkOnBaseDisk,
+    TBlobMarkOnBaseDisk,
+    TUsedMark>;
+
 using TBlockMarks = TVector<TBlockMark>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NBlobMarkers

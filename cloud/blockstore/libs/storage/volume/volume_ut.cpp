@@ -2,6 +2,8 @@
 
 #include <util/system/hostname.h>
 
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -9673,6 +9675,94 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             checkpointId,
             TBlockRange64(10, 112),
             GetBlockContent(42));
+    }
+
+    Y_UNIT_TEST(ShouldReadFromBaseDisk)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(), runtime->AllocateEdgeActor(), 0);
+
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2,  // blocksPerStripe
+            "",  // tags
+            "disk1",  // baseDiskId
+            "ch"  // baseDiskCheckpointId
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        bool firstWriteRequest = true;
+        bool describeRequest = false;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::TEvWriteBlocksRequest::EventType:
+                        if (firstWriteRequest) {
+                            firstWriteRequest = false;
+                            break;
+                        }
+                        runtime.Send(new IEventHandle(
+                            event->Sender,
+                            event->Sender,
+                            new TEvService::TEvWriteBlocksResponse(
+                                MakeError(E_REJECTED)),
+                            0,
+                            event->Cookie,
+                            nullptr));
+                        return TTestActorRuntime::EEventAction::DROP;
+                    case TEvVolume::TEvDescribeBlocksRequest::EventType:
+                        describeRequest = true;
+                        runtime.Send(new IEventHandle(
+                            event->Sender,
+                            event->Sender,
+                            new TEvVolume::TEvDescribeBlocksResponse(
+                                MakeError(E_REJECTED))));
+                        return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        auto writeRequest = volume.CreateWriteBlocksRequest(
+            TBlockRange64(0, 1023),
+            clientInfo.GetClientId(),
+            1);
+
+        volume.SendToPipe(std::move(writeRequest));
+        auto response = volume.RecvWriteBlocksResponse();
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        auto readRequest = volume.CreateReadBlocksRequest(
+            TBlockRange64(0, 1023),
+            clientInfo.GetClientId());
+        volume.SendToPipe(std::move(readRequest));
+        volume.RecvReadBlocksResponse();
+
+        UNIT_ASSERT(describeRequest);
     }
 }
 

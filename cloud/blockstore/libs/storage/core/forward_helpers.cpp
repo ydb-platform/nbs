@@ -74,25 +74,20 @@ void FillUnencryptedBlockMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::pair<TBlockMarks, ui64> MakeBlockMarks(
+TBlockMarks MakeBlockMarks(
     const TCompressedBitmap* usedBlocks,
     TBlockRange64 range)
 {
     TBlockMarks blockMarks(range.Size(), TEmptyMark{});
-    if (!usedBlocks) {
-        return {blockMarks, 0};
-    }
-
-    const ui64 count = usedBlocks->Count(range.Start, range.End + 1);
-    if (count != 0) {
+    if (usedBlocks) {
         for (ui64 i = 0; i < range.Size(); ++i) {
             if (usedBlocks->Test(i + range.Start)) {
-                blockMarks[i] = TFreshMark{};
+                blockMarks[i] = TUsedMark{};
             }
         }
     }
 
-    return {blockMarks, count};
+    return blockMarks;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

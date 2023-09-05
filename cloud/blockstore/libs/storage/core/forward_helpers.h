@@ -81,7 +81,7 @@ void ApplyMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::pair<NBlobMarkers::TBlockMarks, ui64> MakeBlockMarks(
+NBlobMarkers::TBlockMarks MakeBlockMarks(
     const TCompressedBitmap* usedBlocks,
     TBlockRange64 range);
 

@@ -17,8 +17,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksFromBaseDiskActor final
-    : public NActors::TActorBootstrapped<TReadBlocksFromBaseDiskActor>
+class TDescribeBaseDiskBlocksActor final
+    : public NActors::TActorBootstrapped<TDescribeBaseDiskBlocksActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -32,7 +32,7 @@ private:
     NBlobMarkers::TBlockMarks BlockMarks;
 
 public:
-    TReadBlocksFromBaseDiskActor(
+    TDescribeBaseDiskBlocksActor(
         TRequestInfoPtr requestInfo,
         TString baseDiskId,
         TString baseDiskCheckpointId,

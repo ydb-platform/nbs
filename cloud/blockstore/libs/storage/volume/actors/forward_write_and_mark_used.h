@@ -122,7 +122,7 @@ TWriteAndMarkUsedActor<TMethod>::TWriteAndMarkUsedActor(
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
 {
-    TBase::ActivityType = TBlockStoreActivities::VOLUME;
+    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 template <WriteRequest TMethod>
@@ -134,7 +134,7 @@ void TWriteAndMarkUsedActor<TMethod>::Bootstrap(const TActorContext& ctx)
 
     GLOBAL_LWTRACK(
         BLOCKSTORE_STORAGE_PROVIDER,
-        RequestReceived_VolumeWorker,
+        RequestReceived_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
