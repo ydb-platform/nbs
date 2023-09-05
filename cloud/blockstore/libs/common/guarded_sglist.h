@@ -63,7 +63,7 @@ namespace NCloud::NBlockStore {
 //     Here you can safely access the sharedData
 //   }
 // }
-// guardedSgList.Destroy(); // Finish access to sharedData
+// guardedSgList.Close(); // Finish access to sharedData
 // Here you can safely destroy sharedData, it is guaranteed that no one accesses
 // it.
 
@@ -116,11 +116,12 @@ public:
     class TGuard
     {
     private:
+        friend class TGuardedSgList;
         TIntrusivePtr<IGuardedObject> GuardedObject;
         const TSgList& Sglist;
+        TGuard(TIntrusivePtr<IGuardedObject> guarded, const TSgList& sglist);
 
     public:
-        TGuard(TIntrusivePtr<IGuardedObject> guarded, const TSgList& sglist);
         TGuard(TGuard&&) = default;
         TGuard& operator=(TGuard&&) = delete;
         ~TGuard();
@@ -140,9 +141,9 @@ public:
     // This call can be blocked until everyone who has previously gained access
     // destroys their TGuard.
     // It is safe to call Destroy() multiple times.
-    // Attention! A sequential call to Acquire() and Destroy() on the same
+    // Attention! A sequential call to Acquire() and Close() on the same
     // thread will result in a deadlock.
-    void Destroy();
+    void Close();
 
 private:
     TGuardedSgList(TIntrusivePtr<IGuardedObject> guarded, TSgList sglist);

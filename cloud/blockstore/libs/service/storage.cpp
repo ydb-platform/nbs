@@ -307,7 +307,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
         InflightReads.UnregisterRequest(id);
 
         const auto& localResponse = f.GetValue();
-        guardedSgList.Destroy();
+        guardedSgList.Close();
 
         if (!HasError(localResponse) && buffer) {
             auto sgList = ResizeIOVector(
@@ -396,7 +396,7 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
 
         auto localResponse = f.GetValue();
 
-        guardedSgList.Destroy();
+        guardedSgList.Close();
         Y_UNUSED(request);
         Y_UNUSED(buffer);
 

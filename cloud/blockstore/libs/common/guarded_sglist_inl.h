@@ -29,7 +29,7 @@ public:
 
     ~TImpl()
     {
-        GuardedObject.Destroy();
+        GuardedObject.Close();
     }
 
     TGuardedSgList CreateGuardedSgList(TSgList sglist) const
@@ -44,7 +44,7 @@ public:
 
     T ExtractBuffer()
     {
-        GuardedObject.Destroy();
+        GuardedObject.Close();
         return std::move(Buffer);
     }
 };

@@ -721,7 +721,7 @@ TFuture<NProto::TError> TDeviceHandler::ExecuteUnalignedModifyRequest(
     return future.Apply([=, req = std::move(request), buf = std::move(buffer)]
         (const auto& f) mutable
     {
-        readSgList.Destroy();
+        readSgList.Close();
 
         const auto& readResponse = f.GetValue();
         if (HasError(readResponse)) {
@@ -781,7 +781,7 @@ TFuture<NProto::TError> TDeviceHandler::HandleRmwReadResponse(
 
     return storage->WriteBlocksLocal(ctx, std::move(writeRequest))
         .Apply([=, buf = std::move(buffer)] (const auto& future) mutable {
-            writeSgList.Destroy();
+            writeSgList.Close();
 
             Y_UNUSED(buf);
             return future.GetValue().GetError();

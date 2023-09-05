@@ -787,7 +787,7 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             request->SetStartIndex(0);
             request->BlocksCount = 100;
             request->BlockSize = DefaultBlockSize;
-            request->Sglist.Destroy();
+            request->Sglist.Close();
 
             auto response = storage->WriteBlocksLocal(
                 MakeIntrusive<TCallContext>(),
@@ -800,7 +800,7 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetBlocksCount(100);
             request->BlockSize = DefaultBlockSize;
-            request->Sglist.Destroy();
+            request->Sglist.Close();
 
             auto response = storage->ReadBlocksLocal(
                 MakeIntrusive<TCallContext>(),

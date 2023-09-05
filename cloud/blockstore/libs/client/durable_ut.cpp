@@ -269,7 +269,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         {
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
-            request->Sglist.Destroy();
+            request->Sglist.Close();
 
             auto future = durable->ReadBlocksLocal(
                 MakeIntrusive<TCallContext>(),
@@ -281,7 +281,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         {
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-            request->Sglist.Destroy();
+            request->Sglist.Close();
 
             auto future = durable->WriteBlocksLocal(
                 MakeIntrusive<TCallContext>(),

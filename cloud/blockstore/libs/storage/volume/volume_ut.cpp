@@ -4350,7 +4350,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             request->Record.BlocksCount = range.Size();
             request->Record.BlockSize = DefaultBlockSize;
 
-            glist.Destroy();
+            glist.Close();
 
             volume.SendToPipe(std::move(request));
 
@@ -4370,7 +4370,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 TString::TUninitialized(DefaultBlockSize)
             );
             TGuardedSgList glist(std::move(sglist));
-            glist.Destroy();
+            glist.Close();
 
             volume.SendReadBlocksLocalRequest(
                 range,

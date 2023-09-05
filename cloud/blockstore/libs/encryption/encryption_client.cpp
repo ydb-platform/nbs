@@ -419,7 +419,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
         buf = std::move(buffer)] (const auto& f) mutable
     {
         auto encryptedSglist = sgList.Acquire().Get();
-        sgList.Destroy();
+        sgList.Close();
 
         auto response = f.GetValue();
         if (HasError(response)) {
@@ -548,7 +548,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
         sgList = std::move(guardedSgList),
         buf = std::move(buffer)] (const auto& f) mutable
     {
-        sgList.Destroy();
+        sgList.Close();
         buf.reset();
         return f;
     });
@@ -589,7 +589,7 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     return future.Apply([
         sgList = std::move(guardedSgList)] (const auto& f) mutable
     {
-        sgList.Destroy();
+        sgList.Close();
 
         const auto& response = f.GetValue();
 

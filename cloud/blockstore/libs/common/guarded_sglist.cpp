@@ -270,7 +270,7 @@ TGuardedSgList::TGuard TGuardedSgList::Acquire() const
     return TGuard(GuardedObject, Sglist);
 }
 
-void TGuardedSgList::Destroy()
+void TGuardedSgList::Close()
 {
     Y_VERIFY(GuardedObject);
     GuardedObject->Close();

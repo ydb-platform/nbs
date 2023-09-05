@@ -68,7 +68,7 @@ public:
 
     void Complete(EResult result) override
     {
-        SgList.Destroy();
+        SgList.Close();
         vhd_complete_bio(VhdIo, GetVhostResult(result));
     }
 

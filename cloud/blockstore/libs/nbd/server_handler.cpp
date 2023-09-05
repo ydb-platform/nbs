@@ -658,7 +658,7 @@ void TServerHandler::ProcessReadRequest(
 
     const auto& response = ctx->WaitFor(future);
 
-    guardedSgList.Destroy();
+    guardedSgList.Close();
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
@@ -727,7 +727,7 @@ void TServerHandler::ProcessWriteRequest(
 
     const auto& response = ctx->WaitFor(future);
 
-    guardedSgList.Destroy();
+    guardedSgList.Close();
     requestData.reset();
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);

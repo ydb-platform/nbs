@@ -98,7 +98,7 @@ public:
 
     ~TReadBlocksHandler()
     {
-        SgList.Destroy();
+        SgList.Close();
     }
 
     TGuardedSgList GetGuardedSgList(
@@ -162,7 +162,7 @@ public:
         }
 
         // Wait for all TSgList users are done.
-        SgList.Destroy();
+        SgList.Close();
         response.MutableBlocks()->Swap(&Blocks);
 
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);

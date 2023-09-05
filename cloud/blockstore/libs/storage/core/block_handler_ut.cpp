@@ -168,7 +168,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             TBlockRange64::MakeOneBlock(0),
             sglist,
             DefaultBlockSize);
-        sglist.Destroy();
+        sglist.Close();
         UNIT_ASSERT(!handler->SetBlock(0, {}, false));
     }
 

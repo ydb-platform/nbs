@@ -6541,7 +6541,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // Test with fresh blocks.
         {
             TGuardedSgList sglist(TSgList{{}});
-            sglist.Destroy();
+            sglist.Close();
             partition.SendReadBlocksLocalRequest(0, sglist);
 
             auto response = partition.RecvReadBlocksLocalResponse();
@@ -6553,7 +6553,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // Test with blob.
         {
             TGuardedSgList sglist(TSgList{{}});
-            sglist.Destroy();
+            sglist.Close();
             partition.SendReadBlocksLocalRequest(0, sglist);
 
             auto response = partition.RecvReadBlocksLocalResponse();

@@ -24,7 +24,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
             UNIT_ASSERT_VALUES_EQUAL(TSgList{}, guard.Get());
         }
 
-        empty.Destroy();
+        empty.Close();
         UNIT_ASSERT(!empty.Acquire());
     }
 
@@ -61,23 +61,23 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
         }
     }
 
-    Y_UNIT_TEST(Destroy)
+    Y_UNIT_TEST(Close)
     {
         TGuardedSgList guardedSgList;
 
-        guardedSgList.Destroy();
+        guardedSgList.Close();
         UNIT_ASSERT(!guardedSgList.Acquire());
 
-        guardedSgList.Destroy();
+        guardedSgList.Close();
         UNIT_ASSERT(!guardedSgList.Acquire());
     }
 
-    Y_UNIT_TEST(DestroyCopy)
+    Y_UNIT_TEST(CloseCopy)
     {
         TGuardedSgList guardedSgList;
         auto copy = guardedSgList;
 
-        copy.Destroy();
+        copy.Close();
         UNIT_ASSERT(!copy.Acquire());
         UNIT_ASSERT(!guardedSgList.Acquire());
     }
@@ -96,7 +96,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
             UNIT_ASSERT_VALUES_EQUAL(sglist, guard.Get());
         }
 
-        src.Destroy();
+        src.Close();
         UNIT_ASSERT(!guardedSgList.Acquire());
     }
 
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
             UNIT_ASSERT_VALUES_EQUAL(sglist, guard.Get());
         }
 
-        src.Destroy();
+        src.Close();
         UNIT_ASSERT(!guardedSgList.Acquire());
     }
 
@@ -139,12 +139,12 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
             UNIT_ASSERT_VALUES_EQUAL(sglist, guard3.Get());
         }
 
-        depender2.Destroy();
+        depender2.Close();
         UNIT_ASSERT(depender1.Acquire());
         UNIT_ASSERT(!depender2.Acquire());
         UNIT_ASSERT(depender3.Acquire());
 
-        src.Destroy();
+        src.Close();
         UNIT_ASSERT(!depender1.Acquire());
         UNIT_ASSERT(!depender2.Acquire());
         UNIT_ASSERT(!depender3.Acquire());
@@ -178,11 +178,11 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
             UNIT_ASSERT_EQUAL(sgList[5].AsStringBuf(), TString(DefaultBlockSize, 'c'));
         }
 
-        sgList2.Destroy();
+        sgList2.Close();
         UNIT_ASSERT(!unionSgList.Acquire());
     }
 
-    Y_UNIT_TEST(DestroyUnion)
+    Y_UNIT_TEST(CloseUnion)
     {
         TString buf(DefaultBlockSize, 'a');
         TGuardedSgList guardedSgList({{buf.data(), buf.size()}});
@@ -193,7 +193,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
 
         UNIT_ASSERT(unionSgList.Acquire());
 
-        unionSgList.Destroy();
+        unionSgList.Close();
         UNIT_ASSERT(!unionSgList.Acquire());
 
         for (const auto& sgList: sgLists) {
@@ -348,11 +348,11 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
                 tasks.Add(acquireTask);
             }
 
-            const auto destroyTask = [&guardedSgList]() {
-                guardedSgList.Destroy();
+            const auto closeTask = [&guardedSgList]() {
+                guardedSgList.Close();
             };
             for (int i = 0; i < 2; ++i) {
-                tasks.Add(destroyTask);
+                tasks.Add(closeTask);
             }
 
             tasks.Start();
@@ -376,11 +376,11 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
                 tasks.Add(dependerTask);
             }
 
-            const auto destroyTask = [&guardedSgList]() {
-                guardedSgList.Destroy();
+            const auto closeTask = [&guardedSgList]() {
+                guardedSgList.Close();
             };
             for (int i = 0; i < 2; ++i) {
-                tasks.Add(destroyTask);
+                tasks.Add(closeTask);
             }
 
             tasks.Start();
@@ -412,11 +412,11 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
                 tasks.Add(acquireTask);
             }
 
-            const auto destroyTask = [&guardedSgList]() {
-                guardedSgList.Destroy();
+            const auto closeTask = [&guardedSgList]() {
+                guardedSgList.Close();
             };
             for (int i = 0; i < 2; ++i) {
-                tasks.Add(destroyTask);
+                tasks.Add(closeTask);
             }
 
             tasks.Start();

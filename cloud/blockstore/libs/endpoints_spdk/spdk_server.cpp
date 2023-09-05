@@ -102,7 +102,7 @@ public:
             std::move(request));
 
         return future.Apply([=] (auto future) mutable {
-            guardedSgList.Destroy();
+            guardedSgList.Close();
 
             auto response = ExtractResponse(future);
             return response.GetError();
@@ -136,7 +136,7 @@ public:
             std::move(request));
 
         return future.Apply([=] (auto future) mutable {
-            guardedSgList.Destroy();
+            guardedSgList.Close();
 
             auto response = ExtractResponse(future);
             return response.GetError();
@@ -173,7 +173,7 @@ public:
             std::move(request));
 
         return future.Apply([=] (auto future) mutable {
-            guardedSgList.Destroy();
+            guardedSgList.Close();
 
             auto response = ExtractResponse(future);
             return response.GetError();
@@ -207,7 +207,7 @@ public:
             std::move(request));
 
         return future.Apply([=] (auto future) mutable {
-            guardedSgList.Destroy();
+            guardedSgList.Close();
 
             auto response = ExtractResponse(future);
             return response.GetError();

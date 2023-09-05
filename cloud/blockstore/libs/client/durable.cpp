@@ -410,7 +410,7 @@ private:
         auto copy = std::make_shared<NProto::TReadBlocksLocalRequest>(*request);
         copy->Sglist = request->Sglist.CreateDepender();
 
-        state.SentSgList.Destroy();
+        state.SentSgList.Close();
         state.SentSgList = copy->Sglist;
 
         return copy;
