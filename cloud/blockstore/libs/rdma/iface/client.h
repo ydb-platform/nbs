@@ -25,8 +25,8 @@ struct TClientConfig
     ui32 MaxBufferSize = 1024*1024;
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 PollerThreads = 1;
-    TDuration MaxReconnectDelay = TDuration::Seconds(30);
-    TDuration MaxResponseDelay = TDuration::Seconds(30);
+    TDuration MaxReconnectDelay = TDuration::Seconds(60);
+    TDuration MaxResponseDelay = TDuration::Seconds(60);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
