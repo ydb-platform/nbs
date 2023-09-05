@@ -446,6 +446,13 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
 
     Sort(*agent->MutableDevices(), TByUUID());
 
+    if (ComponentGroup) {
+        auto it = AgentIdToIdx.find(agent->GetAgentId());
+        if (it != AgentIdToIdx.end()) {
+            AgentCounters[it->second].Register(*agent, ComponentGroup);
+        }
+    }
+
     return *agent;
 }
 

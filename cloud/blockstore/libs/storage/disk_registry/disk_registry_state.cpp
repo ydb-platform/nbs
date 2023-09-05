@@ -2804,7 +2804,7 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         }
     }
 
-    THashSet<TString> allDevices;
+    THashSet<TString> allKnownDevices;
     TKnownAgents newKnownAgents;
 
     for (const auto& agent: newConfig.GetKnownAgents()) {
@@ -2816,7 +2816,7 @@ NProto::TError TDiskRegistryState::UpdateConfig(
 
         for (const auto& device: agent.GetDevices()) {
             knownAgent.Devices.emplace(device.GetDeviceUUID(), device);
-            auto [_, ok] = allDevices.insert(device.GetDeviceUUID());
+            auto [_, ok] = allKnownDevices.insert(device.GetDeviceUUID());
             if (!ok) {
                 return MakeError(E_ARGUMENT, "bad config");
             }
@@ -2826,16 +2826,28 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     TVector<TString> removedDevices;
     THashSet<TString> updatedAgents;
 
-    for (const auto& [id, knownAgent]: KnownAgents) {
-        for (const auto& [uuid, _]: knownAgent.Devices) {
-            if (!allDevices.contains(uuid)) {
+    for (const auto& agent: AgentList.GetAgents()) {
+        const auto& agentId = agent.GetAgentId();
+
+        for (const auto& d: agent.GetDevices()) {
+            const auto& uuid = d.GetDeviceUUID();
+
+            if (!allKnownDevices.contains(uuid)) {
                 removedDevices.push_back(uuid);
-                updatedAgents.insert(id);
+                updatedAgents.insert(agentId);
             }
         }
 
-        if (!newKnownAgents.contains(id)) {
-            updatedAgents.insert(id);
+        for (const auto& d: agent.GetUnknownDevices()) {
+            const auto& uuid = d.GetDeviceUUID();
+
+            if (allKnownDevices.contains(uuid)) {
+                updatedAgents.insert(agentId);
+            }
+        }
+
+        if (!newKnownAgents.contains(agentId)) {
+            updatedAgents.insert(agentId);
         }
     }
 
@@ -2873,6 +2885,9 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         if (agent) {
             const auto ts = TInstant::MicroSeconds(agent->GetStateTs());
             auto config = *agent;
+
+            config.MutableDevices()->MergeFrom(*config.MutableUnknownDevices());
+            config.MutableUnknownDevices()->Clear();
 
             auto error = RegisterAgent(
                 db,
