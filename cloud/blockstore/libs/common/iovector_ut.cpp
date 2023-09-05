@@ -41,12 +41,12 @@ NProto::TIOVector CreateIOVector(ui64 blockCount, char data)
     return iov;
 }
 
-TStringBuf SubBuffer(const TVector<char>& buffer, TBlockRange64 range)
+TStringBuf SubBuffer(
+    const TVector<char>& buffer,
+    ui64 startBlock,
+    size_t blockCount)
 {
-    return {
-        buffer.data() + range.Start * BlockSize,
-        range.Size() * BlockSize
-    };
+    return {buffer.data() + startBlock * BlockSize, blockCount * BlockSize};
 }
 
 }   // namespace
@@ -66,11 +66,11 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
 
             CopyToSgList(iov, sglist, 0, BlockSize);
 
-            for (auto c: SubBuffer(buffer, { 0, 9 })) {
+            for (auto c: SubBuffer(buffer, 0, 10)) {
                 UNIT_ASSERT_VALUES_EQUAL('A', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 10, 15 })) {
+            for (auto c: SubBuffer(buffer, 10, 6)) {
                 UNIT_ASSERT_VALUES_EQUAL('X', c);
             }
         }
@@ -80,19 +80,19 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
 
             CopyToSgList(iov, sglist, 5, BlockSize);
 
-            for (auto c: SubBuffer(buffer, { 0, 4 })) {
+            for (auto c: SubBuffer(buffer, 0, 5)) {
                 UNIT_ASSERT_VALUES_EQUAL('A', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 5, 8 })) {
+            for (auto c: SubBuffer(buffer, 5, 4)) {
                 UNIT_ASSERT_VALUES_EQUAL('B', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 9, 9 })) {
+            for (auto c: SubBuffer(buffer, 9, 1)) {
                 UNIT_ASSERT_VALUES_EQUAL('A', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 10, 15 })) {
+            for (auto c: SubBuffer(buffer, 10, 6)) {
                 UNIT_ASSERT_VALUES_EQUAL('X', c);
             }
         }
@@ -102,23 +102,23 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
 
             CopyToSgList(iov, sglist, 12, BlockSize);
 
-            for (auto c: SubBuffer(buffer, { 0, 4 })) {
+            for (auto c: SubBuffer(buffer, 0, 5)) {
                 UNIT_ASSERT_VALUES_EQUAL('A', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 5, 8 })) {
+            for (auto c: SubBuffer(buffer, 5, 4)) {
                 UNIT_ASSERT_VALUES_EQUAL('B', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 9, 9 })) {
+            for (auto c: SubBuffer(buffer, 9, 1)) {
                 UNIT_ASSERT_VALUES_EQUAL('A', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 10, 11 })) {
+            for (auto c: SubBuffer(buffer, 10, 2)) {
                 UNIT_ASSERT_VALUES_EQUAL('X', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 12, 15 })) {
+            for (auto c: SubBuffer(buffer, 12, 4)) {
                 UNIT_ASSERT_VALUES_EQUAL('C', c);
             }
         }
@@ -138,15 +138,15 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
 
             CopyToSgList(iov, sglist, 1, BlockSize);
 
-            for (auto c: SubBuffer(buffer, { 0, 0 })) {
+            for (auto c: SubBuffer(buffer, 0, 1)) {
                 UNIT_ASSERT_VALUES_EQUAL('Z', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 1, 2 })) {
+            for (auto c: SubBuffer(buffer, 1, 2)) {
                 UNIT_ASSERT_VALUES_EQUAL('D', c);
             }
 
-            for (auto c: SubBuffer(buffer, { 3, 15 })) {
+            for (auto c: SubBuffer(buffer, 3, 13)) {
                 UNIT_ASSERT_VALUES_EQUAL('Z', c);
             }
         }

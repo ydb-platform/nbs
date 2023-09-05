@@ -25,12 +25,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
     {
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(50, 99),
+                TBlockRange64::MakeClosedInterval(50, 99),
                 0
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64(50, 99),
+                TBlockRange64::MakeClosedInterval(50, 99),
                 1,
                 0
             )
@@ -38,12 +38,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(55, 95),
+                TBlockRange64::MakeClosedInterval(55, 95),
                 0
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64(55, 95),
+                TBlockRange64::MakeClosedInterval(55, 95),
                 1,
                 0
             )
@@ -51,12 +51,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(55, 58),
+                TBlockRange64::MakeClosedInterval(55, 58),
                 0
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64(55, 58),
+                TBlockRange64::MakeClosedInterval(55, 58),
                 1,
                 0
             )
@@ -64,12 +64,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(15, 29),
+                TBlockRange64::MakeClosedInterval(15, 29),
                 2
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64(55, 95),
+                TBlockRange64::MakeClosedInterval(55, 95),
                 3,
                 0
             )
@@ -77,12 +77,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(20, 35),
+                TBlockRange64::MakeClosedInterval(20, 35),
                 0
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64(55, 95),
+                TBlockRange64::MakeClosedInterval(55, 95),
                 3,
                 1
             )
@@ -90,12 +90,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(20, 29),
+                TBlockRange64::MakeClosedInterval(20, 29),
                 1
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64(55, 95),
+                TBlockRange64::MakeClosedInterval(55, 95),
                 3,
                 2
             )
@@ -103,12 +103,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(0, 341),
+                TBlockRange64::MakeClosedInterval(0, 341),
                 0
             ),
             ConvertToRelativeBlockRange(
                 2,
-                TBlockRange64(0, 1023),
+                TBlockRange64::MakeClosedInterval(0, 1023),
                 3,
                 0
             )
@@ -116,12 +116,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(0, 341),
+                TBlockRange64::MakeClosedInterval(0, 341),
                 1
             ),
             ConvertToRelativeBlockRange(
                 2,
-                TBlockRange64(0, 1023),
+                TBlockRange64::MakeClosedInterval(0, 1023),
                 3,
                 1
             )
@@ -129,12 +129,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
 
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64(0, 339),
+                TBlockRange64::MakeClosedInterval(0, 339),
                 2
             ),
             ConvertToRelativeBlockRange(
                 2,
-                TBlockRange64(0, 1023),
+                TBlockRange64::MakeClosedInterval(0, 1023),
                 3,
                 2
             )
@@ -158,7 +158,7 @@ Y_UNIT_TEST_SUITE(TStripeTest)
             1,
             CalculateRequestCount(
                 10,
-                TBlockRange64(55, 58),
+                TBlockRange64::MakeClosedInterval(55, 58),
                 3
             )
         );
@@ -167,7 +167,7 @@ Y_UNIT_TEST_SUITE(TStripeTest)
             2,
             CalculateRequestCount(
                 10,
-                TBlockRange64(55, 68),
+                TBlockRange64::MakeClosedInterval(55, 68),
                 3
             )
         );
@@ -176,7 +176,7 @@ Y_UNIT_TEST_SUITE(TStripeTest)
             3,
             CalculateRequestCount(
                 10,
-                TBlockRange64(55, 550),
+                TBlockRange64::MakeClosedInterval(55, 550),
                 3
             )
         );

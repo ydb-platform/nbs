@@ -10,14 +10,14 @@ Y_UNIT_TEST_SUITE(TMergeTest)
 {
     Y_UNIT_TEST(ShouldCorrectlyMergeStripedBitMaskSinglePartition)
     {
-        const TBlockRange64 originalRange(0, 5);
+        const auto originalRange = TBlockRange64::WithLength(0, 6);
         const ui32 blocksPerStripe = 2;
         const ui32 partitionsCount = 1;
 
         TString dstMask;
         MergeStripedBitMask(
             originalRange,
-            TBlockRange64(0, 5),
+            TBlockRange64::WithLength(0, 6),
             blocksPerStripe,
             partitionsCount,
             0,  // partitionId
@@ -30,7 +30,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
 
     Y_UNIT_TEST(ShouldCorrectlyMergeStripedBitMaskMultiPartition)
     {
-        const TBlockRange64 originalRange(0, 10);
+        const auto originalRange = TBlockRange64::WithLength(0, 11);
         const ui32 blocksPerStripe = 2;
         const ui32 partitionsCount = 3;
 
@@ -44,7 +44,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
             TString dstMask;
             MergeStripedBitMask(
                 originalRange,
-                TBlockRange64(0, 3),
+                TBlockRange64::WithLength(0, 4),
                 blocksPerStripe,
                 partitionsCount,
                 0,  // partitionId
@@ -61,7 +61,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
             TString dstMask;
             MergeStripedBitMask(
                 originalRange,
-                TBlockRange64(0, 3),
+                TBlockRange64::WithLength(0, 4),
                 blocksPerStripe,
                 partitionsCount,
                 1,  // partitionId
@@ -78,7 +78,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
             TString dstMask;
             MergeStripedBitMask(
                 originalRange,
-                TBlockRange64(0, 2),
+                TBlockRange64::WithLength(0, 3),
                 blocksPerStripe,
                 partitionsCount,
                 2,  // partitionId
@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
             TString dstMask;
             MergeStripedBitMask(
                 originalRange,
-                TBlockRange64(0, 3),
+                TBlockRange64::WithLength(0, 4),
                 blocksPerStripe,
                 partitionsCount,
                 0,  // partitionId
@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
             // from part 1
             MergeStripedBitMask(
                 originalRange,
-                TBlockRange64(0, 3),
+                TBlockRange64::WithLength(0, 4),
                 blocksPerStripe,
                 partitionsCount,
                 1,  // partitionId
@@ -117,7 +117,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
             // from part 2
             MergeStripedBitMask(
                 originalRange,
-                TBlockRange64(0, 2),
+                TBlockRange64::WithLength(0, 3),
                 blocksPerStripe,
                 partitionsCount,
                 2,  // partitionId
