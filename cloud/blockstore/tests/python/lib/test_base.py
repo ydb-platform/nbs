@@ -26,6 +26,12 @@ from cloud.blockstore.public.sdk.python.client.error import ClientError
 from cloud.blockstore.public.sdk.python.client.error_codes import EFacility
 
 
+def get_restart_interval():
+    if common.context.sanitize is not None:
+        return 30
+    return 15
+
+
 def thread_count():
     return int(common.get_param("threads", 2))
 
