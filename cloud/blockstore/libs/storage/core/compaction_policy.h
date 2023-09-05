@@ -86,6 +86,11 @@ struct ICompactionPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 GetMaxBlobsPerRange(
+    const NProto::TPartitionConfig& partitionConfig,
+    const TStorageConfig& storageConfig,
+    const ui32 siblingCount);
+
 ICompactionPolicyPtr BuildDefaultCompactionPolicy(ui32 compactionThreshold);
 
 struct TLoadOptimizationCompactionPolicyConfig

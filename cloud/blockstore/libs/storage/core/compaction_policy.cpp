@@ -139,6 +139,27 @@ struct TLoadOptimizationPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 GetMaxBlobsPerRange(
+    const NProto::TPartitionConfig& partitionConfig,
+    const TStorageConfig& storageConfig,
+    const ui32 siblingCount)
+{
+    auto maxBlobsPerRange = IntegerCast<ui32>(
+        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
+            ? partitionConfig.GetTabletVersion() == 2
+                ? storageConfig.GetSSDV2MaxBlobsPerRange()
+                : storageConfig.GetSSDMaxBlobsPerRange()
+            : partitionConfig.GetTabletVersion() == 2
+                ? storageConfig.GetHDDV2MaxBlobsPerRange()
+                : storageConfig.GetHDDMaxBlobsPerRange()
+    );
+
+    maxBlobsPerRange = Max(maxBlobsPerRange / siblingCount, 1u);
+    return maxBlobsPerRange;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 ICompactionPolicyPtr BuildDefaultCompactionPolicy(ui32 compactionThreshold)
 {
     return std::make_shared<TDefaultPolicy>(compactionThreshold);
@@ -153,10 +174,8 @@ ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
 TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 siblingCount)
+    const ui32 maxBlobsPerRange)
 {
-    Y_VERIFY(siblingCount > 0);
-
     const auto blockSize = partitionConfig.GetBlockSize();
     const auto maxBlocksInBlob = partitionConfig.GetMaxBlocksInBlob()
         ? partitionConfig.GetMaxBlocksInBlob()
@@ -184,16 +203,6 @@ TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyCon
             : storageConfig.GetRealHDDUnitWriteBandwidth() * 1_MB
     );
 
-    const auto maxBlobsPerRange = IntegerCast<ui32>(
-        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
-            ? partitionConfig.GetTabletVersion() == 2
-                ? storageConfig.GetSSDV2MaxBlobsPerRange()
-                : storageConfig.GetSSDMaxBlobsPerRange()
-            : partitionConfig.GetTabletVersion() == 2
-                ? storageConfig.GetHDDV2MaxBlobsPerRange()
-                : storageConfig.GetHDDMaxBlobsPerRange()
-    );
-
     return {
         maxBlocksInBlob * blockSize,
         blockSize,
@@ -201,7 +210,7 @@ TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyCon
         maxReadBandwidth,
         maxWriteIops,
         maxWriteBandwidth,
-        Max(maxBlobsPerRange / siblingCount, 1u)
+        maxBlobsPerRange
     };
 }
 
@@ -210,6 +219,13 @@ ICompactionPolicyPtr BuildCompactionPolicy(
     const TStorageConfig& storageConfig,
     const ui32 siblingCount)
 {
+    Y_VERIFY(siblingCount > 0);
+
+    const auto maxBlobsPerRange = GetMaxBlobsPerRange(
+        partitionConfig,
+        storageConfig,
+        siblingCount);
+
     NProto::ECompactionType ct = NProto::ECompactionType::CT_DEFAULT;
     switch (partitionConfig.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
@@ -229,9 +245,7 @@ ICompactionPolicyPtr BuildCompactionPolicy(
 
     switch (ct) {
         case NProto::ECompactionType::CT_DEFAULT: {
-            return BuildDefaultCompactionPolicy(
-                storageConfig.GetCompactionThreshold()
-            );
+            return BuildDefaultCompactionPolicy(maxBlobsPerRange);
         }
 
         case NProto::ECompactionType::CT_LOAD: {
@@ -239,7 +253,7 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                 BuildLoadOptimizationCompactionPolicyConfig(
                     partitionConfig,
                     storageConfig,
-                    siblingCount
+                    maxBlobsPerRange
                 )
             );
         }

@@ -83,7 +83,7 @@ message TStorageServiceConfig
     // optional uint32 MaxFreshBlocks = 8; // obsolete
 
     // Number of overlapped blobs.
-    optional uint32 CompactionThreshold = 9;
+    // optional uint32 CompactionThreshold = 9; // obsolete
 
     // Number of blobs queued for cleanup.
     optional uint32 CleanupThreshold = 10;
@@ -389,7 +389,7 @@ message TStorageServiceConfig
     // Volume mount history duration.
     optional uint32 VolumeHistoryDuration = 148;    // in ms
 
-    // CompactionThreshold analogues for CT_LOAD compaction policy.
+    // Number of maximum blob count per range.
     optional uint32 SSDMaxBlobsPerRange = 149;
     optional uint32 HDDMaxBlobsPerRange = 150;
 

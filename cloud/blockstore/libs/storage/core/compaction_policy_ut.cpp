@@ -119,7 +119,7 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         auto config = BuildLoadOptimizationCompactionPolicyConfig(
             partitionConfig,
             storageConfig,
-            siblingCount
+            66 / 2 // maxBlobsPerRange
         );
 
         UNIT_ASSERT_VALUES_EQUAL(2222, config.MaxReadIops);
@@ -137,7 +137,7 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         config = BuildLoadOptimizationCompactionPolicyConfig(
             partitionConfig,
             storageConfig,
-            siblingCount
+            44 / 2 // maxBlobsPerRange
         );
         UNIT_ASSERT_VALUES_EQUAL(222, config.MaxReadIops);
         UNIT_ASSERT_VALUES_EQUAL(22_MB, config.MaxReadBandwidth);
@@ -150,23 +150,23 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         partitionConfig.SetTabletVersion(2);
         partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        config = BuildLoadOptimizationCompactionPolicyConfig(
+        auto maxBlobsPerRange = GetMaxBlobsPerRange(
             partitionConfig,
             storageConfig,
             siblingCount
         );
 
-        UNIT_ASSERT_VALUES_EQUAL(3, config.MaxBlobsPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(3, maxBlobsPerRange);
 
         partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_HYBRID);
 
-        config = BuildLoadOptimizationCompactionPolicyConfig(
+        maxBlobsPerRange = GetMaxBlobsPerRange(
             partitionConfig,
             storageConfig,
             siblingCount
         );
 
-        UNIT_ASSERT_VALUES_EQUAL(2, config.MaxBlobsPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(2, maxBlobsPerRange);
     }
 }
 

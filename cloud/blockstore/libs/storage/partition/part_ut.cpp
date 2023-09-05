@@ -2741,7 +2741,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         static constexpr ui32 compactionThreshold = 4;
 
         auto config = DefaultConfig();
-        config.SetCompactionThreshold(compactionThreshold);
+        config.SetSSDMaxBlobsPerRange(compactionThreshold);
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2815,7 +2816,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         static constexpr ui32 compactionThreshold = 4;
 
         auto config = DefaultConfig();
-        config.SetCompactionThreshold(compactionThreshold);
+        config.SetSSDMaxBlobsPerRange(compactionThreshold);
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2855,7 +2857,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         static constexpr ui32 compactionThreshold = 4;
 
         auto config = DefaultConfig();
-        config.SetCompactionThreshold(compactionThreshold);
+        config.SetSSDMaxBlobsPerRange(compactionThreshold);
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
         config.SetMinCompactionDelay(10000);
         config.SetMaxCompactionDelay(10000);
         config.SetCompactionScoreHistorySize(1);
@@ -2947,7 +2950,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         static constexpr ui32 cleanupThreshold = 10;
 
         auto config = DefaultConfig();
-        config.SetCompactionThreshold(compactionThreshold);
+        config.SetSSDMaxBlobsPerRange(compactionThreshold);
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
         config.SetCleanupThreshold(cleanupThreshold);
         config.SetMinCompactionDelay(0);
         config.SetMaxCompactionDelay(999'999'999);
@@ -4098,7 +4102,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetCleanupThreshold(1);
         config.SetCollectGarbageThreshold(3);
-        config.SetCompactionThreshold(4);
+        config.SetSSDMaxBlobsPerRange(4);
+        config.SetHDDMaxBlobsPerRange(4);
         config.SetFlushThreshold(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
@@ -4130,7 +4135,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetCleanupThreshold(1);
         config.SetCollectGarbageThreshold(3);
-        config.SetCompactionThreshold(4);
+        config.SetSSDMaxBlobsPerRange(4);
+        config.SetHDDMaxBlobsPerRange(4);
         config.SetFlushThreshold(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
@@ -4165,7 +4171,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetCleanupThreshold(1);
-        config.SetCompactionThreshold(2);
+        config.SetSSDMaxBlobsPerRange(2);
+        config.SetHDDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(1);
         config.SetFlushThreshold(8_MB);
         config.SetWriteBlobThreshold(4_MB);
@@ -4219,7 +4226,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetCleanupThreshold(3);
-        config.SetCompactionThreshold(2);
+        config.SetHDDMaxBlobsPerRange(2);
+        config.SetSSDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(3);
         config.SetFlushThreshold(8_MB);
         config.SetWriteBlobThreshold(4_MB);
@@ -4730,7 +4738,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);   // disable FreshBlocks
-        config.SetCompactionThreshold(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetHDDMaxBlobsPerRange(999);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -4822,7 +4831,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         config.SetWriteBlobThreshold(1);   // disable FreshBlocks
         config.SetIncrementalCompactionEnabled(true);
-        config.SetCompactionThreshold(4);
+        config.SetHDDMaxBlobsPerRange(4);
+        config.SetSSDMaxBlobsPerRange(4);
         config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(64_KB);
 
@@ -4955,7 +4965,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_GB);   // everything goes to fresh
         config.SetIncrementalCompactionEnabled(true);
-        config.SetCompactionThreshold(999);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
         config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(1);
 
@@ -5013,7 +5024,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);    // disabling fresh
         config.SetIncrementalCompactionEnabled(true);
-        config.SetCompactionThreshold(999);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
         config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(1);
 
@@ -8327,7 +8339,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(1_MB);
         config.SetBatchCompactionEnabled(true);
         config.SetCompactionRangeCountPerRun(3);
-        config.SetCompactionThreshold(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetHDDMaxBlobsPerRange(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetCompactionRangeGarbageThreshold(999);
         auto runtime = PrepareTestActorRuntime(
@@ -8424,7 +8437,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBlobPatchingEnabled(true);
-        config.SetCompactionThreshold(999);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetCompactionRangeGarbageThreshold(999);
         auto runtime = PrepareTestActorRuntime(
@@ -8509,7 +8523,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBlobPatchingEnabled(true);
-        config.SetCompactionThreshold(999);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetCompactionRangeGarbageThreshold(999);
         config.SetMaxDiffPercentageForBlobPatching(75);
@@ -8599,7 +8614,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBlobPatchingEnabled(true);
-        config.SetCompactionThreshold(999);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetCompactionRangeGarbageThreshold(999);
         auto runtime = PrepareTestActorRuntime(
@@ -9518,7 +9534,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBlobPatchingEnabled(true);
-        config.SetCompactionThreshold(999);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetCompactionRangeGarbageThreshold(999);
         auto runtime = PrepareTestActorRuntime(
@@ -9598,7 +9615,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetBlobPatchingEnabled(true);
         config.SetWriteBlobThreshold(1);   // disable FreshBlocks
         config.SetIncrementalCompactionEnabled(true);
-        config.SetCompactionThreshold(4);
+        config.SetHDDMaxBlobsPerRange(4);
+        config.SetSSDMaxBlobsPerRange(4);
         config.SetMaxSkippedBlobsDuringCompaction(1);
         config.SetTargetCompactionBytesPerOp(64_KB);
         auto runtime = PrepareTestActorRuntime(

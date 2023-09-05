@@ -1414,7 +1414,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetWriteRequestBatchingEnabled(true);
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetWriteBlobThreshold(200_KB); // increasing the chance of batching
@@ -1885,7 +1886,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         static constexpr ui32 compactionThreshold = 4;
 
         auto config = DefaultConfig();
-        config.SetCompactionThreshold(compactionThreshold);
+        config.SetHDDV2MaxBlobsPerRange(compactionThreshold);
+        config.SetSSDV2MaxBlobsPerRange(compactionThreshold);
         config.SetCompactionGarbageThreshold(100);  // disabling garbage-based compaction
 
         auto runtime = PrepareTestActorRuntime(config, 1024 * (compactionThreshold + 1));
@@ -1923,7 +1925,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         static constexpr ui32 compactionThreshold = 4;
 
         auto config = DefaultConfig();
-        config.SetCompactionThreshold(compactionThreshold);
+        config.SetHDDV2MaxBlobsPerRange(compactionThreshold);
+        config.SetSSDV2MaxBlobsPerRange(compactionThreshold);
         config.SetCompactionGarbageThreshold(100);  // disabling garbage-based compaction
 
         auto runtime = PrepareTestActorRuntime(config, 1024 * (compactionThreshold + 1));
@@ -2018,7 +2021,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetTargetCompactionBytesPerOp(512_KB);
         // disabling automatic compaction and cleanup
         config.SetHDDCompactionType(NProto::CT_DEFAULT);
-        config.SetCompactionThreshold(999);
+        config.SetHDDV2MaxBlobsPerRange(999);
+        config.SetSSDV2MaxBlobsPerRange(999);
         config.SetCompactionGarbageThreshold(999);
         config.SetUpdateBlobsThreshold(999999);
         // disabling fresh blocks
@@ -2710,7 +2714,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetEnableConversionIntoMixedIndexV2(true);
-        config.SetCompactionThreshold(999999);
+        config.SetSSDV2MaxBlobsPerRange(999999);
+        config.SetHDDV2MaxBlobsPerRange(999999);
         config.SetUpdateBlobsThreshold(999999);
         config.SetCompactionGarbageThreshold(999999);
         config.SetHotZoneRequestCountFactor(1);
@@ -2848,7 +2853,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetUpdateBlobsThreshold(999999);
-        config.SetCompactionThreshold(999999);
+        config.SetSSDV2MaxBlobsPerRange(999999);
+        config.SetHDDV2MaxBlobsPerRange(999999);
         config.SetCompactionGarbageThreshold(999999);
         config.SetFlushThreshold(1_GB);
         auto runtime = PrepareTestActorRuntime(config);
@@ -4653,7 +4659,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetCollectGarbageThreshold(999999);
-        config.SetCompactionThreshold(999999);
+        config.SetSSDV2MaxBlobsPerRange(999999);
+        config.SetHDDV2MaxBlobsPerRange(999999);
         config.SetCompactionGarbageThreshold(999999);
         config.SetDontEnqueueCollectGarbageUponPartitionStartup(true);
 
@@ -4751,7 +4758,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetCollectGarbageThreshold(999999);
-        config.SetCompactionThreshold(999999);
+        config.SetSSDV2MaxBlobsPerRange(999999);
+        config.SetHDDV2MaxBlobsPerRange(999999);
         config.SetCompactionGarbageThreshold(999999);
         config.SetUpdateBlobsThreshold(999999);
         config.SetDontEnqueueCollectGarbageUponPartitionStartup(true);
@@ -5226,7 +5234,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
@@ -6033,7 +6042,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -6159,7 +6169,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -6210,7 +6221,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -6569,7 +6581,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
 
         const ui32 zoneBlockCount = 60;
@@ -6657,7 +6670,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
         config.SetFlushThreshold(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
-        config.SetCompactionThreshold(999999); // disabling compaction
+        config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
+        config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
 
         auto runtime = PrepareTestActorRuntime(config);
