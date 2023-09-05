@@ -119,6 +119,7 @@ struct TTestEnv
             ioMode,
             "test",
             DefaultBlockSize,
+            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
             VolumeActorId,
             false, // muteIOErrors
             false, // markBlocksUsed

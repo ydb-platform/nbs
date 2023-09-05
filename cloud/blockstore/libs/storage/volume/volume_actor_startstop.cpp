@@ -163,6 +163,8 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
         State->GetMeta().GetIOMode(),
         State->GetDiskId(),
         State->GetMeta().GetConfig().GetBlockSize(),
+        TNonreplicatedPartitionConfig::TVolumeInfo{
+            TInstant::MicroSeconds(volumeConfig.GetCreationTs())},
         SelfId(),
         State->GetMeta().GetMuteIOErrors(),
         State->GetTrackUsedBlocks(),

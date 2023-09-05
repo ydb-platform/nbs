@@ -45,11 +45,19 @@ struct TDeviceRequest
 
 class TNonreplicatedPartitionConfig
 {
+public:
+    // volume info that doesn't directly affect I/O processing
+    struct TVolumeInfo
+    {
+        TInstant CreationTs;
+    };
+
 private:
     TDevices Devices;
     const NProto::EVolumeIOMode IOMode;
     const TString Name;
     const ui32 BlockSize;
+    const TVolumeInfo VolumeInfo;
     const NActors::TActorId ParentActorId;
     const bool MuteIOErrors;
     const bool MarkBlocksUsed;
@@ -66,6 +74,7 @@ public:
             NProto::EVolumeIOMode ioMode,
             TString name,
             ui32 blockSize,
+            TVolumeInfo volumeInfo,
             NActors::TActorId parentActorId,
             bool muteIOErrors,
             bool markBlocksUsed,
@@ -77,6 +86,7 @@ public:
         , IOMode(ioMode)
         , Name(std::move(name))
         , BlockSize(blockSize)
+        , VolumeInfo(volumeInfo)
         , ParentActorId(std::move(parentActorId))
         , MuteIOErrors(muteIOErrors)
         , MarkBlocksUsed(markBlocksUsed)
@@ -109,6 +119,7 @@ public:
             IOMode,
             Name,
             BlockSize,
+            VolumeInfo,
             ParentActorId,
             MuteIOErrors,
             false,  // markBlocksUsed
@@ -157,6 +168,11 @@ public:
     auto GetBlockSize() const
     {
         return BlockSize;
+    }
+
+    const auto& GetVolumeInfo() const
+    {
+        return VolumeInfo;
     }
 
     const auto& GetParentActorId() const

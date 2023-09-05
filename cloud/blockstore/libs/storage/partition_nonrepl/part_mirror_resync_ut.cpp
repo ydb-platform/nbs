@@ -259,6 +259,7 @@ struct TTestEnv
             NProto::VOLUME_IO_OK,
             "test",
             BlockSize,
+            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
             VolumeActorId,
             false, // muteIOErrors
             markBlocksUsed,

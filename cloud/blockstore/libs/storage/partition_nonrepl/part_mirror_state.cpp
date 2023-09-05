@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <util/datetime/base.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -34,10 +35,14 @@ TMirrorPartitionState::TMirrorPartitionState(
     }
 
     if (freshDeviceCount != partConfig->GetFreshDeviceIds().size()) {
-        ReportFreshDeviceNotFoundInConfig(TStringBuilder()
-            << "Fresh device count mismatch: " << freshDeviceCount
-            << " != " << partConfig->GetFreshDeviceIds().size()
-            << " for disk " << partConfig->GetName());
+        // XXX needed to mute crit events for old disks after NBS-4383
+        const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
+        if (partConfig->GetVolumeInfo().CreationTs > oldDate) {
+            ReportFreshDeviceNotFoundInConfig(TStringBuilder()
+                << "Fresh device count mismatch: " << freshDeviceCount
+                << " != " << partConfig->GetFreshDeviceIds().size()
+                << " for disk " << partConfig->GetName());
+        }
     }
 }
 

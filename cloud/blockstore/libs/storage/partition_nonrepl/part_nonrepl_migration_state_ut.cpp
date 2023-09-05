@@ -58,6 +58,7 @@ struct TEnv
             NProto::VOLUME_IO_OK,
             "vol0",
             4_KB,
+            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
             NActors::TActorId(),
             false, // muteIOErrors
             false, // markBlocksUsed
@@ -95,6 +96,7 @@ struct TEnv
             NProto::VOLUME_IO_OK,
             "vol0",
             4_KB,
+            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
             NActors::TActorId(),
             false, // muteIOErrors
             false, // markBlocksUsed
