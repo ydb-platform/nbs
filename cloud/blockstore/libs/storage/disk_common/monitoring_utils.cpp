@@ -30,8 +30,8 @@ IOutputStream& DumpDiskState(
     switch (state) {
         case NProto::DISK_STATE_ONLINE:
             return out << "<font color=green>online</font>";
-        case NProto::DISK_STATE_MIGRATION:
-            return out << "<font color=blue>migration</font>";
+        case NProto::DISK_STATE_WARNING:
+            return out << "<font color=blue>warning/migration</font>";
         case NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE:
             return out << "temporarily unavailable";
         case NProto::DISK_STATE_ERROR:

@@ -281,7 +281,7 @@ void TNotificationSystem::OnDiskStateChanged(
     diskState.SetDiskId(diskId);
     diskState.SetState(newState);
 
-    if (newState == NProto::DISK_STATE_MIGRATION) {
+    if (newState == NProto::DISK_STATE_WARNING) {
         diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
     }
 

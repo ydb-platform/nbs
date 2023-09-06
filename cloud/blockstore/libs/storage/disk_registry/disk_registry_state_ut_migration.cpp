@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
                 const auto& update = state.GetDiskStateUpdates().back();
 
-                UNIT_ASSERT_DISK_STATE(diskIds[i], DISK_STATE_MIGRATION, update);
+                UNIT_ASSERT_DISK_STATE(diskIds[i], DISK_STATE_WARNING, update);
             }
         });
 
@@ -265,7 +265,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_MIGRATION, update)
+            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_WARNING, update)
         });
 
         {
@@ -504,7 +504,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
             UNIT_ASSERT_VALUES_EQUAL(
-                NProto::EDiskState_Name(NProto::DISK_STATE_MIGRATION),
+                NProto::EDiskState_Name(NProto::DISK_STATE_WARNING),
                 NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
         });
 

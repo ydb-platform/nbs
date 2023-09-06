@@ -27,7 +27,7 @@
           "40f2fb197c93049012a0d06dbd8f371b"
         ],
         "BlockSize": 4096,
-        "State": "DISK_STATE_MIGRATION",
+        "State": "DISK_STATE_WARNING",
         "StateTs": "1673622375118772",
         "Migrations": [
           {
@@ -226,7 +226,7 @@
           "3d7eb64aa22571393cd388c91593f50f"
         ],
         "BlockSize": 4096,
-        "State": "DISK_STATE_MIGRATION",
+        "State": "DISK_STATE_WARNING",
         "StateTs": "1673622372729009",
         "Migrations": [
           {

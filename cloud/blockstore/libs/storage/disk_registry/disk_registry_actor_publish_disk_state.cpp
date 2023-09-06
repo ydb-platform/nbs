@@ -17,7 +17,7 @@ namespace {
 NProto::TDiskState OverrideDiskState(NProto::TDiskState state)
 {
     switch (state.GetState()) {
-        case NProto::DISK_STATE_MIGRATION:
+        case NProto::DISK_STATE_WARNING:
             state.SetState(NProto::DISK_STATE_ONLINE);
             break;
         case NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE:

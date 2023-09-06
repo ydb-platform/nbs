@@ -47,7 +47,13 @@ struct TDiskRegistrySelfCounters
     TCounterPtr AgentsInWarningState;
     TCounterPtr AgentsInUnavailableState;
     TCounterPtr DisksInOnlineState;
+
+    TCounterPtr DisksInWarningState;
+    TCounterPtr MaxWarningTime;
+    // XXX for backward compat with alerts
     TCounterPtr DisksInMigrationState;
+    TCounterPtr MaxMigrationTime;
+
     TCounterPtr DevicesInMigrationState;
     TCounterPtr DisksInTemporarilyUnavailableState;
     TCounterPtr DisksInErrorState;
@@ -61,7 +67,6 @@ struct TDiskRegistrySelfCounters
     TCounterPtr Mirror3DisksMinus1;
     TCounterPtr Mirror3DisksMinus2;
     TCounterPtr Mirror3DisksMinus3;
-    TCounterPtr MaxMigrationTime;
     TCounterPtr PlacementGroupsWithRecentlyBrokenSingleDisk;
     TCounterPtr PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks;
     TCounterPtr PlacementGroupsWithBrokenSingleDisk;

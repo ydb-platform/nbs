@@ -457,7 +457,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
                 NProto::TDiskState state;
 
                 state.SetDiskId("disk-" + ToString(i));
-                state.SetState(NProto::DISK_STATE_MIGRATION);
+                state.SetState(NProto::DISK_STATE_WARNING);
                 state.SetStateMessage("msg-" + ToString(i));
                 db.UpdateDiskState(state, seqNo++);
                 db.WriteLastDiskStateSeqNo(seqNo);
@@ -475,7 +475,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL("disk-" + ToString(i), state.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL("msg-" + ToString(i), state.GetStateMessage());
                 UNIT_ASSERT_EQUAL(
-                    NProto::DISK_STATE_MIGRATION,
+                    NProto::DISK_STATE_WARNING,
                     state.GetState());
             }
         });

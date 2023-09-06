@@ -61,7 +61,7 @@ NProto::EDiskState ToDiskState(NProto::EAgentState agentState)
     case NProto::AGENT_STATE_ONLINE:
         return NProto::DISK_STATE_ONLINE;
     case NProto::AGENT_STATE_WARNING:
-        return NProto::DISK_STATE_MIGRATION;
+        return NProto::DISK_STATE_WARNING;
     case NProto::AGENT_STATE_UNAVAILABLE:
         return NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE;
     default:
@@ -76,7 +76,7 @@ NProto::EDiskState ToDiskState(NProto::EDeviceState deviceState)
     case NProto::DEVICE_STATE_ONLINE:
         return NProto::DISK_STATE_ONLINE;
     case NProto::DEVICE_STATE_WARNING:
-        return NProto::DISK_STATE_MIGRATION;
+        return NProto::DISK_STATE_WARNING;
     case NProto::DEVICE_STATE_ERROR:
         return NProto::DISK_STATE_ERROR;
     default:
@@ -3205,7 +3205,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     ui32 agentsInWarningState = 0;
     ui32 agentsInUnavailableState = 0;
     ui32 disksInOnlineState = 0;
-    ui32 disksInMigrationState = 0;
+    ui32 disksInWarningState = 0;
     ui32 disksInTemporarilyUnavailableState = 0;
     ui32 disksInErrorState = 0;
     ui32 placementGroups = 0;
@@ -3352,7 +3352,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     allocatedDisks = Disks.size();
 
-    TDuration maxMigrationTime;
+    TDuration maxWarningTime;
 
     for (const auto& [_, disk]: Disks) {
         switch (disk.State) {
@@ -3360,10 +3360,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                 ++disksInOnlineState;
                 break;
             }
-            case NProto::DISK_STATE_MIGRATION: {
-                ++disksInMigrationState;
+            case NProto::DISK_STATE_WARNING: {
+                ++disksInWarningState;
 
-                maxMigrationTime = std::max(maxMigrationTime, now - disk.StateTs);
+                maxWarningTime = std::max(maxWarningTime, now - disk.StateTs);
 
                 break;
             }
@@ -3413,7 +3413,13 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.AgentsInWarningState->Set(agentsInWarningState);
     SelfCounters.AgentsInUnavailableState->Set(agentsInUnavailableState);
     SelfCounters.DisksInOnlineState->Set(disksInOnlineState);
-    SelfCounters.DisksInMigrationState->Set(disksInMigrationState);
+
+    SelfCounters.DisksInWarningState->Set(disksInWarningState);
+    SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
+    // XXX for backward compat with alerts
+    SelfCounters.DisksInMigrationState->Set(disksInWarningState);
+    SelfCounters.MaxMigrationTime->Set(maxWarningTime.Seconds());
+
     SelfCounters.DevicesInMigrationState->Set(
         DeviceMigrationsInProgress + Migrations.size());
     SelfCounters.DisksInTemporarilyUnavailableState->Set(
@@ -3422,7 +3428,6 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.PlacementGroups->Set(placementGroups);
     SelfCounters.FullPlacementGroups->Set(fullPlacementGroups);
     SelfCounters.AllocatedDisksInGroups->Set(allocatedDisksInGroups);
-    SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
 
     SelfCounters.MeanTimeBetweenFailures->Set(
         TimeBetweenFailures.GetBrokenCount()
@@ -3468,7 +3473,6 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.Mirror3DisksMinus1->Set(replicaCountStats.Mirror3DiskMinus1);
     SelfCounters.Mirror3DisksMinus2->Set(replicaCountStats.Mirror3DiskMinus2);
     SelfCounters.Mirror3DisksMinus3->Set(replicaCountStats.Mirror3DiskMinus3);
-    SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
 
     SelfCounters.AutomaticallyReplacedDevices->Set(
         AutomaticallyReplacedDevices.size());

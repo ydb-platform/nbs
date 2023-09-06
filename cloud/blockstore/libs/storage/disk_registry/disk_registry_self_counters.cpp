@@ -22,7 +22,12 @@ void TDiskRegistrySelfCounters::Init(
     AgentsInWarningState = counters->GetCounter("AgentsInWarningState");
     AgentsInUnavailableState = counters->GetCounter("AgentsInUnavailableState");
     DisksInOnlineState = counters->GetCounter("DisksInOnlineState");
+
+    DisksInWarningState = counters->GetCounter("DisksInWarningState");
+    MaxWarningTime = counters->GetCounter("MaxWarningTime");
     DisksInMigrationState = counters->GetCounter("DisksInMigrationState");
+    MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
+
     DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");
     DisksInTemporarilyUnavailableState = counters->GetCounter("DisksInTemporarilyUnavailableState");
     DisksInErrorState = counters->GetCounter("DisksInErrorState");
@@ -36,7 +41,6 @@ void TDiskRegistrySelfCounters::Init(
     Mirror3DisksMinus1 = counters->GetCounter("Mirror3DisksMinus1");
     Mirror3DisksMinus2 = counters->GetCounter("Mirror3DisksMinus2");
     Mirror3DisksMinus3 = counters->GetCounter("Mirror3DisksMinus3");
-    MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
     PlacementGroupsWithRecentlyBrokenSingleDisk =
         counters->GetCounter("PlacementGroupsWithRecentlyBrokenSingleDisk");
     PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks =

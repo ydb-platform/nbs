@@ -3409,8 +3409,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             Sort(updates, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, updates[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, updates[1]);
 
             UNIT_ASSERT_VALUES_UNEQUAL(updates[0].SeqNo, updates[1].SeqNo);
             lastSeqNo = std::max(updates[0].SeqNo, updates[1].SeqNo);
@@ -3676,7 +3676,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
             UNIT_ASSERT_VALUES_EQUAL(0, update.SeqNo);
         });
 
@@ -3759,7 +3759,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, update);
             UNIT_ASSERT_VALUES_EQUAL(1, update.SeqNo);
         });
 
@@ -3822,7 +3822,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, update);
             UNIT_ASSERT_VALUES_EQUAL(3, update.SeqNo);
         });
 
@@ -4029,9 +4029,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(3, updates.size());
             Sort(updates, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, updates[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
-            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_MIGRATION, updates[2]);
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_WARNING, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_WARNING, updates[2]);
         });
 
         // uuid-2.2 : online -> error
@@ -4361,9 +4361,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             };
             Sort(updates, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, updates[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
-            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_MIGRATION, updates[2]);
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_WARNING, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-4", DISK_STATE_WARNING, updates[2]);
         });
 
         {
@@ -5534,8 +5534,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             auto updates = state.GetDiskStateUpdates();
             Sort(updates, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, updates[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, updates[1]);
 
             UNIT_ASSERT_VALUES_UNEQUAL(updates[0].SeqNo, updates[1].SeqNo);
             lastSeqNo = std::max(updates[0].SeqNo, updates[1].SeqNo);
@@ -5721,8 +5721,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             };
             Sort(updates, TByDiskId());
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, updates[0]);
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, updates[1]);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, updates[0]);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, updates[1]);
         });
 
         ts += storageConfig->GetNonReplicatedInfraTimeout() / 2;
@@ -5817,7 +5817,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-3", DISK_STATE_WARNING, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -5936,7 +5936,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         proto.SetNonReplicatedInfraTimeout(TDuration::Days(1).MilliSeconds());
         auto storageConfig = CreateStorageConfig(proto);
 
+        auto monitoring = CreateMonitoringServiceStub();
+        auto diskRegistryGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
+        auto disksInWarningState = diskRegistryGroup->GetCounter("DisksInWarningState");
+        auto maxWarningTime = diskRegistryGroup->GetCounter("MaxWarningTime");
+
         TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(diskRegistryGroup)
             .With(storageConfig)
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
@@ -6015,6 +6023,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-3.1", devices[0].GetDeviceUUID());
         });
 
+        const TDuration h = TDuration::Hours(1);
+        state.PublishCounters(ts + h);
+        UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
+
         /*
          *  Trying to start maintenance for one of the agents - maintenance
          *  should succeed since there will be no groups with more than 1
@@ -6047,6 +6060,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             auto migrations = state.BuildMigrationList();
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
         });
+
+        state.PublishCounters(ts + h);
+        UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(h.Seconds(), maxWarningTime->Val());
 
         /*
          *  Trying to start maintenance for another agent - maintenance should
@@ -6082,7 +6099,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
         });
 
-        ts += TDuration::Hours(1);
+        ts += h;
+
+        state.PublishCounters(ts + h);
+        UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL((h + h).Seconds(), maxWarningTime->Val());
 
         /*
          * What if agent 0 goes from WARNING to UNAVAILABLE?
@@ -6103,6 +6124,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
         });
+
+        state.PublishCounters(ts + h);
+        UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL((h + h).Seconds(), maxWarningTime->Val());
 
         /*
          *  Maintenance should still be unallowed for other agents.
@@ -6127,6 +6152,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
+
+        state.PublishCounters(ts + h);
+        UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL((h + h).Seconds(), maxWarningTime->Val());
 
         /*
          *  Maintenance should still be unallowed for other agents even after
@@ -6155,6 +6184,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
+        state.PublishCounters(ts);
+        UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            (h + storageConfig->GetNonReplicatedInfraTimeout()).Seconds(),
+            maxWarningTime->Val());
+
         /*
          *  Finally, after disk-1 gets deleted, maintenance should be allowed.
          */
@@ -6179,6 +6214,36 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
+
+        state.PublishCounters(ts);
+        UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            (h + storageConfig->GetNonReplicatedInfraTimeout()).Seconds(),
+            maxWarningTime->Val());
+
+        /*
+         * What if agent 1 goes from WARNING to UNAVAILABLE?
+         */
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            auto error = state.UpdateAgentState(
+                db,
+                agents[1].GetAgentId(),
+                NProto::AGENT_STATE_UNAVAILABLE,
+                ts,
+                "state message",
+                affectedDisks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+        });
+
+        state.PublishCounters(ts);
+        UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
     }
 
     Y_UNIT_TEST(ShouldNotBlockMaintenanceIfIrrelevantPlacementGroupIsBroken)
@@ -7196,7 +7261,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
             UNIT_ASSERT_VALUES_EQUAL(0, update.SeqNo);
         });
 
@@ -7354,7 +7419,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
         });
 
         {
@@ -7384,7 +7449,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-2", DISK_STATE_WARNING, update);
         });
 
         {
@@ -7488,7 +7553,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldTrackMaxMigrationTime)
+    Y_UNIT_TEST(ShouldTrackMaxWarningTime)
     {
         const TVector agents {
             AgentConfig(1, {
@@ -7510,8 +7575,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto diskRegistryGroup = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
+        auto disksInWarningState = diskRegistryGroup->GetCounter("DisksInWarningState");
         auto disksInMigrationState = diskRegistryGroup->GetCounter("DisksInMigrationState");
         auto devicesInMigrationState = diskRegistryGroup->GetCounter("DevicesInMigrationState");
+        auto maxWarningTime = diskRegistryGroup->GetCounter("MaxWarningTime");
         auto maxMigrationTime = diskRegistryGroup->GetCounter("MaxMigrationTime");
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
@@ -7558,7 +7625,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         };
 
         auto warnDevice = [&] (int i, TInstant timestamp) {
-            kickDevice(i, timestamp, NProto::DEVICE_STATE_WARNING, NProto::DISK_STATE_MIGRATION);
+            kickDevice(i, timestamp, NProto::DEVICE_STATE_WARNING, NProto::DISK_STATE_WARNING);
         };
 
         auto errorDevice = [&] (int i, TInstant timestamp) {
@@ -7570,8 +7637,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         };
 
         state.PublishCounters(TInstant::Zero());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
 
         auto disk1StartMigrationTs = TInstant::Seconds(100);
@@ -7584,22 +7653,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         auto now1 = TInstant::Seconds(1000);
         state.PublishCounters(now1);
+        UNIT_ASSERT_VALUES_EQUAL(3, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now1 - disk1StartMigrationTs).Seconds(),
-            maxMigrationTime->Val());
+            maxWarningTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
 
         // cancel migration for disk-3
         errorDevice(3, TInstant::Seconds(1100));
 
         auto now2 = TInstant::Seconds(2000);
         state.PublishCounters(now2);
+        UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now2 - disk1StartMigrationTs).Seconds(),
-            maxMigrationTime->Val());
+            maxWarningTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
 
         // restart migration for disk-1
         disk1StartMigrationTs = TInstant::Seconds(2300);
@@ -7609,28 +7682,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         auto now3 = TInstant::Seconds(3000);
         state.PublishCounters(now3);
+        UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now3 - disk2StartMigrationTs).Seconds(),
-            maxMigrationTime->Val());
+            maxWarningTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
 
         // cancel migration for disk-2
         errorDevice(2, TInstant::Seconds(3100));
 
         auto now4 = TInstant::Seconds(4000);
         state.PublishCounters(now4);
+        UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now4 - disk1StartMigrationTs).Seconds(),
-            maxMigrationTime->Val());
+            maxWarningTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
 
         // cancel migration for disk-1
         errorDevice(1, TInstant::Seconds(4100));
         state.PublishCounters(TInstant::Seconds(5000));
+        UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
     }
 
@@ -8113,7 +8192,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
         });
 
         // start migration
@@ -8192,9 +8271,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisks({
-                Disk("disk-1", {"uuid-1.1", "uuid-3.1"}, NProto::DISK_STATE_MIGRATION),
-                Disk("disk-2", {"uuid-1.2", "uuid-2.2"}, NProto::DISK_STATE_MIGRATION),
-                Disk("disk-3", {"uuid-2.1", "uuid-3.2"}, NProto::DISK_STATE_MIGRATION),
+                Disk("disk-1", {"uuid-1.1", "uuid-3.1"}, NProto::DISK_STATE_WARNING),
+                Disk("disk-2", {"uuid-1.2", "uuid-2.2"}, NProto::DISK_STATE_WARNING),
+                Disk("disk-3", {"uuid-2.1", "uuid-3.2"}, NProto::DISK_STATE_WARNING),
             })
             .Build();
 
@@ -8614,7 +8693,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8782,7 +8861,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -9016,7 +9095,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -9137,7 +9216,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
-            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_WARNING, update);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -9622,7 +9701,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         {
             TDiskInfo diskInfo;
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
-            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_MIGRATION, diskInfo.State);
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_WARNING, diskInfo.State);
         }
     }
 
@@ -10224,7 +10303,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, state->GetDiskStateUpdates().size());
             const auto& update = state->GetDiskStateUpdates().back();
 
-            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_MIGRATION, update);
+            UNIT_ASSERT_DISK_STATE("foo", DISK_STATE_WARNING, update);
 
             UNIT_ASSERT_VALUES_EQUAL(0, state->GetDirtyDevices().size());
         });

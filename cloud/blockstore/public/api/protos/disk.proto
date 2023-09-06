@@ -14,7 +14,7 @@ option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
 enum EDiskState
 {
     DISK_STATE_ONLINE = 0;
-    DISK_STATE_MIGRATION = 1;
+    DISK_STATE_WARNING = 1;
     DISK_STATE_TEMPORARILY_UNAVAILABLE = 2;
     DISK_STATE_ERROR = 3;
 }
