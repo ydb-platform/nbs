@@ -79,38 +79,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::EWaitMode ConvertWaitMode(NProto::EWaitMode mode)
-{
-    switch (mode) {
-        case NProto::WAIT_MODE_POLL:
-            return NRdma::EWaitMode::Poll;
-
-        case NProto::WAIT_MODE_BUSY_WAIT:
-            return NRdma::EWaitMode::BusyWait;
-
-        case NProto::WAIT_MODE_ADAPTIVE_WAIT:
-            return NRdma::EWaitMode::AdaptiveWait;;
-
-        default:
-            Y_FAIL("unsupported wait mode %d", mode);
-    }
-}
-
 NRdma::TClientConfigPtr CreateRdmaClientConfig(const TServerAppConfigPtr app)
 {
-    auto server = app->GetServerConfig();
-    auto config = std::make_shared<NRdma::TClientConfig>();
+    const auto& server = app->GetServerConfig();
 
     if (server->HasRdmaClientConfig()) {
-        auto client = server->GetRdmaClientConfig();
-
-        config->QueueSize = client.GetQueueSize();
-        config->MaxBufferSize = client.GetMaxBufferSize();
-        config->WaitMode = ConvertWaitMode(client.GetWaitMode());
-        config->PollerThreads = client.GetPollerThreads();
+        return std::make_shared<NRdma::TClientConfig>(server->GetRdmaClientConfig());
     };
 
-    return config;
+    return std::make_shared<NRdma::TClientConfig>();
 }
 
 }   // namespace

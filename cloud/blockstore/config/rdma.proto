@@ -20,10 +20,12 @@ message TRdmaServer
     uint32 Backlog = 1;
     uint32 QueueSize = 2;
     uint32 MaxBufferSize = 3;
-    uint64 KeepAliveTimeout = 4;    // in milliseconds
+    uint64 KeepAliveTimeout = 4;           // in milliseconds
     EWaitMode WaitMode = 5;
     uint32 PollerThreads = 6;
-    uint32 MaxInflightBytes = 7;    // per client
+    uint32 MaxInflightBytes = 7;           // per client
+    uint64 AdaptiveWaitSleepDelay = 8;     // in microseconds
+    uint64 AdaptiveWaitSleepDuration = 9;  // in microseconds
 }
 
 message TRdmaClient
@@ -32,6 +34,8 @@ message TRdmaClient
     uint32 MaxBufferSize = 2;
     uint32 PollerThreads = 3;
     EWaitMode WaitMode = 4;
+    uint64 AdaptiveWaitSleepDelay = 5;     // in microseconds
+    uint64 AdaptiveWaitSleepDuration = 6;  // in microseconds
 }
 
 message TRdmaTarget

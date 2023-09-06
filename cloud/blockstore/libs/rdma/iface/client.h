@@ -4,6 +4,8 @@
 
 #include "wait_mode.h"
 
+#include <cloud/blockstore/config/rdma.pb.h>
+
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -27,6 +29,12 @@ struct TClientConfig
     ui32 PollerThreads = 1;
     TDuration MaxReconnectDelay = TDuration::Seconds(60);
     TDuration MaxResponseDelay = TDuration::Seconds(60);
+    TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
+    TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
+
+    TClientConfig() = default;
+
+    TClientConfig(const NProto::TRdmaClient& config);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

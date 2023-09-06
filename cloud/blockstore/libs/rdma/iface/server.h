@@ -28,6 +28,8 @@ struct TServerConfig
     ui32 PollerThreads = 1;
     bool StrictValidation = false;
     ui64 MaxInflightBytes = Max<ui64>();
+    TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
+    TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
 
     TServerConfig() = default;
 

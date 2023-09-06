@@ -41,6 +41,8 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(WaitMode, Convert);
     SET(PollerThreads);
     SET(MaxInflightBytes);
+    SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
+    SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
 }
 
 #undef SET

@@ -1352,7 +1352,9 @@ private:
     template <EWaitMode WaitMode>
     void Execute()
     {
-        TAdaptiveWait aw;
+        TAdaptiveWait aw(
+            Config->AdaptiveWaitSleepDuration,
+            Config->AdaptiveWaitSleepDelay);
 
         while (!ShouldStop()) {
             if (WaitMode == EWaitMode::Poll) {

@@ -9,23 +9,16 @@ namespace NCloud::NBlockStore::NRdma {
 class TAdaptiveWait
 {
 private:
-    TDuration SleepTime;
-    TDuration WaitBeforeSleep;
+    TDuration SleepDuration;
+    TDuration SleepDelay;
     ui64 ResetCycles;
 
 public:
-    TAdaptiveWait() noexcept
-        : TAdaptiveWait(
-            TDuration::MicroSeconds(100),
-            TDuration::Seconds(5))
-    {
-    }
-
     TAdaptiveWait(
-            TDuration sleepTime,
-            TDuration waitBeforeSleep) noexcept
-        : SleepTime(sleepTime)
-        , WaitBeforeSleep(waitBeforeSleep)
+            TDuration sleepDuration,
+            TDuration sleepDelay) noexcept
+        : SleepDuration(sleepDuration)
+        , SleepDelay(sleepDelay)
     {
         Reset();
     }
@@ -35,8 +28,8 @@ public:
         auto now = GetCycleCount();
         auto usecSinceReset =
             CyclesToDurationSafe(now - ResetCycles).MicroSeconds();
-        if (usecSinceReset >= WaitBeforeSleep.MicroSeconds()) {
-            ::Sleep(SleepTime);
+        if (usecSinceReset >= SleepDelay.MicroSeconds()) {
+            ::Sleep(SleepDuration);
         }
     }
 
