@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-find_package(OpenSSL REQUIRED)
 get_built_tool_path(
   TOOL_enum_parser_bin
   TOOL_enum_parser_dependency
@@ -40,7 +39,7 @@ target_link_libraries(core-ymq-actor PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  OpenSSL::OpenSSL
+  contrib-libs-openssl
   contrib-libs-protobuf
   cpp-actors-core
   cpp-containers-intrusive_rb_tree

@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-find_package(OpenSSL REQUIRED)
 get_built_tool_path(
   TOOL_enum_parser_bin
   TOOL_enum_parser_dependency
@@ -31,7 +30,7 @@ target_link_libraries(libs-storage-core PUBLIC
   public-api-protos
   core-libs-common
   core-libs-diagnostics
-  OpenSSL::OpenSSL
+  contrib-libs-openssl
   cpp-actors-core
   library-cpp-cgiparam
   cpp-containers-intrusive_rb_tree

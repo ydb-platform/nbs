@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-find_package(OpenSSL REQUIRED)
 
 add_library(ydb-services-ydb)
 target_link_libraries(ydb-services-ydb PUBLIC
@@ -29,7 +28,7 @@ target_link_libraries(ydb-services-ydb PUBLIC
   api-grpc-draft
   api-protos
   yql-public-types
-  OpenSSL::OpenSSL
+  contrib-libs-openssl
 )
 target_sources(ydb-services-ydb PRIVATE
   ${CMAKE_SOURCE_DIR}/ydb/services/ydb/ydb_clickhouse_internal.cpp
