@@ -1298,6 +1298,57 @@ void TDiskRegistryActor::RenderPoolRacks(
                 }
             }
         }
+
+        auto makeLegendBar = [&] (TString color) {
+            TAG_ATTRS(
+                    TTag<svg>,
+                    {
+                        {"width", "200"},
+                        {"height", "30"}
+                    })
+            {
+                makeRect(0, 0, 200, 30, color);
+            }
+        };
+
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Meaning"; }
+                    TABLEH() { out << "Color"; }
+                }
+
+                TABLER() {
+                    TABLED() { out << "Free"; }
+                    TABLED() { makeLegendBar(freeColor); }
+                }
+
+                TABLER() {
+                    TABLED() { out << "Dirty"; }
+                    TABLED() { makeLegendBar(dirtyColor); }
+                }
+
+                TABLER() {
+                    TABLED() { out << "Occupied"; }
+                    TABLED() { makeLegendBar(occupiedColor); }
+                }
+
+                TABLER() {
+                    TABLED() { out << "Warning"; }
+                    TABLED() { makeLegendBar(warningColor); }
+                }
+
+                TABLER() {
+                    TABLED() { out << "Unavailable"; }
+                    TABLED() { makeLegendBar(unavailableColor); }
+                }
+
+                TABLER() {
+                    TABLED() { out << "Broken"; }
+                    TABLED() { makeLegendBar(brokenColor); }
+                }
+            }
+        }
     }
 }
 
