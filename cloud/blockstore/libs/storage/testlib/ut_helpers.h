@@ -18,10 +18,10 @@ namespace NCloud::NBlockStore::NStorage {
 #define ASSERT_VECTORS_EQUAL(li, ri) {                                         \
     auto l = li;                                                               \
     auto r = ri;                                                               \
-    UNIT_ASSERT_VALUES_EQUAL(l.size(), r.size());                              \
-    for (size_t i = 0; i < static_cast<ui32>(l.size()); ++i) {                 \
+    for (size_t i = 0; i < Min<ui32>(l.size(), r.size()); ++i) {               \
         UNIT_ASSERT_VALUES_EQUAL_C(l[i], r[i], i);                             \
     }                                                                          \
+    UNIT_ASSERT_VALUES_EQUAL(l.size(), r.size());                              \
 }                                                                              \
 // ASSERT_VECTORS_EQUAL
 
@@ -30,10 +30,10 @@ namespace NCloud::NBlockStore::NStorage {
     auto r = ri;                                                               \
     Sort(l);                                                                   \
     Sort(r);                                                                   \
-    UNIT_ASSERT_VALUES_EQUAL(l.size(), r.size());                              \
-    for (size_t i = 0; i < static_cast<ui32>(l.size()); ++i) {                 \
+    for (size_t i = 0; i < Min<ui32>(l.size(), r.size()); ++i) {               \
         UNIT_ASSERT_VALUES_EQUAL_C(l[i], r[i], i);                             \
     }                                                                          \
+    UNIT_ASSERT_VALUES_EQUAL(l.size(), r.size());                              \
 }                                                                              \
 // ASSERT_VECTOR_CONTENTS_EQUAL
 

@@ -24,12 +24,13 @@ namespace NCloud::NBlockStore {
     xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(HangingYdbStatsRequest)                                                \
     xxx(UserNotificationError)                                                 \
-    xxx(BackupPathDescriptionsFailure)                                          \
+    xxx(BackupPathDescriptionsFailure)                                         \
     xxx(RdmaError)                                                             \
     xxx(MirroredDiskAllocationCleanupFailure)                                  \
     xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
     xxx(MirroredDiskDeviceReplacementForbidden)                                \
     xxx(MirroredDiskDeviceReplacementFailure)                                  \
+    xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \

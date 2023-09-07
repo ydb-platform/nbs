@@ -199,6 +199,7 @@ private:
 
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashSet<TDeviceId> AutomaticallyReplacedDeviceIds;
+    TDeque<TInstant> AutomaticReplacementTimestamps;
 
     NProto::TDiskRegistryConfig CurrentConfig;
 
@@ -610,6 +611,11 @@ public:
 
     void DeleteAutomaticallyReplacedDevice(
         TDiskRegistryDatabase& db,
+        const TDeviceId& deviceId);
+
+    bool CheckIfDeviceReplacementIsAllowed(
+        TInstant now,
+        const TDiskId& masterDiskId,
         const TDeviceId& deviceId);
 
     NProto::TError CreateDiskFromDevices(

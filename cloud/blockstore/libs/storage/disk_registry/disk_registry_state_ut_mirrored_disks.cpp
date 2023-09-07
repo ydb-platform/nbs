@@ -2381,6 +2381,179 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             state.DeallocateDisk(db, "disk-1");
         });
     }
+
+    Y_UNIT_TEST(ShouldStopAutomaticReplacementIfReplacementRateIsTooHigh)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        /*
+         *  Configuring many agents to be able to break many agents and cause
+         *  many device replacements.
+         */
+
+        TVector<NProto::TAgentConfig> agents;
+        for (ui32 i = 1; i <= 20; ++i) {
+            agents.push_back(AgentConfig(i, {Device(
+                Sprintf("dev-%u", i),
+                Sprintf("uuid-%u", i),
+                Sprintf("rack-%u", i)
+            )}));
+        }
+
+        NProto::TStorageServiceConfig proto;
+        proto.SetMaxAutomaticDeviceReplacementsPerHour(10);
+        auto storageConfig = CreateStorageConfig(proto);
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(storageConfig)
+            .WithKnownAgents(agents)
+            .Build();
+
+        /*
+         *  Creating a small mirror-2 disk that will use 2 agents.
+         */
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            TVector<TVector<TDeviceConfig>> replicas;
+            TVector<NProto::TDeviceMigration> migrations;
+            TVector<TString> deviceReplacementIds;
+            auto error = AllocateMirroredDisk(
+                db,
+                state,
+                "disk-1",
+                10_GB,
+                1,
+                devices,
+                replicas,
+                migrations,
+                deviceReplacementIds);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[0].size());
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
+        });
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto criticalEvents = serverGroup->FindCounter(
+            "AppCriticalEvents/MirroredDiskDeviceReplacementRateLimitExceeded");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
+
+        /*
+         *  10 agent failures should cause 10 replacements which should work
+         *  just fine.
+         */
+
+        auto changeStateTs = Now();
+
+        TVector<TString> expectedReplacedDeviceIds;
+
+        auto breakAgent = [&] (const TString& agentId) {
+            executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateAgentState(
+                    db,
+                    agentId,
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    changeStateTs,
+                    "unreachable",
+                    affectedDisks);
+
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
+            });
+        };
+
+        auto fixAgent = [&] (const TString& agentId) {
+            executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateAgentState(
+                    db,
+                    agentId,
+                    NProto::AGENT_STATE_ONLINE,
+                    changeStateTs,
+                    "fixed",
+                    affectedDisks);
+
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
+            });
+        };
+
+        for (ui32 i = 2; i <= 11; ++i) {
+            TDiskInfo diskInfo;
+            auto error = state.GetDiskInfo("disk-1", diskInfo);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas[0].size());
+            const auto deviceId = diskInfo.Replicas[0][0].GetDeviceUUID();
+            const auto agentId = diskInfo.Replicas[0][0].GetAgentId();
+
+            changeStateTs += TDuration::Minutes(5);
+
+            breakAgent(agentId);
+
+            expectedReplacedDeviceIds.push_back(deviceId);
+            TVector<TString> replacedDeviceIds;
+            for (const auto& d: state.GetAutomaticallyReplacedDevices()) {
+                replacedDeviceIds.push_back(d.DeviceId);
+            }
+            ASSERT_VECTORS_EQUAL(expectedReplacedDeviceIds, replacedDeviceIds);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
+
+        /*
+         *  11th agent failure within the same hour should cause a critical
+         *  event. Replacement should not happen.
+         */
+
+        TDiskInfo diskInfo;
+        const auto error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Replicas[0].size());
+        const auto agentId = diskInfo.Replicas[0][0].GetAgentId();
+        const auto deviceId = diskInfo.Replicas[0][0].GetDeviceUUID();
+
+        breakAgent(agentId);
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
+
+        TVector<TString> replacedDeviceIds;
+        for (const auto& d: state.GetAutomaticallyReplacedDevices()) {
+            replacedDeviceIds.push_back(d.DeviceId);
+        }
+        ASSERT_VECTORS_EQUAL(expectedReplacedDeviceIds, replacedDeviceIds);
+
+        /*
+         *  After a while automatic replacements should be enabled again.
+         */
+        changeStateTs += TDuration::Minutes(15);
+
+        fixAgent(agentId);
+        breakAgent(agentId);
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
+
+        expectedReplacedDeviceIds.push_back(deviceId);
+        replacedDeviceIds.clear();
+        for (const auto& d: state.GetAutomaticallyReplacedDevices()) {
+            replacedDeviceIds.push_back(d.DeviceId);
+        }
+        ASSERT_VECTORS_EQUAL(expectedReplacedDeviceIds, replacedDeviceIds);
+    }
 }
 
 bool operator==(const TDiskStateUpdate& l, const TDiskStateUpdate& r)

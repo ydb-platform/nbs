@@ -1061,6 +1061,8 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             AutomaticallyReplacedDevices.push_back(deviceInfo);
             AutomaticallyReplacedDeviceIds.insert(deviceId);
             db.AddAutomaticallyReplacedDevice(deviceInfo);
+
+            AutomaticReplacementTimestamps.push_back(timestamp);
         }
         devicePtr->SetStateMessage(std::move(message));
         devicePtr->SetStateTs(timestamp.MicroSeconds());
@@ -4088,7 +4090,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
                     && disk.MasterDiskId)
             {
-                const bool canReplaceDevice = ReplicaTable.IsReplacementAllowed(
+                const bool canReplaceDevice = CheckIfDeviceReplacementIsAllowed(
+                    timestamp,
                     disk.MasterDiskId,
                     deviceId);
 
@@ -4115,8 +4118,6 @@ void TDiskRegistryState::ApplyAgentStateChange(
                     if (!updated) {
                         isAffected = false;
                     }
-                } else {
-                    ReportMirroredDiskDeviceReplacementForbidden();
                 }
             }
 
@@ -4663,7 +4664,8 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     if (device.GetState() == NProto::DEVICE_STATE_ERROR
             && disk->MasterDiskId)
     {
-        const bool canReplaceDevice = ReplicaTable.IsReplacementAllowed(
+        const bool canReplaceDevice = CheckIfDeviceReplacementIsAllowed(
+            now,
             disk->MasterDiskId,
             device.GetDeviceUUID());
 
@@ -4689,8 +4691,6 @@ void TDiskRegistryState::ApplyDeviceStateChange(
             if (updated) {
                 affectedDisk = diskId;
             }
-        } else {
-            ReportMirroredDiskDeviceReplacementForbidden();
         }
 
         return;
@@ -5705,6 +5705,55 @@ void TDiskRegistryState::DeleteAutomaticallyReplacedDevice(
     }
 
     db.DeleteAutomaticallyReplacedDevice(deviceId);
+}
+
+bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
+    TInstant now,
+    const TDiskId& masterDiskId,
+    const TDeviceId& deviceId)
+{
+    while (AutomaticReplacementTimestamps) {
+        if (AutomaticReplacementTimestamps[0]
+                > now - TDuration::Hours(1))
+        {
+            break;
+        }
+
+        AutomaticReplacementTimestamps.pop_front();
+    }
+
+    const auto rateLimit =
+        StorageConfig->GetMaxAutomaticDeviceReplacementsPerHour();
+    if (rateLimit
+            && rateLimit <= AutomaticReplacementTimestamps.size()) {
+        ReportMirroredDiskDeviceReplacementRateLimitExceeded();
+
+        STORAGE_ERROR(
+            "Automatic device replacement cancelled due to high"
+            " replacement rate, diskId: %s, deviceId: %s",
+            masterDiskId.c_str(),
+            deviceId.c_str());
+
+        return false;
+    }
+
+    const bool canReplaceDevice = ReplicaTable.IsReplacementAllowed(
+        masterDiskId,
+        deviceId);
+
+    if (!canReplaceDevice) {
+        ReportMirroredDiskDeviceReplacementForbidden();
+
+        STORAGE_ERROR(
+            "Automatic device replacement not allowed by ReplicaTable"
+            ", diskId: %s, deviceId: %s",
+            masterDiskId.c_str(),
+            deviceId.c_str());
+
+        return false;
+    }
+
+    return true;
 }
 
 NProto::TError TDiskRegistryState::CreateDiskFromDevices(

@@ -851,4 +851,11 @@ message TStorageServiceConfig
     // We will allow agent/device maintenance if it breaks no more than this
     // number of placement group partitions in each group.
     optional uint32 MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval = 327;
+
+    // Sets maximum number of automatic device replacements per hour. If this
+    // limit is reached no more automatic replacements are going to happen -
+    // instead the diskId + deviceId pairs will be logged and a critical event
+    // will be reported. Current replacement rate is reset upon DiskRegistry
+    // tablet restart.
+    optional uint32 MaxAutomaticDeviceReplacementsPerHour = 328;
 }

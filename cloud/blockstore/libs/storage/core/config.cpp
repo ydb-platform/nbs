@@ -349,6 +349,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(BrokenDiskDestructionDelay,                     TDuration, Seconds(5) )\
     xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, {}         )\
+    xxx(MaxAutomaticDeviceReplacementsPerHour,          ui32,      0          )\
                                                                                \
     xxx(VolumeHistoryDuration,                     TDuration, Days(7)         )\
     xxx(VolumeHistoryCacheSize,                    ui32,      100             )\
