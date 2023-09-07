@@ -130,8 +130,7 @@ TVolumeState::TVolumeState(
 
     const auto lightCheckpoints = CheckpointStore.GetLightCheckpoints();
     if (!lightCheckpoints.empty()) {
-        TCheckpointLight& checkpointLight = StartCheckpointLight();
-        checkpointLight.CreateCheckpoint(lightCheckpoints.front());
+        StartCheckpointLight(lightCheckpoints.front());
     }
 }
 

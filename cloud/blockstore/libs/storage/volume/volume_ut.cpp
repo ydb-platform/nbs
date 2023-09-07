@@ -9552,6 +9552,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0);
         volume.AddClient(clientInfo);
+
         volume.CreateCheckpoint("c1", true);
 
         {
@@ -9619,6 +9620,313 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             volume.DeleteCheckpoint("c2")->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldReportChangedBlocksForLightCheckpoint2)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+        volume.CreateCheckpoint("c1", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "",
+                "c1");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+        }
+
+        // checkpoint creation should be idempotent
+        volume.CreateCheckpoint("c1", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "",
+                "c1");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+        }
+
+        volume.WriteBlocks(TBlockRange64(1, 1), clientInfo.GetClientId(), 2);
+
+        volume.CreateCheckpoint("c2", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c1",
+                "c2");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000010, ui8(mask[0]));
+        }
+
+        // checkpoint creation should be idempotent
+        volume.CreateCheckpoint("c2", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c1",
+                "c2");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000010, ui8(mask[0]));
+        }
+
+        volume.CreateCheckpoint("c3", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c2",
+                "c3");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000000, ui8(mask[0]));
+        }
+
+        volume.WriteBlocks(TBlockRange64(0, 1), clientInfo.GetClientId(), 2);
+
+        // should not see new changed block until new checkpoint is created
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c2",
+                "c3");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000000, ui8(mask[0]));
+        }
+
+        volume.CreateCheckpoint("c4", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c3",
+                "c4");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000011, ui8(mask[0]));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c1")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c2")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c3")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c4")->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldReportChangedBlocksForLightCheckpointWhenVolumeReboots)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.CreateCheckpoint("c1", true);
+
+        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+
+        volume.RebootTablet();
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "",
+                "c1");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+        }
+
+        volume.CreateCheckpoint("c2", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c1",
+                "c2");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+        }
+
+        volume.WriteBlocks(TBlockRange64(1, 1), clientInfo.GetClientId(), 2);
+        volume.CreateCheckpoint("c3", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c2",
+                "c3");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000010, ui8(mask[0]));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c1")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c2")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c3")->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldReportChangedBlocksForLightCheckpointWhenVolumeReboots2)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.CreateCheckpoint("c1", true);
+
+        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+        volume.CreateCheckpoint("c2", true);
+        volume.WriteBlocks(TBlockRange64(1, 1), clientInfo.GetClientId(), 2);
+
+        volume.RebootTablet();
+
+        volume.WriteBlocks(TBlockRange64(2, 2), clientInfo.GetClientId(), 2);
+
+        volume.CreateCheckpoint("c3", true);
+
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c2",
+                "c3");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+        }
+
+        volume.CreateCheckpoint("c4", true);
+
+        // should not see changes earlier than checkpoint c3
+        {
+            auto response = volume.GetChangedBlocks(
+                TBlockRange64(0, 1023),
+                "c3",
+                "c4");
+
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0b00000000, ui8(mask[0]));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c1")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c2")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c3")->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c4")->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldReadFromLightCheckpoint)

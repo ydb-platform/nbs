@@ -290,6 +290,14 @@ public:
         return *CheckpointLight;
     }
 
+    TCheckpointLight& StartCheckpointLight(TString initialCheckpointId)
+    {
+        if (!CheckpointLight) {
+            CheckpointLight = std::make_unique<TCheckpointLight>(BlockCount, initialCheckpointId);
+        }
+        return *CheckpointLight;
+    }
+
     void StopCheckpointLight() {
         CheckpointLight.reset();
     }

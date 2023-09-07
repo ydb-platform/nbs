@@ -26,6 +26,17 @@ private:
     ui64 BlocksCount;
     std::array<TCompressedBitmap, 2> CheckpointsData;
 
+    void CreateCheckpoint(TString checkpointId, bool isInitial) {
+        if (checkpointId == CheckpointId) {
+            return;
+        }
+        CheckpointId = std::move(checkpointId);
+
+        if (!isInitial) {
+            CheckpointsData[0] = std::move(CheckpointsData[1]);
+        }
+    }
+
 public:
     TCheckpointLight(ui64 blocksCount)
         : BlocksCount{blocksCount}
@@ -35,6 +46,13 @@ public:
     {
         CheckpointsData[0].Set(0, BlocksCount);
         CheckpointsData[1].Set(0, BlocksCount);
+    }
+
+    // All blocks should be marked as modified when first non-initial checkpoint is created.
+    TCheckpointLight(ui64 blocksCount, TString initialCheckpointId)
+        : TCheckpointLight(blocksCount)
+    {
+        CreateCheckpoint(initialCheckpointId, true);
     }
 
     TString GetCheckpointId() const
@@ -47,11 +65,7 @@ public:
     }
 
     void CreateCheckpoint(TString checkpointId) {
-        if (checkpointId == CheckpointId) {
-            return;
-        }
-        CheckpointId = std::move(checkpointId);
-        CheckpointsData[0] = std::move(CheckpointsData[1]);
+        CreateCheckpoint(checkpointId, false);
     }
 
     /**
