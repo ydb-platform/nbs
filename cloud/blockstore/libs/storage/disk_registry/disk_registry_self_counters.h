@@ -40,6 +40,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr AllocatedDisks;
     TCounterPtr AllocatedDevices;
     TCounterPtr DirtyDevices;
+    TCounterPtr UnknownDevices;
     TCounterPtr DevicesInOnlineState;
     TCounterPtr DevicesInWarningState;
     TCounterPtr DevicesInErrorState;

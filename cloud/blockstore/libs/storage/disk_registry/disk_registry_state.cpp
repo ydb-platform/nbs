@@ -3213,6 +3213,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     ui32 placementGroups = 0;
     ui32 fullPlacementGroups = 0;
     ui32 allocatedDisksInGroups = 0;
+    ui64 unknownDevices = 0;
 
     for (const auto& agent: AgentList.GetAgents()) {
         switch (agent.GetState()) {
@@ -3230,6 +3231,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             }
             default: {}
         }
+
+        unknownDevices += agent.UnknownDevicesSize();
 
         for (const auto& device: agent.GetDevices()) {
             const auto deviceState = device.GetState();
@@ -3406,6 +3409,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.TotalBytes->Set(totalBytes);
     SelfCounters.AllocatedDevices->Set(allocatedDevices);
     SelfCounters.DirtyDevices->Set(dirtyDevices);
+    SelfCounters.UnknownDevices->Set(unknownDevices);
     SelfCounters.DevicesInOnlineState->Set(devicesInOnlineState);
     SelfCounters.DevicesInWarningState->Set(devicesInWarningState);
     SelfCounters.DevicesInErrorState->Set(devicesInErrorState);

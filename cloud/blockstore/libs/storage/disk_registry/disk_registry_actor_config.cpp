@@ -83,6 +83,12 @@ void TDiskRegistryActor::CompleteUpdateConfig(
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    ReallocateDisks(ctx);
+    NotifyUsers(ctx);
+    PublishDiskStates(ctx);
+    SecureErase(ctx);
+    StartMigration(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

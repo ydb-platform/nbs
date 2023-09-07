@@ -747,17 +747,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         const int diskRegistryVolumeConfigUpdatePeriodMs = 1000;
         auto runtime = TTestRuntimeBuilder()
-                           .With([] {
-                               auto config = CreateDefaultStorageConfig();
+            .With([] {
+                auto config = CreateDefaultStorageConfig();
 
-                               // disable timeout
-                               config.SetDiskRegistryVolumeConfigUpdatePeriod(
-                                   diskRegistryVolumeConfigUpdatePeriodMs);
+                // disable timeout
+                config.SetDiskRegistryVolumeConfigUpdatePeriod(
+                    diskRegistryVolumeConfigUpdatePeriodMs);
 
-                               return config;
-                           }())
-                           .WithAgents({agent1})
-                           .Build();
+                return config;
+            }())
+            .WithAgents({agent1})
+            .Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
 
@@ -912,6 +912,94 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.WaitReady();
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(finishCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateKnownDevicesAfterConfig)
+    {
+        const TVector agents { CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+        })};
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+
+        runtime->DispatchEvents({}, UpdateCountersInterval);
+
+        auto diskRegistryGroup = runtime->GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
+
+        auto freeBytes = diskRegistryGroup
+            ->GetSubgroup("pool", "default")
+            ->GetCounter("FreeBytes");
+
+        auto agentsInOnlineState = diskRegistryGroup
+            ->GetCounter("AgentsInOnlineState");
+
+        auto devicesInOnlineState = diskRegistryGroup
+            ->GetCounter("DevicesInOnlineState");
+
+        auto unknownDevices = diskRegistryGroup
+            ->GetCounter("UnknownDevices");
+
+        auto dirtyDevices = diskRegistryGroup
+            ->GetCounter("DirtyDevices");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, agentsInOnlineState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, devicesInOnlineState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unknownDevices->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices->Val());
+
+        TAutoPtr<IEventHandle> secureEraseDeviceResponse;
+        runtime->SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceResponse) {
+                    secureEraseDeviceResponse = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        runtime->DispatchEvents({}, UpdateCountersInterval);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, agentsInOnlineState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, devicesInOnlineState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, unknownDevices->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices->Val());
+
+        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
+            return !!secureEraseDeviceResponse;
+        }});
+
+        runtime->Send(secureEraseDeviceResponse.Release());
+
+        runtime->DispatchEvents({ .FinalEvents = {
+                TDispatchOptions::TFinalEventCondition(
+                    TEvDiskRegistryPrivate::EvCleanupDevicesResponse)
+            }
+        });
+
+        runtime->DispatchEvents({}, UpdateCountersInterval);
+
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, agentsInOnlineState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, devicesInOnlineState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, unknownDevices->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices->Val());
     }
 }
 

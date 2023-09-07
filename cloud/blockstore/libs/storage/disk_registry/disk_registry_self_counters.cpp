@@ -15,6 +15,7 @@ void TDiskRegistrySelfCounters::Init(
     AllocatedDisks = counters->GetCounter("AllocatedDisks");
     AllocatedDevices = counters->GetCounter("AllocatedDevices");
     DirtyDevices = counters->GetCounter("DirtyDevices");
+    UnknownDevices = counters->GetCounter("UnknownDevices");
     DevicesInOnlineState = counters->GetCounter("DevicesInOnlineState");
     DevicesInWarningState = counters->GetCounter("DevicesInWarningState");
     DevicesInErrorState = counters->GetCounter("DevicesInErrorState");
