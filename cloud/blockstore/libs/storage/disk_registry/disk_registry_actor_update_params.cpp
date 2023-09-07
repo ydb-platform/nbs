@@ -36,6 +36,15 @@ void TDiskRegistryActor::HandleUpdateDiskRegistryAgentListParams(
         params);
 }
 
+void TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly(
+    const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
+}
+
 void TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup(
     const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
     const NActors::TActorContext& ctx)

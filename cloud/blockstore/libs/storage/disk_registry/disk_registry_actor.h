@@ -399,6 +399,10 @@ private:
         const TEvDiskRegistryPrivate::TEvAgentConnectionLost::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAgentConnectionLostReadOnly(
+        const TEvDiskRegistryPrivate::TEvAgentConnectionLost::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleOperationCompleted(
         const TEvDiskRegistryPrivate::TEvOperationCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -423,6 +427,10 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleDiskRegistryAgentListExpiredParamsCleanup(
+        const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly(
         const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
         const NActors::TActorContext& ctx);
 

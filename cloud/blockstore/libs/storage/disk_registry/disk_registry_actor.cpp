@@ -323,10 +323,6 @@ bool TDiskRegistryActor::HandleRequests(STFUNC_SIG)
         BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_REQUEST, TEvService)
         BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_HANDLE_REQUEST, TEvDiskRegistryPrivate)
 
-        HFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
-            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
-
         default:
             return false;
     }
@@ -488,6 +484,17 @@ void TDiskRegistryActor::HandleAgentConnectionLost(
     NCloud::Send(ctx, ctx.SelfID, std::move(request));
 }
 
+void TDiskRegistryActor::HandleAgentConnectionLostReadOnly(
+    const TEvDiskRegistryPrivate::TEvAgentConnectionLost::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "Rescheduling EvAgentConnectionLost, AgentId=" << msg->AgentId.Quote());
+    ctx.Schedule(TDuration::Seconds(10), ev->Release().Release());
+}
+
 void TDiskRegistryActor::HandleOperationCompleted(
     const TEvDiskRegistryPrivate::TEvOperationCompleted::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -506,8 +513,10 @@ STFUNC(TDiskRegistryActor::StateBoot)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
-        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
+        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+            HandleAgentConnectionLostReadOnly);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskRegistry)
 
@@ -524,8 +533,10 @@ STFUNC(TDiskRegistryActor::StateInit)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
-        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
+        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+            HandleAgentConnectionLostReadOnly);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskRegistry)
 
@@ -546,6 +557,8 @@ STFUNC(TDiskRegistryActor::StateWork)
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
+        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+            HandleAgentConnectionLost);
 
         IgnoreFunc(TEvDiskRegistry::TEvReleaseDiskResponse);
         IgnoreFunc(TEvDiskRegistry::TEvUnregisterAgentResponse);
@@ -583,9 +596,6 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse,
             HandlePublishDiskStatesResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
-            HandleAgentConnectionLost);
-
         HFunc(TEvDiskRegistryPrivate::TEvOperationCompleted,
             HandleOperationCompleted);
 
@@ -597,6 +607,10 @@ STFUNC(TDiskRegistryActor::StateWork)
 
         HFunc(TEvDiskAgent::TEvEnableAgentDeviceResponse,
             HandleEnableDeviceResponse);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -610,10 +624,12 @@ STFUNC(TDiskRegistryActor::StateRestore)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
-        IgnoreFunc(TEvents::TEvWakeup);
+        HFunc(TEvents::TEvWakeup, HandleWakeupReadOnly);
 
-        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
+        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+            HandleAgentConnectionLostReadOnly);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -636,6 +652,10 @@ STFUNC(TDiskRegistryActor::StateRestore)
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse,
             HandleRestoreDiskRegistryValidationResponse);
 
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
         default:
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
@@ -651,6 +671,11 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeupReadOnly);
+
+        HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
+        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+            HandleAgentConnectionLostReadOnly);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -686,6 +711,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             TEvService::TEvQueryAvailableStorageRequest,
             HandleQueryAvailableStorage);
 
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
         default:
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
@@ -707,6 +736,10 @@ STFUNC(TDiskRegistryActor::StateZombie)
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        IgnoreFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost);
+
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup);
 
         default:
             if (!RejectRequests(ev)) {

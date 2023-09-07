@@ -1227,6 +1227,90 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectDisconnectedAgentAfterTransitionFromReadOnlyState)
+    {
+        const auto agent = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+        });
+
+        auto runtime = TTestRuntimeBuilder().Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, { agent }));
+
+        TString agentId;
+        NProto::EAgentState agentState = NProto::AGENT_STATE_ONLINE;
+
+        runtime->SetObserverFunc(
+        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistry::EvChangeAgentStateRequest: {
+                    auto& msg = *event->Get<TEvDiskRegistry::TEvChangeAgentStateRequest>();
+                    agentId = msg.Record.GetAgentId();
+                    agentState = msg.Record.GetAgentState();
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        });
+
+        auto sender = runtime->AllocateEdgeActor(0);
+
+        auto registerAgent = [&] {
+            auto pipe = runtime->ConnectToPipe(
+                TestTabletId,
+                sender,
+                0,
+                NKikimr::GetPipeConfigWithRetries());
+
+            auto request = std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
+            *request->Record.MutableAgentConfig() = agent;
+            request->Record.MutableAgentConfig()->SetNodeId(runtime->GetNodeId(0));
+
+            auto pipeEv = new IEventHandle(pipe, sender, request.release(), 0, 0);
+            pipeEv->Rewrite(NKikimr::TEvTabletPipe::EvSend, pipe);
+
+            runtime->Send(pipeEv, 0, true);
+
+            return pipe;
+        };
+
+        auto disconnectAgent = [&](auto pipe) {
+            runtime->Send(new IEventHandle(
+                pipe, sender, new TEvTabletPipe::TEvShutdown()), 0, true);
+        };
+
+        auto pipe = registerAgent();
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        diskRegistry.SetWritableState(false);
+
+        disconnectAgent(pipe);
+
+        // 1st dispatch is needed to trigger EvServerDisconnected
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        // 2nd dispatch is needed to trigger EvAgentConnectionLost
+        runtime->AdvanceCurrentTime(60s);
+        runtime->DispatchEvents({}, 10ms);
+
+        diskRegistry.SetWritableState(true);
+
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::AGENT_STATE_UNAVAILABLE),
+            static_cast<int>(agentState));
+    }
+
     Y_UNIT_TEST(ShouldFailCleanupIfDiskRegistryRestarts)
     {
         const auto agent = CreateAgentConfig("agent-1", {
