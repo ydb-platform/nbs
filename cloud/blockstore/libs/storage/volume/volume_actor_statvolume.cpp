@@ -269,6 +269,8 @@ void TVolumeActor::HandleStatVolume(
 
     record.SetTabletHost(FQDNHostName());
 
+    record.SetVolumeGeneration(Executor()->Generation());
+
     if (const auto& partConfig = State->GetNonreplicatedPartitionConfig()) {
         stats->SetMaxTimedOutDeviceStateDuration(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());

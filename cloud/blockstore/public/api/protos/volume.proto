@@ -655,6 +655,9 @@ message TStatVolumeResponse
 
     // The host where volume tablet is currently running.
     string TabletHost = 8;
+
+    // Volume generation.
+    uint32 VolumeGeneration = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

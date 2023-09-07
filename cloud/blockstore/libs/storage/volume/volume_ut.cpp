@@ -9412,11 +9412,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL("", clients[1].GetInstanceId());
             UNIT_ASSERT_VALUES_EQUAL(0, clients[1].GetDisconnectTimestamp());
             UNIT_ASSERT_VALUES_EQUAL(FQDNHostName(), stat->Record.GetTabletHost());
+            UNIT_ASSERT_VALUES_EQUAL(2, stat->Record.GetVolumeGeneration());
         }
 
         auto now = runtime->GetCurrentTime();
 
-        // rebooting to set DisconnectTimestamp
+        // rebooting to set DisconnectTimestamp and to increment VolumeGeneration
         volume.RebootTablet();
 
         {
@@ -9440,6 +9441,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     << clients[1].GetDisconnectTimestamp()
                     << ", " << now.MicroSeconds());
             UNIT_ASSERT_VALUES_EQUAL(FQDNHostName(), stat->Record.GetTabletHost());
+            UNIT_ASSERT_VALUES_EQUAL(3, stat->Record.GetVolumeGeneration());
         }
     }
 
