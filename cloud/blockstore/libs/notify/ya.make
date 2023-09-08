@@ -18,4 +18,6 @@ PEERDIR(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+IF (NOT OPENSOURCE)
+    RECURSE_FOR_TESTS(ut)   # TODO(NBS-4409): add to opensource
+ENDIF()

@@ -916,7 +916,12 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
     {
         TOptions options;
         options.UnixSocketPath = "./TestUnixSocket";
-        TFsPath(options.UnixSocketPath).Touch();
+
+        TFsPath unixSocket(options.UnixSocketPath);
+        unixSocket.Touch();
+        Y_DEFER {
+            unixSocket.DeleteIfExists();
+        };
 
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();

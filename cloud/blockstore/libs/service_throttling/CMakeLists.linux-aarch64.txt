@@ -6,6 +6,10 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
+add_subdirectory(ut_logger)
+add_subdirectory(ut_metrics)
+add_subdirectory(ut_policy)
 
 add_library(blockstore-libs-service_throttling)
 target_link_libraries(blockstore-libs-service_throttling PUBLIC

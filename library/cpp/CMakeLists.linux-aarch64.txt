@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(accurate_accumulate)
 add_subdirectory(actors)
 add_subdirectory(aio)
 add_subdirectory(archive)
@@ -46,6 +47,7 @@ add_subdirectory(iterator)
 add_subdirectory(json)
 add_subdirectory(lcs)
 add_subdirectory(lfalloc)
+add_subdirectory(linear_regression)
 add_subdirectory(logger)
 add_subdirectory(lua)
 add_subdirectory(lwtrace)
@@ -73,6 +75,7 @@ add_subdirectory(sse)
 add_subdirectory(streams)
 add_subdirectory(string_utils)
 add_subdirectory(svnversion)
+add_subdirectory(terminate_handler)
 add_subdirectory(testing)
 add_subdirectory(threading)
 add_subdirectory(time_provider)

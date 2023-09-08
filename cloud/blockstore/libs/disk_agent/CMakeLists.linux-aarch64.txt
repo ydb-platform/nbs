@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
 
 add_library(blockstore-libs-disk_agent)
 target_compile_options(blockstore-libs-disk_agent PRIVATE

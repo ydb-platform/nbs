@@ -14,6 +14,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
+#include <util/generic/scope.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfqueue.h>
 
@@ -452,6 +453,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         const TFsPath socket("./testSocketPath");
         socket.Touch();
+        Y_DEFER {
+            socket.DeleteIfExists();
+        };
 
         {
             TStorageOptions options;

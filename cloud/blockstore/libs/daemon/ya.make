@@ -1,0 +1,5 @@
+RECURSE(
+    common
+    local
+    ydb
+)

@@ -713,6 +713,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TFsPath unixSocket("./TestUnixSocket");
         unixSocket.Touch();
+        Y_DEFER {
+            unixSocket.DeleteIfExists();
+        };
 
         TNetworkAddress connectAddress(TUnixSocketPath(unixSocket.GetPath()));
 

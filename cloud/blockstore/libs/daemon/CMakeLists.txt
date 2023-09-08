@@ -7,4 +7,5 @@
 
 
 add_subdirectory(common)
+add_subdirectory(local)
 add_subdirectory(ydb)

@@ -6,8 +6,11 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(benchmark)
 add_subdirectory(common)
+add_subdirectory(gbenchmark)
 add_subdirectory(gmock_in_unittest)
 add_subdirectory(gtest_extensions)
 add_subdirectory(hook)
 add_subdirectory(unittest)
+add_subdirectory(unittest_main)
