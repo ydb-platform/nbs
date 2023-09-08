@@ -139,7 +139,7 @@ private:
             IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
             default:
                 if (!HandleDefaultEvents(ev, SelfId())) {
-                    Y_FAIL("Unexpected event %x", ev->GetTypeRewrite());
+                    Y_FAIL("Unexpected event %u", ev->GetTypeRewrite());
                 }
         }
     }
@@ -1252,6 +1252,23 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         request.SetTabletType(TTabletTypes::BlockStoreDiskRegistry);
 
         bool sentCreateReply = false;
+        auto sendReply = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
+            const auto* msg = ev->Get<TEvHive::TEvCreateTablet>();
+
+            runtime.Send(
+                new IEventHandle(
+                    ev->Sender,
+                    ev->Sender,
+                    new TEvHive::TEvCreateTabletReply(
+                        NKikimrProto::OK,
+                        msg->Record.GetOwner(),
+                        msg->Record.GetOwnerIdx(),
+                        FakeTablet2),
+                        0,
+                        ev->Cookie));
+                sentCreateReply = true;
+        };
+
         ui32 lookupCnt = 0;
         TAutoPtr<IEventHandle> savedEvent;
 
@@ -1267,28 +1284,19 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                             msg->Record.GetTabletType(),
                             TTabletTypes::BlockStoreDiskRegistry);
 
-                        savedEvent = ev.Release();
+                        if (lookupCnt != 10) {
+                            savedEvent = ev.Release();
+                        } else if (!sentCreateReply) {
+                            sendReply(runtime, ev);
+                        }
+
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                     case TEvHiveProxy::EvLookupTabletRequest: {
-                        if (++lookupCnt == 10 && !sentCreateReply) {
-                            const auto* msg =
-                                savedEvent->Get<TEvHive::TEvCreateTablet>();
-
-                            runtime.Send(
-                                new IEventHandle(
-                                    savedEvent->Sender,
-                                    savedEvent->Sender,
-                                    new TEvHive::TEvCreateTabletReply(
-                                        NKikimrProto::OK,
-                                        msg->Record.GetOwner(),
-                                        msg->Record.GetOwnerIdx(),
-                                        FakeTablet2),
-                                        0,
-                                        savedEvent->Cookie));
-
-                            sentCreateReply = true;
+                        if (++lookupCnt == 10 && !sentCreateReply && savedEvent) {
+                            sendReply(runtime, savedEvent);
                         }
+
                         return TTestActorRuntime::EEventAction::PROCESS;
                     }
                     case TEvHive::EvLookupTablet: {
@@ -1309,9 +1317,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::EEventAction::PROCESS;
-            });
 
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
+            });
 
         env.SendCreateTabletRequestAsync(
             sender,
