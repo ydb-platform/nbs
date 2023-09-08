@@ -3,7 +3,7 @@ syntax = "proto2";
 package retry_settings.v1;
 
 option cc_enable_arenas = true;
-option go_package = "a.yandex-team.ru/library/cpp/tvmauth/client/misc/retry_settings/v1";
+option go_package = "github.com/ydb-platform/nbs/library/cpp/tvmauth/client/misc/retry_settings/v1";
 
 message Settings {
     optional uint32 exponential_backoff_min_sec = 1;

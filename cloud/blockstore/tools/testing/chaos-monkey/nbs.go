@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	nbs "a.yandex-team.ru/cloud/blockstore/public/sdk/go/client"
+	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

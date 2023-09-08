@@ -9,8 +9,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	nbs "a.yandex-team.ru/cloud/blockstore/public/sdk/go/client"
+	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

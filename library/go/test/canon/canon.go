@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"a.yandex-team.ru/library/go/test/yatest"
+	"github.com/ydb-platform/nbs/library/go/test/yatest"
 )
 
 var isRunningUnderGotest bool

@@ -3,9 +3,8 @@ package client
 import (
 	"time"
 
+	protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"golang.org/x/net/context"
-
-	protos "a.yandex-team.ru/cloud/blockstore/public/api/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

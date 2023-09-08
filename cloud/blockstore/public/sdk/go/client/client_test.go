@@ -7,8 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	protos "a.yandex-team.ru/cloud/blockstore/public/api/protos"
+	protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

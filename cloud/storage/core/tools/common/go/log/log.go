@@ -1,8 +1,9 @@
 package log
 
 import (
-	nbs "a.yandex-team.ru/cloud/blockstore/public/sdk/go/client"
 	"context"
+
+	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
