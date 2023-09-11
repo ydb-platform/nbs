@@ -24,6 +24,4 @@ PEERDIR(
     library/cpp/deprecated/atomic
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/apps/common/restrict.inc)
-
 END()

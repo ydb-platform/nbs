@@ -10,6 +10,4 @@ PEERDIR(
     library/cpp/getopt
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/apps/common/restrict.inc)
-
 END()

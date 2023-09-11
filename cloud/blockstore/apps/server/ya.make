@@ -29,6 +29,4 @@ ENDIF()
 
 YQL_LAST_ABI_VERSION()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/apps/common/restrict.inc)
-
 END()
