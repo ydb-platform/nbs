@@ -857,27 +857,41 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             db.InitSchema();
         });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.SetUsedBlocks(db, TBlockRange32(100, 110), 0);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db) {
+                state.SetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(100, 110),
+                    0);
+            });
         UNIT_ASSERT_EQUAL(11, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(21, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.SetUsedBlocks(db, TBlockRange32(105, 130), 0);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db) {
+                state.SetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(105, 130),
+                    0);
+            });
         UNIT_ASSERT_EQUAL(31, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(41, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.UnsetUsedBlocks(db, TBlockRange32(106, 115));
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db) {
+                state.UnsetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(106, 115));
+            });
         UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.UnsetUsedBlocks(db, TBlockRange32(109, 110));
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db) {
+                state.UnsetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(109, 110));
+            });
         UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
 

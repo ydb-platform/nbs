@@ -171,7 +171,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(
                     visitor,
-                    TBlockRange32(0, 1),
+                    TBlockRange32::WithLength(0, 2),
                     true,   // precharge
                     maxCommitId
                 ));
@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(
                     visitor,
-                    TBlockRange32(5, 6),
+                    TBlockRange32::MakeClosedInterval(5, 6),
                     true,   // precharge
                     maxCommitId
                 ));
@@ -191,7 +191,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(
                     visitor,
-                    TBlockRange32(2, 3),
+                    TBlockRange32::MakeClosedInterval(2, 3),
                     true,   // precharge
                     maxCommitId
                 ));
@@ -201,7 +201,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(
                     visitor,
-                    TBlockRange32(3, 4),
+                    TBlockRange32::MakeClosedInterval(3, 4),
                     true,   // precharge
                     maxCommitId
                 ));
@@ -211,7 +211,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(
                     visitor,
-                    TBlockRange32(1, 5),
+                    TBlockRange32::MakeClosedInterval(1, 5),
                     true,   // precharge
                     maxCommitId
                 ));
@@ -221,7 +221,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(
                     visitor,
-                    TBlockRange32(1, 5),
+                    TBlockRange32::MakeClosedInterval(1, 5),
                     true    // precharge
                 ));
                 UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:5 #1:2 #2:5 #2:4 #2:2 #3:5 #3:4 #4:5 #4:4 #4:3 #5:5 #5:3");
@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(0, 2),
+                TBlockRange32::WithLength(0, 3),
                 TBlockMask()
             );
         });
@@ -314,7 +314,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(4, 6),
+                TBlockRange32::MakeClosedInterval(4, 6),
                 TBlockMask()
             );
         });
@@ -322,7 +322,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(2, 4),
+                TBlockRange32::MakeClosedInterval(2, 4),
                 TBlockMask()
             );
         });
@@ -330,7 +330,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(0, 6),
+                TBlockRange32::WithLength(0, 7),
                 TBlockMask()
             );
         });
@@ -340,7 +340,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
-                    TBlockRange32(0, 1),
+                    TBlockRange32::WithLength(0, 2),
                     true,   // precharge
                     MaxBlocksCount,
                     maxCommitId
@@ -351,7 +351,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
-                    TBlockRange32(5, 6),
+                    TBlockRange32::MakeClosedInterval(5, 6),
                     true,   // precharge
                     MaxBlocksCount,
                     maxCommitId
@@ -362,7 +362,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
-                    TBlockRange32(2, 3),
+                    TBlockRange32::MakeClosedInterval(2, 3),
                     true,   // precharge
                     MaxBlocksCount,
                     maxCommitId
@@ -373,7 +373,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
-                    TBlockRange32(3, 4),
+                    TBlockRange32::MakeClosedInterval(3, 4),
                     true,   // precharge
                     MaxBlocksCount,
                     maxCommitId
@@ -384,7 +384,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
-                    TBlockRange32(1, 5),
+                    TBlockRange32::MakeClosedInterval(1, 5),
                     true,   // precharge
                     MaxBlocksCount,
                     maxCommitId
@@ -395,7 +395,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
-                    TBlockRange32(1, 5),
+                    TBlockRange32::MakeClosedInterval(1, 5),
                     true,   // precharge
                     MaxBlocksCount
                 ));
@@ -414,7 +414,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(0, 2),
+                TBlockRange32::WithLength(0, 3),
                 TBlockMask()
             );
         });
@@ -422,7 +422,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(4, 6),
+                TBlockRange32::MakeClosedInterval(4, 6),
                 TBlockMask()
             );
         });
@@ -430,7 +430,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(2, 4),
+                TBlockRange32::MakeClosedInterval(2, 4),
                 TBlockMask()
             );
         });
@@ -438,7 +438,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
-                TBlockRange32(0, 6),
+                TBlockRange32::WithLength(0, 7),
                 TBlockMask()
             );
         });
