@@ -37,6 +37,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
 #include <ydb/core/base/blobstorage.h>
@@ -135,12 +136,13 @@ public:
         //
 
         auto hiveProxy = CreateHiveProxy({
-            Args.StorageConfig->GetPipeClientRetryCount(),
-            Args.StorageConfig->GetPipeClientMinRetryTime(),
-            Args.StorageConfig->GetHiveLockExpireTimeout(),
-            TBlockStoreComponents::HIVE_PROXY,
-            Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
-            Args.StorageConfig->GetHiveProxyFallbackMode(),
+            .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
+            .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
+            .HiveLockExpireTimeout = Args.StorageConfig->GetHiveLockExpireTimeout(),
+            .LogComponent = TBlockStoreComponents::HIVE_PROXY,
+            .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+            .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
+            .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
         });
 
         setup->LocalServices.emplace_back(
@@ -439,6 +441,8 @@ public:
                         TMailboxType::ReadAsFilled,
                         appData->SystemPoolId),
                     priority);
+
+            ConfigureTenantSystemTablets(*appData, *localConfig);
 
             auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
             tenantPoolConfig->AddStaticSlot(StorageConfig->GetSchemeShardDir());

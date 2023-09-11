@@ -858,4 +858,8 @@ message TStorageServiceConfig
     // will be reported. Current replacement rate is reset upon DiskRegistry
     // tablet restart.
     optional uint32 MaxAutomaticDeviceReplacementsPerHour = 328;
+
+    // Tenant hive tablet id different from root to be used by hive proxy.
+    // Should be configured once and for the lifetime of the cluster.
+    optional uint64 TenantHiveTabletId = 329;
 }

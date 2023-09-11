@@ -39,6 +39,7 @@ THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
+    , TenantHiveTabletId(config.TenantHiveTabletId)
 {
     ActivityType = TStorageActivities::HIVE_PROXY;
 }
@@ -65,6 +66,10 @@ ui64 THiveProxyActor::GetHive(
     ui64 tabletId,
     ui32 hiveIdx)
 {
+    if (TenantHiveTabletId) {
+        return TenantHiveTabletId;
+    }
+
     auto domainsInfo = AppData(ctx)->DomainsInfo;
     Y_VERIFY(domainsInfo->Domains);
 
@@ -176,7 +181,7 @@ void THiveProxyActor::ScheduleSendTabletMetrics(const TActorContext& ctx, ui64 h
     auto* state = HiveStates.FindPtr(hive);
     STORAGE_VERIFY(state, "Hive", hive);
     if (!state->ScheduledSendTabletMetrics) {
-        ctx.Schedule(TDuration::MilliSeconds(BatchTimeout), new TEvHiveProxyPrivate::TEvSendTabletMetrics(hive));
+        ctx.Schedule(BatchTimeout, new TEvHiveProxyPrivate::TEvSendTabletMetrics(hive));
         state->ScheduledSendTabletMetrics = true;
     }
 }

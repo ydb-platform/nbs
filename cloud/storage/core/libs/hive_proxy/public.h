@@ -17,6 +17,7 @@ struct THiveProxyConfig
     int LogComponent = 0;
     TString TabletBootInfoBackupFilePath;
     bool FallbackMode = false;
+    ui64 TenantHiveTabletId = 0;
 };
 
 }   // namespace NCloud::NStorage

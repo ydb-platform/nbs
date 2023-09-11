@@ -9,6 +9,7 @@ SRCS(
     node.cpp
     options.cpp
     proxy.cpp
+    tenant.cpp
 )
 
 PEERDIR(
@@ -23,7 +24,11 @@ PEERDIR(
     library/cpp/lwtrace
 
     ydb/core/base
+    ydb/core/mind
     ydb/core/protos
+    ydb/core/tx/coordinator
+    ydb/core/tx/mediator
+    ydb/core/tx/schemeshard
 )
 
 END()

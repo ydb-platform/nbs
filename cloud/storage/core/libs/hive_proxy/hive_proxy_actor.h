@@ -145,14 +145,18 @@ private:
     };
 
 private:
+    static constexpr TDuration BatchTimeout = TDuration::Seconds(2);
+
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     THashMap<ui64, THiveState> HiveStates;
-    TDuration LockExpireTimeout;
-    int LogComponent = 0;
+
+    const TDuration LockExpireTimeout;
+    const int LogComponent;
+
     TString TabletBootInfoBackupFilePath;
     NActors::TActorId TabletBootInfoBackup;
 
-    static constexpr int BatchTimeout = 2000; // ms
+    const ui64 TenantHiveTabletId;
 
 public:
     explicit THiveProxyActor(THiveProxyConfig config);

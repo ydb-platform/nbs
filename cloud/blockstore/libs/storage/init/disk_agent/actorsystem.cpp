@@ -49,12 +49,13 @@ public:
         //
 
         auto hiveProxy = CreateHiveProxy({
-            Args.StorageConfig->GetPipeClientRetryCount(),
-            Args.StorageConfig->GetPipeClientMinRetryTime(),
-            Args.StorageConfig->GetHiveLockExpireTimeout(),
-            TBlockStoreComponents::HIVE_PROXY,
-            "",     // TabletBootInfoBackupFilePath
-            false,  // FallbackMode
+            .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
+            .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
+            .HiveLockExpireTimeout = Args.StorageConfig->GetHiveLockExpireTimeout(),
+            .LogComponent = TBlockStoreComponents::HIVE_PROXY,
+            .TabletBootInfoBackupFilePath = {},
+            .FallbackMode = false,
+            .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
         });
 
         setup->LocalServices.emplace_back(

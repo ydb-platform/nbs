@@ -477,6 +477,8 @@ public:
     bool GetAssignIdToWriteAndZeroRequestsEnabled() const;
 
     TDuration GetAgentListExpiredParamsCleanupInterval() const;
+
+    ui64 GetTenantHiveTabletId() const;
 };
 
 ui64 GetAllocationUnit(

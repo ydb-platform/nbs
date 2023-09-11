@@ -102,6 +102,8 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
+                                                                               \
+    xxx(TenantHiveTabletId,             ui64,               0                 )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \

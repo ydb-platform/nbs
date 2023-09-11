@@ -25,6 +25,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static constexpr ui64 FakeHiveTablet = 0x0000000000000001;
+static constexpr ui64 TenantHiveTablet = 0x0000000000000002;
 static constexpr ui64 FakeSchemeRoot = 0x00000000008401F0;
 static constexpr ui64 FakeTablet2 = 0x0000000000840102;
 static constexpr ui64 FakeTablet3 = 0x0000000000840103;
@@ -403,17 +404,19 @@ struct TTestEnv
 {
     TTestActorRuntime& Runtime;
     bool Debug = false;
-    THiveMockState::TPtr HiveState;
+
     TActorId HiveProxyActorId;
+    THiveMockState::TPtr HiveState = MakeIntrusive<THiveMockState>();
+    THiveMockState::TPtr TenantHiveState = MakeIntrusive<THiveMockState>();
 
     TTestEnv(
             TTestActorRuntime& runtime,
             TString tabletBootInfoBackupFilePath = "",
             bool fallbackMode = false,
-            bool debug = false)
+            bool debug = false,
+            bool useTenantHive = false)
         : Runtime(runtime)
         , Debug(debug)
-        , HiveState(MakeIntrusive<THiveMockState>())
     {
         TAppPrepare app;
 
@@ -424,8 +427,10 @@ struct TTestEnv
         SetupTabletServices(Runtime, &app, true);
 
         BootHiveMock(Runtime, FakeHiveTablet, HiveState, EExternalBootOptions::PROCESS);
+        BootHiveMock(Runtime, TenantHiveTablet, TenantHiveState, EExternalBootOptions::PROCESS);
 
-        SetupHiveProxy(tabletBootInfoBackupFilePath, fallbackMode);
+        ui64 tenantHive = useTenantHive ? TenantHiveTablet : 0;
+        SetupHiveProxy(tabletBootInfoBackupFilePath, fallbackMode, tenantHive);
     }
 
     TTestEnv(
@@ -444,7 +449,7 @@ struct TTestEnv
 
         BootHiveMock(Runtime, FakeHiveTablet, HiveState, externalBootOptions);
 
-        SetupHiveProxy("", false);
+        SetupHiveProxy("", false, 0);
     }
 
     ~TTestEnv()
@@ -477,7 +482,8 @@ struct TTestEnv
 
     void SetupHiveProxy(
         TString tabletBootInfoBackupFilePath,
-        bool fallbackMode)
+        bool fallbackMode,
+        ui64 tenantHive)
     {
         THiveProxyConfig config{
             .PipeClientRetryCount = 4,
@@ -486,6 +492,7 @@ struct TTestEnv
             .LogComponent = 0,
             .TabletBootInfoBackupFilePath = tabletBootInfoBackupFilePath,
             .FallbackMode = fallbackMode,
+            .TenantHiveTabletId = tenantHive,
         };
         HiveProxyActorId = Runtime.Register(
             CreateHiveProxy(std::move(config)).release());
@@ -1366,6 +1373,24 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                     TDuration::Seconds(1));
             UNIT_ASSERT(!ev);
         }
+    }
+
+    Y_UNIT_TEST(ShouldUseTenantHiveIfConfigured)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, "", false, false, true);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        env.SendLockRequest(sender, FakeTablet2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.TenantHiveState->LockedTablets[FakeTablet2],
+            env.HiveProxyActorId);
+
+        env.SendUnlockRequest(sender, FakeTablet2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.TenantHiveState->LockedTablets[FakeTablet2],
+            TActorId());
     }
 }
 
