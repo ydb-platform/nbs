@@ -53,8 +53,8 @@ public:
             Args.StorageConfig->GetPipeClientMinRetryTime(),
             Args.StorageConfig->GetHiveLockExpireTimeout(),
             TBlockStoreComponents::HIVE_PROXY,
-            Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
-            Args.StorageConfig->GetHiveProxyFallbackMode(),
+            "",     // TabletBootInfoBackupFilePath
+            false,  // FallbackMode
         });
 
         setup->LocalServices.emplace_back(
