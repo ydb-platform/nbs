@@ -258,6 +258,8 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
 
         auto requestCount = Min<ui32>(runs * REQUEST_COUNT, DumpTracksLimit);
         Check(env, requestCount);
+
+        threadPool->Stop();
     }
 
     Y_UNIT_TEST(SlowRequestThresholdByTrackLength)
