@@ -131,8 +131,8 @@ private:
         auto tagName = TStringBuilder() << "NFS_THREAD_" << Name;
         NProfiling::TMemoryTagScope tagScope(tagName.c_str());
 
-        void* tag;
-        bool ok;
+        void* tag = nullptr;
+        bool ok = false;
         while (WaitRequest(&tag, &ok)) {
             ProcessRequest(tag, ok);
         }
