@@ -23,6 +23,7 @@ namespace {
     xxx(SecureEraseTimeout,         TDuration,          TDuration::Minutes(1) )\
     xxx(DeviceIOTimeout,            TDuration,          TDuration::Minutes(1) )\
     xxx(DeviceIOTimeoutsDisabled,   bool,               false                 )\
+    xxx(ShutdownTimeout,            TDuration,          TDuration::Seconds(5) )\
     xxx(Backend,                                                               \
         NProto::EDiskAgentBackendType,                                         \
         NProto::DISK_AGENT_BACKEND_SPDK                                       )\

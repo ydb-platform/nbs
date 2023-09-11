@@ -2,6 +2,8 @@ import logging
 import os
 import tempfile
 
+import yatest.common as common
+
 from subprocess import call
 
 from google.protobuf.text_format import MessageToBytes
@@ -27,6 +29,12 @@ class Device:
         self.block_count = block_count
         self.handle = handle
         self.storage_pool_name = storage_pool_name
+
+
+def get_shutdown_agent_interval():
+    if common.context.sanitize is not None:
+        return 30 * 1000
+    return 0  # Use default
 
 
 def enable_custom_cms_configs(client):
@@ -211,6 +219,7 @@ def setup_disk_agent_config(
     config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
+    config.ShutdownTimeout = get_shutdown_agent_interval()
     if device_erase_method is not None:
         config.DeviceEraseMethod = device_erase_method
 

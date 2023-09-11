@@ -4,7 +4,9 @@
 #include <cloud/blockstore/libs/common/sglist.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/generic/hash.h>
 #include <util/system/spinlock.h>
@@ -16,6 +18,19 @@ namespace NCloud::NBlockStore {
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEnumHasher
+{
+    template <typename EnumType>
+    inline std::size_t operator()(const EnumType value) const
+    {
+        static_assert(std::is_enum_v<EnumType> == true);
+        using UnderlyingType = std::underlying_type_t<EnumType>;
+        return std::hash<UnderlyingType>{}(static_cast<UnderlyingType>(value));
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,6 +97,8 @@ template <typename TPromise>
 class TInflightTracker
 {
 public:
+    enum TInflightRequestId: ui64;
+
     struct TInflightRequest
     {
         TInstant Ts;
@@ -90,7 +107,7 @@ public:
 
 private:
     const TDuration MaxRequestDuration;
-    THashMap<ui64, TInflightRequest> Inflight;
+    THashMap<TInflightRequestId, TInflightRequest, TEnumHasher> Inflight;
     TAdaptiveLock Lock;
     std::atomic<ui64> RequestId = 0;
 
@@ -99,9 +116,9 @@ public:
         : MaxRequestDuration(maxRequestDuration)
     {}
 
-    ui64 RegisterRequest(TInstant ts, TPromise promise)
+    TInflightRequestId RegisterRequest(TInstant ts, TPromise promise)
     {
-        const auto id = RequestId.fetch_add(1);
+        const auto id = static_cast<TInflightRequestId>(RequestId.fetch_add(1));
         if (MaxRequestDuration != TDuration::Zero()) {
             TGuard guard(Lock);
 
@@ -110,13 +127,23 @@ public:
         return id;
     }
 
-    void UnregisterRequest(ui64 requestId)
+    void UnregisterRequest(TInflightRequestId requestId)
     {
         if (MaxRequestDuration != TDuration::Zero()) {
             TGuard guard(Lock);
 
             Inflight.erase(requestId);
         }
+    }
+
+    [[nodiscard]] bool IsEmpty() const {
+        TGuard guard(Lock);
+        return Inflight.empty();
+    }
+
+    [[nodiscard]] size_t Size() const {
+        TGuard guard(Lock);
+        return Inflight.size();
     }
 
     TVector<TInflightRequest> ExtractTimedOut(TInstant now)
@@ -127,7 +154,7 @@ public:
         }
 
         TGuard guard(Lock);
-        TVector<ui64> toDelete;
+        TVector<TInflightRequestId> toDelete;
         for (auto& [id, request]: Inflight) {
             const bool isTimedOut = request.Ts + MaxRequestDuration < now;
             if (isTimedOut) {
@@ -159,13 +186,16 @@ private:
     const TDuration MaxRequestDuration;
 
     using TReadPromise = NThreading::TPromise<NProto::TReadBlocksResponse>;
-    mutable TInflightTracker<TReadPromise> InflightReads{MaxRequestDuration};
+    std::shared_ptr<TInflightTracker<TReadPromise>> InflightReads{
+        std::make_shared<TInflightTracker<TReadPromise>>(MaxRequestDuration)};
 
     using TWritePromise = NThreading::TPromise<NProto::TWriteBlocksResponse>;
-    mutable TInflightTracker<TWritePromise> InflightWrites{MaxRequestDuration};
+    std::shared_ptr<TInflightTracker<TWritePromise>> InflightWrites{
+        std::make_shared<TInflightTracker<TWritePromise>>(MaxRequestDuration)};
 
     using TZeroPromise = NThreading::TPromise<NProto::TZeroBlocksResponse>;
-    mutable TInflightTracker<TZeroPromise> InflightZeros{MaxRequestDuration};
+    std::shared_ptr<TInflightTracker<TZeroPromise>> InflightZeros{
+        std::make_shared<TInflightTracker<TZeroPromise>>(MaxRequestDuration)};
 
 public:
     TImpl(
@@ -199,6 +229,8 @@ public:
     void CheckIOTimeouts(TInstant now);
 
     void ReportIOError();
+
+    size_t Shutdown(ITimerPtr timer, TDuration duration);
 
 private:
     void VerifyBlockSize(ui32 blockSize) const;
@@ -300,30 +332,38 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
         std::move(localRequest));
 
     auto promise = NewPromise<NProto::TReadBlocksResponse>();
-    const auto id =  InflightReads.RegisterRequest(now, promise);
+    const auto id =  InflightReads->RegisterRequest(now, promise);
 
     future.Subscribe(
-        [=, guardedSgList = std::move(guardedSgList)] (const auto& f) mutable {
-        InflightReads.UnregisterRequest(id);
+        [InflightReads = InflightReads,
+         id,
+         promise,
+         response = std::move(response),
+         buffer = std::move(buffer),
+         guardedSgList = std::move(guardedSgList),
+         requestBlocksCount,
+         requestBlockSize,
+         bytesCount](const auto& f) mutable
+        {
+            InflightReads->UnregisterRequest(id);
 
-        const auto& localResponse = f.GetValue();
-        guardedSgList.Close();
+            const auto& localResponse = f.GetValue();
+            guardedSgList.Close();
 
-        if (!HasError(localResponse) && buffer) {
-            auto sgList = ResizeIOVector(
-                *response->MutableBlocks(),
-                requestBlocksCount,
-                requestBlockSize);
+            if (!HasError(localResponse) && buffer) {
+                auto sgList = ResizeIOVector(
+                    *response->MutableBlocks(),
+                    requestBlocksCount,
+                    requestBlockSize);
 
-            size_t bytesCopied = SgListCopy(
-                { buffer.get(), bytesCount },
-                sgList);
-            Y_VERIFY(bytesCopied == bytesCount);
-        }
+                size_t bytesCopied =
+                    SgListCopy({buffer.get(), bytesCount}, sgList);
+                Y_VERIFY(bytesCopied == bytesCount);
+            }
 
-        response->MergeFrom(localResponse);
-        promise.TrySetValue(std::move(*response));
-    });
+            response->MergeFrom(localResponse);
+            promise.TrySetValue(std::move(*response));
+        });
 
     return promise;
 }
@@ -383,28 +423,32 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
         std::move(localRequest));
 
     auto promise = NewPromise<NProto::TWriteBlocksResponse>();
-    const auto id = InflightWrites.RegisterRequest(now, promise);
+    const auto id = InflightWrites->RegisterRequest(now, promise);
 
     future.Subscribe(
-        [this,
+        [InflightWrites = InflightWrites,
          id,
          promise,
          request = std::move(request),
          buffer = std::move(buffer),
-         guardedSgList = std::move(guardedSgList)] (const auto& f) mutable {
-        InflightWrites.UnregisterRequest(id);
+         guardedSgList = std::move(guardedSgList)](const auto& f) mutable
+        {
+            InflightWrites->UnregisterRequest(id);
 
-        auto localResponse = f.GetValue();
+            auto localResponse = f.GetValue();
 
-        guardedSgList.Close();
-        Y_UNUSED(request);
-        Y_UNUSED(buffer);
+            guardedSgList.Close();
+            // It is required to transfer buffer and request here to extend the
+            // lifetime of the request and its memory while the Storage is doing
+            // its job.
+            Y_UNUSED(request);
+            Y_UNUSED(buffer);
 
-        NProto::TWriteBlocksResponse response;
-        response.MergeFrom(localResponse);
+            NProto::TWriteBlocksResponse response;
+            response.MergeFrom(localResponse);
 
-        promise.TrySetValue(std::move(response));
-    });
+            promise.TrySetValue(std::move(response));
+        });
 
     return promise;
 }
@@ -417,15 +461,17 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
 {
     if (requestBlockSize == StorageBlockSize) {
         auto promise = NewPromise<NProto::TZeroBlocksResponse>();
-        const auto id = InflightZeros.RegisterRequest(now, promise);
+        const auto id = InflightZeros->RegisterRequest(now, promise);
 
         auto future =
             Storage->ZeroBlocks(std::move(callContext), std::move(request));
 
-        future.Subscribe([this, id, promise] (const auto& f) mutable {
-            InflightZeros.UnregisterRequest(id);
-            promise.TrySetValue(std::move(f.GetValue()));
-        });
+        future.Subscribe(
+            [InflightZeros = InflightZeros, id, promise](const auto& f) mutable
+            {
+                InflightZeros->UnregisterRequest(id);
+                promise.TrySetValue(std::move(f.GetValue()));
+            });
 
         return promise;
     }
@@ -452,12 +498,14 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
         std::move(localRequest));
 
     auto promise = NewPromise<NProto::TZeroBlocksResponse>();
-    const auto id = InflightZeros.RegisterRequest(now, promise);
+    const auto id = InflightZeros->RegisterRequest(now, promise);
 
-    future.Subscribe([this, id, promise] (const auto& f) mutable {
-        InflightZeros.UnregisterRequest(id);
-        promise.TrySetValue(std::move(f.GetValue()));
-    });
+    future.Subscribe(
+        [InflightZeros = InflightZeros, id, promise](const auto& f) mutable
+        {
+            InflightZeros->UnregisterRequest(id);
+            promise.TrySetValue(std::move(f.GetValue()));
+        });
 
     return promise;
 }
@@ -483,18 +531,37 @@ void TStorageAdapter::TImpl::CheckIOTimeouts(
 void TStorageAdapter::TImpl::CheckIOTimeouts(TInstant now)
 {
     CheckIOTimeouts<NProto::TReadBlocksResponse>(
-        InflightReads.ExtractTimedOut(now));
+        InflightReads->ExtractTimedOut(now));
 
     CheckIOTimeouts<NProto::TWriteBlocksResponse>(
-        InflightWrites.ExtractTimedOut(now));
+        InflightWrites->ExtractTimedOut(now));
 
     CheckIOTimeouts<NProto::TZeroBlocksResponse>(
-        InflightZeros.ExtractTimedOut(now));
+        InflightZeros->ExtractTimedOut(now));
 }
 
 void TStorageAdapter::TImpl::ReportIOError()
 {
     Storage->ReportIOError();
+}
+
+size_t TStorageAdapter::TImpl::Shutdown(ITimerPtr timer, TDuration duration)
+{
+    const auto startAt = timer->Now();
+    while (true) {
+        if (InflightReads->IsEmpty() && InflightWrites->IsEmpty() &&
+            InflightZeros->IsEmpty())
+        {
+            return 0;
+        }
+        if (startAt + duration < timer->Now()) {
+            break;
+        }
+        Sleep(duration / 100);
+    }
+
+    return InflightReads->Size() + InflightWrites->Size() +
+           InflightZeros->Size();
 }
 
 void TStorageAdapter::TImpl::VerifyBlockSize(ui32 blockSize) const
@@ -546,17 +613,21 @@ TStorageAdapter::TStorageAdapter(
         ui32 storageBlockSize,
         bool normalize,
         ui32 maxRequestSize,
-        TDuration maxRequestDuration)
+        TDuration maxRequestDuration,
+        TDuration shutdownTimeout)
     : Impl(std::make_unique<TImpl>(
         std::move(storage),
         storageBlockSize,
         normalize,
         maxRequestSize,
         maxRequestDuration))
+    , ShutdownTimeout(shutdownTimeout)
 {}
 
 TStorageAdapter::~TStorageAdapter()
-{}
+{
+    Shutdown(CreateWallClockTimer());
+}
 
 TFuture<NProto::TReadBlocksResponse> TStorageAdapter::ReadBlocks(
     TInstant now,
@@ -611,6 +682,11 @@ void TStorageAdapter::CheckIOTimeouts(TInstant now)
 void TStorageAdapter::ReportIOError()
 {
     Impl->ReportIOError();
+}
+
+size_t TStorageAdapter::Shutdown(ITimerPtr timer)
+{
+    return Impl->Shutdown(std::move(timer), ShutdownTimeout);
 }
 
 }   // namespace NCloud::NBlockStore

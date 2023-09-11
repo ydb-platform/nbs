@@ -324,6 +324,11 @@ TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 
             SpdkTarget = std::move(r.SpdkTarget);
 
+            TDuration ioTimeout;
+            if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+                ioTimeout = AgentConfig->GetDeviceIOTimeout();
+            }
+
             for (size_t i = 0; i != r.Configs.size(); ++i) {
                 const auto& config = r.Configs[i];
 
@@ -333,7 +338,9 @@ TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
                         std::move(r.Devices[i]),
                         config.GetBlockSize(),
                         false,  // normalize
-                        MaxRequestSize)
+                        MaxRequestSize,
+                        ioTimeout,
+                        AgentConfig->GetShutdownTimeout())
                 };
 
                 Devices.emplace(
@@ -359,13 +366,13 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
             Y_VERIFY(r.Configs.size() == r.Devices.size()
                   && r.Configs.size() == r.Stats.size());
 
+            TDuration ioTimeout;
+            if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+                ioTimeout = AgentConfig->GetDeviceIOTimeout();
+            }
+
             for (size_t i = 0; i != r.Configs.size(); ++i) {
                 const auto& config = r.Configs[i];
-
-                TDuration ioTimeout;
-                if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
-                    ioTimeout = AgentConfig->GetDeviceIOTimeout();
-                }
 
                 TDeviceState device {
                     .Config = config,
@@ -374,7 +381,8 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                         config.GetBlockSize(),
                         false,  // normalize
                         MaxRequestSize,
-                        ioTimeout),
+                        ioTimeout,
+                        AgentConfig->GetShutdownTimeout()),
                     .Stats = std::move(r.Stats[i])
                 };
 

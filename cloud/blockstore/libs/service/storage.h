@@ -49,6 +49,7 @@ class TStorageAdapter
 private:
     class TImpl;
     std::unique_ptr<TImpl> Impl;
+    const TDuration ShutdownTimeout;
 
 public:
     TStorageAdapter(
@@ -56,7 +57,8 @@ public:
         ui32 storageBlockSize,
         bool normalize,
         ui32 maxRequestSize = 0,
-        TDuration maxRequestDuration = TDuration::Zero());
+        TDuration maxRequestDuration = TDuration::Zero(),
+        TDuration shutdownTimeout =  TDuration::Zero());
 
     ~TStorageAdapter();
 
@@ -84,6 +86,9 @@ public:
     void CheckIOTimeouts(TInstant now);
 
     void ReportIOError();
+
+    // Returns the number of incomplete requests.
+    size_t Shutdown(ITimerPtr timer);
 };
 
 }   // namespace NCloud::NBlockStore

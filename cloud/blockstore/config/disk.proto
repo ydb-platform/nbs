@@ -155,6 +155,10 @@ message TDiskAgentConfig
 
     // Disables device IO timeout -> E_IO error conversion logic.
     optional bool DeviceIOTimeoutsDisabled = 24;
+
+    // During shutdown, the disk agent will wait for I/O requests to complete
+    // during this interval (in milliseconds).
+    optional uint32 ShutdownTimeout = 25;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
