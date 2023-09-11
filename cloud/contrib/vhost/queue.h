@@ -15,12 +15,12 @@
  */
 #include "catomic.h"
 
-#define SLIST_INSERT_HEAD_ATOMIC(head, elm, field)      ({                \
-    typeof(elm) old_slh_first;                                            \
-    do {                                                                  \
-        old_slh_first = (elm)->field.sle_next = (head)->slh_first;        \
-    } while (catomic_cmpxchg(&(head)->slh_first, old_slh_first, (elm)) != \
-             old_slh_first);                                              \
+#define SLIST_INSERT_HEAD_ATOMIC(head, elm, field)      ({                        \
+    typeof(elm) old_slh_first;                                                    \
+    do {                                                                          \
+        old_slh_first = (elm)->field.sle_next = catomic_read(&(head)->slh_first); \
+    } while (catomic_cmpxchg(&(head)->slh_first, old_slh_first, (elm)) !=         \
+             old_slh_first);                                                      \
     old_slh_first;      })
 
 #define SLIST_MOVE_ATOMIC(dest, src) do {                            \

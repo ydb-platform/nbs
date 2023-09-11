@@ -269,7 +269,7 @@ void vhd_complete_bio(struct vhd_io *io, enum vhd_bdev_io_result status)
     if (!SLIST_INSERT_HEAD_ATOMIC(&rq->completion, io, completion_link)) {
         vhd_bh_schedule(rq->completion_bh);
     }
-    ++rq->metrics.completions_received;
+    catomic_inc(&rq->metrics.completions_received);
 }
 
 void vhd_get_rq_stat(struct vhd_request_queue *rq,
