@@ -154,7 +154,7 @@ void TPollHandle::Attach(int fd, ui32 events, void* data)
     };
 
     int res = epoll_ctl(Fd, EPOLL_CTL_ADD, fd, &event);
-    if (res < 0) {
+    if (res < 0 && errno != EEXIST) {
         RDMA_THROW_ERROR("epoll_ctl(EPOLL_CTL_ADD)");
     }
 }
@@ -162,7 +162,7 @@ void TPollHandle::Attach(int fd, ui32 events, void* data)
 void TPollHandle::Detach(int fd)
 {
     int res = epoll_ctl(Fd, EPOLL_CTL_DEL, fd, nullptr);
-    if (res < 0) {
+    if (res < 0 && errno != ENOENT) {
         RDMA_THROW_ERROR("epoll_ctl(EPOLL_CTL_DEL)");
     }
 }

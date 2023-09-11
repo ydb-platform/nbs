@@ -562,18 +562,31 @@ public:
             return MakeFuture<IStoragePtr>(nullptr);
         }
 
-        return WaitAll(endpoints)
-            .Apply([=] (const auto& future) {
-                Y_UNUSED(future);
+        return WaitAll(endpoints).Apply([
+            endpoints = std::move(endpoints),
+            storages = std::move(storages),
+            offsets = std::move(offsets),
+            volume = volume,
+            clientId = clientId,
+            serverStats = ServerStats] (const auto&)
+        {
+            try {
+                for (auto& endpoint: endpoints) {
+                    endpoint.GetValue();
+                }
+            } catch (...) {
+                return IStoragePtr(nullptr);
+            }
 
-                return CreateCompoundStorage(
-                    std::move(storages),
-                    std::move(offsets),
-                    volume.GetBlockSize(),
-                    volume.GetDiskId(),
-                    std::move(clientId),
-                    ServerStats);
-            });
+            return CreateCompoundStorage(
+                std::move(storages),
+                std::move(offsets),
+                volume.GetBlockSize(),
+                volume.GetDiskId(),
+                std::move(clientId),
+                serverStats);
+        });
+
     }
 };
 

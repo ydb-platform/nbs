@@ -504,11 +504,8 @@ struct TTestVerbs
     void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override
     {
         Y_UNUSED(qp);
-
-        if (mask & IBV_QP_STATE) {
-            auto g = Guard(TestContext->CompletionLock);
-            TestContext->QueuePair.state = attr->qp_state;
-        }
+        Y_UNUSED(attr);
+        Y_UNUSED(mask);
     }
 };
 
@@ -526,6 +523,7 @@ void Disconnect(TTestContextPtr context)
         RDMA_CM_EVENT_DISCONNECTED,
         static_cast<rdma_cm_id*>(context->Connection));
 
+    // prepare to flush CQ
     with_lock (context->CompletionLock) {
         std::move(
             context->RecvEvents.begin(),
@@ -534,8 +532,10 @@ void Disconnect(TTestContextPtr context)
 
         context->RecvEvents.clear();
         context->ReqIds.clear();
+        context->QueuePair.state = IBV_QPS_ERR;
     }
 
+    // wait for CQ poller to handle requests
     while (true) {
         SpinLockPause();
         auto g = Guard(context->CompletionLock);

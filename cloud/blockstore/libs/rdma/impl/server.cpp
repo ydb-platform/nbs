@@ -458,7 +458,7 @@ void TClientEndpoint::InitCompletionQueue(ui32 queueSize)
     SetNonBlock(CompletionChannel->fd, true);
 
     ibv_cq_init_attr_ex cq_attrs = {
-        .cqe = 2*queueSize,     // send + recv
+        .cqe = 2 * queueSize,   // send + recv
         .cq_context = this,
         .channel = CompletionChannel.get(),
         .wc_flags = IBV_WC_EX_WITH_COMPLETION_TIMESTAMP,
@@ -1542,7 +1542,7 @@ bool TServer::BeginListen(TServerEndpoint* endpoint)
             endpoint->Port,
             &hints);
 
-        STORAGE_DEBUG("LISTEN address "
+        STORAGE_INFO("LISTEN address "
             << NVerbs::PrintAddress(addrinfo->ai_src_addr));
 
         Verbs->BindAddress(endpoint->Connection.get(), addrinfo->ai_src_addr);

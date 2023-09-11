@@ -111,7 +111,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_RDMA_CONNECT_FAILED,
+                E_RDMA_UNAVAILABLE,
                 e.GetCode(),
                 e.GetMessage());
         }

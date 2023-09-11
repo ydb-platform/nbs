@@ -172,7 +172,7 @@ enum EWellKnownResultCodes: ui32
     E_FS_OUT_OF_SPACE            = MAKE_FILESTORE_ERROR(101),
     E_FS_THROTTLED               = MAKE_FILESTORE_ERROR(102),
 
-    E_RDMA_CONNECT_FAILED        = MAKE_RDMA_ERROR(1),
+    E_RDMA_UNAVAILABLE           = MAKE_RDMA_ERROR(1),
 };
 
 ////////////////////////////////////////////////////////////////////////////////
