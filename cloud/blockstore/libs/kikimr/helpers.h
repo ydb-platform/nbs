@@ -53,4 +53,12 @@ inline bool IsUnrecoverable(const NKikimrProto::EReplyStatus status)
     HFunc(ns::TEv##name##Request, Reject##name);                               \
 // BLOCKSTORE_REJECT_REQUEST
 
+#define BLOCKSTORE_HANDLE_RESPONSE(name, ns)                                   \
+    HFunc(ns::TEv##name##Response, Handle##name##Response);                    \
+// BLOCKSTORE_HANDLE_RESPONSE
+
+#define BLOCKSTORE_IGNORE_RESPONSE(name, ns)                                   \
+    IgnoreFunc(ns::TEv##name##Response);                                       \
+// BLOCKSTORE_IGNORE_RESPONSE
+
 }   // namespace NCloud::NBlockStore

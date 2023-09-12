@@ -48,6 +48,33 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(WriteBlocksLocal,   __VA_ARGS__)                                       \
 // BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE
 
+// responses which are forwarded back via volume (volume has handlers for these)
+#define BLOCKSTORE_VOLUME_HANDLED_RESPONSES(xxx, ...)                          \
+    xxx(DescribeBlocks,           __VA_ARGS__)                                 \
+    xxx(GetPartitionInfo,         __VA_ARGS__)                                 \
+    xxx(CompactRange,             __VA_ARGS__)                                 \
+    xxx(GetCompactionStatus,      __VA_ARGS__)                                 \
+    xxx(GetUsedBlocks,            __VA_ARGS__)                                 \
+    xxx(DeleteCheckpointData,     __VA_ARGS__)                                 \
+    xxx(RebuildMetadata,          __VA_ARGS__)                                 \
+    xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
+    xxx(ScanDisk,                 __VA_ARGS__)                                 \
+    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
+// BLOCKSTORE_VOLUME_HANDLED_RESPONSES
+
+// responses for the requests forwarded from service which are forwarded back
+// via volume (volume has handlers for these)
+#define BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE(xxx, ...)              \
+    xxx(ReadBlocks,         __VA_ARGS__)                                       \
+    xxx(WriteBlocks,        __VA_ARGS__)                                       \
+    xxx(ZeroBlocks,         __VA_ARGS__)                                       \
+    xxx(CreateCheckpoint,   __VA_ARGS__)                                       \
+    xxx(DeleteCheckpoint,   __VA_ARGS__)                                       \
+    xxx(GetChangedBlocks,   __VA_ARGS__)                                       \
+    xxx(ReadBlocksLocal,    __VA_ARGS__)                                       \
+    xxx(WriteBlocksLocal,   __VA_ARGS__)                                       \
+// BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEvVolume

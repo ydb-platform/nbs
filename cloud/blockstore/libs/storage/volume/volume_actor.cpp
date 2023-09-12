@@ -675,28 +675,19 @@ bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvVolume)
-        BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_HANDLE_REQUEST, TEvVolumePrivate)
-        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_REQUEST, TEvService)
+        BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(
+            BLOCKSTORE_HANDLE_REQUEST,
+            TEvVolumePrivate)
+        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_REQUEST,
+            TEvService)
 
-        HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
-        HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
-        HFunc(TEvVolume::TEvGetPartitionInfoResponse, HandleGetPartitionInfoResponse);
-        HFunc(TEvVolume::TEvCompactRangeResponse, HandleCompactRangeResponse);
-        HFunc(TEvVolume::TEvGetCompactionStatusResponse, HandleGetCompactionStatusResponse);
-        HFunc(TEvVolume::TEvDeleteCheckpointDataResponse, HandleDeleteCheckpointDataResponse);
-        HFunc(TEvVolume::TEvRebuildMetadataResponse, HandleRebuildMetadataResponse);
-        HFunc(TEvVolume::TEvGetRebuildMetadataStatusResponse, HandleGetRebuildMetadataStatusResponse);
-        HFunc(TEvVolume::TEvScanDiskResponse, HandleScanDiskResponse);
-        HFunc(TEvVolume::TEvGetScanDiskStatusResponse, HandleGetScanDiskStatusResponse);
-
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
-        HFunc(TEvService::TEvWriteBlocksResponse, HandleWriteBlocksResponse);
-        HFunc(TEvService::TEvZeroBlocksResponse, HandleZeroBlocksResponse);
-        HFunc(TEvService::TEvCreateCheckpointResponse, HandleCreateCheckpointResponse);
-        HFunc(TEvService::TEvDeleteCheckpointResponse, HandleDeleteCheckpointResponse);
-        HFunc(TEvService::TEvGetChangedBlocksResponse, HandleGetChangedBlocksResponse);
-        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksLocalResponse);
-        HFunc(TEvService::TEvWriteBlocksLocalResponse, HandleWriteBlocksLocalResponse);
+        BLOCKSTORE_VOLUME_HANDLED_RESPONSES(
+            BLOCKSTORE_HANDLE_RESPONSE,
+            TEvVolume)
+        BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_RESPONSE,
+            TEvService)
 
         default:
             return false;
@@ -709,8 +700,19 @@ bool TVolumeActor::RejectRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_REJECT_REQUEST, TEvVolume)
-        BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_REJECT_REQUEST, TEvVolumePrivate)
-        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_REJECT_REQUEST, TEvService)
+        BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(
+            BLOCKSTORE_REJECT_REQUEST,
+            TEvVolumePrivate)
+        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_REJECT_REQUEST,
+            TEvService)
+
+        BLOCKSTORE_VOLUME_HANDLED_RESPONSES(
+            BLOCKSTORE_IGNORE_RESPONSE,
+            TEvVolume)
+        BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE(
+            BLOCKSTORE_IGNORE_RESPONSE,
+            TEvService)
 
         default:
             return false;
