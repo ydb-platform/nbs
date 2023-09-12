@@ -84,17 +84,17 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
     {
         TDisjointRangeMap m(mode);
 
-        m.Mark({1, 3}, 1);
+        m.Mark(TBlockRange32::MakeClosedInterval(1, 3), 1);
 
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 100),
+            TBlockRange32::MakeClosedInterval(0, 100),
             0,
             TVector<TDeletedBlock>{}
         );
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 100),
+            TBlockRange32::MakeClosedInterval(0, 100),
             1,
             (TVector<TDeletedBlock>{
                 {1, 1},
@@ -104,7 +104,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
         );
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 100),
+            TBlockRange32::MakeClosedInterval(0, 100),
             2,
             (TVector<TDeletedBlock>{
                 {1, 1},
@@ -113,11 +113,11 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
             })
         );
 
-        m.Mark({2, 5}, 2);
+        m.Mark(TBlockRange32::MakeClosedInterval(2, 5), 2);
 
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 100),
+            TBlockRange32::MakeClosedInterval(0, 100),
             1,
             (TVector<TDeletedBlock>{
                 {1, 1},
@@ -125,7 +125,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
         );
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 100),
+            TBlockRange32::MakeClosedInterval(0, 100),
             2,
             (TVector<TDeletedBlock>{
                 {1, 1},
@@ -136,15 +136,15 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
             })
         );
 
-        m.Mark({2, 7}, 4);
-        m.Mark({19, 20}, 6);
-        m.Mark({5, 9}, 3);
-        m.Mark({4, 5}, 7);
-        m.Mark({20, 22}, 5);
+        m.Mark(TBlockRange32::MakeClosedInterval(2, 7), 4);
+        m.Mark(TBlockRange32::MakeClosedInterval(19, 20), 6);
+        m.Mark(TBlockRange32::MakeClosedInterval(5, 9), 3);
+        m.Mark(TBlockRange32::MakeClosedInterval(4, 5), 7);
+        m.Mark(TBlockRange32::MakeClosedInterval(20, 22), 5);
 
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 100),
+            TBlockRange32::MakeClosedInterval(0, 100),
             7,
             (TVector<TDeletedBlock>{
                 {1, 1},
@@ -163,11 +163,11 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
             })
         );
 
-        m.Mark({65536 + 1024, 65536 + 1026}, 8);
+        m.Mark(TBlockRange32::MakeClosedInterval(65536 + 1024, 65536 + 1026), 8);
 
         CHECK_MARKS(
             m,
-            TBlockRange32(0, 2 * 65536),
+            TBlockRange32::MakeClosedInterval(0, 2 * 65536),
             8,
             (TVector<TDeletedBlock>{
                 {1, 1},
@@ -191,7 +191,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
 
         CHECK_MARKS(
             m,
-            TBlockRange32(256, 2 * 65536),
+            TBlockRange32::MakeClosedInterval(256, 2 * 65536),
             8,
             (TVector<TDeletedBlock>{
                 {65536 + 1024, 8},
@@ -240,7 +240,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
         EOptimizationMode mode,
         ui32 markedRanges)
     {
-        const TBlockRange32 diskRange(0, 1024 * 1024 - 1);
+        const auto diskRange = TBlockRange32::WithLength(0, 1024 * 1024);
         TFastRng<ui32> gen(12345);
 
         TDisjointRangeMap m(mode);
