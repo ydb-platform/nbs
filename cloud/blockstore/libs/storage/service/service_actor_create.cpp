@@ -103,21 +103,6 @@ ui32 TCreateVolumeActor::GetBlockSize() const
 
 NCloud::NProto::EStorageMediaKind TCreateVolumeActor::GetStorageMediaKind() const
 {
-    const bool useNonReplicatedHdd =
-        Config->IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
-            Request.GetCloudId(),
-            Request.GetFolderId());
-
-    if (useNonReplicatedHdd) {
-        switch (Request.GetStorageMediaKind()) {
-            case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
-            case NCloud::NProto::STORAGE_MEDIA_HDD:
-            case NCloud::NProto::STORAGE_MEDIA_HYBRID:
-                return NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
-            default: break;
-        }
-    }
-
     switch (Request.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
             return NCloud::NProto::STORAGE_MEDIA_HDD;
@@ -489,7 +474,7 @@ void TServiceActor::HandleCreateVolume(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto& request = msg->Record;
+    auto request = msg->Record;
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -513,6 +498,31 @@ void TServiceActor::HandleCreateVolume(
         return;
     }
 
+    const bool useNonReplicatedHdd =
+        Config->IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
+            request.GetCloudId(),
+            request.GetFolderId());
+
+    if (useNonReplicatedHdd) {
+        switch (request.GetStorageMediaKind()) {
+            case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
+            case NCloud::NProto::STORAGE_MEDIA_HDD:
+            case NCloud::NProto::STORAGE_MEDIA_HYBRID: {
+                const auto newMediaKind =
+                    NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+
+                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+                    "Replaced media kind with %d for disk: %s",
+                    int(newMediaKind),
+                    request.GetDiskId().Quote().c_str());
+
+                request.SetStorageMediaKind(newMediaKind);
+                break;
+            }
+            default: break;
+        }
+    }
+
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Creating volume: %s, %s, %s, %s, %s, %u, %llu, %u, %d",
         request.GetDiskId().Quote().c_str(),
@@ -529,7 +539,7 @@ void TServiceActor::HandleCreateVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        request);
+        std::move(request));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
