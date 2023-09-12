@@ -298,7 +298,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             db.InitSchema();
         });
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32(0, 1023));
+            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
         });
 
         ui64 commitId1 = state.GenerateCommitId();
@@ -334,7 +334,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
         {
             TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(commitId1, {1, 2}, visitor);
+            state.FindFreshBlocks(
+                commitId1,
+                TBlockRange32::MakeClosedInterval(1, 2),
+                visitor);
 
             auto result = visitor.GetBlocks();
             ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
@@ -408,7 +411,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
         {
             TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(commitId1, {1, 2}, visitor);
+            state.FindFreshBlocks(
+                commitId1,
+                TBlockRange32::MakeClosedInterval(1, 2),
+                visitor);
 
             auto result = visitor.GetBlocks();
             UNIT_ASSERT(!result);
@@ -450,7 +456,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             db.InitSchema();
         });
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32(0, 1023));
+            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
         });
 
         TBlockRange32 blockRange;
@@ -463,7 +469,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 TBlock(2, commitId, InvalidCommitId, false),
             };
 
-            blockRange = TBlockRange32(
+            blockRange = TBlockRange32::MakeClosedInterval(
                 blocks.front().BlockIndex,
                 blocks.back().BlockIndex);
 
@@ -509,7 +515,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             db.InitSchema();
         });
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32(0, 1023));
+            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
         });
 
         TBlockRange32 blockRange;
@@ -528,7 +534,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 TBlock(2, commitId, InvalidCommitId, false),
             };
 
-            blockRange = TBlockRange32(
+            blockRange = TBlockRange32::MakeClosedInterval(
                 blocks.front().BlockIndex,
                 blocks.back().BlockIndex);
 
@@ -575,10 +581,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             db.InitSchema();
         });
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32(0, 1023));
+            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
         });
 
-        TBlockRange32 blockRange1(1, 3);
+        auto blockRange1 = TBlockRange32::MakeClosedInterval(1, 3);
         TPartialBlobId blobId1;
 
         ui64 commitId1 = state.GenerateCommitId();
@@ -594,7 +600,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             state.WriteBlob(db, blobId1, blocks);
         });
 
-        TBlockRange32 blockRange2(1, 2);
+        auto blockRange2 = TBlockRange32::MakeClosedInterval(1, 2);
         TPartialBlobId blobId2;
 
         ui64 commitId2 = state.GenerateCommitId();
@@ -711,7 +717,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             db.InitSchema();
         });
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32(0, 1023));
+            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
         });
 
         TBlockRange32 blockRange1;
@@ -724,7 +730,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 TBlock(2, commitId1, InvalidCommitId, false),
             };
 
-            blockRange1 = TBlockRange32(
+            blockRange1 = TBlockRange32::MakeClosedInterval(
                 blocks.front().BlockIndex,
                 blocks.back().BlockIndex);
 
@@ -749,7 +755,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 TBlock(2, commitId2, InvalidCommitId, false),
             };
 
-            blockRange2 = TBlockRange32(
+            blockRange2 = TBlockRange32::MakeClosedInterval(
                 blocks.front().BlockIndex,
                 blocks.back().BlockIndex);
 
@@ -1521,7 +1527,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             db.InitSchema();
         });
         executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32(0, 1023));
+            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
         });
 
         ui64 commitId1 = state.GenerateCommitId();
@@ -1529,11 +1535,11 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         ui64 commitId3 = state.GenerateCommitId();
 
         TFreshBlockUpdates updates = {
-            { commitId1, {1, 4} },
-            { commitId2, {3, 5} },
-            { commitId2, {8, 9} },
-            { commitId3, {2, 6} },
-            { commitId3, {4, 8} },
+            { commitId1, TBlockRange32::MakeClosedInterval(1, 4) },
+            { commitId2, TBlockRange32::MakeClosedInterval(3, 5) },
+            { commitId2, TBlockRange32::MakeClosedInterval(8, 9) },
+            { commitId3, TBlockRange32::MakeClosedInterval(2, 6) },
+            { commitId3, TBlockRange32::MakeClosedInterval(4, 8) },
         };
 
         executor.WriteTx([&] (TPartitionDatabase db) {
