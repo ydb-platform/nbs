@@ -54,7 +54,7 @@ TVector<double> CalculateWeightedPercentiles(
 
     const double greatestFiniteLimit = [&] {
         for (size_t i = buckets.size(); i; --i) {
-            if (buckets[i - 1].first < std::numeric_limits<double>::max()) {
+            if (buckets[i - 1].first < std::numeric_limits<i64>::max()) {
                 return buckets[i - 1].first;
             }
         }

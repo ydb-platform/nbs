@@ -191,17 +191,13 @@ void TStorageIoStats::OnEraseComplete(TDuration duration)
 
 void TStorageIoStats::IncrementBucket(TDuration duration)
 {
-    auto it = std::lower_bound(
-        std::begin(Limits),
-        std::end(Limits),
-        duration);
+    auto it = std::lower_bound(std::begin(Limits), std::end(Limits), duration);
 
-    Y_VERIFY_DEBUG(it != std::end(Limits));
+    const size_t idx = Min<size_t>(
+        std::distance(std::begin(Limits), it),
+        std::size(Buckets) - 1);
 
-    if (it != std::end(Limits)) {
-        auto idx = std::distance(std::begin(Limits), it);
-        AtomicIncrement(Buckets[idx]);
-    }
+    AtomicIncrement(Buckets[idx]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

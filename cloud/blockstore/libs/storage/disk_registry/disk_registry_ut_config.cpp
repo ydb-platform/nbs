@@ -264,6 +264,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         device1.SetBytesWritten(3000000);
         device1.SetNumWriteOps(200);
 
+        {
+            auto& bucket = *device1.MutableHistogramBuckets()->Add();
+            bucket.SetValue(TDuration::Seconds(1).MicroSeconds());
+            bucket.SetCount(1);
+        }
+
+        {
+            auto& bucket = *device1.MutableHistogramBuckets()->Add();
+            bucket.SetValue(TDuration::Max().MicroSeconds());
+            bucket.SetCount(1);
+        }
+
         auto& device2 = *agentStats.AddDeviceStats();
         device2.SetDeviceUUID("uuid-2");
         device2.SetBytesRead(20000);
@@ -306,6 +318,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(10000, device->GetCounter("ReadBytes")->Val());
             UNIT_ASSERT_VALUES_EQUAL(200, device->GetCounter("WriteCount")->Val());
             UNIT_ASSERT_VALUES_EQUAL(3000000, device->GetCounter("WriteBytes")->Val());
+
+            auto p100 = device
+                ->GetSubgroup("percentiles", "Time")
+                ->GetCounter("100");
+
+            UNIT_ASSERT_VALUES_EQUAL(1'000'000, p100->Val());
         }
 
         {
