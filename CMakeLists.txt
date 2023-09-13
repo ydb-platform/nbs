@@ -31,6 +31,7 @@ include(cmake/common.cmake)
 include(cmake/conan.cmake)
 include(cmake/fbs.cmake)
 include(cmake/global_flags.cmake)
+include(cmake/masm.cmake)
 include(cmake/protobuf.cmake)
 include(cmake/global_vars.cmake)
 
