@@ -1609,11 +1609,11 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
             Counters,
             Log);
 
+        auto future = endpoint->StartResult.GetFuture();
         ConnectionPoller->Attach(endpoint.get());
         PickPoller().Add(endpoint);
         BeginResolveAddress(endpoint.get());
-
-        return endpoint->StartResult.GetFuture();
+        return future;
 
     } catch (const TServiceError &e) {
         return unavailable("unable to create rdma connection");
