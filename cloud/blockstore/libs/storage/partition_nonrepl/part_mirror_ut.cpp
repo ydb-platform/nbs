@@ -257,7 +257,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         {
             auto response = client.ReadBlocks(
-                TBlockRange64::MakeClosedInterval(1024, 4095));
+                TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
 
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
@@ -274,12 +274,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             );
         }
 
-        client.WriteBlocks(TBlockRange64::MakeClosedInterval(1024, 4095), 1);
+        client.WriteBlocks(TBlockRange64::WithLength(1024, 3072), 1);
         client.WriteBlocks(TBlockRange64::MakeClosedInterval(1024, 4023), 2);
 
         {
             auto response = client.ReadBlocks(
-                TBlockRange64::MakeClosedInterval(1024, 4095));
+                TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
@@ -309,7 +309,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         {
             auto response = client.ReadBlocks(
-                TBlockRange64::MakeClosedInterval(1024, 4095));
+                TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -419,7 +419,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         const auto diskRange = TBlockRange64::WithLength(0, 5120);
 
-        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocksLocal(blockRange1, TString(DefaultBlockSize, 'A'));
 
         {
@@ -923,7 +923,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const auto blockRange = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocksLocal(blockRange, TString(DefaultBlockSize, 'A'));
 
         env.DiskAgentState->Error = MakeError(E_IO, "io error");

@@ -216,7 +216,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+            auto response = client.ReadBlocks(
+                TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
 
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
@@ -233,11 +234,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             );
         }
 
-        client.WriteBlocks(TBlockRange64(1024, 4095), 1);
-        client.WriteBlocks(TBlockRange64(1024, 4023), 2);
+        client.WriteBlocks(TBlockRange64::WithLength(1024, 3072), 1);
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(1024, 4023), 2);
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
@@ -263,10 +265,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             );
         }
 
-        client.ZeroBlocks(TBlockRange64(2024, 3023));
+        client.ZeroBlocks(TBlockRange64::MakeClosedInterval(2024, 3023));
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -303,11 +306,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             );
         }
 
-        client.WriteBlocks(TBlockRange64(5000, 5199), 3);
-        client.ZeroBlocks(TBlockRange64(5050, 5150));
+        client.WriteBlocks(TBlockRange64::WithLength(5000, 200), 3);
+        client.ZeroBlocks(TBlockRange64::MakeClosedInterval(5050, 5150));
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(5000, 5199));
+            auto response = client.ReadBlocks(
+                TBlockRange64::WithLength(5000, 200));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(200, blocks.BuffersSize());
             for (ui32 i = 0; i < 50; ++i) {
@@ -365,9 +369,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const TBlockRange64 diskRange(0, 5119);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
 
-        const TBlockRange64 blockRange1(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocksLocal(blockRange1, TString(DefaultBlockSize, 'A'));
 
         {
@@ -388,10 +392,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             }
         }
 
-        const TBlockRange64 blockRange2(5000, 5199);
+        const auto blockRange2 = TBlockRange64::WithLength(5000, 200);
         client.WriteBlocksLocal(blockRange2, TString(DefaultBlockSize, 'B'));
 
-        const TBlockRange64 blockRange3(5000, 5150);
+        const auto blockRange3 = TBlockRange64::MakeClosedInterval(5000, 5150);
 
         {
             TVector<TString> blocks;
@@ -451,10 +455,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        client.WriteBlocks(TBlockRange64(1024, 4095), 1, 2048);
+        client.WriteBlocks(TBlockRange64::WithLength(1024, 3072), 1, 2048);
 
         {
-            auto response = client.ReadBlocks(TBlockRange64(0, 5119));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(0, 5120));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(5120, blocks.BuffersSize());
 
@@ -572,7 +577,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const TBlockRange64 blockRange(1024, 4095);
+        const auto blockRange = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocksLocal(blockRange, TString(DefaultBlockSize, 'A'));
 
         TString data(blockRange.Size() * DefaultBlockSize, 'A');
@@ -617,7 +622,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         env.KillDiskAgent();
 
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Seconds(1));
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
 
@@ -627,7 +633,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             runtime.AdvanceCurrentTime(TDuration::Seconds(1));
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvWriteBlocksResponse();
@@ -636,7 +644,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         {
-            client.SendZeroBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Seconds(1));
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvZeroBlocksResponse();
@@ -665,7 +674,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // timeout = 1s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -677,7 +687,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 1.5s
         // timeout = 2s
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
@@ -689,7 +701,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 4.5s
         // timeout = 4s
         {
-            client.SendZeroBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
@@ -701,7 +714,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 10s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -712,7 +726,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 17s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -734,7 +749,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 24.5s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
@@ -753,7 +769,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // after a cooldown the error shouldn't be silent anymore
         {
             runtime.AdvanceCurrentTime(TDuration::Minutes(5));
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
@@ -770,14 +787,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
 
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
 
         {
-            client.SendZeroBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
@@ -813,8 +833,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         for (ui32 i = 0; i < 10; ++i) {
-            auto request =
-                client.CreateReadBlocksRequest(TBlockRange64(1024, 4095));
+            auto request = client.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
@@ -835,7 +855,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDeviceSilent.Value);
 
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
@@ -870,7 +891,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // timeout = 1s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -882,7 +904,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 1.5s
         // timeout = 2s
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
@@ -894,7 +918,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 4.5s
         // timeout = 4s
         {
-            client.SendZeroBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
@@ -906,7 +931,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 10s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -918,7 +944,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 17s
         // timeout = 0s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -927,7 +954,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // timeout = 1s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -939,7 +967,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 1.5s
         // timeout = 2s
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
@@ -951,7 +981,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 4.5s
         // timeout = 4s
         {
-            client.SendZeroBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
@@ -963,7 +994,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 10s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -974,7 +1006,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 17s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -986,7 +1019,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // cumulative = 24.5s
         // timeout = 5s
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
@@ -1003,11 +1037,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         for (int i = 0; i != 1024; ++i) {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
         }
 
         {
-            client.SendReadBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -1015,7 +1051,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -1023,7 +1061,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         {
-            client.SendZeroBlocksRequest(TBlockRange64(1024, 4095));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -1103,7 +1142,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         );
 
         {
-            client.SendReadBlocksRequest(TBlockRange64(0, 1023));
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(0, 1024));
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
@@ -1113,7 +1153,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         reacquireDiskRecipient = {};
 
         {
-            client.SendWriteBlocksRequest(TBlockRange64(0, 1023), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                1);
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
@@ -1123,7 +1165,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         reacquireDiskRecipient = {};
 
         {
-            client.SendZeroBlocksRequest(TBlockRange64(0, 1023));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(0, 1024));
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
@@ -1141,8 +1184,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TString expectedBlockData(DefaultBlockSize, 0);
 
-        auto readBlocks = [&] {
-            auto response = client.ReadBlocks(TBlockRange64(1024, 4095));
+        auto readBlocks = [&]
+        {
+            auto response = client.ReadBlocks(
+                TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
 
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
@@ -1156,12 +1201,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         readBlocks();
 
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4095), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
         {
-            client.SendWriteBlocksRequest(TBlockRange64(1024, 4023), 2);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::MakeClosedInterval(1024, 4023),
+                2);
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
@@ -1169,7 +1218,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         readBlocks();
 
         {
-            client.SendZeroBlocksRequest(TBlockRange64(2024, 3023));
+            client.SendZeroBlocksRequest(
+                TBlockRange64::MakeClosedInterval(2024, 3023));
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
@@ -1179,7 +1229,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         expectedBlockData = TString(DefaultBlockSize, 'A');
         {
             auto request = client.CreateWriteBlocksLocalRequest(
-                TBlockRange64(1024, 4095),
+                TBlockRange64::WithLength(1024, 3072),
                 expectedBlockData);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
             client.SendRequest(client.GetActorId(), std::move(request));
@@ -1248,7 +1298,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // wait for vasya
         for (;;) {
-            client.SendReadBlocksRequest(TBlockRange64(0, 1024));
+            client.SendReadBlocksRequest(
+                TBlockRange64::MakeClosedInterval(0, 1024));
             runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
@@ -1261,7 +1312,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // read from petya
         {
-            client.SendReadBlocksRequest(TBlockRange64(2048, 3072));
+            client.SendReadBlocksRequest(
+                TBlockRange64::MakeClosedInterval(2048, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1270,7 +1322,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // can't write to petya
         {
-            client.SendWriteBlocksRequest(TBlockRange64(2048, 3072), 1);
+            client.SendWriteBlocksRequest(
+                TBlockRange64::MakeClosedInterval(2048, 3072),
+                1);
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
@@ -1295,9 +1349,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        client.WriteBlocks(TBlockRange64(0, 1023), 1);
-        client.ReadBlocks(TBlockRange64(0, 511));
-        client.ZeroBlocks(TBlockRange64(0, 1023));
+        client.WriteBlocks(TBlockRange64::WithLength(0, 1024), 1);
+        client.ReadBlocks(TBlockRange64::WithLength(0, 512));
+        client.ZeroBlocks(TBlockRange64::WithLength(0, 1024));
 
         client.SendRequest(
             env.ActorId,

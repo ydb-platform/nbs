@@ -463,7 +463,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 range(1024, 2047);
+        const auto range = TBlockRange64::WithLength(1024, 1024);
 
         env.ResyncController.SetStopAfterResyncedRangeCount(0);
         env.StartResync();
@@ -610,8 +610,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 diskRange(0, 5119);
-        const TBlockRange64 resyncRange(1024, 5119);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto resyncRange = TBlockRange64::WithLength(1024, 4096);
         const ui64 startIndex = resyncRange.Start;
 
         env.WriteMirror(diskRange, 'A');
@@ -623,13 +623,22 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT(env.ResyncController.ResyncFinished);
 
         // This range should not be resynced
-        for (const auto& block: env.ReadReplica(0, TBlockRange64(0, startIndex - 1))) {
+        for (const auto& block: env.ReadReplica(
+                 0,
+                 TBlockRange64::WithLength(0, startIndex)))
+        {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
         }
-        for (const auto& block: env.ReadReplica(1, TBlockRange64(0, startIndex - 1))) {
+        for (const auto& block: env.ReadReplica(
+                 1,
+                 TBlockRange64::WithLength(0, startIndex)))
+        {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
         }
-        for (const auto& block: env.ReadReplica(2, TBlockRange64(0, startIndex - 1))) {
+        for (const auto& block: env.ReadReplica(
+                 2,
+                 TBlockRange64::WithLength(0, startIndex)))
+        {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
         }
 
@@ -650,7 +659,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 range(0, 1023);
+        const auto range = TBlockRange64::WithLength(0, 1024);
 
         env.RequestIdentityKey = 42;
         env.StartResync();
@@ -674,7 +683,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         env.StartResync();
 
-        TBlockRange64 range(100, 199);
+        auto range = TBlockRange64::WithLength(100, 100);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -708,13 +717,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 diskRange(0, 5119);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
 
         env.WriteReplica(0, diskRange, 'A');
         env.WriteReplica(1, diskRange, 'B');
         env.WriteReplica(2, diskRange, 'B');
 
-        const TBlockRange64 range(1100, 1199);
+        const auto range = TBlockRange64::WithLength(1100, 100);
 
         enum {
             INIT,
@@ -802,8 +811,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 diskRange(0, 5119);
-        const TBlockRange64 range(100, 199);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto range = TBlockRange64::WithLength(100, 100);
 
         env.WriteReplica(0, diskRange, 'A');
         env.WriteReplica(1, diskRange, 'B');
@@ -830,8 +839,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 diskRange(0, 5119);
-        const TBlockRange64 range(100, 199);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto range = TBlockRange64::WithLength(100, 100);
 
         env.WriteReplica(0, diskRange, 'A');
         env.WriteReplica(1, diskRange, 'B');
@@ -856,7 +865,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
 
         // Make sure resync process is stopped after first range
-        for (const auto& block: env.ReadReplica(0, TBlockRange64(1024, diskRange.End))) {
+        for (const auto& block: env.ReadReplica(
+                 0,
+                 TBlockRange64::MakeClosedInterval(1024, diskRange.End)))
+        {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
         }
     }
@@ -879,7 +891,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         env.StartResync();
 
-        TBlockRange64 range(100, 199);
+        auto range = TBlockRange64::WithLength(100, 100);
 
         TPartitionClient client(runtime, env.ActorId);
         env.WriteReplica(0, range, 'A');
@@ -917,7 +929,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         env.StartResync();
 
-        TBlockRange64 range(100, 199);
+        auto range = TBlockRange64::WithLength(100, 100);
 
         TPartitionClient client(runtime, env.ActorId);
         env.WriteReplica(0, range, 'A');
@@ -962,7 +974,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         env.StartResync();
 
-        TBlockRange64 range(100, 199);
+        auto range = TBlockRange64::WithLength(100, 100);
 
         TPartitionClient client(runtime, env.ActorId);
         env.WriteReplica(0, range, 'A');
@@ -1003,8 +1015,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        const TBlockRange64 diskRange(0, 5119);
-        const TBlockRange64 range(2100, 2199);
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto range = TBlockRange64::WithLength(2100, 100);
 
         env.WriteReplica(0, diskRange, 'A');
         env.WriteReplica(1, diskRange, 'B');
@@ -1088,7 +1100,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
         );
 
-        const TBlockRange64 range(0, 5119);
+        const auto range = TBlockRange64::WithLength(0, 5120);
 
         env.WriteMirror(range, 'A');
         env.WriteReplica(1, range, 'B');

@@ -128,7 +128,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationStateTest)
         );
 
         state.SetupDstPartition(env.DstConfig);
-        state.MarkMigrated(TBlockRange64(3072, 4096));
+        state.MarkMigrated(TBlockRange64::WithLength(3072, 1024));
         state.SkipMigratedRanges();
 
         UNIT_ASSERT(state.IsMigrationStarted());
@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationStateTest)
         );
 
         state.SetupDstPartition(env.DstConfig);
-        state.MarkMigrated(TBlockRange64(3072, 4096));
+        state.MarkMigrated(TBlockRange64::WithLength(3072, 1024));
         state.SkipMigratedRanges();
 
         UNIT_ASSERT(state.IsMigrationStarted());
@@ -217,24 +217,24 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationStateTest)
         );
 
         state.SetupDstPartition(env.DstConfig);
-        state.MarkMigrated(TBlockRange64(0, 1024));
+        state.MarkMigrated(TBlockRange64::WithLength(0, 1024));
         state.SkipMigratedRanges();
 
         UNIT_ASSERT(state.IsMigrationStarted());
         auto range = state.BuildMigrationRange();
-        UNIT_ASSERT_VALUES_EQUAL(1025, range.Start);
-        UNIT_ASSERT_VALUES_EQUAL(2048, range.End);
+        UNIT_ASSERT_VALUES_EQUAL(1024, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(2047, range.End);
 
         UNIT_ASSERT(state.AdvanceMigrationIndex());
         UNIT_ASSERT(state.IsMigrationStarted());
         range = state.BuildMigrationRange();
-        UNIT_ASSERT_VALUES_EQUAL(2049, range.Start);
-        UNIT_ASSERT_VALUES_EQUAL(3072, range.End);
+        UNIT_ASSERT_VALUES_EQUAL(2048, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(3071, range.End);
 
         UNIT_ASSERT(state.AdvanceMigrationIndex());
         UNIT_ASSERT(state.IsMigrationStarted());
         range = state.BuildMigrationRange();
-        UNIT_ASSERT_VALUES_EQUAL(3073, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(3072, range.Start);
         UNIT_ASSERT_VALUES_EQUAL(4095, range.End);
 
         UNIT_ASSERT(!state.AdvanceMigrationIndex());

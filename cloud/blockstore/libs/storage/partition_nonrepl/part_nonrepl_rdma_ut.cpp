@@ -207,7 +207,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
 
-        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
         client.SendWriteBlocksLocalRequest(
             blockRange1,
             TString(DefaultBlockSize, 'A'));
@@ -332,7 +332,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocks(blockRange1, 'A');
 
         {
@@ -467,7 +467,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             MakeError(E_REJECTED, "rdma response error");
         const auto responseError = MakeError(E_IO, "response error");
 
-        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
 
         env.Rdma().InjectErrors(allocationError, {}, {});
 
@@ -525,7 +525,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         const auto error = MakeError(E_REJECTED, "");
 
-        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
 
         WRITE_BLOCKS_E(error);
         ZERO_BLOCKS_E(error);
@@ -577,7 +577,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         env.Rdma().InitAllEndpoints();
 
-        const auto blockRange1 = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
         const auto invalidSession =
             MakeError(E_BS_INVALID_SESSION, "invalid session");
         const auto replacementError =
@@ -649,7 +649,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        const auto blockRange = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocksLocal(blockRange, TString(DefaultBlockSize, 'A'));
 
         TString data(blockRange.Size() * DefaultBlockSize, 'A');
@@ -710,7 +710,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         };
         env.Rdma().SetMessageObserver(std::move(observer));
 
-        const auto blockRange = TBlockRange64::MakeClosedInterval(1024, 4095);
+        const auto blockRange = TBlockRange64::WithLength(1024, 3072);
 
         {
             TString data(DefaultBlockSize, 'A');
