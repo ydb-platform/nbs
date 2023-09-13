@@ -343,13 +343,12 @@ void TAgentList::AddNewDevice(
     agent.MutableDevices()->Add(std::move(device));
 }
 
-NProto::TAgentConfig& TAgentList::RegisterAgent(
+auto TAgentList::RegisterAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
-    const TKnownAgent& knownAgent,
-    THashSet<TDeviceId>* newDeviceIds)
+    const TKnownAgent& knownAgent) -> TAgentRegistrationResult
 {
-    Y_VERIFY(newDeviceIds);
+    THashSet<TDeviceId> newDeviceIds;
 
     PrepareConfig(agentConfig, knownAgent);
 
@@ -360,17 +359,21 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
             agentConfig.GetAgentId().c_str(),
             agentConfig.GetNodeId());
 
-        return AddNewAgent(
+        auto& agent = AddNewAgent(
             std::move(agentConfig),
             timestamp,
             knownAgent,
-            newDeviceIds);
+            &newDeviceIds);
+
+        return { agent, std::move(newDeviceIds) };
     }
 
-    if (agent->GetNodeId() != agentConfig.GetNodeId()) {
+    const TNodeId prevNodeId = agent->GetNodeId();
+
+    if (prevNodeId != agentConfig.GetNodeId()) {
         STORAGE_INFO("Agent %s changed his previous node from #%d to #%d",
             agentConfig.GetAgentId().c_str(),
-            agent->GetNodeId(),
+            prevNodeId,
             agentConfig.GetNodeId());
 
         TransferAgent(*agent, agentConfig.GetNodeId());
@@ -414,7 +417,7 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
         }
 
         if (cmp < 0) {
-            newDeviceIds->insert(newDevice.GetDeviceUUID());
+            newDeviceIds.insert(newDevice.GetDeviceUUID());
 
             AddNewDevice(*agent, knownAgent, timestamp, std::move(newDevice));
 
@@ -432,7 +435,7 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
 
     for (; i < newList.size(); ++i) {
         auto& newDevice = newList[i];
-        newDeviceIds->insert(newDevice.GetDeviceUUID());
+        newDeviceIds.insert(newDevice.GetDeviceUUID());
 
         AddNewDevice(*agent, knownAgent, timestamp, std::move(newDevice));
     }
@@ -453,7 +456,7 @@ NProto::TAgentConfig& TAgentList::RegisterAgent(
         }
     }
 
-    return *agent;
+    return { *agent, std::move(newDeviceIds), prevNodeId };
 }
 
 ////////////////////////////////////////////////////////////////////////////////

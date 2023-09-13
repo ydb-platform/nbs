@@ -102,17 +102,17 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             }};
 
         {
-            THashSet<TString> newDevices;
-            auto& agent = agentList.RegisterAgent(
+            auto r = agentList.RegisterAgent(
                 expectedConfig,
                 TInstant::FromValue(1),
-                knownAgent,
-                &newDevices);
+                knownAgent);
 
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), expectedConfig.GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetNodeId(), expectedConfig.GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), expectedConfig.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(3, newDevices.size());
+            NProto::TAgentConfig& agent = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetAgentId(), agent.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetNodeId(), agent.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.DevicesSize(), agent.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(3, r.NewDevices.size());
         }
 
         auto* agent = agentList.FindAgent(expectedConfig.GetNodeId());
@@ -156,14 +156,12 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
         config.SetNodeId(2000);
 
-        THashSet<TString> newDevices;
-        agentList.RegisterAgent(
+        auto r = agentList.RegisterAgent(
             config,
             TInstant::FromValue(1),
-            TKnownAgent {},
-            &newDevices);
+            TKnownAgent {});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
         UNIT_ASSERT_VALUES_EQUAL(1, agentList.GetAgents().size());
 
         {
@@ -194,18 +192,18 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         };
 
         {
-            THashSet<TString> newDevices;
-            auto& agent = agentList.RegisterAgent(
+            auto r = agentList.RegisterAgent(
                 expectedConfig,
                 TInstant::FromValue(1),
-                knownAgent,
-                &newDevices);
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
 
             UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetAgentId(), agent.GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetNodeId(), agent.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.UnknownDevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(1, newDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NewDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "name-uuid-1",
                 agent.GetDevices(0).GetDeviceName()
@@ -248,18 +246,18 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            THashSet<TString> newDevices;
-            auto& agent = agentList.RegisterAgent(
+            auto r = agentList.RegisterAgent(
                 expectedConfig,
                 TInstant::FromValue(2),
-                knownAgent,
-                &newDevices);
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
 
             UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetAgentId(), agent.GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetNodeId(), agent.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.UnknownDevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1",
                 agent.GetDevices(0).GetDeviceUUID()
@@ -347,8 +345,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            THashSet<TString> newDevices;
-            auto& foo = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent([] {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -359,11 +356,12 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
                     return foo;
                 }(),
                 TInstant::FromValue(42),
-                knownAgent,
-                &newDevices);
+                knownAgent);
 
-            UNIT_ASSERT_VALUES_EQUAL(1, newDevices.size());
-            UNIT_ASSERT_VALUES_EQUAL("z", *newDevices.begin());
+            NProto::TAgentConfig& foo = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NewDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL("z", *r.NewDevices.begin());
             UNIT_ASSERT_VALUES_EQUAL(&foo, agentList.FindAgent(1000));
             UNIT_ASSERT_EQUAL(NProto::AGENT_STATE_ONLINE, foo.GetState());
             UNIT_ASSERT_VALUES_EQUAL(3, foo.DevicesSize());
@@ -386,8 +384,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            THashSet<TString> newDevices;
-            auto& foo = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent([] {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -399,10 +396,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
                     return foo;
                 }(),
                 TInstant::FromValue(42),
-                knownAgent,
-                &newDevices);
+                knownAgent);
 
-            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+            NProto::TAgentConfig& foo = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(&foo, agentList.FindAgent(1000));
             UNIT_ASSERT_EQUAL(NProto::AGENT_STATE_ONLINE, foo.GetState());
             UNIT_ASSERT_VALUES_EQUAL(3, foo.DevicesSize());
@@ -425,8 +423,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            THashSet<TString> newDevices;
-            auto& foo = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent([] {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -438,10 +435,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
                     return foo;
                 }(),
                 TInstant::FromValue(42),
-                knownAgent,
-                &newDevices);
+                knownAgent);
 
-            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+            NProto::TAgentConfig& foo = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(&foo, agentList.FindAgent(1000));
             UNIT_ASSERT_EQUAL(NProto::AGENT_STATE_ONLINE, foo.GetState());
             UNIT_ASSERT_VALUES_EQUAL(3, foo.DevicesSize());
@@ -653,8 +651,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            THashSet<TString> newDevices;
-            auto& foo = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent([] {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -667,8 +664,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
                     return foo;
                 }(),
                 TInstant::FromValue(42),
-                knownAgent,
-                &newDevices);
+                knownAgent);
+
+            NProto::TAgentConfig& foo = r.Agent;
 
             UNIT_ASSERT_VALUES_EQUAL(&foo, agentList.FindAgent(1000));
             UNIT_ASSERT_EQUAL(NProto::AGENT_STATE_ONLINE, foo.GetState());
@@ -888,17 +886,17 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            THashSet<TString> newDevices;
-            auto& agent = agentList.RegisterAgent(
+            auto r = agentList.RegisterAgent(
                 expectedConfig,
                 TInstant::FromValue(1),
-                knownAgent,
-                &newDevices);
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
 
             UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), expectedConfig.GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(agent.GetNodeId(), expectedConfig.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), expectedConfig.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(3, newDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, r.NewDevices.size());
 
             agentList.PublishCounters(TInstant::Minutes(1));
 
@@ -921,17 +919,17 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         knownAgent.Devices["uuid-3"].SetSerialNumber("XXX");
 
         {
-            THashSet<TString> newDevices;
-            auto& agent = agentList.RegisterAgent(
+            auto r = agentList.RegisterAgent(
                 expectedConfig,
                 TInstant::FromValue(1),
-                knownAgent,
-                &newDevices);
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
 
             UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), expectedConfig.GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(agent.GetNodeId(), expectedConfig.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), expectedConfig.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
 
             auto& x = agent.GetDevices(0);
             UNIT_ASSERT_VALUES_EQUAL("uuid-1", x.GetDeviceUUID());

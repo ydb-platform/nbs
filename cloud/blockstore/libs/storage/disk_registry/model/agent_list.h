@@ -82,11 +82,17 @@ public:
     NProto::TAgentConfig* FindAgent(const TAgentId& agentId);
     const NProto::TAgentConfig* FindAgent(const TAgentId& agentId) const;
 
-    NProto::TAgentConfig& RegisterAgent(
+    struct TAgentRegistrationResult
+    {
+        std::reference_wrapper<NProto::TAgentConfig> Agent;
+        THashSet<TDeviceId> NewDevices;
+        TNodeId PrevNodeId = 0;
+    };
+
+    TAgentRegistrationResult RegisterAgent(
         NProto::TAgentConfig config,
         TInstant timestamp,
-        const TKnownAgent& knownAgent,
-        THashSet<TDeviceId>* newDevices);
+        const TKnownAgent& knownAgent);
 
     bool RemoveAgent(TNodeId nodeId);
     bool RemoveAgent(const TAgentId& agentId);

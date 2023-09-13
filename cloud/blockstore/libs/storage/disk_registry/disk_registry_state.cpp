@@ -768,15 +768,12 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             config.GetAgentId(),
             TKnownAgent {});
 
-        const auto prevNodeId = AgentList.FindNodeId(config.GetAgentId());
-
-        THashSet<TDeviceId> newDevices;
-
-        auto& agent = AgentList.RegisterAgent(
+        auto r = AgentList.RegisterAgent(
             std::move(config),
             timestamp,
-            knownAgent,
-            &newDevices);
+            knownAgent);
+
+        NProto::TAgentConfig& agent = r.Agent;
 
         for (auto& d: *agent.MutableDevices()) {
             AdjustDeviceIfNeeded(d, timestamp);
@@ -785,15 +782,15 @@ NProto::TError TDiskRegistryState::RegisterAgent(
 
             if (!StorageConfig->GetNonReplicatedDontSuspendDevices()
                     && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
-                    && newDevices.contains(uuid))
+                    && r.NewDevices.contains(uuid))
             {
                 SuspendDevice(db, uuid);
             }
         }
 
-        DeviceList.UpdateDevices(agent, prevNodeId);
+        DeviceList.UpdateDevices(agent, r.PrevNodeId);
 
-        for (const auto& uuid: newDevices) {
+        for (const auto& uuid: r.NewDevices) {
             if (!DeviceList.FindDiskId(uuid)) {
                 DeviceList.MarkDeviceAsDirty(uuid);
                 db.UpdateDirtyDevice(uuid, {});
@@ -826,8 +823,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             }
         }
 
-        if (prevNodeId != agent.GetNodeId()) {
-            db.DeleteOldAgent(prevNodeId);
+        if (r.PrevNodeId != agent.GetNodeId()) {
+            db.DeleteOldAgent(r.PrevNodeId);
 
             for (const auto& id: diskIds) {
                 AddReallocateRequest(db, id);
