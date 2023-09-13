@@ -12,6 +12,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TSortQueryKey = std::tuple<
+    NProto::EDevicePoolKind,
+    TString,
+    ui32,
+    TString>;
+
+struct TBySortQueryKey
+{
+    auto operator () (const NProto::TDeviceConfig& config) const
+    {
+        return TSortQueryKey {
+            config.GetPoolKind(),
+            config.GetPoolName(),
+            config.GetBlockSize(),
+            config.GetDeviceName(),
+        };
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 using TAllocationQueryKey = std::tuple<
     NProto::EDevicePoolKind,
     TString,
@@ -24,7 +45,7 @@ struct TByAllocationQueryKey
         return TAllocationQueryKey {
             config.GetPoolKind(),
             config.GetPoolName(),
-            config.GetBlockSize()
+            config.GetBlockSize(),
         };
     }
 };
@@ -140,7 +161,7 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
         }
     }
 
-    SortBy(freeDevices.Devices, TByAllocationQueryKey());
+    SortBy(freeDevices.Devices, TBySortQueryKey());
 }
 
 void TDeviceList::RemoveDevices(const NProto::TAgentConfig& agent)

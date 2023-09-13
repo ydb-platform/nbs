@@ -23,13 +23,15 @@ auto CreateAgentConfig(
     const TString& id,
     ui32 nodeId,
     const TString& rack,
-    const TString& poolName = "")
+    const TString& poolName = "",
+    const TVector<TString>& deviceNames = {"/some/device"},
+    int deviceCount = 15)
 {
     NProto::TAgentConfig agent;
     agent.SetAgentId(id);
     agent.SetNodeId(nodeId);
 
-    for (int i = 0; i != 15; ++i) {
+    for (int i = 0; i != deviceCount; ++i) {
         auto* device = agent.AddDevices();
         device->SetBlockSize(DefaultBlockSize);
         device->SetBlocksCount(DefaultBlockCount);
@@ -37,6 +39,7 @@ auto CreateAgentConfig(
         device->SetRack(rack);
         device->SetNodeId(agent.GetNodeId());
         device->SetDeviceUUID(id + "-" + ToString(i + 1));
+        device->SetDeviceName(deviceNames[i % deviceNames.size()]);
         if (poolName) {
             device->SetPoolKind(NProto::DEVICE_POOL_KIND_GLOBAL);
             device->SetPoolName(poolName);
@@ -329,6 +332,59 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                 rack2,
                 device.GetRack(),
                 device.GetAgentId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMinimizeDeviceNameCountUponDeviceAllocation)
+    {
+        TDeviceList deviceList({}, {});
+
+        auto allocate = [&] (ui32 n) {
+            return deviceList.AllocateDevices(
+                "disk",
+                {
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = n * DefaultBlockCount
+                }
+            );
+        };
+
+        NProto::TAgentConfig config = CreateAgentConfig(
+            "agent-id",
+            1000, // nodeId
+            "rack",
+            "", // poolName
+            {"/dev/1", "/dev/2", "/dev/3", "/dev/4"},
+            400);
+
+        deviceList.UpdateDevices(config);
+
+        UNIT_ASSERT_VALUES_EQUAL(400, deviceList.Size());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, deviceList.GetDirtyDevices().size());
+
+        auto devices1 = allocate(100);
+        UNIT_ASSERT_VALUES_EQUAL(100, devices1.size());
+        const auto& deviceName1 = devices1[0].GetDeviceName();
+
+        for (const auto& device: devices1) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                deviceName1,
+                device.GetDeviceName(),
+                device.GetDeviceUUID());
+        }
+
+        auto devices2 = allocate(100);
+        UNIT_ASSERT_VALUES_EQUAL(100, devices2.size());
+        const auto& deviceName2 = devices2[0].GetDeviceName();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(deviceName1, deviceName2);
+
+        for (const auto& device: devices2) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                deviceName2,
+                device.GetDeviceName(),
+                device.GetDeviceUUID());
         }
     }
 
