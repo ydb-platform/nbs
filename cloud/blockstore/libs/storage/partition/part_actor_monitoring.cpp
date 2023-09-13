@@ -4,14 +4,16 @@
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <ydb/core/base/appdata.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
-
 #include <library/cpp/cgiparam/cgiparam.h>
+
 #include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -25,15 +27,6 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-ui64 GetHiveTabletId(const TActorContext& ctx)
-{
-    auto& domainsInfo = *AppData(ctx)->DomainsInfo;
-    Y_VERIFY(domainsInfo.Domains);
-    auto domainUid = domainsInfo.Domains.begin()->first;
-    auto hiveUid = domainsInfo.GetDefaultHiveUid(domainUid);
-    return domainsInfo.GetHive(hiveUid);
-}
 
 void DumpChannels(
     IOutputStream& out,
@@ -611,7 +604,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     out << "<div class='collapse form-group' id='reassign-all'>";
                     BuildReassignChannelsButton(
                         out,
-                        GetHiveTabletId(ctx),
+                        GetHiveTabletId(Config, ctx),
                         Info()->TabletID);
                     out << "</div>";
                     DumpChannels(
@@ -619,7 +612,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *State,
                         *Info(),
                         *DiagnosticsConfig,
-                        GetHiveTabletId(ctx));
+                        GetHiveTabletId(Config, ctx));
                 }
 
                 DIV_CLASS_ID("tab-pane", "Index") {

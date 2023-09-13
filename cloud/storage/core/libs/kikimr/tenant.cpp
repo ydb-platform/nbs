@@ -9,9 +9,21 @@
 
 namespace NCloud::NStorage {
 
+using namespace NActors;
 using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui64 GetHiveTabletId(const TActorContext& ctx)
+{
+    auto& domainsInfo = *AppData(ctx)->DomainsInfo;
+    Y_VERIFY(domainsInfo.Domains);
+
+    auto domainUid = domainsInfo.Domains.begin()->first;
+    auto hiveUid = domainsInfo.GetDefaultHiveUid(domainUid);
+
+    return domainsInfo.GetHive(hiveUid);
+}
 
 void ConfigureTenantSystemTablets(const TAppData& appData, TLocalConfig& localConfig)
 {

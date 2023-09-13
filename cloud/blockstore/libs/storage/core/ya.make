@@ -24,6 +24,7 @@ SRCS(
     tablet.cpp
     tablet_counters.cpp
     tablet_schema.cpp
+    tenant.cpp
     ts_ring_buffer.cpp
     unimplemented.cpp
     volume_label.cpp
@@ -44,6 +45,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/kikimr
 
     contrib/libs/openssl
 

@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -45,17 +46,6 @@ std::array<TString, DrChannelCount> GetPoolKinds(
         kinds.LogKind ? kinds.LogKind : config.GetSSDLogChannelPoolKind(),
         kinds.IndexKind ? kinds.IndexKind : config.GetSSDIndexChannelPoolKind(),
     };
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 GetHiveTabletId(const TActorContext& ctx)
-{
-    auto& domainsInfo = *AppData(ctx)->DomainsInfo;
-    Y_VERIFY(domainsInfo.Domains);
-    auto domainUid = domainsInfo.Domains.begin()->first;
-    auto hiveUid = domainsInfo.GetDefaultHiveUid(domainUid);
-    return domainsInfo.GetHive(hiveUid);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -211,7 +201,7 @@ void TCreateDiskRegistryActor::HandleDescribeSchemeResponse(
         request.AddBindedChannels()->SetStoragePoolName(pool->GetName());
     }
 
-    const auto hiveTabletId = GetHiveTabletId(ctx);
+    const auto hiveTabletId = GetHiveTabletId(StorageConfig, ctx);
 
     LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Create Disk Registry Tablet. Hive: " << hiveTabletId);
