@@ -476,28 +476,6 @@ void TServiceActor::HandleCreateVolume(
     const auto* msg = ev->Get();
     auto request = msg->Record;
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    const auto error = ValidateCreateVolumeRequest(*Config, request);
-    if (HasError(error)) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "CreateVolumeRequest validation failed, volume %s error %s",
-            request.GetDiskId().c_str(),
-            FormatError(error).c_str());
-
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvService::TEvCreateVolumeResponse>(error));
-
-        return;
-    }
-
     const bool useNonReplicatedHdd =
         Config->IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
             request.GetCloudId(),
@@ -521,6 +499,28 @@ void TServiceActor::HandleCreateVolume(
             }
             default: break;
         }
+    }
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    const auto error = ValidateCreateVolumeRequest(*Config, request);
+    if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "CreateVolumeRequest validation failed, volume %s error %s",
+            request.GetDiskId().c_str(),
+            FormatError(error).c_str());
+
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvService::TEvCreateVolumeResponse>(error));
+
+        return;
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
