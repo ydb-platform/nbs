@@ -22,7 +22,7 @@ namespace {
 
 TBlockRange64 GetBlockRangeById(ui32 blockIndex)
 {
-    return TBlockRange64(1024 * blockIndex, 1024 * blockIndex + 1023);
+    return TBlockRange64::WithLength(1024 * blockIndex, 1024);
 }
 
 template <uint32_t LineNumber>
@@ -124,7 +124,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.RebootTablet();
 
         // DescribeBlocks should start partitions and return OK
-        volume.SendDescribeBlocksRequest(TBlockRange64(0, 1023), TString());
+        volume.SendDescribeBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            TString());
         auto describeBlockResponse = volume.RecvDescribeBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, describeBlockResponse->GetStatus());
     }
@@ -178,7 +180,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         );
 
-        const TBlockRange64 range(0, 1023);
+        const auto range = TBlockRange64::WithLength(0, 1024);
         const auto suppressFailureFunction = [&](const auto& func) {
             suppressFailure = true;
             func();
@@ -431,8 +433,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
         UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
 
-        volumeClient1.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
-        auto resp = volumeClient1.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        volumeClient1.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 1);
+        auto resp = volumeClient1.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
         UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
@@ -630,11 +634,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // sending some write/zero requests
         // TODO: send write/zero requests to all devices
         client1.WriteBlocksLocal(
-            TBlockRange64(1, 2),
+            TBlockRange64::MakeClosedInterval(1, 2),
             clientInfo.GetClientId(),
             GetBlockContent(4)
         );
-        client1.ZeroBlocks(TBlockRange64(2, 2), clientInfo.GetClientId());
+        client1.ZeroBlocks(
+            TBlockRange64::MakeClosedInterval(2, 2),
+            clientInfo.GetClientId());
 
         TVector<TString> blocks;
         auto sglist = ResizeBlocks(
@@ -643,7 +649,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             TString::TUninitialized(DefaultBlockSize)
         );
         auto resp = client1.ReadBlocksLocal(
-            TBlockRange64(1, 2),
+            TBlockRange64::MakeClosedInterval(1, 2),
             TGuardedSgList(std::move(sglist)),
             clientInfo.GetClientId()
         );
@@ -1726,7 +1732,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, acquireRequests);
 
-        volume.SendWriteBlocksRequest(TBlockRange64(0, 0), writer.GetClientId(), 1);
+        volume.SendWriteBlocksRequest(
+            TBlockRange64::MakeOneBlock(0),
+            writer.GetClientId(),
+            1);
 
         {
             auto response = volume.RecvWriteBlocksResponse();
@@ -1873,8 +1882,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
         UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
-        auto resp = volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+        auto resp = volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
         UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
@@ -1952,9 +1966,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             );
         }
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
         {
-            auto resp = volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+            auto resp = volume.ReadBlocks(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
             UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
@@ -2033,7 +2052,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // but volume ops should produce meaningful errors
         {
             volume.SendReadBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId()
             );
             auto resp = volume.RecvReadBlocksResponse();
@@ -2042,7 +2061,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendWriteBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId(),
                 1
             );
@@ -2052,7 +2071,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendZeroBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId()
             );
             auto resp = volume.RecvZeroBlocksResponse();
@@ -2077,7 +2096,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // now requests should work
         {
             volume.SendReadBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId()
             );
             auto resp = volume.RecvReadBlocksResponse();
@@ -2119,7 +2138,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendReadBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId()
             );
             auto resp = volume.RecvReadBlocksResponse();
@@ -2142,7 +2161,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // now requests should work
         {
             volume.SendReadBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId()
             );
             auto resp = volume.RecvReadBlocksResponse();
@@ -2276,7 +2295,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         runtime->SetObserverFunc(obs);
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -2287,7 +2309,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(3, writeRequests);
 
-        auto resp = volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        auto resp = volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
         UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
@@ -2361,7 +2385,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
 #define TEST_READ(c) {                                                         \
             auto resp = volume.ReadBlocks(                                     \
-                TBlockRange64(0, 0),                                           \
+                TBlockRange64::MakeOneBlock(0),                                \
                 clientInfo.GetClientId());                                     \
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();          \
             UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());                          \
@@ -2882,7 +2906,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);                                                             \
         volume.AddClient(clientInfo);                                       \
                                                                             \
-        const TBlockRange64 tenBlocks(0, 9);                                \
+        const auto tenBlocks = TBlockRange64::WithLength(0, 10);            \
         volume.ReadBlocks(tenBlocks, clientInfo.GetClientId());             \
         volume.WriteBlocks(tenBlocks, clientInfo.GetClientId());            \
         volume.DescribeBlocks(tenBlocks, clientInfo.GetClientId());         \
@@ -2989,10 +3013,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // due to the dependency between iops and bandwidth, one block is
         // exactly 2 times cheaper than three blocks and exactly 3 times
         // cheaper than five blocks
-        const TBlockRange64 oneBlock(0, 0);
-        const TBlockRange64 twoBlocks(0, 1);
-        const TBlockRange64 threeBlocks(0, 2);
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto oneBlock = TBlockRange64::MakeOneBlock(0);
+        const auto twoBlocks = TBlockRange64::WithLength(0, 2);
+        const auto threeBlocks = TBlockRange64::WithLength(0, 3);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         const auto describeBlocksCode =
             mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
@@ -3126,7 +3150,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.AddClient(clientInfo);
 
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_NO_RESPONSE(runtime, ReadBlocks);
@@ -3182,14 +3206,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
         UNIT_ASSERT_VALUES_EQUAL(10'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
 
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 9'000
 
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(30'000));
 
-        const TBlockRange64 thirtyThreeBlocks(0, 32);
+        const auto thirtyThreeBlocks = TBlockRange64::WithLength(0, 33);
 
         volume.SendReadBlocksRequest(thirtyThreeBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 7'250
@@ -3227,14 +3251,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
         UNIT_ASSERT_VALUES_EQUAL(10'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
 
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 9'000
 
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(30'000));
 
-        const TBlockRange64 thirtyThreeBlocks(0, 32);
+        const auto thirtyThreeBlocks = TBlockRange64::WithLength(0, 33);
 
         volume.SendReadBlocksRequest(thirtyThreeBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 7'250
@@ -3272,14 +3296,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
         UNIT_ASSERT_VALUES_EQUAL(10'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
 
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 9'000
 
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(30'000));
 
-        const TBlockRange64 thirtyThreeBlocks(0, 32);
+        const auto thirtyThreeBlocks = TBlockRange64::WithLength(0, 33);
 
         volume.SendReadBlocksRequest(thirtyThreeBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 7'250
@@ -3332,7 +3356,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
         UNIT_ASSERT_VALUES_EQUAL(10'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
 
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 9'000
@@ -3378,8 +3402,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.AddClient(clientInfo);
 
-        const TBlockRange64 oneBlock(0, 0);
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto oneBlock = TBlockRange64::MakeOneBlock(0);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_NO_RESPONSE(runtime, ReadBlocks);
@@ -3407,7 +3431,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.AddClient(clientInfo);
 
-        const TBlockRange64 fiveBlocks(0, 4);
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
 
         volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
         TEST_NO_RESPONSE(runtime, ReadBlocks);
@@ -3429,7 +3453,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldntThrottleIfThrottlingIsDisabledInMountOptions)
     {
-        const TBlockRange64 theRange(0, 10);
+        const auto theRange = TBlockRange64::MakeClosedInterval(0, 10);
 
         auto throttledClient = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -3524,7 +3548,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.AddClient(clientInfo);
 
-        const TBlockRange64 threeBlocks(0, 2);  // delay = 2s, budget = 1s,
+        const auto threeBlocks =
+            TBlockRange64::WithLength(0, 3);   // delay = 2s, budget = 1s,
         // the resulting delay should be exactly 1s
         volume.SendReadBlocksRequest(threeBlocks, clientInfo.GetClientId());
         TEST_NO_RESPONSE(runtime, ReadBlocks);
@@ -3828,7 +3853,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        TBlockRange64 range(
+        auto range = TBlockRange64::MakeClosedInterval(
             devices[0].GetBlockCount() - 1,
             devices[0].GetBlockCount() + 98);
 
@@ -3892,7 +3917,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.WriteBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 1 + i
             );
@@ -3900,7 +3925,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -3911,12 +3936,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         volume.WriteBlocks(
-            TBlockRange64(500, 501),
+            TBlockRange64::MakeClosedInterval(500, 501),
             clientInfo.GetClientId(),
             30
         );
         volume.WriteBlocks(
-            TBlockRange64(502, 503),
+            TBlockRange64::MakeClosedInterval(502, 503),
             clientInfo.GetClientId(),
             40
         );
@@ -3928,7 +3953,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(500, 501),
+                TBlockRange64::MakeClosedInterval(500, 501),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -3939,7 +3964,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(500, 504),
+                TBlockRange64::MakeClosedInterval(500, 504),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -3952,12 +3977,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         volume.ZeroBlocks(
-            TBlockRange64(503, 1526),
+            TBlockRange64::MakeClosedInterval(503, 1526),
             clientInfo.GetClientId()
         );
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(500, 504),
+                TBlockRange64::MakeClosedInterval(500, 504),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -3983,7 +4008,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(500, 504),
+                TBlockRange64::MakeClosedInterval(500, 504),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -3997,19 +4022,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // testing single-partition requests
         volume.WriteBlocks(
-            TBlockRange64(500, 501),
+            TBlockRange64::MakeClosedInterval(500, 501),
             clientInfo.GetClientId(),
             50
         );
         volume.WriteBlocks(
-            TBlockRange64(502, 503),
+            TBlockRange64::MakeClosedInterval(502, 503),
             clientInfo.GetClientId(),
             60
         );
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(500, 501),
+                TBlockRange64::MakeClosedInterval(500, 501),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -4020,7 +4045,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(502, 503),
+                TBlockRange64::MakeClosedInterval(502, 503),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -4070,18 +4095,36 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             return count;
         };
 
-        volume.WriteBlocks(TBlockRange64(0, 10), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 10),
+            clientInfo.GetClientId(),
+            1);
         volume.CreateCheckpoint("c1");
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
-        volume.WriteBlocks(TBlockRange64(5, 15), clientInfo.GetClientId(), 2);
-        volume.WriteBlocks(TBlockRange64(63, 64), clientInfo.GetClientId(), 2);
-        volume.WriteBlocks(TBlockRange64(1022, 1024), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(5, 15),
+            clientInfo.GetClientId(),
+            2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(63, 64),
+            clientInfo.GetClientId(),
+            2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(1022, 1024),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2");
 
-        volume.WriteBlocks(TBlockRange64(0, 100), clientInfo.GetClientId(), 3);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 100),
+            clientInfo.GetClientId(),
+            3);
 
-        auto response = volume.GetChangedBlocks(TBlockRange64(0, 1023), "c1", "c2");
+        auto response = volume.GetChangedBlocks(TBlockRange64::WithLength(0, 1024), "c1", "c2");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(1024 / 8, response->Record.GetMask().size());
@@ -4097,7 +4140,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // range [1016-1023]
         UNIT_ASSERT_VALUES_EQUAL(0b11000000, ui8(response->Record.GetMask()[127]));
 
-        response = volume.GetChangedBlocks(TBlockRange64(1021, 1035), "c1", "c2");
+        response = volume.GetChangedBlocks(
+            TBlockRange64::MakeClosedInterval(1021, 1035),
+            "c1",
+            "c2");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetMask().size());
@@ -4148,14 +4194,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.WriteBlocksLocal(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 GetBlockContent(1 + i)
             );
         }
 
         for (ui32 i = 0; i < 21; ++i) {
-            TBlockRange64 range(1024 * i, 1024 * i + 1023);
+            auto range = TBlockRange64::WithLength(1024 * i, 1024);
             TVector<TString> blocks;
             auto sglist = ResizeBlocks(
                 blocks,
@@ -4173,12 +4219,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         volume.WriteBlocksLocal(
-            TBlockRange64(500, 501),
+            TBlockRange64::MakeClosedInterval(500, 501),
             clientInfo.GetClientId(),
             GetBlockContent(30)
         );
         volume.WriteBlocksLocal(
-            TBlockRange64(502, 503),
+            TBlockRange64::MakeClosedInterval(502, 503),
             clientInfo.GetClientId(),
             GetBlockContent(40)
         );
@@ -4189,7 +4235,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
 
         {
-            const TBlockRange64 range(500, 501);
+            const auto range = TBlockRange64::MakeClosedInterval(500, 501);
             TVector<TString> blocks;
             auto sglist = ResizeBlocks(
                 blocks,
@@ -4206,7 +4252,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         {
-            const TBlockRange64 range(499, 504);
+            const auto range = TBlockRange64::MakeClosedInterval(499, 504);
             TVector<TString> blocks;
             auto sglist = ResizeBlocks(
                 blocks,
@@ -4288,7 +4334,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 24),
+                TBlockRange64::MakeClosedInterval(0, 24),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -4327,7 +4373,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volume.WaitReady();
 
-        TBlockRange64 range(0, 1023);
+        auto range = TBlockRange64::WithLength(0, 1024);
 
         auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -4426,7 +4472,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.WriteBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 1
             );
@@ -4436,7 +4482,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.WriteBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 2
             );
@@ -4444,7 +4490,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -4457,7 +4503,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -4514,7 +4560,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -4538,7 +4584,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
 
         volume.SendWriteBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
@@ -4568,7 +4614,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -4626,7 +4672,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -4649,7 +4695,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
 
         volume.SendWriteBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
@@ -4676,7 +4722,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -4733,7 +4779,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -4757,7 +4803,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(intercepted);
 
         volume.SendWriteBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             100
         );
@@ -4768,7 +4814,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         volume.SendZeroBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId()
         );
 
@@ -4795,14 +4841,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(intercepted);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -4815,7 +4861,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -4871,7 +4917,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -4924,7 +4970,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(intercepted);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
@@ -4936,7 +4982,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -5693,7 +5739,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 v.GetReplicas(1).GetDevices(0).GetTransportId());
         }
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
 
         // Create checkpoint.
         volume.CreateCheckpoint("cp1");
@@ -5709,7 +5758,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(3, writeRequests);
 
-        auto resp = volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        auto resp = volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
         UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
@@ -6084,8 +6135,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.GetDevices(0).GetTransportId());
         }
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
-        volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+        volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
 
         auto& disk = state->Disks.at("vol0");
         disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
@@ -6098,11 +6154,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         {
-            volume.SendWriteBlocksRequest(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
             auto response = volume.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
 
-            volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+            volume.ReadBlocks(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
         }
 
         disk.IOMode = NProto::VOLUME_IO_OK;
@@ -6111,8 +6172,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.ReconnectPipe();
         volume.AddClient(clientInfo);
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
-        volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+        volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
     }
 
     Y_UNIT_TEST(ShouldAggregateAndCachePartitionStats)
@@ -6182,8 +6248,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.WriteBlocks(TBlockRange64(0, 1023), clientInfo.GetClientId(), 1);
-        volume.WriteBlocks(TBlockRange64(1024, 1023 + 512), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(1024, 512),
+            clientInfo.GetClientId(),
+            2);
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -6280,13 +6352,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.WriteBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 1 + i
             );
         }
 
-        auto compactResponse = volume.CompactRange(TBlockRange64(0, 21*1024), "op1");
+        auto compactResponse = volume.CompactRange(
+            TBlockRange64::MakeClosedInterval(0, 21 * 1024),
+            "op1");
         UNIT_ASSERT_VALUES_UNEQUAL(true, compactResponse->Record.GetOperationId().empty());
 
         auto response = volume.GetCompactionStatus("op1");
@@ -6348,8 +6422,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.WriteBlocks(TBlockRange64(0, 1023), clientInfo.GetClientId(), 1);
-        volume.WriteBlocks(TBlockRange64(1024, 1023 + 512), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(1024, 512),
+            clientInfo.GetClientId(),
+            2);
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -6416,7 +6496,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.WriteBlocks(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 1
             );
@@ -6428,7 +6508,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.SendReadBlocksRequest(
-                TBlockRange64(1024 * i, 1024 * i + 1023),
+                TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -6675,7 +6755,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -6683,7 +6763,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.CreateCheckpoint("c1");
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
@@ -6697,7 +6777,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -6710,7 +6790,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -6734,7 +6814,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -6762,7 +6842,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -6770,7 +6850,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.CreateCheckpoint("c1");
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
@@ -6802,7 +6882,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendReadBlocksRequest(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 "c1"
             );
@@ -6812,7 +6892,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -6833,7 +6913,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -6873,14 +6953,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.SendCreateCheckpointRequest("c1");
 
         volume.WriteBlocks(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -6890,11 +6970,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         }
 
-        volume.ZeroBlocks(TBlockRange64(0, 1023), clientInfo.GetClientId());
+        volume.ZeroBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId());
 
         {
             auto resp = volume.ReadBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId()
             );
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
@@ -6928,8 +7010,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
-        volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+        volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
 
         auto& disk = state->Disks.at("vol0");
         disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
@@ -6939,7 +7026,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.ReconnectPipe();
         volume.AddClient(clientInfo);
         {
-            volume.SendWriteBlocksRequest(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
             auto response = volume.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
@@ -6954,7 +7044,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         {
-            volume.SendWriteBlocksRequest(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
             auto response = volume.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
             UNIT_ASSERT(HasProtoFlag(
@@ -6989,8 +7082,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        auto shoot = [&] {
-            volume.SendWriteBlocksRequest(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        auto shoot = [&]
+        {
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
             auto response = volume.RecvWriteBlocksResponse();
             return response->GetError();
         };
@@ -7044,7 +7141,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64(1024 * 0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -7089,7 +7186,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64(1024 * 0, 1024 * 24),
+            TBlockRange64::MakeClosedInterval(1024 * 0, 1024 * 24),
             clientInfo.GetClientId(),
             1
         );
@@ -7185,7 +7282,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64(1024 * 0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -7215,7 +7312,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64(1024 * 0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -7243,7 +7340,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.AddClient(clientInfo);
 
-        const TBlockRange64 oneBlock(0, 0);
+        const auto oneBlock = TBlockRange64::MakeOneBlock(0);
 
         volume.SendDescribeBlocksRequest(oneBlock, clientInfo.GetClientId(), 1);
         TEST_QUICK_RESPONSE_VOLUME_EVENT(
@@ -7311,7 +7408,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->SetObserverFunc(obs);
 
         auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64(1024 * 0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -7348,7 +7445,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.AddClient(clientInfo);
 
-        const TBlockRange64 oneBlock(0, 0);
+        const auto oneBlock = TBlockRange64::MakeOneBlock(0);
 
         volume.SendDescribeBlocksRequest(oneBlock, clientInfo.GetClientId(), 1);
         TEST_QUICK_RESPONSE_VOLUME_EVENT(
@@ -7433,7 +7530,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         );
 
-        const TBlockRange64 range(4, 8);
+        const auto range = TBlockRange64::MakeClosedInterval(4, 8);
         volume.SendWriteBlocksRequest(
             range,
             clientInfo.GetClientId(),
@@ -7444,7 +7541,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendWriteBlocksRequest(
-                TBlockRange64(4, 4),
+                TBlockRange64::MakeOneBlock(4),
                 clientInfo.GetClientId(),
                 GetBlockContent('b'));
 
@@ -7453,7 +7550,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendZeroBlocksRequest(
-                TBlockRange64(5, 7),
+                TBlockRange64::MakeClosedInterval(5, 7),
                 clientInfo.GetClientId());
 
             TEST_NO_RESPONSE(runtime, ZeroBlocks);
@@ -7470,7 +7567,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendWriteBlocksRequest(
-                TBlockRange64(6, 10),
+                TBlockRange64::MakeClosedInterval(6, 10),
                 clientInfo.GetClientId(),
                 GetBlockContent('d'));
 
@@ -7480,7 +7577,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volume.SendWriteBlocksLocalRequest(
-                TBlockRange64(6, 10),
+                TBlockRange64::MakeClosedInterval(6, 10),
                 clientInfo.GetClientId(),
                 GetBlockContent('e'));
 
@@ -7645,9 +7742,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         };
 
-        writeBlocks(TBlockRange64(10, 29), 1);
-        writeBlocks(TBlockRange64(20, 49), 2);
-        writeBlocksLocal(TBlockRange64(60, 69), 3);
+        writeBlocks(TBlockRange64::WithLength(10, 20), 1);
+        writeBlocks(TBlockRange64::WithLength(20, 30), 2);
+        writeBlocksLocal(TBlockRange64::MakeClosedInterval(60, 69), 3);
 
         {
             const auto stats = volume.StatVolume()->Record.GetStats();
@@ -7668,10 +7765,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.ReconnectPipe();
         volume.AddClient(clientInfo);
 
-        writeBlocks(TBlockRange64(20, 39), 4);
-        writeBlocks(TBlockRange64(30, 59), 5);
-        writeBlocksLocal(TBlockRange64(65, 69), 6);
-        writeBlocksBigBuffer(TBlockRange64(300, 309), 7);
+        writeBlocks(TBlockRange64::MakeClosedInterval(20, 39), 4);
+        writeBlocks(TBlockRange64::MakeClosedInterval(30, 59), 5);
+        writeBlocksLocal(TBlockRange64::MakeClosedInterval(65, 69), 6);
+        writeBlocksBigBuffer(TBlockRange64::MakeClosedInterval(300, 309), 7);
 
         ranges.clear();
         ranges.push_back(TBlockRange64::WithLength(100, 30));
@@ -7850,8 +7947,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             );
         };
 
-        writeBlocks(TBlockRange64(1, 1), 1);
-        writeBlocksLocal(TBlockRange64(1, 1), 2);
+        writeBlocks(TBlockRange64::MakeOneBlock(1), 1);
+        writeBlocksLocal(TBlockRange64::MakeOneBlock(1), 2);
     }
 
     Y_UNIT_TEST(ShouldFailRequestIfUpdateUsedBlocksRequestFailedSSD)
@@ -7897,11 +7994,20 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volumeClient1.AddClient(clientInfo);
         volumeClient2.AddClient(clientInfo);
 
-        volumeClient1.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
-        volumeClient2.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volumeClient1.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+        volumeClient2.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
 
         {
-            volumeClient1.SendWriteBlocksRequest(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+            volumeClient1.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
             auto response = volumeClient1.RecvWriteBlocksResponse();
 
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
@@ -7916,13 +8022,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volumeClient1.RemoveClient(clientInfo.GetClientId());
 
-        volumeClient2.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volumeClient2.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
 
         volumeClient1.AddClient(clientInfo);
-        volumeClient1.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volumeClient1.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
 
         {
-            volumeClient2.SendWriteBlocksRequest(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+            volumeClient2.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
             auto response = volumeClient1.RecvWriteBlocksResponse();
 
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
@@ -7958,8 +8073,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.WriteBlocks(TBlockRange64(0, 1023), clientInfo.GetClientId(), 1);
-        volume.ReadBlocks(TBlockRange64(0, 511), clientInfo.GetClientId());
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, 512),
+            clientInfo.GetClientId());
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -8026,7 +8146,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.WriteBlocksLocal(
-            TBlockRange64(0, 1024 * 3 * 7 - 1),
+            TBlockRange64::WithLength(0, 1024 * 3 * 7),
             clientInfo.GetClientId(),
             GetBlockContent(1)
         );
@@ -8088,7 +8208,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             volumeClient.SendWriteBlocksRequest(
-                TBlockRange64(0, 0),
+                TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId(), 1);
 
             auto response = volumeClient.RecvWriteBlocksResponse();
@@ -8146,14 +8266,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         volume.SendWriteBlocksRequest(
-            TBlockRange64(4, 8),
+            TBlockRange64::MakeClosedInterval(4, 8),
             clientInfo.GetClientId());
 
         auto response = volume.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
 
         volume.WriteBlocks(
-            TBlockRange64(1, 4),
+            TBlockRange64::MakeClosedInterval(1, 4),
             clientInfo.GetClientId());
     }
 
@@ -8202,7 +8322,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
 
         volume.SendWriteBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
@@ -8704,7 +8824,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(1, rdmaClient->InitAllEndpoints());
         }
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -8717,7 +8840,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(3, writeRequests);
 
-        auto resp = volume.ReadBlocks(TBlockRange64(0, 0), clientInfo.GetClientId());
+        auto resp = volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId());
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
         UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), bufs[0]);
@@ -9495,7 +9620,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto request = volume.CreateWriteBlocksRequest(
-                TBlockRange64(1024 * 0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
                 1
             );
@@ -9505,7 +9630,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64(1024 * 0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1
         );
@@ -9559,7 +9684,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "",
                 "c1");
             const auto& mask = response->Record.GetMask();
@@ -9571,10 +9696,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         }
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
-        volume.WriteBlocks(TBlockRange64(5, 15), clientInfo.GetClientId(), 2);
-        volume.WriteBlocks(TBlockRange64(63, 64), clientInfo.GetClientId(), 2);
-        volume.WriteBlocks(TBlockRange64(1022, 1023), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(5, 15),
+            clientInfo.GetClientId(),
+            2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(63, 64),
+            clientInfo.GetClientId(),
+            2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(1022, 1023),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2", true);
 
         auto popCountStr = [](const TString& s) {
@@ -9587,7 +9724,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c1",
                 "c2");
             const auto& mask = response->Record.GetMask();
@@ -9609,7 +9746,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 999),
+                TBlockRange64::WithLength(0, 1000),
                 "c1",
                 "c2");
             const auto& mask = response->Record.GetMask();
@@ -9654,12 +9791,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c1", true);
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "",
                 "c1");
 
@@ -9673,7 +9813,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "",
                 "c1");
 
@@ -9682,13 +9822,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64(1, 1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
 
         volume.CreateCheckpoint("c2", true);
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c1",
                 "c2");
 
@@ -9702,7 +9842,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c1",
                 "c2");
 
@@ -9715,7 +9855,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c2",
                 "c3");
 
@@ -9724,12 +9864,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000000, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64(0, 1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 2),
+            clientInfo.GetClientId(),
+            2);
 
         // should not see new changed block until new checkpoint is created
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c2",
                 "c3");
 
@@ -9742,7 +9885,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c3",
                 "c4");
 
@@ -9797,13 +9940,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volume.CreateCheckpoint("c1", true);
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
 
         volume.RebootTablet();
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "",
                 "c1");
 
@@ -9816,7 +9959,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c1",
                 "c2");
 
@@ -9825,12 +9968,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64(1, 1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
         volume.CreateCheckpoint("c3", true);
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c2",
                 "c3");
 
@@ -9882,19 +10025,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volume.CreateCheckpoint("c1", true);
 
-        volume.WriteBlocks(TBlockRange64(0, 0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2", true);
-        volume.WriteBlocks(TBlockRange64(1, 1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
 
         volume.RebootTablet();
 
-        volume.WriteBlocks(TBlockRange64(2, 2), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
 
         volume.CreateCheckpoint("c3", true);
 
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c2",
                 "c3");
 
@@ -9908,7 +10054,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // should not see changes earlier than checkpoint c3
         {
             auto response = volume.GetChangedBlocks(
-                TBlockRange64(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 "c3",
                 "c4");
 
@@ -9965,25 +10111,25 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.CreateCheckpoint(checkpointId, true);
 
         volume.WriteBlocks(
-            TBlockRange64(0, 0),
+            TBlockRange64::MakeOneBlock(0),
             clientInfo.GetClientId(),
             GetBlockContent(2));
         CheckBlockContent<__LINE__>(
             volume,
             clientInfo.GetClientId(),
             checkpointId,
-            TBlockRange64(0, 0),
+            TBlockRange64::MakeOneBlock(0),
             GetBlockContent(2));
 
         volume.WriteBlocks(
-            TBlockRange64(10, 112),
+            TBlockRange64::MakeClosedInterval(10, 112),
             clientInfo.GetClientId(),
             GetBlockContent(42));
         CheckBlockContent<__LINE__>(
             volume,
             clientInfo.GetClientId(),
             checkpointId,
-            TBlockRange64(10, 112),
+            TBlockRange64::MakeClosedInterval(10, 112),
             GetBlockContent(42));
     }
 
@@ -10056,7 +10202,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
 
         auto writeRequest = volume.CreateWriteBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1);
 
@@ -10067,7 +10213,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         auto readRequest = volume.CreateReadBlocksRequest(
-            TBlockRange64(0, 1023),
+            TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId());
         volume.SendToPipe(std::move(readRequest));
         volume.RecvReadBlocksResponse();

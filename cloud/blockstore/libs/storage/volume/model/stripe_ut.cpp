@@ -25,12 +25,12 @@ Y_UNIT_TEST_SUITE(TStripeTest)
     {
         ASSERT_STRIPE_INFO_EQUALS(
             TStripeInfo(
-                TBlockRange64::MakeClosedInterval(50, 99),
+                TBlockRange64::WithLength(50, 50),
                 0
             ),
             ConvertToRelativeBlockRange(
                 10,
-                TBlockRange64::MakeClosedInterval(50, 99),
+                TBlockRange64::WithLength(50, 50),
                 1,
                 0
             )
@@ -108,7 +108,7 @@ Y_UNIT_TEST_SUITE(TStripeTest)
             ),
             ConvertToRelativeBlockRange(
                 2,
-                TBlockRange64::MakeClosedInterval(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 3,
                 0
             )
@@ -121,7 +121,7 @@ Y_UNIT_TEST_SUITE(TStripeTest)
             ),
             ConvertToRelativeBlockRange(
                 2,
-                TBlockRange64::MakeClosedInterval(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 3,
                 1
             )
@@ -134,7 +134,7 @@ Y_UNIT_TEST_SUITE(TStripeTest)
             ),
             ConvertToRelativeBlockRange(
                 2,
-                TBlockRange64::MakeClosedInterval(0, 1023),
+                TBlockRange64::WithLength(0, 1024),
                 3,
                 2
             )
