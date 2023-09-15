@@ -137,4 +137,12 @@ private:
     void RemoveDeviceFromFreeList(const TDeviceId& id);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<NProto::TDeviceConfig> FilterDevices(
+    TVector<NProto::TDeviceConfig>& dirtyDevices,
+    ui32 maxPerDeviceNameForDefaultPoolKind,
+    ui32 maxPerDeviceNameForLocalPoolKind,
+    ui32 maxPerDeviceNameForGlobalPoolKind);
+
 }   // namespace NCloud::NBlockStore::NStorage

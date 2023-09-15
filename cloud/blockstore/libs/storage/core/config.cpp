@@ -410,6 +410,9 @@ TDuration MSeconds(ui32 value)
     xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
     xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
     xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\
+    xxx(MaxDevicesToErasePerDeviceNameForDefaultPoolKind,   ui32,   100       )\
+    xxx(MaxDevicesToErasePerDeviceNameForLocalPoolKind,     ui32,   100       )\
+    xxx(MaxDevicesToErasePerDeviceNameForGlobalPoolKind,    ui32,   1         )\
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\

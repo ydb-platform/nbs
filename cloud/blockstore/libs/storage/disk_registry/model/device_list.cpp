@@ -5,6 +5,7 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/iterator_range.h>
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -702,6 +703,52 @@ ui64 TDeviceList::GetDeviceByteCount(const TDeviceId& id) const
     return device
         ? device->GetBlocksCount() * device->GetBlockSize()
         : 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<NProto::TDeviceConfig> FilterDevices(
+    TVector<NProto::TDeviceConfig>& dirtyDevices,
+    ui32 maxPerDeviceNameForDefaultPoolKind,
+    ui32 maxPerDeviceNameForLocalPoolKind,
+    ui32 maxPerDeviceNameForGlobalPoolKind)
+{
+    THashMap<TString, ui32> fullPath2Count;
+    TVector<NProto::TDeviceConfig> filtered;
+    for (auto& d: dirtyDevices) {
+        auto key = Sprintf(
+            "%s:/%s",
+            d.GetAgentId().c_str(),
+            d.GetDeviceName().c_str());
+        auto& c = fullPath2Count[key];
+        ui32 limit = 1;
+        switch (d.GetPoolKind()) {
+            case NProto::DEVICE_POOL_KIND_DEFAULT: {
+                limit = maxPerDeviceNameForDefaultPoolKind;
+                break;
+            }
+            case NProto::DEVICE_POOL_KIND_LOCAL: {
+                limit = maxPerDeviceNameForLocalPoolKind;
+                break;
+            }
+            case NProto::DEVICE_POOL_KIND_GLOBAL: {
+                limit = maxPerDeviceNameForGlobalPoolKind;
+                break;
+            }
+            default: {
+                Y_VERIFY_DEBUG(0);
+            }
+        }
+
+        if (c >= limit) {
+            continue;
+        }
+
+        ++c;
+        filtered.push_back(std::move(d));
+    }
+
+    return filtered;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

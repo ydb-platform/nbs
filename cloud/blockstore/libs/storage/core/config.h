@@ -420,7 +420,11 @@ public:
     bool GetRejectMountOnAddClientTimeout() const;
 
     TDuration GetNonReplicatedVolumeNotificationTimeout() const;
+
     TDuration GetNonReplicatedSecureEraseTimeout() const;
+    ui32 GetMaxDevicesToErasePerDeviceNameForDefaultPoolKind() const;
+    ui32 GetMaxDevicesToErasePerDeviceNameForLocalPoolKind() const;
+    ui32 GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind() const;
 
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetHiveProxyFallbackMode() const;

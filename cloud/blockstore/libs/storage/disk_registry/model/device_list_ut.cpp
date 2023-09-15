@@ -720,6 +720,98 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             check(devices);
         }
     }
+
+    Y_UNIT_TEST(ShouldFilterDevices)
+    {
+        ui32 i = 1;
+
+        auto makeDevice = [&] (
+            const TString& agentId,
+            const TString& deviceName,
+            const TString& poolName,
+            const NProto::EDevicePoolKind poolKind)
+        {
+            NProto::TDeviceConfig d;
+            d.SetAgentId(agentId);
+            d.SetDeviceName(deviceName);
+            d.SetDeviceUUID(Sprintf("uuid-%u", i));
+            d.SetPoolName(poolName);
+            d.SetPoolKind(poolKind);
+            d.SetBlockSize(DefaultBlockSize);
+            d.SetBlocksCount(DefaultBlockCount);
+            d.SetUnadjustedBlockCount(DefaultBlockCount);
+            ++i;
+            return d;
+        };
+
+        TVector<NProto::TDeviceConfig> devices = {
+            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-1", "/dev/2", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-1", "/dev/2", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-1", "/dev/2", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+
+            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-3", "/dev/2", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-3", "/dev/2", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-3", "/dev/2", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+
+            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-5", "/dev/2", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-5", "/dev/2", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-5", "/dev/2", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+        };
+
+        auto filtered = FilterDevices(devices, 10, 2, 1);
+        UNIT_ASSERT_VALUES_EQUAL(12 + 6 + 3, filtered.size());
+
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", filtered[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-2", filtered[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-3", filtered[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-4", filtered[3].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-5", filtered[4].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-6", filtered[5].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-7", filtered[6].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-8", filtered[7].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-9", filtered[8].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-10", filtered[9].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-11", filtered[10].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-12", filtered[11].GetDeviceUUID());
+
+        UNIT_ASSERT_VALUES_EQUAL("uuid-13", filtered[12].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-14", filtered[13].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-17", filtered[14].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-18", filtered[15].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-20", filtered[16].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-21", filtered[17].GetDeviceUUID());
+
+        UNIT_ASSERT_VALUES_EQUAL("uuid-25", filtered[18].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-29", filtered[19].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-32", filtered[20].GetDeviceUUID());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

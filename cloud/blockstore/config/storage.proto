@@ -862,4 +862,10 @@ message TStorageServiceConfig
     // Tenant hive tablet id different from root to be used by hive proxy.
     // Should be configured once and for the lifetime of the cluster.
     optional uint64 TenantHiveTabletId = 329;
+
+    // Limits the number of dirty devices per DeviceName that are erased in
+    // parallel.
+    optional uint32 MaxDevicesToErasePerDeviceNameForDefaultPoolKind = 330;
+    optional uint32 MaxDevicesToErasePerDeviceNameForLocalPoolKind = 331;
+    optional uint32 MaxDevicesToErasePerDeviceNameForGlobalPoolKind = 332;
 }

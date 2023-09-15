@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
+
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 
@@ -307,8 +309,8 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         return;
     }
 
-    auto dirtyDevice = State->GetDirtyDevices();
-    EraseIf(dirtyDevice, [&] (auto& d) {
+    auto dirtyDevices = State->GetDirtyDevices();
+    EraseIf(dirtyDevices, [&] (auto& d) {
         if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
             LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Skip SecureErase for device '%s'. Device in error state",
@@ -354,7 +356,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         return false;
     });
 
-    if (!dirtyDevice) {
+    if (!dirtyDevices) {
         LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Nothing to erase",
             TabletID());
@@ -362,10 +364,24 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         return;
     }
 
+    const auto countBeforeFiltration = dirtyDevices.size();
+
+    dirtyDevices = FilterDevices(
+        dirtyDevices,
+        Config->GetMaxDevicesToErasePerDeviceNameForDefaultPoolKind(),
+        Config->GetMaxDevicesToErasePerDeviceNameForLocalPoolKind(),
+        Config->GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind());
+
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "[%lu] Filtered dirty devices: %lu -> %lu",
+        TabletID(),
+        countBeforeFiltration,
+        dirtyDevices.size());
+
     SecureEraseInProgress = true;
 
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
-        std::move(dirtyDevice),
+        std::move(dirtyDevices),
         Config->GetNonReplicatedSecureEraseTimeout());
 
     auto deadline = Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
