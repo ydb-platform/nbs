@@ -121,7 +121,9 @@ TPartitionState::TPartitionState(
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
-        ui32 maxBlobsPerUnit)
+        ui32 maxBlobsPerUnit,
+        ui32 maxBlobsPerRange,
+        ui32 compactionRangeCountPerRun)
     : Meta(std::move(meta))
     , Generation(generation)
     , CompactionPolicy(compactionPolicy)
@@ -139,6 +141,8 @@ TPartitionState::TPartitionState(
     , LogicalUsedBlocks(Config.GetBlocksCount())
     , MaxBlobsPerDisk(Max(Config.GetBlocksCount() * Config.GetBlockSize()
         / allocationUnit, 1ul) * maxBlobsPerUnit)
+    , MaxBlobsPerRange(maxBlobsPerRange)
+    , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , Stats(*Meta.MutableStats())
 {

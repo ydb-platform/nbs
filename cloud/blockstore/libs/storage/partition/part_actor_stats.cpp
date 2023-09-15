@@ -86,6 +86,9 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     PartCounters->Simple.CompactionGarbageScore.Set(
         State->GetCompactionGarbageScore());
 
+    PartCounters->Simple.CompactionRangeCountPerRun.Set(
+        State->GetCompactionRangeCountPerRun());
+
     PartCounters->Simple.BytesCount.Set(
         State->GetBlocksCount() * State->GetBlockSize());
 

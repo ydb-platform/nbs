@@ -59,7 +59,11 @@ public:
     ui64 GetTargetCompactionBytesPerOp() const;
     ui32 GetMaxSkippedBlobsDuringCompaction() const;
     bool GetIncrementalCompactionEnabled() const;
+    ui32 GetCompactionCountPerRunIncreasingThreshold() const;
+    ui32 GetCompactionCountPerRunDecreasingThreshold() const;
     ui32 GetCompactionRangeCountPerRun() const;
+    ui32 GetMaxCompactionRangeCountPerRun() const;
+    TDuration GetCompactionCountPerRunChangingPeriod() const;
     bool GetBatchCompactionEnabled() const;
     bool GetBlobPatchingEnabled() const;
     ui32 GetMaxDiffPercentageForBlobPatching() const;
@@ -117,6 +121,7 @@ public:
     ui32 GetRealSSDUnitWriteIops() const;
     ui32 GetSSDMaxBlobsPerRange() const;
     ui32 GetSSDV2MaxBlobsPerRange() const;
+    ui32 GetSSDMaxBlobsPerUnit() const;
 
     ui32 GetAllocationUnitHDD() const;
     ui32 GetHDDUnitReadBandwidth() const;
@@ -133,7 +138,6 @@ public:
     ui32 GetRealHDDUnitWriteIops() const;
     ui32 GetHDDMaxBlobsPerRange() const;
     ui32 GetHDDV2MaxBlobsPerRange() const;
-    ui32 GetSSDMaxBlobsPerUnit() const;
     ui32 GetHDDMaxBlobsPerUnit() const;
 
     ui32 GetAllocationUnitNonReplicatedSSD() const;

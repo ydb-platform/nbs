@@ -372,6 +372,13 @@ private:
         TInstant now,
         ui32& ranges);
 
+    void ChangeRangeCountPerRunIfNeeded(
+        ui64 rangeRealCount,
+        ui64 rangeThreshold,
+        ui64 diskRealCount,
+        ui64 diskThreshold,
+        const NActors::TActorContext& ctx);
+
     bool IsCompactRangePending(
         const TString& operationId,
         ui32& ranges) const;

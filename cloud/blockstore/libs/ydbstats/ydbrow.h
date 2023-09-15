@@ -56,6 +56,7 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(CleanupQueueBytes,           __VA_ARGS__)                              \
     xxx(GarbageQueueBytes,           __VA_ARGS__)                              \
     xxx(PartitionCount,              __VA_ARGS__)                              \
+    xxx(CompactionRangeCountPerRun,  __VA_ARGS__)                              \
 // YDB_SIMPLE_UINT64_COUNTERS
 
 #define YDB_CUMULATIVE_COUNTERS(xxx, ...)                                      \

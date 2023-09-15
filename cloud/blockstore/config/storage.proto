@@ -868,4 +868,16 @@ message TStorageServiceConfig
     optional uint32 MaxDevicesToErasePerDeviceNameForDefaultPoolKind = 330;
     optional uint32 MaxDevicesToErasePerDeviceNameForLocalPoolKind = 331;
     optional uint32 MaxDevicesToErasePerDeviceNameForGlobalPoolKind = 332;
+
+    // Percentage for batch compaction size increasing
+    optional uint32 CompactionCountPerRunIncreasingThreshold = 333;
+
+    // Percentage for batch compaction size decreasing
+    optional uint32 CompactionCountPerRunDecreasingThreshold = 334;
+
+    // Max number of ranges to process in a single Compaction run
+    optional uint32 MaxCompactionRangeCountPerRun = 335;
+
+    // Period of compaction changing (in ms)
+    optional uint32 CompactionCountPerRunChangingPeriod = 336;
 }

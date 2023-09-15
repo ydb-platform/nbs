@@ -328,7 +328,9 @@ public:
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
-        ui32 maxBlobsPerUnit);
+        ui32 maxBlobsPerUnit,
+        ui32 maxBLobsPerRange,
+        ui32 compactionRangeCountPerRun);
 
 private:
     bool LoadStateFinished = false;
@@ -790,7 +792,10 @@ private:
     TDuration LastCompactionExecTime;
     TInstant LastCompactionFinishTs;
     TDuration CompactionDelay;
-    ui32 MaxBlobsPerDisk;
+    const ui32 MaxBlobsPerDisk;
+    const ui32 MaxBlobsPerRange;
+    ui32 CompactionRangeCountPerRun;
+    TInstant LastCompactionRangeCountPerRunTs;
 
 public:
     TOperationState& GetCompactionState()
@@ -863,6 +868,35 @@ public:
     ui32 GetMaxBlobsPerDisk() const
     {
         return MaxBlobsPerDisk;
+    }
+
+    ui32 GetCompactionRangeCountPerRun() const
+    {
+        return CompactionRangeCountPerRun;
+    }
+
+    void IncrementCompactionRangeCountPerRun()
+    {
+        ++CompactionRangeCountPerRun;
+    }
+
+    void DecrementCompactionRangeCountPerRun()
+    {
+        --CompactionRangeCountPerRun;
+    }
+
+    ui32 GetMaxBlobsPerRange() const {
+        return MaxBlobsPerRange;
+    }
+
+    void SetLastCompactionRangeCountPerRunTime(const TInstant now)
+    {
+        LastCompactionRangeCountPerRunTs = now;
+    }
+
+    TInstant GetLastCompactionRangeCountPerRunTime() const
+    {
+        return LastCompactionRangeCountPerRunTs;
     }
 
     void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);

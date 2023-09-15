@@ -190,6 +190,9 @@ void TPartitionActor::CompleteLoadState(
     auto maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
         Config->GetSSDMaxBlobsPerUnit() :
         Config->GetHDDMaxBlobsPerUnit();
+    auto maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
+        Config->GetSSDMaxBlobsPerRange() :
+        Config->GetHDDMaxBlobsPerRange();
 
     State = std::make_unique<TPartitionState>(
         *args.Meta,
@@ -205,7 +208,9 @@ void TPartitionActor::CompleteLoadState(
         Min(tabletChannelCount, configChannelCount),  // channelCount
         mixedIndexCacheSize,
         GetAllocationUnit(*Config, mediaKind),
-        maxBlobsPerUnit);
+        maxBlobsPerUnit,
+        maxBlobsPerRange,
+        Config->GetCompactionRangeCountPerRun());
 
     MapBaseDiskIdToTabletId(ctx);
 

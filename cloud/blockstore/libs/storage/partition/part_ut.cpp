@@ -9840,6 +9840,275 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT(0 < compactionByBlobCount);
     }
+
+    void CheckIncrementAndDecrementCompactionPerRun(
+        ui32 rangeCountPerRun,
+        ui32 maxBlobsPerUnit,
+        ui32 maxBlobsPerRange,
+        ui32 diskGarbageThreshold,
+        ui32 rangeGarbageThreshold,
+        ui32 blobsCountAfterCompaction,
+        ui32 increasingPercentageThreshold,
+        ui32 decreasingPercentageThreshold,
+        ui32 compactionRangeCountPerRun,
+        ui32 maxCompactionRangeCountPerRun = 10)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetBatchCompactionEnabled(true);
+        config.SetV1GarbageCompactionEnabled(true);
+        config.SetCompactionGarbageThreshold(diskGarbageThreshold);
+        config.SetCompactionRangeGarbageThreshold(rangeGarbageThreshold);
+        config.SetCompactionRangeCountPerRun(rangeCountPerRun);
+        config.SetCompactionCountPerRunIncreasingThreshold(
+            increasingPercentageThreshold);
+        config.SetCompactionCountPerRunDecreasingThreshold(
+            decreasingPercentageThreshold);
+        config.SetHDDMaxBlobsPerUnit(maxBlobsPerUnit);
+        config.SetSSDMaxBlobsPerUnit(maxBlobsPerUnit);
+        config.SetMaxCompactionRangeCountPerRun(maxCompactionRangeCountPerRun);
+        config.SetCompactionCountPerRunChangingPeriod(1);
+        config.SetSSDMaxBlobsPerRange(maxBlobsPerRange);
+        config.SetHDDMaxBlobsPerRange(maxBlobsPerRange);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4 * 1024 * 1024
+        );
+        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto blockRange1 = TBlockRange32::WithLength(0, 1024);
+        const auto blockRange2 = TBlockRange32::WithLength(1024 * 1024, 1024);
+        const auto blockRange3 = TBlockRange32::WithLength(2 * 1024 * 1024, 1024);
+
+        bool compactionFilter = true;
+        ui32 resultCompactionRangeCountPerRun = 0;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        if (compactionFilter) {
+                            return true;
+                        }
+                        compactionFilter = true;
+                        break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Simple;
+                        resultCompactionRangeCountPerRun =
+                            cc.CompactionRangeCountPerRun.Value;
+                    }
+                }
+                return false;
+            }
+        );
+
+        partition.WriteBlocks(blockRange1, 1);
+        partition.WriteBlocks(blockRange2, 4);
+        partition.WriteBlocks(blockRange3, 7);
+
+        partition.WriteBlocks(blockRange1, 2);
+        partition.WriteBlocks(blockRange1, 3);
+        partition.WriteBlocks(blockRange2, 5);
+        partition.WriteBlocks(blockRange2, 6);
+        partition.WriteBlocks(blockRange3, 8);
+        partition.WriteBlocks(blockRange3, 9);
+        partition.WriteBlocks(blockRange3, 10);
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        compactionFilter = false;
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(blobsCountAfterCompaction,
+                stats.GetMergedBlobsCount());
+        }
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+            UNIT_ASSERT_VALUES_EQUAL(compactionRangeCountPerRun,
+                resultCompactionRangeCountPerRun);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDecrementBatchSizeWhenBlobsCountPerDiskIsSmall)
+    {
+        // blobs percentage: (10 - 9 / 10) * 100 = 10
+        // 10 < 100, so batch size should decrement
+        CheckIncrementAndDecrementCompactionPerRun(
+            2, 9, 999999, 999999, 99999, 7, 200, 100, 1);
+    }
+
+    Y_UNIT_TEST(ShouldChangeBatchSizeDueToBlocksPerDisk)
+    {
+        // real blocks per disk: 1024 * 10 = 10240
+        // total blocks per disk: = 1024 * 3 = 3072
+        // garbage percentage: 100 * (10 - 3) * 1024 / 3072 = 233
+        // percentage more threshold: 100 * (233 - 203) / 203 = 9
+
+
+        // 9 > 8, so should increment and compact 2 ranges
+        CheckIncrementAndDecrementCompactionPerRun(
+                1, 1000, 99999, 203, 99999, 5, 8, 5, 2);
+
+        // 9 < 15, so should decrement and compact only 1 range
+        CheckIncrementAndDecrementCompactionPerRun(
+                2, 1000, 99999, 203, 99999, 7, 30, 15, 1);
+    }
+
+    Y_UNIT_TEST(ShouldChangeBatchSizeDueToBlocksPerRangeCount)
+    {
+        // real blocks per last range: 1024 * 4
+        // total blocks per disk: 1024
+        // garbage percentage: 100 * (4 - 1) * 1024 / 1024 = 300
+        // 100 * (300 - 280) / 280 = 7
+
+        // 7 > 6, so should increment and compact 2 ranges
+        CheckIncrementAndDecrementCompactionPerRun(
+            1, 1000, 99999, 9999, 280, 5, 6, 4, 2);
+
+        // 7 > 6, but should compact only 1 range due to maxRangeCountPerRun
+        CheckIncrementAndDecrementCompactionPerRun(
+            1, 1000, 99999, 9999, 280, 7, 6, 4, 1, 1);
+
+        // 7 < 8, so should decrement and compact only 1 range
+        CheckIncrementAndDecrementCompactionPerRun(
+            2, 1000, 99999, 9999, 280, 7, 30, 8, 1);
+    }
+
+    Y_UNIT_TEST(ShouldDecrementBatchSizeWhenBlobsPerRangeCountIsSmall) {
+        // CompactionScore in range3: 4 - 4 + eps
+        // 100 * (eps - 0) / 1024 < 3, so should decrement and compact 1 range
+        CheckIncrementAndDecrementCompactionPerRun(
+            2, 1000, 4, 9999, 9999, 7, 50, 10, 1);
+    }
+
+    Y_UNIT_TEST(ShouldRespectCompactionCountPerRunChangingPeriod)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetBatchCompactionEnabled(true);
+        config.SetV1GarbageCompactionEnabled(true);
+        config.SetCompactionGarbageThreshold(99999);
+        config.SetCompactionRangeGarbageThreshold(280);
+        config.SetCompactionRangeCountPerRun(1);
+        config.SetCompactionCountPerRunIncreasingThreshold(6);
+        config.SetCompactionCountPerRunDecreasingThreshold(4);
+        config.SetHDDMaxBlobsPerUnit(1000);
+        config.SetSSDMaxBlobsPerUnit(1000);
+        config.SetMaxCompactionRangeCountPerRun(10);
+        config.SetCompactionCountPerRunChangingPeriod(100000);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4 * 1024 * 1024
+        );
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto blockRange = TBlockRange32::WithLength(0, 1024);
+
+        ui32 resultCompactionRangeCountPerRun = 0;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Simple;
+                        resultCompactionRangeCountPerRun =
+                            cc.CompactionRangeCountPerRun.Value;
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+
+        for (int i = 0; i < 10; ++i) {
+            partition.WriteBlocks(blockRange, i);
+        }
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+            UNIT_ASSERT_VALUES_EQUAL(1, resultCompactionRangeCountPerRun);
+        }
+
+        // CompactionRangeCountPerRun was updated more then period seconds ago
+        // So it should be changed
+        runtime->AdvanceCurrentTime(TDuration::Seconds(102));
+
+        for (int i = 0; i < 10; ++i) {
+            partition.WriteBlocks(blockRange, i);
+        }
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        partition.Compaction();
+        partition.Cleanup();
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+            UNIT_ASSERT_VALUES_EQUAL(2, resultCompactionRangeCountPerRun);
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(50));
+
+        for (int i = 0; i < 10; ++i) {
+            partition.WriteBlocks(blockRange, i);
+        }
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        partition.Compaction();
+        partition.Cleanup();
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+            // Shouldn't increase compactionRangeCountPerRun due to period
+            UNIT_ASSERT_VALUES_EQUAL(2, resultCompactionRangeCountPerRun);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

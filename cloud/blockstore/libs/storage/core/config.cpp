@@ -135,6 +135,10 @@ TDuration MSeconds(ui32 value)
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
     xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
+    xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
+    xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
+    xxx(MaxCompactionRangeCountPerRun,          ui32,   8                     )\
+    xxx(CompactionCountPerRunChangingPeriod,    TDuration, Seconds(60)        )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
     /* If threshold is not 0, use it */                                        \

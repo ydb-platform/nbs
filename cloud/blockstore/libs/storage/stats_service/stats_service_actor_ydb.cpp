@@ -86,7 +86,6 @@ NYdbStats::TYdbRow BuildStatsForUpload(
     BLOCKSTORE_SIMPLE_COUNTER(FreshBytesCount);
     BLOCKSTORE_SIMPLE_COUNTER(UsedBytesCount);
     BLOCKSTORE_SIMPLE_COUNTER(LogicalUsedBytesCount);
-    BLOCKSTORE_SIMPLE_COUNTER(CompactionScore);
     BLOCKSTORE_SIMPLE_COUNTER(BytesCount);
     BLOCKSTORE_SIMPLE_COUNTER(IORequestsInFlight);
     BLOCKSTORE_SIMPLE_COUNTER(IORequestsQueued);

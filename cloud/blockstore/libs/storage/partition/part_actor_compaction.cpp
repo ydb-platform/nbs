@@ -931,9 +931,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 GarbagePercentage(ui64 used, ui64 total)
+ui32 GetPercentage(ui64 total, ui64 real)
 {
-    const double p = (total - used) * 100. / Max(used, 1UL);
+    const double p = (real - total) * 100. / Max(total, 1UL);
     const double MAX_P = 1'000;
     return Min(p, MAX_P);
 }
@@ -941,6 +941,48 @@ ui32 GarbagePercentage(ui64 used, ui64 total)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
+    ui64 rangeRealCount,
+    ui64 rangeThreshold,
+    ui64 diskRealCount,
+    ui64 diskThreshold,
+    const TActorContext& ctx)
+{
+    const auto countPerRunIncreasingThreshold =
+        Config->GetCompactionCountPerRunIncreasingThreshold();
+    const auto countPerRunDecreasingThreshold =
+        Config->GetCompactionCountPerRunDecreasingThreshold();
+
+    ui32 thresholdPercentage = 0;
+
+    if (rangeThreshold && rangeRealCount > rangeThreshold) {
+        thresholdPercentage =
+            GetPercentage(rangeThreshold, rangeRealCount);
+    }
+
+    if (diskThreshold && diskRealCount > diskThreshold) {
+        thresholdPercentage =
+            Max(thresholdPercentage, GetPercentage(diskThreshold, diskRealCount));
+    }
+
+    const auto compactionRangeCountPerRun =
+        State->GetCompactionRangeCountPerRun();
+
+    if (thresholdPercentage > countPerRunIncreasingThreshold
+        && compactionRangeCountPerRun <
+        Config->GetMaxCompactionRangeCountPerRun())
+    {
+        State->IncrementCompactionRangeCountPerRun();
+        State->SetLastCompactionRangeCountPerRunTime(ctx.Now());
+    } else if (thresholdPercentage < countPerRunDecreasingThreshold &&
+        compactionRangeCountPerRun > 1)
+    {
+        State->DecrementCompactionRangeCountPerRun();
+        State->SetLastCompactionRangeCountPerRunTime(ctx.Now());
+    }
+}
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
@@ -977,14 +1019,18 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     const auto blockCount = State->GetMixedBlocksCount()
         + State->GetMergedBlocksCount();
     const auto diskGarbage =
-        GarbagePercentage(State->GetUsedBlocksCount(), blockCount);
+        GetPercentage(State->GetUsedBlocksCount(), blockCount);
 
     const bool diskGarbageBelowThreshold =
         diskGarbage < Config->GetCompactionGarbageThreshold();
 
+    const auto blobCount = State->GetMixedBlobsCount() +
+        State->GetMergedBlobsCount();
+
     const bool diskBlobCountOverThreshold = State->GetMaxBlobsPerDisk() &&
-        (State->GetMixedBlobsCount() + State->GetMergedBlobsCount()) >
-        State->GetMaxBlobsPerDisk();
+        blobCount > State->GetMaxBlobsPerDisk();
+
+    ui32 rangeGarbage = 0;
 
     if (topRange.Stat.CompactionScore.Score <= 0  && !diskBlobCountOverThreshold) {
         if (!Config->GetV1GarbageCompactionEnabled()) {
@@ -1010,7 +1056,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             return;
         }
 
-        const auto rangeGarbage = GarbagePercentage(
+        rangeGarbage = GetPercentage(
             topByGarbageBlockCount.Stat.UsedBlockCount,
             topByGarbageBlockCount.Stat.BlockCount
         );
@@ -1038,6 +1084,33 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     State->GetCompactionState().SetStatus(EOperationStatus::Enqueued);
 
+    if (Config->GetCompactionCountPerRunIncreasingThreshold()
+        && Config->GetCompactionCountPerRunDecreasingThreshold()
+        && now - State->GetLastCompactionRangeCountPerRunTime() >
+        Config->GetCompactionCountPerRunChangingPeriod())
+    {
+        switch (mode) {
+            case TEvPartitionPrivate::GarbageCompaction: {
+                ChangeRangeCountPerRunIfNeeded(
+                    rangeGarbage,
+                    Config->GetCompactionRangeGarbageThreshold(),
+                    diskGarbage,
+                    Config->GetCompactionGarbageThreshold(),
+                    ctx);
+                break;
+            }
+            case TEvPartitionPrivate::RangeCompaction: {
+                ChangeRangeCountPerRunIfNeeded(
+                    topRange.Stat.BlobCount,
+                    State->GetMaxBlobsPerRange(),
+                    blobCount,
+                    State->GetMaxBlobsPerDisk(),
+                    ctx);
+                break;
+            }
+        }
+    }
+
     if (topRange.Stat.CompactionScore.Score <= 0 && diskBlobCountOverThreshold) {
         PartCounters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
     } else if (mode != TEvPartitionPrivate::GarbageCompaction) {
@@ -1055,8 +1128,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()),
-        mode
-    );
+        mode);
 
     if (mode == TEvPartitionPrivate::GarbageCompaction
             || !diskGarbageBelowThreshold)
@@ -1164,7 +1236,7 @@ void TPartitionActor::HandleCompaction(
             Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
 
         if (batchCompactionEnabled) {
-            rangeCount = Config->GetCompactionRangeCountPerRun();
+            rangeCount = State->GetCompactionRangeCountPerRun();
         }
 
         tops = State->GetCompactionMap().GetTopsFromGroups(rangeCount);
