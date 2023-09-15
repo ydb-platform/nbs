@@ -103,9 +103,7 @@ private:
         try {
             return Base64Decode(encoded);
         } catch (...) {
-            // TODO: after NBS-4449
-            // return MakeError(E_ARGUMENT, CurrentExceptionMessage());
-            return encoded;
+            return MakeError(E_ARGUMENT, CurrentExceptionMessage());
         }
     }
 };
