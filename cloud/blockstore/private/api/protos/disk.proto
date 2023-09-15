@@ -6,7 +6,6 @@ package NCloud.NBlockStore.NPrivateProto;
 // that's why instead of EDeviceState and EAgentState we use integers here
 // import "cloud/blockstore/libs/storage/protos/disk.proto";
 
-option java_package = "ru.yandex.cloud.blockstore.proto";
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////

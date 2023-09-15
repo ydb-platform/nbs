@@ -4,7 +4,6 @@ import "cloud/storage/core/protos/error.proto";
 
 package NCloud.NBlockStore.NPrivateProto;
 
-option java_package = "ru.yandex.cloud.blockstore.proto";
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////

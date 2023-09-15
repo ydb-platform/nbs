@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package NCloud.NBlockStore.NProto;
 
-option java_package = "ru.yandex.cloud.blockstore.proto";
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
