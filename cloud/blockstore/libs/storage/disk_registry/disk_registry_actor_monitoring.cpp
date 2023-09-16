@@ -436,12 +436,21 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
                 << TInstant::Seconds(agent->GetWorkTs());
         }
 
-        RenderDevicesWithDetails(out, agent->GetDevices(), {});
+        auto dcomp = [] (const auto& d) {
+            return std::make_pair(d.GetDeviceName(), d.GetPhysicalOffset());
+        };
+
+        auto devices = agent->GetDevices();
+        SortBy(devices, dcomp);
+
+        RenderDevicesWithDetails(out, devices, {});
 
         if (agent->UnknownDevicesSize()) {
+            auto unknownDevices = agent->GetUnknownDevices();
+            SortBy(unknownDevices, dcomp);
             RenderDevicesWithDetails(
                 out,
-                agent->GetUnknownDevices(),
+                unknownDevices,
                 "Unknown devices");
         }
     }
