@@ -112,6 +112,14 @@ struct IServerStats
         const TString& diskId,
         const TString& clientId) = 0;
 
+    virtual void ReportInfo(
+        TLog& Log,
+        EBlockStoreRequest requestType,
+        ui64 requestId,
+        const TString& diskId,
+        const TString& clientId,
+        const TString& message) = 0;
+
     virtual void AddIncompleteRequest(
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,

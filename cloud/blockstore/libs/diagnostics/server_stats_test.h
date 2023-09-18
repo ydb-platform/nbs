@@ -99,6 +99,15 @@ public:
             = std::bind_front(&IServerStats::ReportException, Stub.get());
 
     std::function<void(
+        TLog& Log,
+        EBlockStoreRequest requestType,
+        ui64 requestId,
+        const TString& diskId,
+        const TString& clientId,
+        const TString& message)> ReportInfoHandler
+            = std::bind_front(&IServerStats::ReportInfo, Stub.get());
+
+    std::function<void(
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
@@ -242,6 +251,23 @@ public:
             requestId,
             diskId,
             clientId);
+    }
+
+    void ReportInfo(
+        TLog& Log,
+        EBlockStoreRequest requestType,
+        ui64 requestId,
+        const TString& diskId,
+        const TString& clientId,
+        const TString& message) override
+    {
+        ReportInfoHandler(
+            Log,
+            requestType,
+            requestId,
+            diskId,
+            clientId,
+            message);
     }
 
     void AddIncompleteRequest(

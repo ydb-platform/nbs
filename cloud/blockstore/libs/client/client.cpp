@@ -474,7 +474,15 @@ private:
         OnRequestCompletion(Response);
 
         try {
-            Promise.SetValue(std::move(Response));
+            if (!Promise.TrySetValue(std::move(Response))) {
+                AppCtx.ClientStats->ReportInfo(
+                    AppCtx.Log,
+                    RequestType,
+                    RequestId,
+                    DiskId,
+                    AppCtx.Config->GetClientId(),
+                    "ProcessResponse: value already set (request cancelled?)");
+            }
         } catch (...) {
             AppCtx.ClientStats->ReportException(
                 AppCtx.Log,
@@ -492,7 +500,15 @@ private:
         error.SetMessage(ToString(status.error_message()));
 
         try {
-            Promise.SetValue(std::move(Response));
+            if (!Promise.TrySetValue(std::move(Response))) {
+                AppCtx.ClientStats->ReportInfo(
+                    AppCtx.Log,
+                    RequestType,
+                    RequestId,
+                    DiskId,
+                    AppCtx.Config->GetClientId(),
+                    "ReportError: value already set (request completed?)");
+            }
         } catch (...) {
             AppCtx.ClientStats->ReportException(
                 AppCtx.Log,

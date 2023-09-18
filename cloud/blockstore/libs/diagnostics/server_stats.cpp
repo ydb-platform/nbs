@@ -137,6 +137,14 @@ public:
         const TString& diskId,
         const TString& clientId) override;
 
+    void ReportInfo(
+        TLog& Log,
+        EBlockStoreRequest requestType,
+        ui64 requestId,
+        const TString& diskId,
+        const TString& clientId,
+        const TString& message) override;
+
     void AddIncompleteRequest(
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
@@ -566,6 +574,24 @@ void TServerStats::ReportException(
         << " exception in callback: " << CurrentExceptionMessage());
 }
 
+void TServerStats::ReportInfo(
+    TLog& Log,
+    EBlockStoreRequest requestType,
+    ui64 requestId,
+    const TString& diskId,
+    const TString& clientId,
+    const TString& message)
+{
+    STORAGE_INFO(
+        TRequestInfo(
+            requestType,
+            requestId,
+            diskId,
+            clientId,
+            RequestInstanceId)
+        << " " << message);
+}
+
 void TServerStats::OutputHtml(IOutputStream& out, const IMonHttpRequest& request)
 {
     Y_UNUSED(request);
@@ -819,6 +845,22 @@ public:
         Y_UNUSED(requestId);
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
+    }
+
+    void ReportInfo(
+        TLog& Log,
+        EBlockStoreRequest requestType,
+        ui64 requestId,
+        const TString& diskId,
+        const TString& clientId,
+        const TString& message) override
+    {
+        Y_UNUSED(Log);
+        Y_UNUSED(requestType);
+        Y_UNUSED(requestId);
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(message);
     }
 
     void UpdateStats(bool updateIntervalFinished) override
