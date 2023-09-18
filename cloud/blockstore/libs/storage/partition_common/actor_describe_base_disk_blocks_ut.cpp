@@ -67,8 +67,8 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
                     MakeIntrusive<TCallContext>()),
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
-                TBlockRange64(0, 4),
-                TBlockRange64(0, 3),
+                TBlockRange64::WithLength(0, 5),
+                TBlockRange64::WithLength(0, 4),
                 std::move(blockMarks),
                 blockSize));
 
@@ -179,8 +179,8 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
                     MakeIntrusive<TCallContext>()),
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
-                TBlockRange64(0, 4),
-                TBlockRange64(0, 3),
+                TBlockRange64::WithLength(0, 5),
+                TBlockRange64::WithLength(0, 4),
                 std::move(blockMarks),
                 blockSize));
 

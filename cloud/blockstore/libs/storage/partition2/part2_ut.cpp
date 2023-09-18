@@ -544,7 +544,7 @@ public:
         TStringBuf blockContent)
     {
         return CreateWriteBlocksLocalRequest(
-            {blockIndex, blockIndex},
+            TBlockRange32::MakeOneBlock(blockIndex),
             std::move(blockContent));
     }
 
@@ -593,7 +593,10 @@ public:
         TStringBuf buffer,
         const TString& checkpointId = {})
     {
-        return CreateReadBlocksLocalRequest({blockIndex, blockIndex}, {TBlockDataRef(buffer.Data(), buffer.Size())}, checkpointId);
+        return CreateReadBlocksLocalRequest(
+            TBlockRange32::MakeOneBlock(blockIndex),
+            {TBlockDataRef(buffer.Data(), buffer.Size())},
+            checkpointId);
     }
 
     std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
@@ -1380,7 +1383,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        const auto blockRange = TBlockRange32(Max<ui32>() - 500, Max<ui32>() - 2);
+        const auto blockRange = TBlockRange32::MakeClosedInterval(
+            Max<ui32>() - 500,
+            Max<ui32>() - 2);
         partition.WriteBlocks(blockRange, 1);
 
         for (auto blockIndex: xrange(blockRange)) {
@@ -1613,16 +1618,16 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(1, 512), 1);
-        partition.WriteBlocks(TBlockRange32(1, 512), 2);
-        partition.WriteBlocks(TBlockRange32(1, 512), 3);
-        partition.WriteBlocks(TBlockRange32(1, 512), 4);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(1, 512), 1);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(1, 512), 2);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(1, 512), 3);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(1, 512), 4);
 
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(1)), GetBlockContent(4));
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(111)), GetBlockContent(4));
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(512)), GetBlockContent(4));
 
-        partition.ZeroBlocks(TBlockRange32(100, 200));
+        partition.ZeroBlocks(TBlockRange32::WithLength(100, 101));
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(1)), GetBlockContent(4));
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(111)), "");
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(512)), GetBlockContent(4));
@@ -1770,8 +1775,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0, MaxBlocksCount - 1));
-        partition.ZeroBlocks(TBlockRange32(0, MaxBlocksCount - 1));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount));
+        partition.ZeroBlocks(TBlockRange32::WithLength(0, MaxBlocksCount));
 
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(0)), "");
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(MaxBlocksCount / 2)), "");
@@ -1822,7 +1827,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0, MaxBlocksCount - 2));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount - 1));
 
         {
             auto response = partition.StatPartition();
@@ -1856,7 +1861,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0, MaxBlocksCount - 2));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount - 1));
 
         {
             auto response = partition.StatPartition();
@@ -1867,7 +1872,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
 
         static constexpr ui32 extraBlocks = 4;
-        partition.WriteBlocks(TBlockRange32(MaxBlocksCount - 1, MaxBlocksCount + extraBlocks - 1));
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(MaxBlocksCount - 1, extraBlocks + 1));
 
         // wait for background operations completion
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -1972,7 +1978,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WaitReady();
 
         for (ui32 i = 0; i < 512; ++i) {
-            partition.WriteBlocks(TBlockRange32(i * 2, i * 2 + 1));
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 2, 2));
             partition.Flush();
         }
 
@@ -2000,7 +2006,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         for (ui32 i = 0; i < 10; ++i) {
             for (ui32 j = 0; j < 10; ++j) {
-                partition.ReadBlocks(TBlockRange32(j, j + 100));
+                partition.ReadBlocks(TBlockRange32::WithLength(j, 101));
             }
         }
 
@@ -2069,9 +2075,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             );
         }
 
-        partition.WriteBlocks(TBlockRange32(801, 805));   // blob8: 5 blocks
-        partition.WriteBlocks(TBlockRange32(806, 810));   // blob9: 5 blocks
-        partition.WriteBlocks(TBlockRange32(811, 815));   // blob10: 5 blocks
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(801, 5));   // blob8: 5 blocks
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(806, 5));   // blob9: 5 blocks
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(811, 5));   // blob10: 5 blocks
 
         partition.Compaction(0);
         partition.Cleanup();
@@ -2358,7 +2367,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
         // write to mixed&ranges intersection
         partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 4);
-        partition.WriteBlocks(TBlockRange32(1000, 1500), 5);
+        partition.WriteBlocks(TBlockRange32::WithLength(1000, 501), 5);
         // apply updates
         partition.Cleanup();
         // compact
@@ -2394,7 +2403,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         // write some blocks to pure range zones
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 3);
         partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 4);
-        partition.WriteBlocks(TBlockRange32(1000, 1500), 5);
+        partition.WriteBlocks(TBlockRange32::WithLength(1000, 501), 5);
         partition.ReadBlocks(TBlockRange32::WithLength(0, 1024));
         // convert zone 0 to mixed index
         {
@@ -2454,8 +2463,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 4);
         partition.CreateCheckpoint("checkpoint1");
 
-        partition.WriteBlocks(TBlockRange32(0, 512), 5);
-        partition.WriteBlocks(TBlockRange32(523, 1023), 6);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 513), 5);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(523, 1023), 6);
         partition.Compaction();
 
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(partition.ReadBlocks(1, "checkpoint1")), GetBlockContent(4));
@@ -2488,8 +2497,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             UNIT_ASSERT_VALUES_EQUAL(1, response->MixedZoneCount);
         }
 
-        partition.WriteBlocks(TBlockRange32(0, 512), 5);
-        partition.WriteBlocks(TBlockRange32(523, 1023), 6);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 513), 5);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(523, 1023), 6);
         partition.Cleanup();
         partition.Compaction();
 
@@ -2599,8 +2608,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         bool broken = false;
         runtime->SetObserverFunc(BuildEvGetBreaker(777, broken));
 
-        partition.WriteBlocks(TBlockRange32(0, 776), 1);
-        partition.SendReadBlocksRequest(TBlockRange32(0, 776));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 777), 1);
+        partition.SendReadBlocksRequest(TBlockRange32::WithLength(0, 777));
         auto response = partition.RecvReadBlocksResponse();
         Y_VERIFY(broken);
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
@@ -2623,8 +2632,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         bool broken = false;
         runtime->SetObserverFunc(BuildEvGetBreaker(777, broken));
 
-        partition.WriteBlocks(TBlockRange32(0, 776), 1);
-        partition.SendReadBlocksRequest(TBlockRange32(0, 776));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 777), 1);
+        partition.SendReadBlocksRequest(TBlockRange32::WithLength(0, 777));
         auto response = partition.RecvReadBlocksResponse();
         Y_VERIFY(broken);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
@@ -2759,9 +2768,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(0, 300), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 301), 1);
         // overwriting our data once - otherwise cleanup will have no effect
-        partition.WriteBlocks(TBlockRange32(0, 300), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 301), 2);
         partition.CreateCheckpoint("checkpoint1");
 
         partition.ReadBlocks(TBlockRange32::WithLength(0, 1024));
@@ -2776,8 +2785,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.Cleanup();
 
         // writing and overwriting some blocks to cause cleanup
-        partition.WriteBlocks(TBlockRange32(700, 1000), 3);
-        partition.WriteBlocks(TBlockRange32(700, 1000), 4);
+        partition.WriteBlocks(TBlockRange32::WithLength(700, 301), 3);
+        partition.WriteBlocks(TBlockRange32::WithLength(700, 301), 4);
 
         partition.ZeroBlocks(0);
         //partition.WriteBlocks(1, GetBlockContent(5));
@@ -2896,7 +2905,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WaitReady();
 
         // 1000 distinct blocks
-        partition.WriteBlocks(TBlockRange32(0, 999), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1000), 1);
         // 2 distinct blocks
         partition.WriteBlocks(1000, 10);
         partition.WriteBlocks(1000, 11);
@@ -2911,11 +2920,11 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.Flush();
 
         // 1000 distinct blocks
-        partition.WriteBlocks(TBlockRange32(0, 999), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1000), 2);
         partition.CreateCheckpoint("checkpoint2");
 
         // 1005 distinct blocks
-        partition.WriteBlocks(TBlockRange32(0, 1004), 3);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1005), 3);
 
         // causing block rebasing => CheckpointBlobs table will be filled
         // 2 checkpoints => 3 chunks in DeletedRangeMap => 3 cleanups needed
@@ -3583,7 +3592,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WriteBlocks(TBlockRange32::WithLength(0, 11), char(1));
 
         {
-            const TBlockRange32 range(Max<ui32>() - 2, Max<ui32>() - 1);
+            const auto range = TBlockRange32::MakeClosedInterval(
+                Max<ui32>() - 2,
+                Max<ui32>() - 1);
             auto request = partition.CreateDescribeBlocksRequest(range);
             partition.SendToPipe(std::move(request));
             auto response =
@@ -3652,7 +3663,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.Flush();
 
         {
-            const auto response = partition.DescribeBlocks(TBlockRange32(0, 100));
+            const auto response =
+                partition.DescribeBlocks(TBlockRange32::WithLength(0, 101));
             const auto& message = response->Record;
             // Expect that all data is contained in one blob.
             UNIT_ASSERT_VALUES_EQUAL(1, message.BlobPiecesSize());
@@ -3925,7 +3937,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.Flush();
         partition.Compaction();
         {
-            const auto response = partition.DescribeBlocks(TBlockRange32(0, 1));
+            const auto response =
+                partition.DescribeBlocks(TBlockRange32::WithLength(0, 2));
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.FreshBlockRangesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.BlobPiecesSize());
@@ -4031,7 +4044,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
         partition.Compaction();
 
-        auto actual = GetBlocksContent(partition.ReadBlocks(TBlockRange32(0, MaxBlocksCount)));
+        auto actual = GetBlocksContent(partition.ReadBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount + 1)));
         UNIT_ASSERT_VALUES_EQUAL(expected, actual);
     }
 
@@ -4057,7 +4071,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.Cleanup();
         partition.Compaction();
 
-        auto actual = GetBlocksContent(partition.ReadBlocks(TBlockRange32(0, MaxBlocksCount)));
+        auto actual = GetBlocksContent(partition.ReadBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount + 1)));
         UNIT_ASSERT_VALUES_EQUAL(expected, actual);
     }
 
@@ -4073,7 +4088,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             SetupOverlayPartition(TestTabletId, TestTabletId2, baseContent);
         auto& partition = *partitionWithRuntime.Partition;
 
-        auto response = partition.ReadBlocks(TBlockRange32(0, 9));
+        auto response = partition.ReadBlocks(TBlockRange32::WithLength(0, 10));
 
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlocksContent(baseContent), GetBlocksContent(response));
@@ -4118,7 +4133,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             SetupOverlayPartition(TestTabletId, TestTabletId2, baseContent);
         auto& partition = *partitionWithRuntime.Partition;
 
-        TBlockRange32 writeRange(2, 4);
+        auto writeRange = TBlockRange32::WithLength(2, 3);
         partition.WriteBlocks(writeRange, char(4));
         MarkWrittenBlocks(bitmap, writeRange);
 
@@ -4169,11 +4184,11 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             SetupOverlayPartition(TestTabletId, TestTabletId2, baseContent);
         auto& partition = *partitionWithRuntime.Partition;
 
-        TBlockRange32 writeRange1(2, 3);
+        auto writeRange1 = TBlockRange32::WithLength(2, 2);
         partition.WriteBlocks(writeRange1, char(5));
         MarkWrittenBlocks(bitmap, writeRange1);
 
-        TBlockRange32 writeRange2(5, 6);
+        auto writeRange2 = TBlockRange32::WithLength(5, 2);
         partition.WriteBlocks(writeRange2, char(6));
         MarkWrittenBlocks(bitmap, writeRange2);
 
@@ -4206,7 +4221,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         // merged blob written.
         // It's a tricky situation because one block (at 0 index) is missed in
         // overlay disk and therefore this block should be read from base disk.
-        TBlockRange32 writeRange(1, 1023);
+        auto writeRange = TBlockRange32::WithLength(1, 1024);
         partition.WriteBlocks(writeRange, char(2));
         MarkWrittenBlocks(bitmap, writeRange);
 
@@ -4239,7 +4254,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         // It's a tricky situation because some blocks (at [1000..1023] range)
         // are missed in overlay disk and therefore this blocks should be read
         // from base disk.
-        TBlockRange32 writeRange(0, 999);
+        auto writeRange = TBlockRange32::WithLength(0, 1000);
         partition.WriteBlocks(writeRange, char(2));
         MarkWrittenBlocks(bitmap, writeRange);
 
@@ -4268,7 +4283,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         // written. It's a tricky situation because one block (at 0 index) is
         // missed in overlay disk and therefore this block should be read from
         // base disk.
-        TBlockRange32 zeroRange(1, 1023);
+        auto zeroRange = TBlockRange32::MakeClosedInterval(1, 1023);
         partition.ZeroBlocks(zeroRange);
         MarkZeroedBlocks(bitmap, zeroRange);
 
@@ -4476,8 +4491,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.CreateCheckpoint("cp");
 
         {
-            auto response =
-                partition.GetChangedBlocks(TBlockRange32(10, 1023), "", "cp");
+            auto response = partition.GetChangedBlocks(
+                TBlockRange32::MakeClosedInterval(10, 1023),
+                "",
+                "cp");
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetMask().size());
         }
 
@@ -4652,7 +4669,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TPartitionClient partition(*runtime);
             partition.WaitReady();
 
-            partition.WriteBlocks(TBlockRange32(0, 254));
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 255));
 
             {
                 auto response = partition.StatPartition();
@@ -4662,7 +4679,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 0);
             }
 
-            partition.WriteBlocks(TBlockRange32(0, 255));
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 256));
 
             {
                 auto response = partition.StatPartition();
@@ -4687,7 +4704,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TPartitionClient partition(*runtime);
             partition.WaitReady();
 
-            partition.WriteBlocks(TBlockRange32(0, 30));
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 31));
 
             {
                 auto response = partition.StatPartition();
@@ -4697,7 +4714,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 UNIT_ASSERT_VALUES_EQUAL(stats.GetMergedBlocksCount(), 0);
             }
 
-            partition.WriteBlocks(TBlockRange32(0, 31));
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 32));
 
             {
                 auto response = partition.StatPartition();
@@ -4738,7 +4755,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.RebootTablet();
 
         // adding a global blob
-        partition.WriteBlocks(TBlockRange32(512, 512 + 1023));
+        partition.WriteBlocks(TBlockRange32::WithLength(512, 1024));
 
         // running collect garbage hard
         partition.CollectGarbage();
@@ -5309,11 +5326,11 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         //
         // *zero*           *zero*           *zero*
 
-        partition.WriteBlocks(TBlockRange32(0, 9), 1);
-        partition.WriteBlocks(TBlockRange32(15, 24), 2);
-        partition.ZeroBlocks(TBlockRange32(5, 9));
-        partition.WriteBlocks(TBlockRange32(20, 34), 3);
-        partition.WriteBlocks(TBlockRange32(30, 34), 4);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 10), 1);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(15, 24), 2);
+        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(5, 9));
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(20, 34), 3);
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(30, 34), 4);
 
         {
             auto response = partition.StatPartition();
@@ -5324,7 +5341,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
 
         {
-            auto response = partition.ReadBlocks(TBlockRange32(0, 34));
+            auto response =
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 35));
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlocksContent(char(1), 5) +
                 GetBlocksContent(char(0), 10) +
@@ -5346,19 +5364,19 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
 
         {
-            auto response = partition.ReadBlocks(TBlockRange32(0, 34));
-             UNIT_ASSERT_VALUES_EQUAL(
-                GetBlocksContent(char(1), 5) +
-                GetBlocksContent(char(0), 10) +
-                GetBlocksContent(char(2), 5) +
-                GetBlocksContent(char(3), 10) +
-                GetBlocksContent(char(4), 5),
+            auto response =
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 35));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlocksContent(char(1), 5) + GetBlocksContent(char(0), 10) +
+                    GetBlocksContent(char(2), 5) +
+                    GetBlocksContent(char(3), 10) +
+                    GetBlocksContent(char(4), 5),
                 GetBlocksContent(response));
         }
 
         partition.ZeroBlocks(TBlockRange32::WithLength(0, 5));
-        partition.ZeroBlocks(TBlockRange32(15, 19));
-        partition.ZeroBlocks(TBlockRange32(30, 34));
+        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(15, 19));
+        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(30, 34));
 
         partition.Cleanup();
 
@@ -5371,7 +5389,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
 
         {
-            auto response = partition.ReadBlocks(TBlockRange32(0, 34));
+            auto response = partition.ReadBlocks(TBlockRange32::WithLength(0, 35));
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlocksContent(char(0), 20) +
                 GetBlocksContent(char(3), 10) +
@@ -5464,8 +5482,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         //                 *xxxxxxxxx*   <-- completed
 
 
-        partition.WriteBlocks(TBlockRange32(0, 34));
-        partition.WriteBlocks(TBlockRange32(0, 24));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 35));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 25));
 
         TAutoPtr<IEventHandle> evAddFreshBlocks;
         bool evAddFreshBlocksSeen = false;
@@ -5482,9 +5500,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             }
         );
 
-        partition.SendWriteBlocksRequest(TBlockRange32(25, 34));
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(25, 10));
 
-        partition.WriteBlocks(TBlockRange32(20, 29));
+        partition.WriteBlocks(TBlockRange32::WithLength(20, 10));
 
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         UNIT_ASSERT(evAddFreshBlocksSeen);
@@ -5561,9 +5579,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         //  should remove merged #1 blob
 
         // merged #1
-        partition.WriteBlocks(TBlockRange32(0, 34), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 35), 1);
         // merged #2
-        partition.WriteBlocks(TBlockRange32(0, 24), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 25), 2);
 
         TAutoPtr<IEventHandle> evAddFreshBlocks;
         bool evAddFreshBlocksSeen = false;
@@ -5581,9 +5599,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         );
 
         // delayed fresh #1
-        partition.SendWriteBlocksRequest(TBlockRange32(25, 34), 3);
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(25, 10), 3);
         // fresh #2
-        partition.WriteBlocks(TBlockRange32(20, 29), 4);
+        partition.WriteBlocks(TBlockRange32::WithLength(20, 10), 4);
 
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         UNIT_ASSERT(evAddFreshBlocksSeen);
@@ -5600,7 +5618,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.SendCreateCheckpointRequest("checkpoint1");
 
         // merged #3
-        partition.WriteBlocks(TBlockRange32(15, 34), 5);
+        partition.WriteBlocks(TBlockRange32::WithLength(15, 20), 5);
 
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         {
@@ -5650,7 +5668,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         // Read from latest commitId to verify block consistency
         {
-            auto response = partition.ReadBlocks(TBlockRange32(0, 34));
+            auto response = partition.ReadBlocks(TBlockRange32::WithLength(0, 35));
 
             TString expected =
                 GetBlocksContent(char(2), 15) +
@@ -5668,7 +5686,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         // Read from checkpoint to verify checkpoint consistency
         {
-            auto response = partition.ReadBlocks(TBlockRange32(0, 34), "checkpoint1");
+            auto response = partition.ReadBlocks(TBlockRange32::WithLength(0, 35), "checkpoint1");
             TString expected =
                 GetBlocksContent(char(2), 20) +
                 GetBlocksContent(char(4), 10) +
@@ -5716,7 +5734,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         //     *xxxx*                  <-- fresh #2 completed
 
         // fresh #1
-        partition.WriteBlocks(TBlockRange32(0, 9), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 10), 1);
 
         TAutoPtr<IEventHandle> evAddFreshBlocks;
         bool evAddFreshBlocksSeen = false;
@@ -5750,7 +5768,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT(evAddBlobsSeen);
 
         // fresh #2 start
-        partition.SendWriteBlocksRequest(TBlockRange32(5, 9), 2);
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(5, 5), 2);
 
         // zero #1 just to generate commitID higher than fresh #2 one
         partition.ZeroBlocks(20);
@@ -5773,7 +5791,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         // check block content
         {
-            auto response = partition.ReadBlocks(TBlockRange32(0, 9));
+            auto response = partition.ReadBlocks(TBlockRange32::WithLength(0, 10));
 
             TString expected =
                 GetBlocksContent(char(1), 5) +
@@ -6012,13 +6030,13 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         //            Cleanup #3
 
         // merged #1
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
         // merged #2
-        partition.WriteBlocks(TBlockRange32(15, 29), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(15, 15), 2);
         // cleanup #1
         partition.Cleanup();
         // fresh #1
-        partition.WriteBlocks(TBlockRange32(15, 19), 3);
+        partition.WriteBlocks(TBlockRange32::WithLength(15, 5), 3);
 
         TAutoPtr<IEventHandle> evAddFreshBlocks;
         bool evAddFreshBlocksSeen = false;
@@ -6037,7 +6055,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         );
 
         // fresh #2 starts
-        partition.SendWriteBlocksRequest(TBlockRange32(0, 9), 4);
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 10), 4);
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(true, evAddFreshBlocksSeen);
 
@@ -6063,7 +6081,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         partition.Flush();
         // fresh #3
-        partition.WriteBlocks(TBlockRange32(5, 9), 5);
+        partition.WriteBlocks(TBlockRange32::WithLength(5, 5), 5);
         // cleanup #3
         partition.Cleanup();
 
@@ -6121,11 +6139,11 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         //
 
         // merged #1
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
-        partition.ReadBlocks(TBlockRange32(0, 14));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
+        partition.ReadBlocks(TBlockRange32::WithLength(0, 15));
 
         // convert zone 0 to mixed index
         {
@@ -6234,7 +6252,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WaitReady();
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 5), 1);
-        partition.WriteBlocks(TBlockRange32(0, 14), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 2);
 
         // disable trimFreshLog
         runtime->SetObserverFunc(
@@ -6287,16 +6305,16 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32(1, 15), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 14), 1);
         partition.RebootTablet();
 
-        partition.WriteBlocks(TBlockRange32(1, 1), 2);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(1), 2);
         partition.RebootTablet();
 
-        partition.WriteBlocks(TBlockRange32(2, 2), 3);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(2), 3);
         partition.RebootTablet();
 
-        partition.WriteBlocks(TBlockRange32(3, 3), 4);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(3), 4);
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
@@ -6524,7 +6542,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         initIndexRequestBlockRanges.clear();
 
         // zone 2
-        auto zone2BlockRange = TBlockRange32(zoneBlockCount, zoneBlockCount);
+        auto zone2BlockRange = TBlockRange32::MakeOneBlock(zoneBlockCount);
         partition.WriteBlocks(zone2BlockRange, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(true, initIndexRequestSeen);
@@ -6541,7 +6559,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(false, initIndexRequestSeen);
 
         // zone 2 and 3
-        auto zone2and3BlockRange = TBlockRange32(zoneBlockCount * 2 - 5, zoneBlockCount * 2 + 5);
+        auto zone2and3BlockRange = TBlockRange32::MakeClosedInterval(
+            zoneBlockCount * 2 - 5,
+            zoneBlockCount * 2 + 5);
         partition.WriteBlocks(zone2and3BlockRange, 4);
 
         // zone 3 hasn't been initialized yet
@@ -6657,23 +6677,23 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WaitReady();
 
         // merged #1 (zoneId: 2, deletionID: 1)
-        partition.WriteBlocks(TBlockRange32(60, 119));
+        partition.WriteBlocks(TBlockRange32::WithLength(60, 60));
 
         // merged #2 (zoneId: 2, deletionId: 2)
-        partition.WriteBlocks(TBlockRange32(60, 119));
+        partition.WriteBlocks(TBlockRange32::WithLength(60, 60));
 
         partition.RebootTablet();
         partition.WaitReady();
 
         // merged #3 (zoneId: 1, deletionId: 1)
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
 
         // fresh #1 (zoneId: 1, deletionId: 2)
         partition.WriteBlocks(TBlockRange32::WithLength(0, 5), 2);
 
         // load the second zone after reboot
         // merged #4 (zoneId: 2, deletionId: 3)
-        partition.WriteBlocks(TBlockRange32(60, 119));
+        partition.WriteBlocks(TBlockRange32::WithLength(60, 60));
 
         {
             auto response = partition.StatPartition();
@@ -6699,7 +6719,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WaitReady();
 
         // add a blob update to disable cleanup fast path
-        partition.WriteBlocks(TBlockRange32(5, 9), 3);
+        partition.WriteBlocks(TBlockRange32::WithLength(5, 5), 3);
 
         // rebase merged #3 blocks
         partition.Cleanup();
@@ -6760,7 +6780,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         partition.CreateCheckpoint("checkpoint1");
         // merged_1
-        partition.WriteBlocks(TBlockRange32(0, 14), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 15), 1);
 
         partition.Cleanup();
 
@@ -6808,11 +6828,13 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         TPartitionClient partition(runtime);
         partition.WaitReady();
-        partition.WriteBlocks(TBlockRange32(0, 1000), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1001), 1);
 
         NKikimrProto::TLogoBlobID blobId;
         {
-            auto response = partition.DescribeBlocks(TBlockRange32(0, 1000), "");
+            auto response = partition.DescribeBlocks(
+                TBlockRange32::WithLength(0, 1001),
+                "");
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.BlobPiecesSize());
             blobId = response->Record.GetBlobPieces(0).GetBlobId();
         }
