@@ -32,13 +32,13 @@ public:
         }
     }
 
-    void Del(T value)
+    void Delete(std::function<bool(T)> predicate)
     {
         auto list = std::make_shared<TList>();
 
         with_lock (Lock) {
             for (const T& item: *List) {
-                if (item != value) {
+                if (predicate(item)) {
                     list->push_back(item);
                 }
             }

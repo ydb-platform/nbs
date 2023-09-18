@@ -4,6 +4,7 @@ SRCS(
     adaptive_wait.cpp
     buffer.cpp
     client.cpp
+    event.cpp
     server.cpp
     test_verbs.cpp
     verbs.cpp

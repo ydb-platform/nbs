@@ -121,6 +121,7 @@ struct IVerbs
 
     virtual void Listen(rdma_cm_id* id, int backlog) = 0;
     virtual void Connect(rdma_cm_id* id, rdma_conn_param* param) = 0;
+    virtual void Disconnect(rdma_cm_id* id) = 0;
     virtual void Accept(rdma_cm_id* id, rdma_conn_param* param) = 0;
     virtual void Reject(rdma_cm_id* id,
         const void* private_data,

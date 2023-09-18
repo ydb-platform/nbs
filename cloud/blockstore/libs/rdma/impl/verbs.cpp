@@ -316,6 +316,14 @@ struct TVerbs
         }
     }
 
+    void Disconnect(rdma_cm_id *id) override
+    {
+        int res = rdma_disconnect(id);
+        if (res < 0) {
+            RDMA_THROW_ERROR("rdma_disconnect");
+        }
+    }
+
     void Accept(rdma_cm_id* id, rdma_conn_param* param) override
     {
         int res = rdma_accept(id, param);

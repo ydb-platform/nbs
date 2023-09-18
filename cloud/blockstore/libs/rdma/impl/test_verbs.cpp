@@ -435,7 +435,7 @@ struct TTestVerbs
         }
     }
 
-    void RejectWithStatus(
+    void Reject(
         rdma_cm_id* id,
         rdma_conn_param* param,
         int status)
@@ -461,7 +461,7 @@ struct TTestVerbs
     void Connect(rdma_cm_id* id, rdma_conn_param* param) override
     {
         if (!TestContext->AllowConnect) {
-            return RejectWithStatus(id, param, RDMA_PROTO_FAIL);
+            return Reject(id, param, RDMA_PROTO_FAIL);
         }
 
         EnqueueConnectionEvent(
@@ -469,6 +469,11 @@ struct TTestVerbs
             RDMA_CM_EVENT_ESTABLISHED,
             id,
             param);
+    }
+
+    void Disconnect(rdma_cm_id* id) override
+    {
+        EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_DISCONNECTED, id);
     }
 
     void Accept(rdma_cm_id* id, rdma_conn_param* param) override
