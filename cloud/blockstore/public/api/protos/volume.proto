@@ -271,6 +271,9 @@ message TVolume
     // StorageProvider interface. But there is a chance that this field becomes
     // in fact needed in our public api.
     uint64 StartIndex = 34;
+
+    // Represents whether disk filling finished or not.
+    bool IsFillFinished = 35;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

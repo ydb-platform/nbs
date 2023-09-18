@@ -182,6 +182,7 @@ void VolumeConfigToVolume(
     volume.SetBaseDiskId(volumeConfig.GetBaseDiskId());
     volume.SetBaseDiskCheckpointId(volumeConfig.GetBaseDiskCheckpointId());
     volume.SetIsSystem(volumeConfig.GetIsSystem());
+    volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
 }
 
 void VolumeConfigToVolumeModel(
