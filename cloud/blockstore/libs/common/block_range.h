@@ -30,10 +30,6 @@ struct TBlockRange
 
     TBlockRange() = default;
 
-    TBlockRange(TBlockIndex start, TBlockIndex end)
-        : Start(start)
-        , End(end)
-    {}
 
     // Create range [0, std::numeric_limits<TBlockRange>::max()]
     static TBlockRange Max()
@@ -173,6 +169,12 @@ struct TBlockRange
     {
         return lhs.Start == rhs.Start && lhs.End == rhs.End;
     }
+
+private:
+    TBlockRange(TBlockIndex start, TBlockIndex end)
+        : Start(start)
+        , End(end)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
