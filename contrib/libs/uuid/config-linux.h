@@ -335,6 +335,9 @@
 /* Define to 1 if you have the <linux/major.h> header file. */
 #define HAVE_LINUX_MAJOR_H 1
 
+/* Define to 1 if you have the <linux/mount.h> header file. */
+#define HAVE_LINUX_MOUNT_H 1
+
 /* Define to 1 if you have the <linux/net_namespace.h> header file. */
 #define HAVE_LINUX_NET_NAMESPACE_H 1
 
@@ -599,6 +602,12 @@
 /* Define to 1 if the system has the type `struct mount_attr'. */
 #define HAVE_STRUCT_MOUNT_ATTR 1
 
+/* Define to 1 if the system has the type `struct statx'. */
+#define HAVE_STRUCT_STATX 1
+
+/* Define to 1 if `stx_mnt_id' is a member of `struct statx'. */
+#define HAVE_STRUCT_STATX_STX_MNT_ID 1
+
 /* Define to 1 if `st_mtim.tv_nsec' is a member of `struct stat'. */
 #define HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC 1
 
@@ -797,19 +806,19 @@
 /* #undef HAVE___SECURE_GETENV */
 
 /* libblkid date string */
-#define LIBBLKID_DATE "27-Jun-2023"
+#define LIBBLKID_DATE "17-Aug-2023"
 
 /* libblkid version string */
-#define LIBBLKID_VERSION "2.39.1"
+#define LIBBLKID_VERSION "2.39.2"
 
 /* libfdisk version string */
-#define LIBFDISK_VERSION "2.39.1"
+#define LIBFDISK_VERSION "2.39.2"
 
 /* libmount version string */
-#define LIBMOUNT_VERSION "2.39.1"
+#define LIBMOUNT_VERSION "2.39.2"
 
 /* libsmartcols version string */
-#define LIBSMARTCOLS_VERSION "2.39.1"
+#define LIBSMARTCOLS_VERSION "2.39.2"
 
 /* Should login chown /dev/vcsN? */
 /* #undef LOGIN_CHOWN_VCS */
@@ -839,7 +848,7 @@
 #define PACKAGE_NAME "util-linux"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "util-linux 2.39.1"
+#define PACKAGE_STRING "util-linux 2.39.2"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "util-linux"
@@ -848,7 +857,7 @@
 #define PACKAGE_URL "https://www.kernel.org/pub/linux/utils/util-linux/"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "2.39.1"
+#define PACKAGE_VERSION "2.39.2"
 
 /* Should pg ring the bell on invalid keys? */
 #define PG_BELL 1
@@ -1046,7 +1055,7 @@
 /* #undef USE_VENDORDIR */
 
 /* Version number of package */
-#define VERSION "2.39.1"
+#define VERSION "2.39.2"
 
 /* Enable MAP_ANON in sys/mman.h on Mac OS X */
 #define _DARWIN_C_SOURCE 1

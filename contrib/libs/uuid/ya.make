@@ -9,9 +9,9 @@ LICENSE(
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-VERSION(2.39.1)
+VERSION(2.39.2)
 
-ORIGINAL_SOURCE(https://github.com/util-linux/util-linux/archive/v2.39.1.tar.gz)
+ORIGINAL_SOURCE(https://github.com/util-linux/util-linux/archive/v2.39.2.tar.gz)
 
 PEERDIR(
     contrib/libs/libc_compat
