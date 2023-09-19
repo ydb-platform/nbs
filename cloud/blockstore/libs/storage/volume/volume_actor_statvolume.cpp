@@ -242,6 +242,24 @@ void TVolumeActor::HandleStatVolume(
     }
 
     NProto::TStatVolumeResponse record;
+    auto& protoFieldsToValues = *record.MutableStorageConfigFieldsToValues();
+
+    for (const auto& field: msg->Record.GetStorageConfigFields()) {
+        const auto configValue = Config->GetValueByName(field);
+        switch (configValue.Status) {
+            using TStatus = TStorageConfig::TValueByName::ENameStatus;
+            case TStatus::FoundInDefaults:
+                protoFieldsToValues[field] = "Default";
+                break;
+            case TStatus::FoundInProto:
+                protoFieldsToValues[field] = configValue.Value;
+                break;
+            case TStatus::NotFound:
+                protoFieldsToValues[field] = "Not found";
+                break;
+        }
+    }
+
     auto* volume = record.MutableVolume();
     record.SetMountSeqNumber(
         State->GetMountSeqNumber());

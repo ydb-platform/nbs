@@ -630,6 +630,9 @@ message TStatVolumeRequest
 
     // Maybe some flags to describe what exactly to query, if some info is hard to get?
     uint32 Flags = 3;
+
+    // Storage config fields to get values for.
+    repeated string StorageConfigFields = 4;
 }
 
 message TStatVolumeResponse
@@ -660,6 +663,9 @@ message TStatVolumeResponse
 
     // Volume generation.
     uint32 VolumeGeneration = 9;
+
+    // Mapping of storage config fields to values.
+    map<string, string> StorageConfigFieldsToValues = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

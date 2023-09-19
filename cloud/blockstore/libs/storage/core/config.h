@@ -34,6 +34,27 @@ public:
 
     void Merge(const NProto::TStorageServiceConfig& storageServiceConfig);
 
+    struct TValueByName
+    {
+        enum class ENameStatus
+        {
+            NotFound,
+            FoundInDefaults,
+            FoundInProto
+        };
+
+        ENameStatus Status;
+        TString Value;
+
+        explicit TValueByName(ENameStatus status) : Status(status) {}
+
+        TValueByName(const TString& value)
+            : Status(ENameStatus::FoundInProto)
+            , Value(value) {}
+    };
+
+    TValueByName GetValueByName(const TString& name) const;
+
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;

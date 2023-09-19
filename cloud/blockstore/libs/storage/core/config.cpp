@@ -8,6 +8,8 @@
 
 #include <util/generic/size_literals.h>
 
+#include <google/protobuf/text_format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NKikimr;
@@ -822,6 +824,33 @@ ui64 GetAllocationUnit(
     Y_VERIFY(unit != 0); // TODO: this check should be moved to nbs startup
 
     return unit;
+}
+
+TStorageConfig::TValueByName TStorageConfig::GetValueByName(
+    const TString& name) const
+{
+    auto descriptor =
+        Impl->StorageServiceConfig.GetDescriptor()->FindFieldByName(name);
+        using TStatus = TStorageConfig::TValueByName::ENameStatus;
+
+    if (descriptor == nullptr) {
+        return TStorageConfig::TValueByName {TStatus::NotFound};
+    }
+
+    const auto* reflection = NProto::TStorageServiceConfig::GetReflection();
+    if (!reflection->HasField(Impl->StorageServiceConfig, descriptor)) {
+        return TStorageConfig::TValueByName {TStatus::FoundInDefaults};
+    }
+
+    TString value;
+    google::protobuf::TextFormat::PrintFieldValueToString(
+        Impl->StorageServiceConfig,
+        descriptor,
+        -1,
+        &value
+    );
+
+    return {value};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

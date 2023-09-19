@@ -20,6 +20,7 @@ class TStatVolumeCommand final
 private:
     TString DiskId;
     ui32 Flags = 0;
+    TVector<TString> StorageConfigFields;
 
 public:
     TStatVolumeCommand(IBlockStorePtr client)
@@ -32,6 +33,12 @@ public:
         Opts.AddLongOption("flags")
             .RequiredArgument("NUM")
             .StoreResult(&Flags);
+
+        Opts.AddLongOption(
+            "storage-config-fields",
+            "Get overridden value of these StorageConfig's fields")
+            .RequiredArgument("STR")
+            .AppendTo(&StorageConfigFields);
     }
 
 protected:
@@ -51,6 +58,9 @@ protected:
         } else {
             request->SetDiskId(DiskId);
             request->SetFlags(Flags);
+            for (auto& field: StorageConfigFields) {
+                *request->AddStorageConfigFields() = std::move(field);
+            }
         }
 
         STORAGE_DEBUG("Sending StatVolume request");

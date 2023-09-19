@@ -352,7 +352,8 @@ public:
         const TString& clientId);
 
     std::unique_ptr<TEvService::TEvStatVolumeRequest> CreateStatVolumeRequest(
-        const TString& clientId = {});
+        const TString& clientId = {},
+        const TVector<TString>& storageConfigFields = {});
 
     std::unique_ptr<TEvService::TEvReadBlocksRequest> CreateReadBlocksRequest(
         const TBlockRange64& readRange,

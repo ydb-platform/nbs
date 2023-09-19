@@ -9360,6 +9360,29 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(bootRequested);
     }
 
+    Y_UNIT_TEST(ShouldGetStorageConfigValues)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetCompactionRangeCountPerRun(10);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        TVector<TString> requestedFields = {
+            "CompactionRangeCountPerRun", "MaxSSDGroupWriteIops", "Unknown"};
+
+        volume.SendStatVolumeRequest("", requestedFields);
+        auto response = volume.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        auto mapping = response->Record.GetStorageConfigFieldsToValues();
+
+        UNIT_ASSERT_VALUES_EQUAL(mapping.size(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(mapping["CompactionRangeCountPerRun"], "10");
+        UNIT_ASSERT_VALUES_EQUAL(mapping["MaxSSDGroupWriteIops"], "Default");
+        UNIT_ASSERT_VALUES_EQUAL(mapping["Unknown"], "Not found");
+    }
+
     Y_UNIT_TEST(ShouldDisableByFlag)
     {
         NProto::TStorageServiceConfig config;
