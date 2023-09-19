@@ -51,6 +51,8 @@ class LocalNbs(Daemon):
             features_config_patch=None,
             grpc_trace=None,
             ydbstats_config=None,
+            compute_config=None,
+            kms_config=None,
             ping_path='/blockstore',
             rack="the_rack",
             use_ic_version_check=False):
@@ -107,6 +109,8 @@ class LocalNbs(Daemon):
         self.features_config_patch = features_config_patch
         self.tracking_enabled = tracking_enabled
         self.ydbstats_config = ydbstats_config
+        self.compute_config = compute_config
+        self.kms_config = kms_config
 
         self.__proto_configs = {
             "diag.txt": self.__generate_diag_txt(),
@@ -123,6 +127,12 @@ class LocalNbs(Daemon):
 
         if ydbstats_config is not None:
             self.__proto_configs["ydbstats.txt"] = ydbstats_config
+
+        if compute_config is not None:
+            self.__proto_configs["compute.txt"] = compute_config
+
+        if kms_config is not None:
+            self.__proto_configs["kms.txt"] = kms_config
 
         if storage_config_patches is not None and len(storage_config_patches) > 0:
             for i in range(len(storage_config_patches)):
@@ -543,6 +553,12 @@ ModifyScheme {
                 "--ydbstats-file",
                 os.path.join(self.config_path(), "ydbstats.txt")
             ]
+
+        if self.compute_config is not None:
+            command += ["--compute-file", os.path.join(self.config_path(), "compute.txt")]
+
+        if self.kms_config is not None:
+            command += ["--kms-file", os.path.join(self.config_path(), "kms.txt")]
 
         append_conf_file_arg(command, self.config_path(),
                              "--location-file", "location.txt")
