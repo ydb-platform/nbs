@@ -7,6 +7,7 @@ PY_SRCS(
 )
 
 PEERDIR(
+    contrib/python/pathlib2
     contrib/python/python-libarchive
 )
 
