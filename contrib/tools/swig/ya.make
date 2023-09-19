@@ -3,14 +3,8 @@
 PROGRAM(swig)
 
 LICENSE(
-    BSD-2-Clause AND
-    BSD-Source-Code AND
-    Bison-exception-2.2 AND
-    GPL-3.0-only AND
-    GPL-3.0-or-later AND
-    LicenseRef-scancode-other-copyleft AND
-    LicenseRef-scancode-swig AND
-    LicenseRef-scancode-unknown-license-reference
+    Custom-swig AND
+    GPL-3.0-only
 )
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
@@ -43,9 +37,11 @@ CFLAGS(
     -DHAVE_CONFIG_H
 )
 
+BISON_GEN_C()
+
 SRCS(
     Source/CParse/cscanner.c
-    Source/CParse/parser.c
+    Source/CParse/parser.y
     Source/CParse/templ.c
     Source/CParse/util.c
     Source/DOH/base.c
@@ -115,3 +111,10 @@ SRCS(
 )
 
 END()
+
+RECURSE(
+    Lib/go
+    Lib/java
+    Lib/perl5
+    Lib/python
+)
