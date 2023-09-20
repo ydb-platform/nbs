@@ -558,6 +558,16 @@ static void arm_msg_handling_timer(struct vhd_vdev *vdev, int secs)
 /* Every so many seconds report if the message is still being handled */
 #define MSG_HANDLING_LOG_INTERVAL 30
 
+#ifdef VHD_DEBUG
+#define MSG_ELAPSED_NSEC_LOG_THRESHOLD 0
+#else
+/*
+ * This number must be under 1 sec as that's handled by a different
+ * field inside the timespec struct.
+ */
+#define MSG_ELAPSED_NSEC_LOG_THRESHOLD (500 * NSEC_PER_MSEC)
+#endif
+
 static void vdev_handle_start(struct vhd_vdev *vdev, uint32_t req,
                               bool ack_pending)
 {
@@ -568,7 +578,7 @@ static void vdev_handle_start(struct vhd_vdev *vdev, uint32_t req,
     vdev->ack_pending = ack_pending;
     clock_gettime(CLOCK_MONOTONIC, &vdev->msg_handling_started);
 
-    VHD_OBJ_INFO(vdev, "%s (%u)", vhost_req_name(req), req);
+    VHD_OBJ_DEBUG(vdev, "%s (%u)", vhost_req_name(req), req);
 
     vhd_attach_io_handler(vdev->timer_handler);
     arm_msg_handling_timer(vdev, MSG_HANDLING_LOG_INTERVAL);
@@ -583,9 +593,12 @@ static void vdev_handle_finish(struct vhd_vdev *vdev)
 
     elapsed_time(vdev, &elapsed);
 
-    VHD_OBJ_INFO(vdev, "%s (%u): elapsed %jd.%03lds",
-                 vhost_req_name(vdev->req), vdev->req,
-                 (intmax_t)elapsed.tv_sec, elapsed.tv_nsec / NSEC_PER_MSEC);
+    if (elapsed.tv_sec || elapsed.tv_nsec > MSG_ELAPSED_NSEC_LOG_THRESHOLD) {
+        VHD_OBJ_INFO(vdev, "%s (%u): elapsed %jd.%03lds",
+                     vhost_req_name(vdev->req), vdev->req,
+                     (intmax_t) elapsed.tv_sec,
+                     elapsed.tv_nsec / NSEC_PER_MSEC);
+    }
 
     vdev->ack_pending = false;
     vdev->req = VHOST_USER_NONE;
