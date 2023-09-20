@@ -30,7 +30,7 @@ IF(CATBOOST_OPENSOURCE)
     CFLAGS(-DCATBOOST_OPENSOURCE=yes)
 ELSE()
     PEERDIR(
-        library/cpp/charset
+        library/cpp/charset/lite
     )
 ENDIF()
 
