@@ -1252,6 +1252,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TTestBasicRuntime runtime;
 
+        const TString name1 = workingDir / "error";
+        const TString name2 = "name2";
+
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
                 NProto::TDiskAgentConfig agentConfig;
@@ -1267,7 +1270,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     "dev1");
 
                 auto* device = agentConfig.MutableMemoryDevices()->Add();
-                device->SetName("dev2");
+                device->SetName(name2);
                 device->SetBlocksCount(1024);
                 device->SetBlockSize(DefaultBlockSize);
                 device->SetDeviceId("dev2");
@@ -1319,17 +1322,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 "client-1")->GetStatus();
         };
 
-        waitForStats([] (auto agentStats) {
+        waitForStats([&] (auto agentStats) {
             UNIT_ASSERT_EQUAL(2, agentStats.DeviceStatsSize());
 
             auto& dev0 = agentStats.GetDeviceStats(0);
             UNIT_ASSERT_VALUES_EQUAL("dev1", dev0.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(name1, dev0.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(0, dev0.GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(0, dev0.GetNumReadOps());
             UNIT_ASSERT_VALUES_EQUAL(0, dev0.GetBytesRead());
 
             auto& dev1 = agentStats.GetDeviceStats(1);
             UNIT_ASSERT_VALUES_EQUAL("dev2", dev1.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(name2, dev1.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(0, dev1.GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(0, dev1.GetNumReadOps());
             UNIT_ASSERT_VALUES_EQUAL(0, dev1.GetBytesRead());
@@ -1340,17 +1345,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, read("dev2"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, read("dev2"));
 
-        waitForStats([] (auto agentStats) {
+        waitForStats([&] (auto agentStats) {
             UNIT_ASSERT_EQUAL(2, agentStats.DeviceStatsSize());
 
             auto& dev0 = agentStats.GetDeviceStats(0);
             UNIT_ASSERT_VALUES_EQUAL("dev1", dev0.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(name1, dev0.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(2, dev0.GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(2, dev0.GetNumReadOps());
             UNIT_ASSERT_VALUES_EQUAL(0, dev0.GetBytesRead());
 
             auto& dev1 = agentStats.GetDeviceStats(1);
             UNIT_ASSERT_VALUES_EQUAL("dev2", dev1.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(name2, dev1.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(0, dev1.GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(2, dev1.GetNumReadOps());
             UNIT_ASSERT_VALUES_EQUAL(2*DefaultBlockSize, dev1.GetBytesRead());
@@ -1361,17 +1368,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_EQUAL(S_OK, read("dev2"));
         UNIT_ASSERT_EQUAL(S_OK, read("dev2"));
 
-        waitForStats([] (auto agentStats) {
+        waitForStats([&] (auto agentStats) {
             UNIT_ASSERT_EQUAL(2, agentStats.DeviceStatsSize());
 
             auto& dev0 = agentStats.GetDeviceStats(0);
             UNIT_ASSERT_VALUES_EQUAL("dev1", dev0.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(name1, dev0.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(1, dev0.GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(1, dev0.GetNumReadOps());
             UNIT_ASSERT_VALUES_EQUAL(0, dev0.GetBytesRead());
 
             auto& dev1 = agentStats.GetDeviceStats(1);
             UNIT_ASSERT_VALUES_EQUAL("dev2", dev1.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(name2, dev1.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(0, dev1.GetErrors());
             UNIT_ASSERT_VALUES_EQUAL(3, dev1.GetNumReadOps());
             UNIT_ASSERT_VALUES_EQUAL(3*DefaultBlockSize, dev1.GetBytesRead());

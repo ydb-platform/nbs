@@ -23,6 +23,7 @@ NProto::TDeviceStats CalcDelta(
     NProto::TDeviceStats delta;
 
     delta.SetDeviceUUID(cur.GetDeviceUUID());
+    delta.SetDeviceName(cur.GetDeviceName());
     delta.SetBytesRead(cur.GetBytesRead() - prev.GetBytesRead());
     delta.SetNumReadOps(cur.GetNumReadOps() - prev.GetNumReadOps());
     delta.SetBytesWritten(cur.GetBytesWritten() - prev.GetBytesWritten());

@@ -40,10 +40,12 @@ constexpr ui32 MaxRequestSize = 128*1024*1024;  // TODO
 
 void ToDeviceStats(
     const TString& uuid,
+    const TString& name,
     const TStorageIoStats& ioStats,
     NProto::TDeviceStats& stats)
 {
     stats.SetDeviceUUID(uuid);
+    stats.SetDeviceName(name);
     stats.SetBytesRead(AtomicGet(ioStats.BytesRead));
     stats.SetNumReadOps(AtomicGet(ioStats.NumReadOps));
     stats.SetBytesWritten(AtomicGet(ioStats.BytesWritten));
@@ -455,7 +457,11 @@ TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
         ds.Reserve(Devices.size());
 
         for (const auto& [id, device]: Devices) {
-            ToDeviceStats(id, *device.Stats, *ds.Add());
+            ToDeviceStats(
+                id,
+                device.Config.GetDeviceName(),
+                *device.Stats,
+                *ds.Add());
         }
 
         return MakeFuture(std::move(stats));
