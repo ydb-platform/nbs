@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -e
+CTX_DIR=$(mktemp -d)
+echo Working dir: $CTX_DIR
+cd "$CTX_DIR"
+
+# Start notify mock
+$source_root/cloud/blockstore/tests/recipes/notify-mock/start.sh $CTX_DIR
+
+# Run test
+set +e
+ARCADIA_BUILD_ROOT="$build_root" \
+NOTIFY_SERVICE_MOCK_PORT=$(cat $CTX_DIR/env.json | grep 'NOTIFY_SERVICE_MOCK_PORT' | cut -f 4 -d '"') \
+TEST_CERT_FILES_DIR=$(cat $CTX_DIR/env.json | grep 'TEST_CERT_FILES_DIR' | cut -f 4 -d '"') \
+$build_root/cloud/blockstore/libs/notify/ut/cloud-blockstore-libs-notify-ut $*
+code=$?
+if [ $code -gt 0 ];then
+  echo
+  echo "Test execution failed"
+  echo
+fi
+
+# Stop notify mock (removes working dir!)
+$source_root/cloud/blockstore/tests/recipes/notify-mock/stop.sh $CTX_DIR
+
+# Return result code from test run
+if [ $code -gt 0 ];then
+  exit $code
+fi

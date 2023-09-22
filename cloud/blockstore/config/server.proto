@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-import "cloud/blockstore/config/grpc_client.proto";
 import "cloud/blockstore/config/rdma.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/endpoints.proto";
