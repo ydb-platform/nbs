@@ -472,13 +472,13 @@ void TAgentList::PublishCounters(TInstant now)
 }
 
 void TAgentList::UpdateCounters(
+    const TString& agentId,
     const NProto::TAgentStats& stats,
     const NProto::TMeanTimeBetweenFailures& mtbf)
 {
-    // TODO: add AgentId to TAgentStats & use AgentIdToIdx (NBS-3280)
-    auto it = NodeIdToIdx.find(stats.GetNodeId());
-    if (it != NodeIdToIdx.end()) {
-        AgentCounters[it->second].Update(stats, mtbf);
+    auto it = AgentIdToIdx.find(agentId);
+    if (it != AgentIdToIdx.end()) {
+        AgentCounters[it->second].Update(agentId, stats, mtbf);
     }
 }
 

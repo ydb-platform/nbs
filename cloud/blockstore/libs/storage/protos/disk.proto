@@ -350,6 +350,8 @@ message TDeviceStats
     uint64 NumZeroOps = 9;
 
     uint64 NumEraseOps = 10;
+
+    string DeviceName = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

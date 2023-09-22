@@ -1370,7 +1370,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto totalZeroCount = agentCounters->GetCounter("ZeroCount");
         auto totalZeroBytes = agentCounters->GetCounter("ZeroBytes");
 
-        auto device = agentCounters->GetSubgroup("device", "uuid-1");
+        auto device = agentCounters->GetSubgroup("device", "agent-1000:dev-1");
 
         auto timePercentiles = device->GetSubgroup("percentiles", "Time");
         auto p90 = timePercentiles->GetCounter("90");
@@ -1399,12 +1399,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         auto makeDeviceStats = [] (
             const TString& uuid,
+            const TString& deviceName,
             std::pair<ui64, ui64> r,
             std::pair<ui64, ui64> w,
             std::pair<ui64, ui64> z)
         {
             NProto::TDeviceStats stats;
             stats.SetDeviceUUID(uuid);
+            stats.SetDeviceName(deviceName);
 
             stats.SetNumReadOps(r.first);
             stats.SetBytesRead(r.second);
@@ -1447,10 +1449,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             agentStats.SetNodeId(1000);
 
             *agentStats.AddDeviceStats() = makeDeviceStats(
-                "uuid-1", { 200, 10000 }, { 100, 5000 }, {10, 1000});
+                "uuid-1", "dev-1", { 200, 10000 }, { 100, 5000 }, {10, 1000});
 
             *agentStats.AddDeviceStats() = makeDeviceStats(
-                "uuid-2", { 100, 40000 }, { 20, 1000 }, {20, 2000});
+                "uuid-2", "dev-2", { 100, 40000 }, { 20, 1000 }, {20, 2000});
 
             state.UpdateAgentCounters(agentStats);
         }

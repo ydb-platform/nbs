@@ -93,7 +93,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateConfigTest)
             UNIT_ASSERT_VALUES_EQUAL(0, agent->UnknownDevicesSize());
         }
 
-        UNIT_ASSERT(agentCounters->FindSubgroup("device", uuid));
+        UNIT_ASSERT(agentCounters->FindSubgroup("device", "agent-1:dev-1"));
     }
 }
 

@@ -13,12 +13,21 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
     BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdateAgentStats);
 
     auto* msg = ev->Get();
-    const auto& stats = msg->Record.GetAgentStats();
+    auto& stats = *msg->Record.MutableAgentStats();
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received UpdateAgentStats request: NodeId=%u",
         TabletID(),
         stats.GetNodeId());
+
+    // TODO: delete this after NBS-4571 is deployed at disk agents
+    for (auto& deviceStats: *stats.MutableDeviceStats()) {
+        if (deviceStats.GetDeviceName().Empty()) {
+            if (auto* device = State->FindDevice(deviceStats.GetDeviceUUID())) {
+                deviceStats.SetDeviceName(device->GetDeviceName());
+            }
+        }
+    }
 
     auto error = State->UpdateAgentCounters(stats);
 

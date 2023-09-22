@@ -25,6 +25,14 @@ struct TDeviceCounters
 
     TCumulativeCounter ErrorCount;
 
+    void Register(NMonitoring::TDynamicCountersPtr counters);
+    void Publish(TInstant now);
+    void Reset();
+    void Update(const NProto::TDeviceStats& stats);
+};
+
+struct TDeviceCountersWithPercentiles: TDeviceCounters
+{
     TVector<NMonitoring::TDynamicCounters::TCounterPtr> TimePercentileCounters;
     TVector<double> TimePercentiles;
 
@@ -39,18 +47,10 @@ class TAgentCounters
 public:
     TCumulativeCounter InitErrorsCount;
 
-    TCumulativeCounter TotalReadCount;
-    TCumulativeCounter TotalReadBytes;
+    TDeviceCounters TotalCounters;
 
-    TCumulativeCounter TotalWriteCount;
-    TCumulativeCounter TotalWriteBytes;
-
-    TCumulativeCounter TotalZeroCount;
-    TCumulativeCounter TotalZeroBytes;
-
-    TCumulativeCounter TotalErrorCount;
-
-    THashMap<TString, TDeviceCounters> DeviceCounters;
+    // AgentId:DeviceName -> Counters
+    THashMap<TString, TDeviceCountersWithPercentiles> DeviceCounters;
 
     NMonitoring::TDynamicCounters::TCounterPtr MeanTimeBetweenFailures;
 
@@ -59,23 +59,19 @@ public:
         NMonitoring::TDynamicCountersPtr counters);
 
     void Update(
+        const TString& agentId,
         const NProto::TAgentStats& stats,
         const NProto::TMeanTimeBetweenFailures& mtbf);
     void Publish(TInstant now);
 
 private:
-    void UpdateDeviceStats(const NProto::TDeviceStats& stats);
+    void ResetDeviceStats(
+        const TString& agentId,
+        const NProto::TDeviceStats& stats);
 
-    void UpdateReadCount(TDeviceCounters& counters, ui64 value);
-    void UpdateReadBytes(TDeviceCounters& counters, ui64 value);
-
-    void UpdateWriteCount(TDeviceCounters& counters, ui64 value);
-    void UpdateWriteBytes(TDeviceCounters& counters, ui64 value);
-
-    void UpdateZeroCount(TDeviceCounters& counters, ui64 value);
-    void UpdateZeroBytes(TDeviceCounters& counters, ui64 value);
-
-    void UpdateErrorCount(TDeviceCounters& counters, ui64 value);
+    void UpdateDeviceStats(
+        const TString& agentId,
+        const NProto::TDeviceStats& stats);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

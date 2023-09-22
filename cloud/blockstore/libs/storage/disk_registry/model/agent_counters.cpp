@@ -1,6 +1,19 @@
 #include "agent_counters.h"
 
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore::NStorage {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString MakeDeviceCountersKey(const TString& agentId, const TString& deviceName)
+{
+    return TStringBuilder() << agentId << ":" << deviceName;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -16,16 +29,7 @@ void TDeviceCounters::Register(
     ZeroCount.Register(counters, "ZeroCount");
     ZeroBytes.Register(counters, "ZeroBytes");
 
-    ErrorCount.Register(counters, "ZeroCount");
-
-    const auto& names = GetDefaultPercentileNames();
-    TimePercentileCounters.reserve(names.size());
-
-    auto percentileGroup = counters->GetSubgroup("percentiles", "Time");
-
-    for (auto& name: names) {
-        TimePercentileCounters.emplace_back(percentileGroup->GetCounter(name));
-    }
+    ErrorCount.Register(counters, "ErrorCount");
 }
 
 void TDeviceCounters::Publish(TInstant now)
@@ -40,6 +44,54 @@ void TDeviceCounters::Publish(TInstant now)
     ZeroBytes.Publish(now);
 
     ErrorCount.Publish(now);
+}
+
+void TDeviceCounters::Reset()
+{
+    ReadCount.Reset();
+    ReadBytes.Reset();
+
+    WriteCount.Reset();
+    WriteBytes.Reset();
+
+    ZeroCount.Reset();
+    ZeroBytes.Reset();
+
+    ErrorCount.Reset();
+}
+
+void TDeviceCounters::Update(const NProto::TDeviceStats& stats)
+{
+    ReadCount.Increment(stats.GetNumReadOps());
+    ReadBytes.Increment(stats.GetBytesRead());
+
+    WriteCount.Increment(stats.GetNumWriteOps());
+    WriteBytes.Increment(stats.GetBytesWritten());
+
+    ZeroCount.Increment(stats.GetNumZeroOps());
+    ZeroBytes.Increment(stats.GetBytesZeroed());
+
+    ErrorCount.Increment(stats.GetErrors());
+}
+
+void TDeviceCountersWithPercentiles::Register(
+    NMonitoring::TDynamicCountersPtr counters)
+{
+    TDeviceCounters::Register(counters);
+
+    const auto& names = GetDefaultPercentileNames();
+    TimePercentileCounters.reserve(names.size());
+
+    auto percentileGroup = counters->GetSubgroup("percentiles", "Time");
+
+    for (auto& name: names) {
+        TimePercentileCounters.emplace_back(percentileGroup->GetCounter(name));
+    }
+}
+
+void TDeviceCountersWithPercentiles::Publish(TInstant now)
+{
+    TDeviceCounters::Publish(now);
 
     for (size_t i = 0; i != TimePercentiles.size(); ++i) {
         *TimePercentileCounters[i] = std::lround(TimePercentiles[i]);
@@ -55,90 +107,35 @@ void TAgentCounters::Register(
     auto agentCounters = counters->GetSubgroup("agent", agentConfig.GetAgentId());
 
     InitErrorsCount.Register(agentCounters, "Errors/Init");
-
-    TotalReadCount.Register(agentCounters, "ReadCount");
-    TotalReadBytes.Register(agentCounters, "ReadBytes");
-
-    TotalWriteCount.Register(agentCounters, "WriteCount");
-    TotalWriteBytes.Register(agentCounters, "WriteBytes");
-
-    TotalZeroCount.Register(agentCounters, "ZeroCount");
-    TotalZeroBytes.Register(agentCounters, "ZeroBytes");
-
-    TotalErrorCount.Register(agentCounters, "ErrorCount");
+    TotalCounters.Register(agentCounters);
 
     for (auto& deviceConfig: agentConfig.GetDevices()) {
-        const auto& uuid = deviceConfig.GetDeviceUUID();
+        const auto& deviceName = deviceConfig.GetDeviceName();
+        const auto key =
+            MakeDeviceCountersKey(agentConfig.GetAgentId(), deviceName);
 
-        DeviceCounters[uuid].Register(
-            agentCounters->GetSubgroup("device", uuid));
+        DeviceCounters[key].Register(agentCounters->GetSubgroup("device", key));
     }
 
     MeanTimeBetweenFailures =
         agentCounters->GetCounter("MeanTimeBetweenFailures");
 }
 
-void TAgentCounters::UpdateReadCount(TDeviceCounters& counters, ui64 value)
-{
-    TotalReadCount.Increment(value);
-    counters.ReadCount.Set(value);
-}
-
-void TAgentCounters::UpdateReadBytes(TDeviceCounters& counters, ui64 value)
-{
-    TotalReadBytes.Increment(value);
-    counters.ReadBytes.Set(value);
-}
-
-void TAgentCounters::UpdateWriteCount(TDeviceCounters& counters, ui64 value)
-{
-    TotalWriteCount.Increment(value);
-    counters.WriteCount.Set(value);
-}
-
-void TAgentCounters::UpdateWriteBytes(TDeviceCounters& counters, ui64 value)
-{
-    TotalWriteBytes.Increment(value);
-    counters.WriteBytes.Set(value);
-}
-
-void TAgentCounters::UpdateZeroCount(TDeviceCounters& counters, ui64 value)
-{
-    TotalZeroCount.Increment(value);
-    counters.ZeroCount.Set(value);
-}
-
-void TAgentCounters::UpdateZeroBytes(TDeviceCounters& counters, ui64 value)
-{
-    TotalZeroBytes.Increment(value);
-    counters.ZeroBytes.Set(value);
-}
-
-void TAgentCounters::UpdateErrorCount(TDeviceCounters& counters, ui64 value)
-{
-    TotalErrorCount.Increment(value);
-    counters.ErrorCount.Set(value);
-}
-
 void TAgentCounters::Update(
+    const TString& agentId,
     const NProto::TAgentStats& stats,
     const NProto::TMeanTimeBetweenFailures& mtbf)
 {
     InitErrorsCount.Set(stats.GetInitErrorsCount());
 
-    TotalReadCount.Reset();
-    TotalReadBytes.Reset();
-
-    TotalWriteCount.Reset();
-    TotalWriteBytes.Reset();
-
-    TotalZeroCount.Reset();
-    TotalZeroBytes.Reset();
-
-    TotalErrorCount.Reset();
+    TotalCounters.Reset();
 
     for (const auto& device: stats.GetDeviceStats()) {
-        UpdateDeviceStats(device);
+        ResetDeviceStats(agentId, device);
+    }
+
+    for (const auto& device: stats.GetDeviceStats()) {
+        UpdateDeviceStats(agentId, device);
     }
 
     MeanTimeBetweenFailures->Set(
@@ -147,26 +144,36 @@ void TAgentCounters::Update(
         : 0);
 }
 
-void TAgentCounters::UpdateDeviceStats(const NProto::TDeviceStats& stats)
+void TAgentCounters::ResetDeviceStats(
+    const TString& agentId,
+    const NProto::TDeviceStats& stats)
 {
-    auto it = DeviceCounters.find(stats.GetDeviceUUID());
+    const auto key = MakeDeviceCountersKey(agentId, stats.GetDeviceName());
+
+    auto it = DeviceCounters.find(key);
+
+    if (it == DeviceCounters.end()) {
+        return;
+    }
+
+    it->second.Reset();
+}
+
+void TAgentCounters::UpdateDeviceStats(
+    const TString& agentId,
+    const NProto::TDeviceStats& stats)
+{
+    const auto key = MakeDeviceCountersKey(agentId, stats.GetDeviceName());
+
+    auto it = DeviceCounters.find(key);
 
     if (it == DeviceCounters.end()) {
         return;
     }
 
     auto& counters = it->second;
-
-    UpdateReadCount(counters, stats.GetNumReadOps());
-    UpdateReadBytes(counters, stats.GetBytesRead());
-
-    UpdateWriteCount(counters, stats.GetNumWriteOps());
-    UpdateWriteBytes(counters, stats.GetBytesWritten());
-
-    UpdateZeroCount(counters, stats.GetNumZeroOps());
-    UpdateZeroBytes(counters, stats.GetBytesZeroed());
-
-    UpdateErrorCount(counters, stats.GetErrors());
+    counters.Update(stats);
+    TotalCounters.Update(stats);
 
     TVector<TBucketInfo> buckets(stats.HistogramBucketsSize());
 
@@ -183,17 +190,9 @@ void TAgentCounters::UpdateDeviceStats(const NProto::TDeviceStats& stats)
 void TAgentCounters::Publish(TInstant now)
 {
     InitErrorsCount.Publish(now);
+    TotalCounters.Publish(now);
 
-    TotalReadCount.Publish(now);
-    TotalReadBytes.Publish(now);
-
-    TotalWriteCount.Publish(now);
-    TotalWriteBytes.Publish(now);
-
-    TotalZeroCount.Publish(now);
-    TotalZeroBytes.Publish(now);
-
-    for (auto& [uuid, counters]: DeviceCounters) {
+    for (auto& [_, counters]: DeviceCounters) {
         counters.Publish(now);
     }
 }

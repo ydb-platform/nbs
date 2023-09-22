@@ -312,7 +312,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(9000000, totalWriteBytes->Val());
 
         {
-            auto device = agentCounters->GetSubgroup("device", "uuid-1");
+            auto device = agentCounters->GetSubgroup("device", "agent-1:dev-1");
 
             UNIT_ASSERT_VALUES_EQUAL(100, device->GetCounter("ReadCount")->Val());
             UNIT_ASSERT_VALUES_EQUAL(10000, device->GetCounter("ReadBytes")->Val());
@@ -327,7 +327,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            auto device = agentCounters->GetSubgroup("device", "uuid-2");
+            auto device = agentCounters->GetSubgroup("device", "agent-1:dev-2");
 
             UNIT_ASSERT_VALUES_EQUAL(200, device->GetCounter("ReadCount")->Val());
             UNIT_ASSERT_VALUES_EQUAL(20000, device->GetCounter("ReadBytes")->Val());

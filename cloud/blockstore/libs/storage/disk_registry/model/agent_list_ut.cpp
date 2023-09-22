@@ -484,11 +484,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         auto fooCounters = Counters->GetSubgroup("agent", foo.GetAgentId());
         auto barCounters = Counters->GetSubgroup("agent", bar.GetAgentId());
 
-        auto uuid1Counters = fooCounters->GetSubgroup("device", "uuid-1");
-        auto uuid2Counters = fooCounters->GetSubgroup("device", "uuid-2");
+        auto uuid1Counters = fooCounters->GetSubgroup("device", "foo:name-uuid-1");
+        auto uuid2Counters = fooCounters->GetSubgroup("device", "foo:name-uuid-2");
 
-        auto uuid3Counters = barCounters->GetSubgroup("device", "uuid-3");
-        auto uuid4Counters = barCounters->GetSubgroup("device", "uuid-4");
+        auto uuid3Counters = barCounters->GetSubgroup("device", "bar:name-uuid-3");
+        auto uuid4Counters = barCounters->GetSubgroup("device", "bar:name-uuid-4");
 
         auto uuid1ReadCount = uuid1Counters->GetCounter("ReadCount");
         auto uuid1WriteCount = uuid1Counters->GetCounter("WriteCount");
@@ -514,36 +514,40 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         UNIT_ASSERT_VALUES_EQUAL(0, uuid4ReadCount->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, uuid4WriteCount->Val());
 
-        agentList.UpdateCounters([] {
+        agentList.UpdateCounters("foo", [] {
             NProto::TAgentStats stats;
 
             stats.SetNodeId(1000);
 
             auto* uuid1Stats = stats.AddDeviceStats();
             uuid1Stats->SetDeviceUUID("uuid-1");
+            uuid1Stats->SetDeviceName("name-uuid-1");
             uuid1Stats->SetNumReadOps(10);
             uuid1Stats->SetNumWriteOps(20);
 
             auto* uuid2Stats = stats.AddDeviceStats();
             uuid2Stats->SetDeviceUUID("uuid-2");
+            uuid2Stats->SetDeviceName("name-uuid-2");
             uuid2Stats->SetNumReadOps(30);
             uuid2Stats->SetNumWriteOps(40);
 
             return stats;
         }(), {});
 
-        agentList.UpdateCounters([] {
+        agentList.UpdateCounters("bar", [] {
             NProto::TAgentStats stats;
 
             stats.SetNodeId(2000);
 
             auto* uuid3Stats = stats.AddDeviceStats();
             uuid3Stats->SetDeviceUUID("uuid-3");
+            uuid3Stats->SetDeviceName("name-uuid-3");
             uuid3Stats->SetNumReadOps(100);
             uuid3Stats->SetNumWriteOps(200);
 
             auto* uuid4Stats = stats.AddDeviceStats();
             uuid4Stats->SetDeviceUUID("uuid-4");
+            uuid4Stats->SetDeviceName("name-uuid-4");
             uuid4Stats->SetNumReadOps(300);
             uuid4Stats->SetNumWriteOps(400);
 
@@ -566,36 +570,40 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
         agentList.RemoveAgent(1000);
 
-        agentList.UpdateCounters([] {
+        agentList.UpdateCounters("foo", [] {
             NProto::TAgentStats stats;
 
             stats.SetNodeId(1000);
 
             auto* uuid1Stats = stats.AddDeviceStats();
             uuid1Stats->SetDeviceUUID("uuid-1");
+            uuid1Stats->SetDeviceName("name-uuid-1");
             uuid1Stats->SetNumReadOps(1000);
             uuid1Stats->SetNumWriteOps(1000);
 
             auto* uuid2Stats = stats.AddDeviceStats();
             uuid2Stats->SetDeviceUUID("uuid-2");
+            uuid2Stats->SetDeviceName("name-uuid-2");
             uuid2Stats->SetNumReadOps(1000);
             uuid2Stats->SetNumWriteOps(1000);
 
             return stats;
         }(), {});
 
-        agentList.UpdateCounters([] {
+        agentList.UpdateCounters("bar", [] {
             NProto::TAgentStats stats;
 
             stats.SetNodeId(2000);
 
             auto* uuid3Stats = stats.AddDeviceStats();
             uuid3Stats->SetDeviceUUID("uuid-3");
+            uuid3Stats->SetDeviceName("name-uuid-3");
             uuid3Stats->SetNumReadOps(1000);
             uuid3Stats->SetNumWriteOps(1000);
 
             auto* uuid4Stats = stats.AddDeviceStats();
             uuid4Stats->SetDeviceUUID("uuid-4");
+            uuid4Stats->SetDeviceName("name-uuid-4");
             uuid4Stats->SetNumReadOps(1000);
             uuid4Stats->SetNumWriteOps(1000);
 

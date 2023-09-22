@@ -10,10 +10,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateDevice(TString id)
+auto CreateDevice(TString id, TString name)
 {
     NProto::TDeviceConfig config;
     config.SetDeviceUUID(std::move(id));
+    config.SetDeviceName(std::move(name));
 
     return config;
 }
@@ -35,8 +36,10 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
 
         NProto::TAgentConfig agentConfig;
         agentConfig.SetAgentId("foo");
-        *agentConfig.AddDevices() = CreateDevice("uuid-1");
-        *agentConfig.AddDevices() = CreateDevice("uuid-2");
+        *agentConfig.AddDevices() = CreateDevice("uuid-1", "dev-a");
+        *agentConfig.AddDevices() = CreateDevice("uuid-2", "dev-a");
+        *agentConfig.AddDevices() = CreateDevice("uuid-3", "dev-b");
+        *agentConfig.AddDevices() = CreateDevice("uuid-4", "dev-b");
 
         agentCounters.Register(agentConfig, diskRegistryGroup);
 
@@ -46,49 +49,50 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
 
         UNIT_ASSERT(agentGroup);
 
-        auto d1Group = agentGroup->GetSubgroup("device", "uuid-1");
-        auto d2Group = agentGroup->GetSubgroup("device", "uuid-2");
+        auto daGroup = agentGroup->GetSubgroup("device", "foo:dev-a");
+        auto dbGroup = agentGroup->GetSubgroup("device", "foo:dev-b");
 
-        auto d1ReadCount = d1Group->GetCounter("ReadCount");
-        auto d1ReadBytes = d1Group->GetCounter("ReadBytes");
-        auto d1WriteCount = d1Group->GetCounter("WriteCount");
-        auto d1WriteBytes = d1Group->GetCounter("WriteBytes");
-        auto d1ZeroCount = d1Group->GetCounter("ZeroCount");
-        auto d1ZeroBytes = d1Group->GetCounter("ZeroBytes");
+        auto daReadCount = daGroup->GetCounter("ReadCount");
+        auto daReadBytes = daGroup->GetCounter("ReadBytes");
+        auto daWriteCount = daGroup->GetCounter("WriteCount");
+        auto daWriteBytes = daGroup->GetCounter("WriteBytes");
+        auto daZeroCount = daGroup->GetCounter("ZeroCount");
+        auto daZeroBytes = daGroup->GetCounter("ZeroBytes");
 
-        auto d2ReadCount = d2Group->GetCounter("ReadCount");
-        auto d2ReadBytes = d2Group->GetCounter("ReadBytes");
-        auto d2WriteCount = d2Group->GetCounter("WriteCount");
-        auto d2WriteBytes = d2Group->GetCounter("WriteBytes");
-        auto d2ZeroCount = d2Group->GetCounter("ZeroCount");
-        auto d2ZeroBytes = d2Group->GetCounter("ZeroBytes");
+        auto dbReadCount = dbGroup->GetCounter("ReadCount");
+        auto dbReadBytes = dbGroup->GetCounter("ReadBytes");
+        auto dbWriteCount = dbGroup->GetCounter("WriteCount");
+        auto dbWriteBytes = dbGroup->GetCounter("WriteBytes");
+        auto dbZeroCount = dbGroup->GetCounter("ZeroCount");
+        auto dbZeroBytes = dbGroup->GetCounter("ZeroBytes");
 
         auto mtbf = agentGroup->GetCounter("MeanTimeBetweenFailures");
 
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daZeroBytes->Val());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbZeroBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, mtbf->Val());
 
         NProto::TMeanTimeBetweenFailures tempMtbf;
         tempMtbf.SetWorkTime(100);
         tempMtbf.SetBrokenCount(2);
-        agentCounters.Update([] {
+        agentCounters.Update("foo", [] {
             NProto::TAgentStats stats;
 
             {
                 auto* d = stats.AddDeviceStats();
                 d->SetDeviceUUID("uuid-1");
+                d->SetDeviceName("dev-a");
 
                 d->SetNumReadOps(1);
                 d->SetBytesRead(1000);
@@ -103,6 +107,7 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
             {
                 auto* d = stats.AddDeviceStats();
                 d->SetDeviceUUID("uuid-2");
+                d->SetDeviceName("dev-a");
 
                 d->SetNumReadOps(2);
                 d->SetBytesRead(2000);
@@ -111,46 +116,59 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
                 d->SetBytesWritten(2000);
             }
 
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-3");
+                d->SetDeviceName("dev-b");
+
+                d->SetNumReadOps(4);
+                d->SetBytesRead(4000);
+
+                d->SetNumWriteOps(15);
+                d->SetBytesWritten(1500);
+            }
+
             return stats;
         }(), tempMtbf);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d1ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, daZeroBytes->Val());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbZeroBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(50, mtbf->Val());
 
         agentCounters.Publish(TInstant::Hours(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, d1ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1000, d1ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(10, d1WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1000, d1WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(100, d1ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1000, d1ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, daReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3000, daReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, daWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3000, daWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(100, daZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1000, daZeroBytes->Val());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, d2ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2000, d2ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(20, d2WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2000, d2WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, d2ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, dbReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4000, dbReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, dbWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1500, dbWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dbZeroBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(50, mtbf->Val());
 
-        agentCounters.Update([] {
+        agentCounters.Update("foo", [] {
             NProto::TAgentStats stats;
 
             auto* d = stats.AddDeviceStats();
             d->SetDeviceUUID("uuid-1");
+            d->SetDeviceName("dev-a");
 
             d->SetNumReadOps(1);
             d->SetBytesRead(1000);
@@ -161,11 +179,12 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
             return stats;
         }(), {});
 
-        agentCounters.Update([] {
+        agentCounters.Update("foo", [] {
             NProto::TAgentStats stats;
 
             auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("uuid-2");
+            d->SetDeviceUUID("uuid-4");
+            d->SetDeviceName("dev-b");
 
             d->SetNumWriteOps(20);
             d->SetBytesWritten(2000);
@@ -178,19 +197,20 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
 
         agentCounters.Publish(TInstant::Hours(2));
 
-        UNIT_ASSERT_VALUES_EQUAL(2, d1ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2000, d1ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(10, d1WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1000, d1WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(110, d1ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1100, d1ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, daReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4000, daReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, daWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3000, daWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(110, daZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1100, daZeroBytes->Val());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, d2ReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2000, d2ReadBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(40, d2WriteCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(4000, d2WriteBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(200, d2ZeroCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2000, d2ZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, dbReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4000, dbReadBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(35, dbWriteCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3500, dbWriteBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(200, dbZeroCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2000, dbZeroBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mtbf->Val());
     }
 }
 

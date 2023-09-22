@@ -661,6 +661,8 @@ public:
 
     TVector<TString> GetPoolNames() const;
 
+    const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);

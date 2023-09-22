@@ -101,6 +101,7 @@ public:
 
     void PublishCounters(TInstant now);
     void UpdateCounters(
+        const TString& agentId,
         const NProto::TAgentStats& stats,
         const NProto::TMeanTimeBetweenFailures& mtbf);
 

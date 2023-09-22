@@ -2476,6 +2476,11 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::FindDevice(
     return devices.front();
 }
 
+const NProto::TDeviceConfig* TDiskRegistryState::FindDevice(
+    const TString& deviceId) const
+{
+    return DeviceList.FindDevice(deviceId);
+}
 
 TVector<TString> TDiskRegistryState::GetDeviceIds(
     const TString& agentId,
@@ -3156,7 +3161,10 @@ NProto::TError TDiskRegistryState::UpdateAgentCounters(
         }
     }
 
-    AgentList.UpdateCounters(stats, agent->GetTimeBetweenFailures());
+    AgentList.UpdateCounters(
+        agent->GetAgentId(),
+        stats,
+        agent->GetTimeBetweenFailures());
 
     return {};
 }
