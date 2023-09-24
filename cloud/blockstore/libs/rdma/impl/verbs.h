@@ -145,5 +145,6 @@ const char* GetEventName(rdma_cm_event_type event);
 
 TString PrintAddress(const sockaddr* addr);
 TString PrintConnectionParams(const rdma_conn_param* param);
+TString PrintCompletion(const TCompletion& wc);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

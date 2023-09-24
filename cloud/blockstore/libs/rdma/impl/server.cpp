@@ -589,8 +589,8 @@ void TServerSession::HandleCompletionEvent(const NVerbs::TCompletion& wc)
             break;
 
         default:
-            STORAGE_ERROR("unexpected opcode "
-                << NVerbs::GetOpcodeName(wc.opcode));
+            STORAGE_ERROR("unexpected completion: "
+                << NVerbs::PrintCompletion(wc));
     }
 }
 

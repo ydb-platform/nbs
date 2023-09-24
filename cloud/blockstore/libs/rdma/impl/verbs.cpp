@@ -484,14 +484,24 @@ TString PrintConnectionParams(const rdma_conn_param* conn)
 {
     return TStringBuilder()
         << "[private_data=" << Hex((uintptr_t)conn->private_data)
-        << ", private_data_len=" << (uint32_t)conn->private_data_len
-        << ", responder_resources=" << (uint32_t)conn->responder_resources
-        << ", initiator_depth=" << (uint32_t)conn->initiator_depth
-        << ", flow_control=" << (uint32_t)conn->flow_control
-        << ", retry_count=" << (uint32_t)conn->retry_count
-        << ", rnr_retry_count=" << (uint32_t)conn->rnr_retry_count
-        << ", srq=" << (uint32_t)conn->srq
-        << ", qp_num=" << (uint32_t)conn->qp_num
+        << " private_data_len=" << (uint32_t)conn->private_data_len
+        << " responder_resources=" << (uint32_t)conn->responder_resources
+        << " initiator_depth=" << (uint32_t)conn->initiator_depth
+        << " flow_control=" << (uint32_t)conn->flow_control
+        << " retry_count=" << (uint32_t)conn->retry_count
+        << " rnr_retry_count=" << (uint32_t)conn->rnr_retry_count
+        << " srq=" << (uint32_t)conn->srq
+        << " qp_num=" << (uint32_t)conn->qp_num
+        << "]";
+}
+
+TString PrintCompletion(const TCompletion& wc)
+{
+    return TStringBuilder()
+        << "[id=" << wc.wr_id
+        << " opcode=" << GetOpcodeName(wc.opcode)
+        << " status=" << GetStatusString(wc.status)
+        << " ts=" << wc.ts
         << "]";
 }
 

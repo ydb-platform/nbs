@@ -47,6 +47,7 @@ namespace {
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration RESOLVE_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
+constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 
@@ -363,6 +364,8 @@ private:
 
     TPromise<IClientEndpointPtr> StartResult = NewPromise<IClientEndpointPtr>();
 
+    ui64 FlushStartCycles = 0;
+
     TBufferPool SendBuffers;
     TBufferPool RecvBuffers;
     TMutex AllocationLock;
@@ -429,6 +432,7 @@ public:
     bool HandleCompletionEvents();
     bool AbortRequests() noexcept;
     bool Flushed() const;
+    bool FlushHanging() const;
 
 private:
     void HandleQueuedRequests();
@@ -441,7 +445,7 @@ private:
     void RecvResponse(TRecvWr* recv);
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status, ui64 ts);
 
-    ibv_wc_opcode GetOpcode(const NVerbs::TCompletion& wc) const;
+    ibv_wc_opcode DeduceOpcode(ui64 wr_id) const;
 
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
@@ -629,6 +633,8 @@ void TClientEndpoint::DestroyQP() noexcept
 
     SendQueue.Clear();
     RecvQueue.Clear();
+
+    FlushStartCycles = 0;
 }
 
 void TClientEndpoint::StartReceive()
@@ -810,26 +816,26 @@ bool TClientEndpoint::HandleCompletionEvents()
     return false;
 }
 
-ibv_wc_opcode TClientEndpoint::GetOpcode(const NVerbs::TCompletion& wc) const
+// deduce opcode to ensure it's actually what we expect to receive.
+// for instance completions with status=IBV_WC_WR_FLUSH_ERR have
+// opcode=IBV_WC_SEND regardless of what was actually posted
+ibv_wc_opcode TClientEndpoint::DeduceOpcode(ui64 wr_id) const
 {
-    if (wc.opcode != IBV_WC_SEND && wc.opcode != IBV_WC_RECV) {
-        STORAGE_WARN("unknown opcode: " << NVerbs::GetOpcodeName(wc.opcode));
-    }
-    if (OwnedBy(wc.wr_id, SendWrs)) {
+    if (OwnedBy(wr_id, SendWrs)) {
         return IBV_WC_SEND;
     }
-    if (OwnedBy(wc.wr_id, RecvWrs)) {
+    if (OwnedBy(wr_id, RecvWrs)) {
         return IBV_WC_RECV;
     }
-    Y_FAIL("unknown work request: %" PRIu64, wc.wr_id);
+    return IBV_WC_DRIVER1;
 }
 
 void TClientEndpoint::HandleCompletionEvent(const NVerbs::TCompletion& wc)
 {
-    auto opcode = GetOpcode(wc);
+    auto opcode = DeduceOpcode(wc.wr_id);
 
     STORAGE_TRACE(NVerbs::GetOpcodeName(opcode) << " #" << wc.wr_id
-        << " completed");
+        << " completed with status " << NVerbs::GetStatusString(wc.status));
 
     switch (opcode) {
         case IBV_WC_SEND:
@@ -847,7 +853,8 @@ void TClientEndpoint::HandleCompletionEvent(const NVerbs::TCompletion& wc)
             break;
 
         default:
-            break;
+            STORAGE_ERROR("unexpected completion " << NVerbs::PrintCompletion(wc));
+            ReportRdmaError();
     }
 }
 
@@ -891,6 +898,17 @@ void TClientEndpoint::SendRequestCompleted(
         return;
     }
 
+    if (status != IBV_WC_SUCCESS) {
+        STORAGE_ERROR("SEND #" << send->wr.wr_id << ": "
+            << NVerbs::GetStatusString(status));
+
+        ReportRdmaError();
+        SetError();
+        Counters->SendRequestError();
+        SendQueue.Push(send);
+        return;
+    }
+
     auto* req = static_cast<TRequest*>(send->context);
 
     if (!ActiveRequests.Contains(req)) {
@@ -901,17 +919,6 @@ void TClientEndpoint::SendRequestCompleted(
         if (OwnedBy(send, SendWrs)) {
             SendQueue.Push(send);
         }
-        return;
-    }
-
-    if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("SEND #" << send->wr.wr_id << ": "
-            << NVerbs::GetStatusString(status));
-
-        ReportRdmaError();
-        SetError();
-        Counters->SendRequestError();
-        SendQueue.Push(send);
         return;
     }
 
@@ -1042,6 +1049,7 @@ void TClientEndpoint::SetError() noexcept
             try {
                 struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
                 Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
+                FlushStartCycles = GetCycleCount();
 
             } catch (const TServiceError& e) {
                 STORAGE_ERROR("unable to flush queues. " << e.what());
@@ -1059,6 +1067,12 @@ bool TClientEndpoint::Flushed() const
 {
     return SendQueue.Size() == Config.QueueSize
         && RecvQueue.Size() == Config.QueueSize;
+}
+
+bool TClientEndpoint::FlushHanging() const
+{
+    return FlushStartCycles && CyclesToDurationSafe(GetCycleCount() -
+        FlushStartCycles) >= FLUSH_TIMEOUT;
 }
 
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
@@ -1430,13 +1444,20 @@ private:
         auto endpoints = Endpoints.Get();
 
         for (const auto& endpoint: *endpoints) {
-            if (endpoint->CheckState(EEndpointState::Disconnecting)
-                && endpoint->Flushed())
-            {
-                endpoint->ChangeState(
-                    EEndpointState::Disconnecting,
-                    EEndpointState::Disconnected);
+            if (!endpoint->CheckState(EEndpointState::Disconnecting)) {
+                continue;
             }
+
+            if (!endpoint->Flushed()) {
+                if (!endpoint->FlushHanging()) {
+                    continue;
+                }
+                STORAGE_ERROR("flush timeout");
+            }
+
+            endpoint->ChangeState(
+                EEndpointState::Disconnecting,
+                EEndpointState::Disconnected);
         }
     }
 
