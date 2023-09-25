@@ -416,7 +416,7 @@ void TServiceActor::HandleDestroyVolume(
     const ui64 fillGeneration = request.GetFillGeneration();
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Deleting volume: diskId = %s, destroyIfBroken = %d, sync = %d, fillGeneration = %d",
+        "Deleting volume: diskId = %s, destroyIfBroken = %d, sync = %d, fillGeneration = %" PRIu64,
         diskId.Quote().c_str(),
         destroyIfBroken,
         sync,
