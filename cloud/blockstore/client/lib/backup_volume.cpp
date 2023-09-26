@@ -39,11 +39,11 @@ protected:
     ui32 BlockSize = 0;
     ui64 BlocksCount = 0;
 
-    NCloud::NProto::EStorageMediaKind SrcStorageMediaKind =
+    NCloud::NProto::EStorageMediaKind MainDiskStorageMediaKind =
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
 
     TString StorageMediaKindArg;
-    NCloud::NProto::EStorageMediaKind DstStorageMediaKind =
+    NCloud::NProto::EStorageMediaKind BackupDiskStorageMediaKind =
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
 
     NProto::TEncryptionSpec EncryptionSpec;
@@ -51,8 +51,8 @@ protected:
     ui64 StartIndex = 0;
     TAtomic BlocksLeft = 0;
 
-    ISessionPtr Session;
-    ISessionPtr BackupSession;
+    ISessionPtr SrcSession;
+    ISessionPtr DstSession;
 
     TVector<NThreading::TFuture<NProto::TWriteBlocksLocalResponse>> Write;
     NThreading::TFuture<NProto::TGetChangedBlocksResponse> ChangedBlocks;
@@ -71,7 +71,6 @@ public:
     {}
 
 protected:
-
     bool Fail(const NProto::TError& error)
     {
         STORAGE_ERROR(FormatError(error));
@@ -97,10 +96,10 @@ protected:
         const auto& volume = response.GetVolume();
         BlockSize = volume.GetBlockSize();
         BlocksCount = volume.GetBlocksCount();
-        SrcStorageMediaKind = volume.GetStorageMediaKind();
+        MainDiskStorageMediaKind = volume.GetStorageMediaKind();
 
-        if (DstStorageMediaKind == NCloud::NProto::STORAGE_MEDIA_DEFAULT) {
-            DstStorageMediaKind = SrcStorageMediaKind;
+        if (BackupDiskStorageMediaKind == NCloud::NProto::STORAGE_MEDIA_DEFAULT) {
+            BackupDiskStorageMediaKind = MainDiskStorageMediaKind;
         }
 
         const auto& encryptionDesc = volume.GetEncryptionDesc();
@@ -119,100 +118,6 @@ protected:
         return true;
     }
 
-    bool CreateVolume()
-    {
-        STORAGE_DEBUG("Creating backup volume");
-
-        auto request = std::make_shared<NProto::TCreateVolumeRequest>();
-        request->SetDiskId(BackupDiskId);
-        request->SetBlockSize(BlockSize);
-        request->SetBlocksCount(BlocksCount);
-        request->SetStorageMediaKind(DstStorageMediaKind);
-        request->MutableEncryptionSpec()->CopyFrom(EncryptionSpec);
-
-        auto requestId = GetRequestId(*request);
-        auto response = WaitFor(ClientEndpoint->CreateVolume(
-            MakeIntrusive<TCallContext>(requestId),
-            std::move(request)));
-
-        if (HasError(response)) {
-            return Fail(response.GetError());
-        }
-
-        return true;
-    }
-
-    bool CreateCheckpoint()
-    {
-        if (IsDiskRegistryMediaKind(SrcStorageMediaKind)) {
-            STORAGE_WARN("Skip checkpoint");
-            return true;
-        }
-
-        STORAGE_DEBUG("Creating checkpoint");
-
-        if (!CheckpointId) {
-            STORAGE_ERROR("Empty checkpoint-id");
-            return false;
-        }
-
-        auto request = std::make_shared<NProto::TCreateCheckpointRequest>();
-        request->SetDiskId(DiskId);
-        request->SetCheckpointId(CheckpointId);
-
-        auto requestId = GetRequestId(*request);
-        auto response = WaitFor(ClientEndpoint->CreateCheckpoint(
-            MakeIntrusive<TCallContext>(requestId),
-            std::move(request)));
-
-        if (HasError(response)) {
-            return Fail(response.GetError());
-        }
-
-        return true;
-    }
-
-    bool DestroyBackup()
-    {
-        STORAGE_DEBUG("Deleting unfinished backup");
-
-        auto request = std::make_shared<NProto::TDestroyVolumeRequest>();
-        request->SetDiskId(BackupDiskId);
-
-        auto requestId = GetRequestId(*request);
-        auto response = WaitFor(ClientEndpoint->DestroyVolume(
-            MakeIntrusive<TCallContext>(requestId), std::move(request)));
-
-        if (HasError(response)) {
-            return Fail(response.GetError());
-        }
-
-        return true;
-    }
-
-    bool DeleteCheckpoint()
-    {
-        if (CheckpointId.empty()) {
-            return true;
-        }
-
-        STORAGE_DEBUG("Deleting checkpoint");
-
-        auto request = std::make_shared<NProto::TDeleteCheckpointRequest>();
-        request->SetDiskId(DiskId);
-        request->SetCheckpointId(CheckpointId);
-
-        auto requestId = GetRequestId(*request);
-        auto response = WaitFor(ClientEndpoint->DeleteCheckpoint(
-            MakeIntrusive<TCallContext>(requestId), std::move(request)));
-
-        if (HasError(response)) {
-            return Fail(response.GetError());
-        }
-
-        return true;
-    }
-
     bool MountVolumes(const TString& srcDiskId, const TString& dstDiskId)
     {
         bool throttlingDisabled = true;
@@ -220,7 +125,7 @@ protected:
         auto response = MountVolume(
             srcDiskId,
             MountToken,
-            Session,
+            SrcSession,
             NProto::VOLUME_ACCESS_READ_ONLY,
             MountLocal,
             throttlingDisabled,
@@ -233,14 +138,14 @@ protected:
         response = MountVolume(
             dstDiskId,
             MountToken,
-            BackupSession,
+            DstSession,
             NProto::VOLUME_ACCESS_READ_WRITE,
             MountLocal,
             throttlingDisabled,
             EncryptionSpec);
 
         if (HasError(response)) {
-            UnmountVolume(*Session);
+            UnmountVolume(*SrcSession);
             return Fail(response.GetError());
         }
 
@@ -249,9 +154,9 @@ protected:
 
     bool UnmountVolumes()
     {
-        bool result = UnmountVolume(*Session);
+        bool result = UnmountVolume(*SrcSession);
 
-        if (!UnmountVolume(*BackupSession)) {
+        if (!UnmountVolume(*DstSession)) {
             result = false;
         }
 
@@ -302,7 +207,7 @@ protected:
 
     TRange GetNextRange()
     {
-        if (IsDiskRegistryMediaKind(SrcStorageMediaKind)) {
+        if (IsDiskRegistryMediaKind(MainDiskStorageMediaKind) || !CheckpointId) {
             return {0, Min<ui64>(BatchBlocksCount, BlocksCount - StartIndex)};
         }
 
@@ -362,7 +267,7 @@ protected:
         request->BlockSize = BlockSize;
         request->Sglist = holder.GetGuardedSgList();
 
-        auto future = Session->ReadBlocksLocal(
+        auto future = SrcSession->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
@@ -392,7 +297,7 @@ protected:
         request->BlockSize = BlockSize;
         request->Sglist = holder.GetGuardedSgList();
 
-        Write[bucket] = BackupSession->WriteBlocksLocal(
+        Write[bucket] = DstSession->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
@@ -510,7 +415,7 @@ protected:
             ParseStorageMediaKind(
                 *ParseResultPtr,
                 StorageMediaKindArg,
-                DstStorageMediaKind
+                BackupDiskStorageMediaKind
             );
         }
 
@@ -576,6 +481,100 @@ private:
 
         return result;
     }
+
+    bool CreateVolume()
+    {
+        STORAGE_DEBUG("Creating backup volume");
+
+        auto request = std::make_shared<NProto::TCreateVolumeRequest>();
+        request->SetDiskId(BackupDiskId);
+        request->SetBlockSize(BlockSize);
+        request->SetBlocksCount(BlocksCount);
+        request->SetStorageMediaKind(BackupDiskStorageMediaKind);
+        request->MutableEncryptionSpec()->CopyFrom(EncryptionSpec);
+
+        auto requestId = GetRequestId(*request);
+        auto response = WaitFor(ClientEndpoint->CreateVolume(
+            MakeIntrusive<TCallContext>(requestId),
+            std::move(request)));
+
+        if (HasError(response)) {
+            return Fail(response.GetError());
+        }
+
+        return true;
+    }
+
+    bool CreateCheckpoint()
+    {
+        if (IsDiskRegistryMediaKind(MainDiskStorageMediaKind)) {
+            STORAGE_WARN("Skip checkpoint");
+            return true;
+        }
+
+        STORAGE_DEBUG("Creating checkpoint");
+
+        if (!CheckpointId) {
+            STORAGE_ERROR("Empty checkpoint-id");
+            return false;
+        }
+
+        auto request = std::make_shared<NProto::TCreateCheckpointRequest>();
+        request->SetDiskId(DiskId);
+        request->SetCheckpointId(CheckpointId);
+
+        auto requestId = GetRequestId(*request);
+        auto response = WaitFor(ClientEndpoint->CreateCheckpoint(
+            MakeIntrusive<TCallContext>(requestId),
+            std::move(request)));
+
+        if (HasError(response)) {
+            return Fail(response.GetError());
+        }
+
+        return true;
+    }
+
+    bool DestroyBackup()
+    {
+        STORAGE_DEBUG("Deleting unfinished backup");
+
+        auto request = std::make_shared<NProto::TDestroyVolumeRequest>();
+        request->SetDiskId(BackupDiskId);
+
+        auto requestId = GetRequestId(*request);
+        auto response = WaitFor(ClientEndpoint->DestroyVolume(
+            MakeIntrusive<TCallContext>(requestId), std::move(request)));
+
+        if (HasError(response)) {
+            return Fail(response.GetError());
+        }
+
+        return true;
+    }
+
+    bool DeleteCheckpoint()
+    {
+        if (CheckpointId.empty()) {
+            return true;
+        }
+
+        STORAGE_DEBUG("Deleting checkpoint");
+
+        auto request = std::make_shared<NProto::TDeleteCheckpointRequest>();
+        request->SetDiskId(DiskId);
+        request->SetCheckpointId(CheckpointId);
+
+        auto requestId = GetRequestId(*request);
+        auto response = WaitFor(ClientEndpoint->DeleteCheckpoint(
+            MakeIntrusive<TCallContext>(requestId), std::move(request)));
+
+        if (HasError(response)) {
+            return Fail(response.GetError());
+        }
+
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -625,14 +624,6 @@ protected:
         }
 
         if (!DescribeVolume()) {
-            return false;
-        }
-
-        if (!IsDiskRegistryMediaKind(SrcStorageMediaKind)) {
-            // TODO
-
-            STORAGE_ERROR("Restore volume for ssd/hdd not supported yet");
-
             return false;
         }
 
