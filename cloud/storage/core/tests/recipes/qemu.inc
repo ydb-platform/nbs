@@ -45,6 +45,8 @@ USE_RECIPE(
     --ssh-user $QEMU_SSH_USER
     --virtio $QEMU_VIRTIO
     --enable-kvm $QEMU_ENABLE_KVM
+    --instance-count $QEMU_INSTANCE_COUNT
+    --invoke-test $QEMU_INVOKE_TEST
 )
 
 REQUIREMENTS(kvm)

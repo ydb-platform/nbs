@@ -12,7 +12,7 @@ import library.python.fs as fs
 import library.python.testing.recipe
 
 from .qemu import Qemu
-from .common import get_mount_paths
+from .common import get_mount_paths, env_with_guest_index
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,19 @@ class QemuKvmRecipeException(Exception):
 
 def start(argv):
     args = _parse_args(argv)
+    if args.instance_count > 1:
+        pm = yatest.common.network.PortManager()
+        args.shared_nic_port = pm.get_port()
+    else:
+        args.shared_nic_port = 0
 
+    for inst_index in range(args.instance_count):
+        start_instance(args, inst_index)
+
+
+def start_instance(args, inst_index):
     virtio = _get_vm_virtio(args)
-    mount_paths = get_mount_paths()
+    mount_paths = get_mount_paths(inst_index=inst_index)
 
     vhost_socket = ""
     if virtio == "fs":
@@ -53,7 +63,9 @@ def start(argv):
                 virtio=virtio,
                 qemu_options=_get_qemu_options(args),
                 vhost_socket=vhost_socket,
-                enable_kvm=_get_vm_enable_kvm(args))
+                enable_kvm=_get_vm_enable_kvm(args),
+                inst_index=inst_index,
+                shared_nic_port=args.shared_nic_port)
 
     qemu.set_mount_paths(mount_paths)
     qemu.start()
@@ -62,8 +74,7 @@ def start(argv):
                      port=qemu.get_ssh_port(),
                      key=_get_ssh_key(args))
 
-    library.python.testing.recipe.set_env(
-        "QEMU_FORWARDING_PORT", str(ssh.port))
+    recipe_set_env("QEMU_FORWARDING_PORT", str(ssh.port), inst_index)
 
     _wait_ssh(qemu, ssh)
 
@@ -79,25 +90,32 @@ def start(argv):
             ssh("sudo mkdir -p {} && sudo ln -s {} {}".format(
                 os.path.dirname(real_path), path, real_path))
 
-    _prepare_test_environment(ssh, virtio)
+    if args.invoke_test:
+        _prepare_test_environment(ssh, virtio)
 
-    library.python.testing.recipe.set_env(
-        "QEMU_KVM_PID", str(qemu.qemu_bin.daemon.process.pid))
+    recipe_set_env("QEMU_KVM_PID", str(qemu.qemu_bin.daemon.process.pid), inst_index)
 
     logger.info("qemu pid is: '{}'".format(str(qemu.qemu_bin.daemon.process.pid)))
 
-    library.python.testing.recipe.set_env(
-        "TEST_COMMAND_WRAPPER",
-        " ".join(ssh.get_command("sudo /run_test.sh")))
+    if args.invoke_test:
+        recipe_set_env("TEST_COMMAND_WRAPPER",
+                       " ".join(ssh.get_command("sudo /run_test.sh")),
+                       inst_index)
 
-    ready_flag_path = os.getenv("QEMU_SET_READY_FLAG")
+    ready_flag_path = recipe_get_env("QEMU_SET_READY_FLAG", inst_index)
     if ready_flag_path is not None:
         open(ready_flag_path, 'a')
 
 
 def stop(argv):
-    if "QEMU_KVM_PID" in os.environ:
-        pid = os.environ["QEMU_KVM_PID"]
+    args = _parse_args(argv)
+    for inst_index in range(args.instance_count):
+        stop_instance(args, inst_index)
+
+
+def stop_instance(args, inst_index):
+    pid = recipe_get_env("QEMU_KVM_PID", inst_index)
+    if pid:
         logger.info("will kill process with pid `%s`", pid)
         try:
             os.kill(int(pid), signal.SIGTERM)
@@ -130,7 +148,22 @@ def _parse_args(argv):
     parser.add_argument("--qemu-options", help="Custom options for qemu")
     parser.add_argument("--virtio", default="none")
     parser.add_argument("--enable-kvm", default="True")
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--instance-count", help="Number of qemu instances to start")
+    parser.add_argument("--invoke-test", default="Invoke test from qemu after starting")
+
+    args = parser.parse_args(argv)
+    if args.instance_count == "$QEMU_INSTANCE_COUNT":
+        args.instance_count = 1
+    else:
+        args.instance_count = int(args.instance_count)
+
+    if args.invoke_test == "$QEMU_INVOKE_TEST":
+        args.invoke_test = True
+    else:
+        args.invoke_test = _str_to_bool(args.invoke_test)
+
+    return args
 
 
 def _get_bindir():
@@ -247,10 +280,14 @@ def _get_vm_virtio(args):
     return args.virtio
 
 
+def _str_to_bool(s):
+    return s.lower() in ['true', '1', 't', 'y', 'yes']
+
+
 def _get_vm_enable_kvm(args):
     if args.enable_kvm == "$QEMU_ENABLE_KVM":
         return True
-    return args.enable_kvm.lower() in ['true', '1', 't', 'y', 'yes']
+    return _str_to_bool(args.enable_kvm)
 
 
 def _get_qemu_options(args):
@@ -280,6 +317,7 @@ def _get_ssh_key(args):
     new_ssh_key = yatest.common.work_path(os.path.basename(ssh_key))
     fs.copy_file(ssh_key, new_ssh_key)
     os.chmod(new_ssh_key, 0o0600)
+    library.python.testing.recipe.set_env("QEMU_SSH_KEY", new_ssh_key)
     return new_ssh_key
 
 
@@ -396,3 +434,11 @@ class SshToGuest(object):
 
     def __call__(self, command, timeout=None):
         yatest.common.execute(self.get_command(command, timeout))
+
+
+def recipe_set_env(key, val, guest_index=0):
+    library.python.testing.recipe.set_env(env_with_guest_index(key, guest_index), val)
+
+
+def recipe_get_env(key, guest_index=0):
+    return os.getenv(env_with_guest_index(key, guest_index))

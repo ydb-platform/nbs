@@ -314,7 +314,7 @@ public:
 private:
     // called inderectly from CQ by 2 previous functions
     void HandleQueuedRequests();
-    void HandleCompletionEvent(const NVerbs::TCompletion& wc) override;
+    void HandleCompletionEvent(ibv_wc* wc) override;
     void RecvRequest(TRecvWr* recv);
     void RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status);
     void ReadRequestData(TRequestPtr req, TSendWr* send);
@@ -352,18 +352,12 @@ TServerSession::TServerSession(
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
     SetNonBlock(CompletionChannel->fd, true);
 
-    ibv_cq_init_attr_ex cq_attrs = {
-        .cqe = 2 * Config->QueueSize,   // send + recv
-        .cq_context = this,
-        .channel = CompletionChannel.get(),
-        .wc_flags = IBV_WC_EX_WITH_COMPLETION_TIMESTAMP,
-        .comp_mask = IBV_CQ_INIT_ATTR_MASK_FLAGS,
-        .flags = IBV_CREATE_CQ_ATTR_SINGLE_THREADED,
-    };
-
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        &cq_attrs);
+        2 * Config->QueueSize,   // send + recv
+        this,
+        CompletionChannel.get(),
+        0);                      // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
@@ -544,48 +538,46 @@ bool TServerSession::HandleCompletionEvents()
         Verbs->RequestCompletionEvent(cq, 0);
     }
 
-    hasWork = Verbs->PollCompletionQueue(
-        reinterpret_cast<ibv_cq_ex*>(cq),
-        this);
+    hasWork = Verbs->PollCompletionQueue(cq, this);
 
     HandleQueuedRequests();
 
     return hasWork;
 }
 
-void TServerSession::HandleCompletionEvent(const NVerbs::TCompletion& wc)
+void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 {
-    STORAGE_TRACE(NVerbs::GetOpcodeName(wc.opcode) << " #" << wc.wr_id
+    STORAGE_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " #" << wc->wr_id
         << " completed");
 
     // flush means we are either closing or already closed this session
-    if (wc.status == IBV_WC_WR_FLUSH_ERR) {
+    if (wc->status == IBV_WC_WR_FLUSH_ERR) {
         return;
     }
 
-    switch (wc.opcode) {
+    switch (wc->opcode) {
         case IBV_WC_RECV:
             RecvRequestCompleted(
-                reinterpret_cast<TRecvWr*>(wc.wr_id),
-                wc.status);
+                reinterpret_cast<TRecvWr*>(wc->wr_id),
+                wc->status);
             break;
 
         case IBV_WC_RDMA_READ:
             ReadRequestDataCompleted(
-                reinterpret_cast<TSendWr*>(wc.wr_id),
-                wc.status);
+                reinterpret_cast<TSendWr*>(wc->wr_id),
+                wc->status);
             break;
 
         case IBV_WC_RDMA_WRITE:
             WriteResponseDataCompleted(
-                reinterpret_cast<TSendWr*>(wc.wr_id),
-                wc.status);
+                reinterpret_cast<TSendWr*>(wc->wr_id),
+                wc->status);
             break;
 
         case IBV_WC_SEND:
             SendResponseCompleted(
-                reinterpret_cast<TSendWr*>(wc.wr_id),
-                wc.status);
+                reinterpret_cast<TSendWr*>(wc->wr_id),
+                wc->status);
             break;
 
         default:

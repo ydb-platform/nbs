@@ -97,21 +97,6 @@ struct TTestVerbs
         return NullPtr;
     }
 
-    void QueryDevice(
-        ibv_context* context,
-        ibv_device_attr_ex* device_attr) override
-    {
-        Y_UNUSED(context);
-        Y_UNUSED(device_attr);
-    }
-
-    ui64 GetDeviceTimestamp(ibv_context* context) override
-    {
-        Y_UNUSED(context);
-
-        return 0;
-    }
-
     TProtectionDomainPtr CreateProtectionDomain(ibv_context* context) override
     {
         Y_UNUSED(context);
@@ -185,10 +170,16 @@ struct TTestVerbs
 
     TCompletionQueuePtr CreateCompletionQueue(
         ibv_context* context,
-        ibv_cq_init_attr_ex* cq_attrs) override
+        int cqe,
+        void *cq_context,
+        ibv_comp_channel *channel,
+        int comp_vector) override
     {
         Y_UNUSED(context);
-        Y_UNUSED(cq_attrs);
+        Y_UNUSED(cqe);
+        Y_UNUSED(cq_context);
+        Y_UNUSED(channel);
+        Y_UNUSED(comp_vector);
 
         return NullPtr;
     }
@@ -214,7 +205,7 @@ struct TTestVerbs
     }
 
     bool PollCompletionQueue(
-        ibv_cq_ex* cq,
+        ibv_cq* cq,
         ICompletionHandler* handler) override
     {
         Y_UNUSED(cq);
@@ -241,13 +232,12 @@ struct TTestVerbs
         }
 
         auto handleEvent = [&] (ui64 wrId, ibv_wc_opcode opcode) {
-            TCompletion wc;
+            ibv_wc wc;
             wc.wr_id = wrId;
             wc.status = flush ? IBV_WC_WR_FLUSH_ERR : IBV_WC_SUCCESS;
             wc.opcode = flush ? static_cast<ibv_wc_opcode>(0) : opcode;
-            wc.ts = 0;
 
-            handler->HandleCompletionEvent(wc);
+            handler->HandleCompletionEvent(&wc);
         };
 
         for (const auto& x: sends) {

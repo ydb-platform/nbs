@@ -7,6 +7,7 @@ PEERDIR(
     cloud/blockstore/public/sdk/python/protos
 
     cloud/storage/core/tools/common/python
+    cloud/storage/core/tools/testing/qemu/lib
 
     ydb/core/protos
     ydb/public/api/protos
@@ -25,6 +26,7 @@ PY_SRCS(
     nbs_http_proxy.py
     nbs_runner.py
     nonreplicated_setup.py
+    rdma.py
     stats.py
     test_base.py
     test_with_plugin.py

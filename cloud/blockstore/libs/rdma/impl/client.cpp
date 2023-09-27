@@ -436,14 +436,14 @@ public:
 
 private:
     void HandleQueuedRequests();
-    void HandleCompletionEvent(const NVerbs::TCompletion& wc) override;
+    void HandleCompletionEvent(ibv_wc* wc) override;
 
     void SendRequest(TRequestPtr req, TSendWr* send);
     void SendRequestCompleted(
-        TSendWr* send, ibv_wc_status status, ui64 ts) noexcept;
+        TSendWr* send, ibv_wc_status status) noexcept;
 
     void RecvResponse(TRecvWr* recv);
-    void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status, ui64 ts);
+    void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
 
     ibv_wc_opcode DeduceOpcode(ui64 wr_id) const;
 
@@ -539,18 +539,12 @@ void TClientEndpoint::CreateQP()
         ResetConfig = false;
     }
 
-    ibv_cq_init_attr_ex cq_attrs = {
-        .cqe = 2 * Config.QueueSize,     // send + recv
-        .cq_context = this,
-        .channel = CompletionChannel.get(),
-        .wc_flags = IBV_WC_EX_WITH_COMPLETION_TIMESTAMP,
-        .comp_mask = IBV_CQ_INIT_ATTR_MASK_FLAGS,
-        .flags = IBV_CREATE_CQ_ATTR_SINGLE_THREADED,
-    };
-
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        &cq_attrs);
+        2 * Config.QueueSize,     // send + recv
+        this,
+        CompletionChannel.get(),
+        0);                       // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
@@ -808,7 +802,7 @@ bool TClientEndpoint::HandleCompletionEvents()
         Verbs->RequestCompletionEvent(cq, 0);
     }
 
-    if (Verbs->PollCompletionQueue(reinterpret_cast<ibv_cq_ex*>(cq), this)) {
+    if (Verbs->PollCompletionQueue(cq, this)) {
         HandleQueuedRequests();
         return true;
     }
@@ -830,26 +824,24 @@ ibv_wc_opcode TClientEndpoint::DeduceOpcode(ui64 wr_id) const
     return IBV_WC_DRIVER1;
 }
 
-void TClientEndpoint::HandleCompletionEvent(const NVerbs::TCompletion& wc)
+void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
-    auto opcode = DeduceOpcode(wc.wr_id);
+    auto opcode = DeduceOpcode(wc->wr_id);
 
-    STORAGE_TRACE(NVerbs::GetOpcodeName(opcode) << " #" << wc.wr_id
-        << " completed with status " << NVerbs::GetStatusString(wc.status));
+    STORAGE_TRACE(NVerbs::GetOpcodeName(opcode) << " #" << wc->wr_id
+        << " completed with status " << NVerbs::GetStatusString(wc->status));
 
     switch (opcode) {
         case IBV_WC_SEND:
             SendRequestCompleted(
-                reinterpret_cast<TSendWr*>(wc.wr_id),
-                wc.status,
-                wc.ts);
+                reinterpret_cast<TSendWr*>(wc->wr_id),
+                wc->status);
             break;
 
         case IBV_WC_RECV:
             RecvResponseCompleted(
-                reinterpret_cast<TRecvWr*>(wc.wr_id),
-                wc.status,
-                wc.ts);
+                reinterpret_cast<TRecvWr*>(wc->wr_id),
+                wc->status);
             break;
 
         default:
@@ -887,12 +879,8 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
 
 void TClientEndpoint::SendRequestCompleted(
     TSendWr* send,
-    ibv_wc_status status,
-    ui64 ts) noexcept
+    ibv_wc_status status) noexcept
 {
-    // TODO
-    Y_UNUSED(ts);
-
     if (status == IBV_WC_WR_FLUSH_ERR) {
         SendQueue.Push(send);
         return;
@@ -944,12 +932,8 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
 
 void TClientEndpoint::RecvResponseCompleted(
     TRecvWr* recv,
-    ibv_wc_status wc_status,
-    ui64 ts)
+    ibv_wc_status wc_status)
 {
-    // TODO
-    Y_UNUSED(ts);
-
     if (wc_status == IBV_WC_WR_FLUSH_ERR) {
         RecvQueue.Push(recv);
         return;

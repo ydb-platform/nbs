@@ -45,18 +45,10 @@ constexpr TNullPtr NullPtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCompletion
-{
-    ui64 wr_id;
-    ibv_wc_status status;
-    ibv_wc_opcode opcode;
-    ui64 ts;
-};
-
 struct ICompletionHandler
 {
     virtual ~ICompletionHandler() = default;
-    virtual void HandleCompletionEvent(const TCompletion& wc) = 0;
+    virtual void HandleCompletionEvent(ibv_wc* wc) = 0;
 };
 
 struct IVerbs
@@ -65,10 +57,6 @@ struct IVerbs
 
     virtual TContextPtr OpenDevice(ibv_device* device) = 0;
     virtual TDeviceListPtr GetDeviceList() = 0;
-    virtual void QueryDevice(
-        ibv_context* context,
-        ibv_device_attr_ex* attr) = 0;
-    virtual ui64 GetDeviceTimestamp(ibv_context* context) = 0;
 
     virtual TProtectionDomainPtr CreateProtectionDomain(
         ibv_context* context) = 0;
@@ -82,14 +70,17 @@ struct IVerbs
         ibv_context* context) = 0;
     virtual TCompletionQueuePtr CreateCompletionQueue(
             ibv_context* context,
-            ibv_cq_init_attr_ex* attr) = 0;
+            int cqe,
+            void *cq_context,
+            ibv_comp_channel *channel,
+            int comp_vector) = 0;
 
     virtual void RequestCompletionEvent(ibv_cq* cq, int solicitedOnly) = 0;
     virtual void* GetCompletionEvent(ibv_cq* cq) = 0;
     virtual void AckCompletionEvents(ibv_cq* cq, unsigned int count) = 0;
 
     virtual bool PollCompletionQueue(
-        ibv_cq_ex* cq,
+        ibv_cq* cq,
         ICompletionHandler* handler) = 0;
 
     virtual void PostSend(ibv_qp* qp, ibv_send_wr* wr) = 0;
@@ -145,6 +136,6 @@ const char* GetEventName(rdma_cm_event_type event);
 
 TString PrintAddress(const sockaddr* addr);
 TString PrintConnectionParams(const rdma_conn_param* param);
-TString PrintCompletion(const TCompletion& wc);
+TString PrintCompletion(ibv_wc* wc);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

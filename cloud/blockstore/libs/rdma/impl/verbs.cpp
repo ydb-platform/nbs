@@ -32,6 +32,8 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static const int MAX_COMPLETIONS_PER_POLL = 128;
+
 struct TVerbs
     : IVerbs
 {
@@ -49,31 +51,6 @@ struct TVerbs
         }
 
         return WrapPtr(context);
-    }
-
-    void QueryDevice(
-        ibv_context* context,
-        ibv_device_attr_ex* attr) override
-    {
-        int res = rdma_seterrno(ibv_query_device_ex(context, nullptr, attr));
-        if (res < 0) {
-            RDMA_THROW_ERROR("ibv_query_device_ex");
-        }
-    }
-
-    ui64 GetDeviceTimestamp(ibv_context* context) override
-    {
-        ibv_values_ex values = {
-            .comp_mask = IBV_VALUES_MASK_RAW_CLOCK,
-        };
-
-        int res = rdma_seterrno(ibv_query_rt_values_ex(context, &values));
-        if (res < 0) {
-            RDMA_THROW_ERROR("ibv_query_rt_values_ex");
-        }
-
-        return (ui64)values.raw_clock.tv_sec * 1000000000
-             + (ui64)values.raw_clock.tv_nsec;
     }
 
     TProtectionDomainPtr CreateProtectionDomain(ibv_context* context) override
@@ -112,14 +89,17 @@ struct TVerbs
 
     TCompletionQueuePtr CreateCompletionQueue(
         ibv_context* context,
-        ibv_cq_init_attr_ex* attr) override
+        int cqe,
+        void *cq_context,
+        ibv_comp_channel *channel,
+        int comp_vector) override
     {
-        auto* cq_ex = ibv_create_cq_ex(context, attr);
-        if (!cq_ex) {
-            RDMA_THROW_ERROR("ibv_create_cq_ex");
+        auto* cq = ibv_create_cq(context, cqe, cq_context, channel, comp_vector);
+        if (!cq) {
+            RDMA_THROW_ERROR("ibv_create_cq");
         }
 
-        return WrapPtr(ibv_cq_ex_to_cq(cq_ex));
+        return WrapPtr(cq);
     }
 
     void RequestCompletionEvent(ibv_cq* cq, int solicitedOnly) override
@@ -149,46 +129,25 @@ struct TVerbs
         ibv_ack_cq_events(cq, count);
     }
 
-    bool PollCompletionQueue(ibv_cq_ex* cq, ICompletionHandler* handler) override
+    bool PollCompletionQueue(ibv_cq* cq, ICompletionHandler* handler) override
     {
-        ibv_poll_cq_attr attr = {};
+        ibv_wc wc[MAX_COMPLETIONS_PER_POLL];
 
-        int res = ibv_start_poll(cq, &attr);
-
-        if (res == ENOENT) {
+        int res = ibv_poll_cq(cq, MAX_COMPLETIONS_PER_POLL, wc);
+        if (res == 0) {
             return false;   // didn't handle any requests
         }
 
         if (res < 0) {
             errno = res;
-            RDMA_THROW_ERROR("ibv_start_poll");
+            RDMA_THROW_ERROR("ibv_poll_cq");
         }
 
-        Y_DEFER {
-            ibv_end_poll(cq);
-        };
-
-        TCompletion wc = {};
-        do {
-            wc.wr_id = cq->wr_id;
-            wc.status = cq->status;
-            wc.opcode = ibv_wc_read_opcode(cq);
-            wc.ts = ibv_wc_read_completion_ts(cq);
-            handler->HandleCompletionEvent(wc);
-
-            res = ibv_next_poll(cq);
-        } while (res == 0);
-
-        if (res == ENOENT) {
-            return true;    // handled at least one request
+        for (int i = 0; i < res; i++) {
+            handler->HandleCompletionEvent(&wc[i]);
         }
 
-        if (res < 0) {
-            errno = res;
-            RDMA_THROW_ERROR("ibv_next_poll");
-        }
-
-        return false;
+        return true;
     }
 
     void PostSend(ibv_qp* qp, ibv_send_wr* wr) override
@@ -495,13 +454,12 @@ TString PrintConnectionParams(const rdma_conn_param* conn)
         << "]";
 }
 
-TString PrintCompletion(const TCompletion& wc)
+TString PrintCompletion(ibv_wc* wc)
 {
     return TStringBuilder()
-        << "[id=" << wc.wr_id
-        << " opcode=" << GetOpcodeName(wc.opcode)
-        << " status=" << GetStatusString(wc.status)
-        << " ts=" << wc.ts
+        << "[id=" << wc->wr_id
+        << " opcode=" << GetOpcodeName(wc->opcode)
+        << " status=" << GetStatusString(wc->status)
         << "]";
 }
 

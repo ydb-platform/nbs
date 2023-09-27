@@ -2,12 +2,13 @@ import os
 import logging
 import signal
 import uuid
-import library.python.testing.recipe
+import argparse
 
 import yatest.common as common
 
 import core.config
 from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServer
+from cloud.storage.core.tools.testing.qemu.lib.recipe import recipe_set_env, recipe_get_env
 from library.python.testing.recipe import declare_recipe
 
 
@@ -42,14 +43,19 @@ def create_virtiofs_socket(tag):
 
 
 def start(argv):
+    args = _parse_args(argv)
+    for index in range(args.server_count):
+        start_server(args, index)
+
+
+def start_server(args, index):
     logger.info("start virtiofs-servers")
 
     for tag, path in _get_mount_paths():
 
         socket = create_virtiofs_socket(tag)
 
-        library.python.testing.recipe.set_env(
-            "VIRTIOFS_SOCKET_{}".format(tag), socket)
+        recipe_set_env("VIRTIOFS_SOCKET_{}".format(tag), socket, index)
 
         virtiofs_server_binary = common.binary_path(
             "cloud/storage/core/tools/testing/virtiofs_server/bin/virtiofs-server")
@@ -60,23 +66,42 @@ def start(argv):
 
         virtiofs.start(common.output_path(), tag)
 
-        library.python.testing.recipe.set_env(
-            "VIRTIOFS_PID_{}".format(tag), str(virtiofs.virtiofs_server.daemon.process.pid))
+        recipe_set_env("VIRTIOFS_PID_{}".format(tag),
+                       str(virtiofs.virtiofs_server.daemon.process.pid),
+                       index)
 
 
 def stop(argv):
+    args = _parse_args(argv)
+    for index in range(args.server_count):
+        stop_server(args, index)
+
+
+def stop_server(args, index):
     logger.info("shutdown virtiofs-servers")
-
     for tag, _ in _get_mount_paths():
-        if "VIRTIOFS_PID_{}".format(tag) in os.environ:
-            pid = os.environ["VIRTIOFS_PID_{}".format(tag)]
-
+        pid = recipe_get_env("VIRTIOFS_PID_{}".format(tag), index)
+        if pid:
             logger.info("will kill virtiofs-server with pid `%s`", pid)
             try:
                 os.kill(int(pid), signal.SIGTERM)
             except OSError:
                 logger.exception("While killing pid `%s`", pid)
                 raise
+
+
+def _parse_args(argv):
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-count", help="Number of virtiofs servers to start")
+    args = parser.parse_args(argv)
+
+    if args.server_count == "$VIRTIOFS_SERVER_COUNT":
+        args.server_count = 1
+    else:
+        args.server_count = int(args.server_count)
+
+    return args
 
 
 if __name__ == "__main__":

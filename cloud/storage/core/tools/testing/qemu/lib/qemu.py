@@ -77,7 +77,9 @@ class Qemu:
                  vhost_socket,
                  qemu_options,
                  enable_kvm,
-                 backup_rootfs=False):
+                 backup_rootfs=False,
+                 inst_index=0,
+                 shared_nic_port=0):
 
         self.ssh_port = 0
         self.qmp = None
@@ -98,6 +100,8 @@ class Qemu:
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
+        self.inst_index = inst_index
+        self.shared_nic_port = shared_nic_port
 
     def prepare_mount_paths(self, ssh):
         for tag, path, _ in self.mount_paths:
@@ -199,7 +203,7 @@ class Qemu:
 
     def _create_cmd(self):
         qemu_serial_log = yatest.common.output_path(
-            os.path.basename(self.rootfs) + "_serial.out")
+            os.path.basename(self.rootfs) + "_{}_serial.out".format(self.inst_index))
 
         self.qmp_socket = create_qmp_socket()
 
@@ -221,6 +225,18 @@ class Qemu:
             "-L", self.qemu_firmware,
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
+
+        if self.shared_nic_port:
+            nic_mac = "52:54:00:12:56:{:02x}".format(self.inst_index)
+            if self.inst_index == 0:
+                sock_arg = f"listen=:{self.shared_nic_port}"
+            else:
+                sock_arg = f"connect=:{self.shared_nic_port}"
+
+            cmd += [
+                "-netdev", "socket,id=netdev1,{}".format(sock_arg),
+                "-device", "virtio-net-pci,netdev=netdev1,id=net1,mac={}".format(nic_mac),
+            ]
 
         if self.backup_rootfs is False:
             cmd += ["-snapshot"]
