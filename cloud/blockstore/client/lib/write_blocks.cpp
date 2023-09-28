@@ -189,7 +189,7 @@ public:
         if (FAILED(error.GetCode())) {
             STORAGE_ERROR("WriteBlocks failed: " << FormatError(error));
         } else {
-            Out << "OK" << Endl;    // TODO
+            Out << "OK" << Endl;
         }
     }
 };

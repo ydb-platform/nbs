@@ -41,24 +41,19 @@ protected:
             std::move(request)));
 
         STORAGE_DEBUG("Received DescribeDiskRegistryConfig response");
-        if (Proto) {
-            SerializeToTextFormat(result, output);
-            return true;
-        }
+        SerializeToTextFormat(result, output);
 
         if (HasError(result)) {
-            output << FormatError(result.GetError()) << Endl;
+            STORAGE_ERROR(FormatError(result.GetError()));
             return false;
         }
 
-        SerializeToTextFormat(result, output);
         return true;
     }
 
 private:
     bool CheckOpts() const
     {
-        // TODO
         return true;
     }
 };

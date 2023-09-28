@@ -22,7 +22,6 @@ public:
     explicit TUpdateDiskRegistryConfigCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
-        // TODO: add options
     }
 
 protected:
@@ -38,11 +37,7 @@ protected:
         STORAGE_DEBUG("Reading UpdateDiskRegistryConfig request");
         auto request = std::make_shared<NProto::TUpdateDiskRegistryConfigRequest>();
 
-        if (Proto) {
-            ParseFromTextFormat(input, *request);
-        } else {
-            // TODO
-        }
+        ParseFromTextFormat(input, *request);
 
         STORAGE_DEBUG("Sending UpdateDiskRegistryConfig request");
         const auto requestId = GetRequestId(*request);
@@ -51,24 +46,24 @@ protected:
             std::move(request)));
 
         STORAGE_DEBUG("Received UpdateDiskRegistryConfig response");
-        if (Proto) {
-            SerializeToTextFormat(result, output);
-            return true;
-        }
+        SerializeToTextFormat(result, output);
 
         if (HasError(result)) {
-            output << FormatError(result.GetError()) << Endl;
+            STORAGE_ERROR(FormatError(result.GetError()));
             return false;
         }
 
-        output << "OK" << Endl;
         return true;
     }
 
 private:
     bool CheckOpts() const
     {
-        // TODO
+        if (!Proto) {
+            STORAGE_ERROR("Only proto input format is supported");
+            return false;
+        }
+
         return true;
     }
 };
