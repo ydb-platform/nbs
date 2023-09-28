@@ -5,7 +5,6 @@ import "library/cpp/lwtrace/protos/lwtrace.proto";
 
 package NCloud.NProto;
 
-option java_package = "ru.yandex.cloud.storage.proto";
 option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
