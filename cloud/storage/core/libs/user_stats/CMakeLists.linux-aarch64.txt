@@ -14,8 +14,7 @@ target_link_libraries(core-libs-user_stats PUBLIC
   contrib-libs-cxxsupp
   yutil
   libs-user_stats-counter
-  libs-storage-protos
-  private-api-protos
+  storage-core-protos
   cpp-actors-core
   ydb-core-base
   ydb-core-mon

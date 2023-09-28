@@ -7,9 +7,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/user_stats/counter
-
-    cloud/blockstore/libs/storage/protos
-    cloud/blockstore/private/api/protos
+    cloud/storage/core/protos
 
     library/cpp/actors/core
 
