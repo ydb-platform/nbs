@@ -17,6 +17,8 @@ using TTabletStorageInfoPtr = TIntrusivePtr<TTabletStorageInfo>;
 class TTabletSetupInfo;
 using TTabletSetupInfoPtr = TIntrusivePtr<TTabletSetupInfo>;
 
+struct TModuleFactories;
+
 }   // namespace NKikimr
 
 namespace NKikimrConfig {
