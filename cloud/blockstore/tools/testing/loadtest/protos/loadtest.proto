@@ -1,0 +1,388 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+import "cloud/blockstore/public/api/protos/checkpoints.proto";
+import "cloud/blockstore/public/api/protos/client.proto";
+import "cloud/blockstore/public/api/protos/discovery.proto";
+import "cloud/blockstore/public/api/protos/endpoints.proto";
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/blockstore/public/api/protos/mount.proto";
+import "cloud/blockstore/public/api/protos/placement.proto";
+import "cloud/blockstore/public/api/protos/volume.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+// Load type
+
+enum ELoadType
+{
+    LOAD_TYPE_SEQUENTIAL = 0;
+    LOAD_TYPE_RANDOM = 1;
+    LOAD_TYPE_ZIPF_RANDOM = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TRangeProbability type
+
+message TRangeProbability
+{
+    double Probability = 1;
+    uint32 Length = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TRequestSizeProbability type
+
+message TRequestSizeProbability
+{
+    double Probability = 1;
+    uint32 MinSize = 2;
+    uint32 MaxSize = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Range under test
+
+message TRangeTest
+{
+    // Start block index.
+    uint64 Start = 1;
+
+    // End block index.
+    uint64 End = 2;
+
+    // Type of load, sequential or random.
+    ELoadType LoadType = 3;
+
+    // Number of concurrent requests.
+    uint32 IoDepth = 4;
+
+    // Percentage of write requests.
+    uint32 WriteRate = 5;
+
+    // Percentage of read requests.
+    uint32 ReadRate = 6;
+
+    // Percentage of zero requests.
+    uint32 ZeroRate = 7;
+
+    // Number of requests to be issued.
+    uint64 RequestsCount = 8;
+
+    // Minimum number of blocks in request.
+    uint32 MinRequestSize = 9;
+
+    // Maximum number of blocks in request.
+    uint32 MaxRequestSize = 10;
+
+    // Probabilities for sub-ranges
+    repeated TRangeProbability SubRanges = 11;
+
+    // Probabilities for concrete request sizes
+    // Uniform[MinRequestSize, MaxRequestSize] distribution is used with
+    // probability 1 - sum(RequestSizes::Probability)
+    repeated TRequestSizeProbability RequestSizes = 12;
+
+    // Allow intersecting requests.
+    bool AllowIntersectingRanges = 13;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ArtificialLoadSpec
+
+message TArtificialLoadSpec
+{
+    // Array of ranges.
+    repeated TRangeTest Ranges = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RealLoadSpec
+
+message TRealLoadSpec
+{
+    // Path to profile log.
+    string ProfileLogPath = 1;
+
+    // Number of concurrent requests.
+    uint32 IoDepth = 2;
+
+    // Run at max possible speed, not at original speed.
+    bool FullSpeed = 3;
+
+    // DiskId in log.
+    string DiskId = 4;
+
+    // Start time. Unix time in us, ISO8601 or HH:MM[:SS] in the last 24 hours
+    string StartTime = 5;
+
+    // End time. Unix time in us, ISO8601 or HH:MM[:SS] in the last 24 hours
+    string EndTime = 6;
+
+    // Max requests from profile log file in memory.
+    // 0 is default, load all requests into memory upon startup.
+    // Optimal value with respect to memory consumption is 10'000'000.
+    uint64 MaxRequestsInMemory = 7;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Test
+
+message TLoadTest
+{
+    // Test name.
+    string Name = 1;
+
+    oneof Volume
+    {
+        // Existing volume name.
+        string VolumeName = 2;
+
+        // Parameters to create volume.
+        TCreateVolumeRequest CreateVolumeRequest = 3;
+
+        // File that can be used instead of an NBS volume.
+        string VolumeFile = 18;
+    }
+
+    oneof Mount
+    {
+        // Mount volume request.
+        TMountVolumeRequest MountVolumeRequest = 4;
+
+        // Start endpoint request.
+        TStartEndpointRequest StartEndpointRequest = 14;
+    }
+
+    // Load spec.
+    oneof LoadSpec
+    {
+        // Artificial load spec.
+        TArtificialLoadSpec ArtificialLoadSpec = 5;
+
+        // Real load spec.
+        TRealLoadSpec RealLoadSpec = 6;
+    }
+
+    // Test duration (in seconds).
+    uint64 TestDuration = 7;
+
+    // Specific Error we are waiting for.
+    repeated uint32 SuccessOnError = 8;
+
+    // Enables validation client.
+    bool Verify = 9;
+
+    // Specifies the range to validate.
+    uint64 ValidationRangeStart = 10;
+    uint64 ValidationRangeBlockCount = 11;
+
+    // Explicit performance profile.
+    TClientPerformanceProfile ClientPerformanceProfile = 12;
+
+    // CheckpointId for read requests.
+    string CheckpointId = 13;
+
+    // 0 or 1 - repeat once, repeat the supplied number of times otherwise
+    uint32 Repetitions = 15;
+
+    // Verification will use data written by another TLoadTest
+    repeated string VerifyBy = 16;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Replay
+
+message TLogReplay
+{
+    // Test name.
+    string Name = 1;
+
+    // Existing volume name.
+    string VolumeName = 2;
+
+    // Profile log path.
+    string LogPath = 3;
+
+    // Enables validation client.
+    bool Verify = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Aux requests
+
+message TCmsRemoveHostRequest
+{
+    // Request headers.
+    THeaders Headers = 1;
+    // AgentRef (DiskId/AgentNo) to remove.
+    string AgentRef = 2;
+    // Whether success is expected.
+    bool SuccessExpected = 3;
+
+    // Operation timeout (in seconds).
+    uint64 Timeout = 4;
+    // Retry timeout (in seconds).
+    uint64 RetryTimeout = 5;
+
+    // Disables graceful removal attempt (emulates agent crash).
+    bool Hard = 6;
+}
+
+message TCmsRemoveDeviceRequest
+{
+    // Request headers.
+    THeaders Headers = 1;
+    // DeviceRef (DiskId/DeviceNo) to remove.
+    string DeviceRef = 2;
+    // Whether success is expected.
+    bool SuccessExpected = 3;
+
+    // Operation timeout (in seconds).
+    uint64 Timeout = 4;
+    // Retry timeout (in seconds).
+    uint64 RetryTimeout = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph of tests
+
+message TActionGraph
+{
+    message TControlPlaneAction
+    {
+        // Used to reference this action in our graph
+        string Name = 1;
+
+        // 0 or 1 - repeat once, repeat the supplied number of times otherwise
+        uint32 Repetitions = 2;
+
+        // The action itself
+        oneof Request
+        {
+            TCreateVolumeRequest CreateVolumeRequest = 3;
+            TDestroyVolumeRequest DestroyVolumeRequest = 4;
+            TCreateCheckpointRequest CreateCheckpointRequest = 5;
+            TDeleteCheckpointRequest DeleteCheckpointRequest = 6;
+            TStatVolumeRequest StatVolumeRequest = 7;
+            TDiscoverInstancesRequest DiscoverInstancesRequest = 8;
+            TResizeVolumeRequest ResizeVolumeRequest = 9;
+            TCreatePlacementGroupRequest CreatePlacementGroupRequest = 10;
+            TDestroyPlacementGroupRequest DestroyPlacementGroupRequest = 11;
+            TDescribePlacementGroupRequest DescribePlacementGroupRequest = 12;
+            TDescribeVolumeRequest DescribeVolumeRequest = 13;
+            TCmsRemoveHostRequest CmsRemoveHostRequest = 14;
+            TCmsRemoveDeviceRequest CmsRemoveDeviceRequest = 15;
+        }
+    }
+
+    message TSource
+    {
+        // The volume to read from
+        string VolumeName = 1;
+        // Checkpoint id to read from
+        string CheckpointId = 2;
+        // If set, GetChangedBlocks will be called for the pair of checkpoints
+        // and the resulting diff will be applied to the data read from the
+        // first checkpoint
+        string SecondCheckpointId = 3;
+    }
+
+    message TCompareDataAction
+    {
+        // Used to reference this action in our graph
+        string Name = 1;
+
+        // Data sources
+        TSource Expected = 2;
+        TSource Actual = 3;
+    }
+
+    message TSleep
+    {
+        // Used to reference this action in our graph
+        string Name = 1;
+
+        // Sleep duration (in seconds).
+        uint64 Duration = 2;
+    }
+
+    message TVertex
+    {
+        oneof Action
+        {
+            TLoadTest Test = 1;
+            TControlPlaneAction ControlPlaneAction = 2;
+            TSleep Sleep = 3;
+            TCompareDataAction CompareData = 4;
+        }
+    }
+
+    // What's being executed
+    repeated TVertex Vertices = 1;
+
+    // Protobuf isn't too convenient
+    message TNameList
+    {
+        repeated string Names = 1;
+    }
+
+    // In what order it's being executed
+    // Test name -> dependency names
+    map<string, TNameList> Dependencies = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Test status
+
+enum ETestStatus
+{
+    TEST_STATUS_OK = 0;
+    TEST_STATUS_FAILURE = 1;
+    TEST_STATUS_EXPECTED_ERROR = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Calculated test latency
+
+message TLatency
+{
+    uint64 P50 = 1;
+    uint64 P95 = 2;
+    uint64 P90 = 3;
+    uint64 P99 = 4;
+    uint64 P999 = 5;
+    uint64 Min = 6;
+    uint64 Max = 7;
+    double Mean = 8;
+    double StdDeviation = 9;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Test results
+
+message TTestResults
+{
+    // Test name.
+    string Name = 1;
+
+    // Test result.
+    ETestStatus Result = 2;
+
+    // Test execution time in microseconds.
+    uint64 StartTime = 3;
+    uint64 EndTime = 4;
+
+    // Number of blocks processed.
+    uint64 BlocksRead = 5;
+    uint64 BlocksWritten = 6;
+    uint64 BlocksZeroed = 7;
+
+    // Request latency.
+    TLatency ReadLatency = 8;
+    TLatency WriteLatency = 9;
+    TLatency ZeroLatency = 10;
+
+    // Number of requests completed
+    uint64 RequestsCompleted = 11;
+}

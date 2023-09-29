@@ -12,7 +12,7 @@ RECURSE_ROOT_RELATIVE(
 
     cloud/blockstore/tools/testing/chaos-monkey
     cloud/blockstore/tools/testing/eternal-tests/eternal-load
-    #cloud/blockstore/tools/testing/loadtest
+    cloud/blockstore/tools/testing/loadtest
 
     cloud/storage/core/tools/ops/config_generator
 )

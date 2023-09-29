@@ -6,5 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(eternal-tests)
-add_subdirectory(loadtest)
+add_subdirectory(bin)
+add_subdirectory(lib)
+add_subdirectory(protos)
