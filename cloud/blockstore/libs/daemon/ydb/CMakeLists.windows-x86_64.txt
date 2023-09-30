@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
 
 add_library(libs-daemon-ydb)
 target_compile_options(libs-daemon-ydb PRIVATE

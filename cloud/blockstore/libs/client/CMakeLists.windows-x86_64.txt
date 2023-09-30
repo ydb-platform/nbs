@@ -6,9 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(bench)
-add_subdirectory(ut)
-add_subdirectory(ut_throttling)
 
 add_library(blockstore-libs-client)
 target_link_libraries(blockstore-libs-client PUBLIC

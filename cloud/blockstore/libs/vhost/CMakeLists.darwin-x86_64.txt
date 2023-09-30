@@ -6,8 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
-add_subdirectory(ut_stress)
 
 add_library(blockstore-libs-vhost)
 target_link_libraries(blockstore-libs-vhost PUBLIC

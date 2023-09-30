@@ -7,7 +7,6 @@
 
 
 add_subdirectory(model)
-add_subdirectory(ut)
 
 add_library(libs-storage-disk_registry_proxy)
 target_link_libraries(libs-storage-disk_registry_proxy PUBLIC

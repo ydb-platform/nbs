@@ -7,7 +7,6 @@
 
 
 add_subdirectory(model)
-add_subdirectory(ut)
 
 add_library(libs-storage-partition)
 target_link_libraries(libs-storage-partition PUBLIC

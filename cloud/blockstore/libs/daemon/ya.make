@@ -1,5 +1,0 @@
-RECURSE(
-    common
-    local
-    ydb
-)

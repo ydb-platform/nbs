@@ -7,7 +7,6 @@
 
 
 add_subdirectory(model)
-add_subdirectory(ut)
 
 add_library(core-libs-tablet)
 target_link_libraries(core-libs-tablet PUBLIC

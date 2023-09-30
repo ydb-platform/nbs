@@ -7,7 +7,6 @@
 
 
 add_subdirectory(protos)
-add_subdirectory(ut)
 
 add_library(libs-storage-ss_proxy)
 target_link_libraries(libs-storage-ss_proxy PUBLIC

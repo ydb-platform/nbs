@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
 
 add_library(blockstore-libs-server)
 target_link_libraries(blockstore-libs-server PUBLIC

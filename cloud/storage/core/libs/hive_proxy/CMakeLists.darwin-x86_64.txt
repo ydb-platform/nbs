@@ -7,7 +7,6 @@
 
 
 add_subdirectory(protos)
-add_subdirectory(ut)
 
 add_library(core-libs-hive_proxy)
 target_link_libraries(core-libs-hive_proxy PUBLIC

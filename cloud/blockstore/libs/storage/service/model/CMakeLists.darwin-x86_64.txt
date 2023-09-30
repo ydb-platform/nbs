@@ -6,7 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
 
 add_library(storage-service-model)
 target_link_libraries(storage-service-model PUBLIC

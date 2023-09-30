@@ -7,7 +7,6 @@
 
 
 add_subdirectory(events)
-add_subdirectory(ut)
 
 add_library(blockstore-libs-diagnostics)
 target_link_libraries(blockstore-libs-diagnostics PUBLIC
