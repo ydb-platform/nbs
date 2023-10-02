@@ -6,6 +6,8 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
+add_subdirectory(ut_keyring)
 
 add_library(blockstore-libs-encryption)
 target_link_libraries(blockstore-libs-encryption PUBLIC

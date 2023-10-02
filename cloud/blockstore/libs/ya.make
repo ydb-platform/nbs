@@ -1,0 +1,46 @@
+RECURSE(
+    client
+    client/bench
+    client_rdma
+    common
+    daemon
+    diagnostics
+    discovery
+    disk_agent
+    encryption
+    endpoints
+    endpoints_grpc
+    endpoints_nbd
+    endpoints_rdma
+    endpoints_spdk
+    endpoints_vhost
+    kikimr
+    kms
+    logbroker
+    nbd
+    nbd/bench
+    notify
+    nvme
+    rdma
+    server
+    service
+    service_kikimr
+    service_local
+    service_throttling
+    spdk
+    storage
+    storage/init
+    storage/protos
+    throttling
+    validation
+    vhost
+    ydbstats
+)
+
+IF (NOT OPENSOURCE)
+    RECURSE(
+        client_spdk
+        rdma_test
+        storage/perf    # TODO(NBS-4409): add to opensource
+    )
+ENDIF()

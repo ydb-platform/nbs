@@ -7,7 +7,6 @@ DEPENDS(
 )
 
 PEERDIR(
-    cloud/filestore/tests/python/lib
     cloud/storage/core/tools/testing/virtiofs_server/lib
     cloud/storage/core/tools/testing/qemu/lib
     devtools/ya/core/config

@@ -8,6 +8,20 @@
 
 add_subdirectory(actors)
 add_subdirectory(model)
+add_subdirectory(testlib)
+add_subdirectory(ut)
+add_subdirectory(ut_allocation)
+add_subdirectory(ut_cms)
+add_subdirectory(ut_config)
+add_subdirectory(ut_create)
+add_subdirectory(ut_lifecycle)
+add_subdirectory(ut_migration)
+add_subdirectory(ut_mirrored_disk_migration)
+add_subdirectory(ut_notify)
+add_subdirectory(ut_pools)
+add_subdirectory(ut_restore)
+add_subdirectory(ut_session)
+add_subdirectory(ut_suspend)
 
 add_library(libs-storage-disk_registry)
 target_link_libraries(libs-storage-disk_registry PUBLIC

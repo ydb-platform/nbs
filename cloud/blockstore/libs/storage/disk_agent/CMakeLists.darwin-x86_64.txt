@@ -6,7 +6,12 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(benchmark)
 add_subdirectory(model)
+add_subdirectory(testlib)
+add_subdirectory(ut)
+add_subdirectory(ut_actor)
+add_subdirectory(ut_large)
 
 add_library(libs-storage-disk_agent)
 target_link_libraries(libs-storage-disk_agent PUBLIC

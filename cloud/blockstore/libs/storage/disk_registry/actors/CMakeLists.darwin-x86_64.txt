@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
 
 add_library(storage-disk_registry-actors)
 target_link_libraries(storage-disk_registry-actors PUBLIC

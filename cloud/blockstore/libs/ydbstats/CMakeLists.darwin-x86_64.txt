@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
 
 add_library(blockstore-libs-ydbstats)
 target_link_libraries(blockstore-libs-ydbstats PUBLIC

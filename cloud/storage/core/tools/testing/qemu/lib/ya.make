@@ -14,9 +14,9 @@ PEERDIR(
     contrib/python/qemu
     contrib/python/retrying
     devtools/ya/core/config
-    kikimr/ci/libraries
     library/python/fs
     library/python/testing/recipe
+    ydb/tests/library
 )
 
 END()

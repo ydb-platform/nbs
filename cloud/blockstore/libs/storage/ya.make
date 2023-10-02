@@ -1,0 +1,24 @@
+RECURSE(
+    api
+    auth
+    bootstrapper
+    core
+    disk_agent
+    disk_common
+    disk_registry
+    disk_registry_proxy
+    model
+    partition
+    partition2
+    partition_common
+    partition_nonrepl
+    protos
+    protos_ydb
+    service
+    ss_proxy
+    stats_service
+    undelivered
+    volume
+    volume_balancer
+    volume_proxy
+)
