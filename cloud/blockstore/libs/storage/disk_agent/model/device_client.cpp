@@ -90,6 +90,12 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         ds.VolumeGeneration = volumeGeneration;
 
         if (!IsReadWriteMode(accessMode)) {
+            if (clientId == ds.WriterSession.Id) {
+                ds.WriterSession = {};
+                STORAGE_INFO("Device %s was released by client %s for writing.",
+                    uuid.Quote().c_str(), clientId.c_str());
+            }
+
             if (s == ds.ReaderSessions.end()) {
                 ds.ReaderSessions.push_back({clientId, now});
                 STORAGE_INFO("Device %s was acquired by client %s for reading.",
@@ -97,18 +103,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
-
-            if (clientId == ds.WriterSession.Id) {
-                ds.WriterSession = {};
-                STORAGE_INFO("Device %s was released by client %s for writing.",
-                    uuid.Quote().c_str(), clientId.c_str());
-            }
         } else {
-            ds.WriterSession.Id = clientId;
-            ds.WriterSession.LastActivityTs =
-                Max(ds.WriterSession.LastActivityTs, now);
-            ds.WriterSession.MountSeqNumber = mountSeqNumber;
-
             if (s != ds.ReaderSessions.end()) {
                 ds.ReaderSessions.erase(s);
                 STORAGE_INFO("Device %s was released by client %s for reading.",
@@ -119,6 +114,11 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
                 STORAGE_INFO("Device %s was acquired by client %s for writing.",
                     uuid.Quote().c_str(), clientId.c_str());
             }
+
+            ds.WriterSession.Id = clientId;
+            ds.WriterSession.LastActivityTs =
+                Max(ds.WriterSession.LastActivityTs, now);
+            ds.WriterSession.MountSeqNumber = mountSeqNumber;
         }
     }
 
