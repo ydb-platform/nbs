@@ -696,13 +696,15 @@ public:
     std::unique_ptr<TEvService::TEvGetChangedBlocksRequest> CreateGetChangedBlocksRequest(
         const TBlockRange32& range,
         const TString& lowCheckpointId,
-        const TString& highCheckpointId)
+        const TString& highCheckpointId,
+        const bool ignoreBaseDisk)
     {
         auto request = std::make_unique<TEvService::TEvGetChangedBlocksRequest>();
         request->Record.SetStartIndex(range.Start);
         request->Record.SetBlocksCount(range.Size());
         request->Record.SetLowCheckpointId(lowCheckpointId);
         request->Record.SetHighCheckpointId(highCheckpointId);
+        request->Record.SetIgnoreBaseDisk(ignoreBaseDisk);
         return request;
     }
 
@@ -4437,7 +4439,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.GetChangedBlocks(
             TBlockRange32::WithLength(0, 1024),
             "cp1",
-            "cp2");
+            "cp2",
+            false);
 
         UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
         UNIT_ASSERT_VALUES_EQUAL(6, response->Record.GetMask()[0]);
@@ -4463,7 +4466,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.GetChangedBlocks(
             TBlockRange32::WithLength(0, 3072),
             "cp1",
-            "cp2");
+            "cp2",
+            false);
 
         const auto& mask = response->Record.GetMask();
         UNIT_ASSERT_VALUES_EQUAL(384, mask.size());
@@ -4491,7 +4495,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 3072),
                 "cp1",
-                "cp2");
+                "cp2",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(384, mask.size());
@@ -4501,7 +4506,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 3072),
                 "",
-                "cp2");
+                "cp2",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(384, mask.size());
@@ -4532,7 +4538,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 3072),
                 "cp1",
-                "cp2");
+                "cp2",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(384, mask.size());
@@ -4543,7 +4550,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 3072),
                 "cp1",
-                "");
+                "",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(384, mask.size());
@@ -4571,7 +4579,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 1024),
                 "cp1",
-                "cp2");
+                "cp2",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(128, mask.size());
@@ -4586,7 +4595,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(1024, 1024),
                 "cp1",
-                "cp2");
+                "cp2",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(128, mask.size());
@@ -4601,7 +4611,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 2048),
                 "cp1",
-                "cp2");
+                "cp2",
+                false);
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(256, mask.size());
@@ -4642,7 +4653,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.GetChangedBlocks(
             TBlockRange32::WithLength(0, 1024),
             "cp1",
-            "cp2");
+            "cp2",
+            false);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
         UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
@@ -4674,7 +4686,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 1024),
                 "cp1",
-                "cp2");
+                "cp2",
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
             UNIT_ASSERT_VALUES_EQUAL(char(0b00000110), response->Record.GetMask()[0]);
@@ -4684,7 +4697,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 1024),
                 "",
-                "cp2");
+                "cp2",
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -4695,6 +4709,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 char(0b00000011),
                 response->Record.GetMask()[1]
             );
+        }
+        {
+            auto response = partition.GetChangedBlocks(
+                TBlockRange32::WithLength(0, 1024),
+                "",
+                "cp1",
+                true);
+
+            UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
+            UNIT_ASSERT_VALUES_EQUAL(char(0b00000011), response->Record.GetMask()[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetMask()[1]);
         }
 
     }
@@ -4714,7 +4739,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::MakeClosedInterval(10, 1023),
                 "",
-                "cp");
+                "cp",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetMask().size());
         }
 
@@ -4722,7 +4748,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.GetChangedBlocks(
                 TBlockRange32::WithLength(0, 1024),
                 "",
-                "cp");
+                "cp",
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetMask().size());
             UNIT_ASSERT_VALUES_EQUAL(
