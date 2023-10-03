@@ -1,0 +1,17 @@
+RECURSE(
+    actors
+    aio
+    api
+    common
+    coroutine
+    daemon
+    diagnostics
+    grpc
+    hive_proxy
+    keyring
+    kikimr
+    tablet
+    throttling
+    user_stats
+    version
+)
