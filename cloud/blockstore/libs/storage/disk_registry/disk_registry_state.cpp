@@ -844,7 +844,6 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         }
 
         UpdateAgent(db, agent);
-
     } catch (const TServiceError& e) {
         return MakeError(e.GetCode(), e.what());
     } catch (...) {
@@ -2131,9 +2130,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     }
 
     result->IOModeTs = disk.StateTs;
-    result->IOMode = disk.State < NProto::DISK_STATE_ERROR
-        ? NProto::VOLUME_IO_OK
-        : NProto::VOLUME_IO_ERROR_READ_ONLY;
+    result->IOMode = GetIoMode(disk, now);
 
     result->MuteIOErrors =
         disk.State >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE;
@@ -4045,6 +4042,29 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     return error;
 }
 
+NProto::TError TDiskRegistryState::SwitchAgentDisksToReadOnly(
+    TDiskRegistryDatabase& db,
+    TString agentId,
+    TVector<TDiskId>& affectedDisks)
+{
+    TVector<TDiskId> dependentDisks;
+    auto error = GetDependentDisks(agentId, "", &dependentDisks);
+    if (error.GetCode() != S_OK) {
+        return error;
+    }
+
+    for (const auto& diskId: dependentDisks) {
+        const auto& disk = Disks[diskId];
+        if (disk.MasterDiskId) {
+            continue;  // ignore replicated disks
+        }
+
+        AddReallocateRequest(db, diskId);
+        affectedDisks.push_back(diskId);
+    }
+    return {};
+}
+
 void TDiskRegistryState::ApplyAgentStateChange(
     TDiskRegistryDatabase& db,
     const NProto::TAgentConfig& agent,
@@ -4418,6 +4438,7 @@ bool TDiskRegistryState::TryUpdateDiskState(
 {
     const auto newState = CalculateDiskState(disk);
     const auto oldState = disk.State;
+
     if (oldState == newState) {
         return false;
     }
@@ -6008,6 +6029,24 @@ TVector<TString> TDiskRegistryState::GetPoolNames() const
     }
     Sort(poolNames);
     return poolNames;
+}
+
+NProto::EVolumeIOMode TDiskRegistryState::GetIoMode(
+    TDiskState& disk,
+    TInstant now) const
+{
+    if (disk.State >= NProto::DISK_STATE_ERROR) {
+        return NProto::VOLUME_IO_ERROR_READ_ONLY;
+    }
+
+    if (disk.State == NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE &&
+        (now - disk.StateTs) >
+            StorageConfig->GetNonReplicatedDiskSwitchToReadOnlyTimeout())
+    {
+        return NProto::VOLUME_IO_ERROR_READ_ONLY;
+    }
+
+    return NProto::VOLUME_IO_OK;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

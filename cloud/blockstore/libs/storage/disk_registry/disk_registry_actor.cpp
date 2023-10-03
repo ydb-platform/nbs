@@ -495,6 +495,34 @@ void TDiskRegistryActor::HandleAgentConnectionLostReadOnly(
     ctx.Schedule(TDuration::Seconds(10), ev->Release().Release());
 }
 
+void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
+    const NActors::TActorContext& ctx,
+    TString agentId)
+{
+    auto timeout = Config->GetNonReplicatedDiskSwitchToReadOnlyTimeout();
+
+    auto deadline = timeout.ToDeadLine(ctx.Now());
+    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "Scheduling switch to ReadOnly for disks associated with agent "
+        << agentId << "  " << ctx.Now() << " -> " << deadline);
+
+    auto request = std::make_unique<
+        TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest>(
+        std::move(agentId));
+    ctx.Schedule(deadline, request.release());
+}
+
+void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnlyReshedule(
+    const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "Rescheduling EvSwitchAgentDisksToReadOnlyRequest, AgentId=" << msg->AgentId.Quote());
+    ctx.Schedule(TDuration::Seconds(10), ev->Release().Release());
+}
+
 void TDiskRegistryActor::HandleOperationCompleted(
     const TEvDiskRegistryPrivate::TEvOperationCompleted::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -517,6 +545,8 @@ STFUNC(TDiskRegistryActor::StateBoot)
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
         HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
+        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+            HandleSwitchAgentDisksToReadOnlyReshedule);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskRegistry)
 
@@ -537,6 +567,8 @@ STFUNC(TDiskRegistryActor::StateInit)
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
         HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
+        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+            HandleSwitchAgentDisksToReadOnlyReshedule);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskRegistry)
 
@@ -630,6 +662,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
         HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
+        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+            HandleSwitchAgentDisksToReadOnlyReshedule);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -676,6 +710,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
         HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
+        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+            HandleSwitchAgentDisksToReadOnlyReshedule);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);

@@ -330,6 +330,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(NonReplicatedDiskRecyclingPeriod,           TDuration,  Minutes(10)   )\
     xxx(NonReplicatedDiskRepairTimeout,             TDuration,  Minutes(10)   )\
+    xxx(NonReplicatedDiskSwitchToReadOnlyTimeout,   TDuration,  Hours(1)      )\
     xxx(AgentRequestTimeout,                        TDuration,  Seconds(1)    )\
                                                                                \
     xxx(NonReplicatedAgentMinTimeout,                  TDuration,  Seconds(30))\

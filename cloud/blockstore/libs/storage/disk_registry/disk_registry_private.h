@@ -165,6 +165,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(UpdateVolumeConfig,                         __VA_ARGS__)               \
     xxx(FinishVolumeConfigUpdate,                   __VA_ARGS__)               \
     xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
+    xxx(SwitchAgentDisksToReadOnly,                 __VA_ARGS__)               \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -715,6 +716,23 @@ struct TEvDiskRegistryPrivate
 
     struct TDiskRegistryAgentListExpiredParamsCleanup
     {};
+
+    //
+    // Switch to ReadOnly all disks associated with the agent
+    //
+
+    struct TSwitchAgentDisksToReadOnlyRequest
+    {
+        TString AgentId;
+
+        TSwitchAgentDisksToReadOnlyRequest(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    struct TSwitchAgentDisksToReadOnlyResponse
+    {
+    };
 
     //
     // Events declaration

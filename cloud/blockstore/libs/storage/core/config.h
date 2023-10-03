@@ -282,6 +282,7 @@ public:
 
     TDuration GetNonReplicatedDiskRecyclingPeriod() const;
     TDuration GetNonReplicatedDiskRepairTimeout() const;
+    TDuration GetNonReplicatedDiskSwitchToReadOnlyTimeout() const;
     TDuration GetAgentRequestTimeout() const;
 
     TDuration GetNonReplicatedAgentMinTimeout() const;

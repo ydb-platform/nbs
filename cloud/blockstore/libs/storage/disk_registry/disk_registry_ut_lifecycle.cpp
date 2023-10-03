@@ -30,6 +30,18 @@ using namespace NDiskRegistryTest;
 
 using namespace std::chrono_literals;
 
+#define EXPECT_DISK_STATE(                                                     \
+    response, expectedDeviceCount, expectedIoMode, expectedMuteIoErrors)       \
+{                                                                              \
+    const auto& record = response->Record;                                     \
+    UNIT_ASSERT_VALUES_EQUAL(expectedDeviceCount, record.DevicesSize());       \
+    UNIT_ASSERT_VALUES_EQUAL(expectedMuteIoErrors, record.GetMuteIOErrors());  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                  \
+        EVolumeIOMode_Name(expectedIoMode),                                    \
+        EVolumeIOMode_Name(record.GetIOMode()));                               \
+}                                                                              \
+// EXPECT_DISK_STATE
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDiskRegistryTest)
@@ -2003,10 +2015,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         {
             auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
-            auto& r = response->Record;
-            UNIT_ASSERT_VALUES_EQUAL(4, r.DevicesSize());
-            UNIT_ASSERT_EQUAL(NProto::VOLUME_IO_OK, r.GetIOMode());
-            UNIT_ASSERT_VALUES_EQUAL(false, r.GetMuteIOErrors());
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
         }
 
         diskRegistry.ChangeAgentState(
@@ -2015,12 +2024,85 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         {
             auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
-            auto& r = response->Record;
-            UNIT_ASSERT_VALUES_EQUAL(4, r.DevicesSize());
-            UNIT_ASSERT_EQUAL(NProto::VOLUME_IO_OK, r.GetIOMode());
-            UNIT_ASSERT_VALUES_EQUAL(true, r.GetMuteIOErrors());
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, true);
         }
     }
+
+    Y_UNIT_TEST(ShouldSwitchToReadOnlyOnAgentFailure)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB)
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-3", "uuid-3", "rack-1", 10_GB),
+                Device("dev-4", "uuid-4", "rack-1", 10_GB)
+            })
+        };
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(5);  // 5 seconds
+        auto runtime = TTestRuntimeBuilder()
+            .With(config)
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        TMaybe<TActorId> sender, recipient, serverId;
+
+        runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                const auto eventType = event->GetTypeRewrite();
+                if (!sender && eventType == TEvTabletPipe::EvServerConnected) {
+                    sender = event->Sender;
+                    recipient = event->Recipient;
+                    const auto& msg =
+                        *event->Get<TEvTabletPipe::TEvServerConnected>();
+                    serverId = msg.ServerId;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        auto disconnectServer = [&]() {
+            auto event = new TEvTabletPipe::TEvServerDisconnected(
+                TestTabletId,
+                *serverId,
+                *serverId);
+            runtime->Send(new IEventHandle(*recipient, *sender, event), 0, true);
+        };
+
+        RegisterAndWaitForAgents(*runtime, agents);
+        Y_VERIFY(sender && recipient && serverId);
+
+        {
+            const auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
+        }
+
+        {
+            disconnectServer();
+            runtime->DispatchEvents({}, 100ms);  // Schedule SwitchToReadOnly
+            runtime->AdvanceCurrentTime(60s);
+            runtime->DispatchEvents({}, 100ms);  // Handle SwitchToReadOnly
+
+            auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_ERROR_READ_ONLY, true);
+        }
+
+        {
+            RegisterAgent(*runtime, 0);
+            runtime->DispatchEvents({}, 100ms);
+
+            auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
+        }
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

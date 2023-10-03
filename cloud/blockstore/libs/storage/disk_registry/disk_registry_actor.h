@@ -210,6 +210,10 @@ private:
         TString agentId,
         ui64 seqNo);
 
+    void ScheduleSwitchAgentDisksToReadOnly(
+        const NActors::TActorContext& ctx,
+        TString agentId);
+
     void StartMigration(const NActors::TActorContext& ctx);
 
     bool LoadState(
@@ -436,6 +440,10 @@ private:
 
     void HandleEnableDeviceResponse(
         const TEvDiskAgent::TEvEnableAgentDeviceResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleSwitchAgentDisksToReadOnlyReshedule(
+        const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

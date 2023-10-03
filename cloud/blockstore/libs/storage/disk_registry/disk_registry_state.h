@@ -442,6 +442,11 @@ public:
         TString reason,
         TVector<TDiskId>& affectedDisks);
 
+    NProto::TError SwitchAgentDisksToReadOnly(
+        TDiskRegistryDatabase& db,
+        TString agentId,
+        TVector<TDiskId>& affectedDisks);
+
     NProto::TError UpdateCmsHostState(
         TDiskRegistryDatabase& db,
         TString agentId,
@@ -997,6 +1002,8 @@ private:
         const TDeviceList::TAllocationQuery& query,
         TInstant timestamp,
         TString message);
+
+    NProto::EVolumeIOMode GetIoMode(TDiskState& disk, TInstant now) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

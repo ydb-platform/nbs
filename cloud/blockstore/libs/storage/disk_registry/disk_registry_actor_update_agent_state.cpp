@@ -35,7 +35,7 @@ void TDiskRegistryActor::HandleChangeAgentState(
     ExecuteTx<TUpdateAgentState>(
         ctx,
         std::move(requestInfo),
-        std::move(*msg->Record.MutableAgentId()),
+        msg->Record.GetAgentId(),
         msg->Record.GetAgentState(),
         ctx.Now(),
         msg->Record.GetReason(),
@@ -196,6 +196,10 @@ void TDiskRegistryActor::CompleteUpdateAgentState(
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.State == NProto::AGENT_STATE_UNAVAILABLE) {
+        ScheduleSwitchAgentDisksToReadOnly(ctx, args.AgentId);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
