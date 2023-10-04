@@ -55,6 +55,8 @@ public:
 
     TValueByName GetValueByName(const TString& name) const;
 
+    const NProto::TStorageServiceConfig& GetStorageConfigProto() const;
+
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;

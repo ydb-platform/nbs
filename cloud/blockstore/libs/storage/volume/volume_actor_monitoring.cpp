@@ -461,6 +461,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
     const char* tracesTabName = "Traces";
+    const char* storageConfigTabName = "StorageConfig";
 
     const char* activeTab = "tab-pane active";
     const char* inactiveTab = "tab-pane";
@@ -469,6 +470,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
     const char* tracesTab = inactiveTab;
+    const char* storageConfigTab = inactiveTab;
 
     if (tabName.Empty() || tabName == overviewTabName) {
         overviewTab = activeTab;
@@ -478,6 +480,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         checkpointsTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
+    } else if (tabName == storageConfigTabName) {
+        storageConfigTab = activeTab;
     }
 
     TStringStream out;
@@ -502,6 +506,10 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
                     RenderTraces(out);
+                }
+
+                DIV_CLASS_ID(storageConfigTab, storageConfigTabName) {
+                    RenderStorageConfig(out);
                 }
             }
         }
@@ -697,6 +705,79 @@ void TVolumeActor::RenderTraces(IOutputStream& out) const
                         "Slow logs for " << diskId << "</a><br>";
                 out << "<a href=\"../tracelogs/random?diskId=" << diskId << "\">"
                        "Random samples for " << diskId << "</a>";
+            }
+        }
+    }
+}
+
+void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
+{
+    using namespace NMonitoringUtils;
+
+    HTML(out) {
+        DIV_CLASS("row") {
+            TAG(TH3) {
+                out << "StorageConfig";
+            }
+            TABLE_SORTABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "Field name"; }
+                        TABLEH() { out << "Value"; }
+                    }
+                }
+                const auto protoValues = Config->GetStorageConfigProto();
+                constexpr i32 expectedNonRepeatedFieldIndex = -1;
+                auto descriptor = protoValues.GetDescriptor();
+                if (descriptor == nullptr) {
+                    return;
+                }
+
+                const auto* reflection =
+                    NProto::TStorageServiceConfig::GetReflection();
+
+                for (int i = 0; i < descriptor->field_count(); ++i)
+                {
+                    TStringBuilder value;
+                    const auto field_descriptor = descriptor->field(i);
+                    if (field_descriptor->is_repeated()) {
+                        const auto repeatedSize =
+                            reflection->FieldSize(protoValues, field_descriptor);
+                        if (!repeatedSize) {
+                            continue;
+                        }
+
+                        for (int j = 0; j < repeatedSize; ++j) {
+                            TString curValue;
+                            google::protobuf::TextFormat::PrintFieldValueToString(
+                                protoValues,
+                                field_descriptor,
+                                j,
+                                &curValue);
+                            value.append(curValue);
+                            value.append("; ");
+                        }
+                    } else if (
+                        reflection->HasField(protoValues, field_descriptor))
+                    {
+                        google::protobuf::TextFormat::PrintFieldValueToString(
+                            protoValues,
+                            field_descriptor,
+                            expectedNonRepeatedFieldIndex,
+                            &value);
+                    } else {
+                        continue;
+                    }
+
+                    TABLER() {
+                        TABLED() {
+                            out << field_descriptor->name();;
+                        }
+                        TABLED() {
+                            out << value;
+                        }
+                    }
+                }
             }
         }
     }

@@ -402,6 +402,7 @@ private:
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
+    void RenderStorageConfig(IOutputStream& out) const;
     void RenderCommonButtons(IOutputStream& out) const;
 
     void OnDetach(const NActors::TActorContext& ctx) override;

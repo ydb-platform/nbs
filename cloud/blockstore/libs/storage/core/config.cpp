@@ -832,7 +832,7 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
 {
     auto descriptor =
         Impl->StorageServiceConfig.GetDescriptor()->FindFieldByName(name);
-        using TStatus = TStorageConfig::TValueByName::ENameStatus;
+    using TStatus = TStorageConfig::TValueByName::ENameStatus;
 
     if (descriptor == nullptr) {
         return TStorageConfig::TValueByName {TStatus::NotFound};
@@ -852,6 +852,12 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     );
 
     return {value};
+}
+
+
+const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() const
+{
+    return Impl->StorageServiceConfig;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
