@@ -9,6 +9,7 @@ PEERDIR(
 )
 
 SRCS(
+    actions.proto
     tablet.proto
 )
 

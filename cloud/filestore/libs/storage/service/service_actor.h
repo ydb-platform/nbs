@@ -131,6 +131,12 @@ private:
         const NActors::TActorContext& ctx);
 
 private:
+    // actions
+    NActors::IActorPtr CreateDrainTabletActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+private:
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);
 

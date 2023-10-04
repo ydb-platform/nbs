@@ -9,7 +9,7 @@ ENDIF()
 SRCS(
     helpers_ut.cpp
     service_ut.cpp
-    service_ut_actions.cpp
+    service_actor_actions_ut.cpp
 )
 
 PEERDIR(

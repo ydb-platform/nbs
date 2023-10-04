@@ -31,7 +31,12 @@ void TStorageServiceActor::HandleExecuteAction(
 
     using TActorBuilderMethod =
         NActors::IActorPtr (TStorageServiceActor::*)(TRequestInfoPtr, TString);
-    static const THashMap<TString, TActorBuilderMethod> actions = {};
+    static const THashMap<TString, TActorBuilderMethod> actions = {
+        {
+            "draintablets",
+            &TStorageServiceActor::CreateDrainTabletActionActor,
+        },
+    };
 
     auto it = actions.find(action);
     if (it == actions.end()) {
