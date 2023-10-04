@@ -8,4 +8,5 @@
 
 add_subdirectory(blockstore)
 add_subdirectory(contrib)
+add_subdirectory(filestore)
 add_subdirectory(storage)

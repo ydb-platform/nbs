@@ -1,0 +1,20 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+import "cloud/filestore/config/client.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNfsGatewayConfig
+{
+    optional TClientConfig ClientConfig = 1;
+
+    optional string FileSystemId = 2;
+
+    // Session options.
+    optional uint32 SessionRetryTimeout = 100;
+    optional uint32 SessionPingTimeout = 101;
+}

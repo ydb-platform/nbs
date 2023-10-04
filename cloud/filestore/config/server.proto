@@ -1,0 +1,89 @@
+syntax = "proto2";
+
+import "cloud/storage/core/protos/certificate.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TServerConfig
+{
+    // Host name or address to listen on.
+    optional string Host = 1;
+
+    // Port to listen on.
+    optional uint32 Port = 2;
+
+    // Number of gRPC threads.
+    optional uint32 ThreadsCount =3;
+
+    // Limit of grpc threads count.
+    optional uint32 GrpcThreadsLimit = 4;
+
+    // Maximum size of gRPC message.
+    optional uint32 MaxMessageSize = 5;
+
+    // Memory quota for gRPC request processing.
+    optional uint32 MemoryQuotaBytes = 6;
+
+    // Number of prepared gRPC requests.
+    optional uint32 PreparedRequestsCount = 7;
+
+    // KeepAlive details.
+    optional bool KeepAliveEnabled = 8;
+    optional uint32 KeepAliveIdleTimeout = 9;   // (in milliseconds).
+    optional uint32 KeepAliveProbeTimeout = 10; // (in milliseconds).
+    optional uint32 KeepAliveProbesCount = 11;
+
+    optional uint32 ShutdownTimeout = 12; // (in milliseconds).
+
+    // Host name or address to listen on (with TLS enabled).
+    optional string SecureHost = 13;
+
+    // Port to listen on (with TLS enabled).
+    optional uint32 SecurePort = 14;
+
+    // TLS details.
+    optional string RootCertsFile = 15;
+    repeated NCloud.NProto.TCertificate Certs = 16;
+
+    // Unix-socket details.
+    optional string UnixSocketPath = 17;
+    optional uint32 UnixSocketBacklog = 18;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNullServiceConfig
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLocalServiceConfig
+{
+    optional string RootPath = 1;
+    optional string PathPrefix = 2;
+    optional uint32 DefaultPermissions = 3;
+    optional uint32 IdleSessionTimeout = 4;
+    optional uint32 NumThreads = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TKikimrServiceConfig
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TServerAppConfig
+{
+    optional TServerConfig ServerConfig = 1;
+
+    optional TNullServiceConfig NullServiceConfig = 2;
+    optional TLocalServiceConfig LocalServiceConfig = 3;
+    optional TKikimrServiceConfig KikimrServiceConfig = 4;
+}

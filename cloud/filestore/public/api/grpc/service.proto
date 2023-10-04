@@ -1,0 +1,429 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/action.proto";
+import "cloud/filestore/public/api/protos/checkpoint.proto";
+import "cloud/filestore/public/api/protos/cluster.proto";
+import "cloud/filestore/public/api/protos/data.proto";
+import "cloud/filestore/public/api/protos/endpoint.proto";
+import "cloud/filestore/public/api/protos/fs.proto";
+import "cloud/filestore/public/api/protos/locks.proto";
+import "cloud/filestore/public/api/protos/node.proto";
+import "cloud/filestore/public/api/protos/ping.proto";
+import "cloud/filestore/public/api/protos/session.proto";
+
+import "google/api/annotations.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/grpc";
+
+////////////////////////////////////////////////////////////////////////////////
+// The FileStore service definition.
+
+service TFileStoreService
+{
+    //
+    // Service requests.
+    //
+
+    rpc Ping(TPingRequest) returns (TPingResponse) {
+        option (google.api.http) = {
+            post: "/ping"
+            body: "*"
+        };
+    }
+
+    //
+    // FileSystem management.
+    //
+
+    rpc CreateFileStore(TCreateFileStoreRequest) returns (TCreateFileStoreResponse) {
+        option (google.api.http) = {
+            post: "/create_fs"
+            body: "*"
+        };
+    }
+
+    rpc DestroyFileStore(TDestroyFileStoreRequest) returns (TDestroyFileStoreResponse) {
+        option (google.api.http) = {
+            post: "/destroy_fs"
+            body: "*"
+        };
+    }
+
+    rpc GetFileStoreInfo(TGetFileStoreInfoRequest) returns (TGetFileStoreInfoResponse) {
+        option (google.api.http) = {
+            post: "/get_fs_info"
+            body: "*"
+        };
+    }
+
+    rpc ListFileStores(TListFileStoresRequest) returns (TListFileStoresResponse) {
+        option (google.api.http) = {
+            post: "/list_fs"
+            body: "*"
+        };
+    }
+
+    rpc AlterFileStore(TAlterFileStoreRequest) returns (TAlterFileStoreResponse) {
+        option (google.api.http) = {
+            post: "/alter_fs"
+            body: "*"
+        };
+    }
+
+    rpc ResizeFileStore(TResizeFileStoreRequest) returns (TResizeFileStoreResponse) {
+        option (google.api.http) = {
+            post: "/resize_fs"
+            body: "*"
+        };
+    }
+
+    rpc DescribeFileStoreModel(TDescribeFileStoreModelRequest) returns (TDescribeFileStoreModelResponse) {
+        option (google.api.http) = {
+            post: "/describe_fs_model"
+            body: "*"
+        };
+    }
+
+    rpc StatFileStore(TStatFileStoreRequest) returns (TStatFileStoreResponse) {
+        option (google.api.http) = {
+            post: "/stat_fs"
+            body: "*"
+        };
+    }
+
+    //
+    // Cluster management.
+    //
+
+    rpc AddClusterNode(TAddClusterNodeRequest) returns (TAddClusterNodeResponse) {
+        option (google.api.http) = {
+            post: "/add_cluster_node"
+            body: "*"
+        };
+    }
+
+    rpc RemoveClusterNode(TRemoveClusterNodeRequest) returns (TRemoveClusterNodeResponse) {
+        option (google.api.http) = {
+            post: "/remove_cluster_node"
+            body: "*"
+        };
+    }
+
+    rpc ListClusterNodes(TListClusterNodesRequest) returns (TListClusterNodesResponse) {
+        option (google.api.http) = {
+            post: "/list_cluster_nodes"
+            body: "*"
+        };
+    }
+
+    rpc AddClusterClients(TAddClusterClientsRequest) returns (TAddClusterClientsResponse) {
+        option (google.api.http) = {
+            post: "/add_cluster_clients"
+            body: "*"
+        };
+    }
+
+    rpc RemoveClusterClients(TRemoveClusterClientsRequest) returns (TRemoveClusterClientsResponse) {
+        option (google.api.http) = {
+            post: "/remove_cluster_clients"
+            body: "*"
+        };
+    }
+
+    rpc ListClusterClients(TListClusterClientsRequest) returns (TListClusterClientsResponse) {
+        option (google.api.http) = {
+            post: "/list_cluster_clients"
+            body: "*"
+        };
+    }
+
+    rpc UpdateCluster(TUpdateClusterRequest) returns (TUpdateClusterResponse) {
+        option (google.api.http) = {
+            post: "/update_cluster"
+            body: "*"
+        };
+    }
+
+    //
+    // Session management.
+    //
+
+    rpc CreateSession(TCreateSessionRequest) returns (TCreateSessionResponse) {
+        option (google.api.http) = {
+            post: "/create_session"
+            body: "*"
+        };
+    }
+
+    rpc DestroySession(TDestroySessionRequest) returns (TDestroySessionResponse) {
+        option (google.api.http) = {
+            post: "/destroy_session"
+            body: "*"
+        };
+    }
+
+    rpc ResetSession(TResetSessionRequest) returns (TResetSessionResponse) {
+        option (google.api.http) = {
+            post: "/reset_session"
+            body: "*"
+        };
+    }
+
+    rpc PingSession(TPingSessionRequest) returns (TPingSessionResponse) {
+        option (google.api.http) = {
+            post: "/ping_session"
+            body: "*"
+        };
+    }
+
+    rpc SubscribeSession(TSubscribeSessionRequest) returns (TSubscribeSessionResponse) {
+        option (google.api.http) = {
+            post: "/subscribe_session"
+            body: "*"
+        };
+    }
+
+    rpc GetSessionEvents(TGetSessionEventsRequest) returns (TGetSessionEventsResponse) {
+        option (google.api.http) = {
+            post: "/get_session_events"
+            body: "*"
+        };
+    }
+
+    rpc GetSessionEventsStream(TGetSessionEventsRequest) returns (stream TGetSessionEventsResponse);
+
+    //
+    // Checkpoint management.
+    //
+
+    rpc CreateCheckpoint(TCreateCheckpointRequest) returns (TCreateCheckpointResponse) {
+        option (google.api.http) = {
+            post: "/create_checkpoint"
+            body: "*"
+        };
+    }
+
+    rpc DestroyCheckpoint(TDestroyCheckpointRequest) returns (TDestroyCheckpointResponse) {
+        option (google.api.http) = {
+            post: "/destroy_checkpoint"
+            body: "*"
+        };
+    }
+
+    //
+    // Node operations.
+    //
+
+    rpc ResolvePath(TResolvePathRequest) returns (TResolvePathResponse) {
+        option (google.api.http) = {
+            post: "/resolve_path"
+            body: "*"
+        };
+    }
+
+    rpc CreateNode(TCreateNodeRequest) returns (TCreateNodeResponse) {
+        option (google.api.http) = {
+            post: "/create_node"
+            body: "*"
+        };
+    }
+
+    rpc UnlinkNode(TUnlinkNodeRequest) returns (TUnlinkNodeResponse) {
+        option (google.api.http) = {
+            post: "/remove_node"
+            body: "*"
+        };
+    }
+
+    rpc RenameNode(TRenameNodeRequest) returns (TRenameNodeResponse) {
+        option (google.api.http) = {
+            post: "/rename_node"
+            body: "*"
+        };
+    }
+
+    rpc AccessNode(TAccessNodeRequest) returns (TAccessNodeResponse) {
+        option (google.api.http) = {
+            post: "/access_node"
+            body: "*"
+        };
+    }
+
+    rpc ReadLink(TReadLinkRequest) returns (TReadLinkResponse) {
+        option (google.api.http) = {
+            post: "/read_link"
+            body: "*"
+        };
+    }
+
+    rpc ListNodes(TListNodesRequest) returns (TListNodesResponse) {
+        option (google.api.http) = {
+            post: "/list_nodes"
+            body: "*"
+        };
+    }
+
+    rpc SetNodeAttr(TSetNodeAttrRequest) returns (TSetNodeAttrResponse) {
+        option (google.api.http) = {
+            post: "/set_node_attr"
+            body: "*"
+        };
+    }
+
+    rpc GetNodeAttr(TGetNodeAttrRequest) returns (TGetNodeAttrResponse) {
+        option (google.api.http) = {
+            post: "/get_node_attr"
+            body: "*"
+        };
+    }
+
+    rpc SetNodeXAttr(TSetNodeXAttrRequest) returns (TSetNodeXAttrResponse) {
+        option (google.api.http) = {
+            post: "/set_node_xattr"
+            body: "*"
+        };
+    }
+
+    rpc GetNodeXAttr(TGetNodeXAttrRequest) returns (TGetNodeXAttrResponse) {
+        option (google.api.http) = {
+            post: "/get_node_xattr"
+            body: "*"
+        };
+    }
+
+    rpc ListNodeXAttr(TListNodeXAttrRequest) returns (TListNodeXAttrResponse) {
+        option (google.api.http) = {
+            post: "/list_node_xattr"
+            body: "*"
+        };
+    }
+
+    rpc RemoveNodeXAttr(TRemoveNodeXAttrRequest) returns (TRemoveNodeXAttrResponse) {
+        option (google.api.http) = {
+            post: "/remove_node_xattr"
+            body: "*"
+        };
+    }
+
+    //
+    // Data operations.
+    //
+
+    rpc CreateHandle(TCreateHandleRequest) returns (TCreateHandleResponse) {
+        option (google.api.http) = {
+            post: "/create_handle"
+            body: "*"
+        };
+    }
+
+    rpc DestroyHandle(TDestroyHandleRequest) returns (TDestroyHandleResponse) {
+        option (google.api.http) = {
+            post: "/destroy_handle"
+            body: "*"
+        };
+    }
+
+    rpc ReadData(TReadDataRequest) returns (TReadDataResponse) {
+        option (google.api.http) = {
+            post: "/read_data"
+            body: "*"
+        };
+    }
+
+    rpc WriteData(TWriteDataRequest) returns (TWriteDataResponse) {
+        option (google.api.http) = {
+            post: "/write_data"
+            body: "*"
+        };
+    }
+
+    rpc AllocateData(TAllocateDataRequest) returns (TAllocateDataResponse) {
+        option (google.api.http) = {
+            post: "/allocate_data"
+            body: "*"
+        };
+    }
+
+    //
+    // Locking operations.
+    //
+
+    rpc AcquireLock(TAcquireLockRequest) returns (TAcquireLockResponse) {
+        option (google.api.http) = {
+            post: "/acquire_lock"
+            body: "*"
+        };
+    }
+
+    rpc ReleaseLock(TReleaseLockRequest) returns (TReleaseLockResponse) {
+        option (google.api.http) = {
+            post: "/release_lock"
+            body: "*"
+        };
+    }
+
+    rpc TestLock(TTestLockRequest) returns (TTestLockResponse) {
+        option (google.api.http) = {
+            post: "/test_lock"
+            body: "*"
+        };
+    }
+
+    //
+    // Private API.
+    //
+
+    rpc ExecuteAction(TExecuteActionRequest) returns (TExecuteActionResponse) {
+        option (google.api.http) = {
+            post: "/execute_action"
+            body: "*"
+        };
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// The EndpointManager service definition.
+
+service TEndpointManagerService
+{
+    //
+    // Endpoint operations.
+    //
+
+    rpc StartEndpoint(TStartEndpointRequest) returns (TStartEndpointResponse) {
+        option (google.api.http) = {
+            post: "/start_endpoint"
+            body: "*"
+        };
+    }
+
+    rpc StopEndpoint(TStopEndpointRequest) returns (TStopEndpointResponse) {
+        option (google.api.http) = {
+            post: "/stop_endpoint"
+            body: "*"
+        };
+    }
+
+    rpc ListEndpoints(TListEndpointsRequest) returns (TListEndpointsResponse) {
+        option (google.api.http) = {
+            post: "/list_endpoints"
+            body: "*"
+        };
+    }
+
+    rpc KickEndpoint(TKickEndpointRequest) returns (TKickEndpointResponse) {
+        option (google.api.http) = {
+            post: "/kick_endpoint"
+            body: "*"
+        };
+    }
+
+    rpc Ping(TPingRequest) returns (TPingResponse) {
+        option (google.api.http) = {
+            post: "/ping"
+            body: "*"
+        };
+    }
+}

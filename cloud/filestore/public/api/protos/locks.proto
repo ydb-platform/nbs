@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/trace.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Lock types
+
+enum ELockType
+{
+    E_SHARED = 0;
+    E_EXCLUSIVE = 1;
+    E_UNLOCK = 2;
+};
+
+// Lock origins
+enum ELockOrigin
+{
+    E_FCNTL = 0;
+    E_FLOCK = 1;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// AcquireLock request/response
+
+message TAcquireLockRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Lock owner.
+    uint64 Owner = 5;
+
+    // Starting offset for lock.
+    uint64 Offset = 6;
+
+    // Number of bytes to lock.
+    uint64 Length = 7;
+
+    // Lock type.
+    ELockType LockType = 8;
+
+    // Process holding lock.
+    int32 Pid = 9;
+
+    // Request origin.
+    ELockOrigin LockOrigin = 10;
+}
+
+message TAcquireLockResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReleaseLock request/response
+
+message TReleaseLockRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Lock owner.
+    uint64 Owner = 5;
+
+    // Starting offset for lock.
+    uint64 Offset = 6;
+
+    // Number of bytes to lock.
+    uint64 Length = 7;
+
+    // Process holding lock.
+    int32 Pid = 8;
+
+    // Request origin.
+    ELockOrigin LockOrigin = 9;
+}
+
+message TReleaseLockResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TestLock request/response
+
+message TTestLockRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Lock owner.
+    uint64 Owner = 5;
+
+    // Starting offset for lock.
+    uint64 Offset = 6;
+
+    // Number of bytes to lock.
+    uint64 Length = 7;
+
+    // Lock type.
+    ELockType LockType = 8;
+
+    // Process holding lock.
+    int32 Pid = 9;
+
+    // Request origin.
+    ELockOrigin LockOrigin = 10;
+}
+
+message TTestLockResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Lock owner of the conflicting lock if any.
+    uint64 Owner = 2;
+
+    // Starting offset of the conflicting lock if any.
+    uint64 Offset = 3;
+
+    // Number of bytes of the conflicting lock if any.
+    uint64 Length = 4;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 5;
+
+    // Lock type of the conflicting lock if any.
+    optional ELockType LockType = 6;
+
+    // Process of the conflicting lock if any.
+    optional int32 Pid = 7;
+
+    // Incompatible lock origin that is already been held.
+    optional ELockOrigin IncompatibleLockOrigin = 8;
+}

@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/data.proto";
+import "cloud/filestore/public/api/protos/fs.proto";
+import "cloud/filestore/public/api/protos/node.proto";
+
+import "cloud/storage/core/protos/media.proto";
+
+package NCloud.NFileStore.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TChannelProfile
+{
+    uint32 DataKind = 1;
+    string PoolKind = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFileSystem
+{
+    uint32 Version = 1;
+
+    string FileSystemId = 2;
+
+    string ProjectId = 3;
+    string FolderId = 4;
+    string CloudId = 5;
+
+    uint32 BlockSize = 6;
+    uint64 BlocksCount = 7;
+    uint32 NodesCount = 8;
+
+    repeated TChannelProfile ExplicitChannelProfiles = 9;
+
+    uint32 RangeIdHasherType = 10;
+
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 11;
+
+    // Performance profile, used for throttling.
+    TFileStorePerformanceProfile PerformanceProfile = 12;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFileSystemStats
+{
+    // state counters
+    uint64 LastNodeId = 1;
+    uint64 LastLockId = 2;
+    uint64 LastCollectCommitId = 3;
+    uint64 LastXAttr = 4;
+
+    // index stats
+    uint64 UsedNodesCount = 100;
+    uint64 UsedSessionsCount = 101;
+    uint64 UsedHandlesCount = 102;
+    uint64 UsedLocksCount = 103;
+    uint64 UsedBlocksCount = 104;
+
+    // data stats
+    uint64 FreshBlocksCount = 200;
+    uint64 MixedBlocksCount = 201;
+    uint64 MixedBlobsCount = 202;
+    uint64 DeletionMarkersCount = 203;
+    uint64 GarbageQueueSize = 204;
+    uint64 GarbageBlocksCount = 205;
+    uint64 CheckpointNodesCount = 206;
+    uint64 CheckpointBlocksCount = 207;
+    uint64 CheckpointBlobsCount = 208;
+    uint64 FreshBytesCount = 209;
+    uint64 AttrsUsedBytesCount = 210;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNode
+{
+    uint32 Type = 1;
+    uint32 Mode = 2;
+
+    uint32 Uid = 3;
+    uint32 Gid = 4;
+
+    uint64 ATime = 5;
+    uint64 MTime = 6;
+    uint64 CTime = 7;
+
+    uint64 Size = 8;
+    uint32 Links = 9;
+
+    string SymLink = 10;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCheckpoint
+{
+    string CheckpointId = 1;
+    uint64 NodeId = 2;
+    uint64 CommitId = 3;
+    bool Deleted = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSession
+{
+    string SessionId = 1;
+    string ClientId = 2;
+    string CheckpointId = 3;
+    // unused = 4
+    bytes SessionState = 5;
+    uint64 MaxSeqNo = 6;
+    uint64 MaxRwSeqNo = 7;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSessionHandle
+{
+    string SessionId = 1;
+    uint64 Handle = 2;
+    uint64 NodeId = 3;
+    uint64 CommitId = 4;
+    uint32 Flags = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSessionLock
+{
+    string SessionId = 1;
+    uint64 LockId = 2;
+    uint64 NodeId = 3;
+    uint64 Owner = 4;
+    uint64 Offset = 5;
+    uint64 Length = 6;
+    uint32 Mode = 7;
+    uint64 Handle = 8;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDupCacheEntry
+{
+    string SessionId = 1;
+    uint64 EntryId = 2;
+    uint64 RequestId = 3;
+
+    oneof Response {
+        TCreateHandleResponse CreateHandle = 4;
+        TCreateNodeResponse CreateNode = 5;
+        TRenameNodeResponse RenameNode = 6;
+        TUnlinkNodeResponse UnlinkNode = 7;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TTruncateEntry
+{
+    uint64 NodeId = 1;
+    uint64 Offset = 2;
+    uint64 Length = 3;
+}

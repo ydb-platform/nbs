@@ -1,0 +1,256 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/filestore/public/api/protos/node.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/trace.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// CreateHandle request/response
+
+message TCreateHandleRequest
+{
+    enum EFlags
+    {
+        E_NONE = 0;
+        E_READ = 1;
+        E_WRITE = 2;
+        E_CREATE = 3;
+        E_EXCLUSIVE = 4;
+        E_APPEND = 5;
+        E_TRUNCATE = 6;
+        E_DIRECTORY = 7;
+        E_NOATIME = 8;
+        E_NOFOLLOW = 9;
+        E_NONBLOCK = 10;
+        E_PATH = 11;
+
+        // TODO: these flags have no meaning or only useful for the local svc
+        // E_ASYNC
+        // E_CLOEXEC
+        // E_DIRECT
+        // E_DSYNC
+        // E_LARGEFILE
+        // E_NOCTTY
+        // E_SYNC
+    };
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent node.
+    uint64 NodeId = 3;
+
+    // Node name
+    bytes Name = 4;
+
+    // Flags.
+    uint32 Flags = 5;
+
+    // Create mode.
+    uint32 Mode = 6;
+
+    // Create owner
+    uint64 Uid = 10;
+
+    // Create group
+    uint64 Gid = 11;
+}
+
+message TCreateHandleResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // IO handle.
+    uint64 Handle = 2;
+
+    // Node Attr.
+    TNodeAttr NodeAttr = 3;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DestroyHandle request/response
+
+message TDestroyHandleRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+}
+
+message TDestroyHandleResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadData request/response
+
+message TReadDataRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for read.
+    uint64 Offset = 5;
+
+    // Number of bytes to read.
+    uint64 Length = 6;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 7;
+}
+
+message TReadDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Buffer with bytes read.
+    bytes Buffer = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// WriteData request/response
+
+message TWriteDataRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for write.
+    uint64 Offset = 5;
+
+    // Buffer with bytes to write.
+    bytes Buffer = 6;
+}
+
+message TWriteDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AllocateData request/response
+
+message TAllocateDataRequest
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+        F_KEEP_SIZE = 1;
+        F_PUNCH_HOLE = 2;
+        F_COLLAPSE_RANGE = 3;
+        F_ZERO_RANGE = 4;
+        F_INSERT_RANGE = 5;
+        F_UNSHARE_RANGE = 6;
+    }
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for write.
+    uint64 Offset = 5;
+
+    // Number of bytes to allocate.
+    uint64 Length = 6;
+
+    // Optional linux specific flags.
+    uint32 Flags = 7;
+}
+
+message TAllocateDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TruncateData request/response
+
+message TTruncateDataRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Number of bytes to keep.
+    uint64 Length = 6;
+}
+
+message TTruncateDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}

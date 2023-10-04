@@ -1,0 +1,15 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message THttpProxyConfig
+{
+    optional uint32 Port = 1;
+    // Use "localhost-expanded" special value to set this to `hostname --fqdn`
+    optional string NfsVhostHost = 2;
+    optional uint32 NfsVhostPort = 3;
+}

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NProto;
+
+import "cloud/storage/core/protos/request_source.proto";
+import "library/cpp/lwtrace/protos/lwtrace.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Common message headers.
+
+message THeaders
+{
+    // Trace identifier for logging.
+    string TraceId = 1;
+
+    // Idempotence identifier for retries.
+    string IdempotenceId = 2;
+
+    // Client identifier for client detection.
+    string ClientId = 3;
+
+    // Session identifier.
+    string SessionId = 4;
+
+    // Request timestamp.
+    uint64 Timestamp = 5;
+
+    // Request identifier.
+    uint64 RequestId = 6;
+
+    // Request timeout (in milliseconds).
+    uint32 RequestTimeout = 7;
+
+    // Session sequence endpoint set by endpoint.
+    uint64 SessionSeqNo = 8;
+
+    message TInternal
+    {
+        NLWTrace.TTraceRequest Trace = 1;
+
+        NCloud.NProto.ERequestSource RequestSource = 2;
+
+        // IAM auth token.
+        string AuthToken = 3;
+    }
+
+    // Internal header, should not be used outside.
+    TInternal Internal = 9;
+}

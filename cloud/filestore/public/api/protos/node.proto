@@ -1,0 +1,555 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/trace.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Node's constants
+
+enum ENodeConstants
+{
+    option allow_alias = true;
+
+    E_INVALID_NODE_ID = 0;
+    E_INVALID_HANDLE = 0;
+    E_ROOT_NODE_ID = 1;
+}
+
+enum ENodeType
+{
+    E_INVALID_NODE = 0;
+    E_REGULAR_NODE = 1;
+    E_DIRECTORY_NODE = 2;
+    E_LINK_NODE = 3;
+    E_SOCK_NODE = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Node information
+
+message TNodeAttr
+{
+    // Node identifier.
+    uint64 Id = 1;
+
+    // Node type
+    uint32 Type = 2;
+
+    // Permissions.
+    uint32 Mode = 3;
+
+    // Owner & group.
+    uint32 Uid = 4;
+    uint32 Gid = 5;
+
+    // Last access/modification time.
+    uint64 ATime = 6;
+    uint64 MTime = 7;
+    uint64 CTime = 8;
+
+    // File size.
+    uint64 Size = 9;
+
+    // Number of persistent links
+    uint32 Links = 10;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ResolvePath request/response
+
+message TResolvePathRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Path.
+    bytes Path = 3;
+}
+
+message TResolvePathResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Nodes from root to path.
+    repeated uint64 NodeIds = 2;
+
+    // Node attributes.
+    TNodeAttr Attr = 3;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CreateNode request/response
+
+message TCreateNodeRequest
+{
+    message TDirectory
+    {
+        uint32 Mode = 1;
+    }
+
+    message TFile
+    {
+        uint32 Mode = 1;
+    }
+
+    message TLink
+    {
+        uint64 TargetNode = 1;
+    }
+
+    message TSymLink
+    {
+        bytes TargetPath = 1;
+    }
+
+    message TSocket {
+        uint32 Mode = 1;
+    }
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent node.
+    uint64 NodeId = 3;
+
+    // New node name.
+    bytes Name = 4;
+
+    // Owner id of the node.
+    uint64 Uid = 10;
+
+    // Group id of the node.
+    uint64 Gid = 11;
+
+    oneof Params
+    {
+        TDirectory Directory = 5;
+        TFile File = 6;
+        TLink Link = 7;
+        TSymLink SymLink = 8;
+        TSocket Socket = 9;
+    }
+}
+
+message TCreateNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node attributes.
+    TNodeAttr Node = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnlinkNode request/response
+
+message TUnlinkNodeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent node.
+    uint64 NodeId = 3;
+
+    // Reference to remove.
+    bytes Name = 4;
+
+    // Unlink directory node if empty.
+    bool UnlinkDirectory = 5;
+}
+
+message TUnlinkNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RenameNode request/response
+
+message TRenameNodeRequest
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+        F_EXCHANGE = 1;
+        F_NOREPLACE = 2;
+    }
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent Node.
+    uint64 NodeId = 3;
+
+    // Existing name.
+    bytes Name = 4;
+
+    // New parent Node
+    uint64 NewParentId = 5;
+
+    // New node name.
+    bytes NewName = 6;
+
+    // Optional linux specific flags.
+    uint32 Flags = 7;
+}
+
+message TRenameNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AccessNode request/response
+
+message TAccessNodeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // Permissions to check.
+    uint32 Mask = 4;
+}
+
+message TAccessNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListNodes request/response
+
+message TListNodesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // Optional cookie passed by server to continue listing.
+    bytes Cookie = 4;
+
+    // Optional limit for response bytes count.
+    uint32 MaxBytes = 5;
+}
+
+message TListNodesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node names.
+    repeated bytes Names = 2;
+
+    // Node attributes.
+    repeated TNodeAttr Nodes = 3;
+
+    // Cookie will be set for partial answer due to limitations.
+    bytes Cookie = 4;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadLink request/response
+
+message TReadLinkRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+}
+
+message TReadLinkResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Symlink contents.
+    bytes SymLink = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SetNodeAttr request/response
+
+message TSetNodeAttrRequest
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+        F_SET_ATTR_MODE = 1;
+        F_SET_ATTR_UID = 2;
+        F_SET_ATTR_GID = 3;
+        F_SET_ATTR_SIZE = 4;
+        F_SET_ATTR_ATIME = 5;
+        F_SET_ATTR_MTIME = 6;
+        F_SET_ATTR_CTIME = 7;
+    }
+
+    message TUpdate
+    {
+        uint32 Mode = 1;
+        uint32 Uid = 2;
+        uint32 Gid = 3;
+        uint64 Size = 4;
+        uint64 ATime = 5;
+        uint64 MTime = 6;
+        uint64 CTime = 7;
+    }
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Update.
+    TUpdate Update = 5;
+
+    // Update flags.
+    uint32 Flags = 6;
+}
+
+message TSetNodeAttrResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node attributes.
+    TNodeAttr Node = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetNodeAttr request/response
+
+message TGetNodeAttrRequest
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+    }
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent.
+    uint64 NodeId = 3;
+
+    // Node.
+    bytes Name = 4;
+
+    // IO handle.
+    uint64 Handle = 5;
+
+    // Specifies information to get.
+    uint32 Flags = 6;
+}
+
+message TGetNodeAttrResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node attributes.
+    TNodeAttr Node = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetNodeXAttr request/response
+
+message TGetNodeXAttrRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // Attribute name.
+    bytes Name = 4;
+}
+
+message TGetNodeXAttrResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Attribute value.
+    bytes Value = 2;
+
+    // Version of set value.
+    uint64 Version = 3;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SetNodeXAttr request/response
+
+message TSetNodeXAttrRequest
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+        F_CREATE = 1;
+        F_REPLACE = 2;
+    }
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // Attribute name.
+    bytes Name = 4;
+
+    // Attribute value.
+    bytes Value = 5;
+
+    // Additional flags.
+    uint32 Flags = 6;
+}
+
+message TSetNodeXAttrResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Version of set value.
+    uint64 Version = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListNodeXAttr request/response
+
+message TListNodeXAttrRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+}
+
+message TListNodeXAttrResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Attribute names.
+    repeated bytes Names = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RemoveNodeXAttr request/response
+
+message TRemoveNodeXAttrRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // Attribute name.
+    bytes Name = 4;
+}
+
+message TRemoveNodeXAttrResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}

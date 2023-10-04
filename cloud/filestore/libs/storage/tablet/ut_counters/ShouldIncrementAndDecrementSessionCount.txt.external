@@ -1,0 +1,13 @@
+{
+    "download_link": "https://proxy.sandbox.yandex-team.ru/5053150855",
+    "file_name": "ShouldIncrementAndDecrementSessionCount.txt",
+    "md5": "4b431c4ba26ecf7de2518bb6bd441dc2",
+    "resource_id": 5053150855,
+    "resource_link": "https://sandbox.yandex-team.ru/resource/5053150855/view",
+    "skynet_id": "rbtorrent:3eeeaf6ae5e299d249f0224fdf8152056d222627",
+    "storage": "SANDBOX",
+    "task": {
+        "id": 1918694387,
+        "url": "https://sandbox.yandex-team.ru/api/v1.0/task/1918694387"
+    }
+}

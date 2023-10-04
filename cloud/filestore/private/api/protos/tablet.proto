@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/media.proto";
+import "cloud/filestore/public/api/protos/fs.proto";
+import "cloud/filestore/public/api/protos/headers.proto";
+
+package NCloud.NFileStore.NProtoPrivate;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// WaitReady request/response.
+
+message TWaitReadyRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TWaitReadyResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CreateSession request/response.
+
+message TCreateSessionRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Checkpoint to work with (read-only access to historic data).
+    string CheckpointId = 3;
+
+    // Restore session by client id.
+    bool RestoreClientSession = 4;
+
+    bool ReadOnly = 5;
+
+    uint64 MountSeqNumber = 6;
+}
+
+message TCreateSessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // SessionId (recovered or requested).
+    string SessionId = 2;
+
+    // Previous saved state if any.
+    bytes SessionState = 3;
+
+    // Filestore description.
+    NProto.TFileStore FileStore = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DestroySession request/response.
+
+message TDestroySessionRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TDestroySessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetStorageStats request/response.
+
+message TStorageStats
+{
+    // index stats
+    uint64 UsedNodesCount = 1;
+    uint64 UsedSessionsCount = 2;
+    uint64 UsedHandlesCount = 3;
+    uint64 UsedLocksCount = 4;
+    uint64 UsedBlocksCount = 5;
+
+    // data stats
+    uint64 FreshBlocksCount = 100;
+    uint64 MixedBlocksCount = 101;
+    uint64 MixedBlobsCount = 102;
+    uint64 DeletionMarkersCount = 103;
+    uint64 GarbageQueueSize = 104;
+    uint64 GarbageBlocksCount = 105;
+    uint64 CheckpointNodesCount = 106;
+    uint64 CheckpointBlocksCount = 107;
+    uint64 CheckpointBlobsCount = 108;
+    uint64 FreshBytesCount = 109;
+    uint64 AllocatedCompactionRanges = 110;
+    uint64 UsedCompactionRanges = 111;
+
+    // channel stats
+    uint64 TabletChannelCount = 1000;
+    uint64 ConfigChannelCount = 1001;
+
+    // tx stats
+    uint64 TxDeleteGarbageRwCompleted = 2000;
+}
+
+message TGetStorageStatsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TGetStorageStatsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Tablet stats.
+    TStorageStats Stats = 2;
+
+    // Storage media kind.
+    NCloud.NProto.EStorageMediaKind MediaKind = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetFileSystemConfig request/response.
+
+message TChannelProfile
+{
+    uint32 DataKind = 1;
+    string PoolKind = 2;
+}
+
+message TFileSystemConfig
+{
+    // Config version.
+    uint32 Version = 1;
+
+    // Filesystem identifier.
+    string FileSystemId = 2;
+
+    // Common  indentifiers.
+    string ProjectId = 3;
+    string FolderId = 4;
+    string CloudId = 5;
+
+    uint32 BlockSize = 6;
+    uint64 BlocksCount = 7;
+    uint32 NodesCount = 8;
+
+    repeated TChannelProfile ExplicitChannelProfiles = 9;
+
+    uint32 RangeIdHasherType = 10;
+
+    // Storage media kind.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 11;
+
+    // Performance profile, used for throttling.
+    NProto.TFileStorePerformanceProfile PerformanceProfile = 12;
+}
+
+message TGetFileSystemConfigRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TGetFileSystemConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Storage config.
+    TFileSystemConfig Config = 2;
+}

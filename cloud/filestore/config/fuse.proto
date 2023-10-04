@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFuseConfig
+{
+    // FileSystem identifier.
+    optional string FileSystemId = 1;
+
+    // Client identifier.
+    optional string ClientId = 2;
+
+    // Socket for the endpoint.
+    optional string SocketPath = 3;
+
+    // Mount options.
+    optional string MountPath = 4;
+    optional bool Debug = 6;
+    optional bool ReadOnly = 7;
+
+    // FileSystem generation.
+    optional uint64 MountSeqNumber = 8;
+
+    // Vhost queues count.
+    optional uint32 VhostQueuesCount = 9;
+
+    // Limits max single request length.
+    optional uint32 FuseMaxWritePages = 10;
+
+    // Keep attempts to acquire lock.
+    optional uint32 LockRetryTimeout = 11;
+
+    // Limits max requests allowed at a time.
+    optional uint32 FuseMaxBackground = 12;
+
+}

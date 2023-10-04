@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Filestore errors.
+
+enum EFilestoreStatus
+{
+    // according to rfc1813#section-2.6
+    E_FS_IO          = 0;
+    E_FS_PERM        = 1;
+    E_FS_NOENT       = 2;
+    E_FS_NXIO        = 3;
+    E_FS_ACCESS      = 4;
+    E_FS_EXIST       = 5;
+    E_FS_XDEV        = 6;
+    E_FS_NODEV       = 7;
+    E_FS_NOTDIR      = 8;
+    E_FS_ISDIR       = 9;
+    E_FS_INVAL       = 10;
+    E_FS_FBIG        = 11;
+    E_FS_NOSPC       = 12;
+    E_FS_ROFS        = 13;
+    E_FS_MLINK       = 14;
+    E_FS_NAMETOOLONG = 15;
+    E_FS_NOTEMPTY    = 16;
+    E_FS_DQUOT       = 17;
+    E_FS_STALE       = 18;
+    E_FS_REMOTE      = 19;
+    E_FS_BADHANDLE   = 20;
+    E_FS_NOTSUPP     = 21;
+
+    // rfc8276#section-8.3
+    E_FS_NOXATTR     = 22;
+    E_FS_XATTR2BIG   = 23;
+
+    // system errors
+    E_FS_WOULDBLOCK = 30;
+    E_FS_NOLCK      = 31;
+    E_FS_RANGE      = 32;
+
+    // extra errors
+    E_FS_INVALID_SESSION = 100;
+    E_FS_OUT_OF_SPACE = 101;
+    E_FS_THROTTLED = 102;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Filestore limits.
+
+enum EFilestoreLimits
+{
+    option allow_alias = true;
+
+    // Due to proto3 should start from 0.
+    E_FS_LIMITS_START = 0;
+
+    // Maximum number of links to a signle file.
+    E_FS_LIMITS_LINK = 65536;
+
+    // Maximum length of a name not including.
+    E_FS_LIMITS_NAME = 255;
+
+    // Maximum length of extended attribute name.
+    E_FS_LIMITS_XATTR_NAME = 255;
+
+    // Maximum length of a path not including.
+    E_FS_LIMITS_PATH = 4095;
+
+    // Maximum length of contents of a symlink.
+    E_FS_LIMITS_SYMLINK = 4095;
+
+    // Maximum length of extended attribute value.
+    E_FS_LIMITS_XATTR_VALUE = 65536;
+
+    // Until NBS-2979 it's limited to 300GB
+    E_FS_LIMITS_FILEBLOCKS = 78643200;
+
+    // Maximum number of inodes.
+    E_FS_LIMITS_INODES = -2; // 0xFFFFFFFE
+};

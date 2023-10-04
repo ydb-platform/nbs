@@ -1,0 +1,31 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFileSystemConfig
+{
+    // FileSystem identifier.
+    optional string FileSystemId = 1;
+
+    // Filesystem blocksize.
+    optional uint32 BlockSize = 2;
+
+    // Keep attempts to acquire lock.
+    optional uint32 LockRetryTimeout = 3;
+
+    // Inode entry timeout.
+    optional uint32 EntryTimeout = 4;
+    // Node attributes timeout.
+    optional uint32 AttrTimeout = 5;
+
+    // X Attrs cache limits
+    optional uint32 XAttrCacheLimit = 6;
+    optional uint32 XAttrCacheTimeout = 7;
+
+    // Filesystem max buffer size per request.
+    optional uint32 MaxBufferSize = 8;
+}

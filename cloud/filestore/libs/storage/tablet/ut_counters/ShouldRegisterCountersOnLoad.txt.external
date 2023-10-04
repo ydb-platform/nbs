@@ -1,0 +1,13 @@
+{
+    "download_link": "https://proxy.sandbox.yandex-team.ru/5053149956",
+    "file_name": "ShouldRegisterCountersOnLoad.txt",
+    "md5": "d4f082709cd823c8157cfbeb119e02f5",
+    "resource_id": 5053149956,
+    "resource_link": "https://sandbox.yandex-team.ru/resource/5053149956/view",
+    "skynet_id": "rbtorrent:e814ddf4bb1573644a4a12a7e276995b56ebbe5e",
+    "storage": "SANDBOX",
+    "task": {
+        "id": 1918694113,
+        "url": "https://sandbox.yandex-team.ru/api/v1.0/task/1918694113"
+    }
+}

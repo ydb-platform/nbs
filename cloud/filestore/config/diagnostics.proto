@@ -1,0 +1,61 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+import "cloud/storage/core/protos/trace.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiagnosticsConfig
+{
+    // For proper monpage link generation.
+    optional string BastionNameSuffix = 1;
+
+    // Solomon cluster name (e.g. yandexcloud_prod_vla).
+    optional string SolomonClusterName = 2;
+
+    // Solomon host url.
+    optional string SolomonUrl = 3;
+
+    // Project name in solomon.
+    optional string SolomonProject = 4;
+
+    // Monserver will listen on this port.
+    optional uint32 FilestoreMonPort = 5;
+
+    // The tracks of the requests whose processing time in ms exceeds these
+    // values have a chance to be logged.
+    optional uint32 HDDSlowRequestThreshold = 6;
+    optional uint32 SSDSlowRequestThreshold = 7;
+
+    // Sampling rate for request tracking.
+    optional uint32 SamplingRate = 8;
+
+    // Sampling rate for requests with processing time above "slow" threshold.
+    optional uint32 SlowRequestSamplingRate = 9;
+
+    // Dump profile log data every ProfileLogTimeThreshold ms.
+    optional uint32 ProfileLogTimeThreshold = 10;
+
+    // Unified agent endpoint
+    optional string TracesUnifiedAgentEndpoint = 11;
+
+    // Traces "syslog" identifier.
+    optional string TracesSyslogIdentifier = 12;
+
+    // Number of shuttles in lwtrace pool.
+    optional uint32 LWTraceShuttleCount = 13;
+
+    // The tracks of the requests whose processing time in ms exceeds
+    // corresponding values have a chance to be logged.
+    repeated NCloud.NProto.TLWTraceThreshold RequestThresholds = 14;
+
+    // Used to form path to file with cpu wait counters
+    optional string CpuWaitServiceName = 15;
+
+    // Aggregate and write metrics values in Metrics service to monlib counters
+    // every MetricsUpdateInterval ms.
+    optional uint32 MetricsUpdateInterval = 16;
+}

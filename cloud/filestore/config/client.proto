@@ -1,0 +1,65 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TClientConfig
+{
+    optional string Host = 1;
+    optional uint32 Port = 2;
+
+    optional uint32 RetryTimeout = 3;
+    optional uint32 RetryTimeoutIncrement = 4;
+
+    optional uint32 ThreadsCount = 5;
+
+    // Request timeout (in milliseconds).
+    optional uint32 RequestTimeout = 6;
+
+    // Max retry timeout in case of connection failure (in milliseconds).
+    optional uint32 ConnectionErrorMaxRetryTimeout = 7;
+
+    // Max message size for sending/receiving in bytes.
+    optional uint32 MaxMessageSize = 8;
+
+    optional uint32 MemoryQuotaBytes = 9;
+    optional uint32 GrpcThreadsLimit = 10;
+
+    optional uint32 GrpcReconnectBackoff = 11;
+
+    // Remote host secure control port (with TLS).
+    // If set, client will ignore Port and connect via SecurePort.
+    optional uint32 SecurePort = 12;
+
+    // TLS details.
+    optional string RootCertsFile = 13;
+    optional string CertFile = 14;
+    optional string CertPrivateKeyFile = 15;
+
+    // Token to use for authentication.
+    optional string AuthToken = 16;
+
+    // Skip server certificate verification
+    optional bool SkipCertVerification = 17;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TClientAppConfig
+{
+    optional TClientConfig ClientConfig = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSessionConfig
+{
+    optional string FileSystemId = 1;
+    optional string ClientId = 2;
+
+    optional uint32 SessionPingTimeout = 3;
+    optional uint32 SessionRetryTimeout = 4;
+}

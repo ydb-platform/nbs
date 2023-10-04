@@ -1,0 +1,300 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/media.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// FileStore information
+
+message TFileStore
+{
+    string FileSystemId = 1;
+
+    string ProjectId = 2;
+    string FolderId = 3;
+    string CloudId = 4;
+
+    uint32 BlockSize = 5;
+    uint64 BlocksCount = 6;
+
+    uint32 ConfigVersion = 7;
+
+    uint64 NodesCount = 8;
+    uint64 StorageMediaKind = 9;
+
+    // Performance profile, used for throttling.
+    TFileStorePerformanceProfile PerformanceProfile = 10;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// FileStore model
+
+message TFileStorePerformanceProfile
+{
+    // Iops.
+    uint32 MaxReadIops = 1;
+    uint32 MaxWriteIops = 2;
+
+    // Bytes per sec.
+    uint32 MaxReadBandwidth = 3;
+    uint32 MaxWriteBandwidth = 4;
+
+    // Max sum of all postponed requests weights (in bytes).
+    uint32 MaxPostponedWeight = 5;
+
+    // Max sum of delays for all postponed requests in buffer (in ms).
+    uint32 MaxPostponedTime = 6;
+
+    // Max count of postponed requests in buffer (not used now).
+    uint32 MaxPostponedCount = 7;
+
+    // Max time for working on boosted speed (in ms).
+    uint32 BoostTime = 8;
+
+    // Time for working on standard speed after which boost time completely
+    // refills (in ms).
+    uint32 BoostRefillTime = 9;
+
+    // Max percent of boost budget which can be spent for single request.
+    uint32 BoostPercentage = 10;
+
+    // Max percent of burst rate which can be spent for single request.
+    uint32 BurstPercentage = 11;
+
+    // Max multiplier for write requests (used for backpressure).
+    double MaxWriteCostMultiplier = 12;
+
+    // Default request weight (used for requests without payload).
+    uint32 DefaultPostponedRequestWeight = 13;
+
+    // Throttling enabled.
+    bool ThrottlingEnabled = 14;
+}
+
+message TFileStoreModel
+{
+    // Minimum addressable block size (smallest unit of I/O operations).
+    uint32 BlockSize = 1;
+
+    // Maximum number of blocks stored in filestore.
+    uint64 BlocksCount = 2;
+
+    // Number of user channels to store blobs.
+    uint32 ChannelsCount = 3;
+
+    // Storage media to use.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 4;
+
+    // Performance profile, used for throttling.
+    TFileStorePerformanceProfile PerformanceProfile = 5;
+}
+
+message TFileStoreStats
+{
+    uint64 UsedNodesCount = 1;
+    uint64 UsedBlocksCount = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// CreateFileStore request/response
+
+message TCreateFileStoreRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // File system identifier.
+    string FileSystemId = 2;
+
+    string ProjectId = 3;
+    string FolderId = 4;
+    string CloudId = 5;
+
+    uint32 BlockSize = 6;
+    uint64 BlocksCount = 7;
+
+    // Storage media to use.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 8;
+
+    // File system performance profile.
+    TFileStorePerformanceProfile PerformanceProfile = 9;
+}
+
+message TCreateFileStoreResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // FileStore information.
+    TFileStore FileStore = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DestroyFileStore request/response
+
+message TDestroyFileStoreRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TDestroyFileStoreResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AlterFileStore request/response
+
+message TAlterFileStoreRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Filestore to change.
+    string FileSystemId = 2;
+
+    // Owner information.
+    string ProjectId = 3;
+
+    // User folder Id, used for billing.
+    string FolderId = 4;
+
+    // Cloud Id, used for billing.
+    string CloudId = 5;
+
+    // Filesotre configuration version alter applies to.
+    uint32 ConfigVersion = 6;
+}
+
+message TAlterFileStoreResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ResizeFileStore request/response
+
+message TResizeFileStoreRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Filestore to change.
+    string FileSystemId = 2;
+
+    // Increased filestore size.
+    uint64 BlocksCount = 3;
+
+    // Filesotre configuration version resize applies to.
+    uint32 ConfigVersion = 4;
+
+    // File system performance profile.
+    TFileStorePerformanceProfile PerformanceProfile = 5;
+}
+
+message TResizeFileStoreResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetFileStoreInfo request/response
+
+message TGetFileStoreInfoRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TGetFileStoreInfoResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // FileStore information.
+    TFileStore FileStore = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListFileStore request/response
+
+message TListFileStoresRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TListFileStoresResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of stores names.
+    repeated string FileStores = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeFileStoreModel request/response
+
+message TDescribeFileStoreModelRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Minimum addressable block size (smallest unit of I/O operations).
+    uint32 BlockSize = 2;
+
+    // Maximum number of blocks stored in filestore.
+    uint64 BlocksCount = 3;
+
+    // Storage media to use.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 4;
+}
+
+message TDescribeFileStoreModelResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // FileStore model information.
+    TFileStoreModel FileStoreModel = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// StatFileStore request/response
+
+message TStatFileStoreRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TStatFileStoreResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // FileStore information.
+    TFileStore FileStore = 2;
+
+    // FileStore statistics.
+    TFileStoreStats Stats = 3;
+}

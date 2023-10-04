@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+import "cloud/filestore/config/client.proto";
+import "cloud/filestore/config/server.proto";
+import "cloud/storage/core/protos/endpoints.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TServiceEndpoint
+{
+    optional string Name = 1;
+    optional TClientConfig ClientConfig = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TVhostServiceConfig
+{
+    // Endpoints mapping.
+    repeated TServiceEndpoint ServiceEndpoints = 1;
+
+    // Endpoint storage options.
+    optional string RootKeyringName = 2;
+    optional string EndpointsKeyringName = 3;
+    optional bool RequireEndpointsKeyring = 4;
+    optional NCloud.NProto.EEndpointStorageType EndpointStorageType = 5;
+    optional string EndpointStorageDir = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TVhostAppConfig
+{
+    optional TServerConfig ServerConfig = 1;
+    optional TVhostServiceConfig VhostServiceConfig = 2;
+}

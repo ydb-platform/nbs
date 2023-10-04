@@ -1,0 +1,216 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/fs.proto";
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/trace.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Session information.
+
+message TSessionInfo
+{
+    // Unique session identifier (generated on the server-side).
+    string SessionId = 1;
+
+    // Session state if any set.
+    bytes SessionState = 2;
+
+    // Sequence number of created session.
+    uint64 SessionSeqNo = 3;
+
+    // Read/Write session
+    bool ReadOnly = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Session event description.
+
+message TSessionEvent
+{
+    message TNodeLinked
+    {
+        uint64 ParentNodeId = 1;
+        uint64 ChildNodeId = 2;
+        bytes Name = 3;
+    }
+
+    message TNodeUnlinked
+    {
+        uint64 ParentNodeId = 1;
+        uint64 ChildNodeId = 2;
+        bytes Name = 3;
+    }
+
+    enum ENodeChangeKind
+    {
+        NODE_ATTR_CHANGED = 0;
+        NODE_XATTR_CHANGED = 1;
+    }
+
+    message TNodeChanged
+    {
+        uint64 NodeId = 1;
+        uint32 Kind = 2;
+    }
+
+    // Event sequence number.
+    uint64 SeqNo = 1;
+
+    // Event data.
+    repeated TNodeLinked NodeLinked = 100;
+    repeated TNodeUnlinked NodeUnlinked = 101;
+    repeated TNodeChanged NodeChanged = 102;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CreateSession request/response
+
+message TCreateSessionRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Checkpoint to work with (read-only access to historic data).
+    string CheckpointId = 3;
+
+    // Restore previous client session.
+    bool RestoreClientSession = 4;
+
+    // Readonly mounting.
+    bool ReadOnly = 5;
+
+    // Mount sequence number received from StartEndpoint/KickEndpoint.
+    uint64 MountSeqNumber = 6;
+}
+
+message TCreateSessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Session information.
+    TSessionInfo Session = 2;
+
+    // Filestore description.
+    TFileStore FileStore = 3;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ResetSession request/response
+
+message TResetSessionRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // State data associated w the session.
+    bytes SessionState = 3;
+}
+
+message TResetSessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DestroySession request/response
+
+message TDestroySessionRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TDestroySessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PingSession request/response
+
+message TPingSessionRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TPingSessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SubscribeSession request/response
+
+message TSubscribeSessionRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // TODO
+}
+
+message TSubscribeSessionResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // TODO
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetSessionEvents request/response
+
+message TGetSessionEventsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Last known sequence number.
+    uint64 SeqNo = 3;
+}
+
+message TGetSessionEventsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Events occured on the server-side since last polling.
+    repeated TSessionEvent Events = 2;
+}

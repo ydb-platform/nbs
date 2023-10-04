@@ -1,0 +1,185 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TStorageConfig
+{
+    // Schemeshard directory for tablets.
+    optional string SchemeShardDir = 1;
+
+    // Number of reties before pipe client reports failure.
+    optional uint32 PipeClientRetryCount = 2;
+
+    // Minimum timeout before pipe client reconnect attempt.
+    optional uint32 PipeClientMinRetryTime = 3;
+
+    // Maximum timeout before pipe client reconnect attempt.
+    optional uint32 PipeClientMaxRetryTime = 4;
+
+    // Timeout before automatically removing session.
+    optional uint32 IdleSessionTimeout = 5;
+
+    // Timeout for establishing session.
+    optional uint32 EstablishSessionTimeout = 6;
+
+    // Write batching timeout.
+    optional bool WriteBatchEnabled = 7;
+
+    // Write batching timeout.
+    optional uint32 WriteBatchTimeout = 8;
+
+    // Minimum write request size (in bytes) that lets us write the data
+    // directly to blobstorage (as a mixed/merged blob).
+    optional uint32 WriteBlobThreshold = 9;
+
+    // The size of data (in bytes) in the fresh blocks table that triggers
+    // flushing.
+    optional uint32 FlushThreshold = 10;
+
+    // Backpressure thresholds.
+    optional uint32 CleanupThreshold = 11;
+    optional uint32 CompactionThreshold = 12;
+    optional uint32 CollectGarbageThreshold = 13;
+
+    // The size of data (in bytes) in the fresh bytes table that triggers
+    // flushing.
+    optional uint32 FlushBytesThreshold = 14;
+
+    // Size of allocation unit for HDD drives (in GiB).
+    optional uint32 AllocationUnitHDD = 15;
+
+    // Size of allocation unit for SSD drives (in GiB).
+    optional uint32 AllocationUnitSSD = 16;
+
+    // Channel configuration for HDD.
+    optional string HDDSystemChannelPoolKind = 17;
+    optional string HDDLogChannelPoolKind = 18;
+    optional string HDDIndexChannelPoolKind = 19;
+    optional string HDDFreshChannelPoolKind = 20;
+    optional string HDDMixedChannelPoolKind = 21;
+
+    // Channel configuration for SSD.
+    optional string SSDSystemChannelPoolKind = 22;
+    optional string SSDLogChannelPoolKind = 23;
+    optional string SSDIndexChannelPoolKind = 24;
+    optional string SSDFreshChannelPoolKind = 25;
+    optional string SSDMixedChannelPoolKind = 26;
+
+    // Performance per allocation unit for HDD.
+    optional uint32 HDDUnitReadBandwidth = 27;    // in MiB/s
+    optional uint32 HDDUnitWriteBandwidth = 28;   // in MiB/s
+    optional uint32 HDDMaxReadBandwidth = 29;     // in MiB/s
+    optional uint32 HDDMaxWriteBandwidth = 30;    // in MiB/s
+    optional uint32 HDDUnitReadIops = 31;
+    optional uint32 HDDUnitWriteIops = 32;
+    optional uint32 HDDMaxReadIops = 33;
+    optional uint32 HDDMaxWriteIops = 34;
+
+    // Performance per allocation unit for SSD.
+    optional uint32 SSDUnitReadBandwidth = 35;    // in MiB/s
+    optional uint32 SSDUnitWriteBandwidth = 36;   // in MiB/s
+    optional uint32 SSDMaxReadBandwidth = 37;     // in MiB/s
+    optional uint32 SSDMaxWriteBandwidth = 38;    // in MiB/s
+    optional uint32 SSDUnitReadIops = 39;
+    optional uint32 SSDUnitWriteIops = 40;
+    optional uint32 SSDMaxReadIops = 41;
+    optional uint32 SSDMaxWriteIops = 42;
+
+    // Minumal channels count for the tablet configuration.
+    optional uint32 MinChannelCount = 43;
+
+    // Maximum number of bytes in response.
+    optional uint32 MaxResponseBytes = 44;
+
+    // Channel configuration for Hybrid.
+    optional string HybridSystemChannelPoolKind = 45;
+    optional string HybridLogChannelPoolKind = 46;
+    optional string HybridIndexChannelPoolKind = 47;
+    optional string HybridFreshChannelPoolKind = 48;
+    optional string HybridMixedChannelPoolKind = 49;
+
+    // Override storage media kind for too slow HDD.
+    optional uint32 HDDMediaKindOverride = 50;
+
+    // Nodes limit & ratio for the filesystem.
+    optional uint32 DefaultNodesLimit = 51;
+    optional uint32 SizeToNodesRatio = 52;
+
+    // Do not allow to start tablets on specific nodes.
+    optional bool DisableLocalService = 53;
+
+    // Number of last request ids kept per session for deduplicate cache.
+    optional uint32 DupCacheEntryCount = 54;
+
+    // Process no more than this number of new/garbage blobs per one
+    // DeleteGarbage tx.
+    optional uint32 MaxDeleteGarbageBlobsPerTx = 55;
+
+    // Do run CollectGarbage at start.
+    optional bool EnableCollectGarbageAtStart = 56;
+
+    // Enables persistent backup for tablet boot infos.
+    optional string TabletBootInfoBackupFilePath = 57;
+    // In fallback mode, all requests to Hive are served from cache.
+    optional bool HiveProxyFallbackMode = 58;
+
+    // Thresholds which enable backpressure.
+    optional uint32 FlushThresholdForBackpressure = 59;
+    optional uint32 CleanupThresholdForBackpressure = 60;
+    optional uint32 CompactionThresholdForBackpressure = 61;
+    optional uint32 FlushBytesThresholdForBackpressure = 62;
+
+    // Threshold for blob size in bytes.
+    optional uint32 MaxBlobSize = 63;
+
+    // Enable file system throttling.
+    optional bool ThrottlingEnabled = 64;
+
+    // Max blocks count for a single truncate tx.
+    optional uint32 MaxBlocksPerTruncateTx = 65;
+    optional uint32 MaxTruncateTxInflight = 66;
+
+    // Maximum number of entries in response.
+    optional uint32 MaxResponseEntries = 67;
+
+    // Performance profile configuration for SSD.
+    optional bool SSDThrottlingEnabled = 68;
+    optional uint32 SSDBoostTime = 69;         // in ms
+    optional uint32 SSDBoostRefillTime = 70;   // in ms
+    optional uint32 SSDUnitBoost = 71;
+    optional uint32 SSDBurstPercentage = 72;
+    optional uint32 SSDDefaultPostponedRequestWeight = 73;
+    optional uint32 SSDMaxPostponedWeight = 74;
+    optional uint32 SSDMaxWriteCostMultiplier = 75;
+    optional uint32 SSDMaxPostponedTime = 76;   // in ms
+    optional uint32 SSDMaxPostponedCount = 77;
+
+    // Performance profile configuration for HDD.
+    optional bool HDDThrottlingEnabled = 78;
+    optional uint32 HDDBoostTime = 79;         // in ms
+    optional uint32 HDDBoostRefillTime = 80;   // in ms
+    optional uint32 HDDUnitBoost = 81;
+    optional uint32 HDDBurstPercentage = 82;
+    optional uint32 HDDDefaultPostponedRequestWeight = 83;
+    optional uint32 HDDMaxPostponedWeight = 84;
+    optional uint32 HDDMaxWriteCostMultiplier = 85;
+    optional uint32 HDDMaxPostponedTime = 86;   // in ms
+    optional uint32 HDDMaxPostponedCount = 87;
+
+    // Timeout in between forced range compaction attempts.
+    optional uint32 CompactionRetryTimeout = 88;   // in ms
+
+    // Min percentage of reassignable channels after which reassign requests
+    // are sent.
+    optional uint32 ReassignChannelsPercentageThreshold = 89;
+
+    optional uint32 CpuLackThreshold = 90;
+
+    // Tenant hive tablet id different from root to be used by hive proxy.
+    // Should be configured once and for the lifetime of the cluster.
+    optional uint64 TenantHiveTabletId = 329;
+}

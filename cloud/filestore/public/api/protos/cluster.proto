@@ -1,0 +1,215 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Cluster node information
+
+message TClusterNode
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+
+        // Is this server online and joined cluster successfully?
+        F_ONILNE = 1;
+
+        // Does this server have clients from the previous epoch that will require recovery?
+        F_NEED_RECOVERY = 2;
+
+        // Is this server enforcing the grace period by refusing non-reclaim locks?
+        F_GRACE_ENFORCING = 3;
+    }
+
+    // Cluster node identifier.
+    string NodeId = 1;
+
+    // State flags.
+    uint32 Flags = 2;
+
+    // Number of clients connected.
+    uint32 Clients = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Cluster client information
+
+message TClusterClient
+{
+    // Cluster client identifier.
+    string ClientId = 1;
+
+    // Some data attached to the client.
+    bytes Opaque = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AddClusterNode request/response
+
+message TAddClusterNodeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Cluster node identifier.
+    string NodeId = 3;
+}
+
+message TAddClusterNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RemoveClusterNode request/response
+
+message TRemoveClusterNodeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Cluster node identifier.
+    string NodeId = 3;
+}
+
+message TRemoveClusterNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListClusterNodes request/response
+
+message TListClusterNodesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TListClusterNodesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Cluster nodes.
+    repeated TClusterNode Nodes = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AddClusterClients request/response
+
+message TAddClusterClientsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Cluster node identifier.
+    string NodeId = 3;
+
+    // Clients to add.
+    repeated TClusterClient Clients = 4;
+}
+
+message TAddClusterClientsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RemoveClusterClients request/response
+
+message TRemoveClusterClientsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Cluster node identifier.
+    string NodeId = 3;
+
+    // Client identifiers to remove.
+    repeated string ClientIds = 4;
+}
+
+message TRemoveClusterClientsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListClusterClients request/response
+
+message TListClusterClientsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Cluster node identifier.
+    string NodeId = 3;
+}
+
+message TListClusterClientsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Clients found.
+    repeated TClusterClient Clients = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UpdateCluster request/response
+
+message TUpdateClusterRequest
+{
+    enum EUpdate
+    {
+        E_START_GRACE = 0;
+        E_STOP_GRACE = 1;
+        E_JOIN_GRACE = 2;
+    };
+
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Cluster node identifier.
+    string NodeId = 3;
+
+    // Update request.
+    uint32 Update = 4;
+}
+
+message TUpdateClusterResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

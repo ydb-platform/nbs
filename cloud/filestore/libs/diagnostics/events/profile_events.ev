@@ -1,0 +1,94 @@
+option optimize_for = SPEED;
+
+import "library/cpp/eventlog/proto/events_extension.proto";
+
+package NCloud.NFileStore.NProto;
+
+message TProfileLogBlockRange {
+    option (message_id) = 3;
+
+    optional uint64 NodeId = 1;
+    optional uint64 Handle = 2;
+    optional uint64 Offset = 3;
+    optional uint64 Bytes = 4;
+};
+
+message TProfileLogNodeInfo {
+    option (message_id) = 4;
+
+    // from request
+    optional uint64 ParentNodeId = 1;
+    optional string NodeName = 2;
+    optional uint64 NewParentNodeId = 3;
+    optional string NewNodeName = 4;
+    optional uint32 Flags = 5;
+    optional uint32 Mode = 6;
+
+    // from response
+    optional uint64 NodeId = 7;
+    optional uint64 Handle = 8;
+    optional uint64 Size = 9;
+};
+
+message TProfileLogLockInfo {
+    option (message_id) = 5;
+
+    // from request
+    optional uint64 NodeId = 1;
+    optional uint64 Handle = 2;
+    optional uint64 Owner = 3;
+    optional uint64 Offset = 4;
+    optional uint64 Length = 5;
+    optional uint32 Type = 6;
+
+    // from response
+    optional uint64 ConflictedOwner = 7;
+    optional uint64 ConflictedOffset = 8;
+    optional uint64 ConflictedLength = 9;
+    optional uint32 ConflictedLockType = 10;
+    optional int32 ConflictedPid = 11;
+
+    // from request
+    optional int32 Pid = 12;
+    optional uint32 Origin = 13;
+};
+
+message TProfileLogBlobInfo {
+    option (message_id) = 6;
+
+    optional uint64 CommitId = 1;
+    optional uint64 Unique = 2;
+    repeated TProfileLogBlockRange Ranges = 3;
+};
+
+message TProfileLogCompactionRangeInfo {
+    option (message_id) = 7;
+
+    optional uint64 CommitId = 1;
+    optional uint64 RangeId = 2;
+    optional uint64 BlobsCount = 3;
+    optional uint64 DeletionsCount = 4;
+};
+
+message TProfileLogRequestInfo {
+    option (message_id) = 1;
+
+    optional uint64 TimestampMcs = 1;
+    optional uint64 DurationMcs = 2;
+    optional uint32 RequestType = 3;
+    optional uint32 ErrorCode = 4;
+
+    repeated TProfileLogBlockRange Ranges = 5;
+    optional TProfileLogNodeInfo NodeInfo = 6;
+    optional TProfileLogLockInfo LockInfo = 7;
+
+    repeated TProfileLogBlobInfo BlobsInfo = 8;
+    repeated TProfileLogCompactionRangeInfo CompactionRanges = 9;
+};
+
+message TProfileLogRecord {
+    option (message_id) = 2;
+
+    optional string FileSystemId = 1;
+    repeated TProfileLogRequestInfo Requests = 2;
+};
