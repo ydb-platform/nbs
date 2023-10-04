@@ -149,8 +149,10 @@ public:
     {
         SchemeClient.reset();
         Client.reset();
-        Driver->Stop(true);
-        Driver.reset();
+        if (Driver) {
+            Driver->Stop(true);
+            Driver.reset();
+        }
     }
 
 private:
