@@ -1,10 +1,10 @@
-#include <concurrent_hash.h>
+#include "concurrent_hash.h"
 
 #include <library/cpp/testing/unittest/gtest.h>
 
 #include <util/generic/noncopyable.h>
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
+#include <util/string/cast.h>
 
 TEST(TConcurrentHashTest, TEmptyGetTest) {
     TConcurrentHashMap<TString, ui32> h;
@@ -143,4 +143,15 @@ TEST(TConcurrentHashTest, TRemoveTest) {
     EXPECT_FALSE(h.Has("key2"));
     EXPECT_FALSE(h.Has("key3"));
     EXPECT_EQ(h.Get("key1"), 1);
+}
+
+TEST(TConcurrentHashTest, TGetBucketTest) {
+    TConcurrentHashMap<TString, ui32> h;
+
+    for (int i = 0; i < 100; ++i) {
+        TString key = ToString(i);
+        auto& bucket1 = h.GetBucketForKey(key);
+        auto& bucket2 = h.GetBucketForKey(TStringBuf(key));
+        EXPECT_EQ(&bucket1, &bucket2);
+    }
 }
