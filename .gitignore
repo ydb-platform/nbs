@@ -1,14 +1,14 @@
 .git
 example/
-cloud/blockstore/apps/client/blockstore-client
-cloud/blockstore/apps/disk_agent/diskagentd
-cloud/blockstore/apps/server/nbsd
-cloud/blockstore/tools/nbd/blockstore-nbd
+./cloud/blockstore/apps/client/blockstore-client
+./cloud/blockstore/apps/disk_agent/diskagentd
+./cloud/blockstore/apps/server/nbsd
+./cloud/blockstore/tools/nbd/blockstore-nbd
 cmake-build-debug-system/*
 cmake-build-debug/*
 cmake.*
-build/
-.idea/*
+./build/
+./.idea/*
 
 
 *.cmake

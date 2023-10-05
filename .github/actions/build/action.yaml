@@ -1,0 +1,30 @@
+name: Build NBS
+description: Build NBS
+runs:
+  using: "composite"
+  steps:
+    - name: Build
+      shell: bash
+      run: |
+        export CONAN_USER_HOME=`realpath ..`
+        export CCACHE_BASEDIR=`realpath ..`
+        export CCACHE_SLOPPINESS=locale
+        export CCACHE_REMOTE_STORAGE="http://cachesrv.ydb.tech:8080|read-only|layout=bazel"
+
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DCCACHE_PATH=/usr/local/bin/ccache \
+          -DCMAKE_TOOLCHAIN_FILE=clang.toolchain \
+          .
+        ninja
+        ccache -s
+        df -h
+    - name: report Build failed
+      if: ${{ failure() }}
+      shell: bash
+      run: |
+        echo "# Build failed" >> $GITHUB_STEP_SUMMARY
+    - name: report Build cancelled
+      if: ${{ cancelled() }}
+      shell: bash
+      run: |
+        echo "# Build cancelled" >> $GITHUB_STEP_SUMMARY
