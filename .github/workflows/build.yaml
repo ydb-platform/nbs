@@ -1,6 +1,7 @@
 name: Build NBS Binaries
 
 on:
+  workflow_dispatch:
   push:
     branches: [ $default-branch ]
   pull_request:
