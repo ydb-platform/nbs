@@ -4674,6 +4674,29 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto& partition = *partitionWithRuntime.Partition;
         partition.WaitReady();
 
+        {
+            auto response = partition.GetChangedBlocks(
+                TBlockRange32::WithLength(0, 1024),
+                "",
+                "",
+                false);
+
+            UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
+            UNIT_ASSERT_VALUES_EQUAL(char(0b10111111), response->Record.GetMask()[0]);
+            UNIT_ASSERT_VALUES_EQUAL(char(0b00000011), response->Record.GetMask()[1]);
+        }
+        {
+            auto response = partition.GetChangedBlocks(
+                TBlockRange32::WithLength(0, 1024),
+                "",
+                "",
+                true);
+
+            UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetMask()[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetMask()[1]);
+        }
+
         partition.WriteBlocks(0, 1);
         partition.WriteBlocks(1, 1);
         partition.CreateCheckpoint("cp1");
