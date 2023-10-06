@@ -230,8 +230,9 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
     } else {
-        auto error =
-            MakeError(E_REJECTED, "TReadBlobActor::HandleGetResult failed");
+        auto error = MakeError(
+            E_CANCELLED,
+            "failed to acquire sglist in ReadBlobActor");
         ReplyAndDie(ctx, std::make_unique<TResponse>(error));
         return;
     }
