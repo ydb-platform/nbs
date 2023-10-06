@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    authorizer.cpp
     hive_proxy.cpp
     user_stats.cpp
 )

@@ -284,8 +284,8 @@ TDuration MSeconds(ui32 value)
     xxx(StatsUploadInterval,           TDuration, Seconds(0)                  )\
                                                                                \
     xxx(AuthorizationMode,                                                     \
-            NProto::EAuthorizationMode,                                        \
-            NProto::AUTHORIZATION_IGNORE                                      )\
+            NCloud::NProto::EAuthorizationMode,                                \
+            NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(MaxThrottlerDelay,             TDuration, Seconds(25)                 )\
                                                                                \
@@ -534,57 +534,23 @@ bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
 
 IOutputStream& operator <<(
     IOutputStream& out,
-    NProto::EAuthorizationMode mode)
+    NCloud::NProto::EAuthorizationMode mode)
 {
-    switch (mode) {
-        case NProto::AUTHORIZATION_ACCEPT:
-            return out << "AUTHORIZATION_ACCEPT";
-        case NProto::AUTHORIZATION_REQUIRE:
-            return out << "AUTHORIZATION_REQUIRE";
-        case NProto::AUTHORIZATION_IGNORE:
-            return out << "AUTHORIZATION_IGNORE";
-        default:
-            return out
-                << "(Unknown EAuthorizationMode value "
-                << (int)mode
-                << ")";
-    }
+    return out << EAuthorizationMode_Name(mode);
 }
 
 IOutputStream& operator <<(
     IOutputStream& out,
     NProto::ECompactionType ct)
 {
-    switch (ct) {
-        case NProto::CT_DEFAULT:
-            return out << "CT_DEFAULT";
-        case NProto::CT_LOAD:
-            return out << "CT_LOAD";
-        default:
-            return out
-                << "(Unknown ECompactionType value "
-                << (int)ct
-                << ")";
-    }
+    return out << ECompactionType_Name(ct);
 }
 
 IOutputStream& operator <<(
     IOutputStream& out,
     NProto::EVolumePreemptionType pt)
 {
-    switch (pt) {
-        case NProto::PREEMPTION_NONE:
-            return out << "PREEMPTION_NONE";
-        case NProto::PREEMPTION_MOVE_MOST_HEAVY:
-            return out << "PREEMPTION_MOVE_MOST_HEAVY";
-        case NProto::PREEMPTION_MOVE_LEAST_HEAVY:
-            return out << "PREEMPTION_MOVE_LEAST_HEAVY";
-        default:
-            return out
-                << "(Unknown EVolumePreemptionType value "
-                << (int)pt
-                << ")";
-    }
+    return out << EVolumePreemptionType_Name(pt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

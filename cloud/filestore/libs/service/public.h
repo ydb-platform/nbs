@@ -29,4 +29,7 @@ using IFileStoreEndpointsPtr = std::shared_ptr<IFileStoreEndpoints>;
 struct IEndpointManager;
 using IEndpointManagerPtr = std::shared_ptr<IEndpointManager>;
 
+struct IAuthProvider;
+using IAuthProviderPtr = std::shared_ptr<IAuthProvider>;
+
 }   // namespace NCloud::NFileStore

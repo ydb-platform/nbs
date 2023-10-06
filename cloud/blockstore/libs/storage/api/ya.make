@@ -1,7 +1,6 @@
 LIBRARY()
 
 SRCS(
-    authorizer.cpp
     bootstrapper.cpp
     disk_agent.cpp
     disk_registry.cpp

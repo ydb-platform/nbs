@@ -75,6 +75,14 @@
         GROUPS("NFSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
         NAMES("name", "requestId"))                                            \
+    PROBE(AuthRequestSent_Proxy,                                               \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES("requestType", "requestId"))                                     \
+    PROBE(AuthResponseReceived_Proxy,                                          \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES("requestType", "requestId"))                                     \
 // FILESTORE_STORAGE_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(FILESTORE_STORAGE_PROVIDER)

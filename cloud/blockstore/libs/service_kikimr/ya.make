@@ -15,6 +15,8 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
 
+    cloud/storage/core/libs/auth
+
     library/cpp/actors/core
 )
 

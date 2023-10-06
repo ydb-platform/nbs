@@ -7,6 +7,7 @@ PEERDIR(
 )
 
 SRCS(
+    authorization_mode.proto
     certificate.proto
     endpoints.proto
     error.proto

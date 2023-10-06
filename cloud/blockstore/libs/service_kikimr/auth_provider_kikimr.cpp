@@ -1,12 +1,15 @@
 #include "auth_provider_kikimr.h"
 
+#include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/auth_provider.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
-#include <cloud/blockstore/libs/storage/api/authorizer.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+
+#include <cloud/storage/core/libs/api/authorizer.h>
+#include <cloud/storage/core/libs/auth/authorizer.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/log.h>
@@ -18,7 +21,8 @@ namespace {
 using namespace NActors;
 using namespace NThreading;
 
-using namespace NCloud::NBlockStore::NStorage;
+using namespace NCloud::NStorage;
+using namespace NCloud::NBlockStore;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -93,7 +97,6 @@ private:
             << " authorizing request");
 
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-            CallContext,
             std::move(AuthToken),
             std::move(Permissions));
 

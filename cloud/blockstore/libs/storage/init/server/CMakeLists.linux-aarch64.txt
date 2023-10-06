@@ -21,7 +21,6 @@ target_link_libraries(storage-init-server PUBLIC
   libs-rdma-iface
   libs-spdk-iface
   libs-storage-api
-  libs-storage-auth
   libs-storage-core
   libs-storage-disk_agent
   storage-disk_agent-model
@@ -39,6 +38,7 @@ target_link_libraries(storage-init-server PUBLIC
   libs-storage-volume_balancer
   libs-storage-volume_proxy
   core-libs-api
+  core-libs-auth
   core-libs-diagnostics
   core-libs-hive_proxy
   core-libs-kikimr

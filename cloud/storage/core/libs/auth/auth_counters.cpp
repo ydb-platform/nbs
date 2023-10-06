@@ -1,15 +1,17 @@
 #include "auth_counters.h"
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAuthCounters::TAuthCounters(TDynamicCounterPtr counters)
+TAuthCounters::TAuthCounters(
+    TDynamicCounterPtr counters,
+    TString counterId)
 {
     auto group = counters
-        ->GetSubgroup("counters", "blockstore")
+        ->GetSubgroup("counters", counterId)
         ->GetSubgroup("component", "auth");
 
     for (int i = 0; i < (int)EAuthorizationStatus::MAX; ++i) {
@@ -23,4 +25,4 @@ void TAuthCounters::ReportAuthorizationStatus(EAuthorizationStatus status)
     AuthorizationStatusCounters[(int)status]->Inc();
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage

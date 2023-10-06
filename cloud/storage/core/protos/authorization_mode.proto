@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+package NCloud.NProto;
+
+option java_package = "ru.yandex.cloud.storage.proto";
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EAuthorizationMode
+{
+    // All requests are allowed. Authorization failures are not reported.
+    AUTHORIZATION_IGNORE = 0;
+    // Requests when authorizer is disabled and requests with empty token are
+    // allowed but reported. Other authorization failures fail requests.
+    AUTHORIZATION_ACCEPT = 1;
+    // All authorization failures fail requests.
+    AUTHORIZATION_REQUIRE = 2;
+}

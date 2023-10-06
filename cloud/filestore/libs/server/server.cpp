@@ -187,8 +187,7 @@ void ValidateRequest(
         RequestSourceKinds);
 
     if (source.Empty()) {
-        ythrow TServiceError(E_ARGUMENT)
-            << "Request came from unknown request source";
+        *source = NProto::SOURCE_FD_DATA_CHANNEL;
     }
 
     if (headers.HasInternal()) {

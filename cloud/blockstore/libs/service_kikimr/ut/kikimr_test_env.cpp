@@ -1,7 +1,9 @@
 #include "kikimr_test_env.h"
 
-#include <cloud/blockstore/libs/storage/api/authorizer.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+
+#include <cloud/storage/core/libs/api/authorizer.h>
+#include <cloud/storage/core/libs/auth/authorizer.h>
 
 #include <ydb/core/testlib/tablet_helpers.h>
 
@@ -11,7 +13,8 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NMonitoring;
 
-using namespace NCloud::NBlockStore::NStorage;
+using namespace NCloud::NBlockStore;
+using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -2,21 +2,21 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/kikimr/components.h>
-#include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/service/auth_scheme.h>
+#include <cloud/storage/core/libs/kikimr/components.h>
+#include <cloud/storage/core/libs/kikimr/events.h>
+#include <cloud/storage/core/libs/auth/auth_scheme.h>
 
 #include <library/cpp/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_AUTH_REQUESTS(xxx, ...)                                     \
+#define STORAGE_AUTH_REQUESTS(xxx, ...)                                        \
     xxx(Authorization,   __VA_ARGS__)                                          \
-// BLOCKSTORE_AUTH_REQUESTS
+// STORAGE_AUTH_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -49,7 +49,7 @@ struct TEvAuth
 
     enum EEvents
     {
-        EvBegin = TBlockStoreEvents::AUTH_START,
+        EvBegin = TStorageEvents::AUTH_START,
 
         EvAuthorizationRequest = EvBegin + 1,
         EvAuthorizationResponse = EvBegin + 2,
@@ -57,14 +57,14 @@ struct TEvAuth
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::AUTH_END,
-        "EvEnd expected to be < TBlockStoreEvents::AUTH_END");
+    static_assert(EvEnd < (int)TStorageEvents::AUTH_END,
+        "EvEnd expected to be < TStorageEvents::AUTH_END");
 
-    BLOCKSTORE_AUTH_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
+    STORAGE_AUTH_REQUESTS(STORAGE_DECLARE_EVENTS)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::TActorId MakeAuthorizerServiceId();
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage

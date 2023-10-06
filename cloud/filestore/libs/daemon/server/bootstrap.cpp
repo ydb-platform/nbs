@@ -11,6 +11,8 @@
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/service_auth.h>
+#include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
@@ -126,6 +128,12 @@ void TBootstrapServer::InitKikimrService()
 {
     Y_VERIFY(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
     Service = CreateKikimrFileStore(ActorSystem);
+
+    Service = CreateAuthService(
+        std::move(Service),
+        CreateKikimrAuthProvider(ActorSystem));
+
+    STORAGE_INFO("AuthService initialized");
 }
 
 void TBootstrapServer::InitLocalService()

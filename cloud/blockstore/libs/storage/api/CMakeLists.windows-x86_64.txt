@@ -21,7 +21,6 @@ target_link_libraries(libs-storage-api PUBLIC
   ydb-core-protos
 )
 target_sources(libs-storage-api PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/api/authorizer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/api/bootstrapper.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/api/disk_agent.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/api/disk_registry.cpp

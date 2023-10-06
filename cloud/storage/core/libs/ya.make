@@ -2,6 +2,7 @@ RECURSE(
     actors
     aio
     api
+    auth
     common
     coroutine
     daemon

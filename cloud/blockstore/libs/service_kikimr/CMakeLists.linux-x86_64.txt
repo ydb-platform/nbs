@@ -20,6 +20,7 @@ target_link_libraries(blockstore-libs-service_kikimr PUBLIC
   blockstore-libs-service
   libs-storage-api
   libs-storage-core
+  core-libs-auth
   cpp-actors-core
 )
 target_sources(blockstore-libs-service_kikimr PRIVATE

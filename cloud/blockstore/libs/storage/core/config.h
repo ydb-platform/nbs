@@ -235,7 +235,7 @@ public:
 
     TDuration GetStatsUploadInterval() const;
 
-    NProto::EAuthorizationMode GetAuthorizationMode() const;
+    NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     TString GetHDDSystemChannelPoolKind() const;
     TString GetHDDLogChannelPoolKind() const;

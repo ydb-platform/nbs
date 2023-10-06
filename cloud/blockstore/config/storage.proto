@@ -2,20 +2,9 @@ syntax = "proto2";
 
 package NCloud.NBlockStore.NProto;
 
+import "cloud/storage/core/protos/authorization_mode.proto";
+
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
-
-////////////////////////////////////////////////////////////////////////////////
-
-enum EAuthorizationMode
-{
-    // All requests are allowed. Authorization failures are not reported.
-    AUTHORIZATION_IGNORE = 0;
-    // Requests when authorizer is disabled and requests with empty token are
-    // allowed but reported. Other authorization failures fail requests.
-    AUTHORIZATION_ACCEPT = 1;
-    // All authorization failures fail requests.
-    AUTHORIZATION_REQUIRE = 2;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -197,7 +186,7 @@ message TStorageServiceConfig
     optional uint32 HDDMaxReadIops = 60;
     optional uint32 HDDMaxWriteIops = 61;
 
-    optional EAuthorizationMode AuthorizationMode = 62;
+    optional NCloud.NProto.EAuthorizationMode AuthorizationMode = 62;
 
     // Throttler postpone/reject threshold in milliseconds.
     optional uint32 MaxThrottlerDelay = 63;

@@ -7,7 +7,6 @@
 
 
 add_subdirectory(api)
-add_subdirectory(auth)
 add_subdirectory(bootstrapper)
 add_subdirectory(core)
 add_subdirectory(disk_agent)

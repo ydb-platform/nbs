@@ -15,8 +15,10 @@
 #include <cloud/filestore/libs/storage/tablet/tablet.h>
 #include <cloud/filestore/libs/storage/tablet_proxy/tablet_proxy.h>
 
+#include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/api/user_stats.h>
+#include <cloud/storage/core/libs/auth/authorizer.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -151,6 +153,24 @@ public:
                 storageUserStats.release(),
                 TMailboxType::Revolving,
                 appData->BatchPoolId));
+
+        //
+        // Authorizer
+        //
+
+        auto authorizer = CreateAuthorizerActor(
+            TFileStoreComponents::AUTH,
+            "filestore",
+            Args.StorageConfig->GetFolderId(),
+            Args.StorageConfig->GetAuthorizationMode(),
+            Args.AppConfig->HasAuthConfig());
+
+        setup->LocalServices.emplace_back(
+            MakeAuthorizerServiceId(),
+            TActorSetupCmd(
+                authorizer.release(),
+                TMailboxType::Revolving,
+                appData->UserPoolId));
     }
 };
 

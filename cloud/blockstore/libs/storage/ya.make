@@ -1,6 +1,5 @@
 RECURSE(
     api
-    auth
     bootstrapper
     core
     disk_agent

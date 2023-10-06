@@ -11,7 +11,6 @@ PEERDIR(
     cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/api
-    cloud/blockstore/libs/storage/auth
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent
     cloud/blockstore/libs/storage/disk_agent/model
@@ -30,6 +29,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/volume_proxy
 
     cloud/storage/core/libs/api
+    cloud/storage/core/libs/auth
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr

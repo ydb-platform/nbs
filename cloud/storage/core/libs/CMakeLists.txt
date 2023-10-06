@@ -9,6 +9,7 @@
 add_subdirectory(actors)
 add_subdirectory(aio)
 add_subdirectory(api)
+add_subdirectory(auth)
 add_subdirectory(common)
 add_subdirectory(coroutine)
 add_subdirectory(daemon)

@@ -1,12 +1,10 @@
 #include "authorizer.h"
 
 #include "auth_counters.h"
+#include "auth_scheme.h"
 
-#include <cloud/blockstore/config/server.pb.h>
-#include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/service/auth_scheme.h>
-#include <cloud/blockstore/libs/storage/api/authorizer.h>
-#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/storage/core/libs/kikimr/helpers.h>
+#include <cloud/storage/core/libs/api/authorizer.h>
 
 #include <ydb/core/base/appdata.h>
 #include <ydb/core/base/ticket_parser.h>
@@ -20,7 +18,7 @@
 #include <util/stream/output.h>
 #include <util/string/builder.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
@@ -158,11 +156,10 @@ bool PermissionsMatch(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<std::pair<TString, TString>> GetAttributesFromConfig(
-    const TStorageConfigPtr& storageConfig)
+TVector<std::pair<TString, TString>> BuildAttributes(const TString& folderId)
 {
     TVector<std::pair<TString, TString>> result;
-    if (const auto& value = storageConfig->GetFolderId()) {
+    if (const auto& value = folderId) {
         result.emplace_back("folder_id", value);
     }
     result.emplace_back("database_id", DatabaseId);
@@ -175,6 +172,7 @@ class TRequestPermissionsActor final
     : public TActorBootstrapped<TRequestPermissionsActor>
 {
 private:
+    const int Component;
     const ui64 RequestId;
     const TString Token;
     const TVector<TString> Permissions;
@@ -184,25 +182,27 @@ private:
 
 public:
     TRequestPermissionsActor(
+            int component,
             ui64 requestId,
             TString token,
             TVector<TString> permissions,
             TVector<std::pair<TString, TString>> attributes,
             IEventHandlePtr originalRequest,
             TAuthCountersPtr counters)
-        : RequestId(requestId)
+        : Component(component)
+        , RequestId(requestId)
         , Token(std::move(token))
         , Permissions(std::move(permissions))
         , Attributes(std::move(attributes))
         , OriginalRequest(std::move(originalRequest))
         , Counters(std::move(counters))
     {
-        TThis::ActivityType = TBlockStoreActivities::AUTH;
+        TThis::ActivityType = TStorageActivities::AUTH;
     }
 
     void Bootstrap(const TActorContext& ctx)
     {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::AUTH,
+        LOG_DEBUG_S(ctx, Component,
             "Requesting permissions: "
             << TRequestPermissionsInfo(RequestId, Permissions, Attributes, Token));
 
@@ -228,7 +228,7 @@ private:
             default:
                 HandleUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::AUTH);
+                    Component);
                 break;
         }
     }
@@ -240,7 +240,7 @@ private:
         const auto* msg = ev->Get();
 
         if (msg->Error && msg->Error.Retryable) {
-            LOG_WARN_S(ctx, TBlockStoreComponents::AUTH,
+            LOG_WARN_S(ctx, Component,
                 "Permissions response: "
                 << TResponsePermissionsInfo(RequestId, *msg, false));
 
@@ -260,7 +260,7 @@ private:
         const bool allow = PermissionsMatch(Permissions, *msg);
 
         auto logLevel = allow ? NLog::PRI_DEBUG : NLog::PRI_WARN;
-        LOG_LOG_S(ctx, logLevel, TBlockStoreComponents::AUTH,
+        LOG_LOG_S(ctx, logLevel, Component,
             "Permissions response: "
             << TResponsePermissionsInfo(RequestId, *msg, allow));
 
@@ -287,19 +287,32 @@ class TAuthorizerActor final
     : public TActorBootstrapped<TAuthorizerActor>
 {
 private:
-    const TStorageConfigPtr StorageConfig;
+    const int Component;
+    const TString CounterId;
+    const TString FolderId;
+    const NProto::EAuthorizationMode AuthMode;
     const bool CheckAuthorization;
     TAuthCountersPtr Counters;
 
 public:
-    TAuthorizerActor(TStorageConfigPtr storageConfig, bool checkAuthorization)
-        : StorageConfig(std::move(storageConfig))
+    TAuthorizerActor(
+            int component,
+            TString counterId,
+            TString folderId,
+            NProto::EAuthorizationMode authMode,
+            bool checkAuthorization)
+        : Component(component)
+        , CounterId(std::move(counterId))
+        , FolderId(std::move(folderId))
+        , AuthMode(authMode)
         , CheckAuthorization(checkAuthorization)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
-        Counters = MakeIntrusive<TAuthCounters>(AppData(ctx)->Counters);
+        Counters = MakeIntrusive<TAuthCounters>(
+            AppData(ctx)->Counters,
+            CounterId);
 
         TThis::Become(&TThis::StateWork);
     }
@@ -315,7 +328,7 @@ private:
             default:
                 HandleUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::AUTH);
+                    Component);
                 break;
         }
     }
@@ -324,9 +337,7 @@ private:
         const TEvAuth::TEvAuthorizationRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        const auto authMode = StorageConfig->GetAuthorizationMode();
-
-        if (authMode == NProto::AUTHORIZATION_IGNORE) {
+        if (AuthMode == NProto::AUTHORIZATION_IGNORE) {
             // Skipping authorization completely.
             NCloud::Reply(
                 ctx,
@@ -338,11 +349,11 @@ private:
         const auto* msg = ev->Get();
         const auto requestId = ev->TraceId.GetTraceId();
         const bool requireAuthorization =
-            authMode == NProto::AUTHORIZATION_REQUIRE;
+            AuthMode == NProto::AUTHORIZATION_REQUIRE;
 
         if (msg->Token.Empty()) {
             if (requireAuthorization) {
-                LOG_ERROR_S(ctx, TBlockStoreComponents::AUTH,
+                LOG_ERROR_S(ctx, Component,
                     "Request for authorization with empty token: "
                     << requestId);
 
@@ -354,7 +365,7 @@ private:
                     *ev,
                     std::make_unique<TEvAuth::TEvAuthorizationResponse>(MakeError(E_UNAUTHORIZED)));
             } else {
-                LOG_DEBUG_S(ctx, TBlockStoreComponents::AUTH,
+                LOG_DEBUG_S(ctx, Component,
                     "Authorization is skipped for request with empty token: "
                     << requestId);
 
@@ -372,7 +383,7 @@ private:
 
         if (!CheckAuthorization) {
             if (requireAuthorization) {
-                LOG_ERROR_S(ctx, TBlockStoreComponents::AUTH,
+                LOG_ERROR_S(ctx, Component,
                     "Authorization is disabled but enforced. Failing request: "
                     << requestId);
 
@@ -384,7 +395,7 @@ private:
                     *ev,
                     std::make_unique<TEvAuth::TEvAuthorizationResponse>(MakeError(E_UNAUTHORIZED)));
             } else {
-                LOG_WARN_S(ctx, TBlockStoreComponents::AUTH,
+                LOG_WARN_S(ctx, Component,
                     "Request for authorization with authorization disabled: "
                     << requestId);
 
@@ -400,8 +411,8 @@ private:
             return;
         }
 
-        if (StorageConfig->GetFolderId().empty()) {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::AUTH,
+        if (FolderId.empty()) {
+            LOG_ERROR_S(ctx, Component,
                 "Authorization is enabled but FolderId is not set on server");
 
             Counters->ReportAuthorizationStatus(
@@ -416,10 +427,11 @@ private:
         NCloud::RegisterLocal(
             ctx,
             std::make_unique<TRequestPermissionsActor>(
+                Component,
                 requestId,
                 msg->Token,
                 GetPermissionStrings(msg->Permissions),
-                GetAttributesFromConfig(StorageConfig),
+                BuildAttributes(FolderId),
                 IEventHandlePtr(ev.Release()),
                 Counters));
     }
@@ -430,12 +442,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateAuthorizerActor(
-    TStorageConfigPtr storageConfig,
+    int component,
+    TString counterId,
+    TString folderId,
+    NProto::EAuthorizationMode authMode,
     bool checkAuthorization)
 {
     return std::make_unique<TAuthorizerActor>(
-        std::move(storageConfig),
+        component,
+        std::move(counterId),
+        std::move(folderId),
+        authMode,
         checkAuthorization);
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage

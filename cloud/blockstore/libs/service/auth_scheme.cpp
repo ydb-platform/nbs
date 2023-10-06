@@ -171,7 +171,7 @@ TPermissionList GetRequestPermissions(
     action.to_lower();
 
     auto perms = [] (TString name, std::initializer_list<EPermission> lst) {
-        return std::pair {name, CreatePermissionList(lst)};
+        return std::pair {name, NCloud::CreatePermissionList(lst)};
     };
 
     const THashMap<TString, TPermissionList> actions = {

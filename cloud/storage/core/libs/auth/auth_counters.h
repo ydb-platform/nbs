@@ -9,7 +9,7 @@
 
 #include <array>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,11 +36,13 @@ private:
         (int)EAuthorizationStatus::MAX> AuthorizationStatusCounters;
 
 public:
-    explicit TAuthCounters(NMonitoring::TDynamicCounterPtr counters);
+    explicit TAuthCounters(
+        NMonitoring::TDynamicCounterPtr counters,
+        TString counterId);
 
     void ReportAuthorizationStatus(EAuthorizationStatus status);
 };
 
 using TAuthCountersPtr = TIntrusivePtr<TAuthCounters>;
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage

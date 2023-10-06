@@ -1,7 +1,6 @@
 #include "actorsystem.h"
 
 #include <cloud/blockstore/libs/kikimr/components.h>
-#include <cloud/blockstore/libs/storage/api/authorizer.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -11,7 +10,6 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
-#include <cloud/blockstore/libs/storage/auth/authorizer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -31,8 +29,10 @@
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
+#include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/api/user_stats.h>
+#include <cloud/storage/core/libs/auth/authorizer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
@@ -256,7 +256,10 @@ public:
         //
 
         auto authorizer = CreateAuthorizerActor(
-            Args.StorageConfig,
+            TBlockStoreComponents::AUTH,
+            "blockstore",
+            Args.StorageConfig->GetFolderId(),
+            Args.StorageConfig->GetAuthorizationMode(),
             Args.AppConfig->HasAuthConfig());
 
         setup->LocalServices.emplace_back(

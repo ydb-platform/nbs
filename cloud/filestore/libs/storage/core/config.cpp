@@ -121,6 +121,10 @@ namespace {
     xxx(CpuLackThreshold,                          ui32,      70              )\
                                                                                \
     xxx(TenantHiveTabletId,                        ui64,       0              )\
+    xxx(FolderId,                                  TString,    {}             )\
+    xxx(AuthorizationMode,                                                     \
+            NCloud::NProto::EAuthorizationMode,                                \
+            NCloud::NProto::AUTHORIZATION_IGNORE                              )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
@@ -149,6 +153,13 @@ template <>
 TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NCloud::NProto::EAuthorizationMode mode)
+{
+    return out << EAuthorizationMode_Name(mode);
 }
 
 template <typename T>

@@ -21,6 +21,7 @@ target_link_libraries(libs-storage-init PUBLIC
   libs-storage-tablet
   libs-storage-tablet_proxy
   core-libs-api
+  core-libs-auth
   core-libs-common
   core-libs-diagnostics
   core-libs-hive_proxy

@@ -12,12 +12,17 @@ target_link_libraries(filestore-libs-service PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
+  cloud-filestore-config
   filestore-public-api-protos
+  core-libs-auth
   core-libs-common
+  storage-core-protos
   cpp-protobuf-util
   cpp-threading-future
 )
 target_sources(filestore-libs-service PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/auth_provider.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/auth_scheme.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/context.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/endpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/endpoint_test.cpp
@@ -25,4 +30,5 @@ target_sources(filestore-libs-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/filestore.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/filestore_test.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/request.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/service/service_auth.cpp
 )

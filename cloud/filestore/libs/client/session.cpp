@@ -234,6 +234,7 @@ public:
         ui64 mountSeqNumber = 0) override
     {
         auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
             readOnly,
@@ -250,6 +251,7 @@ public:
         ui64 mountSeqNumber) override
     {
         auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
             readOnly,
@@ -264,6 +266,7 @@ public:
     TFuture<NProto::TDestroySessionResponse> DestroySession() override
     {
         auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        callContext->RequestType = EFileStoreRequest::DestroySession;
 
         auto state = MakeIntrusive<TRequestState<TDestroySessionMethod>>(
             std::move(callContext));
@@ -275,6 +278,7 @@ public:
     TFuture<NProto::TPingSessionResponse> PingSession()
     {
         auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        callContext->RequestType = EFileStoreRequest::PingSession;
 
         auto state = MakeIntrusive<TRequestState<TPingSessionMethod>>(
             std::move(callContext));
@@ -589,6 +593,7 @@ private:
                     SessionState = SessionEstablishing;
 
                     auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+                    callContext->RequestType = EFileStoreRequest::CreateSession;
 
                     auto [sessionId, seqNo, readOnly] = GetSessionParams(CreateSessionResponse);
 

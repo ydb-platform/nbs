@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/storage/api/components.h>
 
+#include <cloud/storage/core/libs/api/authorizer.h>
+
 #include <ydb/core/testlib/basics/appdata.h>
 #include <ydb/core/testlib/tablet_helpers.h>
 
@@ -104,5 +106,13 @@ void TTestActorSystem::RegisterTestService(IActorPtr serviceActor)
         TActorId(0, "nfs-service"),
         Register(std::move(serviceActor)));
 }
+
+void TTestActorSystem::RegisterTestAuthorizer(IActorPtr authorizer)
+{
+    Runtime->RegisterService(
+        NCloud::NStorage::MakeAuthorizerServiceId(),
+        Register(std::move(authorizer)));
+}
+
 
 }   // namespace NCloud::NFileStore

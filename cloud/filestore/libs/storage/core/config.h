@@ -144,6 +144,9 @@ public:
 
     ui64 GetTenantHiveTabletId() const;
 
+    TString GetFolderId() const;
+    NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

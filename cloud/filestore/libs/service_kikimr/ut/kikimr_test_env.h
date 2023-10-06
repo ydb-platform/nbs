@@ -67,6 +67,7 @@ public:
     void DispatchEvents(TDuration timeout);
 
     void RegisterTestService(NActors::IActorPtr serviceActor);
+    void RegisterTestAuthorizer(NActors::IActorPtr authorizer);
 };
 
 }   // namespace NCloud::NFileStore

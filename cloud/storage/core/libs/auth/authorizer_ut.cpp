@@ -2,24 +2,34 @@
 
 #include "auth_counters.h"
 
-#include <cloud/blockstore/config/storage.pb.h>
-#include <cloud/blockstore/libs/storage/api/authorizer.h>
-#include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/testlib/test_env.h>
+#include <cloud/storage/core/libs/api/authorizer.h>
 
 #include <ydb/core/base/ticket_parser.h>
+
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/appdata.h>
+#include <ydb/core/testlib/basics/helpers.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NMonitoring;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TDynamicCountersPtr = TIntrusivePtr<TDynamicCounters>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr int AuthrorizerComponentId = 42;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -91,49 +101,50 @@ TParseTicketResultPtr CreateSuccessfulParseTicketResult(
 class TAuthorizerTestEnv final
 {
 private:
-    TTestEnv TestEnv;
+    TTestBasicRuntime Runtime;
     TActorId Sender;
 
 public:
     TAuthorizerTestEnv()
     {
-        Sender = TestEnv.GetRuntime().AllocateEdgeActor();
+        SetupTabletServices(Runtime);
+        Sender = Runtime.AllocateEdgeActor();
     }
 
     TActorId Register(IActorPtr actor)
     {
-        auto actorId = TestEnv.GetRuntime().Register(actor.release());
-        TestEnv.GetRuntime().EnableScheduleForActor(actorId);
+        auto actorId = Runtime.Register(actor.release());
+        Runtime.EnableScheduleForActor(actorId);
 
         return actorId;
     }
 
     void Send(const TActorId &recipient, IEventBasePtr event)
     {
-        TestEnv.GetRuntime().Send(new IEventHandle(recipient, Sender, event.release()));
+        Runtime.Send(new IEventHandle(recipient, Sender, event.release()));
     }
 
     void DispatchEvents()
     {
-        TestEnv.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration());
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration());
     }
 
     void RegisterTestTicketParser(IActorPtr ticketParser)
     {
-        TestEnv.GetRuntime().RegisterService(
+        Runtime.RegisterService(
             NKikimr::MakeTicketParserID(),
             Register(std::move(ticketParser)));
     }
 
     THolder<TEvAuth::TEvAuthorizationResponse> GrabAuthorizationResponse()
     {
-        return TestEnv.GetRuntime().
+        return Runtime.
             GrabEdgeEvent<TEvAuth::TEvAuthorizationResponse>(TDuration());
     }
 
     const TDynamicCountersPtr& GetCounters()
     {
-        return TestEnv.GetRuntime().GetAppData(0).Counters;
+        return Runtime.GetAppData(0).Counters;
     }
 };
 
@@ -144,14 +155,11 @@ IActorPtr CreateAuthorizerActor(
     NProto::EAuthorizationMode mode,
     TString folderId)
 {
-    NProto::TStorageServiceConfig storageConfig;
-    storageConfig.SetAuthorizationMode(mode);
-    storageConfig.SetFolderId(std::move(folderId));
-    return CreateAuthorizerActor(
-        std::make_shared<TStorageConfig>(
-            storageConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
-        ),
+    return NCloud::NStorage::CreateAuthorizerActor(
+        AuthrorizerComponentId,
+        TString("blockstorefilestore"),
+        std::move(folderId),
+        mode,
         checkAuthorization);
 }
 
@@ -173,7 +181,7 @@ void AssertAuthCounters(
     {
         const EAuthorizationStatus status = (EAuthorizationStatus)i;
         const TAtomicBase actualCounter = actualCounters
-            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("counters", "blockstorefilestore")
             ->GetSubgroup("component", "auth")
             ->GetCounter(ToString(status))
             ->Val();
@@ -210,7 +218,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -254,7 +261,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -290,7 +296,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -328,7 +333,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -366,7 +370,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 TString(),
                 CreatePermissionList({
                     EPermission::Read,
@@ -402,7 +405,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 TString(),
                 CreatePermissionList({
                     EPermission::Read,
@@ -440,7 +442,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 TString(),
                 CreatePermissionList({
                     EPermission::Read,
@@ -478,7 +479,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -514,7 +514,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -552,7 +551,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -590,7 +588,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -636,7 +633,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -680,7 +676,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -726,7 +721,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -772,7 +766,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -821,7 +814,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -865,7 +857,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -909,7 +900,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -955,7 +945,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -1001,7 +990,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
+
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -1049,7 +1038,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -1095,19 +1083,16 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({EPermission::Read})));
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(2ul),
                 AuthToken2,
                 CreatePermissionList({EPermission::Create})));
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(3ul),
                 AuthToken1,
                 CreatePermissionList({EPermission::Write})));
 
@@ -1163,7 +1148,6 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
-                MakeIntrusive<TCallContext>(1ul),
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
@@ -1186,4 +1170,4 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage

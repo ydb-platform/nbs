@@ -5,6 +5,7 @@
 #endif
 
 #include <cloud/storage/core/protos/media.pb.h>
+#include <cloud/storage/core/protos/request_source.pb.h>
 
 namespace NCloud::NFileStore {
 
@@ -113,6 +114,20 @@ TRequestInfo GetRequestInfo(const T& request)
         GetSessionId(request),
         GetClientId(request),
     };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr bool IsDataChannel(NCloud::NProto::ERequestSource source)
+{
+    switch (source) {
+        case NCloud::NProto::SOURCE_TCP_DATA_CHANNEL:
+        case NCloud::NProto::SOURCE_FD_DATA_CHANNEL:
+            return true;
+
+        default:
+            return false;
+    }
 }
 
 }   // namespace NCloud::NFileStore
