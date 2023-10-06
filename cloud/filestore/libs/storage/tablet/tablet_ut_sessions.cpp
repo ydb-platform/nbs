@@ -86,12 +86,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         tablet.DestroyHandle(handle);
 
-        // FIXME: NBS-2933 for exclusive lock you should have write acces
-        /*
         handle = CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
         tablet.AssertTestLockFailed(handle, 1, 0, 4_KB);
         tablet.AssertAcquireLockFailed(handle, 1, 0, 4_KB);
-        */
     }
 
     Y_UNIT_TEST(ShouldTrackSharedLocks)
@@ -110,8 +107,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         ui64 handle = CreateHandle(tablet, id);
 
-        tablet.AcquireLock(handle, 1, 0, 4_KB, NProto::E_SHARED);
-        tablet.AcquireLock(handle, 2, 0, 4_KB, NProto::E_SHARED);
+        tablet.AcquireLock(handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        tablet.AcquireLock(handle, 2, 0, 4_KB, DefaultPid, NProto::E_SHARED);
 
         auto response = tablet.AssertAcquireLockFailed(handle, 1, 0, 0);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
@@ -122,16 +119,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         response = tablet.AssertAcquireLockFailed(handle, 1, 0, 0);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
 
-        tablet.AcquireLock(handle, 3, 0, 4_KB, NProto::E_SHARED);
+        tablet.AcquireLock(handle, 3, 0, 4_KB, DefaultPid, NProto::E_SHARED);
 
         tablet.DestroyHandle(handle);
 
-        // FIXME: NBS-2933 for shared lock you should have read acces
-        /*
         handle = CreateHandle(tablet, id, {}, TCreateHandleArgs::WRNLY);
-        tablet.AssertTestLockFailed(handle, 1, 0, 4_KB, NProto::E_SHARED);
-        tablet.AssertAcquireLockFailed(handle, 1, 0, 4_KB, NProto::E_SHARED);
-        */
+        tablet.AssertTestLockFailed(handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        tablet.AssertAcquireLockFailed(handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
     }
 
     Y_UNIT_TEST(ShouldCleanupLocksKeptBySession)

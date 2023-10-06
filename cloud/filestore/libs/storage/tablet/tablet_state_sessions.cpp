@@ -9,6 +9,45 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
+void Dump(
+    IOutputStream& out,
+    const TString& tag,
+    TStringBuf operation,
+    const TSession* session,
+    size_t locksRemovedNumber,
+    const TLockRange& range)
+{
+    out << "LockInfo " << tag << " " << operation
+        << ": ClientId=" << session->GetClientId()
+        << ", SessionId=" << session->GetSessionId()
+        << ", LocksRemovedNumber=" << locksRemovedNumber
+        << ", LockRange= " << range;
+}
+
+NProto::TSessionLock MakeSessionLock(
+    ui64 handle,
+    const TLockRange& range,
+    const TString& sessionId,
+    ui64 lockId)
+{
+    NProto::TSessionLock proto;
+    proto.SetSessionId(sessionId);
+    proto.SetLockId(lockId);
+    proto.SetHandle(handle);
+    proto.SetNodeId(range.NodeId);
+    proto.SetOwner(range.OwnerId);
+    proto.SetOffset(range.Offset);
+    proto.SetLength(range.Length);
+    proto.SetPid(range.Pid);
+    proto.SetMode(static_cast<ui32>(range.LockMode));
+    proto.SetLockOrigin(ConvertTo<NProto::ELockOrigin>(range.LockOrigin));
+    return proto;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 // Sessions
 
@@ -46,10 +85,15 @@ void TIndexTabletState::LoadSessions(
         auto* session = FindSession(proto.GetSessionId());
         TABLET_VERIFY_C(session, "no session for " << proto.ShortDebugString());
 
-        TVector<ui64> removedLocks;
-        auto* lock = CreateLock(session, proto, removedLocks);
-        TABLET_VERIFY_C(lock, "failed to create lock " << proto.ShortDebugString());
-        TABLET_VERIFY_C(removedLocks.empty(), "non empty removed locks " << proto.ShortDebugString());
+        auto result = CreateLock(session, proto);
+        TABLET_VERIFY_C(
+            result.Succeeded(),
+            "failed to acquire lock " << proto.ShortDebugString()
+                                      << "with error: "
+                                      << result.Error.GetMessage());
+        TABLET_VERIFY_C(
+            result.RemovedLockIds().empty(),
+            "non empty removed locks " << proto.ShortDebugString());
     }
 
     TSession* session = nullptr;
@@ -233,13 +277,7 @@ void TIndexTabletState::ResetSession(
     auto lock = session->Locks.begin();
     while (lock != session->Locks.end()) {
         auto& cur = *(lock++);
-        TLockRange range = {
-            .NodeId = cur.GetNodeId(),
-            .OwnerId = cur.GetOwner(),
-            .Offset = cur.GetOffset(),
-            .Length = cur.GetLength(),
-        };
-
+        auto range = MakeLockRange(cur, cur.GetNodeId());
         ReleaseLock(db, session, range);
     }
 
@@ -431,10 +469,10 @@ TSessionLock* TIndexTabletState::FindLock(ui64 lockId) const
     return nullptr;
 }
 
-TSessionLock* TIndexTabletState::CreateLock(
+TRangeLockOperationResult TIndexTabletState::CreateLock(
     TSession* session,
     const NProto::TSessionLock& proto,
-    TVector<ui64>& removedLocks)
+    const TLockRange* range)
 {
     auto lock = std::make_unique<TSessionLock>(session, proto);
 
@@ -442,22 +480,15 @@ TSessionLock* TIndexTabletState::CreateLock(
     Impl->LockById.emplace(lock->GetLockId(), lock.get());
     Impl->LocksByHandle.emplace(lock->GetHandle(), lock.get());
 
-    TLockRange range = {
-        .NodeId = proto.GetNodeId(),
-        .OwnerId = proto.GetOwner(),
-        .Offset = proto.GetOffset(),
-        .Length = proto.GetLength(),
-    };
+    const auto& rangeRef = range ? *range : ConvertTo<TLockRange>(proto);
 
-    bool acquired = Impl->RangeLocks.Acquire(
+    auto result = Impl->RangeLocks.Acquire(
         session->GetSessionId(),
         proto.GetLockId(),
-        range,
-        static_cast<ELockMode>(proto.GetMode()),
-        removedLocks);
+        rangeRef);
 
-    TABLET_VERIFY(acquired);
-    return lock.release();
+    TABLET_VERIFY(lock.release());
+    return result;
 }
 
 void TIndexTabletState::RemoveLock(TSessionLock* lock)
@@ -474,40 +505,34 @@ void TIndexTabletState::RemoveLock(TSessionLock* lock)
     Impl->LocksByHandle.erase(it);
 }
 
-void TIndexTabletState::AcquireLock(
+TRangeLockOperationResult TIndexTabletState::AcquireLock(
     TIndexTabletDatabase& db,
     TSession* session,
     ui64 handle,
-    TLockRange range,
-    ELockMode mode)
+    const TLockRange& range)
 {
     const auto& sessionId = session->GetSessionId();
 
     ui64 lockId = IncrementLastLockId(db);
 
-    NProto::TSessionLock proto;
-    proto.SetSessionId(sessionId);
-    proto.SetLockId(lockId);
-    proto.SetHandle(handle);
-    proto.SetNodeId(range.NodeId);
-    proto.SetOwner(range.OwnerId);
-    proto.SetOffset(range.Offset);
-    proto.SetLength(range.Length);
-    proto.SetMode(static_cast<ui32>(mode));
+    auto proto = MakeSessionLock(handle, range, sessionId, lockId);
 
     IncrementUsedLocksCount(db);
     db.WriteSessionLock(proto);
 
-    TVector<ui64> removedLocks;
-    auto* lock = CreateLock(session, proto, removedLocks);
-    TABLET_VERIFY(lock);
+    auto result = CreateLock(session, proto, &range);
+    if (result.Failed()) {
+        LOG_DEBUG(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
+            result.Error.GetMessage());
+        return result;
+    }
+    const TVector<ui64>& removedLocks = result.RemovedLockIds();
 
-    LOG_TRACE(*TlsActivationContext, TFileStoreComponents::TABLET,
-        "%s acquired lock c: %s, s: %s, o: %lu, n: %lu, o: %lu, l: %lu r: %lu",
-        LogTag.c_str(),
-        session->GetClientId().c_str(),
-        session->GetSessionId().c_str(),
-        range.OwnerId, range.NodeId, range.Offset, range.Length, removedLocks.size());
+    TStringStream out;
+    Dump(out, LogTag, "acquire", session, removedLocks.size(), range);
+    LOG_DEBUG(*TlsActivationContext, TFileStoreComponents::TABLET, out.Str());
 
     for (ui64 removedLockId: removedLocks) {
         auto* removedLock = FindLock(removedLockId);
@@ -518,27 +543,37 @@ void TIndexTabletState::AcquireLock(
     }
 
     DecrementUsedLocksCount(db, removedLocks.size());
+    return result;
 }
 
-void TIndexTabletState::ReleaseLock(
+TRangeLockOperationResult TIndexTabletState::ReleaseLock(
     TIndexTabletDatabase& db,
     TSession* session,
-    TLockRange range)
+    const TLockRange& range)
 {
     const auto& sessionId = session->GetSessionId();
 
-    TVector<ui64> removedLocks;
-    Impl->RangeLocks.Release(
-        sessionId,
-        range,
-        removedLocks);
+    auto result = Impl->RangeLocks.Release(sessionId, range);
+    if (result.Failed()) {
+        LOG_DEBUG(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
+            result.Error.GetMessage());
 
-    LOG_DEBUG(*TlsActivationContext, TFileStoreComponents::TABLET,
-        "%s releasing lock c: %s, s: %s, o: %lu, n: %lu, o: %lu, l: %lu r: %lu",
-        LogTag.c_str(),
-        session->GetClientId().c_str(),
-        session->GetSessionId().c_str(),
-        range.OwnerId, range.NodeId, range.Offset, range.Length, removedLocks.size());
+        return result;
+    }
+
+    const TVector<ui64>& removedLocks = result.RemovedLockIds();
+    if (removedLocks.empty()) {
+        LOG_DEBUG(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
+            "Failed to remove any locked range, will be treated as success");
+    }
+
+    TStringStream out;
+    Dump(out, LogTag, "release", session, removedLocks.size(), range);
+    LOG_DEBUG(*TlsActivationContext, TFileStoreComponents::TABLET, out.Str());
 
     for (ui64 removedLockId: removedLocks) {
         auto* removedLock = FindLock(removedLockId);
@@ -549,19 +584,20 @@ void TIndexTabletState::ReleaseLock(
     }
 
     DecrementUsedLocksCount(db, removedLocks.size());
+    return result;
 }
 
-bool TIndexTabletState::TestLock(
+TRangeLockOperationResult TIndexTabletState::TestLock(
     TSession* session,
-    TLockRange range,
-    ELockMode mode,
-    TLockRange* conflicting) const
+    const TSessionHandle* handle,
+    const TLockRange& range) const
 {
-    return Impl->RangeLocks.Test(
-        session->GetSessionId(),
-        range,
-        mode,
-        conflicting);
+    if (!IsLockingAllowed(handle, range)) {
+        return TRangeLockOperationResult(
+            ErrorIncompatibleFileOpenMode(),
+            range.LockMode);
+    }
+    return Impl->RangeLocks.Test(session->GetSessionId(), range);
 }
 
 void TIndexTabletState::ReleaseLocks(
@@ -574,18 +610,9 @@ void TIndexTabletState::ReleaseLocks(
         locks.push_back(it->second);
     }
 
-    for (auto lock: locks) {
-        TLockRange range = {
-            .NodeId = lock->GetNodeId(),
-            .OwnerId = lock->GetOwner(),
-            .Offset = lock->GetOffset(),
-            .Length = lock->GetLength(),
-        };
-
-        ReleaseLock(
-            db,
-            lock->Session,
-            range);
+    for (const auto *lock: locks) {
+        auto range = MakeLockRange(*lock, lock->GetNodeId());
+        ReleaseLock(db, lock->Session, range);
     }
 }
 

@@ -2,12 +2,42 @@
 
 #include "helpers.h"
 
+#include <util/generic/overloaded.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+namespace {
+
+void SetResponseDetails(
+    NProto::TTestLockResponse& response,
+    TLockIncompatibleInfo incompatible)
+{
+    std::visit(
+        TOverloaded{
+            [&](TLockRange&& c)
+            {
+                response.SetOwner(c.OwnerId);
+                response.SetOffset(c.Offset);
+                response.SetLength(c.Length);
+                response.SetPid(c.Pid);
+                response.SetLockType(ConvertTo<NProto::ELockType>(c.LockMode));
+            },
+            [&](ELockOrigin origin) {
+                response.SetIncompatibleLockOrigin(
+                    ConvertTo<NProto::ELockOrigin>(origin));
+            },
+            [&](ELockMode mode)
+            { response.SetLockType(ConvertTo<NProto::ELockType>(mode)); },
+        },
+        std::move(incompatible));
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,22 +98,13 @@ void TIndexTabletActor::ExecuteTx_TestLock(
         return;
     }
 
-    ELockMode mode = GetLockMode(args.Request.GetLockType());
-    // FIXME: NBS-2933 validate handle mode for fcntl locks
+    auto range = MakeLockRange(args.Request, handle->GetNodeId());
 
-    TLockRange range = {
-        .NodeId = handle->GetNodeId(),
-        .OwnerId = args.Request.GetOwner(),
-        .Offset = args.Request.GetOffset(),
-        .Length = args.Request.GetLength(),
-    };
-
-    TLockRange conflicting;
-    if (!TestLock(session, range, mode, &conflicting)) {
-        args.Error = ErrorIncompatibleLocks();
-        args.Conflicting = conflicting;
-        return;
+    auto result = TestLock(session, handle, range);
+    if (result.Failed()) {
+        args.Incompatible = std::move(result.Incompatible());
     }
+    args.Error = std::move(result.Error);
 }
 
 void TIndexTabletActor::CompleteTx_TestLock(
@@ -91,10 +112,8 @@ void TIndexTabletActor::CompleteTx_TestLock(
     TTxIndexTablet::TTestLock& args)
 {
     auto response = std::make_unique<TEvService::TEvTestLockResponse>(args.Error);
-    if (args.Conflicting) {
-        response->Record.SetOwner(args.Conflicting->OwnerId);
-        response->Record.SetOffset(args.Conflicting->Offset);
-        response->Record.SetLength(args.Conflicting->Length);
+    if (args.Incompatible.has_value()) {
+        SetResponseDetails(response->Record, std::move(*args.Incompatible));
     }
 
     CompleteResponse<TEvService::TTestLockMethod>(

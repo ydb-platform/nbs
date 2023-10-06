@@ -1036,6 +1036,8 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProto::TReleaseLockRequest Request;
 
+        std::optional<NProto::ELockOrigin> IncompatibleLockOrigin;
+
         TReleaseLock(
                 TRequestInfoPtr requestInfo,
                 const NProto::TReleaseLockRequest& request)
@@ -1046,7 +1048,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
-            // nothing to do
+            IncompatibleLockOrigin.reset();
         }
     };
 
@@ -1059,7 +1061,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProto::TTestLockRequest Request;
 
-        TMaybe<TLockRange> Conflicting;
+        std::optional<TLockIncompatibleInfo> Incompatible;
 
         TTestLock(
                 TRequestInfoPtr requestInfo,
@@ -1071,7 +1073,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
-            Conflicting.Clear();
+            Incompatible.reset();
         }
     };
 

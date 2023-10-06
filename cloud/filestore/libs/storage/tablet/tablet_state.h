@@ -39,7 +39,7 @@ namespace NCloud::NFileStore::NProto {
 
 class TProfileLogRequestInfo;
 
-}   // namespace NCloud::NFileStore::NStorage
+} // namespace NCloud::NFileStore::NProto
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -485,35 +485,31 @@ private:
     //
 
 public:
-    void AcquireLock(
+    TRangeLockOperationResult AcquireLock(
         TIndexTabletDatabase& db,
         TSession* session,
         ui64 handle,
-        TLockRange range,
-        ELockMode mode);
+        const TLockRange& range);
 
-    void ReleaseLock(
+    TRangeLockOperationResult ReleaseLock(
         TIndexTabletDatabase& db,
         TSession* session,
-        TLockRange range);
+        const TLockRange& range);
 
-    bool TestLock(
+    TRangeLockOperationResult TestLock(
         TSession* session,
-        TLockRange range,
-        ELockMode mode,
-        TLockRange* conflicting) const;
+        const TSessionHandle* handle,
+        const TLockRange& range) const;
 
-    void ReleaseLocks(
-        TIndexTabletDatabase& db,
-        ui64 handle);
+    void ReleaseLocks(TIndexTabletDatabase& db, ui64 handle);
 
 private:
     TSessionLock* FindLock(ui64 lockId) const;
 
-    TSessionLock* CreateLock(
+    TRangeLockOperationResult CreateLock(
         TSession* session,
         const NProto::TSessionLock& proto,
-        TVector<ui64>& removedLocks);
+        const TLockRange* range = nullptr);
 
     void RemoveLock(TSessionLock* lock);
 

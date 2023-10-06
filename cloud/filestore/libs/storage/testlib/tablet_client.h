@@ -91,6 +91,8 @@ inline ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr i32 DefaultPid = 123;
+
 class TIndexTabletClient
 {
 private:
@@ -532,25 +534,38 @@ public:
         ui64 owner,
         ui64 offset,
         ui32 len,
-        NProto::ELockType type = NProto::E_EXCLUSIVE)
+        i32 pid = DefaultPid,
+        NProto::ELockType type = NProto::E_EXCLUSIVE,
+        NProto::ELockOrigin origin = NProto::E_FCNTL)
     {
         auto request = CreateSessionRequest<TEvService::TEvAcquireLockRequest>();
-        request->Record.SetHandle(handle);
-        request->Record.SetOwner(owner);
-        request->Record.SetOffset(offset);
-        request->Record.SetLength(len);
-        request->Record.SetLockType(type);
-
+        auto& record = request->Record;
+        record.SetHandle(handle);
+        record.SetOwner(owner);
+        record.SetOffset(offset);
+        record.SetLength(len);
+        record.SetPid(pid);
+        record.SetLockType(type);
+        record.SetLockOrigin(origin);
         return request;
     }
 
-    auto CreateReleaseLockRequest(ui64 handle, ui64 owner, ui64 offset, ui32 len)
+    auto CreateReleaseLockRequest(
+        ui64 handle,
+        ui64 owner,
+        ui64 offset,
+        ui32 len,
+        i32 pid = DefaultPid,
+        NProto::ELockOrigin origin = NProto::E_FCNTL)
     {
         auto request = CreateSessionRequest<TEvService::TEvReleaseLockRequest>();
-        request->Record.SetHandle(handle);
-        request->Record.SetOwner(owner);
-        request->Record.SetOffset(offset);
-        request->Record.SetLength(len);
+        auto& record = request->Record;
+        record.SetHandle(handle);
+        record.SetOwner(owner);
+        record.SetOffset(offset);
+        record.SetLength(len);
+        record.SetPid(pid);
+        record.SetLockOrigin(origin);
         return request;
     }
 
@@ -559,15 +574,19 @@ public:
         ui64 owner,
         ui64 offset,
         ui32 len,
-        NProto::ELockType type = NProto::E_EXCLUSIVE)
+        i32 pid = DefaultPid,
+        NProto::ELockType type = NProto::E_EXCLUSIVE,
+        NProto::ELockOrigin origin = NProto::E_FCNTL)
     {
         auto request = CreateSessionRequest<TEvService::TEvTestLockRequest>();
-        request->Record.SetHandle(handle);
-        request->Record.SetOwner(owner);
-        request->Record.SetOffset(offset);
-        request->Record.SetLength(len);
-        request->Record.SetLockType(type);
-
+        auto& record = request->Record;
+        record.SetHandle(handle);
+        record.SetOwner(owner);
+        record.SetOffset(offset);
+        record.SetLength(len);
+        record.SetPid(pid);
+        record.SetLockType(type);
+        record.SetLockOrigin(origin);
         return request;
     }
 

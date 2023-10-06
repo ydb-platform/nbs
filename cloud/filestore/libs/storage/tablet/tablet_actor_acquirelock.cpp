@@ -60,25 +60,20 @@ void TIndexTabletActor::HandleAcquireLock(
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_AcquireLock(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
+    const TActorContext&  /*ctx*/,
+    TTransactionContext&  /*tx*/,
     TTxIndexTablet::TAcquireLock& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-
     FILESTORE_VALIDATE_TX_SESSION(AcquireLock, args);
 
     return true;
 }
 
 void TIndexTabletActor::ExecuteTx_AcquireLock(
-    const TActorContext& ctx,
+    const TActorContext&  /*ctx*/,
     TTransactionContext& tx,
     TTxIndexTablet::TAcquireLock& args)
 {
-    Y_UNUSED(ctx);
-
     FILESTORE_VALIDATE_TX_ERROR(AcquireLock, args);
 
     auto* session = FindSession(
@@ -93,25 +88,14 @@ void TIndexTabletActor::ExecuteTx_AcquireLock(
         return;
     }
 
-    ELockMode mode = GetLockMode(args.Request.GetLockType());
-    // FIXME: NBS-2933 validate handle mode for fcntl locks
+    TLockRange range = MakeLockRange(args.Request, handle->GetNodeId());
 
-    TLockRange range = {
-        .NodeId = handle->GetNodeId(),
-        .OwnerId = args.Request.GetOwner(),
-        .Offset = args.Request.GetOffset(),
-        .Length = args.Request.GetLength()
-    };
-
-    if (!TestLock(session, range, mode, nullptr)) {
-        args.Error = ErrorIncompatibleLocks();
-        return;
+    auto result = TestLock(session, handle, range);
+    if (result.Succeeded()) {
+        TIndexTabletDatabase db(tx.DB);
+        result = AcquireLock(db, session, handle->GetHandle(), range);
     }
-
-    TIndexTabletDatabase db(tx.DB);
-
-    // TODO: access check
-    AcquireLock(db, session, handle->GetHandle(), range, mode);
+    args.Error = std::move(result.Error);
 }
 
 void TIndexTabletActor::CompleteTx_AcquireLock(

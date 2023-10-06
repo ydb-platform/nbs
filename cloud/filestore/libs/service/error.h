@@ -64,6 +64,8 @@ NProto::TError ErrorInvalidAttribute(const TString& name);
 //
 
 NProto::TError ErrorIncompatibleLocks();
+NProto::TError ErrorIncompatibleLockOriginLocks();
+NProto::TError ErrorIncompatibleFileOpenMode();
 
 //
 // Session.

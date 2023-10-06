@@ -31,6 +31,8 @@ SRCS(
     truncate_queue.cpp
 )
 
+GENERATE_ENUM_SERIALIZATION(range_locks.h)
+
 PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/model

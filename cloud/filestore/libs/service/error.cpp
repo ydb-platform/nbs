@@ -270,6 +270,23 @@ NProto::TError ErrorIncompatibleLocks()
             << "incompatible locks");
 }
 
+NProto::TError ErrorIncompatibleLockOriginLocks()
+{
+    return MakeError(
+        MAKE_FILESTORE_ERROR(NProto::E_FS_ACCESS),
+        TStringBuilder()
+            << "incompatible lock origin (flock/fcntl)");
+}
+
+NProto::TError ErrorIncompatibleFileOpenMode()
+{
+    return MakeError(
+        MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
+        TStringBuilder()
+            << "incompatible file open mode");
+}
+
+
 NProto::TError ErrorDuplicate()
 {
     return MakeError(

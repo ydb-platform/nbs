@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "cloud/filestore/public/api/protos/data.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
+import "cloud/filestore/public/api/protos/locks.proto";
 import "cloud/filestore/public/api/protos/node.proto";
 
 import "cloud/storage/core/protos/media.proto";
@@ -139,6 +140,8 @@ message TSessionLock
     uint64 Length = 6;
     uint32 Mode = 7;
     uint64 Handle = 8;
+    int32 Pid = 9;
+    ELockOrigin LockOrigin = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -26,25 +26,20 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
     {
         TRangeLocks locks;
 
-        // first lock
+        // first exclusive lock
         {
             TLockRange range = {
                 .NodeId = NodeId,
                 .OwnerId = Owner1,
                 .Offset = 0,
                 .Length = 300,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            bool acquired = locks.Acquire(
-                Session1,
-                Lock1,
-                range,
-                ELockMode::Exclusive,
-                removedLocks);
-
-            UNIT_ASSERT(acquired);
-            UNIT_ASSERT(removedLocks.empty());
+            auto result = locks.Acquire(Session1, Lock1, range);
+            UNIT_ASSERT(result.Succeeded());
+            UNIT_ASSERT(result.RemovedLockIds().empty());
         }
 
         // can't lock subrange
@@ -54,16 +49,15 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner2,
                 .Offset = 100,
                 .Length = 100,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TLockRange conflicting;
-            bool couldBeAcquired = locks.Test(
-                Session2,
-                range,
-                ELockMode::Exclusive,
-                &conflicting);
+            auto result = locks.Test(Session2, range);
+            UNIT_ASSERT(result.Failed());
+            UNIT_ASSERT(result.IncompatibleHolds<TLockRange>());
 
-            UNIT_ASSERT(!couldBeAcquired);
+            const auto& conflicting = result.IncompatibleAs<TLockRange>();
             UNIT_ASSERT_VALUES_EQUAL(conflicting.OwnerId, Owner1);
             UNIT_ASSERT_VALUES_EQUAL(conflicting.NodeId, NodeId);
             UNIT_ASSERT_VALUES_EQUAL(conflicting.Offset, 0);
@@ -77,15 +71,13 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 100,
                 .Length = 100,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            locks.Release(
-                Session1,
-                range,
-                removedLocks);
-
-            UNIT_ASSERT(removedLocks.empty());
+            auto result = locks.Release(Session1, range);
+            UNIT_ASSERT(result.Succeeded());
+            UNIT_ASSERT(result.RemovedLockIds().empty());
         }
 
         // now Lock2 can be acquired
@@ -95,17 +87,12 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner2,
                 .Offset = 100,
                 .Length = 100,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            bool acquired = locks.Acquire(
-                Session2,
-                Lock2,
-                range,
-                ELockMode::Exclusive,
-                removedLocks);
-
-            UNIT_ASSERT(acquired);
+            auto result = locks.Acquire(Session2, Lock2, range);
+            UNIT_ASSERT(result.Succeeded());
         }
 
         // attempt to lock file till the end of it should fail
@@ -115,16 +102,12 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner3,
                 .Offset = 100,
                 .Length = 0,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TLockRange conflicting;
-            bool couldBeAcquired = locks.Test(
-                Session3,
-                range,
-                ELockMode::Exclusive,
-                &conflicting);
-
-            UNIT_ASSERT(!couldBeAcquired);
+            auto result = locks.Test(Session3, range);
+            UNIT_ASSERT(result.Failed());
         }
 
         // releasing Lock2
@@ -134,14 +117,14 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner2,
                 .Offset = 100,
                 .Length = 100,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            locks.Release(
-                Session2,
-                range,
-                removedLocks);
+            auto result = locks.Release(Session2, range);
+            UNIT_ASSERT(result.Succeeded());
 
+            const auto& removedLocks = result.RemovedLockIds();
             UNIT_ASSERT_VALUES_EQUAL(1, removedLocks.size());
             UNIT_ASSERT_VALUES_EQUAL(Lock2, removedLocks[0]);
         }
@@ -153,16 +136,13 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner3,
                 .Offset = 100,
                 .Length = 0,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TLockRange conflicting;
-            bool couldBeAcquired = locks.Test(
-                Session3,
-                range,
-                ELockMode::Exclusive,
-                &conflicting);
-
-            UNIT_ASSERT(!couldBeAcquired);
+            auto result = locks.Test(Session3, range);
+            UNIT_ASSERT(result.Failed());
+            UNIT_ASSERT(result.IncompatibleHolds<TLockRange>());
         }
 
         // releasing Lock1 completely
@@ -172,14 +152,14 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 0,
                 .Length = 300,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            locks.Release(
-                Session1,
-                range,
-                removedLocks);
+            auto result = locks.Release(Session1, range);
+            UNIT_ASSERT(result.Succeeded());
 
+            const auto& removedLocks = result.RemovedLockIds();
             UNIT_ASSERT_VALUES_EQUAL(1, removedLocks.size());
             UNIT_ASSERT_VALUES_EQUAL(Lock1, removedLocks[0]);
         }
@@ -193,14 +173,8 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .Length = 0,
             };
 
-            TLockRange conflicting;
-            bool couldBeAcquired = locks.Test(
-                Session3,
-                range,
-                ELockMode::Exclusive,
-                &conflicting);
-
-            UNIT_ASSERT(couldBeAcquired);
+            auto result = locks.Test(Session3, range);
+            UNIT_ASSERT(result.Succeeded());
         }
 
         // locking file till the end of it
@@ -210,18 +184,13 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner3,
                 .Offset = 100,
                 .Length = 0,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            bool acquired = locks.Acquire(
-                Session3,
-                Lock3,
-                range,
-                ELockMode::Exclusive,
-                removedLocks);
-
-            UNIT_ASSERT(acquired);
-            UNIT_ASSERT(removedLocks.empty());
+            auto result = locks.Acquire(Session3, Lock3, range);
+            UNIT_ASSERT(result.Succeeded());
+            UNIT_ASSERT(result.RemovedLockIds().empty());
         }
 
         // attempt to lock subrange after offset 100 should fail
@@ -231,16 +200,13 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 300,
                 .Length = 10,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TLockRange conflicting;
-            bool couldBeAcquired = locks.Test(
-                Session1,
-                range,
-                ELockMode::Exclusive,
-                &conflicting);
-
-            UNIT_ASSERT(!couldBeAcquired);
+            auto result = locks.Test(Session1, range);
+            UNIT_ASSERT(result.Failed());
+            UNIT_ASSERT(result.IncompatibleHolds<TLockRange>());
         }
 
         // but we can still lock ranges before offset 100
@@ -250,16 +216,12 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 0,
                 .Length = 100,
+                .LockMode = ELockMode::Shared,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TLockRange conflicting;
-            bool couldBeAcquired = locks.Test(
-                Session1,
-                range,
-                ELockMode::Exclusive,
-                &conflicting);
-
-            UNIT_ASSERT(couldBeAcquired);
+            auto result = locks.Test(Session1, range);
+            UNIT_ASSERT(result.Succeeded());
         }
     }
 
@@ -273,18 +235,13 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 0,
                 .Length = 100,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            bool acquired = locks.Acquire(
-                Session1,
-                Lock1,
-                range,
-                ELockMode::Exclusive,
-                removedLocks);
-
-            UNIT_ASSERT(acquired);
-            UNIT_ASSERT(removedLocks.empty());
+            auto result = locks.Acquire( Session1, Lock1, range);
+            UNIT_ASSERT(result.Succeeded());
+            UNIT_ASSERT(result.RemovedLockIds().empty());
         }
 
         {
@@ -293,18 +250,14 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 100,
                 .Length = 100,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            TVector<ui64> removedLocks;
-            bool acquired = locks.Acquire(
-                Session1,
-                Lock2,
-                range,
-                ELockMode::Exclusive,
-                removedLocks);
+            auto result = locks.Acquire(Session1, Lock2, range);
 
-            UNIT_ASSERT(acquired);
-            UNIT_ASSERT(removedLocks.empty());
+            UNIT_ASSERT(result.Succeeded());
+            UNIT_ASSERT(result.RemovedLockIds().empty());
         }
 
         {
@@ -313,19 +266,16 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .OwnerId = Owner1,
                 .Offset = 0,
                 .Length = 200,
+                .LockMode = ELockMode::Exclusive,
+                .LockOrigin = ELockOrigin::Fcntl,
             };
-            TVector<ui64> removedLocks;
-            bool acquired = locks.Acquire(
-                Session1,
-                Lock3,
-                range,
-                ELockMode::Exclusive,
-                removedLocks);
+            auto result = locks.Acquire( Session1, Lock3, range);
+            UNIT_ASSERT(result.Succeeded());
 
-            UNIT_ASSERT(acquired);
+            const auto& removedLocks = result.RemovedLockIds();
             UNIT_ASSERT(removedLocks.size() == 2);
-            UNIT_ASSERT(removedLocks[0] = Lock1);
-            UNIT_ASSERT(removedLocks[1] = Lock2);
+            UNIT_ASSERT(removedLocks[0] == Lock1);
+            UNIT_ASSERT(removedLocks[1] == Lock2);
         }
     }
 }

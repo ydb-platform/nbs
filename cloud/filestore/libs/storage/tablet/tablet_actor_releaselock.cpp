@@ -65,15 +65,24 @@ void TIndexTabletActor::ExecuteTx_ReleaseLock(
         return;
     }
 
-    TLockRange range = {
-        .NodeId = handle->GetNodeId(),
-        .OwnerId = args.Request.GetOwner(),
-        .Offset = args.Request.GetOffset(),
-        .Length = args.Request.GetLength()
-    };
+    auto range = MakeLockRange(args.Request, handle->GetNodeId());
 
     TIndexTabletDatabase db(tx.DB);
-    ReleaseLock(db, session, range);
+
+    auto result = ReleaseLock(db, session, range);
+
+    if (result.Failed()) {
+        if (result.IncompatibleHolds<ELockOrigin>()) {
+            auto origin = result.IncompatibleAs<ELockOrigin>();
+            args.IncompatibleLockOrigin = ConvertTo<NProto::ELockOrigin>(origin);
+        } else {
+            LOG_DEBUG(
+                *TlsActivationContext,
+                TFileStoreComponents::TABLET,
+                result.Error.GetMessage());
+        }
+    }
+    args.Error = std::move(result.Error);
 }
 
 void TIndexTabletActor::CompleteTx_ReleaseLock(

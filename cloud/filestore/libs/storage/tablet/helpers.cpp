@@ -287,4 +287,88 @@ void Convert(
     }
 }
 
+bool IsLockingAllowed(
+    const TSessionHandle* handle,
+    const TLockRange& range)
+{
+    if (range.LockOrigin == ELockOrigin::Flock) {
+        return true;
+    }
+    auto flags = handle->GetFlags();
+    return (range.LockMode == ELockMode::Shared &&
+            HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) ||
+           (range.LockMode == ELockMode::Exclusive &&
+            HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE));
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+ELockOrigin ConvertToImpl(NProto::ELockOrigin source, TTag<ELockOrigin>)
+{
+    switch (source)
+    {
+        case NProto::E_FLOCK:
+            return ELockOrigin::Flock;
+        default:
+            return ELockOrigin::Fcntl;
+    }
+}
+
+NProto::ELockOrigin ConvertToImpl(ELockOrigin source, TTag<NProto::ELockOrigin>)
+{
+    switch (source)
+    {
+        case ELockOrigin::Flock:
+            return NProto::E_FLOCK;
+        case ELockOrigin::Fcntl:
+            return NProto::E_FCNTL;
+        default:
+            Y_FAIL("Unsupported lock origin");
+    }
+}
+
+ELockMode ConvertToImpl(NProto::ELockType source, TTag<ELockMode>)
+{
+    switch(source)
+    {
+        case NProto::ELockType::E_EXCLUSIVE:
+            return ELockMode::Exclusive;
+        case NProto::ELockType::E_SHARED:
+            return ELockMode::Shared;
+        case NProto::ELockType::E_UNLOCK:
+            return ELockMode::Unlock;
+        default:
+            return ELockMode::Shared;
+    }
+}
+
+NProto::ELockType ConvertToImpl(ELockMode source, TTag<NProto::ELockType>)
+{
+    switch (source)
+    {
+        case ELockMode::Shared:
+            return NProto::ELockType::E_SHARED;
+        case ELockMode::Exclusive:
+            return NProto::ELockType::E_EXCLUSIVE;
+        case ELockMode::Unlock:
+            return NProto::ELockType::E_UNLOCK;
+        default:
+            Y_FAIL("Unsupported lock type");
+    }
+}
+
+TLockRange ConvertToImpl(const NProto::TSessionLock& proto, TTag<TLockRange>)
+{
+    return {
+        .NodeId = proto.GetNodeId(),
+        .OwnerId = proto.GetOwner(),
+        .Offset = proto.GetOffset(),
+        .Length = proto.GetLength(),
+        .Pid = proto.GetPid(),
+        .LockMode = static_cast<ELockMode>(proto.GetMode()),
+        .LockOrigin = ConvertTo<ELockOrigin>(proto.GetLockOrigin()),
+    };
+}
+
 }   // namespace NCloud::NFileStore::NStorage
