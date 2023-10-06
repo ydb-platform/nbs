@@ -124,14 +124,14 @@ struct TEvVolume
     };
 
     //
-    // NonreplicatedPartitionCounters
+    // DiskRegistryBasedPartitionCounters
     //
 
-    struct TNonreplicatedPartitionCounters
+    struct TDiskRegistryBasedPartitionCounters
     {
         TPartitionDiskCountersPtr DiskCounters;
 
-        TNonreplicatedPartitionCounters(
+        TDiskRegistryBasedPartitionCounters(
                 TPartitionDiskCountersPtr diskCounters)
             : DiskCounters(std::move(diskCounters))
         {
@@ -253,7 +253,7 @@ struct TEvVolume
 
         EvRWClientIdChanged = EvBegin + 32,
 
-        EvNonreplicatedPartitionCounters = EvBegin + 33,
+        EvDiskRegistryBasedPartitionCounters = EvBegin + 33,
 
         EvRebuildMetadataRequest = EvBegin + 34,
         EvRebuildMetadataResponse = EvBegin + 35,
@@ -315,9 +315,9 @@ struct TEvVolume
         EvRWClientIdChanged
     >;
 
-    using TEvNonreplicatedPartitionCounters = TRequestEvent<
-        TNonreplicatedPartitionCounters,
-        EvNonreplicatedPartitionCounters
+    using TEvDiskRegistryBasedPartitionCounters = TRequestEvent<
+        TDiskRegistryBasedPartitionCounters,
+        EvDiskRegistryBasedPartitionCounters
     >;
 
     using TEvRdmaUnavailable = TRequestEvent<

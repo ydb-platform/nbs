@@ -779,9 +779,9 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
         );
     }
 
-    if (auto actorId = State->GetNonreplicatedPartitionActor()) {
-        ui64 TabletId = 0;
-        partitionDescrs.push_back({TabletId, actorId, true});
+    if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
+        ui64 tabletId = 0;
+        partitionDescrs.push_back({tabletId, actorId, true});
 
         LOG_TRACE(
             ctx,
@@ -935,7 +935,7 @@ bool TVolumeActor::CanExecuteWriteRequest() const
 
     // If our volume is DiskRegistry-based, write requests are allowed only if
     // there are no active checkpoints
-    if (State->GetNonreplicatedPartitionActor()) {
+    if (State->GetDiskRegistryBasedPartitionActor()) {
         const bool checkpointExistsOrCreatingNow =
             doesCheckpointExist || isCheckpointBeingCreated;
 

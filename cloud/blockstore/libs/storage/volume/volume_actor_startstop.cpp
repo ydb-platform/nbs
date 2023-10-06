@@ -123,7 +123,7 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
     }
 }
 
-void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
+void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
 {
     if (State->GetMeta().GetDevices().empty()) {
         return;
@@ -250,7 +250,7 @@ void TVolumeActor::SetupNonreplicatedPartitions(const TActorContext& ctx)
         }
     }
 
-    State->SetNonreplicatedPartitionActor(
+    State->SetDiskRegistryBasedPartitionActor(
         nonreplicatedActorId,
         std::move(nonreplicatedConfig));
 }
@@ -269,7 +269,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
     }
 
     if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
-        SetupNonreplicatedPartitions(ctx);
+        SetupDiskRegistryBasedPartitions(ctx);
 
         if (State->Ready()) {
             OnStarted(ctx);
@@ -311,14 +311,14 @@ void TVolumeActor::StopPartitions(const TActorContext& ctx)
         }
     }
 
-    if (auto actorId = State->GetNonreplicatedPartitionActor()) {
+    if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
             "[%lu] Send poison pill to partition %s",
             TabletID(),
             actorId.ToString().c_str());
 
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
-        State->SetNonreplicatedPartitionActor({}, nullptr);
+        State->SetDiskRegistryBasedPartitionActor({}, nullptr);
     }
 }
 

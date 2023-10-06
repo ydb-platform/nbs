@@ -29,7 +29,7 @@ void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
         PartConfig->GetBlockCount() * PartConfig->GetBlockSize()
     );
 
-    auto request = std::make_unique<TEvVolume::TEvNonreplicatedPartitionCounters>(
+    auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
         MakeIntrusive<TCallContext>(),
         std::move(PartCounters));
 

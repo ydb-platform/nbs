@@ -308,7 +308,7 @@ void TVolumeActor::CompleteUpdateConfig(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     if (State) {
-        if (auto actorId = State->GetNonreplicatedPartitionActor()) {
+        if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
             WaitForPartitions.emplace_back(actorId, nullptr);
         }
     }

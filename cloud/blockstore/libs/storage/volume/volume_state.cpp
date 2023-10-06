@@ -294,7 +294,7 @@ TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
 
         const bool allocated =
             bytes >= Config->GetBlockSize() * Config->GetBlocksCount();
-        const bool actorStarted = !!NonreplicatedPartitionActor;
+        const bool actorStarted = !!DiskRegistryBasedPartitionActor;
         if (allocated && actorStarted) {
             PartitionsState = TPartitionInfo::READY;
         } else {

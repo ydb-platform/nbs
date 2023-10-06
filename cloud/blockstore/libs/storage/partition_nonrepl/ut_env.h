@@ -100,7 +100,9 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
-            HFunc(TEvVolume::TEvNonreplicatedPartitionCounters, HandleVolumePartCounters);
+            HFunc(
+                TEvVolume::TEvDiskRegistryBasedPartitionCounters,
+                HandleVolumePartCounters);
 
             HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
 
@@ -125,7 +127,7 @@ private:
     }
 
     void HandleVolumePartCounters(
-        const TEvVolume::TEvNonreplicatedPartitionCounters::TPtr& ev,
+        const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         auto event = std::make_unique<NActors::IEventHandle>(

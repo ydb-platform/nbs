@@ -117,7 +117,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandlePartCounters(
-        const TEvVolume::TEvNonreplicatedPartitionCounters::TPtr& ev,
+        const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateCounters(

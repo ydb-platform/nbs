@@ -829,8 +829,8 @@ STFUNC(TVolumeActor::StateWork)
             HandleRemoveExpiredVolumeParams);
 
         HFunc(
-            TEvVolume::TEvNonreplicatedPartitionCounters,
-            HandleNonreplicatedPartCounters);
+            TEvVolume::TEvDiskRegistryBasedPartitionCounters,
+            HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
         HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
         HFunc(

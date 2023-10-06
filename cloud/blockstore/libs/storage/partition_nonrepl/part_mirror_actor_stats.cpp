@@ -9,7 +9,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandlePartCounters(
-    const TEvVolume::TEvNonreplicatedPartitionCounters::TPtr& ev,
+    const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -59,7 +59,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         }
     }
 
-    auto request = std::make_unique<TEvVolume::TEvNonreplicatedPartitionCounters>(
+    auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
         MakeIntrusive<TCallContext>(),
         std::move(stats));
 

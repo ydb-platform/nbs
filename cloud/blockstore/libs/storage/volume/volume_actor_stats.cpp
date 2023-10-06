@@ -95,8 +95,8 @@ void TVolumeActor::HandlePartStatsSaved(
     Y_UNUSED(ctx);
 }
 
-void TVolumeActor::HandleNonreplicatedPartCounters(
-    const TEvVolume::TEvNonreplicatedPartitionCounters::TPtr& ev,
+void TVolumeActor::HandleDiskRegistryBasedPartCounters(
+    const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -107,7 +107,7 @@ void TVolumeActor::HandleNonreplicatedPartCounters(
         msg->CallContext
     );
 
-    if (State->GetNonreplicatedPartitionActor() != ev->Sender) {
+    if (State->GetDiskRegistryBasedPartitionActor() != ev->Sender) {
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
             "Partition %s for disk %s counters not found",
             ToString(ev->Sender).c_str(),

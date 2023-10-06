@@ -253,7 +253,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvVolume::TEvRWClientIdChanged,
             HandleRWClientIdChanged);
         HFunc(
-            TEvVolume::TEvNonreplicatedPartitionCounters,
+            TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -289,7 +289,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
-        IgnoreFunc(TEvVolume::TEvNonreplicatedPartitionCounters);
+        IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

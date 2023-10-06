@@ -502,7 +502,7 @@ void TVolumeActor::CompleteUpdateDevices(
     const TActorContext& ctx,
     TTxVolume::TUpdateDevices& args)
 {
-    if (auto actorId = State->GetNonreplicatedPartitionActor()) {
+    if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
         if (!args.RequestInfo) {
             WaitForPartitions.emplace_back(actorId, nullptr);
         } else {

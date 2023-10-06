@@ -516,10 +516,10 @@ void TVolumeActor::CompleteAddClient(
 
 void TVolumeActor::OnClientListUpdate(const NActors::TActorContext& ctx)
 {
-    if (State->GetNonreplicatedPartitionActor()) {
+    if (State->GetDiskRegistryBasedPartitionActor()) {
         NCloud::Send(
             ctx,
-            State->GetNonreplicatedPartitionActor(),
+            State->GetDiskRegistryBasedPartitionActor(),
             std::make_unique<TEvVolume::TEvRWClientIdChanged>(
                 State->GetReadWriteAccessClientId()));
     }

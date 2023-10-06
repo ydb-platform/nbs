@@ -283,7 +283,7 @@ STFUNC(TNonreplicatedPartitionMigrationActor::StateWork)
             TEvVolume::TEvRWClientIdChanged,
             HandleRWClientIdChanged);
         HFunc(
-            TEvVolume::TEvNonreplicatedPartitionCounters,
+            TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -322,7 +322,7 @@ STFUNC(TNonreplicatedPartitionMigrationActor::StateZombie)
         IgnoreFunc(TEvDiskRegistry::TEvFinishMigrationResponse);
         IgnoreFunc(TEvVolume::TEvMigrationStateUpdated);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
-        IgnoreFunc(TEvVolume::TEvNonreplicatedPartitionCounters);
+        IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

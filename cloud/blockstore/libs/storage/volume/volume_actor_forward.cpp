@@ -98,7 +98,7 @@ bool TVolumeActor::HandleRequest(
     bool isTraced,
     ui64 traceTs)
 {
-    Y_VERIFY(!State->GetNonreplicatedPartitionActor());
+    Y_VERIFY(!State->GetDiskRegistryBasedPartitionActor());
 
     const auto blocksPerStripe =
         State->GetMeta().GetVolumeConfig().GetBlocksPerStripe();
@@ -208,13 +208,13 @@ void TVolumeActor::SendRequestToPartition(
     ui64 traceTime)
 {
     STORAGE_VERIFY_C(
-        State->GetNonreplicatedPartitionActor() || State->GetPartitions(),
+        State->GetDiskRegistryBasedPartitionActor() || State->GetPartitions(),
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         "Empty partition list");
 
-    auto partActorId = State->GetNonreplicatedPartitionActor()
-        ? State->GetNonreplicatedPartitionActor()
+    auto partActorId = State->GetDiskRegistryBasedPartitionActor()
+        ? State->GetDiskRegistryBasedPartitionActor()
         : State->GetPartitions()[partitionId].Owner;
 
     if (State->GetPartitions()) {
@@ -680,7 +680,7 @@ void TVolumeActor::ForwardRequest(
                 E_REJECTED,
                 TStringBuilder() // NBS-4447. Do not change message.
                     << "Checkpoint reject request. " << TMethod::Name << " is not allowed "
-                    << (State->GetNonreplicatedPartitionActor()
+                    << (State->GetDiskRegistryBasedPartitionActor()
                             ? "if a checkpoint exists"
                             : "during checkpoint creation")));
             return;

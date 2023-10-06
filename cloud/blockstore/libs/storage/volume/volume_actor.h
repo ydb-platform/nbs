@@ -439,7 +439,7 @@ private:
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(const NActors::TActorContext& ctx);
 
-    void SetupNonreplicatedPartitions(const NActors::TActorContext& ctx);
+    void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
     void DumpUsageStats(
         const NActors::TActorContext& ctx,
@@ -596,8 +596,8 @@ private:
         const TEvVolumePrivate::TEvUpdateCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleNonreplicatedPartCounters(
-        const TEvVolume::TEvNonreplicatedPartitionCounters::TPtr& ev,
+    void HandleDiskRegistryBasedPartCounters(
+        const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePartCounters(

@@ -109,7 +109,7 @@ private:
 
     TPartitionInfoList Partitions;
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
-    NActors::TActorId NonreplicatedPartitionActor;
+    NActors::TActorId DiskRegistryBasedPartitionActor;
     TNonreplicatedPartitionConfigPtr NonreplicatedPartitionConfig;
 
     TVector<TPartitionStatInfo> PartitionStatInfos;
@@ -284,18 +284,18 @@ public:
 
     TString GetPartitionsError() const;
 
-    void SetNonreplicatedPartitionActor(
+    void SetDiskRegistryBasedPartitionActor(
         const NActors::TActorId& actor,
         TNonreplicatedPartitionConfigPtr config)
     {
         PartitionStatInfos[0].Owner = actor;
-        NonreplicatedPartitionActor = actor;
+        DiskRegistryBasedPartitionActor = actor;
         NonreplicatedPartitionConfig = std::move(config);
     }
 
-    const NActors::TActorId& GetNonreplicatedPartitionActor() const
+    const NActors::TActorId& GetDiskRegistryBasedPartitionActor() const
     {
-        return NonreplicatedPartitionActor;
+        return DiskRegistryBasedPartitionActor;
     }
 
     const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
