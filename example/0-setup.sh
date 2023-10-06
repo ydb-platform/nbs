@@ -5,12 +5,24 @@ DATA_DIRS=" \
     data \
     logs \
     "
+find_bin_dir() {
+    readlink -e `dirname $0`
+}
 
+BIN_DIR=`find_bin_dir`
 PERSISTENT_TMP_DIR=${PERSISTENT_TMP_DIR:-$HOME/tmp/nbs}
 
 for dir in $DATA_DIRS; do
     mkdir -p "$PERSISTENT_TMP_DIR/$dir"
-    ln -svfT "$PERSISTENT_TMP_DIR/$dir" "$dir"
+    ln -svfT "$PERSISTENT_TMP_DIR/$dir" "$BIN_DIR/$dir"
+done
+
+for bin in ydbd nbsd blockstore-nbd blockstore-client diskagentd
+do
+  if ! test -f "$BIN_DIR/$bin"; then
+    echo "$bin not found"
+    exit 1
+  fi
 done
 
 generate_cert() {
@@ -29,8 +41,6 @@ generate_cert() {
 
 generate_cert "server" "certs"
 
-DISK_KEY=2748 # 0xABC
-
 format_disk() {
     DISK_GUID=$1
     DISK_SIZE=$2
@@ -44,10 +54,76 @@ format_disk() {
     ln -s $REAL_DISK_FILE $DISK_FILE
 }
 
+setup_nonrepl_disk_agent() {
+    if [ -z "$1" ]; then echo "Agent number is required"; exit 1; fi
+
+    truncate -s  1G "$BIN_DIR/data/remote$1-1024-1.bin"
+    truncate -s  1G "$BIN_DIR/data/remote$1-1024-2.bin"
+    truncate -s  1G "$BIN_DIR/data/remote$1-1024-3.bin"
+
+    cat > $BIN_DIR/nbs/nbs-disk-agent-$1.txt <<EOF
+AgentId: "remote$1.cloud-example.net"
+Enabled: true
+DedicatedDiskAgent: true
+Backend: DISK_AGENT_BACKEND_AIO
+
+FileDevices: {
+    Path: "$BIN_DIR/data/remote$1-1024-1.bin"
+    DeviceId: "remote$1-1024-1"
+    BlockSize: 4096
+}
+
+FileDevices: {
+    Path: "$BIN_DIR/data/remote$1-1024-2.bin"
+    DeviceId: "remote$1-1024-2"
+    BlockSize: 4096
+}
+
+FileDevices: {
+    Path: "$BIN_DIR/data/remote$1-1024-3.bin"
+    DeviceId: "remote$1-1024-3"
+    BlockSize: 4096
+}
+
+EOF
+
+cat > $BIN_DIR/nbs/nbs-location-$1.txt <<EOF
+DataCenter: "local-dc"
+Rack: "rack-$1"
+EOF
+
+}
+
+
+setup_nonrepl_disk_registry() {
+
+    setup_nonrepl_disk_agent 1
+    setup_nonrepl_disk_agent 2
+
+    cat > "$BIN_DIR"/nbs/nbs-disk-registry.txt <<EOF
+KnownAgents {
+    AgentId: "remote1.cloud-example.net"
+    Devices: "remote1-1024-1"
+    Devices: "remote1-1024-2"
+    Devices: "remote1-1024-3"
+}
+
+KnownAgents {
+    AgentId: "remote2.cloud-example.net"
+    Devices: "remote2-1024-1"
+    Devices: "remote2-1024-2"
+    Devices: "remote2-1024-3"
+}
+
+EOF
+}
+
 format_disk ssd 64G
 format_disk rot 64G
 
+setup_nonrepl_disk_registry
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-ln -s "${SCRIPT_DIR}/static" static
-ln -s "${SCRIPT_DIR}/dynamic" dynamic
-ln -s "${SCRIPT_DIR}/nbs" nbs
+test -f static && ln -s "${SCRIPT_DIR}/static" static
+test -f dynamic && ln -s "${SCRIPT_DIR}/dynamic" dynamic
+test -f nbs && ln -s "${SCRIPT_DIR}/nbs" nbs

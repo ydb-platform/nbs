@@ -27,15 +27,17 @@ Run the following command in a new tab:
 ./3-start_nbs.sh
 ```
 
-\# Create disk
+\# Configure and start disk agent(optional, used only by nonreplicated disks)
 ```bash
-./4-create_disk.sh
+./4-start_disk_agent.sh
 ```
 
-\# Attach this disk to your machine via nbd at /dev/nbd0
+\# Create disk and attach this disk to your machine via nbd at /dev/nbd0
+
+By default replicated disk with id vol0 is created, optional parameter [-n] allows to create nonreplicated disk with id nbr0
 Run the following command in a new tab:
 ```bash
-./5-attach_disk_via_nbd.sh
+./5-create_and_attach_disk.sh [-n]
 ```
 
 \# Try to access your disk

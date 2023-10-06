@@ -28,5 +28,5 @@ ConfigsConfig {
 
 echo "AllowNamedConfigs"
 $YDBD -s grpc://localhost:$GRPC_PORT admin console config set --merge "$ALLOW_NAMED_CONFIGS_REQ"
-echo "SetUserAttributes"
-$YDBD -s grpc://localhost:$GRPC_PORT db schema user-attribute set /Root/NBS __volume_space_limit_ssd_nonrepl=1
+echo "SetUserAttributes(set unlimited for nonrepl disks)"
+$YDBD -s grpc://localhost:$GRPC_PORT db schema user-attribute set /Root/NBS __volume_space_limit_ssd_nonrepl=$(( 999 * 1024**5 ))
