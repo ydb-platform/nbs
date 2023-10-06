@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
+#include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/string.h>
-
-#include <array>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -24,59 +24,34 @@ class TCheckpointLight
 private:
     TString CheckpointId;
     ui64 BlocksCount;
-    std::array<TCompressedBitmap, 2> CheckpointsData;
 
-    void CreateCheckpoint(TString checkpointId, bool isInitial) {
-        if (checkpointId == CheckpointId) {
-            return;
-        }
-        CheckpointId = std::move(checkpointId);
-
-        if (!isInitial) {
-            CheckpointsData[0] = std::move(CheckpointsData[1]);
-        }
-    }
+    TCompressedBitmap CurrentDirtyBlocks;
+    TCompressedBitmap FutureDirtyBlocks;
 
 public:
-    TCheckpointLight(ui64 blocksCount)
-        : BlocksCount{blocksCount}
-        , CheckpointsData{
-            TCompressedBitmap{blocksCount},
-            TCompressedBitmap{blocksCount}}
-    {
-        CheckpointsData[0].Set(0, BlocksCount);
-        CheckpointsData[1].Set(0, BlocksCount);
-    }
+    TCheckpointLight(ui64 blocksCount);
 
-    // All blocks should be marked as modified when first non-initial checkpoint is created.
-    TCheckpointLight(ui64 blocksCount, TString initialCheckpointId)
-        : TCheckpointLight(blocksCount)
-    {
-        CreateCheckpoint(initialCheckpointId, true);
-    }
+    const TString& GetCheckpointId() const;
 
-    TString GetCheckpointId() const
-    {
-        return CheckpointId;
-    }
+    void CreateCheckpoint(TString checkpointId);
 
-    const TCompressedBitmap& GetCheckpointData() const {
-        return CheckpointsData[0];
-    }
-
-    void CreateCheckpoint(TString checkpointId) {
-        CreateCheckpoint(checkpointId, false);
-    }
+    /**
+     * Returns S_OK if and only if input block range is valid.
+     * If returns true, stores block mask of dirty blocks in the output parameter.
+     * Returns mask of all '1' if either lowCheckpointId or highCheckpointId is irrelevant.
+     */
+    NProto::TError FindDirtyBlocksBetweenCheckpoints(
+        const TBlockRange64& blockRange,
+        TString* mask) const;
 
     /**
      * @brief Mark blocks as modified
-     * @param[in] beginBlock begin block to mark
-     * @param[in] endBlock end block to mark. End block out of range.
+     * @param[in] blockRange block range to mark.
      */
-    void Set(ui64 beginBlock, ui64 endBlock)
-    {
-        CheckpointsData[1].Set(beginBlock, endBlock);
-    }
+    void Set(const TBlockRange64& blockRange);
+
+    // Needed for tests
+    const TCompressedBitmap& GetCurrentDirtyBlocks() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

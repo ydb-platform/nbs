@@ -889,7 +889,7 @@ private:
         ui64 requestId,
         const TString& checkpointId);
 
-    bool HandleGetChangedBlocksLightRequest(
+    bool GetChangedBlocksForLightCheckpoints(
         const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 

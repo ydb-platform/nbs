@@ -130,7 +130,7 @@ TVolumeState::TVolumeState(
 
     const auto lightCheckpoints = CheckpointStore.GetLightCheckpoints();
     if (!lightCheckpoints.empty()) {
-        StartCheckpointLight(lightCheckpoints.front());
+        StartCheckpointLight();
     }
 }
 
@@ -807,6 +807,59 @@ bool TVolumeState::SetPartitionStatActor(ui64 id, const TActorId& actor)
 bool TVolumeState::GetMuteIOErrors() const
 {
     return Meta.GetMuteIOErrors();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeState::StartCheckpointLight()
+{
+    if (!CheckpointLight) {
+        CheckpointLight = std::make_unique<TCheckpointLight>(BlockCount);
+    }
+}
+
+void TVolumeState::CreateCheckpointLight(TString checkpointId)
+{
+    if (!CheckpointLight) {
+        StartCheckpointLight();
+    }
+    CheckpointLight->CreateCheckpoint(checkpointId);
+}
+
+void TVolumeState::DeleteCheckpointLight(TString checkpointId)
+{
+    if (!CheckpointLight) {
+        return;
+    }
+    if (checkpointId == CheckpointLight->GetCheckpointId()) {
+        CheckpointLight.reset();
+    }
+}
+
+bool TVolumeState::HasCheckpointLight() const
+{
+    return CheckpointLight.get();
+}
+
+NProto::TError TVolumeState::FindDirtyBlocksBetweenLightCheckpoints(
+    const TBlockRange64& blockRange,
+    TString* mask) const
+{
+    if (!CheckpointLight) {
+        return MakeError(E_PRECONDITION_FAILED, "Light checkpoint is disabled");
+    }
+
+    return CheckpointLight->FindDirtyBlocksBetweenCheckpoints(
+        blockRange,
+        mask);
+}
+
+void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& blockRange)
+{
+    if (!CheckpointLight) {
+        return;
+    }
+    CheckpointLight->Set(blockRange);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

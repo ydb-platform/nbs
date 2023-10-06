@@ -7,6 +7,7 @@ ELSE()
 ENDIF()
 
 SRCS(
+    volume_checkpoint_ut.cpp
     volume_database_ut.cpp
     volume_state_ut.cpp
     volume_ut.cpp

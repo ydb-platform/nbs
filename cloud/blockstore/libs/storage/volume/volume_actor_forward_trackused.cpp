@@ -39,7 +39,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
     if constexpr (IsWriteMethod<TMethod>) {
         if (State->GetTrackUsedBlocks() ||
-            State->GetCheckpointLight() ||
+            State->HasCheckpointLight() ||
             overlayDiskRegistryBasedDisk)
         {
             auto requestInfo =
@@ -110,8 +110,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     if constexpr (std::is_same_v<TMethod, TEvService::TGetChangedBlocksMethod>) {
         const auto type = State->GetCheckpointStore().GetCheckpointType(
             msg->Record.GetHighCheckpointId());
-        if (type.value_or(ECheckpointType::Normal) == ECheckpointType::Light){
-            return HandleGetChangedBlocksLightRequest(ev, ctx);
+        if (type && *type == ECheckpointType::Light){
+            return GetChangedBlocksForLightCheckpoints(ev, ctx);
         }
     }
 

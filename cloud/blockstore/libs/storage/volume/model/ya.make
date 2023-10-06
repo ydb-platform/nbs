@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     checkpoint.cpp
+    checkpoint_light.cpp
     client_state.cpp
     merge.cpp
     meta.cpp

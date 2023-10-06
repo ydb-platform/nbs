@@ -24,6 +24,7 @@ target_link_libraries(storage-volume-model PUBLIC
 )
 target_sources(storage-volume-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/checkpoint.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/checkpoint_light.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/client_state.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/merge.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/meta.cpp

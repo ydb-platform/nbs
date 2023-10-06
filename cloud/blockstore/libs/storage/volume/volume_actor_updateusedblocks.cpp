@@ -21,9 +21,10 @@ void TVolumeActor::HandleUpdateUsedBlocks(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    TCheckpointLight* checkpointLight = State->GetCheckpointLight();
+    bool hasCheckpointLight = State->HasCheckpointLight();
+
     const bool isOverlay = !State->GetBaseDiskId().Empty();
-    if (!State->GetTrackUsedBlocks() && !checkpointLight && !isOverlay) {
+    if (!State->GetTrackUsedBlocks() && !hasCheckpointLight && !isOverlay) {
         return replyFalse();
     }
 
@@ -59,9 +60,9 @@ void TVolumeActor::HandleUpdateUsedBlocks(
 
     auto& ub = State->AccessUsedBlocks();
 
-    if (checkpointLight) {
+    if (hasCheckpointLight) {
         for (const auto& range: ranges) {
-            checkpointLight->Set(range.Start, range.End + 1);
+            State->MarkBlocksAsDirtyInCheckpointLight(range);
         }
     }
 

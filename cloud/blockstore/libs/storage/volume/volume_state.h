@@ -282,31 +282,6 @@ public:
         return ReadWriteError;
     }
 
-    TCheckpointLight& StartCheckpointLight()
-    {
-        if (!CheckpointLight) {
-            CheckpointLight = std::make_unique<TCheckpointLight>(BlockCount);
-        }
-        return *CheckpointLight;
-    }
-
-    TCheckpointLight& StartCheckpointLight(TString initialCheckpointId)
-    {
-        if (!CheckpointLight) {
-            CheckpointLight = std::make_unique<TCheckpointLight>(BlockCount, initialCheckpointId);
-        }
-        return *CheckpointLight;
-    }
-
-    void StopCheckpointLight() {
-        CheckpointLight.reset();
-    }
-
-    TCheckpointLight* GetCheckpointLight()
-    {
-        return CheckpointLight.get();
-    }
-
     TString GetPartitionsError() const;
 
     void SetNonreplicatedPartitionActor(
@@ -366,6 +341,24 @@ public:
         return StartPartitionsNeeded &&
             !HasActiveClients(referenceTimestamp);
     }
+
+    //
+    // Light checkpoints
+    //
+
+    void StartCheckpointLight();
+
+    void CreateCheckpointLight(TString checkpointId);
+
+    void DeleteCheckpointLight(TString checkpointId);
+
+    bool HasCheckpointLight() const;
+
+    NProto::TError FindDirtyBlocksBetweenLightCheckpoints(
+        const TBlockRange64& blockRange,
+        TString* mask) const;
+
+    void MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& blockRange);
 
     //
     // Clients

@@ -524,8 +524,7 @@ void TVolumeActor::CreateCheckpointLightRequest(
         TCreateCheckpointMethod::Name,
         checkpointId.Quote().c_str());
 
-    TCheckpointLight& checkpointLight = State->StartCheckpointLight();
-    checkpointLight.CreateCheckpoint(checkpointId);
+    State->CreateCheckpointLight(checkpointId);
 
     const TCheckpointRequestInfo* requestInfo =
         CheckpointRequests.FindPtr(requestId);
@@ -537,19 +536,19 @@ void TVolumeActor::CreateCheckpointLightRequest(
         true // Completed
     );
 }
-
 
 void TVolumeActor::DeleteCheckpointLightRequest(
     const TActorContext& ctx,
     ui64 requestId,
     const TString& checkpointId)
 {
-    TCheckpointLight* checkpointLight = State->GetCheckpointLight();
-    if (checkpointLight &&
-        checkpointLight->GetCheckpointId() == checkpointId)
-    {
-        State->StopCheckpointLight();
-    }
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] %s deleted light checkpoint %s",
+        TabletID(),
+        TCreateCheckpointMethod::Name,
+        checkpointId.Quote().c_str());
+
+    State->DeleteCheckpointLight(checkpointId);
 
     const TCheckpointRequestInfo* requestInfo =
         CheckpointRequests.FindPtr(requestId);
@@ -562,7 +561,7 @@ void TVolumeActor::DeleteCheckpointLightRequest(
     );
 }
 
-bool TVolumeActor::HandleGetChangedBlocksLightRequest(
+bool TVolumeActor::GetChangedBlocksForLightCheckpoints(
     const TGetChangedBlocksMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -571,47 +570,36 @@ bool TVolumeActor::HandleGetChangedBlocksLightRequest(
     auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
     auto requestInfo =
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-    auto checkpointLight = State->GetCheckpointLight();
 
-    if (!checkpointLight) {
+    NProto::TError error;
+    TString mask;
+
+    if (msg->Record.GetBlocksCount() == 0) {
+        error = MakeError(E_ARGUMENT, "Empty block range is forbidden for GetChangedBlocks");
+    } else {
+        error = State->FindDirtyBlocksBetweenLightCheckpoints(
+            TBlockRange64::WithLength(
+                msg->Record.GetStartIndex(),
+                msg->Record.GetBlocksCount()),
+            &mask);
+    }
+
+    if (SUCCEEDED(error.GetCode())) {
+        *response->Record.MutableMask() = std::move(mask);
+    } else {
+        TString errorMsg = TStringBuilder()
+            << "[%lu] %s for light checkpoints failed, request parameters are:"
+            << " LowCheckpointId: " << msg->Record.GetLowCheckpointId() << ","
+            << " HighCheckpointId: " << msg->Record.GetHighCheckpointId() << ","
+            << " StartIndex: " << msg->Record.GetStartIndex() << ","
+            << " BlocksCount: " << msg->Record.GetBlocksCount() << ","
+            << " error message: " << error.GetMessage();
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s Light checkpoint disabled",
+            errorMsg.c_str(),
             TabletID(),
             TGetChangedBlocksMethod::Name);
 
-        *response->Record.MutableError() =
-            MakeError(E_REJECTED, "Light checkpoint disabled");
-    } else {
-        const ui64 beginBlock =
-            msg->Record.GetStartIndex();
-        const ui64 endBlock =
-            beginBlock + msg->Record.GetBlocksCount();
-
-        if (endBlock > State->GetBlocksCount()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s Invalid blocks requested %d blocks %d",
-                TabletID(),
-                TGetChangedBlocksMethod::Name,
-                endBlock,
-                State->GetBlocksCount());
-
-            *response->Record.MutableError() =
-                MakeError(E_REJECTED, "Invalid blocks requested");
-        } else {
-            const auto& data =
-                checkpointLight->GetCheckpointData();
-
-            response->Record.MutableMask()->reserve(
-                msg->Record.GetBlocksCount() / 8 + 1);
-            for (auto i = beginBlock; i < endBlock;) {
-                ui8 bitData = 0;
-                for (auto j = 0; j < 8 && i < endBlock; ++j) {
-                    bitData |= data.Test(i) << j;
-                    ++i;
-                }
-                response->Record.MutableMask()->push_back(bitData);
-            }
-        }
+        *response->Record.MutableError() = std::move(error);
     }
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));
