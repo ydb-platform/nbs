@@ -235,7 +235,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
-        Y_VERIFY(ep);
+        Y_ABORT_UNLESS(ep);
 
         NProto::TWriteDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -375,7 +375,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     ui64 blocks = 0;
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
-        Y_VERIFY(ep);
+        Y_ABORT_UNLESS(ep);
 
         NProto::TWriteDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());

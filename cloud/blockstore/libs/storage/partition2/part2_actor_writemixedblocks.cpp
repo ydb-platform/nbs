@@ -293,8 +293,8 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
         }
     }
 
-    Y_VERIFY(Requests.size());
-    Y_VERIFY(Requests.front().SubRequests.size());
+    Y_ABORT_UNLESS(Requests.size());
+    Y_ABORT_UNLESS(Requests.front().SubRequests.size());
     const auto requestInfo = Requests.front().SubRequests.front().RequestInfo;
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -406,7 +406,7 @@ void TWriteMixedBlocksActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(RequestsCompleted < Requests.size());
+    Y_ABORT_UNLESS(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }

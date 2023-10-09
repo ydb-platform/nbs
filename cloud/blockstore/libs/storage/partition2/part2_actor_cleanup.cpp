@@ -204,7 +204,7 @@ bool TPartitionActor::PrepareCleanup(
         }
 
         if (ready) {
-            Y_VERIFY(list);
+            Y_ABORT_UNLESS(list);
             args.BlockLists.emplace_back(list->GetBlocks());
         }
     }
@@ -235,7 +235,7 @@ void TPartitionActor::ExecuteCleanup(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    Y_VERIFY(args.ExistingBlobIds.size() == args.BlockLists.size());
+    Y_ABORT_UNLESS(args.ExistingBlobIds.size() == args.BlockLists.size());
     size_t i = 0;
 
     for (const auto& blobId: args.ExistingBlobIds) {
@@ -254,7 +254,7 @@ void TPartitionActor::ExecuteCleanup(
             blocks
         );
 
-        Y_VERIFY(updated, "Missing blob detected: %s",
+        Y_ABORT_UNLESS(updated, "Missing blob detected: %s",
             DumpBlobIds(TabletID(), blobId).data());
     }
 
@@ -314,7 +314,7 @@ void TPartitionActor::CompleteCleanup(
         TVector<ui32> blockIndices;
         ui32 blockCount = 0;
         for (const auto& l: args.BlockLists) {
-            Y_VERIFY(l.size());
+            Y_ABORT_UNLESS(l.size());
             blockCount += l.size();
         }
         blockIndices.reserve(blockCount);

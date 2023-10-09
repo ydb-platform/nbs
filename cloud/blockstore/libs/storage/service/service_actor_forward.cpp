@@ -131,7 +131,7 @@ void TServiceActor::ForwardRequest(
         return;
     }
 
-    Y_VERIFY(volume && clientInfo);
+    Y_ABORT_UNLESS(volume && clientInfo);
 
     if (volume->SessionId != sessionId) {
         replyError(ctx, ev, E_BS_INVALID_SESSION, "Invalid session");

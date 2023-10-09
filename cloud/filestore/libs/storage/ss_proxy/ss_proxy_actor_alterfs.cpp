@@ -74,7 +74,7 @@ void TAlterFileStoreActor::ModifyScheme(const TActorContext& ctx)
         FileStoreConfig.GetFileSystemId());
 
     auto pathItems = SplitPath(std::move(path));
-    Y_VERIFY(pathItems);
+    Y_ABORT_UNLESS(pathItems);
 
     auto name = pathItems.back();
     auto workingDir = JoinRange(

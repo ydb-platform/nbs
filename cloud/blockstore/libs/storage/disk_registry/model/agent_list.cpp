@@ -146,7 +146,7 @@ NProto::TAgentConfig& TAgentList::AddNewAgent(
     const TKnownAgent& knownAgent,
     THashSet<TDeviceId>* newDevices)
 {
-    Y_VERIFY(newDevices);
+    Y_ABORT_UNLESS(newDevices);
     Y_VERIFY_DEBUG(
         agentConfig.GetState() == NProto::AGENT_STATE_ONLINE,
         "Trying to add a new agent which is not in online state");

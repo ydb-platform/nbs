@@ -61,7 +61,7 @@ public:
 
     TBlockDataRef GetBlock(size_t index) const noexcept
     {
-        Y_VERIFY(index < Blocks.size());
+        Y_ABORT_UNLESS(index < Blocks.size());
         return Blocks[index];
     }
 
@@ -95,7 +95,7 @@ public:
                 continue;
             }
 
-            Y_VERIFY(head < result.data() + result.size());
+            Y_ABORT_UNLESS(head < result.data() + result.size());
 
             if (block.Data()) {
                 memcpy((void*)head, (void*)block.Data(), size);
@@ -110,7 +110,7 @@ public:
 
     void AddBlock(size_t size, char fill)
     {
-        Y_VERIFY(size);
+        Y_ABORT_UNLESS(size);
 
         auto b = Allocator->Allocate(size);
         memset(b.Data, fill, size);
@@ -119,7 +119,7 @@ public:
 
     void AddBlock(TBlockDataRef block)
     {
-        Y_VERIFY(block);
+        Y_ABORT_UNLESS(block);
 
         auto b = Allocator->Allocate(block.Size());
         memcpy(b.Data, block.Data(), block.Size());

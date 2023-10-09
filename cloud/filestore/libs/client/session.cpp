@@ -349,7 +349,7 @@ private:
     std::tuple<TString, ui64, bool> GetSessionParams(
         const TFuture<NProto::TCreateSessionResponse>& response)
     {
-        Y_VERIFY(response.HasValue());
+        Y_ABORT_UNLESS(response.HasValue());
         const auto& info = response.GetValue();
         return {
             GetSessionId(info),

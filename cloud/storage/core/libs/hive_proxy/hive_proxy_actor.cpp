@@ -71,7 +71,7 @@ ui64 THiveProxyActor::GetHive(
     }
 
     auto domainsInfo = AppData(ctx)->DomainsInfo;
-    Y_VERIFY(domainsInfo->Domains);
+    Y_ABORT_UNLESS(domainsInfo->Domains);
 
     ui32 domainUid = TDomainsInfo::BadDomainId;
     if (tabletId) {

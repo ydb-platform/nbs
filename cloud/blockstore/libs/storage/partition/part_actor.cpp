@@ -124,7 +124,7 @@ void TPartitionActor::Suicide(const TActorContext& ctx)
 
 void TPartitionActor::BecomeAux(const TActorContext& ctx, EState state)
 {
-    Y_VERIFY(state < STATE_MAX);
+    Y_ABORT_UNLESS(state < STATE_MAX);
 
     Become(States[state].Func);
     CurrentState = state;
@@ -356,16 +356,16 @@ void TPartitionActor::AddTransaction(TRequestInfo& requestInfo)
 {
     requestInfo.Ref();
 
-    Y_VERIFY(requestInfo.Empty());
+    Y_ABORT_UNLESS(requestInfo.Empty());
     ActiveTransactions.PushBack(&requestInfo);
 }
 
 void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
 {
-    Y_VERIFY(!requestInfo.Empty());
+    Y_ABORT_UNLESS(!requestInfo.Empty());
     requestInfo.Unlink();
 
-    Y_VERIFY(requestInfo.RefCount() > 1);
+    Y_ABORT_UNLESS(requestInfo.RefCount() > 1);
     requestInfo.UnRef();
 }
 
@@ -375,7 +375,7 @@ void TPartitionActor::TerminateTransactions(const TActorContext& ctx)
         TRequestInfo* requestInfo = ActiveTransactions.PopFront();
         requestInfo->CancelRequest(ctx);
 
-        Y_VERIFY(requestInfo->RefCount() >= 1);
+        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
 }
@@ -384,7 +384,7 @@ void TPartitionActor::ReleaseTransactions()
 {
     while (ActiveTransactions) {
         TRequestInfo* requestInfo = ActiveTransactions.PopFront();
-        Y_VERIFY(requestInfo->RefCount() >= 1);
+        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
 }

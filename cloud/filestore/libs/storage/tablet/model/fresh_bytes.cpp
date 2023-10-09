@@ -88,7 +88,7 @@ void TFreshBytes::AddBytes(
     if (c.FirstCommitId == InvalidCommitId) {
         c.FirstCommitId = commitId;
     } else {
-        Y_VERIFY(commitId >= c.FirstCommitId);
+        Y_ABORT_UNLESS(commitId >= c.FirstCommitId);
     }
 
     TByteVector buffer(Reserve(data.size()), Allocator);
@@ -116,7 +116,7 @@ void TFreshBytes::AddDeletionMarker(
 {
     auto& c = Chunks.back();
     if (c.FirstCommitId != InvalidCommitId) {
-        Y_VERIFY(commitId >= c.FirstCommitId);
+        Y_ABORT_UNLESS(commitId >= c.FirstCommitId);
     }
 
     DeleteBytes(c, nodeId, offset, len, commitId);
@@ -125,7 +125,7 @@ void TFreshBytes::AddDeletionMarker(
 void TFreshBytes::Barrier(ui64 commitId)
 {
     if (Chunks.back().TotalBytes) {
-        Y_VERIFY(Chunks.back().Data.back().Descriptor.MinCommitId <= commitId);
+        Y_ABORT_UNLESS(Chunks.back().Data.back().Descriptor.MinCommitId <= commitId);
         Chunks.back().ClosingCommitId = commitId;
         Chunks.emplace_back(Allocator);
         Chunks.back().Id = ++LastChunkId;
@@ -161,8 +161,8 @@ void TFreshBytes::VisitTop(const TChunkVisitor& visitor)
 
 void TFreshBytes::FinishCleanup(ui64 chunkId)
 {
-    Y_VERIFY(Chunks.size() > 1);
-    Y_VERIFY(Chunks.front().Id == chunkId);
+    Y_ABORT_UNLESS(Chunks.size() > 1);
+    Y_ABORT_UNLESS(Chunks.front().Id == chunkId);
 
     Chunks.pop_front();
 }

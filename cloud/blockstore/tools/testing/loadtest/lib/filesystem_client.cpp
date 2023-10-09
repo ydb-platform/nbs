@@ -224,12 +224,12 @@ struct TClient: TClientBase
                 TErrorResponse(E_REJECTED));
         }
 
-        Y_VERIFY(request->BlockSize == BlockSize);
+        Y_ABORT_UNLESS(request->BlockSize == BlockSize);
         ui64 dataSize = 0;
         for (const auto& b: sglist.Get()) {
             dataSize += b.Size();
         }
-        Y_VERIFY(dataSize > 0);
+        Y_ABORT_UNLESS(dataSize > 0);
         auto buffer = Acalloc(dataSize);
 
         auto future = TAsyncIOWrapper::Instance().Read(
@@ -283,12 +283,12 @@ struct TClient: TClientBase
                 TErrorResponse(E_REJECTED));
         }
 
-        Y_VERIFY(request->BlockSize == BlockSize);
+        Y_ABORT_UNLESS(request->BlockSize == BlockSize);
         ui64 dataSize = 0;
         for (const auto& b: sglist.Get()) {
             dataSize += b.Size();
         }
-        Y_VERIFY(dataSize > 0);
+        Y_ABORT_UNLESS(dataSize > 0);
         auto buffer = Acalloc(dataSize);
 
         SgListCopy(sglist.Get(), TBlockDataRef(buffer.get(), dataSize));
@@ -329,7 +329,7 @@ struct TClient: TClientBase
         }
 
         const ui64 dataSize = request->GetBlocksCount() * BlockSize;
-        Y_VERIFY(dataSize > 0);
+        Y_ABORT_UNLESS(dataSize > 0);
         auto buffer = Acalloc(dataSize);
 
         auto future = TAsyncIOWrapper::Instance().Write(

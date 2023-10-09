@@ -175,7 +175,7 @@ void TConfigInitializerCommon::InitSpdkEnvConfig()
 void TConfigInitializerCommon::SetupDiscoveryPorts(
     NProto::TDiscoveryServiceConfig& discoveryConfig) const
 {
-    Y_VERIFY(ServerConfig);
+    Y_ABORT_UNLESS(ServerConfig);
 
     if (!discoveryConfig.GetConductorInstancePort()) {
         discoveryConfig.SetConductorInstancePort(ServerConfig->GetPort());

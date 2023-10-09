@@ -34,7 +34,7 @@ public:
         : Start(data)
         , Length(len)
     {
-        Y_VERIFY(data && len);
+        Y_ABORT_UNLESS(data && len);
     }
 
     constexpr inline TBlockDataRef() noexcept

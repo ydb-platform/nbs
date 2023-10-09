@@ -46,7 +46,7 @@ TStatsTableSchemeBuilder BuildListOfColumns()
 #undef YDB_PERCENTILE_FIELD
     };
 
-    Y_VERIFY(out.AddColumns(columns));
+    Y_ABORT_UNLESS(out.AddColumns(columns));
     return out;
 }
 
@@ -57,21 +57,21 @@ TStatsTableSchemeBuilder BuildListOfColumns()
 TStatsTableSchemePtr CreateStatsTableScheme()
 {
     auto out = BuildListOfColumns();
-    Y_VERIFY(out.SetKeyColumns({"DiskId"}));
+    Y_ABORT_UNLESS(out.SetKeyColumns({"DiskId"}));
     return out.Finish();
 }
 
 TStatsTableSchemePtr CreateHistoryTableScheme()
 {
     auto out = BuildListOfColumns();
-    Y_VERIFY(out.SetKeyColumns({"DiskId", "Timestamp"}));
+    Y_ABORT_UNLESS(out.SetKeyColumns({"DiskId", "Timestamp"}));
     return out.Finish();
 }
 
 TStatsTableSchemePtr CreateArchiveStatsTableScheme()
 {
     auto out = BuildListOfColumns();
-    Y_VERIFY(out.SetKeyColumns({"DiskId"}));
+    Y_ABORT_UNLESS(out.SetKeyColumns({"DiskId"}));
     return out.Finish();
 }
 
@@ -87,9 +87,9 @@ TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme()
         { TYdbBlobLoadMetricRow::LoadDataName.data(),  EPrimitiveType::Json }
     };
 
-    Y_VERIFY(out.AddColumns(columns));
+    Y_ABORT_UNLESS(out.AddColumns(columns));
 
-    Y_VERIFY(out.SetKeyColumns({
+    Y_ABORT_UNLESS(out.SetKeyColumns({
         TYdbBlobLoadMetricRow::HostNameName.data(),
         TYdbBlobLoadMetricRow::TimestampName.data()}));
 

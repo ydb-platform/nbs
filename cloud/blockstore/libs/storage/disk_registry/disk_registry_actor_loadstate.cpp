@@ -177,7 +177,7 @@ void TDiskRegistryActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxDiskRegistry::TLoadState& args)
 {
-    Y_VERIFY(CurrentState == STATE_INIT);
+    Y_ABORT_UNLESS(CurrentState == STATE_INIT);
 
     if (args.RestoreState) {
         BecomeAux(ctx, STATE_RESTORE);

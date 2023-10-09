@@ -1091,7 +1091,7 @@ bool TCompressedBitmap::TRangeSerializer::Next(TSerializedChunk* sc)
 TCompressedBitmap::TCompressedBitmap(size_t size)
     : Size(size)
 {
-    Y_VERIFY(Size);
+    Y_ABORT_UNLESS(Size);
 }
 
 TCompressedBitmap::~TCompressedBitmap() = default;

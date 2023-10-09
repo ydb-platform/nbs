@@ -166,7 +166,7 @@ TStringBuf TApp::GetName(const NProto::TActionGraph::TVertex& v)
         case NProto::TActionGraph::TVertex::kCompareData:
             return v.GetCompareData().GetName();
         default:
-            Y_VERIFY(0);
+            Y_ABORT_UNLESS(0);
     }
 }
 
@@ -343,7 +343,7 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
                     break;
                 }
 
-                default: Y_VERIFY(0);
+                default: Y_ABORT_UNLESS(0);
             }
         };
     }

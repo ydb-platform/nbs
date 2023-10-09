@@ -109,15 +109,15 @@ TCreateVolumeActor::TCreateVolumeActor(
     , VolumeConfig(std::move(volumeConfig))
 {
     const auto& diskId = VolumeConfig.GetDiskId();
-    Y_VERIFY(diskId);
+    Y_ABORT_UNLESS(diskId);
 
     const auto& schemeShardDir = Config->GetSchemeShardDir();
 
     std::tie(VolumeDir, VolumeName) =
         DiskIdToVolumeDirAndName(schemeShardDir, diskId);
     VolumePathItems = SplitPath(DiskIdToPath(diskId));
-    Y_VERIFY(VolumeName);
-    Y_VERIFY(VolumePathItems);
+    Y_ABORT_UNLESS(VolumeName);
+    Y_ABORT_UNLESS(VolumePathItems);
 
     TString dir = schemeShardDir;
     for (size_t i = 0; i + 1 < VolumePathItems.size(); ++i) {

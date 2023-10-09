@@ -46,7 +46,7 @@ void FillReadStats(
             TCompactionMap::GetRangeStart(r.BlockIndex, compactionRangeSize);
         if (compactionRange != prevCompactionRange) {
             if (blockCount) {
-                Y_VERIFY(prevCompactionRange != Max<ui32>());
+                Y_ABORT_UNLESS(prevCompactionRange != Max<ui32>());
                 stats->emplace_back(prevCompactionRange, blobCount, blockCount);
             }
 
@@ -65,7 +65,7 @@ void FillReadStats(
     }
 
     if (blockCount) {
-        Y_VERIFY(prevCompactionRange != Max<ui32>());
+        Y_ABORT_UNLESS(prevCompactionRange != Max<ui32>());
         stats->emplace_back(prevCompactionRange, blobCount, blockCount);
     }
 }
@@ -418,7 +418,7 @@ void TReadBlocksActor::DescribeBlocks(const TActorContext& ctx)
 TMaybe<TReadBlocksRequests> TReadBlocksActor::ProcessDescribeBlocksResponse(
     const TEvVolume::TEvDescribeBlocksResponse& response)
 {
-    Y_VERIFY(DescribeBlocksRange);
+    Y_ABORT_UNLESS(DescribeBlocksRange);
 
     auto& handler = *ReadHandler;
     const auto& record = response.Record;
@@ -426,7 +426,7 @@ TMaybe<TReadBlocksRequests> TReadBlocksActor::ProcessDescribeBlocksResponse(
     for (const auto& r : record.GetFreshBlockRanges()) {
         for (size_t i = 0; i < r.GetBlocksCount(); ++i) {
             const auto blockIndex = r.GetStartIndex() + i;
-            Y_VERIFY(DescribeBlocksRange->Contains(blockIndex));
+            Y_ABORT_UNLESS(DescribeBlocksRange->Contains(blockIndex));
             auto& mark = BlockMarks[blockIndex - ReadRange.Start];
 
             if (mark.Empty) {
@@ -449,7 +449,7 @@ TMaybe<TReadBlocksRequests> TReadBlocksActor::ProcessDescribeBlocksResponse(
         for (const auto& r : p.GetRanges()) {
             for (size_t i = 0; i < r.GetBlocksCount(); ++i) {
                 const auto blockIndex = r.GetBlockIndex() + i;
-                Y_VERIFY(DescribeBlocksRange->Contains(blockIndex));
+                Y_ABORT_UNLESS(DescribeBlocksRange->Contains(blockIndex));
                 auto& mark = BlockMarks[blockIndex - ReadRange.Start];
 
                 if (mark.Empty) {
@@ -638,11 +638,11 @@ void TReadBlocksActor::HandleReadBlobResponse(
 
     ui32 batchIndex = ev->Cookie;
 
-    Y_VERIFY(batchIndex < BatchRequests.size());
+    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
     RequestsCompleted += batch.Requests.size();
-    Y_VERIFY(RequestsCompleted <= RequestsScheduled);
+    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     if (RequestsCompleted < RequestsScheduled) {
         return;
     }
@@ -749,12 +749,12 @@ public:
         ui32 group = 0;
 
         if (!block.Zeroed) {
-            Y_VERIFY(!IsDeletionMarker(blobId));
+            Y_ABORT_UNLESS(!IsDeletionMarker(blobId));
             logoBlobId = MakeBlobId(TabletInfo.TabletID, blobId);
             group = TabletInfo.GroupFor(
                 blobId.Channel(), blobId.Generation());
         } else {
-            Y_VERIFY(blobOffset == ZeroBlobOffset);
+            Y_ABORT_UNLESS(blobOffset == ZeroBlobOffset);
         }
 
         if (AddBlock(block, logoBlobId, group, blobOffset)) {
@@ -771,10 +771,10 @@ private:
         ui32 group,
         ui16 blobOffset)
     {
-        Y_VERIFY(block.MinCommitId <= Args.CommitId
+        Y_ABORT_UNLESS(block.MinCommitId <= Args.CommitId
               && block.MaxCommitId > Args.CommitId);
 
-        Y_VERIFY(Args.ReadRange.Contains(block.BlockIndex));
+        Y_ABORT_UNLESS(Args.ReadRange.Contains(block.BlockIndex));
         auto& mark = Args.Blocks[block.BlockIndex - Args.ReadRange.Start];
 
         // merge different versions

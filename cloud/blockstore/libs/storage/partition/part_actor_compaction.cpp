@@ -285,7 +285,7 @@ void TCompactionActor::InitBlockDigests()
         const auto& sgList = rc.BlobContent.Get().GetBlocks();
 
         if (rc.DataBlobId) {
-            Y_VERIFY(sgList.size() == rc.BlockRange.Size() - rc.DataBlobSkipMask.Count());
+            Y_ABORT_UNLESS(sgList.size() == rc.BlockRange.Size() - rc.DataBlobSkipMask.Count());
 
             ui32 skipped = 0;
             for (const auto blockIndex: xrange(rc.BlockRange)) {
@@ -539,7 +539,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         ui32 blocksSkipped)
     {
         while (skipMask.Get(range.End - range.Start)) {
-            Y_VERIFY(range.End > range.Start);
+            Y_ABORT_UNLESS(range.End > range.Start);
             // modifying skipMask is crucial since otherwise there would be
             // 2 blobs with the same key in merged index (the key is
             // commitId + blockRange.End)
@@ -582,8 +582,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         if (rc.DataBlobId && rc.ZeroBlobId) {
             // if both blobs are present, none of them should contain all range
             // blocks
-            Y_VERIFY(rc.DataBlobSkipMask.Count());
-            Y_VERIFY(rc.ZeroBlobSkipMask.Count());
+            Y_ABORT_UNLESS(rc.DataBlobSkipMask.Count());
+            Y_ABORT_UNLESS(rc.ZeroBlobSkipMask.Count());
         }
 
         for (auto it = rc.AffectedBlobs.begin(); it != rc.AffectedBlobs.end(); ) {
@@ -602,9 +602,9 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             }
 
             auto& affectedBlob = affectedBlobs[it->first];
-            Y_VERIFY(affectedBlob.Offsets.empty());
-            Y_VERIFY(affectedBlob.BlockMask.Empty());
-            Y_VERIFY(affectedBlob.AffectedBlockIndices.empty());
+            Y_ABORT_UNLESS(affectedBlob.Offsets.empty());
+            Y_ABORT_UNLESS(affectedBlob.BlockMask.Empty());
+            Y_ABORT_UNLESS(affectedBlob.AffectedBlockIndices.empty());
             affectedBlob = std::move(it->second);
 
             ++it;
@@ -767,12 +767,12 @@ void TCompactionActor::HandleReadBlobResponse(
 
     ui32 batchIndex = ev->Cookie;
 
-    Y_VERIFY(batchIndex < BatchRequests.size());
+    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
     RealReadRequestsCompleted += batch.Requests.size();
     ReadRequestsCompleted += batch.Requests.size();
-    Y_VERIFY(ReadRequestsCompleted <= Requests.size());
+    Y_ABORT_UNLESS(ReadRequestsCompleted <= Requests.size());
     if (ReadRequestsCompleted < Requests.size()) {
         return;
     }
@@ -803,7 +803,7 @@ void TCompactionActor::HandleWriteOrPatchBlobResponse(
     }
 
     ++WriteAndPatchBlobRequestsCompleted;
-    Y_VERIFY(WriteAndPatchBlobRequestsCompleted <= RangeCompactionInfos.size());
+    Y_ABORT_UNLESS(WriteAndPatchBlobRequestsCompleted <= RangeCompactionInfos.size());
     if (WriteAndPatchBlobRequestsCompleted < RangeCompactionInfos.size()) {
         return;
     }
@@ -1296,7 +1296,7 @@ void TPartitionActor::HandleCompaction(
         std::move(ranges));
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-    Y_VERIFY(minCommitId <= commitId);
+    Y_ABORT_UNLESS(minCommitId <= commitId);
 
     if (minCommitId == commitId) {
         // start execution
@@ -1313,7 +1313,7 @@ void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 
     while (!State->GetCommitQueue().Empty()) {
         ui64 commitId = State->GetCommitQueue().Peek();
-        Y_VERIFY(minCommitId <= commitId);
+        Y_ABORT_UNLESS(minCommitId <= commitId);
 
         if (minCommitId == commitId) {
             // start execution
@@ -1516,7 +1516,7 @@ void PrepareRangeCompaction(
 
         for (const auto& x: liveBlocks) {
             auto ab = args.AffectedBlobs.find(x.first);
-            Y_VERIFY(ab != args.AffectedBlobs.end());
+            Y_ABORT_UNLESS(ab != args.AffectedBlobs.end());
             for (const auto blockIndex: ab->second.AffectedBlockIndices) {
                 // we can actually add extra indices to skippedBlockIndices,
                 // but it does not cause data corruption - the important thing
@@ -1546,7 +1546,7 @@ void PrepareRangeCompaction(
 
     for (auto& kv: args.AffectedBlobs) {
         if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-            Y_VERIFY(kv.second.BlockMask.Defined(),
+            Y_ABORT_UNLESS(kv.second.BlockMask.Defined(),
                 "Could not read block mask for blob: %s",
                 ToString(MakeBlobId(tabletId, kv.first)).data());
         } else {
@@ -1574,7 +1574,7 @@ void CompleteRangeCompaction(
     for (const auto& mark: args.BlockMarks) {
         if (mark.CommitId) {
             // there could be fresh block OR merged/mixed block
-            Y_VERIFY(!(mark.BlockContent && !IsDeletionMarker(mark.BlobId)));
+            Y_ABORT_UNLESS(!(mark.BlockContent && !IsDeletionMarker(mark.BlobId)));
             if (mark.BlockContent || !IsDeletionMarker(mark.BlobId)) {
                 ++dataBlocksCount;
             } else {
@@ -1628,7 +1628,7 @@ void CompleteRangeCompaction(
     for (auto& mark: args.BlockMarks) {
         if (mark.CommitId) {
             if (mark.BlockContent) {
-                Y_VERIFY(IsDeletionMarker(mark.BlobId));
+                Y_ABORT_UNLESS(IsDeletionMarker(mark.BlobId));
                 requests.emplace_back(
                     mark.BlobId,
                     TActorId(),
@@ -1712,13 +1712,13 @@ void CompleteRangeCompaction(
         ui32 originalGroup = tabletStorageInfo.GroupFor(
             originalChannel,
             patchingCandidate.Generation());
-        Y_VERIFY(originalGroup != Max<ui32>());
+        Y_ABORT_UNLESS(originalGroup != Max<ui32>());
 
         ui32 patchedChannel = realTargetBlobId.Channel();
         ui32 patchedGroup = tabletStorageInfo.GroupFor(
             patchedChannel,
             realTargetBlobId.Generation());
-        Y_VERIFY(patchedGroup != Max<ui32>());
+        Y_ABORT_UNLESS(patchedGroup != Max<ui32>());
 
         bool found = TEvBlobStorage::TEvPatch::GetBlobIdWithSamePlacement(
             MakeBlobId(tabletStorageInfo.TabletID, patchingCandidate),
@@ -1766,7 +1766,7 @@ void CompleteRangeCompaction(
         const auto rangeDescr = DescribeRange(args.BlockRange);
         Y_FAIL("No blocks in compacted range: %s", rangeDescr.c_str());
     }
-    Y_VERIFY(requests.size() - initialRequestsSize == dataBlocksCount);
+    Y_ABORT_UNLESS(requests.size() - initialRequestsSize == dataBlocksCount);
 }
 
 }   // namespace

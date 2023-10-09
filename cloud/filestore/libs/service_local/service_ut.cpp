@@ -414,7 +414,7 @@ struct TTestBootstrap
     {
         auto request = CreateRequest<NProto::TCreateNodeRequest>();
         args.Fill(*request);
-        Y_VERIFY(request->GetName());
+        Y_ABORT_UNLESS(request->GetName());
         return request;
     }
 

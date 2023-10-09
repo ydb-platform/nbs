@@ -89,12 +89,12 @@ public:
 public:
     void BuildNextRequest(TVector<IOutputStream::TPart>* parts)
     {
-        Y_VERIFY(CurrentDeviceIdx < DeviceRequests.size());
+        Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
 
         const auto& deviceRequest = DeviceRequests[CurrentDeviceIdx];
         for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
             const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
-            Y_VERIFY(rem >= BlockSize);
+            Y_ABORT_UNLESS(rem >= BlockSize);
             parts->push_back({
                 Buffer().data() + CurrentOffsetInBuffer,
                 BlockSize
@@ -111,7 +111,7 @@ public:
 
     void BuildNextRequest(NProto::TWriteDeviceBlocksRequest& r)
     {
-        Y_VERIFY(CurrentDeviceIdx < DeviceRequests.size());
+        Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
 
         const auto& deviceRequest = DeviceRequests[CurrentDeviceIdx];
         for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
@@ -121,7 +121,7 @@ public:
                 ++CurrentBufferIdx;
             } else {
                 const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
-                Y_VERIFY(rem >= BlockSize);
+                Y_ABORT_UNLESS(rem >= BlockSize);
                 deviceBuffer.resize(BlockSize);
                 memcpy(
                     deviceBuffer.begin(),

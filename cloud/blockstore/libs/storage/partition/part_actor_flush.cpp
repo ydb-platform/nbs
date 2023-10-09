@@ -315,7 +315,7 @@ void TFlushActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(RequestsCompleted < Requests.size());
+    Y_ABORT_UNLESS(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }
@@ -469,7 +469,7 @@ private:
     {
         if (blocks) {
             ui32 firstBlockIndex = blocks.front().BlockIndex;
-            Y_VERIFY(firstBlockIndex <= blockIndex);
+            Y_ABORT_UNLESS(firstBlockIndex <= blockIndex);
             return blockIndex - firstBlockIndex;
         }
         return 0;
@@ -650,7 +650,7 @@ void TPartitionActor::HandleFlush(
 
     {
         auto& flushedCommitIdsInProgress = State->GetFlushedCommitIdsInProgress();
-        Y_VERIFY(flushedCommitIdsInProgress.empty());
+        Y_ABORT_UNLESS(flushedCommitIdsInProgress.empty());
 
         for (const auto& blob: blobs) {
             for (const auto& block: blob.Blocks) {
@@ -676,7 +676,7 @@ void TPartitionActor::HandleFlush(
             std::move(blob.Blocks));
     }
 
-    Y_VERIFY(requests);
+    Y_ABORT_UNLESS(requests);
 
     if (Config->GetFlushToDevNull()) {
         TVector<TBlock> freshBlocks;

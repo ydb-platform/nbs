@@ -67,7 +67,7 @@ void TPartitionActor::ExecuteDeleteGarbage(
         newBlobBytes += blobId.BlobSize();
 
         bool deleted = State->GetGarbageQueue().RemoveNewBlob(blobId);
-        Y_VERIFY(deleted);
+        Y_ABORT_UNLESS(deleted);
     }
 
     i64 garbageBlobBytes = 0;
@@ -80,7 +80,7 @@ void TPartitionActor::ExecuteDeleteGarbage(
             ToString(MakeBlobId(TabletID(), blobId)).data());
 
         bool deleted = State->GetGarbageQueue().RemoveGarbageBlob(blobId);
-        Y_VERIFY(deleted);
+        Y_ABORT_UNLESS(deleted);
 
         db.DeleteGarbageBlob(blobId);
     }

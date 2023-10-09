@@ -77,7 +77,7 @@ public:
 
     void SetConfig(NProto::TFileStore store)
     {
-        Y_VERIFY(store.GetFileSystemId() == Store.GetFileSystemId());
+        Y_ABORT_UNLESS(store.GetFileSystemId() == Store.GetFileSystemId());
         Store = std::move(store);
     }
 

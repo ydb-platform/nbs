@@ -62,7 +62,7 @@ struct TReferenceImplementation
         }
 
         for (ui32 idx = begin; idx < end; ++idx) {
-            Y_VERIFY(deletionMarkers[idx] == InvalidCommitId ||
+            Y_ABORT_UNLESS(deletionMarkers[idx] == InvalidCommitId ||
                      deletionMarkers[idx] < deletionMarker.CommitId);
 
             deletionMarkers[idx] = deletionMarker.CommitId;

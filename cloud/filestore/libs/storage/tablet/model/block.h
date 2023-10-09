@@ -273,7 +273,7 @@ inline ui32 GetMixedRangeIndex(
     ui32 blockIndex,
     ui32 blocksCount)
 {
-    Y_VERIFY(blocksCount && blocksCount <= MaxBlocksCount);
+    Y_ABORT_UNLESS(blocksCount && blocksCount <= MaxBlocksCount);
 
     ui32 rangeId = GetMixedRangeIndex(hasher, nodeId, blockIndex);
 
@@ -284,7 +284,7 @@ inline ui32 GetMixedRangeIndex(
             nodeId,
             blockIndex + blocksCount - 1);
 
-        Y_VERIFY(nextRangeId == rangeId, "node %lu: rangeId %u vs nextRangeId %u at (index %u, count %u)",
+        Y_ABORT_UNLESS(nextRangeId == rangeId, "node %lu: rangeId %u vs nextRangeId %u at (index %u, count %u)",
             nodeId, rangeId, nextRangeId, blockIndex, blocksCount);
     });
 
@@ -295,7 +295,7 @@ inline ui32 GetMixedRangeIndex(
     const IBlockLocation2RangeIndex& hasher,
     const TVector<TBlock>& blocks)
 {
-    Y_VERIFY(blocks && blocks.size() <= MaxBlocksCount);
+    Y_ABORT_UNLESS(blocks && blocks.size() <= MaxBlocksCount);
 
     ui32 rangeId = GetMixedRangeIndex(
         hasher,
@@ -309,7 +309,7 @@ inline ui32 GetMixedRangeIndex(
                 hasher,
                 blocks[i].NodeId,
                 blocks[i].BlockIndex);
-            Y_VERIFY(nextRangeId == rangeId);
+            Y_ABORT_UNLESS(nextRangeId == rangeId);
         }
     });
 

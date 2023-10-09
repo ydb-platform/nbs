@@ -88,7 +88,7 @@ public:
     template <typename T>
     size_t ReadData(T& replyData)
     {
-        Y_VERIFY(ShouldRead);
+        Y_ABORT_UNLESS(ShouldRead);
         ShouldRead = false;
 
         return In.ReadStructuredReplyData(Reply, replyData);
@@ -462,7 +462,7 @@ void TClientHandler::SendRequest(
     auto [it, inserted] = RequestsInFlight.emplace(
         requestId,
         std::move(request));
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
 }
 
 void TClientHandler::ProcessRequests_Simple(TRequestReader& in)

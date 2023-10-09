@@ -196,7 +196,7 @@ public:
     {
         EState expected = Running;
         bool wasRun = State.compare_exchange_strong(expected, Stopped);
-        Y_VERIFY(wasRun || State.load() == Broken);
+        Y_ABORT_UNLESS(wasRun || State.load() == Broken);
     }
 
     IVhostDevicePtr CreateDevice(

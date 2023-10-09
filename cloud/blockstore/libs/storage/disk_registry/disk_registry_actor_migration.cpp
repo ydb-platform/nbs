@@ -122,7 +122,7 @@ void TMarkReplacementDevicesActor::HandleResponse(
 {
     --PendingOperations;
 
-    Y_VERIFY(PendingOperations >= 0);
+    Y_ABORT_UNLESS(PendingOperations >= 0);
 
     if (HasError(ev->Get()->Record)) {
         Error = std::move(*ev->Get()->Record.MutableError());

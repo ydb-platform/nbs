@@ -186,7 +186,7 @@ TBootstrapBase::~TBootstrapBase()
 
 void TBootstrapBase::ParseOptions(int argc, char** argv)
 {
-    Y_VERIFY(!Configs);
+    Y_ABORT_UNLESS(!Configs);
     Configs = InitConfigs(argc, argv);
 }
 
@@ -291,7 +291,7 @@ void TBootstrapBase::Init()
     TVector<IStorageProviderPtr> storageProviders;
 
     if (Configs->ServerConfig->GetNvmfInitiatorEnabled()) {
-        Y_VERIFY(Spdk);
+        Y_ABORT_UNLESS(Spdk);
 
         const auto& config = *Configs->DiskAgentConfig;
 
@@ -420,7 +420,7 @@ void TBootstrapBase::Init()
     }
 
     if (Configs->ServerConfig->GetNVMeEndpointEnabled()) {
-        Y_VERIFY(Spdk);
+        Y_ABORT_UNLESS(Spdk);
 
         auto listener = CreateNVMeEndpointListener(
             Spdk,
@@ -437,7 +437,7 @@ void TBootstrapBase::Init()
     }
 
     if (Configs->ServerConfig->GetSCSIEndpointEnabled()) {
-        Y_VERIFY(Spdk);
+        Y_ABORT_UNLESS(Spdk);
 
         auto listener = CreateSCSIEndpointListener(
             Spdk,

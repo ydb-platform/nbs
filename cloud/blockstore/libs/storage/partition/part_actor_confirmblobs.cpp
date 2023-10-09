@@ -137,7 +137,7 @@ void TConfirmBlobsActor::HandleGetResult(
 
     if (IsUnrecoverable(msg->Responses[0].Status)) {
         ui32 requestIndex = ev->Cookie;
-        Y_VERIFY(requestIndex < Requests.size());
+        Y_ABORT_UNLESS(requestIndex < Requests.size());
 
         const auto& blobId = Requests[requestIndex].BlobId;
         UnrecoverableBlobs.push_back(blobId);

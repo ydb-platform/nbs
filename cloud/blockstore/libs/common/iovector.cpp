@@ -78,7 +78,7 @@ void CopyToSgList(
     for (; dstIndex != sglist.size(); ++dstIndex) {
         const size_t size = sglist[dstIndex].Size();
 
-        Y_VERIFY(size % blockSize == 0);
+        Y_ABORT_UNLESS(size % blockSize == 0);
 
         if (offsetInBytes < size) {
             break;
@@ -87,13 +87,13 @@ void CopyToSgList(
     }
 
     for (const auto& src: iov.GetBuffers()) {
-        Y_VERIFY(src.size() == blockSize);
-        Y_VERIFY(dstIndex != sglist.size());
+        Y_ABORT_UNLESS(src.size() == blockSize);
+        Y_ABORT_UNLESS(dstIndex != sglist.size());
 
         TBlockDataRef dst = sglist[dstIndex];
 
-        Y_VERIFY(dst.Size() % blockSize == 0);
-        Y_VERIFY(dst.Size() - offsetInBytes >= blockSize);
+        Y_ABORT_UNLESS(dst.Size() % blockSize == 0);
+        Y_ABORT_UNLESS(dst.Size() - offsetInBytes >= blockSize);
 
         if (dst.Data()) {
             memcpy(

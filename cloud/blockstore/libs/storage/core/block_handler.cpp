@@ -23,7 +23,7 @@ void SetBitMapValue(TDynBitMap& bitmap, size_t index, bool value)
 TStringBuf ConvertBitMapToStringBuf(const TDynBitMap& bitmap)
 {
     auto size = bitmap.Size() / 8;
-    Y_VERIFY(bitmap.GetChunkCount() * sizeof(TDynBitMap::TChunk) == size);
+    Y_ABORT_UNLESS(bitmap.GetChunkCount() * sizeof(TDynBitMap::TChunk) == size);
     return { reinterpret_cast<const char*>(bitmap.GetChunks()), size };
 }
 
@@ -51,19 +51,19 @@ public:
         auto sglistOrError = SgListNormalize(
             GetSgList(Request.Get()),
             BlockSize);
-        Y_VERIFY(!HasError(sglistOrError));
+        Y_ABORT_UNLESS(!HasError(sglistOrError));
 
         SgList = sglistOrError.ExtractResult();
-        Y_VERIFY(SgList.size() == writeRange.Size());
+        Y_ABORT_UNLESS(SgList.size() == writeRange.Size());
     }
 
     TGuardedSgList GetBlocks(const TBlockRange64& range) override
     {
-        Y_VERIFY(WriteRange.Contains(range));
+        Y_ABORT_UNLESS(WriteRange.Contains(range));
         TSgList blocks(Reserve(range.Size()));
 
         for (ui64 blockIndex: xrange(range)) {
-            Y_VERIFY(WriteRange.Contains(blockIndex));
+            Y_ABORT_UNLESS(WriteRange.Contains(blockIndex));
             size_t index = blockIndex - WriteRange.Start;
             blocks.emplace_back(SgList[index]);
         }
@@ -108,7 +108,7 @@ public:
         TSgList sglist(Reserve(blockIndices.size()));
 
         for (const auto blockIndex: blockIndices) {
-            Y_VERIFY(ReadRange.Contains(blockIndex));
+            Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
 
             size_t index = blockIndex - ReadRange.Start;
             auto& block = *Blocks.MutableBuffers(index);
@@ -128,12 +128,12 @@ public:
         TBlockDataRef blockContent,
         bool baseDisk) override
     {
-        Y_VERIFY(ReadRange.Contains(blockIndex));
+        Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
         size_t index = blockIndex - ReadRange.Start;
         auto& block = *Blocks.MutableBuffers(index);
 
         if (blockContent.Data() != nullptr) {
-            Y_VERIFY(blockContent.Size() == BlockSize);
+            Y_ABORT_UNLESS(blockContent.Size() == BlockSize);
             block.assign(blockContent.AsStringBuf());
             SetBitMapValue(UnencryptedBlockMask, index, baseDisk);
         } else {
@@ -210,19 +210,19 @@ public:
         , GuardedSgList(std::move(request->Record.Sglist))
     {
         const auto blocksCount = request->Record.BlocksCount;
-        Y_VERIFY(WriteRange.Size() == blocksCount);
+        Y_ABORT_UNLESS(WriteRange.Size() == blocksCount);
     }
 
     TGuardedSgList GetBlocks(const TBlockRange64& range) override
     {
-        Y_VERIFY(WriteRange.Contains(range));
+        Y_ABORT_UNLESS(WriteRange.Contains(range));
 
         if (auto guard = GuardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
             TSgList blocks(Reserve(range.Size()));
 
             for (ui64 blockIndex: xrange(range)) {
-                Y_VERIFY(WriteRange.Contains(blockIndex));
+                Y_ABORT_UNLESS(WriteRange.Contains(blockIndex));
                 size_t index = blockIndex - WriteRange.Start;
                 blocks.push_back(sgList[index]);
             }
@@ -270,7 +270,7 @@ public:
             TSgList subset(Reserve(blockIndices.size()));
 
             for (auto blockIndex: blockIndices) {
-                Y_VERIFY(ReadRange.Contains(blockIndex));
+                Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
                 const auto index = blockIndex - ReadRange.Start;
                 subset.push_back(src[index]);
 
@@ -289,18 +289,18 @@ public:
         TBlockDataRef blockContent,
         bool baseDisk) override
     {
-        Y_VERIFY(ReadRange.Contains(blockIndex));
+        Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
         size_t index = blockIndex - ReadRange.Start;
 
         if (auto guard = GuardedSgList.Acquire()) {
             const auto& sglist = guard.Get();
 
-            Y_VERIFY(index < sglist.size());
+            Y_ABORT_UNLESS(index < sglist.size());
             TBlockDataRef block = sglist[index];
-            Y_VERIFY(block.Size() == BlockSize);
+            Y_ABORT_UNLESS(block.Size() == BlockSize);
 
             if (blockContent.Data() != nullptr) {
-                Y_VERIFY(blockContent.Size() == BlockSize);
+                Y_ABORT_UNLESS(blockContent.Size() == BlockSize);
                 auto* data = const_cast<char*>(block.Data());
                 memcpy(data, blockContent.Data(), BlockSize);
                 SetBitMapValue(UnencryptedBlockMask, index, baseDisk);
@@ -334,7 +334,7 @@ public:
     {
         if (auto guard = GuardedSgList.Acquire()) {
             const auto& sglist = guard.Get();
-            Y_VERIFY(sglist.size() == BlockMarks.size());
+            Y_ABORT_UNLESS(sglist.size() == BlockMarks.size());
 
             for (size_t i = 0; i < BlockMarks.size(); ++i) {
                 if (!BlockMarks[i]) {
@@ -385,12 +385,12 @@ public:
                 }
             );
 
-            Y_VERIFY(it != Parts.begin());
+            Y_ABORT_UNLESS(it != Parts.begin());
             --it;
             const auto& itHandler = it->first;
             const auto& itRange = it->second;
 
-            Y_VERIFY(itRange.End >= endIndex);
+            Y_ABORT_UNLESS(itRange.End >= endIndex);
 
             blockIndex = Max(itRange.Start, range.Start);
             auto sgList = itHandler->GetBlocks(

@@ -9,7 +9,7 @@ void TIndexTabletState::LoadCheckpoints(
 {
     for (const auto& proto: checkpoints) {
         auto* checkpoint = Impl->Checkpoints.CreateCheckpoint(proto);
-        Y_VERIFY(checkpoint);
+        Y_ABORT_UNLESS(checkpoint);
     }
 }
 
@@ -51,7 +51,7 @@ TCheckpoint* TIndexTabletState::CreateCheckpoint(
     db.WriteCheckpoint(proto);
 
     auto* checkpoint = Impl->Checkpoints.CreateCheckpoint(proto);
-    Y_VERIFY(checkpoint);
+    Y_ABORT_UNLESS(checkpoint);
 
     Impl->FreshBytes.OnCheckpoint(commitId);
 

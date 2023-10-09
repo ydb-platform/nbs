@@ -59,10 +59,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     SessionsList.push_front(session);
 
     auto [_, inserted1] = SessionsByClient.emplace(clientId, SessionsList.begin());
-    Y_VERIFY(inserted1);
+    Y_ABORT_UNLESS(inserted1);
 
     auto [dummyIt, inserted2] = SessionsById.emplace(sessionId, SessionsList.begin());
-    Y_VERIFY(inserted2);
+    Y_ABORT_UNLESS(inserted2);
 
     NProto::TCreateSessionResponse response;
     session->GetInfo(*response.MutableSession(), sessionSeqNo);

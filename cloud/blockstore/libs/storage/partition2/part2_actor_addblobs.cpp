@@ -122,8 +122,8 @@ void TPartitionActor::ExecuteAddBlobs(
     }
 
     for (auto& blob: args.NewBlobs) {
-        Y_VERIFY(blob.Blocks.size());
-        Y_VERIFY(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
+        Y_ABORT_UNLESS(blob.Blocks.size());
+        Y_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
 
         auto blockRange = TBlockRange32::MakeClosedInterval(
             blob.Blocks.front().BlockIndex,
@@ -148,7 +148,7 @@ void TPartitionActor::ExecuteAddBlobs(
             ui64 commitId = State->GenerateCommitId();
 
             for (auto& block: blob.Blocks) {
-                Y_VERIFY(block.MinCommitId == InvalidCommitId
+                Y_ABORT_UNLESS(block.MinCommitId == InvalidCommitId
                       && block.MaxCommitId == InvalidCommitId);
                 block.MinCommitId = commitId;
             }
@@ -188,7 +188,7 @@ void TPartitionActor::ExecuteAddBlobs(
                     block.BlockIndex,
                     block.MinCommitId);
 
-                Y_VERIFY(deleted);
+                Y_ABORT_UNLESS(deleted);
             }
         }
 
@@ -214,7 +214,7 @@ void TPartitionActor::ExecuteAddBlobs(
             const auto& blobId = x.first;
             bool deleted = State->DeleteBlob(db, blobId);
             // blob could be deleted already
-            // Y_VERIFY(deleted, "Missing blob detected: %s",
+            // Y_ABORT_UNLESS(deleted, "Missing blob detected: %s",
             //     DumpBlobIds(TabletID(), blobId).data());
             Y_UNUSED(deleted);
         }

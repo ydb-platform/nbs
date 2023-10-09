@@ -248,7 +248,7 @@ void TCollectGarbageActor::HandleCollectGarbageResult(
 
     HandleError(MakeKikimrError(msg->Status, msg->ErrorReason));
 
-    Y_VERIFY(RequestsInFlight > 0);
+    Y_ABORT_UNLESS(RequestsInFlight > 0);
     if (--RequestsInFlight > 0) {
         return;
     }
@@ -383,7 +383,7 @@ void TCollectGarbageHardActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     CollectGarbage(ctx);
-    Y_VERIFY(RequestsInFlight);
+    Y_ABORT_UNLESS(RequestsInFlight);
 }
 
 void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
@@ -476,7 +476,7 @@ void TCollectGarbageHardActor::HandleCollectGarbageResult(
 
     HandleError(MakeKikimrError(msg->Status, msg->ErrorReason));
 
-    Y_VERIFY(RequestsInFlight > 0);
+    Y_ABORT_UNLESS(RequestsInFlight > 0);
     if (--RequestsInFlight > 0) {
         return;
     }
@@ -651,7 +651,7 @@ void TPartitionActor::HandleCollectGarbage(
         return kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged;
     });
 
-    Y_VERIFY(newBlobs || garbageBlobs || !State->GetStartupGcExecuted());
+    Y_ABORT_UNLESS(newBlobs || garbageBlobs || !State->GetStartupGcExecuted());
     auto actor = NCloud::Register<TCollectGarbageActor>(
         ctx,
         requestInfo,

@@ -65,7 +65,7 @@ void TVolumeActor::ExecuteUpdateResyncState(
     TTxVolume::TUpdateResyncState& args)
 {
     Y_UNUSED(ctx);
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     State->UpdateResyncIndexInMeta(args.ResyncIndex);
     TVolumeDatabase db(tx.DB);
@@ -144,7 +144,7 @@ void TVolumeActor::ExecuteToggleResync(
     TTxVolume::TToggleResync& args)
 {
     Y_UNUSED(ctx);
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     args.ResyncWasNeeded = State->IsMirrorResyncNeeded();
 

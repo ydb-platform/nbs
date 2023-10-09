@@ -158,7 +158,7 @@ TFuture<void> TSpdkInitializer::RegisterMemoryDevice(const NProto::TMemoryDevice
         args.GetBlockSize());
 
     auto deviceId = args.GetDeviceId();
-    Y_VERIFY(deviceId);
+    Y_ABORT_UNLESS(deviceId);
 
     auto pool = args.GetPoolName();
 
@@ -184,7 +184,7 @@ TFuture<void> TSpdkInitializer::RegisterFileDevice(const NProto::TFileDeviceArgs
         args.GetBlockSize());
 
     auto deviceId = args.GetDeviceId();
-    Y_VERIFY(deviceId);
+    Y_ABORT_UNLESS(deviceId);
 
     auto pool = args.GetPoolName();
 
@@ -221,7 +221,7 @@ TFuture<void> TSpdkInitializer::RegisterNVMeDevices(
         args.GetDeviceIds().begin(),
         args.GetDeviceIds().end());
 
-    Y_VERIFY(!deviceIds.empty());
+    Y_ABORT_UNLESS(!deviceIds.empty());
 
     auto pool = args.GetPoolName();
 
@@ -230,7 +230,7 @@ TFuture<void> TSpdkInitializer::RegisterNVMeDevices(
             try {
                 auto devices = future.ExtractValue();
 
-                Y_VERIFY(devices.size() == deviceIds.size());
+                Y_ABORT_UNLESS(devices.size() == deviceIds.size());
 
                 auto guard = Guard(Lock);
 

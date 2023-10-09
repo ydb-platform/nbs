@@ -26,13 +26,13 @@ namespace NCloud::NFileStore::NStorage {
 
 [[nodiscard]] inline ui64 SafeIncrement(ui64 value, size_t delta)
 {
-    Y_VERIFY(value <= Max<ui64>() - delta, "v: %lu, d: %lu", value, Max<ui64>() - delta);
+    Y_ABORT_UNLESS(value <= Max<ui64>() - delta, "v: %lu, d: %lu", value, Max<ui64>() - delta);
     return value + delta;
 }
 
 [[nodiscard]] inline ui64 SafeDecrement(ui64 value, size_t delta)
 {
-    Y_VERIFY(value >= delta, "v: %lu, d: %lu", value, delta);
+    Y_ABORT_UNLESS(value >= delta, "v: %lu, d: %lu", value, delta);
     return value - delta;
 }
 

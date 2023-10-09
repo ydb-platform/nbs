@@ -554,7 +554,7 @@ protected:
                     State.Hist.end(),
                     req.RelativeFirstBlockIndex
                 );
-                Y_VERIFY(bucket != State.Hist.begin());
+                Y_ABORT_UNLESS(bucket != State.Hist.begin());
                 --bucket;
 
                 auto endBucket = UpperBound(
@@ -563,7 +563,7 @@ protected:
                     req.RelativeLastBlockIndex
                 );
 
-                Y_VERIFY(endBucket != State.Hist.begin());
+                Y_ABORT_UNLESS(endBucket != State.Hist.begin());
 
                 while (bucket != endBucket) {
                     switch (req.Type) {

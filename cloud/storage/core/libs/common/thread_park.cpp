@@ -31,7 +31,7 @@ public:
 
             int ret = syscall(SYS_futex, &Signaled, FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0);
             if (ret == -1) {
-                Y_VERIFY(errno == EAGAIN || errno == EINTR,
+                Y_ABORT_UNLESS(errno == EAGAIN || errno == EINTR,
                     "unable to wait on futex: %s", LastSystemErrorText(errno));
             }
         }
@@ -50,7 +50,7 @@ public:
 
         int ret = syscall(SYS_futex, &Signaled, FUTEX_WAIT_PRIVATE, 0, &ts, nullptr, 0);
         if (ret == -1) {
-            Y_VERIFY(errno == EAGAIN || errno == EINTR || errno == ETIMEDOUT,
+            Y_ABORT_UNLESS(errno == EAGAIN || errno == EINTR || errno == ETIMEDOUT,
                 "unable to wait on futex: %s", LastSystemErrorText(errno));
         }
 
@@ -75,7 +75,7 @@ public:
         int signaled = __atomic_exchange_n(&Signaled, 1, __ATOMIC_SEQ_CST);
         if (!signaled) {
             int ret = syscall(SYS_futex, &Signaled, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
-            Y_VERIFY(ret >= 0, "unable to signal on futex: %s", LastSystemErrorText(errno));
+            Y_ABORT_UNLESS(ret >= 0, "unable to signal on futex: %s", LastSystemErrorText(errno));
         }
     }
 };

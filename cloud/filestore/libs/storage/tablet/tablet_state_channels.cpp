@@ -41,7 +41,7 @@ TVector<ui32> TIndexTabletState::GetChannelsToMove(ui32 percentageThreshold) con
 
 void TIndexTabletState::LoadChannels()
 {
-    Y_VERIFY(Impl->Channels.Empty());
+    Y_ABORT_UNLESS(Impl->Channels.Empty());
 
     // This value never decreases during tablet lifetime since
     // tabletChannelCount and configChannelCount are only allowed to
@@ -69,7 +69,7 @@ void TIndexTabletState::UpdateChannels()
         GetTabletChannelCount(),
         GetConfigChannelCount());
 
-    Y_VERIFY(oldChannelCount <= newChannelCount);
+    Y_ABORT_UNLESS(oldChannelCount <= newChannelCount);
 
     if (oldChannelCount == newChannelCount) {
         // Nothing to update.

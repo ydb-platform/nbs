@@ -102,7 +102,7 @@ private:
             ret = epoll_wait(Fd, events, len, PollInterval.MicroSeconds());
         } while (ret == -1 && errno == EINTR);
 
-        Y_VERIFY(ret >= 0, "epoll wait error: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(ret >= 0, "epoll wait error: %s", LastSystemErrorText());
         return (size_t)ret;
     }
 };

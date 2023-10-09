@@ -218,7 +218,7 @@ void TStartVolumeActor::HandleLockTabletResponse(
 {
     const auto* msg = ev->Get();
 
-    Y_VERIFY(PendingRequest == EPendingRequest::LOCK);
+    Y_ABORT_UNLESS(PendingRequest == EPendingRequest::LOCK);
     PendingRequest = EPendingRequest::NONE;
 
     const auto& error = msg->GetError();
@@ -272,7 +272,7 @@ void TStartVolumeActor::HandleTabletLockLost(
 
 void TStartVolumeActor::UnlockTablet(const TActorContext& ctx)
 {
-    Y_VERIFY(VolumeTabletLocked);
+    Y_ABORT_UNLESS(VolumeTabletLocked);
 
     if (PendingRequest == EPendingRequest::UNLOCK) {
         LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
@@ -310,7 +310,7 @@ void TStartVolumeActor::HandleUnlockTabletResponse(
 
     VolumeTabletLocked = false;
 
-    Y_VERIFY(Stopping);
+    Y_ABORT_UNLESS(Stopping);
     ContinueShutdown(ctx);
 }
 
@@ -396,7 +396,7 @@ void TStartVolumeActor::HandleBootExternalResponse(
         VolumeGeneration = msg->SuggestedGeneration;
     }
     VolumeTabletStorageInfo = msg->StorageInfo;
-    Y_VERIFY(VolumeTabletStorageInfo->TabletID == VolumeTabletId,
+    Y_ABORT_UNLESS(VolumeTabletStorageInfo->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
         VolumeTabletStorageInfo->TabletID,
         VolumeTabletId);
@@ -414,8 +414,8 @@ void TStartVolumeActor::HandleBootExternalResponse(
 
 void TStartVolumeActor::StartTablet(const TActorContext& ctx)
 {
-    Y_VERIFY(!VolumeSysActor);
-    Y_VERIFY(!VolumeUserActor);
+    Y_ABORT_UNLESS(!VolumeSysActor);
+    Y_ABORT_UNLESS(!VolumeUserActor);
 
     if (PendingRequest == EPendingRequest::START) {
         LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
@@ -438,7 +438,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
     auto rdmaClient = RdmaClient;
 
     auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-        Y_VERIFY(storage->TabletType == TTabletTypes::BlockStoreVolume);
+        Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreVolume);
         auto actor = CreateVolumeTablet(
             owner,
             storage,
@@ -474,7 +474,7 @@ void TStartVolumeActor::HandleTabletRestored(
 {
     const auto* msg = ev->Get();
 
-    Y_VERIFY(msg->TabletID == VolumeTabletId,
+    Y_ABORT_UNLESS(msg->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
         msg->TabletID,
         VolumeTabletId);
@@ -523,7 +523,7 @@ void TStartVolumeActor::HandleTabletDead(
 {
     const auto* msg = ev->Get();
 
-    Y_VERIFY(msg->TabletID == VolumeTabletId,
+    Y_ABORT_UNLESS(msg->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
         msg->TabletID,
         VolumeTabletId);
@@ -599,7 +599,7 @@ void TStartVolumeActor::HandleTabletDead(
 
 void TStartVolumeActor::StopTablet(const TActorContext& ctx)
 {
-    Y_VERIFY(VolumeSysActor);
+    Y_ABORT_UNLESS(VolumeSysActor);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Sending PoisonPill to %s",
@@ -678,7 +678,7 @@ void TStartVolumeActor::HandleWaitReadyResponse(
         VolumeTabletId);
 
     const auto& volume = msg->Record.GetVolume();
-    Y_VERIFY(volume.GetDiskId() == DiskId);
+    Y_ABORT_UNLESS(volume.GetDiskId() == DiskId);
 
     NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
         ctx,

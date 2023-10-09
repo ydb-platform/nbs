@@ -12,7 +12,7 @@ struct TGarbageQueue::TImpl
     {
         bool Add(const TPartialBlobId& blobId)
         {
-            Y_VERIFY(!IsDeletionMarker(blobId));
+            Y_ABORT_UNLESS(!IsDeletionMarker(blobId));
             return insert(blobId).second;
         }
 
@@ -196,11 +196,11 @@ void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId)
 {
     {
         auto it = Impl->Barriers.find(commitId);
-        Y_VERIFY(it != Impl->Barriers.end());
+        Y_ABORT_UNLESS(it != Impl->Barriers.end());
 
         auto& barrier = const_cast<TImpl::TBarrier&>(*it);
 
-        Y_VERIFY(barrier.RefCount > 0);
+        Y_ABORT_UNLESS(barrier.RefCount > 0);
         --barrier.RefCount;
     }
 

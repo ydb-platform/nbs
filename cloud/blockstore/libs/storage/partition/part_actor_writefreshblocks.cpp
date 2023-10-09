@@ -123,7 +123,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WriteHandlers(std::move(writeHandlers))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
 {
-    Y_VERIFY(BlockRanges.size() == WriteHandlers.size());
+    Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
 
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
@@ -203,7 +203,7 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         return;
     }
 
-    Y_VERIFY(!BlobContent.empty());
+    Y_ABORT_UNLESS(!BlobContent.empty());
 
     const auto [generation, step] = ParseCommitId(CommitId);
 
@@ -230,7 +230,7 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
 
 void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
 {
-    Y_VERIFY(BlobSize > 0);
+    Y_ABORT_UNLESS(BlobSize > 0);
 
     using TEvent = TEvPartitionPrivate::TEvAddFreshBlocksRequest;
     auto request = std::make_unique<TEvent>(
@@ -616,7 +616,7 @@ void TPartitionActor::ExecuteWriteBlocks(
 
         for (size_t index = 0; index < sgList.size(); ++index) {
             const auto& blockContent = sgList[index];
-            Y_VERIFY(blockContent.Size() == State->GetBlockSize());
+            Y_ABORT_UNLESS(blockContent.Size() == State->GetBlockSize());
 
             ui32 blockIndex = sr.Range.Start + index;
 

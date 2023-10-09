@@ -106,7 +106,7 @@ public:
 
     void Start() override
     {
-        Y_VERIFY(ActorSystem);
+        Y_ABORT_UNLESS(ActorSystem);
     }
 
     void Stop() override
@@ -136,7 +136,7 @@ public:
 
     void Start() override
     {
-        Y_VERIFY(ActorSystem);
+        Y_ABORT_UNLESS(ActorSystem);
     }
 
     void Stop() override

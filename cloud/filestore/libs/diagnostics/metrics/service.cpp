@@ -41,7 +41,7 @@ public:
     // IStartable
     void Start() override
     {
-        Y_VERIFY(Registry);
+        Y_ABORT_UNLESS(Registry);
 
         ScheduleUpdate();
     }
@@ -54,7 +54,7 @@ public:
     // IMetricsService
     void SetupCounters(NMonitoring::TDynamicCountersPtr root) override
     {
-        Y_VERIFY(!Registry);
+        Y_ABORT_UNLESS(!Registry);
 
         Registry = CreateMetricsRegistry(
             {CreateLabel("counters", "filestore")},

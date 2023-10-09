@@ -10,7 +10,7 @@ namespace {
 
 bool AppendBufferToSgList(TSgList& sglist, TBlockDataRef buffer, ui32 blockSize)
 {
-    Y_VERIFY(blockSize != 0);
+    Y_ABORT_UNLESS(blockSize != 0);
 
     if (buffer.Size() == 0 || buffer.Size() % blockSize != 0) {
         return false;

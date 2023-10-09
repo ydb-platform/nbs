@@ -152,7 +152,7 @@ void TVolumeActor::ExecuteRemoveClient(
     TTransactionContext& tx,
     TTxVolume::TRemoveClient& args)
 {
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     auto now = ctx.Now();
 

@@ -221,7 +221,7 @@ void TWriteMergedBlocksActor::AddBlobs(const TActorContext& ctx)
         blobs.emplace_back(req.BlobId, BuildBlockList(req));
     }
 
-    Y_VERIFY(RequestInfo);
+    Y_ABORT_UNLESS(RequestInfo);
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
         RequestInfo->CallContext,
@@ -323,7 +323,7 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(RequestsCompleted < Requests.size());
+    Y_ABORT_UNLESS(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }
@@ -427,7 +427,7 @@ void TPartitionActor::WriteMergedBlocks(
         requests.emplace_back(blobId, range);
     }
 
-    Y_VERIFY(requests);
+    Y_ABORT_UNLESS(requests);
 
     auto actor = NCloud::Register<TWriteMergedBlocksActor>(
         ctx,

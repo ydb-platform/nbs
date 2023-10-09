@@ -134,7 +134,7 @@ public:
 
     void SetVhostDevice(IVhostDevicePtr vhostDevice)
     {
-        Y_VERIFY(VhostDevice == nullptr);
+        Y_ABORT_UNLESS(VhostDevice == nullptr);
         VhostDevice = std::move(vhostDevice);
     }
 
@@ -446,13 +446,13 @@ public:
         auto [it, inserted] = Endpoints.emplace(
             socketPath,
             std::move(endpoint));
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
     }
 
     TEndpointPtr RemoveEndpoint(const TString& socketPath)
     {
         auto it = Endpoints.find(socketPath);
-        Y_VERIFY(it != Endpoints.end());
+        Y_ABORT_UNLESS(it != Endpoints.end());
 
         auto endpoint = std::move(it->second);
         Endpoints.erase(it);
@@ -670,7 +670,7 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         }
 
         executor = PickExecutor();
-        Y_VERIFY(executor);
+        Y_ABORT_UNLESS(executor);
     }
 
     auto endpoint = executor->CreateEndpoint(
@@ -691,7 +691,7 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         auto [it, inserted] = EndpointMap.emplace(
             std::move(socketPath),
             executor);
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
     }
 
     return MakeFuture<NProto::TError>();

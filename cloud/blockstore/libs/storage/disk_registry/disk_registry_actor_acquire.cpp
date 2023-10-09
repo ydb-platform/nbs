@@ -275,7 +275,7 @@ void TAcquireDiskActor::OnAcquireResponse(
         return;
     }
 
-    Y_VERIFY(PendingRequests > 0);
+    Y_ABORT_UNLESS(PendingRequests > 0);
 
     if (--PendingRequests == 0) {
         FinishAcquireDisk(ctx);
@@ -296,7 +296,7 @@ void TAcquireDiskActor::OnReleaseResponse(
             cookie);
     }
 
-    Y_VERIFY(PendingRequests > 0);
+    Y_ABORT_UNLESS(PendingRequests > 0);
 
     if (--PendingRequests == 0) {
         ReplyAndDie(ctx, AcquireError);

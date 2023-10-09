@@ -34,7 +34,7 @@ TBlockRange64 TRangeAllocator::AllocateRange()
         }
     );
 
-    Y_VERIFY(requestSize != RequestSizes.end());
+    Y_ABORT_UNLESS(requestSize != RequestSizes.end());
 
     auto size = requestSize->MinSize
         + RandomNumber(requestSize->MaxSize - requestSize->MinSize + 1);
@@ -61,13 +61,13 @@ TBlockRange64 TRangeAllocator::AllocateRange()
             }
         );
 
-        Y_VERIFY(subRange != SubRanges.end());
+        Y_ABORT_UNLESS(subRange != SubRanges.end());
 
         auto pos = subRange->Range.Start;
         if (LoadType == NProto::LOAD_TYPE_RANDOM) {
             pos += RandomNumber(subRange->Range.Size());
         } else {
-            Y_VERIFY(LoadType == NProto::LOAD_TYPE_ZIPF_RANDOM);
+            Y_ABORT_UNLESS(LoadType == NProto::LOAD_TYPE_ZIPF_RANDOM);
             pos += pow(subRange->Range.Size(), RandomNumber<double>()) - 1;
         }
 

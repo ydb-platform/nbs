@@ -143,8 +143,8 @@ void TMixedBlocks::RefRange(ui32 rangeId)
 void TMixedBlocks::UnRefRange(ui32 rangeId)
 {
     auto it = Impl->Ranges.find(rangeId);
-    Y_VERIFY(it != Impl->Ranges.end(), "already removed range: %u", rangeId);
-    Y_VERIFY(it->second.RefCount, "invalid ref count for range: %u", rangeId);
+    Y_ABORT_UNLESS(it != Impl->Ranges.end(), "already removed range: %u", rangeId);
+    Y_ABORT_UNLESS(it->second.RefCount, "invalid ref count for range: %u", rangeId);
 
     it->second.RefCount--;
     if (!it->second.RefCount) {
@@ -159,7 +159,7 @@ bool TMixedBlocks::AddBlocks(
     const TMixedBlobStats& stats)
 {
     auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     // TODO: pick level
     auto [it, inserted] = range->Blobs.emplace(
@@ -187,7 +187,7 @@ bool TMixedBlocks::RemoveBlocks(
     TMixedBlobStats* stats)
 {
     auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     auto it = range->Blobs.find(blobId);
     if (it == range->Blobs.end()) {
@@ -217,7 +217,7 @@ void TMixedBlocks::FindBlocks(
     ui32 blocksCount) const
 {
     const auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     // TODO: limit range scan
     for (const auto& blob: range->Blobs) {
@@ -230,8 +230,8 @@ void TMixedBlocks::FindBlocks(
         while (iter->Next()) {
             auto& block = iter->Block;
 
-            Y_VERIFY(block.NodeId == nodeId);
-            Y_VERIFY(block.MinCommitId <= commitId);
+            Y_ABORT_UNLESS(block.NodeId == nodeId);
+            Y_ABORT_UNLESS(block.MinCommitId <= commitId);
 
             range->DeletionMarkers.Apply(block);
 
@@ -247,7 +247,7 @@ void TMixedBlocks::AddDeletionMarker(
     TDeletionMarker deletionMarker)
 {
     auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     range->DeletionMarkers.Add(deletionMarker);
 }
@@ -255,7 +255,7 @@ void TMixedBlocks::AddDeletionMarker(
 TVector<TDeletionMarker> TMixedBlocks::ExtractDeletionMarkers(ui32 rangeId)
 {
     auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     return range->DeletionMarkers.Extract();
 }
@@ -267,7 +267,7 @@ void TMixedBlocks::ApplyDeletionMarkers(
     const auto rangeId = GetMixedRangeIndex(hasher, blocks);
 
     const auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     range->DeletionMarkers.Apply(MakeArrayRef(blocks));
 }
@@ -275,7 +275,7 @@ void TMixedBlocks::ApplyDeletionMarkers(
 TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
 {
     const auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     TVector<TMixedBlobMeta> result;
 
@@ -293,7 +293,7 @@ TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
 TVector<TMixedBlobMeta> TMixedBlocks::GetBlobsForCompaction(ui32 rangeId) const
 {
     const auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     TVector<TMixedBlobMeta> result;
 
@@ -311,12 +311,12 @@ TVector<TMixedBlobMeta> TMixedBlocks::GetBlobsForCompaction(ui32 rangeId) const
 TMixedBlobMeta TMixedBlocks::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
 {
     const auto* range = Impl->Ranges.FindPtr(rangeId);
-    Y_VERIFY(range);
+    Y_ABORT_UNLESS(range);
 
     TVector<TMixedBlobMeta> result;
 
     auto it = range->Blobs.find(blobId);
-    Y_VERIFY(it != range->Blobs.end());
+    Y_ABORT_UNLESS(it != range->Blobs.end());
 
     auto blocks = it->BlockList.DecodeBlocks();
     range->DeletionMarkers.Apply(MakeArrayRef(blocks));

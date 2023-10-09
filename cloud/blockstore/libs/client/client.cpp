@@ -629,7 +629,7 @@ TClient::TClient(
     Monitoring = std::move(monitoring);
     ClientStats = std::move(clientStats);
 
-    Y_VERIFY(Config->GetClientId());
+    Y_ABORT_UNLESS(Config->GetClientId());
 }
 
 void TClient::Start()

@@ -259,7 +259,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 {
     StartInitializationTimestamp = ctx.Now();
 
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
     State->SetReadWriteError({});
 
     // Request storage info for partitions
@@ -346,7 +346,7 @@ void TVolumeActor::HandleRetryStartPartition(
     if (msg->Cookie.DetachEvent()) {
         auto* part = State->GetPartition(msg->TabletId);
 
-        Y_VERIFY(part, "Scheduled retry for missing partition %lu", msg->TabletId);
+        Y_ABORT_UNLESS(part, "Scheduled retry for missing partition %lu", msg->TabletId);
 
         part->RetryCookie.Detach();
 
@@ -412,7 +412,7 @@ void TVolumeActor::HandleBootExternalResponse(
         return;
     }
 
-    Y_VERIFY(msg->StorageInfo->TabletID == partTabletId,
+    Y_ABORT_UNLESS(msg->StorageInfo->TabletID == partTabletId,
         "Tablet IDs mismatch: %lu vs %lu",
         msg->StorageInfo->TabletID,
         partTabletId);
@@ -434,7 +434,7 @@ void TVolumeActor::HandleBootExternalResponse(
     auto selfId = SelfId();
 
     auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-        Y_VERIFY(
+        Y_ABORT_UNLESS(
             storage->TabletType == TTabletTypes::BlockStorePartition ||
             storage->TabletType == TTabletTypes::BlockStorePartition2);
 
@@ -500,7 +500,7 @@ void TVolumeActor::HandleTabletStatus(
     const auto* msg = ev->Get();
 
     auto* partition = State->GetPartition(msg->TabletId);
-    Y_VERIFY(partition, "Missing partition state for %lu", msg->TabletId);
+    Y_ABORT_UNLESS(partition, "Missing partition state for %lu", msg->TabletId);
 
     if (partition->Bootstrapper != ev->Sender) {
         LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
@@ -520,7 +520,7 @@ void TVolumeActor::HandleTabletStatus(
     switch (msg->Status) {
         case TEvBootstrapper::STARTED:
             partition->SetStarted(msg->TabletUser);
-            Y_VERIFY(State->SetPartitionStatActor(msg->TabletId, msg->TabletUser));
+            Y_ABORT_UNLESS(State->SetPartitionStatActor(msg->TabletId, msg->TabletUser));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,

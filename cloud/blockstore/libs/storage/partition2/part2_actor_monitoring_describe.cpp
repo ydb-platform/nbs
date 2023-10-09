@@ -55,7 +55,7 @@ private:
         const TPartialBlobId& blobId,
         ui16 blobOffset)
     {
-        Y_VERIFY(Args.BlockRange.Contains(block.BlockIndex));
+        Y_ABORT_UNLESS(Args.BlockRange.Contains(block.BlockIndex));
         Args.Blocks.emplace_back(block, blobId, blobOffset);
     }
 };

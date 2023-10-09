@@ -34,7 +34,7 @@ TVector<ui64> CalculateBlocksDigest(
     ui32 blockCount,
     ui64 zeroBlockDigest)
 {
-    Y_VERIFY(zeroBlockDigest != InvalidDigest);
+    Y_ABORT_UNLESS(zeroBlockDigest != InvalidDigest);
 
     TVector<ui64> result(Reserve(blockCount));
 
@@ -52,7 +52,7 @@ TVector<ui64> CalculateBlocksDigest(
             break;
         }
 
-        Y_VERIFY(size >= blockSize);
+        Y_ABORT_UNLESS(size >= blockSize);
         size -= blockSize;
 
         if (data) {

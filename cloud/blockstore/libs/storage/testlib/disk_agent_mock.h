@@ -139,7 +139,7 @@ private:
         auto startIndex = request.GetStartIndex() * k;
         const auto endIndex = startIndex + request.GetBlocksCount() * k;
 
-        Y_VERIFY(endIndex <= config.GetBlocksCount());
+        Y_ABORT_UNLESS(endIndex <= config.GetBlocksCount());
 
         for (ui32 i = 0; i < request.GetBlocksCount(); ++i) {
             auto& buf = *response->Record.MutableBlocks()->AddBuffers();
@@ -188,7 +188,7 @@ private:
         auto i = request.GetStartIndex() * k;
 
         for (TStringBuf buf: request.GetBlocks().GetBuffers()) {
-            Y_VERIFY(i < config.GetBlocksCount());
+            Y_ABORT_UNLESS(i < config.GetBlocksCount());
 
             while (buf) {
                 content[i++] = buf.SubStr(0, config.GetBlockSize());
@@ -272,7 +272,7 @@ private:
         auto startIndex = request.GetStartIndex() * k;
         const auto endIndex = startIndex + request.GetBlocksCount() * k;
 
-        Y_VERIFY(endIndex <= config.GetBlocksCount());
+        Y_ABORT_UNLESS(endIndex <= config.GetBlocksCount());
 
         TString zeroBlock(config.GetBlockSize(), 0);
         TBlockChecksum checksum;

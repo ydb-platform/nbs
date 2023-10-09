@@ -788,7 +788,7 @@ ui64 GetAllocationUnit(
             break;
     }
 
-    Y_VERIFY(unit != 0); // TODO: this check should be moved to nbs startup
+    Y_ABORT_UNLESS(unit != 0); // TODO: this check should be moved to nbs startup
 
     return unit;
 }

@@ -38,7 +38,7 @@ auto BuildNewMeta(
     newMeta.SetResyncNeeded(oldMeta.GetResyncNeeded());
     newMeta.SetFillSeqNumber(oldMeta.GetFillSeqNumber());
 
-    Y_VERIFY(volumeConfig.PartitionsSize());
+    Y_ABORT_UNLESS(volumeConfig.PartitionsSize());
     ui64 blockCount = volumeConfig.GetPartitions(0).GetBlockCount();
 
     auto& partitionConfig = *newMeta.MutableConfig();
@@ -94,16 +94,16 @@ auto BuildNewMeta(
 
     for (const auto& partition: msg.GetPartitions()) {
         ui32 partitionId = partition.GetPartitionId();
-        Y_VERIFY(partitionId < volumeConfig.PartitionsSize());
+        Y_ABORT_UNLESS(partitionId < volumeConfig.PartitionsSize());
 
         ui64 tabletId = partition.GetTabletId();
-        Y_VERIFY(tabletId);
+        Y_ABORT_UNLESS(tabletId);
 
         newMeta.SetPartitions(partitionId, tabletId);
     }
 
     for (ui64 tabletId: newMeta.GetPartitions()) {
-        Y_VERIFY(tabletId);
+        Y_ABORT_UNLESS(tabletId);
     }
 
     return newMeta;
@@ -147,7 +147,7 @@ bool TVolumeActor::UpdateVolumeConfig(
     const TEvBlockStore::TEvUpdateVolumeConfig::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(StateLoadFinished);
+    Y_ABORT_UNLESS(StateLoadFinished);
     UpdateVolumeConfigInProgress = true;
 
     auto* msg = ev->Get();
@@ -204,7 +204,7 @@ void TVolumeActor::HandleProcessUpdateVolumeConfig(
     const TEvVolumePrivate::TEvProcessUpdateVolumeConfig::TPtr&,
     const TActorContext& ctx)
 {
-    Y_VERIFY(ProcessUpdateVolumeConfigScheduled);
+    Y_ABORT_UNLESS(ProcessUpdateVolumeConfigScheduled);
     ProcessUpdateVolumeConfigScheduled = false;
 
     if (!StateLoadFinished) {
@@ -247,7 +247,7 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
         TabletID(),
         UnfinishedUpdateVolumeConfig.ConfigVersion);
 
-    Y_VERIFY(NextVolumeConfigVersion == GetCurrentConfigVersion());
+    Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
     NextVolumeConfigVersion = UnfinishedUpdateVolumeConfig.ConfigVersion;
 
     TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
@@ -270,7 +270,7 @@ bool TVolumeActor::PrepareUpdateConfig(
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
 
-    Y_VERIFY(args.Meta.GetVersion() == NextVolumeConfigVersion);
+    Y_ABORT_UNLESS(args.Meta.GetVersion() == NextVolumeConfigVersion);
 
     return true;
 }
@@ -293,7 +293,7 @@ void TVolumeActor::CompleteUpdateConfig(
     const TActorContext& ctx,
     TTxVolume::TUpdateConfig& args)
 {
-    Y_VERIFY(args.Meta.GetVersion() == NextVolumeConfigVersion);
+    Y_ABORT_UNLESS(args.Meta.GetVersion() == NextVolumeConfigVersion);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Sending OK response for UpdateVolumeConfig with version=%u",
@@ -345,7 +345,7 @@ void TVolumeActor::CompleteUpdateConfig(
         RegisterVolume(ctx);
     }
 
-    Y_VERIFY(NextVolumeConfigVersion == GetCurrentConfigVersion());
+    Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
 
     if (CurrentState == STATE_INIT) {
         BecomeAux(ctx, STATE_WORK);

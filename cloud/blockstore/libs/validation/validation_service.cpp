@@ -617,7 +617,7 @@ void TValidationService::OnError(
 {
     with_lock (volume.Lock) {
         auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
-        Y_VERIFY(it != volume.Requests.end());
+        Y_ABORT_UNLESS(it != volume.Requests.end());
         LeaveRange(volume, it);
     }
 }
@@ -652,7 +652,7 @@ void TValidationService::CompleteRead(
 {
     with_lock (volume.Lock) {
         auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
-        Y_VERIFY(it != volume.Requests.end());
+        Y_ABORT_UNLESS(it != volume.Requests.end());
 
         if (blocksWritten.size() != blocksRead.size()) {
             ReportIncompleteRead(
@@ -698,7 +698,7 @@ void TValidationService::CompleteWrite(
 {
     with_lock (volume.Lock) {
         auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
-        Y_VERIFY(it != volume.Requests.end());
+        Y_ABORT_UNLESS(it != volume.Requests.end());
 
         auto oldSize = volume.Blocks.size();
 
@@ -730,7 +730,7 @@ void TValidationService::CompleteZero(
 {
     with_lock (volume.Lock) {
         auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
-        Y_VERIFY(it != volume.Requests.end());
+        Y_ABORT_UNLESS(it != volume.Requests.end());
 
         auto oldSize = volume.Blocks.size();
 
@@ -820,7 +820,7 @@ bool TValidationService::HandleRequest(
 
     const auto zeroBlockDigest = AtomicGet(volume->ZeroBlockDigest);
     auto blocks = PrepareRead(*volume, *range);
-    Y_VERIFY(blocks.size() == range->Size());
+    Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     response = Service->ReadBlocks(std::move(ctx), std::move(request)).Subscribe(
         [=, blocks_ = std::move(blocks)] (const auto& future) {
@@ -883,7 +883,7 @@ bool TValidationService::HandleRequest(
 
     const auto zeroBlockDigest = AtomicGet(volume->ZeroBlockDigest);
     auto blocks = PrepareRead(*volume, *range);
-    Y_VERIFY(blocks.size() == range->Size());
+    Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     response = Service->ReadBlocksLocal(std::move(ctx), request).Subscribe(
         [=, blocks_ = std::move(blocks)] (const auto& future) {
@@ -995,7 +995,7 @@ bool TValidationService::HandleRequest(
     }
 
     auto guard = request->Sglist.Acquire();
-    Y_VERIFY(guard);
+    Y_ABORT_UNLESS(guard);
 
     auto blocks = CalculateBlocksDigest(
         guard.Get(),

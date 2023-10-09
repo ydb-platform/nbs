@@ -77,7 +77,7 @@ TMetricKey TAggregator::Register(IMetricPtr metric)
 
     const TMetricKey key(this, GenerateNextFreeKey());
     const bool inserted = Metrics.try_emplace(key, std::move(metric)).second;
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
 
     return key;
 }

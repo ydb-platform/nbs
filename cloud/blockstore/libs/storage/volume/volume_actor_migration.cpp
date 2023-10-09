@@ -65,7 +65,7 @@ void TVolumeActor::ExecuteUpdateMigrationState(
     TTxVolume::TUpdateMigrationState& args)
 {
     Y_UNUSED(ctx);
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     State->UpdateMigrationIndexInMeta(args.MigrationIndex);
     TVolumeDatabase db(tx.DB);

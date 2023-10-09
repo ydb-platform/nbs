@@ -42,7 +42,7 @@ TDynBitMap BitMapFromString(const TString& s)
 
     if (s) {
         mask.Reserve(s.size() * 8);
-        Y_VERIFY(mask.GetChunkCount() * sizeof(TDynBitMap::TChunk) == s.size());
+        Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TDynBitMap::TChunk) == s.size());
         auto* dst = const_cast<TDynBitMap::TChunk*>(mask.GetChunks());
         memcpy(dst, s.data(), s.size());
     }

@@ -47,7 +47,7 @@ public:
 
     void Complete()
     {
-        Y_VERIFY(State != EOperationState::Idle);
+        Y_ABORT_UNLESS(State != EOperationState::Idle);
         ChangeState(EOperationState::Idle);
 
         Backoff = TDuration::Zero();
@@ -56,7 +56,7 @@ public:
 
     void Fail()
     {
-        Y_VERIFY(State != EOperationState::Idle);
+        Y_ABORT_UNLESS(State != EOperationState::Idle);
         ChangeState(EOperationState::Idle);
 
         Backoff = Min(
@@ -132,7 +132,7 @@ public:
         Ops[Index(Count)] = op;
         ++Count;
 
-        Y_VERIFY(Count <= Capacity);
+        Y_ABORT_UNLESS(Count <= Capacity);
     }
 
     bool Empty() const
@@ -142,7 +142,7 @@ public:
 
     EBlobIndexOp Pop()
     {
-        Y_VERIFY(Count);
+        Y_ABORT_UNLESS(Count);
 
         auto op = Ops[Index(0)];
         Begin = Index(1);

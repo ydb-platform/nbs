@@ -159,14 +159,14 @@ public:
 
     void AddDupCacheEntry(NProto::TDupCacheEntry proto, bool commited)
     {
-        Y_VERIFY(proto.GetRequestId());
-        Y_VERIFY(proto.GetEntryId());
+        Y_ABORT_UNLESS(proto.GetRequestId());
+        Y_ABORT_UNLESS(proto.GetEntryId());
 
         DupCacheEntries.PushBack(new TDupCacheEntry(std::move(proto), commited));
 
         auto entry = DupCacheEntries.Back();
         auto [_, inserted] = DupCache.emplace(entry->GetRequestId(), entry);
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
     }
 
     void CommitDupCacheEntry(ui64 requestId)

@@ -95,7 +95,7 @@ public:
         , MaxTimedOutDeviceStateDurationOverridden(maxTimedOutDeviceStateDurationOverridden)
         , UseSimpleMigrationBandwidthLimiter(useSimpleMigrationBandwidthLimiter)
     {
-        Y_VERIFY(Devices.size());
+        Y_ABORT_UNLESS(Devices.size());
 
         ui64 blockIndex = 0;
         for (const auto& device: Devices) {
@@ -310,8 +310,8 @@ private:
         const auto fi = std::distance(BlockIndices.begin(), f) - 1;
         const auto li = std::distance(BlockIndices.begin(), l) - 1;
 
-        Y_VERIFY(fi < Devices.size());
-        Y_VERIFY(li < Devices.size());
+        Y_ABORT_UNLESS(fi < Devices.size());
+        Y_ABORT_UNLESS(li < Devices.size());
 
         for (ui32 i = fi; i <= li; ++i) {
             const auto subRange = DeviceRange(i).Intersect(blockRange);

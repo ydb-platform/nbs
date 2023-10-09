@@ -18,7 +18,7 @@ static void BenchmarkSequence(benchmark::State& state)
     for (const auto _ : state) {
         auto range = TBlockRange64::WithLength(0, 1024);
         auto result = tracker.CheckRecorded(id.Advance(), range);
-        Y_VERIFY(result == EOverlapStatus::NotOverlapped);
+        Y_ABORT_UNLESS(result == EOverlapStatus::NotOverlapped);
         tracker.AddRecorded(id.Advance(), range);
     }
 }
@@ -45,7 +45,7 @@ static void BenchmarkSlightlyFromPastNotOverlapped(benchmark::State& state)
         auto range = TBlockRange64::WithLength(step * 1024, 1024);
         ui64 id = sequenceIdStart + step;
         auto result = tracker.CheckRecorded(id, range);
-        Y_VERIFY(result == EOverlapStatus::NotOverlapped);
+        Y_ABORT_UNLESS(result == EOverlapStatus::NotOverlapped);
         tracker.AddRecorded(id, range);
     }
 }

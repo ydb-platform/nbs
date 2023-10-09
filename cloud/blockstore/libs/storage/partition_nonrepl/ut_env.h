@@ -281,7 +281,7 @@ public:
         request->Record.SetStartIndex(range.Start);
         request->Record.BlocksCount = range.Size();
         request->Record.BlockSize = BlockSize;
-        Y_VERIFY(BlockSize == content.size());
+        Y_ABORT_UNLESS(BlockSize == content.size());
 
         return request;
     }

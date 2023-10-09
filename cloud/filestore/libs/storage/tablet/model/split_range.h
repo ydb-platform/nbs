@@ -37,7 +37,7 @@ void SplitRange(
         blockOffset += tailBlocks;
     }
 
-    Y_VERIFY(blockOffset == blocksCount);
+    Y_ABORT_UNLESS(blockOffset == blocksCount);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

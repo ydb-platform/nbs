@@ -15,7 +15,7 @@ namespace {
 size_t GetBlockOffset(const TVector<TBlock>& blocks, const TBlock& block)
 {
     size_t offset = &block - &blocks[0];
-    Y_VERIFY(&blocks[offset] == &block);
+    Y_ABORT_UNLESS(&blocks[offset] == &block);
     return offset;
 }
 
@@ -260,7 +260,7 @@ TBlockList TBlockList::EncodeBlocks(
     ui32 blocksCount,
     IAllocator* alloc)
 {
-    Y_VERIFY(blocksCount <= MaxBlocksCount);
+    Y_ABORT_UNLESS(blocksCount <= MaxBlocksCount);
 
     return {
         EncodeBlockEntries(block, blocksCount, alloc),
@@ -270,12 +270,12 @@ TBlockList TBlockList::EncodeBlocks(
 
 TBlockList TBlockList::EncodeBlocks(const TVector<TBlock>& blocks, IAllocator* alloc)
 {
-    Y_VERIFY(blocks.size() <= MaxBlocksCount);
+    Y_ABORT_UNLESS(blocks.size() <= MaxBlocksCount);
 
     Y_IF_DEBUG({
         // sanity check
         bool sorted = IsSorted(blocks.begin(), blocks.end(), TBlockCompare());
-        Y_VERIFY(sorted);
+        Y_ABORT_UNLESS(sorted);
     });
 
     return {

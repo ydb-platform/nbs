@@ -57,7 +57,7 @@ public:
                 const auto& dst = guard.Get();
 
                 for (const auto& buffer: dst) {
-                    Y_VERIFY(buffer.Size() % BlockSize == 0);
+                    Y_ABORT_UNLESS(buffer.Size() % BlockSize == 0);
                 }
 
                 auto src = SgList;
@@ -80,7 +80,7 @@ public:
                     const auto& src = guard.Get();
 
                     for (const auto& buffer: src) {
-                        Y_VERIFY(buffer.Size() % BlockSize == 0);
+                        Y_ABORT_UNLESS(buffer.Size() % BlockSize == 0);
                     }
 
                     auto dst = SgList;

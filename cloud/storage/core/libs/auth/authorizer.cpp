@@ -255,7 +255,7 @@ private:
             return;
         }
 
-        Y_VERIFY(Token == msg->Ticket);
+        Y_ABORT_UNLESS(Token == msg->Ticket);
 
         const bool allow = PermissionsMatch(Permissions, *msg);
 

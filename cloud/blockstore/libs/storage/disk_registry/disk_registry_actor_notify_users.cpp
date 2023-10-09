@@ -172,7 +172,7 @@ void TNotifyActor::HandleNotifyUserEventResponse(
 
     --PendingOperations;
 
-    Y_VERIFY(PendingOperations >= 0);
+    Y_ABORT_UNLESS(PendingOperations >= 0);
 
     const auto& notif = Notifications[cookie];
     const auto& error = ev->Get()->GetError();

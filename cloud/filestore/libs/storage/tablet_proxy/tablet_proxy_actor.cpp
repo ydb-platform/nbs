@@ -67,7 +67,7 @@ TIndexTabletProxyActor::TConnection& TIndexTabletProxyActor::CreateConnection(
     ui64 connectionId = ++ConnectionId;
 
     auto ins = Connections.emplace(fileSystemId, TConnection(connectionId, fileSystemId));
-    Y_VERIFY(ins.second);
+    Y_ABORT_UNLESS(ins.second);
 
     ConnectionById[connectionId] = &ins.first->second;
     return ins.first->second;
@@ -284,7 +284,7 @@ void TIndexTabletProxyActor::HandleClientConnected(
     }
 
     TConnection* conn = it->second;
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     if (!ClientCache->OnConnect(ev)) {
         auto error = MakeKikimrError(msg->Status, "Could not connect");
@@ -317,7 +317,7 @@ void TIndexTabletProxyActor::HandleClientDestroyed(
     }
 
     TConnection* conn = it->second;
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     ClientCache->OnDisconnect(ev);
 
@@ -337,7 +337,7 @@ void TIndexTabletProxyActor::HandleDescribeFileStoreResponse(
     }
 
     TConnection* conn = it->second;
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -447,7 +447,7 @@ void TIndexTabletProxyActor::HandleResponse(
     }
 
     auto* conn = ConnectionById[it->second.ConnectionId];
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     conn->LastActivity = ctx.Now();
     --conn->RequestsInflight;

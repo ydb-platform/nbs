@@ -50,7 +50,7 @@ void FillReadStats(
             TCompactionMap::GetRangeStart(r.BlockIndex, compactionRangeSize);
         if (compactionRange != prevCompactionRange) {
             if (blockCount) {
-                Y_VERIFY(prevCompactionRange != Max<ui32>());
+                Y_ABORT_UNLESS(prevCompactionRange != Max<ui32>());
                 stats->emplace_back(prevCompactionRange, blobCount, blockCount);
             }
 
@@ -69,7 +69,7 @@ void FillReadStats(
     }
 
     if (blockCount) {
-        Y_VERIFY(prevCompactionRange != Max<ui32>());
+        Y_ABORT_UNLESS(prevCompactionRange != Max<ui32>());
         stats->emplace_back(prevCompactionRange, blobCount, blockCount);
     }
 }
@@ -508,11 +508,11 @@ void TReadBlocksActor::HandleReadBlobResponse(
 
     ui32 batchIndex = ev->Cookie;
 
-    Y_VERIFY(batchIndex < BatchRequests.size());
+    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
     RequestsCompleted += batch.Requests.size();
-    Y_VERIFY(RequestsCompleted <= RequestsScheduled);
+    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     if (RequestsCompleted < RequestsScheduled) {
         return;
     }

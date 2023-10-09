@@ -159,7 +159,7 @@ void TNotifyActor::HandleReallocateDiskResponse(
 
     --PendingOperations;
 
-    Y_VERIFY(PendingOperations >= 0);
+    Y_ABORT_UNLESS(PendingOperations >= 0);
 
     const auto& diskId = DiskIds[cookie].DiskId;
 

@@ -114,7 +114,7 @@ TRequestGrouping GroupRequests(
                 && it->Data.Range.Start <= cur->Data.Range.End)
         {
             const auto newEnd = it->Data.Range.Start - 1;
-            Y_VERIFY(cur->Data.Range.Start <= newEnd);
+            Y_ABORT_UNLESS(cur->Data.Range.Start <= newEnd);
             diff = cur->Data.Range.End - newEnd;
 
             // saving the decrease in weight for this range
@@ -126,7 +126,7 @@ TRequestGrouping GroupRequests(
             dedup.push_back(std::make_pair(it2, it2->Data.Range.Size()));
         }
 
-        Y_VERIFY(cur->Weight > lastDiff);
+        Y_ABORT_UNLESS(cur->Weight > lastDiff);
         weight += cur->Weight - lastDiff;
 
         // deliberately ignoring all ranges with zero weight here

@@ -57,7 +57,7 @@ bool ToPartitionRequests(
     Y_UNUSED(requests);
     Y_UNUSED(blockRange);
 
-    Y_VERIFY(0);
+    Y_ABORT_UNLESS(0);
     return false;
 }
 
@@ -133,9 +133,9 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
     ui32 originalBlocksCount = 0;
     ui32 bufferSize = 0;
     for (const auto& buffer: buffers) {
-        Y_VERIFY(buffer.Size() % blockSize == 0);
-        Y_VERIFY(buffer.Size() >= blockSize);
-        Y_VERIFY(bufferSize == 0 || bufferSize == buffer.Size());
+        Y_ABORT_UNLESS(buffer.Size() % blockSize == 0);
+        Y_ABORT_UNLESS(buffer.Size() >= blockSize);
+        Y_ABORT_UNLESS(bufferSize == 0 || bufferSize == buffer.Size());
         originalBlocksCount += buffer.Size() / blockSize;
         bufferSize = buffer.Size();
     }
@@ -336,7 +336,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
         partitions.size()
     ));
 
-    Y_VERIFY(
+    Y_ABORT_UNLESS(
         blockDatas.size() == blockRange->Size(),
         "BlocksCount != sglist.size()");
 

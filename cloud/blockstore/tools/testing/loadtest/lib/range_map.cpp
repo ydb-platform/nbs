@@ -78,14 +78,14 @@ void TRangeMap::PutBlock(const TBlockRange64& r)
     auto range = r;
     auto it = Blocks.lower_bound(r);
 
-    Y_VERIFY(it == Blocks.end() || !r.Overlaps(*it));
+    Y_ABORT_UNLESS(it == Blocks.end() || !r.Overlaps(*it));
 
     if (it != Blocks.end() && range.Start == it->End + 1) {
         auto& it_range = const_cast<TBlockRange64&>(*it);
         it_range.End = range.End;
     } else {
         auto result = Blocks.insert(r);
-        Y_VERIFY(result.second);
+        Y_ABORT_UNLESS(result.second);
         it = result.first;
     }
 

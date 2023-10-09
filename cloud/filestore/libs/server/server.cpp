@@ -180,7 +180,7 @@ void ValidateRequest(
     NProto::THeaders& headers)
 {
     auto authContext = context.auth_context();
-    Y_VERIFY(authContext);
+    Y_ABORT_UNLESS(authContext);
 
     auto source = GetRequestSource(
         *authContext,
@@ -691,7 +691,7 @@ public:
                             }
                         } else {
                             if (AtomicCas(&RequestState, SendingCompletion, ExecutionCompleted)) {
-                                Y_VERIFY(CompletionStatus);
+                                Y_ABORT_UNLESS(CompletionStatus);
                                 SendCompletion(*CompletionStatus);
 
                                 // request is in progress now
@@ -820,7 +820,7 @@ private:
     void HandleResponse(const TResponse& response)
     {
         with_lock (ResponseLock) {
-            Y_VERIFY(!CompletionStatus);
+            Y_ABORT_UNLESS(!CompletionStatus);
             ResponseQueue.push_back(response);
         }
 
@@ -833,7 +833,7 @@ private:
     void HandleCompletion(const NProto::TError& error)
     {
         with_lock (ResponseLock) {
-            Y_VERIFY(!CompletionStatus);
+            Y_ABORT_UNLESS(!CompletionStatus);
             CompletionStatus = MakeGrpcStatus(error);
         }
 

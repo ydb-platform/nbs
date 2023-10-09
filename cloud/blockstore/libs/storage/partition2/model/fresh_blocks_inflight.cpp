@@ -22,10 +22,10 @@ void TFreshBlocksInFlight::RemoveBlockRange(
 {
     for (const ui32 blockIndex: xrange(blockRange)) {
         auto it = BlockIndexToCount.find(blockIndex);
-        Y_VERIFY(it != BlockIndexToCount.end());
+        Y_ABORT_UNLESS(it != BlockIndexToCount.end());
 
         auto& count = const_cast<size_t&>(it->second);
-        Y_VERIFY(count > 0);
+        Y_ABORT_UNLESS(count > 0);
 
         if (--count == 0) {
             BlockIndexToCount.erase(it);
@@ -33,16 +33,16 @@ void TFreshBlocksInFlight::RemoveBlockRange(
     }
 
     auto it = CommitIdToCount.find(commitId);
-    Y_VERIFY(it != CommitIdToCount.end());
+    Y_ABORT_UNLESS(it != CommitIdToCount.end());
 
     auto& count = const_cast<size_t&>(it->second);
-    Y_VERIFY(count >= blockRange.Size());
+    Y_ABORT_UNLESS(count >= blockRange.Size());
 
     if ((count -= blockRange.Size()) == 0) {
         CommitIdToCount.erase(it);
     }
 
-    Y_VERIFY(BlockCount >= blockRange.Size());
+    Y_ABORT_UNLESS(BlockCount >= blockRange.Size());
     BlockCount -= blockRange.Size();
 }
 

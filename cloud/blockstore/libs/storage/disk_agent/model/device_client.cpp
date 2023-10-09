@@ -298,7 +298,7 @@ TDeviceClient::TDeviceState* TDeviceClient::GetDeviceState(
         return nullptr;
     }
     auto* result = it->second.get();
-    Y_VERIFY(result);
+    Y_ABORT_UNLESS(result);
     return result;
 }
 

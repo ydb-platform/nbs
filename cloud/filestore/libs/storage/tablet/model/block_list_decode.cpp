@@ -43,14 +43,14 @@ size_t DecodeBlockEntries(const TByteVector& encodedBlocks, TVector<TBlock>& blo
     TBinaryReader reader(encodedBlocks);
 
     const auto& header = reader.Read<NBlockListSpec::TListHeader>();
-    Y_VERIFY(header.ListType == NBlockListSpec::TListHeader::Blocks);
+    Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::Blocks);
 
     size_t blocksCount = 0;
     while (reader.Avail()) {
         const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
         if (!group.IsMulti) {
             const auto& entry = reader.Read<NBlockListSpec::TBlockEntry>();
-            Y_VERIFY(entry.BlobOffset < blocks.size());
+            Y_ABORT_UNLESS(entry.BlobOffset < blocks.size());
             blocks[entry.BlobOffset] = TBlock(
                 group.NodeId,
                 entry.BlockIndex,
@@ -62,7 +62,7 @@ size_t DecodeBlockEntries(const TByteVector& encodedBlocks, TVector<TBlock>& blo
             switch (multi.GroupType) {
                 case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
                     const auto& entry = reader.Read<NBlockListSpec::TBlockEntry>();
-                    Y_VERIFY(entry.BlobOffset + multi.Count <= blocks.size());
+                    Y_ABORT_UNLESS(entry.BlobOffset + multi.Count <= blocks.size());
                     for (size_t i = 0; i < multi.Count; ++i) {
                         blocks[entry.BlobOffset + i] = TBlock(
                             group.NodeId,
@@ -78,7 +78,7 @@ size_t DecodeBlockEntries(const TByteVector& encodedBlocks, TVector<TBlock>& blo
                     const auto* blockIndices = reader.Read<ui32>(multi.Count);
                     const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
                     for (size_t i = 0; i < multi.Count; ++i) {
-                        Y_VERIFY(blobOffsets[i] < blocks.size());
+                        Y_ABORT_UNLESS(blobOffsets[i] < blocks.size());
                         blocks[blobOffsets[i]] = TBlock(
                             group.NodeId,
                             blockIndices[i],
@@ -100,7 +100,7 @@ void StatBlockEntries(const TByteVector& encodedBlocks, TBlockList::TStats& stat
     TBinaryReader reader(encodedBlocks);
 
     const auto& header = reader.Read<NBlockListSpec::TListHeader>();
-    Y_VERIFY(header.ListType == NBlockListSpec::TListHeader::Blocks);
+    Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::Blocks);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
@@ -142,20 +142,20 @@ void DecodeDeletionMarkers(const TByteVector& encodedDeletionMarkers, TVector<TB
     TBinaryReader reader(encodedDeletionMarkers);
 
     const auto& header = reader.Read<NBlockListSpec::TListHeader>();
-    Y_VERIFY(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
+    Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
         if (!group.IsMulti) {
             const auto& entry = reader.Read<NBlockListSpec::TDeletionMarker>();
-            Y_VERIFY(entry.BlobOffset < blocks.size());
+            Y_ABORT_UNLESS(entry.BlobOffset < blocks.size());
             blocks[entry.BlobOffset].MaxCommitId = group.CommitId;
         } else {
             const auto& multi = reader.Read<NBlockListSpec::TMultiGroupHeader>();
             switch (multi.GroupType) {
                 case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
                     const auto& entry = reader.Read<NBlockListSpec::TDeletionMarker>();
-                    Y_VERIFY(entry.BlobOffset + multi.Count <= blocks.size());
+                    Y_ABORT_UNLESS(entry.BlobOffset + multi.Count <= blocks.size());
                     for (size_t i = 0; i < multi.Count; ++i) {
                         blocks[entry.BlobOffset + i].MaxCommitId = group.CommitId;
                     }
@@ -165,7 +165,7 @@ void DecodeDeletionMarkers(const TByteVector& encodedDeletionMarkers, TVector<TB
                 case NBlockListSpec::TMultiGroupHeader::MixedGroup: {
                     const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
                     for (size_t i = 0; i < multi.Count; ++i) {
-                        Y_VERIFY(blobOffsets[i] < blocks.size());
+                        Y_ABORT_UNLESS(blobOffsets[i] < blocks.size());
                         blocks[blobOffsets[i]].MaxCommitId = group.CommitId;
                     }
                     break;
@@ -180,7 +180,7 @@ ui64 FindDeletionMarker(const TByteVector& encodedDeletionMarkers, ui16 blobOffs
     TBinaryReader reader(encodedDeletionMarkers);
 
     const auto& header = reader.Read<NBlockListSpec::TListHeader>();
-    Y_VERIFY(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
+    Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
@@ -223,7 +223,7 @@ void StatDeletionMarkers(const TByteVector& encodedDeletionMarkers, TBlockList::
     TBinaryReader reader(encodedDeletionMarkers);
 
     const auto& header = reader.Read<NBlockListSpec::TListHeader>();
-    Y_VERIFY(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
+    Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
@@ -339,7 +339,7 @@ public:
         , Filter(filter)
     {
         const auto& header = Reader.Read<NBlockListSpec::TListHeader>();
-        Y_VERIFY(header.ListType == NBlockListSpec::TListHeader::Blocks);
+        Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::Blocks);
 
         Zero(Group);
     }

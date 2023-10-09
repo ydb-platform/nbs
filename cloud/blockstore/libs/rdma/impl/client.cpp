@@ -118,8 +118,8 @@ public:
 
     void Push(TRequestPtr req)
     {
-        Y_VERIFY(Pointers.emplace(req.get()).second);
-        Y_VERIFY(Requests.emplace(req->ReqId, std::move(req)).second);
+        Y_ABORT_UNLESS(Pointers.emplace(req.get()).second);
+        Y_ABORT_UNLESS(Requests.emplace(req->ReqId, std::move(req)).second);
     }
 
     TRequestPtr Pop(ui32 reqId)
@@ -389,7 +389,7 @@ private:
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
     {
-        Y_VERIFY(event->id && event->id->context);
+        Y_ABORT_UNLESS(event->id && event->id->context);
         return static_cast<TClientEndpoint*>(event->id->context);
     }
 
@@ -509,7 +509,7 @@ void TClientEndpoint::ChangeState(
 {
     auto actualState = State.exchange(newState);
 
-    Y_VERIFY(actualState == expectedState,
+    Y_ABORT_UNLESS(actualState == expectedState,
         "invalid state transition (new: %s, expected: %s, actual: %s)",
         GetEndpointStateName(newState),
         GetEndpointStateName(expectedState),
@@ -740,7 +740,7 @@ void TClientEndpoint::HandleQueuedRequests()
         }
 
         auto req = QueuedRequests.Dequeue();
-        Y_VERIFY(req);
+        Y_ABORT_UNLESS(req);
 
         Counters->RequestDequeued();
         SendRequest(std::move(req), send);
@@ -763,7 +763,7 @@ bool TClientEndpoint::AbortRequests() noexcept
 
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
-        Y_VERIFY(req);
+        Y_ABORT_UNLESS(req);
 
         Counters->RequestDequeued();
         AbortRequest(std::move(req), Status, "endpoint is unavailable");
@@ -1791,7 +1791,7 @@ void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 
 void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
 {
-    Y_VERIFY(endpoint);
+    Y_ABORT_UNLESS(endpoint);
 
     try {
         endpoint->ChangeState(

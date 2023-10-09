@@ -274,7 +274,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
     ui32 requestIndex = 0;
     for (auto& req: ReadRequests) {
         if (req.DataBlobOffsets) {
-            Y_VERIFY(req.Proxy);
+            Y_ABORT_UNLESS(req.Proxy);
 
             DataBlockCount += req.DataBlockCount;
             ++ReadRequestsScheduled;
@@ -463,7 +463,7 @@ void TCompactionActor::HandleReadBlobResponse(
         return;
     }
 
-    Y_VERIFY(ReadRequestsCompleted < ReadRequestsScheduled);
+    Y_ABORT_UNLESS(ReadRequestsCompleted < ReadRequestsScheduled);
     if (++ReadRequestsCompleted < ReadRequestsScheduled) {
         return;
     }
@@ -492,7 +492,7 @@ void TCompactionActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(WriteRequestsCompleted < WriteRequestsScheduled);
+    Y_ABORT_UNLESS(WriteRequestsCompleted < WriteRequestsScheduled);
     if (++WriteRequestsCompleted < WriteRequestsScheduled) {
         return;
     }
@@ -575,7 +575,7 @@ public:
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
-        Y_VERIFY(blobOffset != InvalidBlobOffset);
+        Y_ABORT_UNLESS(blobOffset != InvalidBlobOffset);
 
         // filter out garbage blocks
         if (block.MinCommitId != block.MaxCommitId) {
@@ -665,7 +665,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     if (garbageScore < 1 && rangeScore <= 0) {
-        Y_VERIFY(cleanupScore < 1);
+        Y_ABORT_UNLESS(cleanupScore < 1);
 
         if (State->HasCheckpointsToDelete()) {
             EnqueueCleanup(
@@ -1008,7 +1008,7 @@ bool TPartitionActor::PrepareCompaction(
         }
 
         if (ready) {
-            Y_VERIFY(blockList.Defined());
+            Y_ABORT_UNLESS(blockList.Defined());
 
             auto blocks = blockList->GetBlocks();
             const auto blobRange = TBlockRange32::MakeClosedInterval(
@@ -1068,7 +1068,7 @@ void TPartitionActor::CompleteCompaction(
 
     size_t blockCount = 0;
     for (auto& blob: args.Blobs) {
-        Y_VERIFY(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
+        Y_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
         blockCount += blob.Blocks.size();
 
         TActorId proxy;

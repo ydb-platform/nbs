@@ -325,7 +325,7 @@ TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
         }
     }
 
-    Y_VERIFY(unknown + stopped + started + ready + failed == Partitions.size());
+    Y_ABORT_UNLESS(unknown + stopped + started + ready + failed == Partitions.size());
     if (unknown) {
         PartitionsState = TPartitionInfo::UNKNOWN;
     } else if (failed) {
@@ -507,7 +507,7 @@ bool TVolumeState::IsClientStale(
     TInstant referenceTimestamp) const
 {
     auto it = ClientInfosByClientId.find(clientId);
-    Y_VERIFY(it != ClientInfosByClientId.end());
+    Y_ABORT_UNLESS(it != ClientInfosByClientId.end());
 
     return IsClientStale(it->second, referenceTimestamp);
 }
@@ -616,7 +616,7 @@ void TVolumeState::SetServiceDisconnected(
     for (auto it = p.first; it != p.second;) {
         const auto& clientId = it->second;
         auto* clientInfo = ClientInfosByClientId.FindPtr(clientId);
-        Y_VERIFY(clientInfo);
+        Y_ABORT_UNLESS(clientInfo);
         clientInfo->RemovePipe(pipeServerActorId, disconnectTime);
         ClientIdsByPipeServerId.erase(it++);
     }

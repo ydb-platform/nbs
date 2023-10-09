@@ -188,7 +188,7 @@ TGuardedSgList::TGuard::operator bool() const
 
 const TSgList& TGuardedSgList::TGuard::Get() const
 {
-    Y_VERIFY(GuardedObject);
+    Y_ABORT_UNLESS(GuardedObject);
     return Sglist;
 }
 
@@ -246,7 +246,7 @@ bool TGuardedSgList::Empty() const
 
 TGuardedSgList TGuardedSgList::CreateDepender() const
 {
-    Y_VERIFY(GuardedObject);
+    Y_ABORT_UNLESS(GuardedObject);
     return TGuardedSgList(
         MakeIntrusive<TDependentGuardedObject>(GuardedObject),
         Sglist);
@@ -254,25 +254,25 @@ TGuardedSgList TGuardedSgList::CreateDepender() const
 
 TGuardedSgList TGuardedSgList::Create(TSgList sglist) const
 {
-    Y_VERIFY(GuardedObject);
+    Y_ABORT_UNLESS(GuardedObject);
     return TGuardedSgList(GuardedObject, std::move(sglist));
 }
 
 void TGuardedSgList::SetSgList(TSgList sglist)
 {
-    Y_VERIFY(GuardedObject);
+    Y_ABORT_UNLESS(GuardedObject);
     Sglist = std::move(sglist);
 }
 
 TGuardedSgList::TGuard TGuardedSgList::Acquire() const
 {
-    Y_VERIFY(GuardedObject);
+    Y_ABORT_UNLESS(GuardedObject);
     return TGuard(GuardedObject, Sglist);
 }
 
 void TGuardedSgList::Close()
 {
-    Y_VERIFY(GuardedObject);
+    Y_ABORT_UNLESS(GuardedObject);
     GuardedObject->Close();
 }
 

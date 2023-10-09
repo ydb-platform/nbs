@@ -177,7 +177,7 @@ void TInitializer::OnError(int i, const TString& error)
         }
     } else {
         i -= fileDevices.size();
-        Y_VERIFY(i < memoryDevices.size());
+        Y_ABORT_UNLESS(i < memoryDevices.size());
 
         with_lock (Lock) {
             Errors.push_back(TStringBuilder()
@@ -336,8 +336,8 @@ TInitializeStorageResult TInitializer::GetResult()
     r.Stats.reserve(Devices.size());
 
     for (size_t i = 0; i != Devices.size(); ++i) {
-        Y_VERIFY(Devices[i]);
-        Y_VERIFY(Stats[i]);
+        Y_ABORT_UNLESS(Devices[i]);
+        Y_ABORT_UNLESS(Stats[i]);
 
         r.Configs.push_back(std::move(Configs[i]));
         r.Devices.push_back(std::move(Devices[i]));

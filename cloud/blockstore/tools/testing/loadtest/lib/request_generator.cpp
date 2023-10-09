@@ -313,7 +313,7 @@ private:
             return;
         }
 
-        Y_VERIFY(FinishedRead.load(std::memory_order_acquire));
+        Y_ABORT_UNLESS(FinishedRead.load(std::memory_order_acquire));
     }
 };
 

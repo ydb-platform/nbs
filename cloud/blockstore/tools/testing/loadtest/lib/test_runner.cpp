@@ -226,7 +226,7 @@ bool TTestRunner::SendNextRequest()
             break;
 
         default:
-            Y_VERIFY(TStringBuilder()
+            Y_ABORT_UNLESS(TStringBuilder()
                 << "unexpected request type: "
                 << GetBlockStoreRequestName(request.RequestType));
     }
@@ -420,7 +420,7 @@ void TTestRunner::ProcessCompletedRequests()
     while (auto request = CompletionQueue.Dequeue()) {
         Requests->Complete(request->BlockRange);
 
-        Y_VERIFY(CurrentIoDepth > 0);
+        Y_ABORT_UNLESS(CurrentIoDepth > 0);
         --CurrentIoDepth;
 
         if (FAILED(request->Error.GetCode())) {
@@ -458,7 +458,7 @@ void TTestRunner::ProcessCompletedRequests()
                 break;
 
             default:
-                Y_VERIFY(TStringBuilder()
+                Y_ABORT_UNLESS(TStringBuilder()
                     << "unexpected request type: "
                     << GetBlockStoreRequestName(request->RequestType));
         }

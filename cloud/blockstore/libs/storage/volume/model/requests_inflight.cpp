@@ -78,7 +78,7 @@ TRequestsInFlight::TAddResult TRequestsInFlight::TryAddRequest(
     auto [it, emplaced] = Impl->NodeByRequestId.emplace(
         requestId,
         TImpl::TRequestNode(blockRange, requestId));
-    Y_VERIFY(emplaced);
+    Y_ABORT_UNLESS(emplaced);
 
     Impl->Requests.Insert(it->second);
     return TAddResult{true, InvalidRequestId};

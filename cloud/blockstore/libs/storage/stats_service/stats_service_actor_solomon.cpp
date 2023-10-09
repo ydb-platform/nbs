@@ -142,7 +142,7 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
                     vol);
             }
 
-            Y_VERIFY(vol.PerfCounters.CountersRegistered);
+            Y_ABORT_UNLESS(vol.PerfCounters.CountersRegistered);
             vol.PerfCounters.DiskCounters.Publish(ctx.Now());
             vol.PerfCounters.VolumeSelfCounters.Publish(ctx.Now());
             *vol.PerfCounters.VolumeBindingCounter = !vol.PerfCounters.IsPreempted;

@@ -68,7 +68,7 @@ void TPartitionActor::ExecuteAddGarbage(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    Y_VERIFY(IsSorted(args.BlobIds.begin(), args.BlobIds.end()));
+    Y_ABORT_UNLESS(IsSorted(args.BlobIds.begin(), args.BlobIds.end()));
     SortUnique(args.KnownBlobIds);
 
     TVector<TPartialBlobId> diff;
@@ -84,7 +84,7 @@ void TPartitionActor::ExecuteAddGarbage(
             ToString(MakeBlobId(TabletID(), blobId)).data());
 
         bool added = State->GetGarbageQueue().AddGarbageBlob(blobId);
-        Y_VERIFY(added);
+        Y_ABORT_UNLESS(added);
 
         db.WriteGarbageBlob(blobId);
     }

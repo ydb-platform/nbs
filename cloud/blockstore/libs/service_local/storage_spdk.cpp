@@ -177,7 +177,7 @@ TStorageBuffer TSpdkStorage::AllocateBuffer(size_t bytesCount)
     auto block = alloc->Allocate(space);
     void* p = block.Data;
 
-    Y_VERIFY(std::align(BlockSize, bytesCount, p, space));
+    Y_ABORT_UNLESS(std::align(BlockSize, bytesCount, p, space));
 
     return { static_cast<char*>(p), [=] (auto*) {
         alloc->Release(block);

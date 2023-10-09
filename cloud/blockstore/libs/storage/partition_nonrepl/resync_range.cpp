@@ -133,7 +133,7 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
 
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
-    Y_VERIFY(!HasError(sgListOrError));
+    Y_ABORT_UNLESS(!HasError(sgListOrError));
     SgList.SetSgList(sgListOrError.ExtractResult());
 
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();

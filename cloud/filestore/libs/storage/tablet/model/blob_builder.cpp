@@ -8,7 +8,7 @@ namespace NCloud::NFileStore::NStorage {
 
 void TMixedBlobBuilder::Accept(const TBlock& block, TStringBuf blockData)
 {
-    Y_VERIFY(blockData.size() == BlockSize);
+    Y_ABORT_UNLESS(blockData.size() == BlockSize);
 
     auto& range = Ranges[GetMixedRangeIndex(
         Hasher,
@@ -77,7 +77,7 @@ void TMergedBlobBuilder::Accept(
 
     for (size_t i = 0; i < blocksCount; ++i) {
         auto blockData = buffer.GetBlock(blockOffset + i);
-        Y_VERIFY(blockData.size() == BlockSize);
+        Y_ABORT_UNLESS(blockData.size() == BlockSize);
 
         blobContent.append(blockData);
     }

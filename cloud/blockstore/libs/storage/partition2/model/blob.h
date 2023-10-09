@@ -167,7 +167,7 @@ struct TBlobRefsList : TVector<TBlobRefs>
         const TPartialBlobId& blobId,
         ui16 blobOffset)
     {
-        Y_VERIFY(blobOffset != InvalidBlobOffset);
+        Y_ABORT_UNLESS(blobOffset != InvalidBlobOffset);
 
         if (empty() || back().BlobId != blobId) {
             emplace_back(blobId);

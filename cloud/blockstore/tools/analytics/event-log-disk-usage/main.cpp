@@ -205,12 +205,12 @@ void DeserializeCompressedBitmap(
             break;
         }
 
-        Y_VERIFY(len == sizeof(ui32));
+        Y_ABORT_UNLESS(len == sizeof(ui32));
 
         char* data = nullptr;
 
-        Y_VERIFY(stream.Next(&size, sizeof(ui32)) == sizeof(ui32));
-        Y_VERIFY(stream.Next(&data, *size) == *size);
+        Y_ABORT_UNLESS(stream.Next(&size, sizeof(ui32)) == sizeof(ui32));
+        Y_ABORT_UNLESS(stream.Next(&data, *size) == *size);
 
         chunks.push_back({
             .ChunkIdx = *chunkIdx,

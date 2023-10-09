@@ -409,7 +409,7 @@ void TBootstrapYdb::InitKikimrService()
         Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
         !AioStorageProvider)
     {
-        Y_VERIFY(FileIOService);
+        Y_ABORT_UNLESS(FileIOService);
 
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
@@ -431,7 +431,7 @@ void TBootstrapYdb::InitKikimrService()
         STORAGE_INFO("AioStorageProvider (null) initialized");
     }
 
-    Y_VERIFY(FileIOService);
+    Y_ABORT_UNLESS(FileIOService);
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),

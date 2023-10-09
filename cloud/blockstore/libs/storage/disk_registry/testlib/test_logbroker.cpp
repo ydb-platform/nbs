@@ -18,7 +18,7 @@ TFuture<NProto::TError> TTestLogbrokerService::Write(
             payload.data(),
             payload.size());
 
-        Y_VERIFY(ok);
+        Y_ABORT_UNLESS(ok);
 
         with_lock (ItemsMtx) {
             Items.push_back(TItem {

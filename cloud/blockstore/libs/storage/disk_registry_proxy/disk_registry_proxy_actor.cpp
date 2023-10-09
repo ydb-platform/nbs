@@ -209,7 +209,7 @@ void TDiskRegistryProxyActor::HandleDisconnect(
 {
     Y_UNUSED(ev);
 
-    Y_VERIFY(DiskRegistryTabletId);
+    Y_ABORT_UNLESS(DiskRegistryTabletId);
 
     TabletClientId = {};
 
@@ -228,7 +228,7 @@ void TDiskRegistryProxyActor::HandleRequest(
     const TActorContext& ctx,
     TAutoPtr<IEventHandle>& ev)
 {
-    Y_VERIFY(DiskRegistryTabletId);
+    Y_ABORT_UNLESS(DiskRegistryTabletId);
 
     if (!TabletClientId) {
         CreateClient(ctx);

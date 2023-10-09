@@ -365,7 +365,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 
             InitErrorsCount = r.Errors.size();
 
-            Y_VERIFY(r.Configs.size() == r.Devices.size()
+            Y_ABORT_UNLESS(r.Configs.size() == r.Devices.size()
                   && r.Configs.size() == r.Stats.size());
 
             TDuration ioTimeout;

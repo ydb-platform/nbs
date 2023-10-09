@@ -217,7 +217,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
-        Y_VERIFY(ep);
+        Y_ABORT_UNLESS(ep);
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();

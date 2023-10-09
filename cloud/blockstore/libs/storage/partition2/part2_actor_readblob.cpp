@@ -236,7 +236,7 @@ void TReadBlobActor::HandleGetResult(
 
                     const auto marker = GetBrokenDataMarker();
                     auto& block = sglist[sglistIndex];
-                    Y_VERIFY(block.Data());
+                    Y_ABORT_UNLESS(block.Data());
                     memcpy(
                         const_cast<char*>(block.Data()),
                         marker.Data(),
@@ -252,7 +252,7 @@ void TReadBlobActor::HandleGetResult(
                         }
 
                         auto& block = sglist[sglistIndex];
-                        Y_VERIFY(block.Data());
+                        Y_ABORT_UNLESS(block.Data());
                         memcpy(
                             const_cast<char*>(block.Data()),
                             marker.Data(),
@@ -283,7 +283,7 @@ void TReadBlobActor::HandleGetResult(
                     return;
                 }
 
-                Y_VERIFY(sglist[sglistIndex].Size() == BlockSize);
+                Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
                 iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 ++sglistIndex;
@@ -435,7 +435,7 @@ void TPartitionActor::HandleReadBlobCompleted(
     const ui32 channel = msg->BlobId.Channel();
     const ui32 group = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID();
-    Y_VERIFY(group != Max<ui32>());
+    Y_ABORT_UNLESS(group != Max<ui32>());
 
     UpdateReadThroughput(ctx, channel, group, msg->BytesCount, isOverlayDisk);
     UpdateNetworkStats(ctx, msg->BytesCount);

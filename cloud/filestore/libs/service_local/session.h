@@ -45,7 +45,7 @@ public:
         TWriteGuard guard(Lock);
 
         auto it = Handles.find(handle.GetHandle());
-        Y_VERIFY(it == Handles.end(), "dup file handle for: %d",
+        Y_ABORT_UNLESS(it == Handles.end(), "dup file handle for: %d",
             handle.GetHandle());
 
         Handles[handle.GetHandle()] = handle;
@@ -88,7 +88,7 @@ public:
     void Ping(ui64 sessionSeqNo)
     {
         auto it = SubSessions.find(sessionSeqNo);
-        Y_VERIFY(it != SubSessions.end(), "seq no: %lu not found", sessionSeqNo);
+        Y_ABORT_UNLESS(it != SubSessions.end(), "seq no: %lu not found", sessionSeqNo);
         it->second.second = TInstant::Now();
     }
 

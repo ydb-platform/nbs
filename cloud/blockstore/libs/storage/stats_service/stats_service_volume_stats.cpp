@@ -85,7 +85,7 @@ private:
 
             const auto& diskId = msg->Record.GetStats().GetDiskId();
             auto it = DiskToIdx.find(diskId);
-            Y_VERIFY(it != DiskToIdx.end());
+            Y_ABORT_UNLESS(it != DiskToIdx.end());
             Volumes[it->second] = msg->Record.GetStats();
         }
         if (!--ResponsesToGet) {

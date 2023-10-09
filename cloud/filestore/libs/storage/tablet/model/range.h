@@ -21,7 +21,7 @@ struct TByteRange
         , Length(length)
         , BlockSize(blockSize)
     {
-        Y_VERIFY(BlockSize);
+        Y_ABORT_UNLESS(BlockSize);
     }
 
     ui64 End() const
@@ -58,7 +58,7 @@ struct TByteRange
     ui64 AlignedBlockOffset(ui64 blockOffset) const
     {
         const auto offset = (FirstAlignedBlock() + blockOffset) * BlockSize;
-        Y_VERIFY(offset + BlockSize <= End());
+        Y_ABORT_UNLESS(offset + BlockSize <= End());
         return offset;
     }
 

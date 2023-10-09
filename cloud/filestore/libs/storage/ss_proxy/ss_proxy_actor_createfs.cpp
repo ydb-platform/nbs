@@ -82,7 +82,7 @@ void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
         FileStoreConfig.GetFileSystemId());
 
     FileStorePathItems = SplitPath(std::move(path));
-    Y_VERIFY(FileStorePathItems);
+    Y_ABORT_UNLESS(FileStorePathItems);
 
     CreateFileStore(ctx);
 }

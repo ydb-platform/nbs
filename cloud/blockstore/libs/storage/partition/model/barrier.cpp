@@ -29,8 +29,8 @@ void TBarriers::ReleaseBarrier(ui64 commitId)
 void TBarriers::ReleaseBarrierN(ui64 commitId, ui32 refCount)
 {
     auto it = Barriers.find(TBarrier(commitId, 0));
-    Y_VERIFY(it != Barriers.end());
-    Y_VERIFY(it->RefCount >= refCount);
+    Y_ABORT_UNLESS(it != Barriers.end());
+    Y_ABORT_UNLESS(it->RefCount >= refCount);
     if ((const_cast<TBarrier&>(*it).RefCount -= refCount) == 0) {
         Barriers.erase(it);
     }

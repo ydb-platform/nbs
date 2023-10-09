@@ -35,7 +35,7 @@ bool ShouldChangePreemptionType(
             return true;
         }
         default: {
-            Y_VERIFY(0);
+            Y_ABORT_UNLESS(0);
         }
     }
 }
@@ -58,7 +58,7 @@ bool ShouldTryNewBinding(
             return true;
         }
         default: {
-            Y_VERIFY(0);
+            Y_ABORT_UNLESS(0);
         }
     }
 }

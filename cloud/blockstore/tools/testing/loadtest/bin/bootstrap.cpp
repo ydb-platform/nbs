@@ -104,7 +104,7 @@ struct TDigestCalculatorImpl final
         }
 
         ui64 result;
-        Y_VERIFY(block.Size() >= sizeof(result));
+        Y_ABORT_UNLESS(block.Size() >= sizeof(result));
         memcpy(&result, block.Data(), sizeof(result));
         return result;
     }
@@ -294,7 +294,7 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         Monitoring,
         std::move(clientStats));
 
-    Y_VERIFY(!HasError(error));
+    Y_ABORT_UNLESS(!HasError(error));
 
     client->Start();
     Clients.Enqueue(client);
@@ -417,7 +417,7 @@ IBlockStorePtr TBootstrap::CreateEndpointDataClient(
         }
 
         case NProto::IPC_NBD: {
-            Y_VERIFY(ClientConfig->GetNbdSocketSuffix());
+            Y_ABORT_UNLESS(ClientConfig->GetNbdSocketSuffix());
             auto connectAddress = TNetworkAddress(TUnixSocketPath(
                 socketPath + ClientConfig->GetNbdSocketSuffix()));
 
@@ -434,7 +434,7 @@ IBlockStorePtr TBootstrap::CreateEndpointDataClient(
 
         case NProto::IPC_NVME:
         case NProto::IPC_SCSI: {
-            Y_VERIFY(Spdk);
+            Y_ABORT_UNLESS(Spdk);
 
             auto client = CreateAndStartGrpcClient(clientId);
             auto dataEndpoint = client->CreateEndpoint();

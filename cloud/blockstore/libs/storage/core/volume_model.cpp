@@ -544,7 +544,7 @@ ui64 ComputeBlocksCountPerPartition(
     const ui32 partitionsCount)
 {
     if (!blocksPerStripe) {
-        Y_VERIFY(partitionsCount == 1);
+        Y_ABORT_UNLESS(partitionsCount == 1);
         return newBlocksCountPerVolume;
     }
 

@@ -113,7 +113,7 @@ int TControlPlaneActionRunner::Run(
                 return RunCmsRemoveDeviceAction(action);
             }
 
-            default: Y_VERIFY(0);
+            default: Y_ABORT_UNLESS(0);
         }
     } catch (...) {
         STORAGE_ERROR("Exception during cpa execution: "

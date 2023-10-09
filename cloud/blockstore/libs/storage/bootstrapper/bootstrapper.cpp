@@ -220,7 +220,7 @@ void TBootstrapperActor::HandleStart(
     const TEvBootstrapper::TEvStart::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(ev->Sender == Owner);
+    Y_ABORT_UNLESS(ev->Sender == Owner);
     StartTablet(ctx);
 }
 
@@ -228,7 +228,7 @@ void TBootstrapperActor::HandleStop(
     const TEvBootstrapper::TEvStop::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(ev->Sender == Owner);
+    Y_ABORT_UNLESS(ev->Sender == Owner);
     StopTablet(ctx);
 }
 
@@ -238,7 +238,7 @@ void TBootstrapperActor::HandleRestored(
 {
     const auto* msg = ev->Get();
 
-    Y_VERIFY(TabletStorageInfo->TabletID == msg->TabletID,
+    Y_ABORT_UNLESS(TabletStorageInfo->TabletID == msg->TabletID,
         "Tablet IDs mismatch: %lu vs %lu",
         TabletStorageInfo->TabletID,
         msg->TabletID);
@@ -267,7 +267,7 @@ void TBootstrapperActor::HandleTabletDead(
 {
     const auto* msg = ev->Get();
 
-    Y_VERIFY(TabletStorageInfo->TabletID == msg->TabletID,
+    Y_ABORT_UNLESS(TabletStorageInfo->TabletID == msg->TabletID,
         "Tablet IDs mismatch: %lu vs %lu",
         TabletStorageInfo->TabletID,
         msg->TabletID);
@@ -284,7 +284,7 @@ void TBootstrapperActor::HandleTabletDead_Unexpected(
 {
     const auto* msg = ev->Get();
 
-    Y_VERIFY(TabletStorageInfo->TabletID == msg->TabletID,
+    Y_ABORT_UNLESS(TabletStorageInfo->TabletID == msg->TabletID,
         "Tablet IDs mismatch: %lu vs %lu",
         TabletStorageInfo->TabletID,
         msg->TabletID);

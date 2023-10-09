@@ -1091,7 +1091,7 @@ public:
     void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
     {
         bool removed = CleanupQueue.Remove(item);
-        Y_VERIFY(removed);
+        Y_ABORT_UNLESS(removed);
 
         // BlobCountToCleanup is not perfectly synchronized with CleanupQueue:
         // it can actually be smaller

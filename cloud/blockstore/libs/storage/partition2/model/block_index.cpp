@@ -113,7 +113,7 @@ ui64 TBlockIndex::AddDeletedBlock(ui32 blockIndex, ui64 maxCommitId)
 {
     auto it = Impl->Blocks.upper_bound(TBlockKey(blockIndex, maxCommitId));
     if (it != Impl->Blocks.end() && it->Meta.BlockIndex == blockIndex) {
-        Y_VERIFY(it->Meta.MinCommitId < maxCommitId);
+        Y_ABORT_UNLESS(it->Meta.MinCommitId < maxCommitId);
         if (it->Meta.MaxCommitId > maxCommitId) {
             const_cast<TFreshBlock&>(*it).Meta.MaxCommitId = maxCommitId;
             return it->Meta.MinCommitId;
@@ -142,7 +142,7 @@ const TFreshBlock* TBlockIndex::FindBlock(ui32 blockIndex, ui64 checkpointId) co
 {
     auto it = Impl->Blocks.lower_bound(TBlockKey(blockIndex, checkpointId));
     if (it != Impl->Blocks.end() && it->Meta.BlockIndex == blockIndex) {
-        Y_VERIFY(it->Meta.MinCommitId <= checkpointId);
+        Y_ABORT_UNLESS(it->Meta.MinCommitId <= checkpointId);
         if (it->Meta.MaxCommitId > checkpointId) {
             return &*it;
         }

@@ -227,7 +227,7 @@ public:
 
         with_lock (Lock) {
             auto it = FindClient(socket);
-            Y_VERIFY(it == ClientInfos.end());
+            Y_ABORT_UNLESS(it == ClientInfos.end());
 
             dupSocket = SafeCreateDuplicate(socket);
 
@@ -237,7 +237,7 @@ public:
                 source
             };
             auto res = ClientInfos.emplace((ui32)dupSocket, std::move(client));
-            Y_VERIFY(res.second);
+            Y_ABORT_UNLESS(res.second);
         }
 
         TLog& Log = AppCtx.Log;
@@ -253,7 +253,7 @@ public:
 
         with_lock (Lock) {
             auto it = FindClient(socket);
-            Y_VERIFY(it != ClientInfos.end());
+            Y_ABORT_UNLESS(it != ClientInfos.end());
             ClientInfos.erase(it);
         }
     }
@@ -582,7 +582,7 @@ private:
     void ValidateRequest()
     {
         auto authContext = Context->auth_context();
-        Y_VERIFY(authContext);
+        Y_ABORT_UNLESS(authContext);
 
         auto source = GetRequestSource(*authContext, RequestSourceKinds);
 

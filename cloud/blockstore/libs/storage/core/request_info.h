@@ -48,7 +48,7 @@ struct TRequestInfo
 
     void CancelRequest(const NActors::TActorContext& ctx)
     {
-        Y_VERIFY(CancelRoutine);
+        Y_ABORT_UNLESS(CancelRoutine);
         CancelRoutine(ctx, *this);
     }
 

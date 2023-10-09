@@ -234,7 +234,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             }
 
             default: {
-                Y_VERIFY(false);
+                Y_ABORT_UNLESS(false);
             }
         }
 

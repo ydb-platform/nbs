@@ -187,14 +187,14 @@ TString DescribeRange(const TVector<TBlockIndex>& blocks);
 template <typename TBlockIndex>
 constexpr auto xrange(const TBlockRange<TBlockIndex>& range)
 {
-    Y_VERIFY(range.End < Max<TBlockIndex>());
+    Y_ABORT_UNLESS(range.End < Max<TBlockIndex>());
     return ::xrange(range.Start, range.End + 1);
 }
 
 template <typename TBlockIndex, typename TBlockIndex2>
 constexpr auto xrange(const TBlockRange<TBlockIndex>& range, TBlockIndex2 step)
 {
-    Y_VERIFY(range.End < Max<TBlockIndex>());
+    Y_ABORT_UNLESS(range.End < Max<TBlockIndex>());
     return ::xrange(range.Start, range.End + 1, step);
 }
 

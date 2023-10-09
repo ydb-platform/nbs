@@ -36,7 +36,7 @@ TCopyRangeActor::TCopyRangeActor(
 {
     auto sgListOrError = SgListNormalize(SgList.Acquire().Get(), blockSize);
 
-    Y_VERIFY(!HasError(sgListOrError));
+    Y_ABORT_UNLESS(!HasError(sgListOrError));
     SgList.SetSgList(sgListOrError.ExtractResult());
 
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;

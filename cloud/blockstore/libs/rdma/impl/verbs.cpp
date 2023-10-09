@@ -120,7 +120,7 @@ struct TVerbs
             RDMA_THROW_ERROR("ibv_get_cq_event");
         }
 
-        Y_VERIFY(ev_cq == cq);
+        Y_ABORT_UNLESS(ev_cq == cq);
         return ev_ctx;
     }
 

@@ -247,7 +247,7 @@ void TFlushActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(RequestsCompleted < Requests.size());
+    Y_ABORT_UNLESS(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }
@@ -338,7 +338,7 @@ public:
         if (Blocks) {
             // NBS-299: we do not want to mix blocks that are too far from each other
             ui32 firstBlockIndex = Blocks.front().BlockIndex;
-            Y_VERIFY(firstBlockIndex <= block.BlockIndex);
+            Y_ABORT_UNLESS(firstBlockIndex <= block.BlockIndex);
             if (block.BlockIndex - firstBlockIndex
                     > MaxBlobRangeSize / BlockSize)
             {
@@ -524,11 +524,11 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         return visitor.Finish();
     }();
 
-    Y_VERIFY(blobs);
+    Y_ABORT_UNLESS(blobs);
 
     ui32 blobIndex = 0;
     for (auto& blob: blobs) {
-        Y_VERIFY(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
+        Y_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
 
         blob.BlobId = State->GenerateBlobId(
             EChannelDataKind::Mixed,

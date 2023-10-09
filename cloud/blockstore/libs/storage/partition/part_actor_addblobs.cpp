@@ -96,7 +96,7 @@ public:
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {
-            Y_VERIFY(Args.MergedBlobs.size()
+            Y_ABORT_UNLESS(Args.MergedBlobs.size()
                     == Args.MergedBlobCompactionInfos.size());
         }
 
@@ -173,7 +173,7 @@ private:
 
         if (!IsDeletionMarker(blob.BlobId)) {
             bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
-            Y_VERIFY(added);
+            Y_ABORT_UNLESS(added);
         }
 
         // write blocks mask
@@ -186,7 +186,7 @@ private:
             blockMask.Set(blobOffset);
         }
 
-        Y_VERIFY(!IsBlockMaskFull(blockMask, MaxBlocksInBlob));
+        Y_ABORT_UNLESS(!IsBlockMaskFull(blockMask, MaxBlocksInBlob));
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
@@ -216,7 +216,7 @@ private:
             DescribeRange(blob.BlockRange).data());
 
         const auto skipped = blob.SkipMask.Count();
-        Y_VERIFY(skipped < blob.BlockRange.Size());
+        Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
 
         // write blob meta
         NProto::TBlobMeta blobMeta;
@@ -230,7 +230,7 @@ private:
 
         if (!IsDeletionMarker(blob.BlobId)) {
             bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
-            Y_VERIFY(added);
+            Y_ABORT_UNLESS(added);
         }
 
         // write blocks mask
@@ -243,7 +243,7 @@ private:
             blockMask.Set(blobOffset);
         }
 
-        Y_VERIFY(!IsBlockMaskFull(blockMask, MaxBlocksInBlob));
+        Y_ABORT_UNLESS(!IsBlockMaskFull(blockMask, MaxBlocksInBlob));
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
@@ -293,7 +293,7 @@ private:
 
         if (!IsDeletionMarker(blob.BlobId)) {
             bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
-            Y_VERIFY(added);
+            Y_ABORT_UNLESS(added);
         }
 
         // write blocks mask

@@ -24,7 +24,7 @@ IOutputStream& operator <<(
 
 bool IsContinuousBlockRange(const TVector<TBlock>& blocks)
 {
-    Y_VERIFY(blocks);
+    Y_ABORT_UNLESS(blocks);
     ui32 prev = blocks[0].BlockIndex;
     for (size_t i = 1; i < blocks.size(); ++i) {
         Y_VERIFY_DEBUG(prev <= blocks[i].BlockIndex);

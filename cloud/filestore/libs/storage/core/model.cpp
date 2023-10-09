@@ -227,7 +227,7 @@ auto GetAllocationUnit(
             break;
     }
 
-    Y_VERIFY(unit != 0);
+    Y_ABORT_UNLESS(unit != 0);
     return unit;
 }
 

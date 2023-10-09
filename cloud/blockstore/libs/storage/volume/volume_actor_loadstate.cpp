@@ -145,7 +145,7 @@ void TVolumeActor::CompleteLoadState(
             }
         }
 
-        Y_VERIFY(CurrentState == STATE_INIT);
+        Y_ABORT_UNLESS(CurrentState == STATE_INIT);
         BecomeAux(ctx, STATE_WORK);
 
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,

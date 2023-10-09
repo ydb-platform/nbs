@@ -205,7 +205,7 @@ public:
                 const TActorId& owner,
                 TTabletStorageInfo* storage)
             {
-                Y_VERIFY(storage->TabletType == TTabletTypes::FileStore);
+                Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
                 auto actor = CreateIndexTablet(
                     owner,
                     storage,

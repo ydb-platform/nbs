@@ -84,7 +84,7 @@ public:
         buffer.Length = allocSize;
 
         AllocatedBytes += allocSize;
-        Y_VERIFY(AllocatedBytes <= Length);
+        Y_ABORT_UNLESS(AllocatedBytes <= Length);
 
         return buffer;
     }
@@ -225,7 +225,7 @@ private:
     TChunk* AllocateChunk(size_t chunkSize, bool custom)
     {
         void* addr = malloc(chunkSize);
-        Y_VERIFY(addr);
+        Y_ABORT_UNLESS(addr);
 
         if (ProtectionDomain) {
             auto mr = Verbs->RegisterMemoryRegion(

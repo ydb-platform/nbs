@@ -145,7 +145,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , FirstRequestDeletionId(firstRequestDeletionId)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
 {
-    Y_VERIFY(BlockRanges.size() == WriteHandlers.size());
+    Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
 
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
@@ -228,7 +228,7 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         return;
     }
 
-    Y_VERIFY(!BlobContent.empty());
+    Y_ABORT_UNLESS(!BlobContent.empty());
 
     const auto [generation, step] = ParseCommitId(CommitId);
 
@@ -376,7 +376,7 @@ void TWriteFreshBlocksActor::HandleInitIndexResponse(
 {
     Y_UNUSED(ev);
 
-    Y_VERIFY(!IsIndexInitialized);
+    Y_ABORT_UNLESS(!IsIndexInitialized);
     IsIndexInitialized = true;
 
     if (IsBlobWritten) {

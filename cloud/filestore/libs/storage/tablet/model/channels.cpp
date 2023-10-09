@@ -105,14 +105,14 @@ void TChannels::TImpl::AddChannel(
 
 void TChannels::TImpl::RegisterUnwritableChannel(ui32 channel)
 {
-    Y_VERIFY(channel < AllChannels.size());
+    Y_ABORT_UNLESS(channel < AllChannels.size());
 
     AllChannels[channel].Writable = false;
 }
 
 void TChannels::TImpl::RegisterChannelToMove(ui32 channel)
 {
-    Y_VERIFY(channel < AllChannels.size());
+    Y_ABORT_UNLESS(channel < AllChannels.size());
 
     AllChannels[channel].ToMove = true;
 }

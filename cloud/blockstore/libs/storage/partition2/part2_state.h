@@ -475,20 +475,20 @@ private:
 public:
     TFlushContext& GetFlushContext()
     {
-        Y_VERIFY(FlushContext);
+        Y_ABORT_UNLESS(FlushContext);
         return *FlushContext;
     }
 
     template <typename ...TArgs>
     void ConstructFlushContext(TArgs&& ...args)
     {
-        Y_VERIFY(!FlushContext);
+        Y_ABORT_UNLESS(!FlushContext);
         FlushContext.ConstructInPlace(std::forward<TArgs>(args)...);
     }
 
     void ResetFlushContext()
     {
-        Y_VERIFY(FlushContext);
+        Y_ABORT_UNLESS(FlushContext);
         FlushContext.Clear();
     }
 
@@ -748,13 +748,13 @@ public:
 
     void StartProcessingCCCRequest()
     {
-        Y_VERIFY(!CCCRequestInProgress);
+        Y_ABORT_UNLESS(!CCCRequestInProgress);
         CCCRequestInProgress = true;
     }
 
     void StopProcessingCCCRequest()
     {
-        Y_VERIFY(CCCRequestInProgress);
+        Y_ABORT_UNLESS(CCCRequestInProgress);
         CCCRequestInProgress = false;
     }
 
@@ -842,8 +842,8 @@ public:
 
     bool TrySelectZoneToCleanup()
     {
-        Y_VERIFY(PendingChunkToCleanup.empty());
-        Y_VERIFY(PendingBlobsToCleanup.empty());
+        Y_ABORT_UNLESS(PendingChunkToCleanup.empty());
+        Y_ABORT_UNLESS(PendingBlobsToCleanup.empty());
 
         PendingCleanupZoneId = Blobs.SelectZoneToCleanup();
         return PendingCleanupZoneId != InvalidZoneId;
@@ -851,13 +851,13 @@ public:
 
     void SeparateChunkForCleanup(ui64 commitId)
     {
-        Y_VERIFY(PendingCleanupZoneId != InvalidZoneId);
+        Y_ABORT_UNLESS(PendingCleanupZoneId != InvalidZoneId);
         Blobs.SeparateChunkForCleanup(commitId);
     }
 
     void ExtractChunkToCleanup()
     {
-        Y_VERIFY(PendingCleanupZoneId != InvalidZoneId);
+        Y_ABORT_UNLESS(PendingCleanupZoneId != InvalidZoneId);
         PendingChunkToCleanup = Blobs.ExtractDirtyBlobs();
     }
 
@@ -1067,8 +1067,8 @@ public:
         const TVector<TPartialBlobId>& newBlobs,
         const TVector<TPartialBlobId>& garbageBlobs)
     {
-        Y_VERIFY(GarbageQueue.AddNewBlobs(newBlobs));
-        Y_VERIFY(GarbageQueue.AddGarbageBlobs(garbageBlobs));
+        Y_ABORT_UNLESS(GarbageQueue.AddNewBlobs(newBlobs));
+        Y_ABORT_UNLESS(GarbageQueue.AddGarbageBlobs(garbageBlobs));
     }
 
     void AcquireCollectBarrier(ui64 commitId)

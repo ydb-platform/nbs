@@ -35,7 +35,7 @@ TFreshBlocks::~TFreshBlocks()
 
 TStringBuf TFreshBlocks::AllocateBlock(TStringBuf content, ui32 blockSize)
 {
-    Y_VERIFY(blockSize >= content.size());
+    Y_ABORT_UNLESS(blockSize >= content.size());
 
     auto block = Allocator->Allocate(blockSize);
     memcpy(block.Data, content.Data(), content.Size());
@@ -82,7 +82,7 @@ ui64 TFreshBlocks::MarkBlockDeleted(ui64 nodeId, ui32 blockIndex, ui64 commitId)
         auto& block = const_cast<TBlock&>(it->first);
 
         if (block.NodeId == nodeId && block.BlockIndex == blockIndex) {
-            Y_VERIFY(block.MinCommitId <= commitId);
+            Y_ABORT_UNLESS(block.MinCommitId <= commitId);
             if (block.MaxCommitId == InvalidCommitId) {
                 block.MaxCommitId = commitId;
                 return block.MinCommitId;
@@ -154,7 +154,7 @@ TMaybe<TFreshBlock> TFreshBlocks::FindBlock(
         const auto& block = it->first;
 
         if (block.NodeId == nodeId && block.BlockIndex == blockIndex) {
-            Y_VERIFY(block.MinCommitId <= commitId);
+            Y_ABORT_UNLESS(block.MinCommitId <= commitId);
             if (block.MaxCommitId > commitId) {
                 return TFreshBlock { block, it->second };
             }

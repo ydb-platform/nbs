@@ -782,7 +782,7 @@ public:
         c->SetPerformanceProfileDefaultPostponedRequestWeight(
             config.PerformanceProfile.DefaultPostponedRequestWeight);
 
-        Y_VERIFY(config.ChannelCount >= 4);
+        Y_ABORT_UNLESS(config.ChannelCount >= 4);
 
         // system [0]
         {

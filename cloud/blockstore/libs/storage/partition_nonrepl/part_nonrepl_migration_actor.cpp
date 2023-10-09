@@ -66,7 +66,7 @@ void TNonreplicatedPartitionMigrationActor::KillActors(const TActorContext& ctx)
 
 void TNonreplicatedPartitionMigrationActor::SetupPartitions(const TActorContext& ctx)
 {
-    Y_VERIFY(Migrations.size());
+    Y_ABORT_UNLESS(Migrations.size());
 
     SrcActorId = NCloud::Register(
         ctx,

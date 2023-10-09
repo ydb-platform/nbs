@@ -9,8 +9,8 @@ TBlockMask BlockMaskFromString(TStringBuf s)
     TBlockMask mask;
 
     if (s) {
-        Y_VERIFY(mask.GetChunkCount() * sizeof(TBlockMask::TChunk) == MaxBlocksCount/8);
-        Y_VERIFY(s.length() == MaxBlocksCount/8);
+        Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TBlockMask::TChunk) == MaxBlocksCount/8);
+        Y_ABORT_UNLESS(s.length() == MaxBlocksCount/8);
         memcpy((char*)mask.GetChunks(), s.data(), s.length());  // TODO
     }
 
@@ -19,7 +19,7 @@ TBlockMask BlockMaskFromString(TStringBuf s)
 
 TStringBuf BlockMaskAsString(const TBlockMask& mask)
 {
-    Y_VERIFY(mask.GetChunkCount() * sizeof(TBlockMask::TChunk) == MaxBlocksCount/8);
+    Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TBlockMask::TChunk) == MaxBlocksCount/8);
     return { reinterpret_cast<const char*>(mask.GetChunks()), MaxBlocksCount/8 };
 }
 

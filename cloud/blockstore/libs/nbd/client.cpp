@@ -284,7 +284,7 @@ public:
             zeroRequest->GetStartIndex(),
             zeroRequest->GetBlocksCount());
 
-        Y_VERIFY(Connection);
+        Y_ABORT_UNLESS(Connection);
         Connection->EnqueueRequest(request);
         return request->Response;
     }
@@ -300,7 +300,7 @@ public:
             readRequest->GetBlocksCount(),
             readRequest->Sglist);
 
-        Y_VERIFY(Connection);
+        Y_ABORT_UNLESS(Connection);
         Connection->EnqueueRequest(request);
         return request->Response;
     }
@@ -316,7 +316,7 @@ public:
             writeRequest->BlocksCount,
             writeRequest->Sglist);
 
-        Y_VERIFY(Connection);
+        Y_ABORT_UNLESS(Connection);
         Connection->EnqueueRequest(request);
         return request->Response;
     }
@@ -369,7 +369,7 @@ public:
 private:
     TFuture<NProto::TError> EnsureClientConnected(TCallContext& callContext)
     {
-        Y_VERIFY(Connection);
+        Y_ABORT_UNLESS(Connection);
 
         if (Connection->GetExportInfo().HasValue()) {
             return MakeFuture(NProto::TError());
@@ -517,7 +517,7 @@ public:
         IBlockStorePtr volumeClient) override
     {
         auto executor = PickExecutor();
-        Y_VERIFY(executor);
+        Y_ABORT_UNLESS(executor);
 
         auto endpoint = std::make_shared<TEndpoint>(
             Log,

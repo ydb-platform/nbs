@@ -74,7 +74,7 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ctx);
-        Y_VERIFY(AuthorizeTicketHandler);
+        Y_ABORT_UNLESS(AuthorizeTicketHandler);
 
         AuthorizeTicketHandler(ev);
     }

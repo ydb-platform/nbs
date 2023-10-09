@@ -199,7 +199,7 @@ bool TPartitionActor::PrepareCleanup(
     for (const auto& item: args.CleanupQueue) {
         TMaybe<NProto::TBlobMeta> blobMeta;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
-            Y_VERIFY(blobMeta.Defined(),
+            Y_ABORT_UNLESS(blobMeta.Defined(),
                 "Could not read meta data for blob: %s",
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
 
@@ -226,7 +226,7 @@ void TPartitionActor::ExecuteCleanup(
     size_t mergedBlobsCount = 0;
 
 
-    Y_VERIFY(args.CleanupQueue.size() == args.BlobsMeta.size());
+    Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
@@ -242,7 +242,7 @@ void TPartitionActor::ExecuteCleanup(
                 }
             } else {
                 // each block has its own commitId
-                Y_VERIFY(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+                Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
                 for (size_t j = 0; j < mixedBlocks.BlocksSize(); ++j) {
                     ui32 blockIndex = mixedBlocks.GetBlocks(j);
                     ui64 commitId = mixedBlocks.GetCommitIds(j);
@@ -333,7 +333,7 @@ void TPartitionActor::CompleteCleanup(
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
 
             bool added = State->GetGarbageQueue().AddGarbageBlob(item.BlobId);
-            Y_VERIFY(added);
+            Y_ABORT_UNLESS(added);
         }
     }
 

@@ -224,8 +224,8 @@ void TPartitionActor::CompleteLoadState(
     State->GetCheckpoints().Add(args.Checkpoints);
     State->GetCheckpoints().SetCheckpointMappings(args.CheckpointId2CommitId);
     State->GetCleanupQueue().Add(args.CleanupQueue);
-    Y_VERIFY(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
-    Y_VERIFY(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));
+    Y_ABORT_UNLESS(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
+    Y_ABORT_UNLESS(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));
 
     if (State->GetBaseDiskId()) {
         if (args.ReadLogicalUsedBlocks) {

@@ -197,7 +197,7 @@ TPartitionState::TPartitionState(
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
     , Stats(*Meta.MutableStats())
 {
-    Y_VERIFY(Config.GetZoneBlockCount());
+    Y_ABORT_UNLESS(Config.GetZoneBlockCount());
     InitChannels();
 }
 
@@ -540,7 +540,7 @@ ui32 TPartitionState::GetIORequestsQueued() const
 
 ui32 TPartitionState::PickNextChannel(EChannelDataKind kind, EChannelPermissions permissions)
 {
-    Y_VERIFY(kind == EChannelDataKind::Fresh ||
+    Y_ABORT_UNLESS(kind == EChannelDataKind::Fresh ||
         kind == EChannelDataKind::Mixed ||
         kind == EChannelDataKind::Merged);
 
@@ -600,11 +600,11 @@ TPartialBlobId TPartitionState::GenerateBlobId(
     ui32 blobIndex)
 {
     ui32 channel = PickNextChannel(kind, permissions);
-    Y_VERIFY(channel);
+    Y_ABORT_UNLESS(channel);
 
     ui64 generation, step;
     std::tie(generation, step) = ParseCommitId(commitId);
-    Y_VERIFY(generation == Generation);
+    Y_ABORT_UNLESS(generation == Generation);
 
     return TPartialBlobId(
         generation,
@@ -641,7 +641,7 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
             meta.MinCommitId,
             meta.MaxCommitId);
 
-        Y_VERIFY(added, "Duplicate block detected: %u @%lu",
+        Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
             meta.BlockIndex,
             meta.MinCommitId);
 
@@ -659,7 +659,7 @@ void TPartitionState::WriteFreshBlock(
         block.MinCommitId,
         block.MaxCommitId);
 
-    Y_VERIFY(added, "Duplicate block detected: %u @%lu",
+    Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
         block.BlockIndex,
         block.MinCommitId);
 
@@ -703,7 +703,7 @@ void TPartitionState::FindFreshBlocks(
     IFreshBlockVisitor& visitor) const
 {
     for (const auto& block: blocks) {
-        Y_VERIFY(block.Content.size() == Config.GetBlockSize());
+        Y_ABORT_UNLESS(block.Content.size() == Config.GetBlockSize());
         visitor.Visit(block.Meta, block.Content);
     }
 }
@@ -735,7 +735,7 @@ void TPartitionState::AddFreshBlockUpdate(
     TFreshBlockUpdate update)
 {
     if (!FreshBlockUpdates.empty()) {
-        Y_VERIFY(FreshBlockUpdates.back().CommitId <= update.CommitId);
+        Y_ABORT_UNLESS(FreshBlockUpdates.back().CommitId <= update.CommitId);
     }
 
     FreshBlockUpdates.push_back(update);
@@ -795,7 +795,7 @@ void TPartitionState::AddBlobUpdateByFresh(TBlobUpdate blobUpdate)
 {
     Blobs.MarkBlocksDeleted(blobUpdate);
     const bool inserted = BlobUpdatesByFresh.insert(blobUpdate).second;
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
 }
 
 void TPartitionState::MoveBlobUpdatesByFreshToDb(TPartitionDatabase& db)
@@ -881,12 +881,12 @@ void TPartitionState::WriteBlob(
             blockCounts.CheckpointBlocks
         );
 
-        Y_VERIFY(addedBlobInfo.Added, "Duplicate blob detected: %s",
+        Y_ABORT_UNLESS(addedBlobInfo.Added, "Duplicate blob detected: %s",
             DumpBlobIds(TabletId, blobId).data());
 
         if (!IsDeletionMarker(blobId)) {
             auto addedToGarbageQueue = GarbageQueue.AddNewBlob(blobId);
-            Y_VERIFY(addedToGarbageQueue);
+            Y_ABORT_UNLESS(addedToGarbageQueue);
         }
 
         if (Blobs.IsGlobalZone(addedBlobInfo.ZoneId)) {
@@ -933,7 +933,7 @@ void TPartitionState::WriteBlob(
         // XXX do we need to add it to garbage queue? it should not have gotten a keep
         // flag
         bool added = GarbageQueue.AddGarbageBlob(blobId);
-        Y_VERIFY(added);
+        Y_ABORT_UNLESS(added);
 
         db.WriteGarbageBlob(blobId);
     }
@@ -1010,11 +1010,11 @@ bool TPartitionState::UpdateBlob(
     } else {
         // it is safe now to delete blob from index
         bool removed = Blobs.RemoveBlob(blobInfo.ZoneId, blobId);
-        Y_VERIFY(removed);
+        Y_ABORT_UNLESS(removed);
 
         if (!IsDeletionMarker(blobId)) {
             bool added = GarbageQueue.AddGarbageBlob(blobId);
-            Y_VERIFY(added);
+            Y_ABORT_UNLESS(added);
             if (Blobs.IsGlobalZone(blobInfo.ZoneId)) {
                 db.DeleteGlobalBlobGarbage(blobId);
             } else {
@@ -1081,7 +1081,7 @@ TVector<TBlobUpdate> TPartitionState::FinishDirtyBlobCleanup(
 
 void TPartitionState::ExtractCheckpointBlobsToCleanup(size_t limit)
 {
-    Y_VERIFY(!CleanupCheckpointCommitId);
+    Y_ABORT_UNLESS(!CleanupCheckpointCommitId);
 
     // TODO: store zone ids with checkpoint blobs
     PendingCheckpointBlobsToCleanup = CheckpointsToDelete.ExtractBlobsToCleanup(
@@ -1119,11 +1119,11 @@ bool TPartitionState::DeleteBlob(
     }
 
     bool removed = Blobs.RemoveBlob(blobInfo.ZoneId, blobId);
-    Y_VERIFY(removed);
+    Y_ABORT_UNLESS(removed);
 
     if (!IsDeletionMarker(blobId)) {
         bool added = GarbageQueue.AddGarbageBlob(blobId);
-        Y_VERIFY(added);
+        Y_ABORT_UNLESS(added);
         if (Blobs.IsGlobalZone(blobInfo.ZoneId)) {
             db.DeleteGlobalBlobGarbage(blobId);
         } else {
@@ -1154,7 +1154,7 @@ bool TPartitionState::FindBlockList(
     }
 
     if (db.ReadBlockList(blobId, blocks)) {
-        Y_VERIFY(blocks);
+        Y_ABORT_UNLESS(blocks);
 
         bool added = Blobs.AddBlockList(
             zoneHint,
@@ -1162,7 +1162,7 @@ bool TPartitionState::FindBlockList(
             *blocks,
             blocks->CountBlocks()
         );
-        Y_VERIFY(added);
+        Y_ABORT_UNLESS(added);
         return true;
     }
 
@@ -1247,7 +1247,7 @@ void TPartitionState::UpdateIndex(
     const TVector<TPartitionDatabase::TBlobGarbage>& blobGarbage)
 {
     for (const auto& item: blobs) {
-        Y_VERIFY(item.BlobMeta.StartIndicesSize()
+        Y_ABORT_UNLESS(item.BlobMeta.StartIndicesSize()
             == item.BlobMeta.EndIndicesSize());
 
         TBlockRanges blockRanges;
@@ -1265,7 +1265,7 @@ void TPartitionState::UpdateIndex(
             item.BlobMeta.GetCheckpointBlockCount()
         );
 
-        Y_VERIFY(addedBlobInfo.Added, "Duplicate blob detected: %s",
+        Y_ABORT_UNLESS(addedBlobInfo.Added, "Duplicate blob detected: %s",
             DumpBlobIds(TabletId, item.BlobId).data());
     }
 
@@ -1287,7 +1287,7 @@ void TPartitionState::UpdateIndex(
 
     for (const auto& item: blobGarbage) {
         bool added = Blobs.AddGarbage(z, item.BlobId, item.BlockCount);
-        Y_VERIFY(added, "Missing blob detected: %s",
+        Y_ABORT_UNLESS(added, "Missing blob detected: %s",
             DumpBlobIds(TabletId, item.BlobId).data());
     }
 }
@@ -1501,12 +1501,12 @@ void TPartitionState::InitCheckpoints(
     auto it = deletedCheckpointBlobIds.begin();
     for (const auto& meta: checkpoints) {
         if (meta.GetDateDeleted()) {
-            Y_VERIFY(it != deletedCheckpointBlobIds.end());
+            Y_ABORT_UNLESS(it != deletedCheckpointBlobIds.end());
             CheckpointsToDelete.Put(meta.GetCommitId(), *it);
             ++it;
         } else {
             bool added = Checkpoints.Add(meta);
-            Y_VERIFY(added, "Duplicate checkpoint detected: %s",
+            Y_ABORT_UNLESS(added, "Duplicate checkpoint detected: %s",
                 meta.GetCheckpointId().Quote().data());
         }
     }
@@ -1517,7 +1517,7 @@ void TPartitionState::InitCheckpoints(
 void TPartitionState::WriteCheckpoint(const NProto::TCheckpointMeta& meta)
 {
     bool added = Checkpoints.Add(meta);
-    Y_VERIFY(added, "Duplicate checkpoint detected: %s",
+    Y_ABORT_UNLESS(added, "Duplicate checkpoint detected: %s",
         meta.GetCheckpointId().Quote().data());
 
     Blobs.OnCheckpoint(meta.GetCommitId());
@@ -1535,7 +1535,7 @@ bool TPartitionState::MarkCheckpointDeleted(
         newMeta.SetDateDeleted(now.MicroSeconds());
         db.WriteCheckpoint(newMeta);
 
-        Y_VERIFY(Checkpoints.Remove(checkpointId));
+        Y_ABORT_UNLESS(Checkpoints.Remove(checkpointId));
         if (blobIds) {
             CheckpointsToDelete.Put(commitId, std::move(blobIds));
         }

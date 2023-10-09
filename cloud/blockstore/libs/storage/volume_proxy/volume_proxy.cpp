@@ -252,7 +252,7 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
     ui64 connectionId = ++ConnectionId;
 
     auto ins = Connections.emplace(diskId, TConnection(connectionId, diskId));
-    Y_VERIFY(ins.second);
+    Y_ABORT_UNLESS(ins.second);
 
     ConnectionById[connectionId] = &ins.first->second;
     return ins.first->second;
@@ -481,7 +481,7 @@ void TVolumeProxyActor::HandleConnect(
     }
 
     TConnection* conn = it->second;
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     if (!ClientCache->OnConnect(ev)) {
         auto error = MakeKikimrError(msg->Status, "Could not connect");
@@ -514,7 +514,7 @@ void TVolumeProxyActor::HandleDisconnect(
     }
 
     TConnection* conn = it->second;
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     ClientCache->OnDisconnect(ev);
 
@@ -534,7 +534,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
     }
 
     TConnection* conn = it->second;
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -677,7 +677,7 @@ void TVolumeProxyActor::HandleResponse(
     }
 
     auto* conn = ConnectionById[it->second.ConnectionId];
-    Y_VERIFY(conn);
+    Y_ABORT_UNLESS(conn);
 
     conn->LastActivity = ctx.Now();
     --conn->RequestsInflight;

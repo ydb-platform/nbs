@@ -181,13 +181,13 @@ void TExecutor::Stop()
 
 void TExecutor::Enqueue(ITaskPtr task)
 {
-    Y_VERIFY(Thread->Dispatcher);
+    Y_ABORT_UNLESS(Thread->Dispatcher);
     Thread->Dispatcher->Enqueue(std::move(task));
 }
 
 TContExecutor* TExecutor::GetContExecutor()
 {
-    Y_VERIFY(Thread->Executor);
+    Y_ABORT_UNLESS(Thread->Executor);
     return Thread->Executor.get();
 }
 

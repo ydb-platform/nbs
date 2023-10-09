@@ -238,7 +238,7 @@ private:
                 );
             }
         } else if (!Options.NoInternalRequests || bl.GetRequestType() < maxReq) {
-            Y_VERIFY(bl.GetRequestType() != ZeroRequestType);
+            Y_ABORT_UNLESS(bl.GetRequestType() != ZeroRequestType);
 
             for (const auto& bi: bl.GetBlockInfos()) {
                 BlockInfoConsumer->RegisterAccess(
@@ -330,7 +330,7 @@ struct TIOStat
 
     void OnRequest(TInstant ts, TDuration duration)
     {
-        Y_VERIFY(ts >= LastTs);
+        Y_ABORT_UNLESS(ts >= LastTs);
 
         if (LastTs.GetValue()) {
             if (TimeAtDepth.size() <= Current) {
@@ -346,7 +346,7 @@ struct TIOStat
             ++Current;
             Histogram.RecordValue(duration.MicroSeconds());
         } else {
-            Y_VERIFY(Current);
+            Y_ABORT_UNLESS(Current);
             --Current;
         }
     }
@@ -410,7 +410,7 @@ struct TIntersectionStat
     void UnRef(ui32 blockIndex)
     {
         auto& inflight = Block2Inflight[blockIndex];
-        Y_VERIFY(inflight);
+        Y_ABORT_UNLESS(inflight);
         if (--inflight == 0) {
             Block2Inflight.erase(blockIndex);
         }

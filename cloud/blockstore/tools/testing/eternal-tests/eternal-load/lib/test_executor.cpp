@@ -59,15 +59,15 @@ struct TRange {
     {
         memset(Buf.get(), '1', Size);
 
-        Y_VERIFY(
+        Y_ABORT_UNLESS(
             size % Config.WriteParts() == 0,
             "invalid write parts number"
         );
-        Y_VERIFY(
+        Y_ABORT_UNLESS(
             size / Config.WriteParts() >= sizeof(TBlockData),
             "blockdata doesn't fit write part"
         );
-        Y_VERIFY(
+        Y_ABORT_UNLESS(
             (size / Config.WriteParts()) % DIRECT_IO_ALIGNMENT == 0,
             "write parts has invalid alignment"
         );

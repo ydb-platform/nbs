@@ -559,7 +559,7 @@ public:
     TCompressedBitmap& AccessUsedBlocks()
     {
         if (!UsedBlocks) {
-            Y_VERIFY(BlockCount);
+            Y_ABORT_UNLESS(BlockCount);
             UsedBlocks = std::make_unique<TCompressedBitmap>(BlockCount);
         }
 

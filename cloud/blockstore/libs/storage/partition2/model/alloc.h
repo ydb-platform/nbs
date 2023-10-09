@@ -33,7 +33,7 @@ template <typename T, typename ...TArgs>
 T* NewImpl(IAllocator* allocator, TArgs&& ...args)
 {
     auto block = allocator->Allocate(sizeof(T));
-    Y_VERIFY(block.Data);
+    Y_ABORT_UNLESS(block.Data);
     return ::new ((void*)block.Data) T(std::forward<TArgs>(args)...);
 }
 

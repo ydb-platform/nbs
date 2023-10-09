@@ -20,14 +20,14 @@ namespace {
 template <typename T>
 T SafeIncrement(T counter, size_t value)
 {
-    Y_VERIFY(counter < Max<T>() - value);
+    Y_ABORT_UNLESS(counter < Max<T>() - value);
     return counter + value;
 }
 
 template <typename T>
 T SafeDecrement(T counter, size_t value)
 {
-    Y_VERIFY(counter >= value);
+    Y_ABORT_UNLESS(counter >= value);
     return counter - value;
 }
 
@@ -487,7 +487,7 @@ ui32 TPartitionState::GetIORequestsQueued() const
 
 ui32 TPartitionState::PickNextChannel(EChannelDataKind kind, EChannelPermissions permissions)
 {
-    Y_VERIFY(kind == EChannelDataKind::Fresh ||
+    Y_ABORT_UNLESS(kind == EChannelDataKind::Fresh ||
         kind == EChannelDataKind::Mixed ||
         kind == EChannelDataKind::Merged);
 
@@ -548,7 +548,7 @@ TPartialBlobId TPartitionState::GenerateBlobId(
     ui32 channel = 0;
     if (blobSize) {
         channel = PickNextChannel(kind, permissions);
-        Y_VERIFY(channel);
+        Y_ABORT_UNLESS(channel);
     }
 
     ui64 generation, step;
@@ -695,9 +695,9 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 void TPartitionState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
 {
-    Y_VERIFY(freshBlobMeta.CommitId > LastTrimFreshLogToCommitId);
+    Y_ABORT_UNLESS(freshBlobMeta.CommitId > LastTrimFreshLogToCommitId);
     const bool inserted = UntrimmedFreshBlobs.insert(freshBlobMeta).second;
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
     UntrimmedFreshBlobByteCount += freshBlobMeta.BlobSize;
 }
 
@@ -707,7 +707,7 @@ void TPartitionState::TrimFreshBlobs(ui64 commitId)
 
     while (blobs && blobs.begin()->CommitId <= commitId)
     {
-        Y_VERIFY(UntrimmedFreshBlobByteCount >= blobs.begin()->BlobSize);
+        Y_ABORT_UNLESS(UntrimmedFreshBlobByteCount >= blobs.begin()->BlobSize);
         UntrimmedFreshBlobByteCount -= blobs.begin()->BlobSize;
         blobs.erase(blobs.begin());
     }
@@ -768,7 +768,7 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
             meta.IsStoredInDb,
             freshBlock.Content);
 
-        Y_VERIFY(added, "Duplicate block detected: %u @%lu",
+        Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
             meta.BlockIndex,
             meta.CommitId);
     }
@@ -788,7 +788,7 @@ void TPartitionState::WriteFreshBlocks(
     ui64 commitId,
     TSgList sglist)
 {
-    Y_VERIFY(writeRange.Size() == sglist.size());
+    Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
     WriteFreshBlocksImpl(
         db,
@@ -803,7 +803,7 @@ void TPartitionState::WriteFreshBlocks(
     ui64 commitId,
     TSgList sglist)
 {
-    Y_VERIFY(writeRange.Size() == sglist.size());
+    Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
     WriteFreshBlocksImpl(
         writeRange,
@@ -847,7 +847,7 @@ void TPartitionState::DeleteFreshBlock(
         commitId,
         true);  // isStoredInDb
 
-    Y_VERIFY(removed);
+    Y_ABORT_UNLESS(removed);
 
     db.DeleteFreshBlock(blockIndex, commitId);
     DecrementUnflushedFreshBlocksFromDbCount(1);
@@ -862,7 +862,7 @@ void TPartitionState::DeleteFreshBlock(
         commitId,
         false);  // isStoredInDb
 
-    Y_VERIFY(removed);
+    Y_ABORT_UNLESS(removed);
 
     DecrementUnflushedFreshBlocksFromChannelCount(1);
 }
@@ -943,7 +943,7 @@ bool TPartitionState::FindMixedBlocksForCompaction(
             ui16 blobOffset) override
         {
             bool ok = Visitor.Visit(blockIndex, commitId, blobId, blobOffset);
-            Y_VERIFY(ok);
+            Y_ABORT_UNLESS(ok);
 
             CacheInserter->Insert({blobId, commitId, blockIndex, blobOffset});
             return true;

@@ -90,7 +90,7 @@ public:
             auto& range = it->second;
             // split range
             bool inserted = Insert(range.Min, min, range.Lock);
-            Y_VERIFY(inserted);
+            Y_ABORT_UNLESS(inserted);
 
             // trim left range
             range.Min = min;
@@ -270,7 +270,7 @@ TRangeLockOperationResult TRangeLocks::Acquire(
     auto& ranges = nodeRanges.OwnedRanges[owner];
     TVector<ui64> removedLocks = ranges.Erase(min, max);
 
-    Y_VERIFY(ranges.Insert(min, max, std::move(lock)));
+    Y_ABORT_UNLESS(ranges.Insert(min, max, std::move(lock)));
     return TRangeLockOperationResult(std::move(removedLocks));
 }
 
@@ -332,7 +332,7 @@ TRangeLockOperationResult TRangeLocks::Test(
 
     if (ownedBounds.has_value()) {
         const auto& ownedRange = ownedBounds->Range;
-        Y_VERIFY(ownedRange.Lock);
+        Y_ABORT_UNLESS(ownedRange.Lock);
 
         return TRangeLockOperationResult(
             ErrorIncompatibleLocks(),

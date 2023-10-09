@@ -71,8 +71,8 @@ bool TMountToken::VerifySecret(const TString& secret) const
         case EFormat::SHA384_V1: {
             TString hash;
             ComputeSHA384Hash(Salt, secret, hash);
-            Y_VERIFY(Hash.size() == SHA384_DIGEST_LENGTH);
-            Y_VERIFY(hash.size() == SHA384_DIGEST_LENGTH);
+            Y_ABORT_UNLESS(Hash.size() == SHA384_DIGEST_LENGTH);
+            Y_ABORT_UNLESS(hash.size() == SHA384_DIGEST_LENGTH);
             return CRYPTO_memcmp(Hash.data(), hash.data(), Hash.size()) == 0;
         }
     }

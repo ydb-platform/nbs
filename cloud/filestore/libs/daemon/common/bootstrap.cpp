@@ -168,7 +168,7 @@ TProgramShouldContinue& TBootstrapCommon::GetShouldContinue()
 
 void TBootstrapCommon::ParseOptions(int argc, char** argv)
 {
-    Y_VERIFY(!Configs);
+    Y_ABORT_UNLESS(!Configs);
     Configs = InitConfigs(argc, argv);
 }
 
@@ -261,8 +261,8 @@ void TBootstrapCommon::InitDiagnostics()
 
 void TBootstrapCommon::InitActorSystem()
 {
-    Y_VERIFY(Configs->KikimrConfig);
-    Y_VERIFY(Configs->StorageConfig);
+    Y_ABORT_UNLESS(Configs->KikimrConfig);
+    Y_ABORT_UNLESS(Configs->StorageConfig);
 
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts;
     registerOpts.Domain = Configs->Options->Domain;

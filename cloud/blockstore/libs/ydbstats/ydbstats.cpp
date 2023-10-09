@@ -146,7 +146,7 @@ private:
             Error = error;
         }
 
-        Y_VERIFY(ResponsesToWait);
+        Y_ABORT_UNLESS(ResponsesToWait);
         if (--ResponsesToWait == 0) {
             Result.SetValue(
                 TSetupTablesResult(
@@ -195,7 +195,7 @@ private:
             Error = error;
         }
 
-        Y_VERIFY(ResponsesToWait);
+        Y_ABORT_UNLESS(ResponsesToWait);
         if (--ResponsesToWait == 0) {
             Result.SetValue(Error);
         }

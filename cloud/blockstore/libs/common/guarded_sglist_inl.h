@@ -80,28 +80,28 @@ TGuardedBuffer<T>::TGuardedBuffer(T buffer)
 template <typename T>
 const T& TGuardedBuffer<T>::Get() const
 {
-    Y_VERIFY(Impl);
+    Y_ABORT_UNLESS(Impl);
     return Impl->GetBuffer();
 }
 
 template <typename T>
 T TGuardedBuffer<T>::Extract()
 {
-    Y_VERIFY(Impl);
+    Y_ABORT_UNLESS(Impl);
     return Impl->ExtractBuffer();
 }
 
 template <typename T>
 TGuardedSgList TGuardedBuffer<T>::GetGuardedSgList() const
 {
-    Y_VERIFY(Impl);
+    Y_ABORT_UNLESS(Impl);
     return Impl->CreateGuardedSgList(CreateSgList(Impl->GetBuffer()));
 }
 
 template <typename T>
 TGuardedSgList TGuardedBuffer<T>::CreateGuardedSgList(TSgList sglist) const
 {
-    Y_VERIFY(Impl);
+    Y_ABORT_UNLESS(Impl);
     return Impl->CreateGuardedSgList(std::move(sglist));
 }
 

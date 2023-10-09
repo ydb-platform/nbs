@@ -125,7 +125,7 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         blobContent = std::move(std::get<TString>(Request->Data));
     }
 
-    Y_VERIFY(!blobContent.Empty());
+    Y_ABORT_UNLESS(!blobContent.Empty());
 
     auto request = std::make_unique<TEvBlobStorage::TEvPut>(
         MakeBlobId(TabletId, Request->BlobId),

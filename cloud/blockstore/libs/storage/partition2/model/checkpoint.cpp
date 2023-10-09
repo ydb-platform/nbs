@@ -43,7 +43,7 @@ bool TCheckpointStorage::Remove(const TString& checkpointId)
     auto it = Checkpoints.find(checkpointId);
     if (it != Checkpoints.end()) {
         bool removed = RemoveCommitId(it->second.GetCommitId());
-        Y_VERIFY(removed);
+        Y_ABORT_UNLESS(removed);
 
         Checkpoints.erase(it);
         return true;
@@ -148,7 +148,7 @@ TVector<TPartialBlobId> TCheckpointsToDelete::DeleteNextCheckpoint()
         auto cid = CommitIds.front();
         auto& info = CommitId2Info.at(cid);
 
-        Y_VERIFY(info.Idx == info.BlobIds.size(), "%u != %lu",
+        Y_ABORT_UNLESS(info.Idx == info.BlobIds.size(), "%u != %lu",
             info.Idx,
             info.BlobIds.size());
 

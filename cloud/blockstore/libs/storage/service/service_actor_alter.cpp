@@ -78,7 +78,7 @@ private:
         TVolumeParams volumeParams;
         volumeParams.BlockSize = volumeConfig.GetBlockSize();
 
-        Y_VERIFY(NewBlocksCount || SetupChannelsRequested);
+        Y_ABORT_UNLESS(NewBlocksCount || SetupChannelsRequested);
         volumeParams.PartitionsCount = volumeConfig.PartitionsSize();
 
         auto blocksCount = NewBlocksCount ? NewBlocksCount : oldBlocksCount;
@@ -300,7 +300,7 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         ui32 oldBlocksCount = 0;
         for (const auto& partition: oldVolumeConfig.GetPartitions()) {
             oldBlocksCount += partition.GetBlockCount();
-            Y_VERIFY(oldVolumeConfig.GetPartitions(0).GetBlockCount()
+            Y_ABORT_UNLESS(oldVolumeConfig.GetPartitions(0).GetBlockCount()
                     == partition.GetBlockCount());
         }
 
@@ -381,7 +381,7 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
             }
         }
 
-        Y_VERIFY(
+        Y_ABORT_UNLESS(
             VolumeConfig.GetCloudId().empty() &&
             VolumeConfig.GetFolderId().empty() &&
             VolumeConfig.GetProjectId().empty());

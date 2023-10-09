@@ -49,7 +49,7 @@ public:
             }
 
             auto res = Requests.emplace(handler);
-            Y_VERIFY(res.second);
+            Y_ABORT_UNLESS(res.second);
         }
 
         return true;
@@ -59,7 +59,7 @@ public:
     {
         with_lock(RequestsLock) {
             auto it = Requests.find(handler);
-            Y_VERIFY(it != Requests.end());
+            Y_ABORT_UNLESS(it != Requests.end());
             Requests.erase(it);
         }
     }

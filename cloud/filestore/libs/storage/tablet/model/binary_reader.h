@@ -46,7 +46,7 @@ public:
 private:
     const char* Consume(size_t count)
     {
-        Y_VERIFY(Avail() >= count, "Invalid encoding");
+        Y_ABORT_UNLESS(Avail() >= count, "Invalid encoding");
         const char* p = Ptr;
         Ptr += count;
         return p;

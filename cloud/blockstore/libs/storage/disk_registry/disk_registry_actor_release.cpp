@@ -156,7 +156,7 @@ void TReleaseDiskActor::OnReleaseResponse(
     ui64 cookie,
     NProto::TError error)
 {
-    Y_VERIFY(PendingRequests > 0);
+    Y_ABORT_UNLESS(PendingRequests > 0);
 
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,

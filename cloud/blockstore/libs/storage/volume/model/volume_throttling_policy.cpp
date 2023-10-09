@@ -117,7 +117,7 @@ struct TVolumeThrottlingPolicy::TImpl
         ui32 partitionIdx)
     {
         Y_UNUSED(ts);
-        Y_VERIFY(partitionIdx < 256);
+        Y_ABORT_UNLESS(partitionIdx < 256);
 
         if (PartitionBackpressures.size() <= partitionIdx) {
             PartitionBackpressures.resize(partitionIdx + 1);

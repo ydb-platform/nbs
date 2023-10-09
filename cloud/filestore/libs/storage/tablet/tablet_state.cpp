@@ -16,7 +16,7 @@ namespace {
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
     auto hasher = CreateRangeIdHasher(fs.GetRangeIdHasherType());
-    Y_VERIFY(
+    Y_ABORT_UNLESS(
         hasher,
         "[f:%s] unsupported hasher type: %u",
         fs.GetFileSystemId().c_str(),

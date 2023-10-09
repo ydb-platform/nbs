@@ -98,11 +98,11 @@ bool TVolumeActor::HandleRequest(
     bool isTraced,
     ui64 traceTs)
 {
-    Y_VERIFY(!State->GetDiskRegistryBasedPartitionActor());
+    Y_ABORT_UNLESS(!State->GetDiskRegistryBasedPartitionActor());
 
     const auto blocksPerStripe =
         State->GetMeta().GetVolumeConfig().GetBlocksPerStripe();
-    Y_VERIFY(blocksPerStripe);
+    Y_ABORT_UNLESS(blocksPerStripe);
 
     TVector<TPartitionRequest<TMethod>> partitionRequests;
     TBlockRange64 blockRange;
@@ -651,7 +651,7 @@ void TVolumeActor::ForwardRequest(
      *  Mount-related validation.
      */
     if constexpr (RequiresMount<TMethod>) {
-        Y_VERIFY(it != clients.end());
+        Y_ABORT_UNLESS(it != clients.end());
 
         auto& clientInfo = it->second;
         NProto::TError error;

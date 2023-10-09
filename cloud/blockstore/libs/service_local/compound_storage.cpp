@@ -383,7 +383,7 @@ TFuture<NProto::TZeroBlocksResponse> TCompoundStorage::ZeroBlocks(
 
         request->SetStartIndex(storageBlockRange.BlockRange.Start);
 
-        Y_VERIFY(storageBlockRange.BlockRange.Size() == totalBlockCount);
+        Y_ABORT_UNLESS(storageBlockRange.BlockRange.Size() == totalBlockCount);
 
         return Storages[storageBlockRange.Storage]->ZeroBlocks(
             std::move(callContext),
@@ -448,7 +448,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
 
         request->SetStartIndex(storageBlockRange.BlockRange.Start);
 
-        Y_VERIFY(storageBlockRange.BlockRange.Size() == totalBlockCount);
+        Y_ABORT_UNLESS(storageBlockRange.BlockRange.Size() == totalBlockCount);
 
         return Storages[storageBlockRange.Storage]->ReadBlocksLocal(
             std::move(callContext),
@@ -522,7 +522,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
 
         request->SetStartIndex(storageBlockRange.BlockRange.Start);
 
-        Y_VERIFY(storageBlockRange.BlockRange.Size() == totalBlockCount);
+        Y_ABORT_UNLESS(storageBlockRange.BlockRange.Size() == totalBlockCount);
 
         return Storages[storageBlockRange.Storage]->WriteBlocksLocal(
             std::move(callContext),
@@ -574,7 +574,7 @@ TFuture<NProto::TError> TCompoundStorage::EraseDevice(
 
 TStorageBuffer TCompoundStorage::AllocateBuffer(size_t bytesCount)
 {
-    Y_VERIFY(!Storages.empty());
+    Y_ABORT_UNLESS(!Storages.empty());
 
     return Storages.front()->AllocateBuffer(bytesCount);
 }

@@ -45,7 +45,7 @@ struct THistogram
             TBuckets::Buckets.begin(),
             TBuckets::Buckets.end(),
             value);
-        Y_VERIFY(it != TBuckets::Buckets.end());
+        Y_ABORT_UNLESS(it != TBuckets::Buckets.end());
 
         auto idx = std::distance(TBuckets::Buckets.begin(), it);
         Buckets[idx] += count;
@@ -207,7 +207,7 @@ struct THistogram
         if (HistSolomonCounters) {
             auto hist = GetSolomonHistogram();
 
-            Y_VERIFY(HistSolomonCounters->size() == hist.size());
+            Y_ABORT_UNLESS(HistSolomonCounters->size() == hist.size());
 
             for (size_t i = 0; i < hist.size(); ++i) {
                 *HistSolomonCounters.value()[i] += hist[i];
@@ -216,7 +216,7 @@ struct THistogram
 
         if (PercSolomonCounters) {
             auto percentiles = CalculatePercentiles();
-            Y_VERIFY(PercSolomonCounters->size() == percentiles.size());
+            Y_ABORT_UNLESS(PercSolomonCounters->size() == percentiles.size());
 
             for (ui32 i = 0; i < percentiles.size(); ++i) {
                 *PercSolomonCounters.value()[i] = std::lround(percentiles[i]);

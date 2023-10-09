@@ -38,7 +38,7 @@ TWaitDependentAndReply* TCompositeTaskList::StartPrincipalTask()
     auto [it, inserted] = PrincipalTasks.emplace(
         newCompositeTaskId,
         TWaitDependentAndReply(newCompositeTaskId));
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
     return &it->second;
 }
 
@@ -60,7 +60,7 @@ TDependentTaskId TCompositeTaskList::StartDependentTaskAwait(
     const TDependentTaskId newDependentTaskId = DependentIdGenerator++;
     auto [it, inserted] =
         DependentTasks.emplace(newDependentTaskId, principalTaskId);
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
     return newDependentTaskId;
 }
 
@@ -82,7 +82,7 @@ void TCompositeTaskList::FinishDependentTaskAwait(
     DependentTasks.erase(nestedTaskIt);
 
     auto compositeTaskIt = PrincipalTasks.find(compositeTaskId);
-    Y_VERIFY(compositeTaskIt != PrincipalTasks.end());
+    Y_ABORT_UNLESS(compositeTaskIt != PrincipalTasks.end());
     auto& compositeTask = compositeTaskIt->second;
     compositeTask.DecCounter(ctx);
     if (compositeTask.IsDone()) {

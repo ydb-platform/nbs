@@ -402,7 +402,7 @@ void TDiskRegistryActor::HandleServerDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     auto* msg = ev->Get();
 

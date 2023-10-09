@@ -2077,7 +2077,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         RegisterAndWaitForAgents(*runtime, agents);
-        Y_VERIFY(sender && recipient && serverId);
+        Y_ABORT_UNLESS(sender && recipient && serverId);
 
         {
             const auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);

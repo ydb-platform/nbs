@@ -129,7 +129,7 @@ private:
             } else if (auto guard = Request->Get()->Record.Sglist.Acquire()) {
                 const auto& src = sgListOrError.GetResult();
                 size_t bytesCopied = SgListCopy(src, guard.Get());
-                Y_VERIFY(bytesCopied == Request->Get()->Record.GetBlocksCount() * BlockSize);
+                Y_ABORT_UNLESS(bytesCopied == Request->Get()->Record.GetBlocksCount() * BlockSize);
             } else {
                 error.SetCode(E_REJECTED);
                 error.SetMessage("failed to fill output buffer");

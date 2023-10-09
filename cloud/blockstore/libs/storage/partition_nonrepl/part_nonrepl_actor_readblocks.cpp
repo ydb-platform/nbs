@@ -234,7 +234,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     auto& respBuffers = *Response.MutableBlocks()->MutableBuffers();
 
     const auto& blockRange = DeviceRequests[ev->Cookie].BlockRange;
-    Y_VERIFY(msg->Record.GetBlocks().BuffersSize() == blockRange.Size());
+    Y_ABORT_UNLESS(msg->Record.GetBlocks().BuffersSize() == blockRange.Size());
     for (ui32 i = 0; i < blockRange.Size(); ++i) {
         respBuffers[blockRange.Start + i - Request.GetStartIndex()] =
             std::move(*msg->Record.MutableBlocks()->MutableBuffers(i));

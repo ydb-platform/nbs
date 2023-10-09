@@ -505,7 +505,7 @@ TDisjointRangeMap::TDisjointRangeMap(EOptimizationMode mode)
             break;
         }
 
-        default: Y_VERIFY(0);
+        default: Y_ABORT_UNLESS(0);
     }
 }
 

@@ -125,7 +125,7 @@ void TDeletionMarkers::TImpl::Add(TDeletionMarker deletionMarker)
         ui32 prevEnd = 0;
 
         for (const auto deletedRange: map) {
-            Y_VERIFY(deletedRange.Start >= prevEnd);
+            Y_ABORT_UNLESS(deletedRange.Start >= prevEnd);
             prevEnd = deletedRange.End;
         }
     });

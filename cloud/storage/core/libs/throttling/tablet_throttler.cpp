@@ -68,7 +68,7 @@ public:
                 PostponedRequests.front().Event.release();
             Owner.Receive(ev);
 
-            Y_VERIFY(!PostponedQueueFlushScheduled);
+            Y_ABORT_UNLESS(!PostponedQueueFlushScheduled);
             PostponedRequests.pop_front();
         }
     }
@@ -86,7 +86,7 @@ public:
             Owner.Receive(ev);
 
             if (PostponedQueueFlushScheduled) {
-                Y_VERIFY(x.Event);
+                Y_ABORT_UNLESS(x.Event);
                 break;
             } else {
                 Logger.LogPostponedRequestAdvanced(

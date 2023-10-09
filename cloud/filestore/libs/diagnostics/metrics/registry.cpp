@@ -49,12 +49,12 @@ struct TAggregatorStorage
             EMetricType metrType)
         : Aggregator(aggrType, metrType)
     {
-        Y_VERIFY(!labels.empty());
+        Y_ABORT_UNLESS(!labels.empty());
 
         // This check is needed to be sure, that we don't keep copy of TLabels
         // in the object inside of THashMap, because we have already saved
         // TLabels as a key.
-        Y_VERIFY(Labels.empty());
+        Y_ABORT_UNLESS(Labels.empty());
 
         auto currentSubgroup = std::move(root);
         Subgroups.push(currentSubgroup);
@@ -76,7 +76,7 @@ struct TAggregatorStorage
     {
         // Before destruction we should store labels to Labels, because we need
         // them to unregister subgroups.
-        Y_VERIFY(!Labels.empty());
+        Y_ABORT_UNLESS(!Labels.empty());
 
         auto currentSubgroup = std::move(Subgroups.top());
         Subgroups.pop();
@@ -188,15 +188,15 @@ public:
             it->second.Item = AggregatorStoragesOrder.begin();
         }
 
-        Y_VERIFY(aggrType == it->second.Aggregator.GetAggregationType());
-        Y_VERIFY(metrType == it->second.Aggregator.GetMetricType());
+        Y_ABORT_UNLESS(aggrType == it->second.Aggregator.GetAggregationType());
+        Y_ABORT_UNLESS(metrType == it->second.Aggregator.GetMetricType());
 
         TMetricKey metricKey = it->second.Aggregator.Register(std::move(metric));
         TMetricKeyStorage keys(std::move(aggregatorLabels), metricKey);
 
         const TMetricKey key(this, GenerateNextFreeKey());
         const bool inserted = Keys.try_emplace(key, std::move(keys)).second;
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
 
         return key;
     }
@@ -253,7 +253,7 @@ private:
     void UnregisterImpl(typename TMetricKeyStoragesMap::iterator it)
     {
         const auto aggregatorIt = Aggregators.find(it->second.Aggregator);
-        Y_VERIFY(aggregatorIt != Aggregators.end());
+        Y_ABORT_UNLESS(aggregatorIt != Aggregators.end());
 
         auto& aggregatorStorage = aggregatorIt->second;
         const bool isLast =
@@ -323,7 +323,7 @@ public:
 
         const TMetricKey key(this, GenerateNextFreeKey());
         const bool inserted = Keys.try_emplace(key, std::move(keys)).second;
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
 
         return key;
     }

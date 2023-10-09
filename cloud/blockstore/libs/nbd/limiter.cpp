@@ -48,7 +48,7 @@ bool TLimiter::Acquire(size_t requestBytes)
 void TLimiter::Release(size_t requestBytes)
 {
     size_t prev = InFlightBytes;
-    Y_VERIFY(prev >= requestBytes);
+    Y_ABORT_UNLESS(prev >= requestBytes);
 
     size_t next = prev - requestBytes;
     InFlightBytes = next;

@@ -332,7 +332,7 @@ public:
 
     TFuture<TResponse> GetFuture()
     {
-        Y_VERIFY(!Promise.Initialized());
+        Y_ABORT_UNLESS(!Promise.Initialized());
         Promise = NewPromise<TResponse>();
         return Promise.GetFuture();
     }
@@ -391,7 +391,7 @@ TDeviceHandler::TDeviceHandler(
     , BlockSize(blockSize)
     , ZeroBlocksCountLimit(zeroBlocksCountLimit)
 {
-    Y_VERIFY(ZeroBlocksCountLimit > 0);
+    Y_ABORT_UNLESS(ZeroBlocksCountLimit > 0);
 }
 
 TReadBlocksResponseFuture TDeviceHandler::Read(
@@ -682,7 +682,7 @@ TReadBlocksResponseFuture TDeviceHandler::ExecuteUnalignedReadRequest(
             auto size = SgListGetSize(dstSgList);
             TBlockDataRef srcBuf(buf.get() + blocksInfo.BeginOffset, size);
             auto cpSize = SgListCopy({srcBuf}, dstSgList);
-            Y_VERIFY(cpSize == size);
+            Y_ABORT_UNLESS(cpSize == size);
 
             return response;
         });
@@ -757,7 +757,7 @@ TFuture<NProto::TError> TDeviceHandler::HandleRmwReadResponse(
         auto size = SgListGetSize(srcSgList);
         TBlockDataRef dstBuf(buffer.get() + blocksInfo.BeginOffset, size);
         auto cpSize = SgListCopy(srcSgList, {dstBuf});
-        Y_VERIFY(cpSize == size);
+        Y_ABORT_UNLESS(cpSize == size);
     }
 
     auto sgListOrError = SgListNormalize(
@@ -828,7 +828,7 @@ public:
         , BlockSize(blockSize)
         , ZeroBlocksCountLimit(zeroBlocksCountLimit)
     {
-        Y_VERIFY(ZeroBlocksCountLimit > 0);
+        Y_ABORT_UNLESS(ZeroBlocksCountLimit > 0);
     }
 
     TFuture<NProto::TReadBlocksLocalResponse> Read(

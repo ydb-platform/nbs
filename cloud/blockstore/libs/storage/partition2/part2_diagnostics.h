@@ -54,8 +54,8 @@ public:
         auto it = BlockCommitIds.rbegin();
 
         for (auto jt = Blocks.rbegin(); jt != Blocks.rend(); ++it, ++jt) {
-            Y_VERIFY(it != BlockCommitIds.rend());
-            Y_VERIFY(it->BlockIndex == jt->BlockIndex);
+            Y_ABORT_UNLESS(it != BlockCommitIds.rend());
+            Y_ABORT_UNLESS(it->BlockIndex == jt->BlockIndex);
 
             it->MinCommitIdNew = jt->MinCommitId;
             it->MaxCommitIdNew = jt->MaxCommitId;

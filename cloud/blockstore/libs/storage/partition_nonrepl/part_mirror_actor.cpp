@@ -149,7 +149,7 @@ void TMirrorPartitionActor::HandlePoisonTaken(
         return;
     }
 
-    Y_VERIFY(AliveReplicas > 0);
+    Y_ABORT_UNLESS(AliveReplicas > 0);
     --AliveReplicas;
 
     if (AliveReplicas == 0) {

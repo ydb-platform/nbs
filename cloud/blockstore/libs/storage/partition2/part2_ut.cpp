@@ -366,7 +366,7 @@ TDynBitMap GetBitMap(const TString& s)
 
     if (s) {
         mask.Reserve(s.size() * 8);
-        Y_VERIFY(mask.GetChunkCount() * sizeof(TDynBitMap::TChunk) == s.size());
+        Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TDynBitMap::TChunk) == s.size());
         auto* dst = const_cast<TDynBitMap::TChunk*>(mask.GetChunks());
         memcpy(dst, s.data(), s.size());
     }
@@ -1069,7 +1069,7 @@ void TTestVolumeProxyActor::HandleDescribeBlocksRequest(
 
             ++blockIndex;
         } else {
-            Y_VERIFY(std::holds_alternative<TEmptyBlock>(descr));
+            Y_ABORT_UNLESS(std::holds_alternative<TEmptyBlock>(descr));
             ++blockIndex;
         }
     }
@@ -1113,7 +1113,7 @@ void TTestVolumeProxyActor::HandleGetChangedBlocksRequest(
             fillBlock(blockIndex);
             ++blockIndex;
         } else {
-            Y_VERIFY(std::holds_alternative<TEmptyBlock>(descr));
+            Y_ABORT_UNLESS(std::holds_alternative<TEmptyBlock>(descr));
             ++blockIndex;
         }
     }
@@ -1282,7 +1282,7 @@ TString GetBlocksContent(
             const auto& fresh = std::get<TFreshBlock>(descr);
             result += TString(blockSize, char(fresh.Value));
         } else {
-            Y_VERIFY(false);
+            Y_ABORT_UNLESS(false);
         }
     }
 
@@ -2611,7 +2611,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WriteBlocks(TBlockRange32::WithLength(0, 777), 1);
         partition.SendReadBlocksRequest(TBlockRange32::WithLength(0, 777));
         auto response = partition.RecvReadBlocksResponse();
-        Y_VERIFY(broken);
+        Y_ABORT_UNLESS(broken);
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
     }
 
@@ -2635,7 +2635,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WriteBlocks(TBlockRange32::WithLength(0, 777), 1);
         partition.SendReadBlocksRequest(TBlockRange32::WithLength(0, 777));
         auto response = partition.RecvReadBlocksResponse();
-        Y_VERIFY(broken);
+        Y_ABORT_UNLESS(broken);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
 
         const auto& blocks = response->Record.GetBlocks();

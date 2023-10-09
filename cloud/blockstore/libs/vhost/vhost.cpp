@@ -331,7 +331,7 @@ public:
     TVhostQueueFactory()
     {
         int res = vhd_start_vhost_server(vhd_log);
-        Y_VERIFY(res == 0, "Error starting vhost server");
+        Y_ABORT_UNLESS(res == 0, "Error starting vhost server");
     }
 
     ~TVhostQueueFactory()

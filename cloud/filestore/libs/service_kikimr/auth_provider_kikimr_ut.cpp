@@ -43,7 +43,7 @@ private:
         const TEvAuth::TEvAuthorizationRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        Y_VERIFY(AuthorizeHandler);
+        Y_ABORT_UNLESS(AuthorizeHandler);
         auto response = AuthorizeHandler(ev);
         if (response) {
             bool allow = *response;

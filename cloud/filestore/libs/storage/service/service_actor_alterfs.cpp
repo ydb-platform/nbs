@@ -134,7 +134,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     auto config = fileStore.GetConfig();
 
     // Allocate legacy mixed0 channel in case it was already present
-    Y_VERIFY(config.ExplicitChannelProfilesSize() >= 4);
+    Y_ABORT_UNLESS(config.ExplicitChannelProfilesSize() >= 4);
     const auto thirdChannelDataKind = static_cast<EChannelDataKind>(config
         .GetExplicitChannelProfiles(3)
         .GetDataKind());
@@ -146,7 +146,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             return;
         }
 
-        Y_VERIFY(
+        Y_ABORT_UNLESS(
             Config.GetCloudId().empty() &&
             Config.GetFolderId().empty() &&
             Config.GetProjectId().empty());

@@ -171,7 +171,7 @@ void TReadBlobActor::HandleGetResult(
 
                     const auto marker = GetBrokenDataMarker();
                     auto& block = sglist[sglistIndex];
-                    Y_VERIFY(block.Data());
+                    Y_ABORT_UNLESS(block.Data());
                     memcpy(
                         const_cast<char*>(block.Data()),
                         marker.Data(),
@@ -187,7 +187,7 @@ void TReadBlobActor::HandleGetResult(
                         }
 
                         auto& block = sglist[sglistIndex];
-                        Y_VERIFY(block.Data());
+                        Y_ABORT_UNLESS(block.Data());
                         memcpy(
                             const_cast<char*>(block.Data()),
                             marker.Data(),
@@ -218,7 +218,7 @@ void TReadBlobActor::HandleGetResult(
                     return;
                 }
 
-                Y_VERIFY(sglist[sglistIndex].Size() == BlockSize);
+                Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
                 iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 ++sglistIndex;

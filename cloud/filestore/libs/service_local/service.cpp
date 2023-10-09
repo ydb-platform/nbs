@@ -460,7 +460,7 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
         Logging);
 
     auto [it, inserted] = FileSystems.emplace(id, fs);
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
 
     return fs;
 }

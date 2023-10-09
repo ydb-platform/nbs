@@ -142,7 +142,7 @@ struct TMixedIndex::TImpl
             &oldLocation
         );
         if (found) {
-            Y_VERIFY(oldLocation.Location.BlobId);
+            Y_ABORT_UNLESS(oldLocation.Location.BlobId);
             OverwrittenBlobIds.insert(oldLocation.Location.BlobId);
         }
     }
@@ -192,7 +192,7 @@ struct TMixedIndex::TImpl
             );
 
             if (it == rit->Blocks.end() || it->Index != b.Block.BlockIndex) {
-                Y_VERIFY(b.Block.MaxCommitId > rit->CheckpointId);
+                Y_ABORT_UNLESS(b.Block.MaxCommitId > rit->CheckpointId);
                 // location can either be unset - it means that this block is
                 // being added to blob index for the first time (e.g. flush result)
                 // or it can be set and needs to be overwritten - e.g. via compaction
@@ -621,7 +621,7 @@ TMixedIndexBuilder::TMixedIndexBuilder(const TBlockRange32& range)
 void TMixedIndexBuilder::AddBlock(const TBlockAndLocation& b)
 {
     if (b.Block.MinCommitId < b.Block.MaxCommitId) {
-        Y_VERIFY(Range.Contains(b.Block.BlockIndex));
+        Y_ABORT_UNLESS(Range.Contains(b.Block.BlockIndex));
         Blocks[b.Block.BlockIndex - Range.Start].push_back(b);
     }
 }
@@ -679,7 +679,7 @@ std::unique_ptr<TMixedIndex> TMixedIndexBuilder::Build(
                     if (rodata[j].Blocks
                             && rodata[j].Blocks.back().Index == b.Block.BlockIndex)
                     {
-                        Y_VERIFY(rodata[j].Blocks.back().Location.BlobOffset
+                        Y_ABORT_UNLESS(rodata[j].Blocks.back().Location.BlobOffset
                             == InvalidBlobOffset);
                         rodata[j].Blocks.back().Location = b.Location;
                     } else {

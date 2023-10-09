@@ -925,7 +925,7 @@ void TVolumeSessionActor::SendInternalMountVolumeResponse(
             result);
 
     if (!HasError(error)) {
-        Y_VERIFY(VolumeInfo->VolumeInfo.Defined());
+        Y_ABORT_UNLESS(VolumeInfo->VolumeInfo.Defined());
 
         response->Record.SetSessionId(VolumeInfo->SessionId);
         response->Record.MutableVolume()->CopyFrom(*VolumeInfo->VolumeInfo);

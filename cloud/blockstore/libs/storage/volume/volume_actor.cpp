@@ -306,16 +306,16 @@ void TVolumeActor::AddTransaction(TRequestInfo& requestInfo)
 {
     requestInfo.Ref();
 
-    Y_VERIFY(requestInfo.Empty());
+    Y_ABORT_UNLESS(requestInfo.Empty());
     ActiveTransactions.PushBack(&requestInfo);
 }
 
 void TVolumeActor::RemoveTransaction(TRequestInfo& requestInfo)
 {
-    Y_VERIFY(!requestInfo.Empty());
+    Y_ABORT_UNLESS(!requestInfo.Empty());
     requestInfo.Unlink();
 
-    Y_VERIFY(requestInfo.RefCount() > 1);
+    Y_ABORT_UNLESS(requestInfo.RefCount() > 1);
     requestInfo.UnRef();
 }
 
@@ -327,7 +327,7 @@ void TVolumeActor::TerminateTransactions(const TActorContext& ctx)
             requestInfo->CancelRequest(ctx);
         }
 
-        Y_VERIFY(requestInfo->RefCount() >= 1);
+        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
 }
@@ -336,7 +336,7 @@ void TVolumeActor::ReleaseTransactions()
 {
     while (ActiveTransactions) {
         TRequestInfo* requestInfo = ActiveTransactions.PopFront();
-        Y_VERIFY(requestInfo->RefCount() >= 1);
+        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
 }
@@ -494,7 +494,7 @@ void TVolumeActor::CancelRequests(const TActorContext& ctx)
             *requestInfo,
             std::make_unique<NMon::TEvRemoteHttpInfoRes>(out.Str()));
 
-        Y_VERIFY(requestInfo->RefCount() >= 1);
+        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
 

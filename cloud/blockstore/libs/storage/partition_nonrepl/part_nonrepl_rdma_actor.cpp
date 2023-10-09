@@ -226,7 +226,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     ui64 startBlockIndexOffset = 0;
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
-        Y_VERIFY(ep);
+        Y_ABORT_UNLESS(ep);
         auto dr = std::make_unique<TDeviceReadRequestContext>();
 
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();

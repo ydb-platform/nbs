@@ -73,7 +73,7 @@ private:
     static void* DefaultAlloc(size_t length)
     {
         void* ptr = malloc(length);
-        Y_VERIFY(ptr != nullptr, "malloc failed: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(ptr != nullptr, "malloc failed: %s", LastSystemErrorText());
         return ptr;
     }
 
@@ -87,13 +87,13 @@ private:
 #if defined(_linux_)
         int mapFlags = MAP_PRIVATE|MAP_ANON|MAP_POPULATE; // TODO: MAP_UNINITIALIZED
         void* ptr = mmap(nullptr, length, PROT_READ|PROT_WRITE, mapFlags, -1, 0);
-        Y_VERIFY(ptr != MAP_FAILED, "mmap failed: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(ptr != MAP_FAILED, "mmap failed: %s", LastSystemErrorText());
 #elif defined(_win_)
         void* ptr = VirtualAlloc(nullptr, length, MEM_COMMIT, PAGE_READWRITE);
-        Y_VERIFY(ptr != nullptr, "VirtualAlloc failed: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(ptr != nullptr, "VirtualAlloc failed: %s", LastSystemErrorText());
 #else
         void* ptr = malloc(length);
-        Y_VERIFY(ptr != nullptr, "malloc failed: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(ptr != nullptr, "malloc failed: %s", LastSystemErrorText());
 #endif
         return ptr;
     }
@@ -103,10 +103,10 @@ private:
         Y_UNUSED(length);
 #if defined(_linux_)
         int result = munmap(ptr, length);
-        Y_VERIFY(result == 0, "munmap failed: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(result == 0, "munmap failed: %s", LastSystemErrorText());
 #elif defined(_win_)
         BOOL result = VirtualFree(ptr, 0, MEM_RELEASE);
-        Y_VERIFY(result != 0, "VirtualFree failed: %s", LastSystemErrorText());
+        Y_ABORT_UNLESS(result != 0, "VirtualFree failed: %s", LastSystemErrorText());
 #else
         free(ptr);
 #endif

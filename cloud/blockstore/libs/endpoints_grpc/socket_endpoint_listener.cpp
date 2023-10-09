@@ -230,14 +230,14 @@ public:
 
     void SetClientAcceptor(IClientAcceptorPtr clientAcceptor) override
     {
-        Y_VERIFY(!EndpointPoller);
+        Y_ABORT_UNLESS(!EndpointPoller);
         EndpointPoller = std::make_unique<TEndpointPoller>(
             std::move(clientAcceptor));
     }
 
     void Start() override
     {
-        Y_VERIFY(EndpointPoller);
+        Y_ABORT_UNLESS(EndpointPoller);
         EndpointPoller->Start();
     }
 

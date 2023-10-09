@@ -388,7 +388,7 @@ void TWriteMixedBlocksActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(RequestsCompleted < Requests.size());
+    Y_ABORT_UNLESS(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }

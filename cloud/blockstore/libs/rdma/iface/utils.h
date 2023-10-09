@@ -14,7 +14,7 @@ namespace NCloud::NBlockStore::NRdma {
 template <typename TOut, typename TIn>
 TOut SafeCast(TIn value)
 {
-    Y_VERIFY(Min<TOut>() <= value && value <= Max<TOut>());
+    Y_ABORT_UNLESS(Min<TOut>() <= value && value <= Max<TOut>());
     return static_cast<TOut>(value);
 }
 

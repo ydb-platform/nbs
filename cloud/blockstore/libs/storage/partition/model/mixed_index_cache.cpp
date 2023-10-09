@@ -173,7 +173,7 @@ void TMixedIndexCache::TImpl::RaiseRangeTemperature(ui32 rangeIdx)
         rangeIdx,
         rangeIdx, Allocator);
 
-    Y_VERIFY(emplaced);
+    Y_ABORT_UNLESS(emplaced);
     List.PushBack(&it->second);
 
     if (Size != MaxSize) {
@@ -184,7 +184,7 @@ void TMixedIndexCache::TImpl::RaiseRangeTemperature(ui32 rangeIdx)
 
     auto* removed = List.PopFront();
     const size_t removedCount = Index.erase(removed->RangeIdx);
-    Y_VERIFY(removedCount == 1);
+    Y_ABORT_UNLESS(removedCount == 1);
 }
 
 TInserterPtr TMixedIndexCache::TImpl::GetInserterForRange(ui32 rangeIdx)
@@ -194,7 +194,7 @@ TInserterPtr TMixedIndexCache::TImpl::GetInserterForRange(ui32 rangeIdx)
         return std::make_unique<TColdRangeInserter>();
     }
 
-    Y_VERIFY(it->second.Temperature == ERangeTemperature::Warm);
+    Y_ABORT_UNLESS(it->second.Temperature == ERangeTemperature::Warm);
 
     auto& blocks = it->second.Blocks;
     blocks.clear();
@@ -208,7 +208,7 @@ void TMixedIndexCache::TImpl::InsertBlockIfHot(ui32 rangeIdx,TMixedBlock block)
     auto it = Index.find(rangeIdx);
     if (it != Index.end() && it->second.Temperature == ERangeTemperature::Hot) {
         const bool inserted = it->second.Blocks.insert(block).second;
-        Y_VERIFY(inserted, "duplicate block (blockIndex: %u, commitId: %lu",
+        Y_ABORT_UNLESS(inserted, "duplicate block (blockIndex: %u, commitId: %lu",
             block.BlockIndex, block.CommitId);
     }
 }

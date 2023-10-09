@@ -90,7 +90,7 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
             media,
             requestStats));
 
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
     it->second.Start(start);
 
     return std::make_pair(cookie, &it->second);

@@ -82,7 +82,7 @@ struct THealthCheckCounters
     {
         auto counter = PingTimePercentiles.begin();
         for (const auto& p: GetDefaultPercentiles()) {
-            Y_VERIFY(counter != PingTimePercentiles.end());
+            Y_ABORT_UNLESS(counter != PingTimePercentiles.end());
 
             **counter = PingTimeHistogram.GetValueAtPercentile(100 * p.first);
             ++counter;

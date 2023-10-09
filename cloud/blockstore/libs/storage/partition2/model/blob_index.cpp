@@ -441,7 +441,7 @@ public:
             ++nextChunk;
         }
 
-        Y_VERIFY(chunk->StartsWithCommitId <= blobUpdate.CommitId);
+        Y_ABORT_UNLESS(chunk->StartsWithCommitId <= blobUpdate.CommitId);
         chunk->BlobUpdates.push_back(blobUpdate);
         chunk->Ranges.Mark(blobUpdate.BlockRange, blobUpdate.CommitId);
         chunk->DeletedBlockCount += blobUpdate.BlockRange.Size();
@@ -506,7 +506,7 @@ public:
                 }
 
                 if (auto next = std::next(deletion); next != deletions.end()) {
-                    Y_VERIFY(deletion->BlockIndex != next->BlockIndex);
+                    Y_ABORT_UNLESS(deletion->BlockIndex != next->BlockIndex);
                 }
 
                 const auto blockIndex = block->BlockIndex;
@@ -529,7 +529,7 @@ public:
 
     void Barrier(ui64 commitId)
     {
-        Y_VERIFY(Chunks.back().StartsWithCommitId < commitId);
+        Y_ABORT_UNLESS(Chunks.back().StartsWithCommitId < commitId);
         Chunks.emplace_back(commitId, Mode);
     }
 
@@ -625,7 +625,7 @@ struct TZone
     bool IsInitialized() const
     {
         if (RangeMap || MixedIndex) {
-            Y_VERIFY(Blobs);
+            Y_ABORT_UNLESS(Blobs);
             return true;
         }
 
@@ -1038,7 +1038,7 @@ TVector<const TBlob*> TBlobIndex::TImpl::FindBlobs(
     const auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
         const auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.RangeMap) {
             zone.RangeMap->Visit(blockRange, [&] (const TBlob* blob) {
@@ -1067,7 +1067,7 @@ void TBlobIndex::TImpl::FindBlobs(
     const auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
         const auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.RangeMap) {
             zone.RangeMap->Visit(blockRange, [&] (const TBlob* blob) {
@@ -1085,7 +1085,7 @@ void TBlobIndex::TImpl::ExtractBlobsMixed(
     const auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
         auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.MixedIndex) {
             auto overwrittenBlobIds =
@@ -1101,7 +1101,7 @@ void TBlobIndex::TImpl::WriteOrUpdateMixedBlock(const TBlockAndLocation& b)
 {
     auto z = ToZone(b.Block.BlockIndex);
     auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.IsInitialized());
 
     if (zone.MixedIndex) {
         zone.MixedIndex->SetOrUpdateBlock(b);
@@ -1118,12 +1118,12 @@ TVector<TBlockAndLocation> TBlobIndex::TImpl::FindAllMixedBlocks(
 
     while (z <= lastZone) {
         auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.MixedIndex) {
             auto blocks = zone.MixedIndex->FindAllBlocks(blockRange);
             for (const auto& x: blocks) {
-                Y_VERIFY(blockRange.Contains(x.Block.BlockIndex));
+                Y_ABORT_UNLESS(blockRange.Contains(x.Block.BlockIndex));
                 result.push_back(x);
             }
         }
@@ -1145,7 +1145,7 @@ TVector<TBlockAndLocation> TBlobIndex::TImpl::FindMixedBlocks(
 
     while (z <= lastZone) {
         const auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.MixedIndex) {
             const auto subRange = blockRange.Intersect(ToBlockRange(z));
@@ -1320,7 +1320,7 @@ ui32 TBlobIndex::TImpl::MarkBlocksDeleted(TBlobUpdate blobUpdate)
     if (GlobalDataInitializationFinished) {
         for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
             auto& zone = Zones[z];
-            Y_VERIFY(zone.IsInitialized());
+            Y_ABORT_UNLESS(zone.IsInitialized());
             if (zone.MixedIndex) {
                 auto subRange = blobUpdate.BlockRange.Intersect(ToBlockRange(z));
                 for (ui32 j = subRange.Start; j <= subRange.End; ++j) {
@@ -1348,7 +1348,7 @@ ui32 TBlobIndex::TImpl::ApplyUpdates(
     auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
         auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         updateCount += zone.DeletedRanges->ApplyUpdates(blockRange, blocks);
     }
@@ -1372,7 +1372,7 @@ TVector<TDeletedBlock> TBlobIndex::TImpl::FindDeletedBlocks(
     auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
         auto& zone = Zones[z];
-        Y_VERIFY(zone.IsInitialized());
+        Y_ABORT_UNLESS(zone.IsInitialized());
 
         zone.DeletedRanges->GetDeletedBlocks(
             blockRange,
@@ -1431,7 +1431,7 @@ TZone* TBlobIndex::TImpl::GetTopZoneByDeletionCount()
 
 TVector<TPartialBlobId> TBlobIndex::TImpl::ExtractDirtyBlobs()
 {
-    Y_VERIFY(ZoneWithPendingDeletionCleanup != nullptr);
+    Y_ABORT_UNLESS(ZoneWithPendingDeletionCleanup != nullptr);
 
     const auto& deletions = *ZoneWithPendingDeletionCleanup->DeletedRanges;
     const auto& top = deletions.TopChunk().Ranges;
@@ -1461,14 +1461,14 @@ size_t TBlobIndex::TImpl::GetPendingUpdates() const
 
 ui32 TBlobIndex::TImpl::SelectZoneToCleanup()
 {
-    Y_VERIFY(ZoneWithPendingDeletionCleanup == nullptr);
+    Y_ABORT_UNLESS(ZoneWithPendingDeletionCleanup == nullptr);
     ZoneWithPendingDeletionCleanup = GetTopZoneByDeletionCount();
     return ToZoneId(ZoneWithPendingDeletionCleanup);
 }
 
 void TBlobIndex::TImpl::SeparateChunkForCleanup(ui64 commitId)
 {
-    Y_VERIFY(ZoneWithPendingDeletionCleanup != nullptr);
+    Y_ABORT_UNLESS(ZoneWithPendingDeletionCleanup != nullptr);
     auto& deletions = *ZoneWithPendingDeletionCleanup->DeletedRanges;
 
     while (deletions.ChunkCount() > 1
@@ -1484,7 +1484,7 @@ void TBlobIndex::TImpl::SeparateChunkForCleanup(ui64 commitId)
 
 TDeletionsInfo TBlobIndex::TImpl::CleanupDirtyRanges()
 {
-    Y_VERIFY(ZoneWithPendingDeletionCleanup != nullptr);
+    Y_ABORT_UNLESS(ZoneWithPendingDeletionCleanup != nullptr);
     auto* zone = ZoneWithPendingDeletionCleanup;
 
     ZonesByDeletions.erase(zone);
@@ -1512,7 +1512,7 @@ void TBlobIndex::TImpl::OnCheckpoint(ui64 checkpointId)
 void TBlobIndex::TImpl::OnCheckpoint(ui32 z, ui64 checkpointId)
 {
     auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.IsInitialized());
     zone.DeletedRanges->Barrier(checkpointId);
 
     if (zone.MixedIndex) {
@@ -1571,7 +1571,7 @@ TBlockRange32 TBlobIndex::TImpl::ToBlockRange(const ui32 zone) const
 
 bool TBlobIndex::TImpl::IsGlobalZone(ui32 z) const
 {
-    Y_VERIFY(z != InvalidZoneId);
+    Y_ABORT_UNLESS(z != InvalidZoneId);
     return z == GlobalZoneId;
 }
 
@@ -1598,7 +1598,7 @@ bool TBlobIndex::TImpl::IsZoneInitialized(ui32 z) const
 bool TBlobIndex::TImpl::IsMixedIndex(ui32 z) const
 {
     const auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.IsInitialized());
     return !!zone.MixedIndex;
 }
 
@@ -1607,8 +1607,8 @@ TVector<const TBlob*> TBlobIndex::TImpl::FindZoneBlobs(ui32 z) const
     TVector<const TBlob*> result;
 
     const auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
-    Y_VERIFY(zone.RangeMap);
+    Y_ABORT_UNLESS(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.RangeMap);
 
     zone.RangeMap->Visit([&] (const TBlob* blob) {
         result.push_back(blob);
@@ -1630,7 +1630,7 @@ TVector<const TBlob*> TBlobIndex::TImpl::FindZoneBlobs(ui32 z) const
 double TBlobIndex::TImpl::UpdateAndGetZoneUsageScore(ui32 z, TInstant now)
 {
     auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.IsInitialized());
 
     if (zone.UsageScoreUpdateTimestamp.GetValue()) {
         const auto d = now - zone.UsageScoreUpdateTimestamp;
@@ -1655,7 +1655,7 @@ double TBlobIndex::TImpl::UpdateAndGetTotalUsageScore(TInstant now)
 void TBlobIndex::TImpl::ConvertToMixedIndex(ui32 z, const TVector<ui64>& checkpointIds)
 {
     auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.IsInitialized());
 
     if (zone.MixedIndex) {
         return;
@@ -1667,7 +1667,7 @@ void TBlobIndex::TImpl::ConvertToMixedIndex(ui32 z, const TVector<ui64>& checkpo
     auto deletedBlocks = FindDeletedBlocks(range, InvalidCommitId);
 
     auto onBlob = [&] (const TBlobNode* blob) {
-        Y_VERIFY(blob->BlockList);
+        Y_ABORT_UNLESS(blob->BlockList);
         auto nodeBlocks = blob->BlockList->GetBlocks();
         ui16 blobOffset = 0;
 
@@ -1725,7 +1725,7 @@ void TBlobIndex::TImpl::ConvertToMixedIndex(ui32 z, const TVector<ui64>& checkpo
 void TBlobIndex::TImpl::ConvertToRangeMap(ui32 z)
 {
     auto& zone = Zones[z];
-    Y_VERIFY(zone.IsInitialized());
+    Y_ABORT_UNLESS(zone.IsInitialized());
 
     if (zone.RangeMap) {
         return;
@@ -1739,7 +1739,7 @@ void TBlobIndex::TImpl::ConvertToRangeMap(ui32 z)
     for (auto& x: *zone.Blobs) {
         for (ui32 i = 0; i < x.BlockRanges.size(); ++i) {
             const auto& blockRange = x.BlockRanges[i];
-            Y_VERIFY(range.Overlaps(blockRange));
+            Y_ABORT_UNLESS(range.Overlaps(blockRange));
             zone.RangeMap->Add({const_cast<TBlobNode*>(&x), i});
         }
     }
@@ -1749,7 +1749,7 @@ void TBlobIndex::TImpl::ConvertToRangeMap(ui32 z)
 
 TZone& TBlobIndex::TImpl::SelectZone(const TBlockRanges& blockRanges)
 {
-    Y_VERIFY(!blockRanges.empty());
+    Y_ABORT_UNLESS(!blockRanges.empty());
 
     if (!GlobalDataInitializationFinished) {
         return *GlobalZone;
@@ -1765,7 +1765,7 @@ TZone& TBlobIndex::TImpl::SelectZone(const TBlockRanges& blockRanges)
                 lastZoneId = z;
                 ++zoneCount;
 
-                Y_VERIFY(Zones[z].IsInitialized());
+                Y_ABORT_UNLESS(Zones[z].IsInitialized());
             }
         }
     }
@@ -2082,7 +2082,7 @@ const TBlobIndex::TImpl& TBlobIndex::GetImpl() const {
 
 TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
 {
-    Y_VERIFY(blocks.size());
+    Y_ABORT_UNLESS(blocks.size());
 
     if (maxRanges <= 1) {
         return {TBlockRange32::MakeClosedInterval(

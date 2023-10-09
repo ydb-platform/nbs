@@ -495,7 +495,7 @@ void TCommand::Init()
             Monitoring,
             ClientStats);
 
-        Y_VERIFY(!HasError(error));
+        Y_ABORT_UNLESS(!HasError(error));
         Client = std::move(client);
 
         StatsUpdater = CreateStatsUpdater(

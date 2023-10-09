@@ -441,7 +441,7 @@ void TValidationClient::EnsureZeroBlockDigestInitialized(TVolume& volume)
                         buffer.size()
                     }
                 ));
-                Y_VERIFY(AtomicGet(volume.ZeroBlockDigest) != InvalidDigest);
+                Y_ABORT_UNLESS(AtomicGet(volume.ZeroBlockDigest) != InvalidDigest);
             }
         }
     }
@@ -639,7 +639,7 @@ void TValidationClient::LeaveRange(
     const TOperationRange& range)
 {
     auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
-    Y_VERIFY(it != volume.Requests.end());
+    Y_ABORT_UNLESS(it != volume.Requests.end());
 
     volume.Requests.erase(it);
 }
@@ -825,7 +825,7 @@ bool TValidationClient::HandleRequest(
     }
 
     auto blocks = PrepareRead(*volume, *range);
-    Y_VERIFY(blocks.size() == range->Size());
+    Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     const auto zeroBlockDigest = AtomicGet(volume->ZeroBlockDigest);
 
@@ -888,7 +888,7 @@ bool TValidationClient::HandleRequest(
     }
 
     auto blocks = PrepareRead(*volume, *range);
-    Y_VERIFY(blocks.size() == range->Size());
+    Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     const auto zeroBlockDigest = AtomicGet(volume->ZeroBlockDigest);
     auto sgList = request->Sglist;

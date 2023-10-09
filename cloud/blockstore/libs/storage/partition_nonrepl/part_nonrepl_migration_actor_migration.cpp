@@ -147,7 +147,7 @@ void TNonreplicatedPartitionMigrationActor::HandleRangeMigrated(
     const TEvNonreplPartitionPrivate::TEvRangeMigrated::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(MigrationInProgress);
+    Y_ABORT_UNLESS(MigrationInProgress);
 
     if (!State.IsMigrationStarted()) {
         // migration cancelled

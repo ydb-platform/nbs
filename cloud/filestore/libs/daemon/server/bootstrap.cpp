@@ -126,7 +126,7 @@ void TBootstrapServer::InitLWTrace()
 
 void TBootstrapServer::InitKikimrService()
 {
-    Y_VERIFY(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
+    Y_ABORT_UNLESS(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
     Service = CreateKikimrFileStore(ActorSystem);
 
     Service = CreateAuthService(

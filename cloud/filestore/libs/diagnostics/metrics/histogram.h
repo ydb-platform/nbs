@@ -281,14 +281,14 @@ RANGE_TRAITS(EHistUnit::HU_SIZE_MIBYTES, HIST_RANGES_MIBYTES)
 template <EHistUnit Unit>
 const TString& GetHistRangeName(ui32 range)
 {
-    Y_VERIFY(range <= TRangeTraits<Unit>::HIST_MAX);
+    Y_ABORT_UNLESS(range <= TRangeTraits<Unit>::HIST_MAX);
     return TRangeTraits<Unit>::GetHistRanges(range).Name;
 }
 
 template <EHistUnit Unit>
 i64 GetHistRangeValue(ui32 range)
 {
-    Y_VERIFY(range <= TRangeTraits<Unit>::HIST_MAX);
+    Y_ABORT_UNLESS(range <= TRangeTraits<Unit>::HIST_MAX);
     return TRangeTraits<Unit>::GetHistRanges(range).Value;
 }
 
@@ -469,7 +469,7 @@ public:
 
         const bool inserted =
             Registries.try_emplace(key, std::move(scoped)).second;
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
 
         return key;
     }

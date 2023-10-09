@@ -426,7 +426,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
     auto tabletId = ChangeDomain(Config.DomainUid, ++NextTabletId);
 
     auto tabletFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-        Y_VERIFY(storage->TabletType == TTabletTypes::FileStore);
+        Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
         auto actor = CreateIndexTablet(
             owner,
             storage,
@@ -478,7 +478,7 @@ std::unique_ptr<TTabletStorageInfo> TTestEnv::BuildIndexTabletStorageInfo(
 void TTestEnv::UpdateTabletStorageInfo(ui64 tabletId, ui32 channelCount)
 {
     auto it = TabletIdToStorageInfo.find(tabletId);
-    Y_VERIFY(it != TabletIdToStorageInfo.end());
+    Y_ABORT_UNLESS(it != TabletIdToStorageInfo.end());
 
     auto newStorageInfo = BuildIndexTabletStorageInfo(tabletId, channelCount);
     newStorageInfo->Version = it->second->Version + 1;
@@ -586,7 +586,7 @@ void TTestEnv::SetupLocalServiceConfig(
     TLocalConfig& localConfig)
 {
     auto tabletFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-        Y_VERIFY(storage->TabletType == TTabletTypes::FileStore);
+        Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
         auto actor = CreateIndexTablet(
             owner,
             storage,

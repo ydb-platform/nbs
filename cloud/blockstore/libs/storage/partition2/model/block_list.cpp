@@ -253,7 +253,7 @@ protected:
 private:
     const char* Consume(size_t count)
     {
-        Y_VERIFY(Avail() >= count, "Invalid encoding");
+        Y_ABORT_UNLESS(Avail() >= count, "Invalid encoding");
         const char* p = Ptr;
         Ptr += count;
         return p;
@@ -329,7 +329,7 @@ private:
 public:
     void AddBlock(ui16 blobOffset, ui32 blockIndex, ui64 minCommitId, bool zeroed)
     {
-        Y_VERIFY(blobOffset < MaxBlocksCount, "Invalid encoding");
+        Y_ABORT_UNLESS(blobOffset < MaxBlocksCount, "Invalid encoding");
         Blocks[blobOffset] = TBlock(
             blockIndex,
             minCommitId,
@@ -340,7 +340,7 @@ public:
 
     void AddDeletedBlock(ui16 blobOffset, ui64 maxCommitId)
     {
-        Y_VERIFY(blobOffset < BlocksCount, "Invalid encoding");
+        Y_ABORT_UNLESS(blobOffset < BlocksCount, "Invalid encoding");
         Blocks[blobOffset].MaxCommitId = maxCommitId;
     }
 
@@ -379,7 +379,7 @@ TMaybe<TBlockMark> TBlockList::FindBlock(
     TBinaryReader reader(Blocks);
 
     const auto& list = reader.Read<TListHeader>();
-    Y_VERIFY(list.ListType == TListHeader::Blocks);
+    Y_ABORT_UNLESS(list.ListType == TListHeader::Blocks);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<TGroupHeader>();
@@ -458,7 +458,7 @@ ui64 TBlockList::FindDeletedBlock(ui16 blobOffset) const
     TBinaryReader reader(DeletedBlocks);
 
     const auto& list = reader.Read<TListHeader>();
-    Y_VERIFY(list.ListType == TListHeader::DeletedBlocks);
+    Y_ABORT_UNLESS(list.ListType == TListHeader::DeletedBlocks);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<TGroupHeader>();
@@ -531,7 +531,7 @@ ui32 TBlockList::CountBlocks() const
     TBinaryReader reader(Blocks);
 
     const auto& list = reader.Read<TListHeader>();
-    Y_VERIFY(list.ListType == TListHeader::Blocks);
+    Y_ABORT_UNLESS(list.ListType == TListHeader::Blocks);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<TGroupHeader>();
@@ -577,7 +577,7 @@ void TBlockList::DecodeBlocks(T& builder) const
     TBinaryReader reader(Blocks);
 
     const auto& list = reader.Read<TListHeader>();
-    Y_VERIFY(list.ListType == TListHeader::Blocks);
+    Y_ABORT_UNLESS(list.ListType == TListHeader::Blocks);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<TGroupHeader>();
@@ -640,7 +640,7 @@ void TBlockList::DecodeDeletedBlocks(T& builder) const
     TBinaryReader reader(DeletedBlocks);
 
     const auto& list = reader.Read<TListHeader>();
-    Y_VERIFY(list.ListType == TListHeader::DeletedBlocks);
+    Y_ABORT_UNLESS(list.ListType == TListHeader::DeletedBlocks);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<TGroupHeader>();
@@ -712,7 +712,7 @@ TByteVector TBlockListBuilder::EncodeBlocks()
 
     auto writeBlocks = [&] (size_t start, size_t end, ui64 commitId) {
         size_t count = end - start;
-        Y_VERIFY(count <= MaxBlocksCount);
+        Y_ABORT_UNLESS(count <= MaxBlocksCount);
 
         ui32 gen, step;
         std::tie(gen, step) = ParseCommitId(commitId);
@@ -812,7 +812,7 @@ TByteVector TBlockListBuilder::EncodeDeletedBlocks()
 
     auto writeBlocks = [&] (size_t start, size_t end, ui64 commitId) {
         size_t count = end - start;
-        Y_VERIFY(count <= MaxBlocksCount);
+        Y_ABORT_UNLESS(count <= MaxBlocksCount);
 
         ui32 gen, step;
         std::tie(gen, step) = ParseCommitId(commitId);

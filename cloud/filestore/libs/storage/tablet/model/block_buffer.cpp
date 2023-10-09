@@ -44,7 +44,7 @@ public:
 
     void SetBlock(size_t index, TStringBuf block) override
     {
-        Y_VERIFY(block.size() == ByteRange.BlockSize);
+        Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
 
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         char* ptr = const_cast<char*>(Buffer.data()) + offset;
@@ -82,7 +82,7 @@ IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange)
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
 {
-    Y_VERIFY(buffer.size() == byteRange.Length);
+    Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
     return std::make_shared<TBlockBuffer>(byteRange, std::move(buffer));
 }
 

@@ -105,7 +105,7 @@ struct TRequest
 
 void StoreRequest(TSendWr* send, TRequestPtr req)
 {
-    Y_VERIFY(send->context == nullptr);
+    Y_ABORT_UNLESS(send->context == nullptr);
     send->context = req.release();  // ownership transferred
 }
 
@@ -285,7 +285,7 @@ private:
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
     {
-        Y_VERIFY(event->id && event->id->context);
+        Y_ABORT_UNLESS(event->id && event->id->context);
         return static_cast<TServerSession*>(event->id->context);
     }
 
@@ -502,13 +502,13 @@ void TServerSession::HandleQueuedRequests()
         }
 
         auto req = QueuedRequests.Dequeue();
-        Y_VERIFY(req);
+        Y_ABORT_UNLESS(req);
 
         Counters->RequestDequeued();
 
         switch (req->State) {
             case ERequestState::RecvRequest:
-                Y_VERIFY(req->In.Length);
+                Y_ABORT_UNLESS(req->In.Length);
                 ReadRequestData(std::move(req), send);
                 break;
 
@@ -779,7 +779,7 @@ void TServerSession::ReadRequestDataCompleted(
         return;
     }
 
-    Y_VERIFY(req->State == ERequestState::ReadRequestData);
+    Y_ABORT_UNLESS(req->State == ERequestState::ReadRequestData);
 
     SendQueue.Push(send);
     Counters->ReadRequestCompleted();
@@ -870,7 +870,7 @@ void TServerSession::WriteResponseDataCompleted(
         return;
     }
 
-    Y_VERIFY(req->State == ERequestState::WriteResponseData);
+    Y_ABORT_UNLESS(req->State == ERequestState::WriteResponseData);
 
     Counters->WriteResponseCompleted();
 
@@ -931,7 +931,7 @@ void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
         return;
     }
 
-    Y_VERIFY(req->State == ERequestState::SendResponse);
+    Y_ABORT_UNLESS(req->State == ERequestState::SendResponse);
 
     if (req->Status == RDMA_PROTO_THROTTLED) {
         Counters->RequestThrottled();
@@ -981,7 +981,7 @@ public:
 
     static TServerEndpoint* FromEvent(rdma_cm_event* event)
     {
-        Y_VERIFY(event->listen_id && event->listen_id->context);
+        Y_ABORT_UNLESS(event->listen_id && event->listen_id->context);
         return static_cast<TServerEndpoint*>(event->listen_id->context);
     }
 
@@ -1092,7 +1092,7 @@ private:
                 const auto& event = PollHandle.GetEvent(i);
 
                 if (event.events && event.data.ptr) {
-                    Y_VERIFY(event.data.ptr == EventChannel.get());
+                    Y_ABORT_UNLESS(event.data.ptr == EventChannel.get());
                     HandleConnectionEvents();
                 }
             }

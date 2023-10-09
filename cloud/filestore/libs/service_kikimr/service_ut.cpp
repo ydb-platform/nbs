@@ -112,7 +112,7 @@ Y_UNIT_TEST_SUITE(TIndexStoreTest)
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->GetSessionEventsHandler =
             [&] (const TEvService::TEvGetSessionEventsRequest::TPtr& ev) {
-                Y_VERIFY(ev->Cookie == TEvService::StreamCookie);
+                Y_ABORT_UNLESS(ev->Cookie == TEvService::StreamCookie);
                 eventHandler = ev->Sender;
                 return std::make_unique<TEvService::TEvGetSessionEventsResponse>();
             };
@@ -134,7 +134,7 @@ Y_UNIT_TEST_SUITE(TIndexStoreTest)
             responseHandler);
 
         actorSystem->DispatchEvents(WaitTimeout);
-        Y_VERIFY(eventHandler);
+        Y_ABORT_UNLESS(eventHandler);
 
         auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>();
         auto* event = response->Record.AddEvents();

@@ -144,7 +144,7 @@ int TCompareDataActionRunner::Run(
         NProtobufJson::Proto2Json(response, TestContext.Result, {});
 
         if (TestContext.Volume.GetDiskId()) {
-            Y_VERIFY(TestContext.Session);
+            Y_ABORT_UNLESS(TestContext.Session);
             STORAGE_INFO("Unmount volume: " << TestContext.Volume.GetDiskId());
             WaitForCompletion(
                 "UnmountVolume",

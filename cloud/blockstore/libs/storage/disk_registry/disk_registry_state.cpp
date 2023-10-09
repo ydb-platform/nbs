@@ -868,7 +868,7 @@ void TDiskRegistryState::RebuildDiskPlacementInfo(
     const TDiskState& disk,
     NProto::TPlacementGroupConfig::TDiskInfo* diskInfo) const
 {
-    Y_VERIFY(diskInfo);
+    Y_ABORT_UNLESS(diskInfo);
 
     THashSet<TString> racks;
 
@@ -2314,7 +2314,7 @@ auto TDiskRegistryState::DeallocateSimpleDisk(
     const TString& diskId,
     TDiskState& disk) -> TVector<TDeviceId>
 {
-    Y_VERIFY(disk.ReplicaCount == 0);
+    Y_ABORT_UNLESS(disk.ReplicaCount == 0);
 
     TVector<TDeviceId> dirtyDevices;
 

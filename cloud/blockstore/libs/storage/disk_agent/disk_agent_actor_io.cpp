@@ -373,7 +373,7 @@ TRecentBlocksTracker& TDiskAgentActor::GetRecentBlocksTracker(
     }
     auto [it, inserted] = RecentBlocksTrackers.insert(
         {deviceUUID, TRecentBlocksTracker(deviceUUID)});
-    Y_VERIFY(inserted);
+    Y_ABORT_UNLESS(inserted);
     return it->second;
 }
 

@@ -40,7 +40,7 @@ TTxCountersDesc ParseTxCounters(const NProtoBuf::EnumDescriptor* enumDesc)
 
     for (int i = 0; i < enumDesc->value_count(); ++i) {
         const auto* valueDesc = enumDesc->value(i);
-        Y_VERIFY(valueDesc->number() == valueDesc->index());
+        Y_ABORT_UNLESS(valueDesc->number() == valueDesc->index());
 
         const auto* counterOpts = GetExtension(valueDesc->options(), CounterOpts);
         if (!counterOpts) {

@@ -183,7 +183,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
-        Y_VERIFY(ep);
+        Y_ABORT_UNLESS(ep);
 
         NProto::TZeroDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());

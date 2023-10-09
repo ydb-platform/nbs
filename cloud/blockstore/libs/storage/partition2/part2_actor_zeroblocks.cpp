@@ -315,7 +315,7 @@ void TPartitionActor::HandleZeroBlocks(
             requests.emplace_back(blobId, std::move(blocks));
         }
 
-        Y_VERIFY(requests);
+        Y_ABORT_UNLESS(requests);
         auto actor = NCloud::Register<TZeroBlocksActor>(
             ctx,
             requestInfo,

@@ -17,7 +17,7 @@ using namespace NKikimr;
 ui64 GetHiveTabletId(const TActorContext& ctx)
 {
     auto& domainsInfo = *AppData(ctx)->DomainsInfo;
-    Y_VERIFY(domainsInfo.Domains);
+    Y_ABORT_UNLESS(domainsInfo.Domains);
 
     auto domainUid = domainsInfo.Domains.begin()->first;
     auto hiveUid = domainsInfo.GetDefaultHiveUid(domainUid);

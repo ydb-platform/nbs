@@ -29,7 +29,7 @@ NProto::EVolumeMountMode AdvanceMountMode(
             break;
         }
         default: {
-            Y_VERIFY(0);
+            Y_ABORT_UNLESS(0);
         }
     }
     return curMode;
@@ -168,7 +168,7 @@ void TVolumeClientState::ActivatePipe(
     TVolumeClientState::TPipes::iterator active,
     bool isLocal)
 {
-    Y_VERIFY(active != Pipes.end());
+    Y_ABORT_UNLESS(active != Pipes.end());
 
     for (auto it = Pipes.begin(); it != Pipes.end(); ++it) {
         if (it != active && it->second.State == EPipeState::ACTIVE) {

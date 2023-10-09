@@ -82,7 +82,7 @@ struct THashTableStorage final
             if (!data || data->Empty()) {
                 memset(const_cast<char*>(target.Data()), 0, target.Size());
             } else {
-                Y_VERIFY(target.Size() == BlockSize);
+                Y_ABORT_UNLESS(target.Size() == BlockSize);
                 memcpy(const_cast<char*>(target.Data()), data->Data(), BlockSize);
             }
 

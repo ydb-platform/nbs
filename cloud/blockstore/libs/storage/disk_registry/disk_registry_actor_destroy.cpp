@@ -132,7 +132,7 @@ void TDestroyActor::HandleDestroyVolumeResponse(
 
     --PendingOperations;
 
-    Y_VERIFY(PendingOperations >= 0);
+    Y_ABORT_UNLESS(PendingOperations >= 0);
 
     if (HasError(ev->Get()->Record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,

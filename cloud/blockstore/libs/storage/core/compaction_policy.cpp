@@ -219,7 +219,7 @@ ICompactionPolicyPtr BuildCompactionPolicy(
     const TStorageConfig& storageConfig,
     const ui32 siblingCount)
 {
-    Y_VERIFY(siblingCount > 0);
+    Y_ABORT_UNLESS(siblingCount > 0);
 
     const auto maxBlobsPerRange = GetMaxBlobsPerRange(
         partitionConfig,
@@ -258,7 +258,7 @@ ICompactionPolicyPtr BuildCompactionPolicy(
             );
         }
 
-        default: Y_VERIFY(0);
+        default: Y_ABORT_UNLESS(0);
     }
 }
 

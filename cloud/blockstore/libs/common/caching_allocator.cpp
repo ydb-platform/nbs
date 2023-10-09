@@ -167,7 +167,7 @@ TBlock TCachingAllocator::Fallback(size_t bytesCount)
 void TCachingAllocator::Deallocate(TNode* node)
 {
     const auto refs = AtomicDecrement(node->Refs);
-    Y_VERIFY(refs >= 0);
+    Y_ABORT_UNLESS(refs >= 0);
 
     if (refs) {
         return;

@@ -85,11 +85,11 @@ public:
         ui64 b = 0;
         while (offset < result.Data.Size()) {
             ui64 targetBlock = dr.StartIndexOffset + b;
-            Y_VERIFY(targetBlock < static_cast<ui64>(blocks.size()));
+            Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
             ui64 bytes = Min(
                 result.Data.Size() - offset,
                 blocks[targetBlock].Size());
-            Y_VERIFY(bytes);
+            Y_ABORT_UNLESS(bytes);
 
             memcpy(
                 const_cast<char*>(blocks[targetBlock].Data()),

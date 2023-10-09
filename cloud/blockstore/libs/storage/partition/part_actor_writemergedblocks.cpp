@@ -346,7 +346,7 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
         return;
     }
 
-    Y_VERIFY(WriteBlobRequestsCompleted < WriteBlobRequests.size());
+    Y_ABORT_UNLESS(WriteBlobRequestsCompleted < WriteBlobRequests.size());
     if (++WriteBlobRequestsCompleted < WriteBlobRequests.size()) {
         return;
     }
@@ -483,7 +483,7 @@ void TPartitionActor::WriteMergedBlocks(
         requests.emplace_back(blobId, range);
     }
 
-    Y_VERIFY(requests);
+    Y_ABORT_UNLESS(requests);
 
     auto actor = NCloud::Register<TWriteMergedBlocksActor>(
         ctx,

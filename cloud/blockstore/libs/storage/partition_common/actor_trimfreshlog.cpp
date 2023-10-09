@@ -143,7 +143,7 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
         Error = std::move(error);
     }
 
-    Y_VERIFY(RequestsInFlight > 0);
+    Y_ABORT_UNLESS(RequestsInFlight > 0);
     if (--RequestsInFlight > 0) {
         return;
     }

@@ -69,7 +69,7 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
         args.CheckpointId,
         args.NodeId,
         args.CommitId);
-    Y_VERIFY(checkpoint);
+    Y_ABORT_UNLESS(checkpoint);
 }
 
 void TIndexTabletActor::CompleteTx_CreateCheckpoint(

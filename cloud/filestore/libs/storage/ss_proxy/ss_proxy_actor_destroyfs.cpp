@@ -74,7 +74,7 @@ void TDestroyFileStoreActor::ModifyScheme(const TActorContext& ctx)
         FileSystemId);
 
     auto pathItems = SplitPath(std::move(path));
-    Y_VERIFY(pathItems);
+    Y_ABORT_UNLESS(pathItems);
 
     auto name = pathItems.back();
     auto workingDir = JoinRange(

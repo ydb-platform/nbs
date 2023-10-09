@@ -388,7 +388,7 @@ public:
         auto logging = Logging;
 
         auto volumeFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-            Y_VERIFY(storage->TabletType == TTabletTypes::BlockStoreVolume);
+            Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreVolume);
 
             auto actor = CreateVolumeTablet(
                 owner,
@@ -404,7 +404,7 @@ public:
         };
 
         auto diskRegistryFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-            Y_VERIFY(storage->TabletType == TTabletTypes::BlockStoreDiskRegistry);
+            Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreDiskRegistry);
 
             auto tablet = CreateDiskRegistry(
                 owner,

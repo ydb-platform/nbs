@@ -406,7 +406,7 @@ auto TDeviceList::SelectRacks(
     for (auto& [id, rack]: racks) {
         for (const auto& nodeId: rack.Nodes) {
             const auto* freeDevices = FreeDevices.FindPtr(nodeId);
-            Y_VERIFY(freeDevices);
+            Y_ABORT_UNLESS(freeDevices);
 
             auto r = FindDeviceRange(query, poolName, freeDevices->Devices);
 
@@ -459,7 +459,7 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
     for (const auto& rack: SelectRacks(query, poolName)) {
         for (const auto& nodeId: rack.Nodes) {
             const auto* freeDevices = FreeDevices.FindPtr(nodeId);
-            Y_VERIFY(freeDevices);
+            Y_ABORT_UNLESS(freeDevices);
 
             auto [begin, end] =
                 FindDeviceRange(query, poolName, freeDevices->Devices);

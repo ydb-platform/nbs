@@ -708,7 +708,7 @@ static bool FindBlocksInBlobIndex(
             }
         } else {
             // each block has its own commitId
-            Y_VERIFY(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+            Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
 
             ui16 blobOffset = 0;
             for (size_t i = 0; i < mixedBlocks.BlocksSize(); ++i) {

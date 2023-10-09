@@ -28,7 +28,7 @@ namespace {
 std::pair<ui64, ui64> GetSeqNo(const NProto::TGetSessionEventsResponse& response)
 {
     size_t numEvents = response.EventsSize();
-    Y_VERIFY(numEvents);
+    Y_ABORT_UNLESS(numEvents);
 
     return {
         response.GetEvents(0).GetSeqNo(),
@@ -397,7 +397,7 @@ void TCreateSessionActor::HandleGetSessionEvents(
     const TEvService::TEvGetSessionEventsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(SessionId);
+    Y_ABORT_UNLESS(SessionId);
 
     if (ev->Cookie == TEvService::StreamCookie) {
         LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
@@ -418,7 +418,7 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
     const TEvService::TEvGetSessionEventsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(SessionId);
+    Y_ABORT_UNLESS(SessionId);
 
     const auto* msg = ev->Get();
 
@@ -430,7 +430,7 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
         lastSeqNo);
 
     if (EventListener) {
-        Y_VERIFY(StoredEvents.size() == 0);
+        Y_ABORT_UNLESS(StoredEvents.size() == 0);
 
         // just forward response to listener as-is
         ctx.Send(ev->Forward(EventListener));
@@ -522,7 +522,7 @@ void TCreateSessionActor::Notify(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    Y_VERIFY(SessionId);
+    Y_ABORT_UNLESS(SessionId);
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s session notify %lu (%s)",
         LogTag().c_str(),
@@ -784,7 +784,7 @@ void TStorageServiceActor::HandleSessionCreated(
                 actorId,
                 msg->TabletId);
 
-            Y_VERIFY(session);
+            Y_ABORT_UNLESS(session);
         } else {
             session->UpdateSessionState(msg->SessionState);
             session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);

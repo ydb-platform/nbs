@@ -48,7 +48,7 @@ public:
     explicit TAsyncIOContext(size_t nr)
     {
         int ret = io_setup(nr, &Context);
-        Y_VERIFY(ret == 0,
+        Y_ABORT_UNLESS(ret == 0,
             "unable to initialize context: %s",
             LastSystemErrorText(-ret));
     }
@@ -57,7 +57,7 @@ public:
     {
         if (Context) {
             int ret = io_destroy(Context);
-            Y_VERIFY(ret == 0,
+            Y_ABORT_UNLESS(ret == 0,
                 "unable to destroy context: %s",
                 LastSystemErrorText(-ret));
         }
@@ -80,7 +80,7 @@ public:
             return {};
         }
 
-        Y_VERIFY(ret >= 0,
+        Y_ABORT_UNLESS(ret >= 0,
             "unable to get async IO completion: %s",
             LastSystemErrorText(-ret));
 

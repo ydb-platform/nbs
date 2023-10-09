@@ -54,7 +54,7 @@ private:
         const auto* msg = ev->Get();
         const auto& diskId = msg->VolumeConfig.GetDiskId();
 
-        Y_VERIFY(!Volumes.contains(diskId));
+        Y_ABORT_UNLESS(!Volumes.contains(diskId));
 
         Volumes[diskId] = msg->VolumeConfig;
 
@@ -68,10 +68,10 @@ private:
     {
         const auto* msg = ev->Get();
 
-        Y_VERIFY(msg->OpType ==
+        Y_ABORT_UNLESS(msg->OpType ==
             TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy);
 
-        Y_VERIFY(Volumes.contains(msg->DiskId));
+        Y_ABORT_UNLESS(Volumes.contains(msg->DiskId));
         Volumes.erase(msg->DiskId);
 
         auto response = std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>();
@@ -140,8 +140,8 @@ private:
                 c.SetPathType(NKikimrSchemeOp::EPathTypeBlockStoreVolume);
             }
         } else {
-            Y_VERIFY(path.SkipPrefix("/Root/"));
-            Y_VERIFY(Volumes.contains(path));
+            Y_ABORT_UNLESS(path.SkipPrefix("/Root/"));
+            Y_ABORT_UNLESS(Volumes.contains(path));
 
             self.SetPathType(NKikimrSchemeOp::EPathTypeBlockStoreVolume);
             self.SetName(ToString(path));

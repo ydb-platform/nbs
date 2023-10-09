@@ -90,7 +90,7 @@ public:
 
     ~TConnection()
     {
-        Y_VERIFY(InFlightBytes == 0);
+        Y_ABORT_UNLESS(InFlightBytes == 0);
     }
 
     void Start() override
@@ -385,12 +385,12 @@ private:
     static char* GetSocketPath(const TNetworkAddress& addr)
     {
         auto it = addr.Begin();
-        Y_VERIFY(it->ai_family == AF_UNIX);
+        Y_ABORT_UNLESS(it->ai_family == AF_UNIX);
 
         auto socketPath = it->ai_addr->sa_data;
 
         ++it;
-        Y_VERIFY(it == addr.End());
+        Y_ABORT_UNLESS(it == addr.End());
 
         return socketPath;
     }
@@ -499,7 +499,7 @@ public:
             auto [it, inserted] = Endpoints.emplace(
                 std::move(address),
                 std::move(endpoint));
-            Y_VERIFY(inserted);
+            Y_ABORT_UNLESS(inserted);
         }
     }
 
@@ -507,7 +507,7 @@ public:
     {
         with_lock (Lock) {
             auto it = Endpoints.find(address);
-            Y_VERIFY(it != Endpoints.end());
+            Y_ABORT_UNLESS(it != Endpoints.end());
 
             auto endpoint = std::move(it->second);
             Endpoints.erase(it);
@@ -621,7 +621,7 @@ public:
         }
 
         auto* executorThread = PickExecutor();
-        Y_VERIFY(executorThread);
+        Y_ABORT_UNLESS(executorThread);
 
         auto endpoint = executorThread->CreateEndpoint(
             listenAddress,
@@ -745,7 +745,7 @@ private:
             auto [it, inserted] = EndpointMap.emplace(
                 address,
                 executorThread);
-            Y_VERIFY(inserted);
+            Y_ABORT_UNLESS(inserted);
         }
 
         executorThread->AddEndpoint(

@@ -32,7 +32,7 @@ void TVolumeActor::AcquireDisk(
     NProto::EVolumeAccessMode accessMode,
     ui64 mountSeqNumber)
 {
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     LOG_DEBUG_S(
         ctx,
@@ -290,7 +290,7 @@ void TVolumeActor::HandleAddClient(
 
 void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
 {
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     if (PendingClientRequests) {
         auto& request = PendingClientRequests.front();
@@ -365,7 +365,7 @@ void TVolumeActor::ExecuteAddClient(
     TTransactionContext& tx,
     TTxVolume::TAddClient& args)
 {
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     auto now = ctx.Now();
     TString prevWriter = State->GetReadWriteAccessClientId();
@@ -589,7 +589,7 @@ void TVolumeActor::ExecuteUpdateClientInfo(
 {
     Y_UNUSED(ctx);
 
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     if (const auto* info = State->GetClient(args.ClientId)) {
         TVolumeDatabase db(tx.DB);

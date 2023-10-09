@@ -541,7 +541,7 @@ ui32 TCompactionMap::GetRangeIndex(ui32 blockIndex) const
 
 ui32 TCompactionMap::GetRangeIndex(TBlockRange32 blockRange) const
 {
-    Y_VERIFY(blockRange.Start % Impl->RangeSize == 0);
+    Y_ABORT_UNLESS(blockRange.Start % Impl->RangeSize == 0);
     return blockRange.Start / Impl->RangeSize;
 }
 

@@ -65,7 +65,7 @@ public:
 
         const bool inserted =
             Registries.try_emplace(key, std::move(scoped)).second;
-        Y_VERIFY(inserted);
+        Y_ABORT_UNLESS(inserted);
 
         return key;
     }

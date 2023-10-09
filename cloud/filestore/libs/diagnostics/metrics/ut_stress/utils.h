@@ -23,7 +23,7 @@ private:
 public:
     ~TScopedTasks()
     {
-        Y_VERIFY(Workers.empty());
+        Y_ABORT_UNLESS(Workers.empty());
     }
 
     void Start()

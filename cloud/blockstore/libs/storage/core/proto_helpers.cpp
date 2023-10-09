@@ -368,7 +368,7 @@ TBlockRange64 BuildRequestBlockRange(
     for (const auto& buffer: request.Record.GetBlocks().GetBuffers()) {
         totalSize += buffer.length();
     }
-    Y_VERIFY(totalSize % request.Record.GetBlockSize() == 0);
+    Y_ABORT_UNLESS(totalSize % request.Record.GetBlockSize() == 0);
 
     return TBlockRange64::WithLength(
         request.Record.GetStartIndex(),

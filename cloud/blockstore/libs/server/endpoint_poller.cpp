@@ -129,7 +129,7 @@ struct TConnection final
         auto connection = std::dynamic_pointer_cast<TConnection>(cookie);
 
         auto it = Endpoint->Connections.find(connection);
-        Y_VERIFY(it != Endpoint->Connections.end());
+        Y_ABORT_UNLESS(it != Endpoint->Connections.end());
         Endpoint->Connections.erase(it);
     }
 };
@@ -211,7 +211,7 @@ public:
             }
 
             auto [it, inserted] = Endpoints.emplace(unixSocketPath, endpoint);
-            Y_VERIFY(inserted);
+            Y_ABORT_UNLESS(inserted);
         }
 
         SocketPoller.WaitRead(endpoint->Socket, endpoint.get());

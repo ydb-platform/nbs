@@ -33,7 +33,7 @@ ui64 GetSize(const TDevices& devs)
 ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
 {
     // XXX
-    Y_VERIFY(config.PartitionsSize() == 1);
+    Y_ABORT_UNLESS(config.PartitionsSize() == 1);
     return config.GetPartitions(0).GetBlockCount();
 }
 
@@ -118,7 +118,7 @@ const NKikimrBlockStore::TVolumeConfig& TVolumeActor::GetNewestConfig() const
         return UnfinishedUpdateVolumeConfig.Record.GetVolumeConfig();
     }
 
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
     return State->GetMeta().GetVolumeConfig();
 }
 
@@ -189,7 +189,7 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
 
     Y_UNUSED(ev);
 
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
     const auto& config = State->GetMeta().GetVolumeConfig();
     const auto blocks = GetBlocks(config);
     auto expectedSize = blocks * config.GetBlockSize();
@@ -358,7 +358,7 @@ bool TVolumeActor::CheckAllocationResult(
     const TDevices& devices,
     const TVector<TDevices>& replicas)
 {
-    Y_VERIFY(StateLoadFinished);
+    Y_ABORT_UNLESS(StateLoadFinished);
 
     if (!State) {
         return true;
@@ -466,7 +466,7 @@ void TVolumeActor::ExecuteUpdateDevices(
     TTxVolume::TUpdateDevices& args)
 {
     Y_UNUSED(ctx);
-    Y_VERIFY(State);
+    Y_ABORT_UNLESS(State);
 
     auto newMeta = State->GetMeta();
     *newMeta.MutableDevices() = std::move(args.Devices);

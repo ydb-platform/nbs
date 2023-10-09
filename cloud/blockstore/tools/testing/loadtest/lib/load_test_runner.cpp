@@ -258,12 +258,12 @@ void TLoadTestRunner::SetupTest(
 
         if (EndpointStorage) {
             auto error = EndpointStorage->Init();
-            Y_VERIFY(!HasError(error));
+            Y_ABORT_UNLESS(!HasError(error));
 
             auto keyOrError = EndpointStorage->AddEndpoint(
                 request->GetUnixSocketPath(),
                 SerializeEndpoint(*request));
-            Y_VERIFY(!HasError(keyOrError));
+            Y_ABORT_UNLESS(!HasError(keyOrError));
         }
 
         WaitForCompletion(
@@ -533,7 +533,7 @@ void TLoadTestRunner::TeardownTest(
 
         if (EndpointStorage) {
             auto error = EndpointStorage->RemoveEndpoint(EndpointSocketPath);
-            Y_VERIFY(!HasError(error));
+            Y_ABORT_UNLESS(!HasError(error));
         }
 
         WaitForCompletion(

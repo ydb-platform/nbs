@@ -30,7 +30,7 @@ void TCheckpointStore::MarkCheckpointDeleted(TCheckpoint* checkpoint)
 
 void TCheckpointStore::RemoveCheckpoint(TCheckpoint* checkpoint)
 {
-    Y_VERIFY(checkpoint->GetDeleted());
+    Y_ABORT_UNLESS(checkpoint->GetDeleted());
 
     std::unique_ptr<TCheckpoint> holder(checkpoint);
     checkpoint->Unlink();

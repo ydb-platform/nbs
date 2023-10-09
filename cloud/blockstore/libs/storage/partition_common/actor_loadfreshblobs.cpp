@@ -65,7 +65,7 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
             channel);
 
         const auto* channelInfo = TabletInfo->ChannelInfo(channel);
-        Y_VERIFY(channelInfo);
+        Y_ABORT_UNLESS(channelInfo);
 
         auto begin = channelInfo->History.begin();
         auto end = channelInfo->History.end();
@@ -209,7 +209,7 @@ void TLoadFreshBlobsActor::HandleRangeResult(
         }
     }
 
-    Y_VERIFY(RangeRequestsInFlight > 0);
+    Y_ABORT_UNLESS(RangeRequestsInFlight > 0);
     if (--RangeRequestsInFlight > 0) {
         return;
     }

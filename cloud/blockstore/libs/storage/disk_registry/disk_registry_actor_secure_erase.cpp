@@ -158,7 +158,7 @@ void TSecureEraseActor::HandleSecureEraseDeviceUndelivery(
     const TEvDiskAgent::TEvSecureEraseDeviceRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(PendingRequests > 0);
+    Y_ABORT_UNLESS(PendingRequests > 0);
 
     const auto index = ev->Cookie;
     auto& device = Devices[index];
@@ -181,7 +181,7 @@ void TSecureEraseActor::HandleSecureEraseDeviceResponse(
     const TEvDiskAgent::TEvSecureEraseDeviceResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY(PendingRequests > 0);
+    Y_ABORT_UNLESS(PendingRequests > 0);
 
     const auto* msg = ev->Get();
 

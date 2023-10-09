@@ -102,7 +102,7 @@ struct TTestStorage final
 
         void* p = std::malloc(space);
 
-        Y_VERIFY(std::align(DefaultBlockSize, bytesCount, p, space));
+        Y_ABORT_UNLESS(std::align(DefaultBlockSize, bytesCount, p, space));
 
         return { static_cast<char*>(p), &std::free };
     }

@@ -186,11 +186,11 @@ void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId)
 {
     {
         auto it = Impl->Barriers.find(commitId);
-        Y_VERIFY(it != Impl->Barriers.end());
+        Y_ABORT_UNLESS(it != Impl->Barriers.end());
 
         auto& barrier = const_cast<TBarrier&>(*it);
 
-        Y_VERIFY(barrier.RefCount > 0);
+        Y_ABORT_UNLESS(barrier.RefCount > 0);
         --barrier.RefCount;
     }
 

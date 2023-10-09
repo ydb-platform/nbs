@@ -211,7 +211,7 @@ private:
                         return true;
                     }
                 } else {
-                    Y_VERIFY(count == NumWorkers);
+                    Y_ABORT_UNLESS(count == NumWorkers);
                     return false;
                 }
             }
@@ -239,7 +239,7 @@ private:
                         }
                     }
                 } else {
-                    Y_VERIFY(count > 1);
+                    Y_ABORT_UNLESS(count > 1);
                     if (AtomicCas(&RunningWorkers, count - 1, count)) {
                         return true;
                     }

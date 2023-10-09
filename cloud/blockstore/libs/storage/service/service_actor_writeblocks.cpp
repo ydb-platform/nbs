@@ -111,7 +111,7 @@ private:
 
         if (auto guard = msg->Record.Sglist.Acquire()) {
             size_t bytesWritten = SgListCopy(guard.Get(), dst);
-            Y_VERIFY(bytesWritten == msg->Record.BlocksCount * BlockSize);
+            Y_ABORT_UNLESS(bytesWritten == msg->Record.BlocksCount * BlockSize);
             return request;
         }
 

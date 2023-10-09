@@ -38,7 +38,7 @@ void TCheckpointStore::Add(TVector<TCheckpoint>& checkpoints)
 {
     for (const auto& checkpoint: checkpoints) {
         bool success = Add(checkpoint);
-        Y_VERIFY(success);
+        Y_ABORT_UNLESS(success);
     }
 }
 
@@ -52,7 +52,7 @@ bool TCheckpointStore::Delete(const TString& checkpointId)
     auto it = Items.find(checkpointId);
     if (it != Items.end()) {
         bool removed = RemoveCommitId(it->CommitId);
-        Y_VERIFY(removed);
+        Y_ABORT_UNLESS(removed);
 
         Items.erase(it);
         return true;
@@ -239,7 +239,7 @@ void TCheckpointsInFlight::PopTx(const TString& checkpointId)
     if (it != PendingTransactions.end()) {
         auto& queue = it->second;
 
-        Y_VERIFY(queue);
+        Y_ABORT_UNLESS(queue);
         queue.pop_front();
 
         if (queue) {

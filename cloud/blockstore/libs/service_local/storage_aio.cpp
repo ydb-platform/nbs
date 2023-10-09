@@ -68,7 +68,7 @@ using TAlignedBuffer = std::shared_ptr<char>;
 TAlignedBuffer AllocateAligned(size_t byteCount, bool zeroInit)
 {
     void* p = memalign(DefaultBlockSize, byteCount);
-    Y_VERIFY(p);
+    Y_ABORT_UNLESS(p);
     Y_VERIFY_DEBUG((uintptr_t)p % DefaultBlockSize == 0);
 
     if (zeroInit) {
@@ -283,7 +283,7 @@ void ProcessResponse(
         return;
     }
 
-    Y_VERIFY(request->BytesTransferred == request->TotalByteCount);
+    Y_ABORT_UNLESS(request->BytesTransferred == request->TotalByteCount);
 
     CompleteRequest(std::move(request));
 }
@@ -358,7 +358,7 @@ struct TReadOrWriteRequest
             this->TotalByteCount,
             this->BytesTransferred);
 
-        Y_VERIFY(buffer);
+        Y_ABORT_UNLESS(buffer);
 
         return buffer;
     }

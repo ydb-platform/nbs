@@ -122,7 +122,7 @@ void TCleanupActor::HandleDescribeVolumeResponse(
 {
     --PendingRequests;
 
-    Y_VERIFY(PendingRequests >= 0);
+    Y_ABORT_UNLESS(PendingRequests >= 0);
 
     const auto* msg = ev->Get();
     const auto index = ev->Cookie;
@@ -148,7 +148,7 @@ void TCleanupActor::HandleDeallocateDiskResponse(
 {
     --PendingRequests;
 
-    Y_VERIFY(PendingRequests >= 0);
+    Y_ABORT_UNLESS(PendingRequests >= 0);
 
     const auto* msg = ev->Get();
     const auto index = ev->Cookie;

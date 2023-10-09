@@ -72,7 +72,7 @@ struct TPartitionInfo
 
     void SetReady()
     {
-        Y_VERIFY(State == STARTED);
+        Y_ABORT_UNLESS(State == STARTED);
         State = READY;
     }
 
