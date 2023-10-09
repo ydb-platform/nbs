@@ -67,14 +67,14 @@ inline TSubscriptionManager::ECallbackStatus TSubscriptionManager::TrySubscribe(
     auto const revision = ++Revision;
     if (it == std::end(Subscriptions)) {
         auto const success = Subscriptions.emplace(stateId, THashMap<ui64, TSubscription>{ { revision, std::move(subscription) } }).second;
-        Y_VERIFY(success);
+        Y_ABORT_UNLESS(success);
         auto self = TSubscriptionManagerPtr(this);
         future.Subscribe([self, stateId](TFuture<T> const&) { self->OnCallback(stateId); });
         if (Subscriptions.find(stateId) == std::end(Subscriptions)) {
             return ECallbackStatus::ExecutedSynchronously;
         }
     } else {
-        Y_VERIFY(it->second.emplace(revision, std::move(subscription)).second);
+        Y_ABORT_UNLESS(it->second.emplace(revision, std::move(subscription)).second);
     }
     return ECallbackStatus::Subscribed;
 }
