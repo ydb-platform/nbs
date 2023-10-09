@@ -659,10 +659,12 @@ public:
 
     std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
         const TString& checkpointId,
-        const TString& idempotenceId)
+        const TString& idempotenceId,
+        bool withoutData = false)
     {
         auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
         request->Record.SetCheckpointId(checkpointId);
+        request->Record.SetCheckpointType(withoutData ? NProto::ECheckpointType::WITHOUT_DATA : NProto::ECheckpointType::NORMAL);
         request->Record.MutableHeaders()->SetIdempotenceId(idempotenceId);
         return request;
     }
@@ -4016,6 +4018,54 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto responseDelete = partition.DeleteCheckpoint("checkpoint1");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, responseDelete->GetStatus());
         }
+        {
+            partition.CreateCheckpoint("checkpoint1", "id1");
+            partition.DeleteCheckpointData("checkpoint1");
+            auto responseCreate = partition.CreateCheckpoint("checkpoint1", "id1");
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, responseCreate->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSupportCheckpointsWithoutData) {
+        auto runtime = PrepareTestActorRuntime(DefaultConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.CreateCheckpoint("checkpoint_without_data", "id1", true);
+        partition.Flush();
+        partition.WriteBlocks(1, 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(1))
+        );
+
+        partition.SendReadBlocksRequest(1, "checkpoint_without_data");
+        auto response = partition.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+
+        {
+            auto responseDelete = partition.DeleteCheckpoint("checkpoint_without_data");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, responseDelete->GetStatus());
+        }
+        {
+            auto responseCreate = partition.CreateCheckpoint("checkpoint1", "id2", true);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, responseCreate->GetStatus());
+        }
+        {
+            auto responseDeleteData =  partition.DeleteCheckpointData("checkpoint1");
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, responseDeleteData->GetStatus());
+        }
+        {
+            auto responseCreateSame = partition.CreateCheckpoint("checkpoint1", "id3");
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, responseCreateSame->GetStatus());
+        }
+        {
+            auto responseDelete =  partition.DeleteCheckpoint("checkpoint1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, responseDelete->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedCompaction)
@@ -4640,6 +4690,22 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        auto checkChangedBlockMask = [&] (
+            const TString& firstCheckpoint,
+            const TString& secondCheckpoint,
+            const ui8 maskValue)
+        {
+            auto response = partition.GetChangedBlocks(
+                TBlockRange32::WithLength(0, 1024),
+                firstCheckpoint,
+                secondCheckpoint,
+                false);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
+            UNIT_ASSERT_VALUES_EQUAL(maskValue, response->Record.GetMask()[0]);
+        };
+
         partition.WriteBlocks(0,1);
         partition.WriteBlocks(1,1);
         partition.CreateCheckpoint("cp1");
@@ -4650,15 +4716,29 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.DeleteCheckpointData("cp1");
         partition.CreateCheckpoint("cp2");
 
-        auto response = partition.GetChangedBlocks(
-            TBlockRange32::WithLength(0, 1024),
-            "cp1",
-            "cp2",
-            false);
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        checkChangedBlockMask("cp1", "cp2", 0b00000110);
 
-        UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
-        UNIT_ASSERT_VALUES_EQUAL(0b00000110, response->Record.GetMask()[0]);
+        partition.WriteBlocks(3, 3);
+        partition.WriteBlocks(4, 3);
+        partition.CreateCheckpoint("cp3", "", true);  // cp3 withoutData
+
+        checkChangedBlockMask("cp1", "cp3", 0b00011110);
+        checkChangedBlockMask("cp2", "cp3", 0b00011000);
+
+        partition.WriteBlocks(4, 4);
+        partition.WriteBlocks(5, 4);
+        partition.WriteBlocks(2, 4);
+
+        // block 4 has been overwritten (cp3 without data, don't hold block4)
+        // block 2 also has been overwritten, but cp2 - with data, it holds block2
+        checkChangedBlockMask("cp1", "cp3", 0b00001110);
+        checkChangedBlockMask("cp2", "cp3", 0b00001000);
+
+        partition.CreateCheckpoint("cp4", "", true);  // cp4 withoutData
+
+        checkChangedBlockMask("cp1", "cp4", 0b00111110);
+        checkChangedBlockMask("cp2", "cp4", 0b00111100);
+        checkChangedBlockMask("cp3", "cp4", 0b00110100);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyGetChangedBlocksForOverlayDisk)

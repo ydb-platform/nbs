@@ -73,9 +73,9 @@ private:
 public:
     bool Add(const TCheckpoint& checkpoint);
     void Add(TVector<TCheckpoint>& checkpoints);
-
     bool Delete(const TString& checkpointId);
 
+    bool AddCheckpointMapping(const TCheckpoint& checkpoint);
     void SetCheckpointMappings(const THashMap<TString, ui64>& checkpointId2CommitId);
     bool DeleteCheckpointMapping(const TString& checkpointId);
 

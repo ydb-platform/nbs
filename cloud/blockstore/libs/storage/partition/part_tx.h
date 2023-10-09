@@ -676,13 +676,17 @@ struct TTxPartition
 
         const TCheckpoint Checkpoint;
 
+        bool WithoutData;
+
         NProto::TError Error;
 
         TCreateCheckpoint(
                 TRequestInfoPtr requestInfo,
-                TCheckpoint checkpoint)
+                TCheckpoint checkpoint,
+                bool withoutData)
             : RequestInfo(std::move(requestInfo))
             , Checkpoint(std::move(checkpoint))
+            , WithoutData(withoutData)
         {}
 
         void Clear()

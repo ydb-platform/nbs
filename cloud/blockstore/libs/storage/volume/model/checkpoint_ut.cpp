@@ -106,6 +106,14 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 ECheckpointRequestType::Delete,
                 ECheckpointRequestState::Completed,
                 ECheckpointType::Normal},
+
+            TCheckpointRequest{
+                12,
+                "checkpoint-5",
+                TInstant::Now(),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Completed,
+                ECheckpointType::WithoutData},
         };
         TCheckpointStore store(
             TVector<TCheckpointRequest>{
@@ -120,15 +128,19 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(10, requestId);
         auto checkpoints = store.GetActiveCheckpoints();
-        UNIT_ASSERT_VALUES_EQUAL(2, checkpoints.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, checkpoints.size());
         UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-1"));
         UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
         UNIT_ASSERT_VALUES_EQUAL(
             true,
             store.DoesCheckpointHaveData("checkpoint-2"));
         UNIT_ASSERT_VALUES_EQUAL(
             false,
             store.DoesCheckpointHaveData("checkpoint-1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.DoesCheckpointHaveData("checkpoint-5"));
     }
 
     Y_UNIT_TEST(CreateFail)
@@ -334,6 +346,38 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 store.DoesCheckpointHaveData(request.CheckpointId));
         };
 
+        auto createCheckpointWithoutData = [&](TString checkpointId)
+        {
+            const auto& request = store.CreateNew(
+                checkpointId,
+                TInstant::Now(),
+                ECheckpointRequestType::Create,
+                ECheckpointType::WithoutData);
+
+            store.SetCheckpointRequestSaved(request.RequestId);
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
+            ui64 requestId = 0;
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                store.HasRequestToExecute(&requestId));
+
+            store.SetCheckpointRequestInProgress(requestId);
+            UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
+            UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
+
+            store.SetCheckpointRequestFinished(requestId, true);
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
+            auto checkpoints = store.GetActiveCheckpoints();
+            UNIT_ASSERT_EQUAL(
+                ECheckpointData::DataDeleted,
+                checkpoints[request.CheckpointId].Data);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                store.DoesCheckpointHaveData(request.CheckpointId));
+        };
+
         auto deleteCheckpointData = [&](TString checkpointId)
         {
             const auto& request = store.CreateNew(
@@ -422,6 +466,25 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             deleteCheckpoint("checkpoint-2");
             UNIT_ASSERT_VALUES_EQUAL(1, store.GetActiveCheckpoints().size());
             deleteCheckpoint("checkpoint-3");
+            UNIT_ASSERT_VALUES_EQUAL(0, store.GetActiveCheckpoints().size());
+
+            createCheckpointWithoutData("checkpoint-4");
+            UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointWithDataExist());
+            UNIT_ASSERT_VALUES_EQUAL(0, store.GetCheckpointsWithData().size());
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetActiveCheckpoints().size());
+            createCheckpoint("checkpoint-1");
+            UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointWithDataExist());
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetCheckpointsWithData().size());
+            UNIT_ASSERT_VALUES_EQUAL(2, store.GetActiveCheckpoints().size());
+            deleteCheckpointData("checkpoint-1");
+            UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointWithDataExist());
+            UNIT_ASSERT_VALUES_EQUAL(0, store.GetCheckpointsWithData().size());
+            UNIT_ASSERT_VALUES_EQUAL(2, store.GetActiveCheckpoints().size());
+            deleteCheckpoint("checkpoint-4");
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetActiveCheckpoints().size());
+            deleteCheckpoint("checkpoint-1");
+            UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointWithDataExist());
+            UNIT_ASSERT_VALUES_EQUAL(0, store.GetCheckpointsWithData().size());
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetActiveCheckpoints().size());
         }
     }

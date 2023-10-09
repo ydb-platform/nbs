@@ -1023,7 +1023,7 @@ bool TPartitionDatabase::ReadLogicalUsedBlocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteCheckpoint(const TCheckpoint& checkpoint)
+void TPartitionDatabase::WriteCheckpoint(const TCheckpoint& checkpoint, bool withoutData)
 {
     using TTable = TPartitionSchema::Checkpoints;
 
@@ -1033,7 +1033,8 @@ void TPartitionDatabase::WriteCheckpoint(const TCheckpoint& checkpoint)
             NIceDb::TUpdate<TTable::CommitId>(checkpoint.CommitId),
             NIceDb::TUpdate<TTable::IdempotenceId>(checkpoint.IdempotenceId),
             NIceDb::TUpdate<TTable::DateCreated>(checkpoint.DateCreated.MicroSeconds()),
-            NIceDb::TUpdate<TTable::Stats>(checkpoint.Stats));
+            NIceDb::TUpdate<TTable::Stats>(checkpoint.Stats),
+            NIceDb::TUpdate<TTable::DataDeleted>(withoutData));
 }
 
 void TPartitionDatabase::DeleteCheckpoint(const TString& checkpointId, bool deleteOnlyData)

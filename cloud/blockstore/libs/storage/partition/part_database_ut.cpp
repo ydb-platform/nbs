@@ -620,7 +620,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 {}
             );
 
-            db.WriteCheckpoint(checkpoint);
+            db.WriteCheckpoint(checkpoint, false);
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -668,11 +668,57 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 {}
             );
 
-            db.WriteCheckpoint(checkpoint);
+            db.WriteCheckpoint(checkpoint, false);
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.DeleteCheckpoint("checkpoint", true);
+        });
+
+        executor.ReadTx([&] (TPartitionDatabase db) {
+            TVector<TCheckpoint> checkpoints;
+            THashMap<TString, ui64> checkpointId2CommitId;
+
+            db.ReadCheckpoints(checkpoints, checkpointId2CommitId);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, checkpoints.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, checkpointId2CommitId.size());
+            UNIT_ASSERT_VALUES_EQUAL(42, checkpointId2CommitId["checkpoint"]);
+        });
+
+        executor.WriteTx([&] (TPartitionDatabase db) {
+            db.DeleteCheckpoint("checkpoint", false);
+        });
+
+        executor.ReadTx([&] (TPartitionDatabase db) {
+            TVector<TCheckpoint> checkpoints;
+            THashMap<TString, ui64> checkpointId2CommitId;
+
+            db.ReadCheckpoints(checkpoints, checkpointId2CommitId);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, checkpoints.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, checkpointId2CommitId.size());
+        });
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyWriteCheckpointWithoutData)
+    {
+        TTestExecutor executor;
+
+        executor.WriteTx([&] (TPartitionDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&] (TPartitionDatabase db) {
+            TCheckpoint checkpoint(
+                "checkpoint",
+                42,
+                "",
+                Now(),
+                {}
+            );
+
+            db.WriteCheckpoint(checkpoint, true);
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {

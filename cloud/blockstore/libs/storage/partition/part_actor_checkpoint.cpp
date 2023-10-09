@@ -87,7 +87,8 @@ void TPartitionActor::HandleCreateCheckpoint(
             commitId,
             idempotenceId,
             ctx.Now(),
-            {}));
+            {}),
+        msg->Record.GetCheckpointType() == NProto::ECheckpointType::WITHOUT_DATA);
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
@@ -124,8 +125,11 @@ void TPartitionActor::ExecuteCreateCheckpoint(
     auto checkpoint = args.Checkpoint;  // copy to update
     checkpoint.Stats.CopyFrom(State->GetStats());
 
-    if (State->GetCheckpoints().Add(checkpoint)) {
-        db.WriteCheckpoint(checkpoint);
+    bool added = (args.WithoutData)
+                ? State->GetCheckpoints().AddCheckpointMapping(checkpoint)
+                : State->GetCheckpoints().Add(checkpoint);
+    if (added) {
+        db.WriteCheckpoint(checkpoint, args.WithoutData);
     } else {
         auto existingIdempotenceId = State->GetCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
         if (existingIdempotenceId != checkpoint.IdempotenceId) {
@@ -148,8 +152,9 @@ void TPartitionActor::CompleteCreateCheckpoint(
         args.RequestInfo->CallContext->RequestId);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-         "[%lu] Checkpoint %s created (commit: %lu)",
+         "[%lu] Checkpoint %s %s created (commit: %lu)",
          TabletID(),
+         args.WithoutData ? "without data" : "",
          args.Checkpoint.CheckpointId.Quote().data(),
          args.Checkpoint.CommitId);
 

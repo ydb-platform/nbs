@@ -28,7 +28,8 @@ enum class ECheckpointRequestType
 enum class ECheckpointType
 {
     Normal,
-    Light
+    Light,
+    WithoutData
 };
 
 enum class ECheckpointData

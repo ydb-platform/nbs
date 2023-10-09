@@ -11,6 +11,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 ////////////////////////////////////////////////////////////////////////////////
 // Checkpoint creation request/reposnse
 
+enum ECheckpointType
+{
+    NORMAL = 0;       // Usual checkpoint.
+    LIGHT = 1;        // Checkpoint only for collect used blocks.
+    WITHOUT_DATA = 2; // Normal checkpoint without data.
+}
+
 message TCreateCheckpointRequest
 {
     // Optional request headers.
@@ -24,7 +31,11 @@ message TCreateCheckpointRequest
 
     // Light checkpoint.
     // Checkpoint only for collect used blocks.
-    bool IsLight = 4;
+    // Deprecated, use CheckpointType = ECheckpointType::LIGHT.
+    bool IsLight = 4 [deprecated = true];
+
+    // Checkpoint type to create (IsLight will be deprecated).
+    ECheckpointType CheckpointType = 5;
 }
 
 message TCreateCheckpointResponse

@@ -177,7 +177,7 @@ public:
     // Checkpoints
     //
 
-    void WriteCheckpoint(const TCheckpoint& checkpoint);
+    void WriteCheckpoint(const TCheckpoint& checkpoint, bool withoutData);
 
     void DeleteCheckpoint(const TString& checkpointId, bool deleteOnlyData);
 

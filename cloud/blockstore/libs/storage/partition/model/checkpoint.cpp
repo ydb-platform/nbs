@@ -25,10 +25,9 @@ NJson::TJsonValue TCheckpoint::AsJson() const
 
 bool TCheckpointStore::Add(const TCheckpoint& checkpoint)
 {
-    auto res = Items.insert_unique(checkpoint);
-    if (res.second) {
+    if (AddCheckpointMapping(checkpoint)) {
+        Items.insert_unique(checkpoint);
         InsertCommitId(checkpoint.CommitId);
-        CheckpointId2CommitId.emplace(checkpoint.CheckpointId, checkpoint.CommitId);
         return true;
     }
     return false;
@@ -40,6 +39,14 @@ void TCheckpointStore::Add(TVector<TCheckpoint>& checkpoints)
         bool success = Add(checkpoint);
         Y_ABORT_UNLESS(success);
     }
+}
+
+bool TCheckpointStore::AddCheckpointMapping(const TCheckpoint& checkpoint)
+{
+    if (Items.find(checkpoint.CheckpointId) == Items.end()) {
+        return CheckpointId2CommitId.try_emplace(checkpoint.CheckpointId, checkpoint.CommitId).second;
+    }
+    return false;
 }
 
 void TCheckpointStore::SetCheckpointMappings(const THashMap<TString, ui64>& checkpointId2CommitId)

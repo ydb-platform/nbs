@@ -606,6 +606,21 @@ bool TVolumeActor::GetChangedBlocksForLightCheckpoints(
     return true;
 }
 
+static ECheckpointType ProtoCheckpointType2CheckpointType(bool isLight, NProto::ECheckpointType checkpointType)
+{
+    const THashMap<NProto::ECheckpointType, ECheckpointType> proto2enum{
+        {NProto::ECheckpointType::NORMAL, ECheckpointType::Normal},
+        {NProto::ECheckpointType::LIGHT, ECheckpointType::Light},
+        {NProto::ECheckpointType::WITHOUT_DATA, ECheckpointType::WithoutData}
+    };
+    if (isLight) {
+        // TODO(NBS-4531): remove this after dm release
+        return ECheckpointType::Light;
+    }
+
+    return proto2enum.Value(checkpointType, ECheckpointType::Normal);
+}
+
 template <>
 bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     const TActorContext& ctx,
@@ -627,9 +642,9 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
         ev->Get()->Record.GetCheckpointId(),
         ctx.Now(),
         ECheckpointRequestType::Create,
-        ev->Get()->Record.GetIsLight()
-            ? ECheckpointType::Light
-            : ECheckpointType::Normal);
+        ProtoCheckpointType2CheckpointType(
+            ev->Get()->Record.GetIsLight(),
+            ev->Get()->Record.GetCheckpointType()));
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
