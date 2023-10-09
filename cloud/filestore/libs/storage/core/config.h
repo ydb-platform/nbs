@@ -17,6 +17,28 @@ private:
     NProto::TStorageConfig ProtoConfig;
 
 public:
+    struct TValueByName
+    {
+        enum class ENameStatus
+        {
+            NotFound,
+            FoundInDefaults,
+            FoundInProto
+        };
+
+        ENameStatus Status;
+        TString Value;
+
+        explicit TValueByName(ENameStatus status)
+            : Status(status)
+        {}
+
+        explicit TValueByName(const TString& value)
+            : Status(ENameStatus::FoundInProto)
+            , Value(value)
+        {}
+    };
+
     TStorageConfig(const NProto::TStorageConfig& config = {})
         : ProtoConfig(config)
     {}
@@ -24,6 +46,8 @@ public:
     TStorageConfig(const TStorageConfig&) = default;
 
     void Merge(const NProto::TStorageConfig& storageServiceConfig);
+
+    TValueByName GetValueByName(const TString& name) const;
 
     TString GetSchemeShardDir() const;
 

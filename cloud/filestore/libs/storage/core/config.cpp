@@ -4,6 +4,8 @@
 
 #include <util/generic/size_literals.h>
 
+#include <google/protobuf/text_format.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -223,6 +225,32 @@ void TStorageConfig::Merge(
     const NProto::TStorageConfig& storageConfig)
 {
     ProtoConfig.MergeFrom(storageConfig);
+}
+
+TStorageConfig::TValueByName TStorageConfig::GetValueByName(
+    const TString& name) const
+{
+    auto descriptor =
+        ProtoConfig.GetDescriptor()->FindFieldByName(name);
+    using TStatus = TValueByName::ENameStatus;
+
+    if (descriptor == nullptr) {
+        return TValueByName(TStatus::NotFound);
+    }
+
+    const auto* reflection = NProto::TStorageConfig::GetReflection();
+    if (!reflection->HasField(ProtoConfig, descriptor)) {
+        return TValueByName(TStatus::FoundInDefaults);
+    }
+
+    TString value;
+    google::protobuf::TextFormat::PrintFieldValueToString(
+        ProtoConfig,
+        descriptor,
+        -1,
+        &value);
+
+    return TValueByName(value);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

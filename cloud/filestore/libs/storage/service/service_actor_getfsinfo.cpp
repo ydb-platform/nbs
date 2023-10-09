@@ -22,13 +22,17 @@ class TGetFileStoreInfoActor final
     : public TActorBootstrapped<TGetFileStoreInfoActor>
 {
 private:
+    const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
+    const TVector<TString> StorageConfigFields;
 
 public:
     TGetFileStoreInfoActor(
+        TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
-        TString fileSystemId);
+        TString fileSystemId,
+        TVector<TString> storageConfigFields);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -56,10 +60,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetFileStoreInfoActor::TGetFileStoreInfoActor(
+        TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
-        TString fileSystemId)
-    : RequestInfo(std::move(requestInfo))
+        TString fileSystemId,
+        TVector<TString> storageConfigFields)
+    : Config(std::move(config))
+    , RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
+    , StorageConfigFields(std::move(storageConfigFields))
 {
     ActivityType = TFileStoreActivities::SERVICE_WORKER;
 }
@@ -97,6 +105,24 @@ void TGetFileStoreInfoActor::HandleDescribeFileStoreResponse(
     auto* fs = response->Record.MutableFileStore();
     Convert(config, *fs);
     Convert(config, *fs->MutablePerformanceProfile());
+
+    auto& protoFieldsToValues = *response->Record.MutableStorageConfigFieldsToValues();
+
+    for (const auto& field: StorageConfigFields) {
+        const auto configValue = Config->GetValueByName(field);
+        switch (configValue.Status) {
+            using TStatus = TStorageConfig::TValueByName::ENameStatus;
+            case TStatus::FoundInDefaults:
+                protoFieldsToValues[field] = "Default";
+                break;
+            case TStatus::FoundInProto:
+                protoFieldsToValues[field] = configValue.Value;
+                break;
+            case TStatus::NotFound:
+                protoFieldsToValues[field] = "Not found";
+                break;
+        }
+    }
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -161,9 +187,17 @@ void TStorageServiceActor::HandleGetFileStoreInfo(
         cookie,
         msg->CallContext);
 
+    TVector<TString> storageConfigFields(
+        Reserve(msg->Record.StorageConfigFieldsSize()));
+    for (const auto& name: msg->Record.GetStorageConfigFields()) {
+        storageConfigFields.push_back(name);
+    }
+
     auto actor = std::make_unique<TGetFileStoreInfoActor>(
+        StorageConfig,
         std::move(requestInfo),
-        msg->Record.GetFileSystemId());
+        msg->Record.GetFileSystemId(),
+        std::move(storageConfigFields));
 
     NCloud::Register(ctx, std::move(actor));
 }

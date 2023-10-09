@@ -1182,6 +1182,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         service.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file3"));
     }
+
+    Y_UNIT_TEST(ShouldGetStorageConfigValues)
+    {
+        NProto::TStorageConfig config;
+        config.SetCompactionThreshold(1000);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1'000);
+
+        auto request = service.CreateGetFileStoreInfoRequest(
+            "test",
+            {"SSDBoostTime", "Unknown", "CompactionThreshold"});
+        request->CallContext->RequestType = EFileStoreRequest::GetFileStoreInfo;
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+        auto response =
+            service.RecvResponse<TEvService::TEvGetFileStoreInfoResponse>();
+
+        auto storageValues = response->Record.GetStorageConfigFieldsToValues();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            storageValues["SSDBoostTime"],
+            "Default");
+        UNIT_ASSERT_VALUES_EQUAL(
+            storageValues["Unknown"],
+            "Not found");
+        UNIT_ASSERT_VALUES_EQUAL(
+            storageValues["CompactionThreshold"],
+            "1000");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

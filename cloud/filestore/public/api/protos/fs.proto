@@ -219,6 +219,9 @@ message TGetFileStoreInfoRequest
 
     // FileSystem identifier.
     string FileSystemId = 2;
+
+    // Storage config fields to get values for.
+    repeated string StorageConfigFields = 3;
 }
 
 message TGetFileStoreInfoResponse
@@ -228,6 +231,9 @@ message TGetFileStoreInfoResponse
 
     // FileStore information.
     TFileStore FileStore = 2;
+
+    // Mapping of storage config fields to values.
+    map<string, string> StorageConfigFieldsToValues = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
