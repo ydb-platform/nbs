@@ -2,7 +2,7 @@
 
 \# Build binaries from sources
 1. Build ydbd using the instructions from https://github.com/ydb-platform/ydb/blob/main/BUILD.md
-2. Build nbsd, blockstore-client, diskagentd, blockstore-nbd in a similar way using nbs repo instead of ydb - these programs are located at cloud/blockstore/apps/{client,disk_agent,server} and cloud/blockstore/tools/nbd
+2. Build nbsd, blockstore-client, diskagentd, blockstore-nbd using the instructions from https://github.com/ydb-platform/nbs/blob/main/example/BUILD.md
 3. Copy all those tools to current directory
 
 \# Prepare current directory
