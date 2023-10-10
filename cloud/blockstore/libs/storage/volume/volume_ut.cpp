@@ -7789,6 +7789,67 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT(describeRequest);
     }
+
+    Y_UNIT_TEST(ShouldStartPartitionsAfterStop)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        THashMap<TString, NProto::TUpdateVolumeParamsMapValue> volumeParams;
+
+        bool externalBootHappened = false;
+
+        TAutoPtr<IEventHandle> handle;
+
+        TActorId stoppedBootstrapperActorId;
+        TActorId restoredBootstrapperActorId;
+
+        ui32 generation;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBootstrapper::EvStop: {
+                        stoppedBootstrapperActorId = event->Recipient;
+                        handle = event.Release();
+                        return true;
+                    }
+                    case TEvHiveProxy::EvBootExternalRequest: {
+                        restoredBootstrapperActorId = event->Recipient;
+                        externalBootHappened = true;
+                        return false;
+                    }
+                    case TEvTablet::EvRestored: {
+                        auto* msg = event->Get<TEvTablet::TEvRestored>();
+                        generation = msg->Generation;
+                        return false;
+                    }
+                }
+                return false;
+            }
+        );
+
+        externalBootHappened = false;
+
+        volume.UpdateVolumeParams("vol0", volumeParams);
+
+        // Partitions should be started even if stopping haven't finished
+        UNIT_ASSERT(externalBootHappened);
+        UNIT_ASSERT(handle);
+        // Generation should be increased
+        UNIT_ASSERT_EQUAL(generation, 2);
+
+        runtime->Send(handle.Release());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        // Check that restored bootstrapper is new
+        UNIT_ASSERT(stoppedBootstrapperActorId != restoredBootstrapperActorId);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

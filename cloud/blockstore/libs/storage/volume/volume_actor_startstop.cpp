@@ -308,6 +308,8 @@ void TVolumeActor::StopPartitions(const TActorContext& ctx)
             NCloud::Send<TEvBootstrapper::TEvStop>(
                 ctx,
                 part.Bootstrapper);
+            // Should clear bootstrapper before partitions start
+            part.Bootstrapper = {};
         }
     }
 
