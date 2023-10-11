@@ -1195,15 +1195,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
 
-        auto request = service.CreateGetFileStoreInfoRequest(
-            "test",
-            {"SSDBoostTime", "Unknown", "CompactionThreshold"});
-        request->CallContext->RequestType = EFileStoreRequest::GetFileStoreInfo;
-        service.SendRequest(MakeStorageServiceId(), std::move(request));
-        auto response =
-            service.RecvResponse<TEvService::TEvGetFileStoreInfoResponse>();
+        NProtoPrivate::TGetStorageConfigFieldsRequest request;
+        request.SetFileSystemId("test");
+        request.AddStorageConfigFields("Unknown");
+        request.AddStorageConfigFields("SSDBoostTime");
+        request.AddStorageConfigFields("CompactionThreshold");
 
-        auto storageValues = response->Record.GetStorageConfigFieldsToValues();
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+        auto jsonResponse = service.ExecuteAction("getstorageconfigfields", buf);
+        NProtoPrivate::TGetStorageConfigFieldsResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response).ok());
+
+        auto storageValues = response.GetStorageConfigFieldsToValues();
 
         UNIT_ASSERT_VALUES_EQUAL(
             storageValues["SSDBoostTime"],

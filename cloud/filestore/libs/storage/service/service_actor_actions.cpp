@@ -34,7 +34,11 @@ void TStorageServiceActor::HandleExecuteAction(
     static const THashMap<TString, TActorBuilderMethod> actions = {
         {
             "draintablets",
-            &TStorageServiceActor::CreateDrainTabletActionActor,
+            &TStorageServiceActor::CreateDrainTabletActionActor
+        },
+        {
+            "getstorageconfigfields",
+            &TStorageServiceActor::CreateGetStorageConfigFieldsActionActor
         },
     };
 

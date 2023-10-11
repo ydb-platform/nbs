@@ -191,3 +191,27 @@ message TGetFileSystemConfigResponse
     // Storage config.
     TFileSystemConfig Config = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GetStorageConfig fields request/response.
+
+message TGetStorageConfigFieldsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+    
+    // Storage config fields to get values for.
+    repeated string StorageConfigFields = 3;
+}
+
+message TGetStorageConfigFieldsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Mapping of storage config fields to values.
+    map<string, string> StorageConfigFieldsToValues = 2;
+}

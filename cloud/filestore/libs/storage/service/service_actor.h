@@ -136,6 +136,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateGetStorageConfigFieldsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
 private:
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);

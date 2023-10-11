@@ -310,6 +310,35 @@ void TIndexTabletActor::HandleGetFileSystemConfig(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TIndexTabletActor::HandleGetStorageConfigFields(
+    const TEvIndexTablet::TEvGetStorageConfigFieldsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageConfigFieldsResponse>();
+    auto& protoFieldsToValues =
+        *response->Record.MutableStorageConfigFieldsToValues();
+
+    const auto* msg = ev->Get();
+
+    for (const auto& field: msg->Record.GetStorageConfigFields()) {
+        const auto configValue = Config->GetValueByName(field);
+        switch (configValue.Status) {
+            using TStatus = TStorageConfig::TValueByName::ENameStatus;
+            case TStatus::FoundInDefaults:
+                protoFieldsToValues[field] = "Default";
+                break;
+            case TStatus::FoundInProto:
+                protoFieldsToValues[field] = configValue.Value;
+                break;
+            case TStatus::NotFound:
+                protoFieldsToValues[field] = "Not found";
+                break;
+        }
+    }
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {

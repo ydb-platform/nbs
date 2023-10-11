@@ -144,15 +144,10 @@ public:
         return request;
     }
 
-    auto CreateGetFileStoreInfoRequest(
-        const TString& fileSystemId,
-        const TVector<TString>& storageConfigFields = {})
+    auto CreateGetFileStoreInfoRequest(const TString& fileSystemId)
     {
         auto request = std::make_unique<TEvService::TEvGetFileStoreInfoRequest>();
         request->Record.SetFileSystemId(fileSystemId);
-        for (const auto& field: storageConfigFields) {
-            request->Record.AddStorageConfigFields(field);
-        }
         return request;
     }
 

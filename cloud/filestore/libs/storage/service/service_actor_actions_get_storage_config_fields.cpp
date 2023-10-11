@@ -1,0 +1,153 @@
+#include "service_actor.h"
+
+#include "helpers.h"
+
+#include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <library/cpp/actors/core/actor_bootstrapped.h>
+
+#include <google/protobuf/util/json_util.h>
+
+namespace NCloud::NFileStore::NStorage {
+
+using namespace NActors;
+
+using namespace NKikimr;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TGetStorageConfigFieldsActionActor final
+    : public TActorBootstrapped<TGetStorageConfigFieldsActionActor>
+{
+private:
+    const TRequestInfoPtr RequestInfo;
+    const TString Input;
+
+public:
+    TGetStorageConfigFieldsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        NProtoPrivate::TGetStorageConfigFieldsResponse response,
+        NProto::TError error);
+
+private:
+    STFUNC(StateWork);
+
+    void HandleGetStorageConfigFieldsResponse(
+        const TEvIndexTablet::TEvGetStorageConfigFieldsResponse::TPtr& ev,
+        const TActorContext& ctx);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TGetStorageConfigFieldsActionActor::TGetStorageConfigFieldsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input)
+    : RequestInfo(std::move(requestInfo))
+    , Input(std::move(input))
+{
+    ActivityType = TFileStoreActivities::SERVICE_WORKER;
+}
+
+void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
+{
+    NProtoPrivate::TGetStorageConfigFieldsRequest request;
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
+        ReplyAndDie(
+            ctx,
+            NProtoPrivate::TGetStorageConfigFieldsResponse(),
+            MakeError(
+                E_ARGUMENT,
+                "Failed to parse input"));
+        return;
+    }
+
+    if (!request.GetFileSystemId()) {
+        ReplyAndDie(
+            ctx,
+            NProtoPrivate::TGetStorageConfigFieldsResponse(),
+            MakeError(
+                E_ARGUMENT,
+                "FileSystem id should be supplied"));
+        return;
+    }
+
+    auto requestToTablets =
+        std::make_unique<TEvIndexTablet::TEvGetStorageConfigFieldsRequest>();
+
+    auto& record = requestToTablets->Record;
+    *record.MutableStorageConfigFields() = request.GetStorageConfigFields();
+    record.SetFileSystemId(request.GetFileSystemId());
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(requestToTablets));
+
+    Become(&TThis::StateWork);
+}
+
+void TGetStorageConfigFieldsActionActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProtoPrivate::TGetStorageConfigFieldsResponse response,
+    NProto::TError error)
+{
+    auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
+
+    google::protobuf::util::MessageToJsonString(
+        std::move(response),
+        msg->Record.MutableOutput());
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(msg));
+    Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TGetStorageConfigFieldsActionActor::HandleGetStorageConfigFieldsResponse(
+    const TEvIndexTablet::TEvGetStorageConfigFieldsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto error = ev->Get()->Record.GetError();
+    ReplyAndDie(ctx, std::move(ev->Get()->Record), error);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TGetStorageConfigFieldsActionActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvIndexTablet::TEvGetStorageConfigFieldsResponse,
+            HandleGetStorageConfigFieldsResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
+            break;
+    }
+}
+
+} // namespace
+
+IActorPtr TStorageServiceActor::CreateGetStorageConfigFieldsActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    return std::make_unique<TGetStorageConfigFieldsActionActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+}   // namespace NCloud::NFileStore::NStorage

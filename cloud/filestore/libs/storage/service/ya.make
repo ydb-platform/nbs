@@ -5,6 +5,7 @@ SRCS(
     service.cpp
     service_actor.cpp
     service_actor_actions_drain_tablets.cpp
+    service_actor_actions_get_storage_config_fields.cpp
     service_actor_actions.cpp
     service_actor_alterfs.cpp
     service_actor_complete.cpp
