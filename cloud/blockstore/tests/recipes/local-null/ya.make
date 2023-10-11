@@ -9,7 +9,7 @@ PEERDIR(
     library/python/testing/recipe
     library/python/testing/yatest_common
 
-    kikimr/ci/libraries
+    ydb/tests/library
 )
 
 DATA(
