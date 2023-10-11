@@ -207,7 +207,7 @@ func (c *httpClient) body(
 		etag,
 	)
 
-	// TODO: try to use http2 streams https://st.yandex-team.ru/NBS-3253.
+	// TODO: try to use http2 streams NBS-3253.
 	resp, err = c.client.Do(req)
 	if err != nil {
 		return nil, errors.NewRetriableErrorf(
