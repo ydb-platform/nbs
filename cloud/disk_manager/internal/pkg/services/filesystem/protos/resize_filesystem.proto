@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package filesystem;
+
+import "cloud/disk_manager/internal/pkg/services/filesystem/protos/filesystem.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ResizeFilesystemRequest {
+    FilesystemId Filesystem = 1;
+    uint64 Size = 2;
+}
+
+message ResizeFilesystemTaskState {
+    reserved 1;
+}

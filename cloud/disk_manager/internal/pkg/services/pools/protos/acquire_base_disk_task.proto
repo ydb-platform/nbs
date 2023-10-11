@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package pools;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message AcquireBaseDiskRequest {
+    string SrcImageId = 1;
+    types.Disk OverlayDisk = 2;
+    types.DiskKind OverlayDiskKind = 3;
+    uint64 OverlayDiskSize = 4;
+}
+
+message AcquireBaseDiskResponse {
+    string BaseDiskId = 1;
+    string BaseDiskCheckpointId = 2;
+}
+
+message AcquireBaseDiskTaskState {
+    reserved 1;
+
+    types.Disk BaseDisk = 2;
+    string BaseDiskCheckpointId = 3;
+    uint32 Step = 4;
+}
