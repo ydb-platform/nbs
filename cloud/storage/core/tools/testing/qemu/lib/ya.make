@@ -13,7 +13,6 @@ PEERDIR(
     contrib/python/PyYAML
     contrib/python/qemu
     contrib/python/retrying
-    devtools/ya/core/config
     library/python/fs
     library/python/testing/recipe
     ydb/tests/library

@@ -252,7 +252,7 @@ class Qemu:
         if self.virtio_options:
             cmd += self.virtio_options
 
-        for tag, path, vhost_socket in self.mount_paths:
+        for tag, _, vhost_socket in self.mount_paths:
             cmd += ["-chardev",
                     "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
             cmd += ["-device",
