@@ -1616,7 +1616,7 @@ TVector<const TBlob*> TBlobIndex::TImpl::FindZoneBlobs(ui32 z) const
     });
 
     // TODO: filter by zone block range
-    // don't forget to modify ConvertToMixedIndex after this (Y_VERIFY for global
+    // don't forget to modify ConvertToMixedIndex after this (Y_ABORT_UNLESS for global
     // blob's blocklists)
     GlobalZone->RangeMap->Visit([&] (const TBlob* blob) {
         result.push_back(blob);

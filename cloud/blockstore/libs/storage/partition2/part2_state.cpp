@@ -260,7 +260,7 @@ TVector<ui32> TPartitionState::GetChannelsByKind(
 
 EChannelDataKind TPartitionState::GetChannelDataKind(ui32 channel) const
 {
-    // FIXME(NBS-2088): use Y_VERIFY
+    // FIXME(NBS-2088): use Y_ABORT_UNLESS
     Y_VERIFY_DEBUG(channel < ChannelCount);
     if (channel >= ChannelCount) {
         return EChannelDataKind::Merged;
