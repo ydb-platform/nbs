@@ -48,7 +48,7 @@ constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration RESOLVE_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
-
+constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Seconds(60);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -347,6 +347,7 @@ private:
     IClientHandlerPtr Handler;
     TEndpointCountersPtr Counters;
     TLog Log;
+    TLogThrottler LogThrottler = TLogThrottler(LOG_THROTTLER_PERIOD);
     TReconnect Reconnect;
 
     // config might be adjusted during initial handshake
@@ -515,7 +516,8 @@ void TClientEndpoint::ChangeState(
         GetEndpointStateName(expectedState),
         GetEndpointStateName(actualState));
 
-    STORAGE_DEBUG("change state from %s to %s",
+    // FIXME change back to DEBUG when NBS-4644 is resolved
+    STORAGE_INFO("change state from %s to %s",
         GetEndpointStateName(expectedState),
         GetEndpointStateName(newState));
 }
@@ -845,7 +847,8 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
             break;
 
         default:
-            STORAGE_ERROR("unexpected completion " << NVerbs::PrintCompletion(wc));
+            STORAGE_ERROR_T(LogThrottler, "unexpected completion "
+                << NVerbs::PrintCompletion(wc));
             ReportRdmaError();
     }
 }
