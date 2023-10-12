@@ -89,6 +89,50 @@ message TNVMeTargetArgs
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TStorageDiscoveryConfig
+{
+    message TLayout
+    {
+        // Reserved space at the beginning of the file.
+        optional uint64 HeaderSize = 1;
+
+        // Space between devices.
+        optional uint64 DevicePadding = 2;
+
+        // The size of each device.
+        optional uint64 DeviceSize = 3;
+    };
+
+    message TPoolConfig
+    {
+        optional string PoolName = 1;
+        optional uint64 MinSize = 2;
+        optional uint64 MaxSize = 3;
+
+        optional TLayout Layout = 4;
+
+        // Used to calculate the device ids.
+        optional string HashSuffix = 5;
+    }
+
+    message TPathConfig
+    {
+        // The path regexp (e.g. /dev/disk/by-partlabel/NVMECOMPUTE([0-9]{2}))
+        // it must have at least one group of digits that will be used to
+        // calculate device ids.
+        optional string PathRegExp = 1;
+
+        // The maximum number of devices that can be discovered by a given path.
+        optional uint32 MaxDeviceCount = 2;
+
+        repeated TPoolConfig PoolConfigs = 3;
+    }
+
+    repeated TPathConfig PathConfigs = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskAgentConfig
 {
     optional bool Enabled = 1;
@@ -159,6 +203,9 @@ message TDiskAgentConfig
     // During shutdown, the disk agent will wait for I/O requests to complete
     // during this interval (in milliseconds).
     optional uint32 ShutdownTimeout = 25;
+
+    // Storage discovery config.
+    optional TStorageDiscoveryConfig StorageDiscoveryConfig = 26;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

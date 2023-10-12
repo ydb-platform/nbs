@@ -3,7 +3,9 @@ LIBRARY()
 SRCS(
     config.cpp
     device_client.cpp
+    device_generator.cpp
     device_guard.cpp
+    device_scanner.cpp
     probes.cpp
 )
 

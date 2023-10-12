@@ -23,6 +23,7 @@
 #include <util/stream/file.h>
 #include <util/stream/str.h>
 #include <util/string/cast.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -74,6 +75,10 @@ void TConfigInitializerCommon::InitDiskAgentConfig()
 
     if (Options->TemporaryServer || diskAgentConfig.GetDedicatedDiskAgent()) {
         diskAgentConfig.SetEnabled(false);
+    }
+
+    if (diskAgentConfig.GetAgentId().empty()) {
+        diskAgentConfig.SetAgentId(FQDNHostName());
     }
 
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(

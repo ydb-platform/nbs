@@ -5,11 +5,13 @@
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -78,24 +80,32 @@ auto CreateSpdkConfig()
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
 }
 
-auto CreateNullConfig(
-    const std::array<const TFsPath, 3>& namespaces,
-    bool acquireRequired,
-    TDuration deviceIOTimeout)
+struct TNullConfigParams
+{
+    TVector<TFsPath> Files;
+    bool AcquireRequired = false;
+    TDuration DeviceIOTimeout;
+
+    NProto::TStorageDiscoveryConfig DiscoveryConfig;
+};
+
+auto CreateNullConfig(TNullConfigParams params)
 {
     NProto::TDiskAgentConfig config;
-    config.SetAcquireRequired(acquireRequired);
+    config.SetAcquireRequired(params.AcquireRequired);
     config.SetReleaseInactiveSessionsTimeout(10000);
-    if (deviceIOTimeout) {
-        config.SetDeviceIOTimeout(deviceIOTimeout.MilliSeconds());
+    if (params.DeviceIOTimeout) {
+        config.SetDeviceIOTimeout(params.DeviceIOTimeout.MilliSeconds());
     }
 
-    for (size_t i = 0; i < namespaces.size(); ++i) {
+    for (size_t i = 0; i < params.Files.size(); ++i) {
         auto& device = *config.AddFileDevices();
-        device.SetPath(namespaces[i]);
+        device.SetPath(params.Files[i]);
         device.SetBlockSize(DefaultDeviceBlockSize);
         device.SetDeviceId("uuid-" + ToString(i + 1));
     }
+
+    *config.MutableStorageDiscoveryConfig() = std::move(params.DiscoveryConfig);
 
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
 }
@@ -250,11 +260,13 @@ struct TFiles
 {
     const TTempDir TempDir;
     const TFsPath Nvme3 = TempDir.Path() / "nvme3";
-    const std::array<const TFsPath, 3> Nvme3s = {
+    const TVector<TFsPath> Nvme3s = {
         TempDir.Path() / "nvme3n1",
         TempDir.Path() / "nvme3n2",
         TempDir.Path() / "nvme3n3"
     };
+
+    const ui64 DefaultFileSize = DefaultDeviceBlockSize * DefaultBlocksCount;
 
     const NNvme::INvmeManagerPtr NvmeManager =
         std::make_shared<TTestNvmeManager>();
@@ -262,11 +274,11 @@ struct TFiles
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
         TFile fileData(Nvme3, EOpenModeFlag::CreateNew);
-        fileData.Resize(DefaultDeviceBlockSize * DefaultBlocksCount);
+        fileData.Resize(DefaultFileSize);
 
         for (const auto& path: Nvme3s) {
             TFile fileData(path, EOpenModeFlag::CreateNew);
-            fileData.Resize(DefaultDeviceBlockSize * DefaultBlocksCount);
+            fileData.Resize(DefaultFileSize);
         }
     }
 
@@ -415,18 +427,64 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
     Y_UNIT_TEST_F(ShouldInitializeWithNull, TFiles)
     {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "AppCriticalEvents/DiskAgentDeviceGeneratedConfigMismatch",
+            true);
+
+        UNIT_ASSERT_EQUAL(0, *mismatch);
+
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig(Nvme3s, false, {})
+            CreateNullConfig({ .Files = Nvme3s })
         );
 
         ShouldInitialize(
             *state,
             true); // checkSerialNumbers
+
+        UNIT_ASSERT_EQUAL(0, *mismatch);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportDeviceGeneratedConfigMismatch, TFiles)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "AppCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_EQUAL(0, *mismatch);
+
+        NProto::TStorageDiscoveryConfig discoveryConfig;
+        auto& path = *discoveryConfig.AddPathConfigs();
+        path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
+        auto& pool = *path.AddPoolConfigs();
+
+        // the IDs of the generated devices will differ from those in the config
+        pool.SetHashSuffix("random");
+
+        pool.SetMinSize(DefaultFileSize);
+        pool.SetMaxSize(DefaultFileSize);
+
+        auto state = CreateDiskAgentStateNull(
+            CreateNullConfig({
+                .Files = Nvme3s,
+                .DiscoveryConfig = std::move(discoveryConfig)
+            }));
+
+        ShouldInitialize(
+            *state,
+            false); // checkSerialNumbers
+
+        UNIT_ASSERT_EQUAL(1, *mismatch);
     }
 
     Y_UNIT_TEST_F(ShouldProperlyProcessRequestsToUninitializedDevices, TFiles)
     {
-        auto config = CreateNullConfig(Nvme3s, false, {});
+        auto config = CreateNullConfig({ .Files = Nvme3s });
 
         TDiskAgentState state(
             config,
@@ -733,7 +791,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldAcquireDevices, TFiles)
     {
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig(Nvme3s, true, {})
+            CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
         );
 
         auto future = state->Initialize({});
@@ -1121,7 +1179,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldConvertIOTimeoutsToErrors, TFiles)
     {
         // using default io timeout - expecting it to be equal to 1 minute
-        auto config = CreateNullConfig(Nvme3s, false, TDuration::Zero());
+        auto config = CreateNullConfig({ .Files = Nvme3s });
 
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 

@@ -93,6 +93,11 @@ public:
 
     bool GetDeviceHealthCheckDisabled() const;
 
+    const NProto::TStorageDiscoveryConfig& GetStorageDiscoveryConfig() const
+    {
+        return Config.GetStorageDiscoveryConfig();
+    }
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

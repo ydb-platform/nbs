@@ -2,21 +2,30 @@
 
 #include "hash_table_storage.h"
 
-#include <cloud/blockstore/config/disk.pb.h>
-#include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/service_local/broken_storage.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
-#include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <cloud/blockstore/config/disk.pb.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/service_local/broken_storage.h>
+#include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
+#include <cloud/blockstore/public/api/protos/mount.pb.h>
 
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 #include <util/system/file.h>
 #include <util/system/mutex.h>
 
 #include <cerrno>
 #include <cstring>
+#include <functional>
+#include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -75,9 +84,12 @@ void SetBlocksCount(
 class TInitializer
 {
 private:
+    const TLog Log;
     const TDiskAgentConfigPtr AgentConfig;
     const IStorageProviderPtr StorageProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
+
+    TVector<NProto::TFileDeviceArgs> FileDevices;
 
     TVector<TStorageIoStatsPtr> Stats;
     TVector<NProto::TDeviceConfig> Configs;
@@ -89,6 +101,7 @@ private:
 
 public:
     TInitializer(
+        TLog log,
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager);
@@ -111,18 +124,31 @@ private:
 
     NProto::TDeviceConfig CreateConfig(const NProto::TFileDeviceArgs& device);
     NProto::TDeviceConfig CreateConfig(const NProto::TMemoryDeviceArgs& device);
+
+    void ScanFileDevices();
+    bool CompareConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
+    bool ValidateConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
+    bool ValidateStorageDiscoveryConfig() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TInitializer::TInitializer(
+        TLog log,
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager)
-    : AgentConfig(std::move(agentConfig))
+    : Log {std::move(log)}
+    , AgentConfig(std::move(agentConfig))
     , StorageProvider(std::move(storageProvider))
     , NvmeManager(std::move(nvmeManager))
-{}
+{
+    auto fileDevices = AgentConfig->GetFileDevices();
+
+    FileDevices.assign(
+        std::make_move_iterator(fileDevices.begin()),
+        std::make_move_iterator(fileDevices.end()));
+}
 
 TFuture<IStoragePtr> TInitializer::CreateFileStorage(
     TString path,
@@ -166,17 +192,16 @@ TFuture<IStoragePtr> TInitializer::CreateMemoryStorage(
 
 void TInitializer::OnError(int i, const TString& error)
 {
-    const auto& fileDevices = AgentConfig->GetFileDevices();
     const auto& memoryDevices = AgentConfig->GetMemoryDevices();
 
-    if (i < fileDevices.size()) {
+    if (i < std::ssize(FileDevices)) {
         with_lock (Lock) {
             Errors.push_back(TStringBuilder()
-                << "FileDevice " << fileDevices[i].GetPath()
+                << "FileDevice " << FileDevices[i].GetPath()
                 << " initialization failed: " << error);
         }
     } else {
-        i -= fileDevices.size();
+        i -= FileDevices.size();
         Y_ABORT_UNLESS(i < memoryDevices.size());
 
         with_lock (Lock) {
@@ -187,12 +212,158 @@ void TInitializer::OnError(int i, const TString& error)
     }
 }
 
+bool TInitializer::ValidateStorageDiscoveryConfig() const
+{
+    const auto& config = AgentConfig->GetStorageDiscoveryConfig();
+
+    for (const auto& path: config.GetPathConfigs()) {
+        for (const auto& pool: path.GetPoolConfigs()) {
+            if (pool.HasLayout() && !pool.GetLayout().GetDeviceSize()) {
+                STORAGE_WARN("Bad pool configuration: " << pool);
+
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool TInitializer::ValidateConfigs(
+    const TVector<NProto::TFileDeviceArgs>& fileDevices)
+{
+    auto it = AdjacentFindBy(fileDevices, [] (auto& file) {
+        return file.GetDeviceId();
+    });
+
+    if (it != fileDevices.end()) {
+        const auto& uuid = it->GetDeviceId();
+        const auto& lhs = it->GetPath();
+
+        it = std::next(it);
+
+        const auto& rhs = it != fileDevices.end()
+            ? it->GetPath()
+            : "?";
+
+        STORAGE_WARN("Two files '" << lhs << "' and '" << rhs
+            << "' have the same uuid: " << uuid);
+
+        return false;
+    }
+
+    return true;
+}
+
+bool TInitializer::CompareConfigs(
+    const TVector<NProto::TFileDeviceArgs>& dynConfig)
+{
+    if (dynConfig.size() != FileDevices.size()) {
+        STORAGE_WARN("Unexpected device count: %lu != %lu",
+            FileDevices.size(), dynConfig.size());
+        return false;
+    }
+
+    auto staticConfig = FileDevices;
+
+    SortBy(staticConfig, [] (auto& file) {
+        return file.GetDeviceId();
+    });
+
+    auto key = [] (const auto& file) {
+        return std::make_tuple(
+            file.GetPath(),
+            file.GetPoolName(),
+            file.GetBlockSize(),
+            file.GetOffset(),
+            file.GetFileSize());
+    };
+
+    for (size_t i = 0; i != staticConfig.size(); ++i) {
+        if (staticConfig[i].GetDeviceId() != dynConfig[i].GetDeviceId()) {
+            STORAGE_WARN("Unexpected dynamic config: " << dynConfig[i]);
+
+            return false;
+        }
+
+        if (key(staticConfig[i]) != key(dynConfig[i])) {
+            STORAGE_WARN("Dynamic config: "
+                << dynConfig[i] << " doesn't match the static one: "
+                << staticConfig[i]);
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void TInitializer::ScanFileDevices()
+{
+    if (!ValidateStorageDiscoveryConfig()) {
+        ReportDiskAgentConfigMismatch("Bad storage discovery config");
+        return;
+    }
+
+    TDeviceGenerator gen { Log, AgentConfig->GetAgentId() };
+
+    if (auto error = FindDevices(
+            AgentConfig->GetStorageDiscoveryConfig(),
+            std::ref(gen)); HasError(error))
+    {
+        ReportDiskAgentConfigMismatch(TStringBuilder()
+            << "Can't generate config: " << FormatError(error));
+
+        return;
+    }
+
+    TVector<NProto::TFileDeviceArgs> files = gen.ExtractResult();
+
+    if (files.empty()) {
+        return;
+    }
+
+    SortBy(files, [] (auto& file) {
+        return file.GetDeviceId();
+    });
+
+    if (!ValidateConfigs(files)) {
+        ReportDiskAgentConfigMismatch("Bad generated config");
+
+        return;
+    }
+
+    if (FileDevices.empty()) {
+        // We have only the dynamic configuration
+        FileDevices = std::move(files);
+
+        return;
+    }
+
+    // We have both the static config and the dynamic config and they must
+    // be the same
+    if (!CompareConfigs(files)) {
+        TStringStream ss;
+        ss << "Generated config doesn't match the static one. Static:\n";
+        for (auto& d: FileDevices) {
+            ss << d << "\n";
+        }
+        ss << "\nDynamic:\n";
+        for (auto& d: files) {
+            ss << d << "\n";
+        }
+
+        ReportDiskAgentConfigMismatch(ss.Str());
+    }
+}
+
 TFuture<void> TInitializer::Initialize()
 {
-    const auto& fileDevices = AgentConfig->GetFileDevices();
+    ScanFileDevices();
+
     const auto& memoryDevices = AgentConfig->GetMemoryDevices();
 
-    auto deviceCount = fileDevices.size() + memoryDevices.size();
+    auto deviceCount = std::ssize(FileDevices) + memoryDevices.size();
 
     Configs.resize(deviceCount);
     Devices.resize(deviceCount);
@@ -201,8 +372,8 @@ TFuture<void> TInitializer::Initialize()
     TVector<TFuture<IStoragePtr>> futures;
 
     int i = 0;
-    for (; i != fileDevices.size(); ++i) {
-        const auto& device = fileDevices[i];
+    for (; i != std::ssize(FileDevices); ++i) {
+        const auto& device = FileDevices[i];
 
         Configs[i] = CreateConfig(device);
         Stats[i] = std::make_shared<TStorageIoStats>();
@@ -251,7 +422,7 @@ TFuture<void> TInitializer::Initialize()
     }
 
     for (; i != deviceCount; ++i) {
-        const auto& device = memoryDevices[i - fileDevices.size()];
+        const auto& device = memoryDevices[i - std::ssize(FileDevices)];
 
         Configs[i] = CreateConfig(device);
         Stats[i] = std::make_shared<TStorageIoStats>();
@@ -355,11 +526,13 @@ TInitializeStorageResult TInitializer::GetResult()
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<TInitializeStorageResult> InitializeStorage(
+    TLog log,
     TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager)
 {
     auto initializer = std::make_shared<TInitializer>(
+        std::move(log),
         std::move(agentConfig),
         std::move(storageProvider),
         std::move(nvmeManager));

@@ -47,6 +47,7 @@ namespace NCloud::NBlockStore {
     xxx(UnexpectedBatchMigration)                                              \
     xxx(UnexpectedIdentifierRepetition)                                        \
     xxx(FreshDeviceNotFoundInConfig)                                           \
+    xxx(DiskAgentConfigMismatch)                                               \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

@@ -18,6 +18,7 @@
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
 #include <util/stream/str.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -261,6 +262,10 @@ void TConfigInitializer::SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) 
 {
     if (!config.GetDedicatedDiskAgent()) {
         config.SetEnabled(false);
+    }
+
+    if (config.GetAgentId().empty()) {
+        config.SetAgentId(FQDNHostName());
     }
 }
 

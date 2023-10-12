@@ -359,7 +359,11 @@ TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 
 TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 {
-    return InitializeStorage(AgentConfig, StorageProvider, NvmeManager)
+    return InitializeStorage(
+            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+            AgentConfig,
+            StorageProvider,
+            NvmeManager)
         .Apply([=] (auto future) {
             TInitializeStorageResult r = future.ExtractValue();
 

@@ -13,6 +13,8 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 
+#include <util/folder/tempdir.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -3193,6 +3195,177 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_GT(stats["dev1"].GetErrors(), 0);
             UNIT_ASSERT_GT(stats["dev2"].GetErrors(), 0);
         }
+    }
+
+    Y_UNIT_TEST(ShouldFindDevices)
+    {
+        TTestBasicRuntime runtime;
+
+        TTempDir tempDir;
+        const TFsPath rootDir = tempDir.Path() / "dev/disk/by-partlabel";
+
+        rootDir.MkDirs();
+
+        auto prepareFile = [&] (TFsPath name, auto size) {
+            TFile {rootDir / name, EOpenModeFlag::CreateAlways}
+            .Resize(size);
+        };
+
+        // local
+        prepareFile("NVMECOMPUTE01", 1024_KB);
+        prepareFile("NVMECOMPUTE02", 1024_KB);
+        prepareFile("NVMECOMPUTE03", 2000_KB);
+        prepareFile("NVMECOMPUTE04", 2000_KB);
+        prepareFile("NVMECOMPUTE05", 1025_KB);
+
+        // default
+        prepareFile("NVMENBS01", 1024_KB);
+        prepareFile("NVMENBS02", 1024_KB);
+        prepareFile("NVMENBS03", 2000_KB);
+        prepareFile("NVMENBS04", 2000_KB);
+        prepareFile("NVMENBS05", 1025_KB);
+        prepareFile("NVMENBS06", 10000_KB);
+        prepareFile("NVMENBS07", 10000_KB);
+
+         // rot
+        prepareFile("ROTNBS01", 2024_KB);
+        prepareFile("ROTNBS02", 2024_KB);
+        prepareFile("ROTNBS03", 2024_KB);
+        prepareFile("ROTNBS04", 2024_KB);
+        prepareFile("ROTNBS05", 2025_KB);
+
+        auto config = DiskAgentConfig();
+        auto& discovery = *config.MutableStorageDiscoveryConfig();
+
+        {
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(rootDir / "NVMECOMPUTE([0-9]{2})");
+
+            auto& local = *path.AddPoolConfigs();
+            local.SetPoolName("local");
+            local.SetHashSuffix("-local");
+            local.SetMinSize(1024_KB);
+            local.SetMaxSize(2000_KB);
+        }
+
+        {
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(rootDir / "NVMENBS([0-9]{2})");
+
+            auto& def = *path.AddPoolConfigs();
+            def.SetMinSize(1024_KB);
+            def.SetMaxSize(2000_KB);
+
+            auto& defLarge = *path.AddPoolConfigs();
+            defLarge.SetMinSize(9000_KB);
+            defLarge.SetMaxSize(15000_KB);
+        }
+
+        {
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(rootDir / "ROTNBS([0-9]{2})");
+
+            auto& local = *path.AddPoolConfigs();
+            local.SetPoolName("rot");
+            local.SetHashSuffix("-rot");
+            local.SetMinSize(2024_KB);
+            local.SetMaxSize(2200_KB);
+        }
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(config
+                | WithBackend(NProto::DISK_AGENT_BACKEND_AIO))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        TVector<NProto::TDeviceConfig> devices;
+        for (auto& [_, config]: env.DiskRegistryState->Devices) {
+            devices.push_back(config);
+        }
+        SortBy(devices, [] (const auto& d) {
+            return std::tie(d.GetPoolName(), d.GetDeviceName());
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(17, devices.size());
+
+        for (auto& d: devices) {
+            UNIT_ASSERT_VALUES_UNEQUAL("", d.GetDeviceUUID());
+        }
+
+        for (int i = 1; i <= 7; ++i) {
+            const auto& d = devices[i - 1];
+            const auto path = rootDir / (TStringBuilder() << "NVMENBS0" << i);
+            UNIT_ASSERT_VALUES_EQUAL(path, d.GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL("", d.GetPoolName());
+        }
+
+        for (int i = 1; i <= 5; ++i) {
+            const auto& d = devices[7 + i - 1];
+            const auto path = rootDir / (TStringBuilder() << "NVMECOMPUTE0" << i);
+            UNIT_ASSERT_VALUES_EQUAL(path, d.GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL("local", d.GetPoolName());
+        }
+
+        for (int i = 1; i <= 5; ++i) {
+            const auto& d = devices[12 + i - 1];
+            const auto path = rootDir / (TStringBuilder() << "ROTNBS0" << i);
+            UNIT_ASSERT_VALUES_EQUAL(path, d.GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL("rot", d.GetPoolName());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDetectConfigMismatch)
+    {
+        TTestBasicRuntime runtime;
+
+        TTempDir tempDir;
+        const TFsPath rootDir = tempDir.Path() / "dev/disk/by-partlabel";
+
+        rootDir.MkDirs();
+
+        auto prepareFile = [&] (TFsPath name, auto size) {
+            TFile {rootDir / name, EOpenModeFlag::CreateAlways}
+            .Resize(size);
+        };
+
+        prepareFile("NVMECOMPUTE01", 1024_KB);    // local
+        prepareFile("NVMECOMPUTE02", 1000_KB);
+
+        auto config = DiskAgentConfig();
+        auto& discovery = *config.MutableStorageDiscoveryConfig();
+
+        {
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(rootDir / "NVMECOMPUTE([0-9]{2})");
+
+            auto& local = *path.AddPoolConfigs();
+            local.SetPoolName("local");
+            local.SetHashSuffix("-local");
+            local.SetMinSize(1024_KB);
+            local.SetMaxSize(2000_KB);
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "AppCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(config
+                | WithBackend(NProto::DISK_AGENT_BACKEND_AIO))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, env.DiskRegistryState->Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
     }
 }
 
