@@ -2111,7 +2111,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-3298
     - yabs/server/test/ft/BSSERVER-3418
     - yabs/server/test/ft/BSSERVER-4190
-    - yabs/server/test/ft/BSSERVER-5085
     - yabs/server/test/ft/BSSERVER-5414
     - yabs/server/test/ft/BSSERVER-5462
     - yabs/server/test/ft/BSSERVER-5766
@@ -3330,7 +3329,6 @@ migrations:
     - ads/mr_tools/record_formats/ut_py3
     - ads/mr_tools/slotrecord/ut_py2
     - ads/mr_tools/slotrecord/ut_py3
-    - ads/nirvana/automl/lib/batch_processor/ut
     - ads/nirvana/difacto/dmlc_launcher/nirvana_state
     - ads/quality/adv_machine/scripts/preprocess_autotargetting_pool
     - ads/quality/ltp/pytorch/online_learning/build_hourly_logs
@@ -3839,8 +3837,6 @@ migrations:
     - ads/ml_engine/token
     - ads/ml_monitoring/api/lib
     - ads/nirvana
-    - ads/nirvana/automl/lib/batch_processor
-    - ads/nirvana/automl/lib/batch_processor/ut
     - ads/nirvana/automl/lib/bc
     - ads/nirvana/automl/lib/metric_eval
     - ads/nirvana/automl/lib/ml_engine
@@ -7263,7 +7259,6 @@ migrations:
     - trust/clearing/base/tools
     - trust/scheduler/tests/pytest
     - weather/workers/imports/narodmon
-    - yabs/models_services/feature_store/model
     - ydo/database/helpers
     - ydo/database/models/types
     - ydo/devops/monitorings/bin/lib
@@ -8812,7 +8807,6 @@ migrations:
     - ads/ml_engine/learn/result/local_extended_fstr/lib
     - ads/ml_engine/lib
     - ads/ml_monitoring/alerts/ut
-    - ads/nirvana/automl/lib/batch_processor
     - ads/nirvana/difacto/online_loss_processor
     - ads/nirvana/online_learning/move_dmlc_dumps/lib
     - ads/nirvana/online_learning/pipeline_launcher/task_utils/lib
