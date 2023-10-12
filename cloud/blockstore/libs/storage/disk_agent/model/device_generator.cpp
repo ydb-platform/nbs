@@ -37,7 +37,7 @@ void TDeviceGenerator::operator () (
 
     const auto& layout = poolConfig.GetLayout();
 
-    Y_VERIFY(layout.GetDeviceSize());
+    Y_ABORT_UNLESS(layout.GetDeviceSize());
 
     ui64 offset = layout.GetHeaderSize();
 
