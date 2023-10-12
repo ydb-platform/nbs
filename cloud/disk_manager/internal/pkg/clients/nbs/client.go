@@ -530,6 +530,16 @@ func (c *client) getMountFlags(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t CheckpointType) toProto() protos.ECheckpointType {
+	return map[CheckpointType]protos.ECheckpointType{
+		CheckpointTypeNormal:      protos.ECheckpointType_NORMAL,
+		CheckpointTypeLight:       protos.ECheckpointType_LIGHT,
+		CheckpointTypeWithoutData: protos.ECheckpointType_WITHOUT_DATA,
+	}[t]
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (c *client) Ping(ctx context.Context) (err error) {
 	defer c.metrics.StatRequest("Ping")(&err)
 
@@ -628,7 +638,7 @@ func (c *client) CreateProxyOverlayDisk(
 		ctx,
 		diskID,
 		baseDiskCheckpointID,
-		false, // isLight
+		CheckpointTypeNormal.toProto(),
 	)
 	if err != nil {
 		return false, wrapError(err)
@@ -701,7 +711,7 @@ func (c *client) CreateCheckpoint(
 		ctx,
 		params.DiskID,
 		params.CheckpointID,
-		params.IsLight,
+		params.CheckpointType.toProto(),
 	)
 	return wrapError(err)
 }

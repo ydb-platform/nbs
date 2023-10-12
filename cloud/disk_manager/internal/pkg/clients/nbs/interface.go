@@ -90,10 +90,18 @@ type ScanDiskStatus struct {
 	BrokenBlobs []string
 }
 
+type CheckpointType uint32
+
+const (
+	CheckpointTypeNormal CheckpointType = iota // Must be default value of CheckpointType.
+	CheckpointTypeLight
+	CheckpointTypeWithoutData
+)
+
 type CheckpointParams struct {
-	DiskID       string
-	CheckpointID string
-	IsLight      bool
+	DiskID         string
+	CheckpointID   string
+	CheckpointType CheckpointType
 }
 
 ////////////////////////////////////////////////////////////////////////////////

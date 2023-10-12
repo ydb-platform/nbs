@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -940,87 +941,92 @@ func TestScanDisk(t *testing.T) {
 }
 
 func TestGetChangedBytes(t *testing.T) {
-	ctx := newContext()
-	client := newClient(t, ctx)
+	for _, checkpointType := range []nbs.CheckpointType{
+		nbs.CheckpointTypeNormal,
+		nbs.CheckpointTypeWithoutData,
+	} {
+		ctx := newContext()
+		client := newClient(t, ctx)
 
-	diskID := t.Name()
+		diskID := t.Name() + strconv.Itoa(int(checkpointType))
 
-	blockSize := uint32(4096)
+		blockSize := uint32(4096)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 4096,
-		BlockSize:   blockSize,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
+		err := client.Create(ctx, nbs.CreateDiskParams{
+			ID:          diskID,
+			BlocksCount: 4096,
+			BlockSize:   blockSize,
+			Kind:        types.DiskKind_DISK_KIND_SSD,
+		})
+		require.NoError(t, err)
 
-	writeRandomBlocks(
-		t,
-		ctx,
-		client,
-		diskID,
-		0, // startIndex
-		1, // blockCount
-	)
+		writeRandomBlocks(
+			t,
+			ctx,
+			client,
+			diskID,
+			0, // startIndex
+			1, // blockCount
+		)
 
-	checkpointID := "checkpoint"
+		checkpointID := "checkpoint"
 
-	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
-		DiskID:       diskID,
-		CheckpointID: checkpointID,
-		IsLight:      false,
-	})
-	require.NoError(t, err)
+		err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+			DiskID:         diskID,
+			CheckpointID:   checkpointID,
+			CheckpointType: checkpointType,
+		})
+		require.NoError(t, err)
 
-	writeRandomBlocks(
-		t,
-		ctx,
-		client,
-		diskID,
-		1, // startIndex
-		2, // blockCount
-	)
+		writeRandomBlocks(
+			t,
+			ctx,
+			client,
+			diskID,
+			1, // startIndex
+			2, // blockCount
+		)
 
-	changedBytes, err := client.GetChangedBytes(
-		ctx,
-		diskID,
-		"",
-		checkpointID,
-		false, // ignoreBaseDisk
-	)
-	require.NoError(t, err)
-	require.Equal(t, uint64(blockSize*1), changedBytes)
+		changedBytes, err := client.GetChangedBytes(
+			ctx,
+			diskID,
+			"",
+			checkpointID,
+			false, // ignoreBaseDisk
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(blockSize*1), changedBytes)
 
-	changedBytes, err = client.GetChangedBytes(
-		ctx,
-		diskID,
-		checkpointID,
-		checkpointID,
-		false, // ignoreBaseDisk
-	)
-	require.NoError(t, err)
-	require.Equal(t, uint64(0), changedBytes)
+		changedBytes, err = client.GetChangedBytes(
+			ctx,
+			diskID,
+			checkpointID,
+			checkpointID,
+			false, // ignoreBaseDisk
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), changedBytes)
 
-	changedBytes, err = client.GetChangedBytes(
-		ctx,
-		diskID,
-		checkpointID,
-		"",
-		false, // ignoreBaseDisk
-	)
-	require.NoError(t, err)
-	require.Equal(t, uint64(blockSize*2), changedBytes)
+		changedBytes, err = client.GetChangedBytes(
+			ctx,
+			diskID,
+			checkpointID,
+			"",
+			false, // ignoreBaseDisk
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(blockSize*2), changedBytes)
 
-	changedBytes, err = client.GetChangedBytes(
-		ctx,
-		diskID,
-		"",
-		"",
-		false, // ignoreBaseDisk
-	)
-	require.NoError(t, err)
-	require.Equal(t, uint64(blockSize*3), changedBytes)
+		changedBytes, err = client.GetChangedBytes(
+			ctx,
+			diskID,
+			"",
+			"",
+			false, // ignoreBaseDisk
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(blockSize*3), changedBytes)
+	}
 }
 
 func TestCloneDiskFromOneZoneToAnother(t *testing.T) {

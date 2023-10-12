@@ -271,12 +271,14 @@ func (client *safeClient) CreateCheckpoint(
 	ctx context.Context,
 	diskId string,
 	checkpointId string,
-	isLightCheckpoint bool,
+	checkpointType protos.ECheckpointType,
 ) error {
+	// TODO(NBS-4531): rm IsLight param after nbs release
 	req := &protos.TCreateCheckpointRequest{
-		DiskId:       diskId,
-		CheckpointId: checkpointId,
-		IsLight:      isLightCheckpoint,
+		DiskId:         diskId,
+		CheckpointId:   checkpointId,
+		IsLight:        checkpointType == protos.ECheckpointType_LIGHT,
+		CheckpointType: checkpointType,
 	}
 
 	_, err := client.Impl.CreateCheckpoint(ctx, req)

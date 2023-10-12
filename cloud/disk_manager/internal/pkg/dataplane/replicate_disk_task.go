@@ -258,12 +258,17 @@ func (t *replicateDiskTask) updateCheckpoints(
 		}
 	}
 
+	checkpointType := nbs_client.CheckpointTypeWithoutData
+	if isLightCheckpoint {
+		checkpointType = nbs_client.CheckpointTypeLight
+	}
+
 	err = client.CreateCheckpoint(
 		ctx,
 		nbs_client.CheckpointParams{
-			DiskID:       t.request.SrcDisk.DiskId,
-			CheckpointID: nextCheckpointID,
-			IsLight:      isLightCheckpoint,
+			DiskID:         t.request.SrcDisk.DiskId,
+			CheckpointID:   nextCheckpointID,
+			CheckpointType: checkpointType,
 		},
 	)
 	return err

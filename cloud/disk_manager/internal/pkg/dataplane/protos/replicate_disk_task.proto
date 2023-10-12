@@ -19,7 +19,7 @@ message ReplicateDiskTaskRequest {
     types.Disk DstDisk = 2;
 
     uint64 FillGeneration = 3;
-    bool UseLightCheckpoint = 4;
+    bool UseLightCheckpoint = 4; // Use light or withoutData checkpoint.
 }
 
 message ReplicateDiskTaskState {
