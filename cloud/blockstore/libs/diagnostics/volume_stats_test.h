@@ -142,11 +142,6 @@ public:
         Y_UNUSED(timeHist);
         Y_UNUSED(sizeHist);
     }
-
-    bool HasUncountableRejects() override
-    {
-        return false;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

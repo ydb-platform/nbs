@@ -25,6 +25,7 @@ struct TCallContext final
 private:
     TAtomic PossiblePostponeMicroSeconds = 0;
     TAtomic SilenceRetriableErrors = false;
+    TAtomic HasUncountableRejects = false;
 
 public:
     TCallContext(ui64 requestId = 0);
@@ -34,6 +35,9 @@ public:
 
     bool GetSilenceRetriableErrors() const;
     void SetSilenceRetriableErrors(bool silence);
+
+    bool GetHasUncountableRejects() const;
+    void SetHasUncountableRejects();
 
     TRequestTime CalcRequestTime(ui64 nowCycles) const;
 };

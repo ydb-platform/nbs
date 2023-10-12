@@ -121,6 +121,7 @@ struct IServerStats
         const TString& message) = 0;
 
     virtual void AddIncompleteRequest(
+        TCallContext& callContext,
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,

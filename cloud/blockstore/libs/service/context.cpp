@@ -61,4 +61,14 @@ void TCallContext::SetSilenceRetriableErrors(bool silence)
     AtomicSet(SilenceRetriableErrors, silence);
 }
 
+bool TCallContext::GetHasUncountableRejects() const
+{
+    return AtomicGet(HasUncountableRejects);
+}
+
+void TCallContext::SetHasUncountableRejects()
+{
+    AtomicSet(HasUncountableRejects, true);
+}
+
 }   // namespace NCloud::NBlockStore

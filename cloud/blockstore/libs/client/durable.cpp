@@ -261,12 +261,14 @@ private:
                 switch (errorKind) {
                     case EDiagnosticsErrorKind::ErrorThrottling: {
                         doLogging = false;
+                        state->CallContext->SetHasUncountableRejects();
                         break;
                     }
                     case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint: {
                         // Do not flood in the log. One message in the log is
                         // enough.
                         doLogging = state->Retries == 1;
+                        state->CallContext->SetHasUncountableRejects();
                         break;
                     }
                     default:

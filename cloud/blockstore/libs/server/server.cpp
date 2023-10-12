@@ -1181,6 +1181,7 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
             auto requestTime = handler->CallContext->CalcRequestTime(now);
             if (requestTime) {
                 collector(
+                    *handler->CallContext,
                     handler->MetricRequest.VolumeInfo,
                     handler->MetricRequest.MediaKind,
                     handler->MetricRequest.RequestType,

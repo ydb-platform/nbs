@@ -223,6 +223,7 @@ public:
                 auto requestTime = request.CallContext->CalcRequestTime(now);
                 if (requestTime) {
                     collector(
+                        *request.CallContext,
                         request.MetricRequest.VolumeInfo,
                         request.MetricRequest.MediaKind,
                         request.MetricRequest.RequestType,

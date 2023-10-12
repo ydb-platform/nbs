@@ -108,6 +108,7 @@ public:
             = std::bind_front(&IServerStats::ReportInfo, Stub.get());
 
     std::function<void(
+        TCallContext& callContext,
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
@@ -271,12 +272,14 @@ public:
     }
 
     void AddIncompleteRequest(
+        TCallContext& callContext,
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime time) override
     {
         AddIncompleteRequestHandler(
+            callContext,
             std::move(volumeInfo),
             mediaKind,
             requestType,

@@ -18,6 +18,7 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TIncompleteRequestsCollector = std::function<void(
+    TCallContext& callContext,
     IVolumeInfoPtr volumeInfo,
     NCloud::NProto::EStorageMediaKind mediaKind,
     EBlockStoreRequest requestType,

@@ -268,8 +268,6 @@ struct TVolumeInfoBase
     TDowntimeCalculator DowntimeCalculator;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
-    TAtomic ThrottlerRejectsCounter = 0;
-    TAtomic CheckpointRejectsCounter = 0;
 
     TVolumeInfoBase(
             NProto::TVolume volume,
@@ -532,14 +530,6 @@ public:
             timeHist,
             sizeHist);
     }
-
-    bool HasUncountableRejects() override
-    {
-        return AtomicGet(VolumeBase->ThrottlerRejectsCounter) ||
-               AtomicGet(VolumeBase->ThrottlerRejects.Current) ||
-               AtomicGet(VolumeBase->CheckpointRejectsCounter) ||
-               AtomicGet(VolumeBase->CheckpointRejects.Current);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -798,12 +788,6 @@ public:
             volumeBase.PostponeTimePredictorStats.OnUpdateStats();
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
-            AtomicSet(
-                volumeBase.ThrottlerRejectsCounter,
-                volumeBase.ThrottlerRejects.NextValue());
-            AtomicSet(
-                volumeBase.CheckpointRejectsCounter,
-                volumeBase.CheckpointRejects.NextValue());
             if (volumeBase.DowntimeCalculator.OnUpdateStats()) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];

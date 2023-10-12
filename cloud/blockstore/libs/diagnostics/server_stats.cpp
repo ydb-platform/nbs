@@ -146,6 +146,7 @@ public:
         const TString& message) override;
 
     void AddIncompleteRequest(
+        TCallContext& callContext,
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
@@ -410,10 +411,9 @@ void TServerStats::RequestCompleted(
         errorKind = EDiagnosticsErrorKind::ErrorSilent;
     }
 
-    auto calcMaxTime =
-        req.VolumeInfo && req.VolumeInfo->HasUncountableRejects()
-            ? ECalcMaxTime::DISABLE
-            : ECalcMaxTime::ENABLE;
+    auto calcMaxTime = callContext.GetHasUncountableRejects()
+                           ? ECalcMaxTime::DISABLE
+                           : ECalcMaxTime::ENABLE;
 
     const auto responseSentCycles = callContext.GetResponseSentCycles();
 
@@ -445,7 +445,7 @@ void TServerStats::RequestCompleted(
             req.Unaligned,
             responseSentCycles);
 
-        if (req.VolumeInfo->HasUncountableRejects()) {
+        if (calcMaxTime == ECalcMaxTime::DISABLE) {
             maxTimeSuppressedMessage = ", Warning! MaxTime calculation suppressed";
         }
     }
@@ -624,12 +624,13 @@ void TServerStats::OutputHtml(IOutputStream& out, const IMonHttpRequest& request
 }
 
 void TServerStats::AddIncompleteRequest(
+    TCallContext& callContext,
     IVolumeInfoPtr volumeInfo,
     NCloud::NProto::EStorageMediaKind mediaKind,
     EBlockStoreRequest requestType,
     TRequestTime time)
 {
-    auto calcMaxTime = volumeInfo && volumeInfo->HasUncountableRejects()
+    auto calcMaxTime = callContext.GetHasUncountableRejects()
                            ? ECalcMaxTime::DISABLE
                            : ECalcMaxTime::ENABLE;
 
@@ -869,11 +870,13 @@ public:
     }
 
     void AddIncompleteRequest(
+        TCallContext& callContext,
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime time) override
     {
+        Y_UNUSED(callContext);
         Y_UNUSED(volumeInfo);
         Y_UNUSED(requestType);
         Y_UNUSED(mediaKind);
