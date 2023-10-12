@@ -84,7 +84,7 @@ class LocalNbs(Daemon):
             self.__binary_path = nbs_binary_path
         else:
             self.__binary_path = yatest_common.binary_path(
-                "cloud/blockstore/daemon/blockstore-server")
+                "cloud/nbs_internal/blockstore/daemon/blockstore-server")
         self.__kikimr_binary_path = kikimr_driver_path()
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path

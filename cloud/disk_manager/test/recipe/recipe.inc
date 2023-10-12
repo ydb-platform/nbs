@@ -26,7 +26,7 @@ IF (STABLE_DEPS_RECIPE)
 ELSE()
     SET_APPEND(RECIPE_DEPS_LIST
         kikimr/driver
-        cloud/blockstore/daemon
+        cloud/nbs_internal/blockstore/daemon
     )
 ENDIF()
 

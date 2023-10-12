@@ -68,7 +68,7 @@ class LocalDiskAgent(Daemon):
             self.__binary_path = disk_agent_binary_path
         else:
             self.__binary_path = yatest_common.binary_path(
-                "cloud/blockstore/disk_agent/blockstore-disk-agent")
+                "cloud/nbs_internal/blockstore/disk_agent/blockstore-disk-agent")
         self.__kikimr_binary_path = kikimr_driver_path()
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path

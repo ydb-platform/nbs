@@ -30,7 +30,7 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE", root_certs_file)
 
     kikimr_binary_path = kikimr_driver_path()
-    nbs_binary_path = yatest_common.binary_path("cloud/blockstore/daemon/blockstore-server")
+    nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/server/filestore-server")
 
     if 'stable' in argv:
