@@ -4,26 +4,26 @@ package api;
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
-import "disk_manager/disk.proto";
-import "disk_manager/operation/operation.proto";
+import "cloud/disk_manager/disk.proto";
+import "cloud/disk_manager/operation/operation.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/api";
 
 service PrivateService {
     // Schedules blank (no op) operation, used for testing.
-    rpc ScheduleBlankOperation(google.protobuf.Empty) returns (disk_manager.operation.Operation);
+    rpc ScheduleBlankOperation(google.protobuf.Empty) returns (cloud.disk_manager.operation.Operation);
 
-    rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (disk_manager.operation.Operation);
+    rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (cloud.disk_manager.operation.Operation);
 
-    rpc RetireBaseDisk(RetireBaseDiskRequest) returns (disk_manager.operation.Operation);
+    rpc RetireBaseDisk(RetireBaseDiskRequest) returns (cloud.disk_manager.operation.Operation);
 
-    rpc RetireBaseDisks(RetireBaseDisksRequest) returns (disk_manager.operation.Operation);
+    rpc RetireBaseDisks(RetireBaseDisksRequest) returns (cloud.disk_manager.operation.Operation);
 
-    rpc OptimizeBaseDisks(google.protobuf.Empty) returns (disk_manager.operation.Operation);
+    rpc OptimizeBaseDisks(google.protobuf.Empty) returns (cloud.disk_manager.operation.Operation);
 
-    rpc ConfigurePool(ConfigurePoolRequest) returns (disk_manager.operation.Operation);
+    rpc ConfigurePool(ConfigurePoolRequest) returns (cloud.disk_manager.operation.Operation);
 
-    rpc DeletePool(DeletePoolRequest) returns (disk_manager.operation.Operation);
+    rpc DeletePool(DeletePoolRequest) returns (cloud.disk_manager.operation.Operation);
 
     // Lists all existing disk ids in specified |folder_id|.
     // Lists all existing disk ids if |folder_id| is not set.
@@ -51,7 +51,7 @@ service PrivateService {
 }
 
 message RebaseOverlayDiskRequest {
-    disk_manager.DiskId disk_id = 1;
+    cloud.disk_manager.DiskId disk_id = 1;
     string base_disk_id = 4;
     string target_base_disk_id = 2;
     uint64 slot_generation = 3;
@@ -59,7 +59,7 @@ message RebaseOverlayDiskRequest {
 
 message RetireBaseDiskRequest {
     string base_disk_id = 1;
-    disk_manager.DiskId src_disk_id = 2;
+    cloud.disk_manager.DiskId src_disk_id = 2;
     string src_disk_checkpoint_id = 3;
 }
 
