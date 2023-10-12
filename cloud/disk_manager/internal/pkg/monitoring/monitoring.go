@@ -55,7 +55,7 @@ func (m *Monitoring) Start(ctx context.Context) {
 	go func() {
 		err := http.ListenAndServe(
 			fmt.Sprintf("localhost:%v", m.cfg.GetProfilingPort()),
-			m.mux,
+			m.profilingMux,
 		)
 		if err != nil {
 			logging.Warn(
