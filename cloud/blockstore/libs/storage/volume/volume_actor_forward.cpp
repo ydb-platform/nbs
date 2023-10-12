@@ -313,10 +313,13 @@ NProto::TError TVolumeActor::ProcessAndValidateReadRequest(
         State->GetCheckpointStore().GetCheckpointType(checkpointId);
 
     if (!checkpointType) {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
-                << "Checkpoint id=" << checkpointId.Quote() << " not found");
+                << "Checkpoint id=" << checkpointId.Quote() << " not found",
+            flags);
     }
 
     const bool checkpointValid =
@@ -328,10 +331,12 @@ NProto::TError TVolumeActor::ProcessAndValidateReadRequest(
         return {};
     }
 
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
     return MakeError(
         E_NOT_FOUND,
         TStringBuilder() << "Not found data for checkpoint id="
-                         << checkpointId.Quote());
+                         << checkpointId.Quote(), flags);
 }
 
 template <typename TMethod>

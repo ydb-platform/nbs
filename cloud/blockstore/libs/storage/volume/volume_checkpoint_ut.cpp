@@ -737,6 +737,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 "Checkpoint id=\"unknown_checkpoint\" not found",
                 response->GetError().GetMessage());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_SILENT));
         }
         {
             // Read blocks from checkpoint and check values
@@ -776,6 +779,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 "Not found data for checkpoint id=\"c1\"",
                 response->GetError().GetMessage());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_SILENT));
         }
 
         // Write blocks
