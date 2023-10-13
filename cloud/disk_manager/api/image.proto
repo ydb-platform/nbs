@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package cloud.disk_manager;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+message ImageUrl {
+    reserved 2;
+
+    string url = 1;
+}

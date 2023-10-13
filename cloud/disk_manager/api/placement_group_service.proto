@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package cloud.disk_manager;
+
+import "google/protobuf/empty.proto";
+import "yandex/cloud/api/operation.proto";
+import "cloud/disk_manager/placement_group.proto";
+import "cloud/disk_manager/operation/operation.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+service PlacementGroupService {
+    rpc Create(CreatePlacementGroupRequest) returns (operation.Operation) {
+        option (yandex.cloud.api.operation) = {
+            response: "google.protobuf.Empty"
+        };
+    }
+
+    rpc Delete(DeletePlacementGroupRequest) returns (operation.Operation) {
+        option (yandex.cloud.api.operation) = {
+            metadata: "DeletePlacementGroupMetadata"
+            response: "google.protobuf.Empty"
+        };
+    }
+
+    rpc Alter(AlterPlacementGroupMembershipRequest) returns (operation.Operation) {
+        option (yandex.cloud.api.operation) = {
+            response: "google.protobuf.Empty"
+        };
+    }
+
+    rpc List(ListPlacementGroupsRequest) returns (ListPlacementGroupsResponse) {}
+
+    rpc Describe(DescribePlacementGroupRequest) returns (PlacementGroup) {}
+}
+
+message CreatePlacementGroupRequest {
+    reserved 3;
+
+    GroupId group_id = 1;
+    PlacementStrategy placement_strategy = 2;
+    uint32 placement_partition_count = 4;
+}
+
+message DeletePlacementGroupRequest {
+    GroupId group_id = 1;
+}
+
+message DeletePlacementGroupMetadata {
+    GroupId group_id = 1;
+}
+
+message AlterPlacementGroupMembershipRequest {
+    reserved 4;
+
+    GroupId group_id = 1;
+    repeated string disks_to_add = 2;
+    repeated string disks_to_remove = 3;
+    uint32 placement_partition_index = 5;
+}
+
+message ListPlacementGroupsRequest {
+    string zone_id = 1;
+}
+
+message ListPlacementGroupsResponse {
+    repeated string group_ids = 1;
+}
+
+message DescribePlacementGroupRequest {
+    GroupId group_id = 1;
+}
