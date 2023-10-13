@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(lib)
 
 add_executable(blockstore-client)
 target_link_libraries(blockstore-client PUBLIC
@@ -13,7 +14,7 @@ target_link_libraries(blockstore-client PUBLIC
   yutil
   library-cpp-cpuid_check
   library-cpp-getopt
-  blockstore-client-lib
+  apps-client-lib
 )
 target_sources(blockstore-client PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/main.cpp

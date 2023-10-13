@@ -7,7 +7,6 @@
 
 
 add_subdirectory(apps)
-add_subdirectory(client)
 add_subdirectory(config)
 add_subdirectory(libs)
 add_subdirectory(private)

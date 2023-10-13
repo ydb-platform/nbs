@@ -121,7 +121,7 @@ class NbsLauncher:
         self.__nbs.start()
         wait_for_nbs_server(self.__nbs.nbs_port)
 
-        nbs_client_binary_path = yatest_common.binary_path("cloud/blockstore/client/blockstore-client")
+        nbs_client_binary_path = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
         enable_writable_state(self.__nbs.nbs_port, nbs_client_binary_path)
 
         register_process(SERVICE_NAME, self.__nbs.pid)

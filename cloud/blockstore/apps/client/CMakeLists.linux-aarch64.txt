@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(lib)
 
 add_executable(blockstore-client)
 target_link_libraries(blockstore-client PUBLIC
@@ -13,7 +14,7 @@ target_link_libraries(blockstore-client PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-getopt
-  blockstore-client-lib
+  apps-client-lib
 )
 target_link_options(blockstore-client PRIVATE
   -ldl

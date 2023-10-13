@@ -1,5 +1,5 @@
 DEPENDS(
-    cloud/blockstore/client
+    cloud/blockstore/apps/client
     cloud/blockstore/tests/recipes/resize-disk
 )
 

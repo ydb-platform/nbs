@@ -45,7 +45,7 @@ public:
                     StoragePoolKind = NProto::STORAGE_POOL_KIND_DEFAULT;
                 } else {
                     ythrow yexception()
-                        << "unknown storage pool kind: " << s; 
+                        << "unknown storage pool kind: " << s;
                 }
             });
     }

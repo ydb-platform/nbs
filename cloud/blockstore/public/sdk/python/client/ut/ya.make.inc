@@ -28,7 +28,7 @@ DATA(
 )
 
 DEPENDS(
-    cloud/blockstore/daemon_lightweight
+    cloud/blockstore/apps/server_lightweight
     cloud/blockstore/tests/recipes/local-null
     cloud/blockstore/tools/http_proxy
 )

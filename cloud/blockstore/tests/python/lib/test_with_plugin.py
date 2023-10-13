@@ -66,7 +66,7 @@ def run_plugin_test(
         restart_interval=restart_interval)
 
     client_binary_path = common.binary_path(
-        "cloud/blockstore/client/blockstore-client")
+        "cloud/blockstore/apps/client/blockstore-client")
 
     result = call([
         client_binary_path, "createvolume",

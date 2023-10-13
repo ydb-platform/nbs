@@ -17,8 +17,8 @@ ENDIF()
 USE_RECIPE(cloud/blockstore/tests/recipes/local-null/local-null-recipe)
 
 DEPENDS(
-    cloud/blockstore/client
-    cloud/blockstore/daemon_lightweight
+    cloud/blockstore/apps/client
+    cloud/blockstore/apps/server_lightweight
     cloud/blockstore/tests/recipes/local-null
     cloud/blockstore/tools/testing/loadtest/bin
 )

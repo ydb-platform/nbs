@@ -41,7 +41,7 @@ def start(argv):
     config_sub_folder = "nbs_configs_secure"
 
     nbs_binary_path = yatest_common.binary_path(
-        "cloud/blockstore/daemon_lightweight/blockstore-server-lightweight")
+        "cloud/blockstore/apps/server_lightweight/nbsd-lightweight")
 
     nbs = LocalNbs(
         0,

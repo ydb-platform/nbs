@@ -1,4 +1,4 @@
-UNITTEST_FOR(cloud/blockstore/client/lib)
+UNITTEST_FOR(cloud/blockstore/apps/client/lib)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
 
@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/client/lib
+    cloud/blockstore/apps/client/lib
 )
 
 END()

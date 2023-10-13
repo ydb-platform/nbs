@@ -1,5 +1,5 @@
 DEPENDS(
-    cloud/blockstore/daemon_lightweight
+    cloud/blockstore/apps/server_lightweight
     cloud/blockstore/tests/recipes/service-local
 )
 

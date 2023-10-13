@@ -1,4 +1,4 @@
-PROGRAM(blockstore-server-lightweight)
+PROGRAM(nbsd-lightweight)
 
 IF (PROFILE_MEMORY_ALLOCATIONS)
     ALLOCATOR(LF_DBG)

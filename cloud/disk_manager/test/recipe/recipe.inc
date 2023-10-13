@@ -1,5 +1,5 @@
 SET(RECIPE_DEPS_LIST
-    cloud/blockstore/client
+    cloud/blockstore/apps/client
 
     cloud/filestore/server
 
