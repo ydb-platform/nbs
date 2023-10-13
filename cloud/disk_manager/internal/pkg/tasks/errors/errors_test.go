@@ -1,9 +1,11 @@
 package errors
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -11,49 +13,49 @@ import (
 func TestRetriableAndNonRetriableErrorsShouldUnwrapCorrectly(t *testing.T) {
 	err := assert.AnError
 
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewNonRetriableError(NewRetriableError(err)),
 			NewEmptyNonRetriableError(),
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewNonRetriableError(NewRetriableError(err)),
 			err,
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewNonRetriableError(NewRetriableError(err)),
 			NewEmptyRetriableError(),
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewRetriableError(NewNonRetriableError(err)),
 			NewEmptyNonRetriableError(),
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewRetriableError(NewNonRetriableError(err)),
 			NewEmptyNonRetriableError(),
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewRetriableError(NewNonRetriableError(err)),
 			err,
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewNonRetriableError(NewNonCancellableError(err)),
@@ -61,28 +63,28 @@ func TestRetriableAndNonRetriableErrorsShouldUnwrapCorrectly(t *testing.T) {
 		),
 	)
 
-	assert.False(
+	require.False(
 		t,
 		Is(
 			NewNonRetriableError(NewNonRetriableError(err)),
 			NewEmptyRetriableError(),
 		),
 	)
-	assert.False(
+	require.False(
 		t,
 		Is(
 			NewRetriableError(NewRetriableError(err)),
 			NewEmptyNonRetriableError(),
 		),
 	)
-	assert.False(
+	require.False(
 		t,
 		Is(
 			NewNonRetriableError(NewRetriableErrorf("other error")),
 			err,
 		),
 	)
-	assert.False(
+	require.False(
 		t,
 		Is(
 			NewNonRetriableError(NewRetriableError(err)),
@@ -92,14 +94,14 @@ func TestRetriableAndNonRetriableErrorsShouldUnwrapCorrectly(t *testing.T) {
 }
 
 func TestFoundErrorShouldUnwrapCorrectly(t *testing.T) {
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewNonRetriableError(NewEmptyNotFoundError()),
 			NewEmptyNotFoundError(),
 		),
 	)
-	assert.True(
+	require.True(
 		t,
 		Is(
 			NewNonRetriableError(NewNotFoundErrorWithTaskID("id")),
@@ -119,7 +121,7 @@ func TestObtainDetailsFromDetailedError(t *testing.T) {
 
 	// Details should be obtained correctly even if DetailedError is wrapped
 	// into some other error.
-	assert.True(
+	require.True(
 		t,
 		As(
 			NewNonRetriableError(NewDetailedError(assert.AnError, details)),
@@ -127,34 +129,34 @@ func TestObtainDetailsFromDetailedError(t *testing.T) {
 		),
 	)
 
-	assert.Equal(t, assert.AnError, e.Err)
-	assert.Equal(t, details, e.Details)
+	require.Equal(t, assert.AnError, e.Err)
+	require.Equal(t, details, e.Details)
 }
 
 func TestCanRetry(t *testing.T) {
 	err := assert.AnError
 
-	assert.True(t, CanRetry(NewRetriableError(err)))
+	require.True(t, CanRetry(NewRetriableError(err)))
 
-	assert.False(t, CanRetry(err))
-	assert.False(t, CanRetry(NewRetriableError(NewNonCancellableError(err))))
-	assert.False(t, CanRetry(NewRetriableError(NewNonRetriableError(err))))
+	require.False(t, CanRetry(err))
+	require.False(t, CanRetry(NewRetriableError(NewNonCancellableError(err))))
+	require.False(t, CanRetry(NewRetriableError(NewNonRetriableError(err))))
 }
 
 func TestNonRetriableErrorSilent(t *testing.T) {
 	err := NewSilentNonRetriableError(assert.AnError)
 
 	e := NewEmptyNonRetriableError()
-	assert.True(t, As(err, &e))
-	assert.True(t, e.Silent)
+	require.True(t, As(err, &e))
+	require.True(t, e.Silent)
 }
 
 func TestNonRetriableErrorSilentUnwrapsCorrectly(t *testing.T) {
 	err := NewRetriableError(NewSilentNonRetriableError(assert.AnError))
 
 	e := NewEmptyNonRetriableError()
-	assert.True(t, As(err, &e))
-	assert.True(t, e.Silent)
+	require.True(t, As(err, &e))
+	require.True(t, e.Silent)
 }
 
 func TestRetriableErrorIgnoreRetryLimitUnwrapsCorrectly(t *testing.T) {
@@ -163,8 +165,8 @@ func TestRetriableErrorIgnoreRetryLimitUnwrapsCorrectly(t *testing.T) {
 	)
 
 	e := NewEmptyRetriableError()
-	assert.True(t, As(err, &e))
-	assert.True(t, e.IgnoreRetryLimit)
+	require.True(t, As(err, &e))
+	require.True(t, e.IgnoreRetryLimit)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -177,4 +179,32 @@ func (simpleError) Error() string {
 
 func TestSimpleErrorUnwrapsCorrectly(t *testing.T) {
 	assert.True(t, Is(NewNonRetriableError(&simpleError{}), &simpleError{}))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func innerPanicFunc() {
+	panic("inner panic")
+}
+
+func panicAndReturnError() (err *PanicError) {
+	defer func() {
+		err = NewPanicError(recover())
+	}()
+
+	innerPanicFunc()
+	return err
+}
+
+func TestReraisePanicError(t *testing.T) {
+	defer func() {
+		r := recover()
+		require.NotNil(t, r)
+		require.Contains(t, fmt.Sprintf("%v", r), "innerPanicFunc")
+	}()
+
+	err := panicAndReturnError()
+	require.Contains(t, err.Error(), "innerPanicFunc")
+
+	err.Reraise()
 }

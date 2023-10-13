@@ -234,7 +234,9 @@ func NewPanicError(value any) *PanicError {
 }
 
 func (e PanicError) Reraise() {
-	panic(e.value)
+	msg := fmt.Sprintf("%v", e.value)
+	msg = appendStackTrace(msg, e.stackTrace)
+	panic(msg)
 }
 
 func (e PanicError) Error() string {
