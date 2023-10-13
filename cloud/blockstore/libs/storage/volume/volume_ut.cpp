@@ -7850,6 +7850,51 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // Check that restored bootstrapper is new
         UNIT_ASSERT(stoppedBootstrapperActorId != restoredBootstrapperActorId);
     }
+
+    Y_UNIT_TEST(ShouldResetAllPipesUponUpdateConfig)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+
+        auto clientId = clientInfo1.GetClientId();
+
+        volume.AddClient(clientInfo1);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            2);
+        volume.ReconnectPipe();
+
+        auto clientInfo2 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+
+        clientInfo2.SetClientId(clientId);
+
+        volume.AddClient(clientInfo2);
+
+        volume.RemoveClient(clientId);
+
+        auto stat = volume.StatVolume();
+        const auto& clients = stat->Record.GetClients();
+        UNIT_ASSERT_VALUES_EQUAL(clients.size(), 0);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

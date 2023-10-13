@@ -393,6 +393,10 @@ public:
         const TVolumeClientState& clientInfo,
         TInstant referenceTimestamp) const;
 
+    bool IsClientStale(
+        const NProto::TVolumeClientInfo& clientInfo,
+        TInstant referenceTimestamp) const;
+
     const NProto::TVolumeClientInfo* GetClient(const TString& clientId) const;
 
     NProto::TError RemoveClient(
@@ -441,7 +445,7 @@ public:
 
     const THashMultiMap<NActors::TActorId, TString>& GetPipeServerId2ClientId() const;
 
-    TVector<NActors::TActorId> ClearPipeServerIds();
+    TVector<NActors::TActorId> ClearPipeServerIds(TInstant ts);
 
     //
     // Throttling

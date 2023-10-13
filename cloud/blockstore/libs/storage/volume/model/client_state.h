@@ -98,6 +98,7 @@ public:
     bool AnyPipeAlive() const;
 
     const TPipes& GetPipes() const;
+    std::optional<TPipeInfo> GetPipeInfo(NActors::TActorId serverId) const;
 
     const NProto::TVolumeClientInfo& GetVolumeClientInfo() const
     {

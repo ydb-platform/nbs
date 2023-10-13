@@ -340,6 +340,42 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         ans = client.CheckLocalRequest(1, true, "", "");
         UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
     }
+
+    Y_UNIT_TEST(ShouldSelectNewActiveLocalPipeOnReconnect)
+    {
+        auto initialMountMode = NProto::VOLUME_MOUNT_LOCAL;
+        auto initialAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+
+        auto info = CreateVolumeClientInfo(
+            initialAccessMode,
+            initialMountMode,
+            0);
+
+        TVolumeClientState client {info};
+
+        NProto::TError ans;
+
+        ans = client.CheckLocalRequest(1, true, "", "");
+        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+
+        client.RemovePipe({}, TInstant());
+
+        client.AddPipe(
+            CreateActor(4, 4),
+            CreateActor(4, 4).NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+
+        ans = client.CheckLocalRequest(4, true, "", "");
+        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
+        auto pipeInfo = client.GetPipeInfo(CreateActor(4, 4));
+        UNIT_ASSERT_C(pipeInfo.has_value(), "Pipe not found");
+        UNIT_ASSERT_VALUES_EQUAL(
+            pipeInfo->State,
+            TVolumeClientState::EPipeState::ACTIVE);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -228,10 +228,9 @@ void TVolumeClientActor::HandleResetPipeClient(
         "Got request to close pipe for tablet %lu",
         TabletId);
 
-    NCloud::Send<TEvents::TEvPoisonPill>(ctx, PipeClient);
-    PipeClient = {};
-
     CancelActiveRequests();
+    NTabletPipe::CloseClient(ctx, PipeClient);
+    PipeClient = {};
 }
 
 template <typename TMethod>
@@ -367,8 +366,10 @@ void TVolumeClientActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+
     CancelActiveRequests();
-    NCloud::Send<TEvents::TEvPoisonPill>(ctx, PipeClient);
+    NTabletPipe::CloseClient(ctx, PipeClient);
+    Die(ctx);
 }
 
 bool TVolumeClientActor::HandleRequests(STFUNC_SIG)

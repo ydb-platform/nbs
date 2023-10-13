@@ -659,7 +659,7 @@ void TVolumeActor::HandleServerDestroyed(
 
 void TVolumeActor::ResetServicePipes(const TActorContext& ctx)
 {
-    for (const auto& actor : State->ClearPipeServerIds()) {
+    for (const auto& actor: State->ClearPipeServerIds(ctx.Now())) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
 }

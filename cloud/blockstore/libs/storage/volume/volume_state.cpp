@@ -451,10 +451,7 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
     auto [newIt, added] = ClientInfosByClientId.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(clientId),
-        std::forward_as_tuple(
-            clientId,
-            info.GetInstanceId()
-        ));
+        std::forward_as_tuple(info));
     auto pipeRes = newIt->second.AddPipe(
         pipeServerActorId,
         senderActorId.NodeId(),
@@ -516,8 +513,15 @@ bool TVolumeState::IsClientStale(
     const TVolumeClientState& clientInfo,
     TInstant referenceTimestamp) const
 {
+    return IsClientStale(clientInfo.GetVolumeClientInfo(), referenceTimestamp);
+}
+
+bool TVolumeState::IsClientStale(
+    const NProto::TVolumeClientInfo& clientInfo,
+    TInstant referenceTimestamp) const
+{
     auto disconnectTimestamp = TInstant::MicroSeconds(
-        clientInfo.GetVolumeClientInfo().GetDisconnectTimestamp());
+        clientInfo.GetDisconnectTimestamp());
     // clients which don't correspond to disconnected services are considered
     // active
     if (!disconnectTimestamp) {
@@ -646,15 +650,17 @@ void TVolumeState::UnmapClientFromPipeServerId(
     }
 }
 
-TVector<TActorId> TVolumeState::ClearPipeServerIds()
+TVector<TActorId> TVolumeState::ClearPipeServerIds(TInstant ts)
 {
     TVector<TActorId> result;
-    for (auto it = ClientIdsByPipeServerId.begin(); it != ClientIdsByPipeServerId.end();) {
-        if (result.empty() || result.back() != it->first) {
-            result.push_back(it->first);
-        }
-        ClientIdsByPipeServerId.erase(it++);
+    for (const auto& client: ClientIdsByPipeServerId) {
+        result.push_back(client.first);
     }
+    ClientIdsByPipeServerId.clear();
+    for (auto& client: ClientInfosByClientId) {
+        client.second.RemovePipe({}, ts);
+    }
+
     return result;
 }
 

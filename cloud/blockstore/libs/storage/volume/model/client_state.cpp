@@ -83,6 +83,7 @@ void TVolumeClientState::RemovePipe(
 {
     if (!serverId) {
         Pipes.clear();
+        LocalPipeInfo = Pipes.end();
     } else if (auto it = Pipes.find(serverId); it != Pipes.end()) {
         if (LocalPipeInfo == it) {
             LocalPipeInfo = Pipes.end();
@@ -160,6 +161,13 @@ bool TVolumeClientState::AnyPipeAlive() const
 const TVolumeClientState::TPipes& TVolumeClientState::GetPipes() const
 {
     return Pipes;
+}
+
+std::optional<TVolumeClientState::TPipeInfo> TVolumeClientState::GetPipeInfo(
+    NActors::TActorId serverId) const
+{
+    auto it = Pipes.find(serverId);
+    return it == Pipes.end() ? std::nullopt : std::make_optional(it->second);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
