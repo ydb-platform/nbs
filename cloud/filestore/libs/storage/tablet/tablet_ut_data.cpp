@@ -1943,6 +1943,96 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    Y_UNIT_TEST(ShouldRecoverAfterFreshBlocksRelatedBackpressure)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        storageConfig.SetFlushThreshold(8_KB);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThresholdForBackpressure(8_KB);
+        storageConfig.SetCompactionThresholdForBackpressure(999);
+        storageConfig.SetCleanupThresholdForBackpressure(999);
+        storageConfig.SetFlushBytesThresholdForBackpressure(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, 4_KB, '0'); // 1 fresh block
+        tablet.WriteData(handle, 0, 1, '0'); // 1 fresh byte
+
+        TAutoPtr<IEventHandle> completion;
+
+        env.GetRuntime().SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvFlushBytesCompleted: {
+                        completion = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        tablet.FlushBytes();
+
+        tablet.WriteData(handle, 4_KB, 4_KB, '0'); // 2 fresh blocks
+
+        // backpressure due to FlushThresholdForBackpressure
+        tablet.SendWriteDataRequest(handle, 4_KB, 4_KB, '1');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        bool flushObserved = false;
+
+        env.GetRuntime().SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvFlushCompleted: {
+                        flushObserved = true;
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            }
+        );
+
+        env.GetRuntime().Send(completion.Release(), 1 /* node index */);
+        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        UNIT_ASSERT(flushObserved);
+
+        // no backpressure after Flush
+        tablet.WriteData(handle, 4_KB, 4_KB, '0');
+
+        TString expected;
+        expected.ReserveAndResize(8_KB);
+        memset(expected.begin(), '0', 8_KB);
+
+        {
+            auto response = tablet.ReadData(handle, 0, 8_KB);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     Y_UNIT_TEST(ShouldReadUnAligned)
     {
         TTestEnv env;

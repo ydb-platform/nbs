@@ -882,6 +882,7 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
 
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
