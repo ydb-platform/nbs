@@ -180,6 +180,7 @@ public:
     };
 
 private:
+    TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;

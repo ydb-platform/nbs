@@ -354,6 +354,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateGetDependentDisksActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateChangeStorageConfigActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

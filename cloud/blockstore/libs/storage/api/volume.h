@@ -33,6 +33,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
     xxx(GetVolumeInfo,            __VA_ARGS__)                                 \
     xxx(UpdateVolumeParams,       __VA_ARGS__)                                 \
+    xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_REQUESTS
 
 // requests forwarded from service to volume
@@ -286,6 +287,9 @@ struct TEvVolume
 
         EvUpdateVolumeParamsRequest = EvBegin + 52,
         EvUpdateVolumeParamsResponse = EvBegin + 53,
+
+        EvChangeStorageConfigRequest = EvBegin + 54,
+        EvChangeStorageConfigResponse = EvBegin + 55,
 
         EvEnd
     };

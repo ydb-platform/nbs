@@ -49,6 +49,7 @@ target_sources(libs-storage-volume PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_addclient.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_allocatedisk.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_change_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_checkpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_cleanup_history.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_forward.cpp

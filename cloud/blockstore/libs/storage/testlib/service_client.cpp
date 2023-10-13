@@ -192,11 +192,15 @@ std::unique_ptr<TEvService::TEvUnmountVolumeRequest>  TServiceClient::CreateUnmo
 }
 
 std::unique_ptr<TEvService::TEvStatVolumeRequest> TServiceClient::CreateStatVolumeRequest(
-    const TString& diskId)
+    const TString& diskId,
+    const TVector<TString>& storageConfigFields)
 {
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     PrepareRequestHeaders(*request);
     request->Record.SetDiskId(diskId);
+    for (const auto& field: storageConfigFields) {
+        request->Record.AddStorageConfigFields(field);
+    }
     return request;
 }
 

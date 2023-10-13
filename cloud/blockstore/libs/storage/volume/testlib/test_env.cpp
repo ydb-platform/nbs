@@ -254,7 +254,7 @@ std::unique_ptr<TEvService::TEvStatVolumeRequest> TVolumeClient::CreateStatVolum
 {
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.MutableHeaders()->SetClientId(clientId);
-    for (const auto& field : storageConfigFields) {
+    for (const auto& field: storageConfigFields) {
         request->Record.AddStorageConfigFields(field);
     }
     return request;

@@ -38,6 +38,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ResetStartPartitionsNeeded,     __VA_ARGS__)                           \
     xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
     xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
+    xxx(ChangeStorageConfig,            __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -611,6 +612,35 @@ struct TTxVolume
         }
     };
 
+    //
+    // ChangeStorageConfig
+    //
+
+    struct TChangeStorageConfig
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TStorageServiceConfig StorageConfigNew;
+        const bool MergeWithStorageConfigFromVolumeDB;
+
+        TMaybe<NProto::TStorageServiceConfig> StorageConfigFromDB;
+        NProto::TStorageServiceConfig ResultStorageConfig;
+
+        TChangeStorageConfig(
+            TRequestInfoPtr requestInfo,
+            NProto::TStorageServiceConfig storageConfig,
+            bool mergeWithStorageConfigFromVolumeDB)
+            : RequestInfo(std::move(requestInfo))
+            , StorageConfigNew(std::move(storageConfig))
+            , MergeWithStorageConfigFromVolumeDB(
+                mergeWithStorageConfigFromVolumeDB)
+        {}
+
+        void Clear()
+        {
+            StorageConfigFromDB.Clear();
+            ResultStorageConfig.Clear();
+        }
+    };
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

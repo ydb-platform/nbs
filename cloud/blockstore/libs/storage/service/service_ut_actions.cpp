@@ -1230,6 +1230,132 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
     {
         ShouldGetDependentDevicesTest({"disk1", "disk2"});
     }
+
+    NProto::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
+        NProto::TStorageServiceConfig config,
+        TServiceClient& service,
+        bool mergeWithConfig = false)
+    {
+        NProto::TChangeStorageConfigRequest request;
+        request.SetDiskId("vol0");
+
+        *request.MutableStorageConfig() = std::move(config);
+        request.SetMergeWithStorageConfigFromVolumeDB(mergeWithConfig);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        auto jsonResponse = service.ExecuteAction(
+            "changestorageconfig", buf);
+        NProto::TChangeStorageConfigResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response).ok());
+        return response;
+    }
+
+    void CheckStorageConfigValues(
+        TVector<TString> names,
+        THashMap<TString, TString> responseData,
+        TServiceClient& service,
+        NActors::TTestActorRuntime& runtime)
+    {
+        auto request = service.CreateStatVolumeRequest("vol0", names);
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        auto response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        auto mapping = response->Record.GetStorageConfigFieldsToValues();
+
+        for (const auto& [name, value]: responseData) {
+            UNIT_ASSERT_VALUES_EQUAL(mapping[name], value);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldChangeStorageConfig)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol0");
+
+        CheckStorageConfigValues(
+            {"CompactionRangeCountPerRun"},
+            {{"CompactionRangeCountPerRun", "Default"}},
+            service,
+            runtime);
+
+        {
+            // Check that new config was set
+            NProto::TStorageServiceConfig newConfig;
+            newConfig.SetCompactionRangeCountPerRun(1000);
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionRangeCountPerRun(),
+                1000);
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        }
+
+        CheckStorageConfigValues(
+            {"CompactionRangeCountPerRun"},
+            {{"CompactionRangeCountPerRun", "1000"}},
+            service,
+            runtime);
+
+        {
+            // Check that configs are merged, when
+            // MergeWithStorageConfigFromVolumeDB is true
+            NProto::TStorageServiceConfig newConfig;
+            newConfig.SetCompactionGarbageThreshold(10);
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service, true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionRangeCountPerRun(),
+                1000);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionGarbageThreshold(),
+                10);
+
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        }
+
+        CheckStorageConfigValues(
+            {"CompactionRangeCountPerRun", "CompactionGarbageThreshold"},
+            {
+                {"CompactionRangeCountPerRun", "1000"},
+                {"CompactionGarbageThreshold", "10"}
+            },
+            service,
+            runtime);
+
+        {
+            // Check that configs aren't merged, when
+            // MergeWithStorageConfigFromVolumeDB is false
+            NProto::TStorageServiceConfig newConfig;
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service, false);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionRangeCountPerRun(),
+                0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionGarbageThreshold(),
+                0);
+
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        }
+
+        CheckStorageConfigValues(
+            {"CompactionRangeCountPerRun", "CompactionGarbageThreshold"},
+            {
+                {"CompactionRangeCountPerRun", "Default"},
+                {"CompactionGarbageThreshold", "Default"}
+            },
+            service,
+            runtime);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

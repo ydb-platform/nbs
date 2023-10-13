@@ -60,6 +60,7 @@ TVolumeActor::TVolumeActor(
         EVolumeStartMode startMode)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
+    , GlobalStorageConfig(config)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))

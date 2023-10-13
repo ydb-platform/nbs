@@ -47,6 +47,7 @@ add_library(libs-storage-protos)
 target_link_libraries(libs-storage-protos PUBLIC
   contrib-libs-cxxsupp
   yutil
+  cloud-blockstore-config
   private-api-protos
   public-api-protos
   storage-core-protos

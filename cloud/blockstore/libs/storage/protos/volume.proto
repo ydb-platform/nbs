@@ -4,6 +4,8 @@ package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/protos";
 
+import "cloud/blockstore/config/storage.proto";
+
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 
@@ -589,4 +591,34 @@ message TUpdateVolumeParamsResponse
     NCloud.NProto.TError Error = 1;
 
     NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ChangeStorageConfig request/response
+
+message TChangeStorageConfigRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to wait readiness of.
+    string DiskId = 2;
+    
+    // Storage config
+    NProto.TStorageServiceConfig StorageConfig = 3;
+
+    // Merge with storage config from volume database
+    optional bool MergeWithStorageConfigFromVolumeDB = 4;
+}
+
+message TChangeStorageConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Result Storage config.
+    NProto.TStorageServiceConfig StorageConfig = 3;
 }

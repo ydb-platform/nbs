@@ -78,6 +78,7 @@ void TServiceActor::HandleExecuteAction(
         {"changediskdevice",                  &TServiceActor::CreateChangeDiskDeviceActionActor            },
         {"setupchannels",                     &TServiceActor::CreateSetupChannelsActionActor               },
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },
+        {"changestorageconfig",               &TServiceActor::CreateChangeStorageConfigActionActor         },
     };
 
     NProto::TError error;

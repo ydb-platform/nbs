@@ -145,7 +145,8 @@ public:
         NProto::EControlRequestSource source);
 
     std::unique_ptr<TEvService::TEvStatVolumeRequest> CreateStatVolumeRequest(
-        const TString& diskId = DefaultDiskId);
+        const TString& diskId = DefaultDiskId,
+        const TVector<TString>& storageConfigFields = {});
 
     std::unique_ptr<TEvService::TEvResizeVolumeRequest> CreateResizeVolumeRequest(
         const TString& diskId = DefaultDiskId,
