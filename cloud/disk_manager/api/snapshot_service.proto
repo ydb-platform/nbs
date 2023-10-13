@@ -15,14 +15,14 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 // right after we create the checkpoint (very quick operation) and continue data copying in the background.
 service SnapshotService {
     rpc Create(CreateSnapshotRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             metadata: "CreateSnapshotMetadata"
             response: "CreateSnapshotResponse"
         };
     }
 
     rpc Delete(DeleteSnapshotRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             metadata: "DeleteSnapshotMetadata"
             response: "DeleteSnapshotResponse"
         };

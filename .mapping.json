@@ -932,7 +932,6 @@
   "cloud/disk_manager/api/placement_group.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/placement_group.proto",
   "cloud/disk_manager/api/placement_group_service.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/placement_group_service.proto",
   "cloud/disk_manager/api/snapshot_service.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/snapshot_service.proto",
-  "cloud/disk_manager/api/ya.make":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/ya.make",
   "cloud/filestore/CMakeLists.txt":"",
   "cloud/filestore/apps/CMakeLists.txt":"",
   "cloud/filestore/apps/server/CMakeLists.darwin-x86_64.txt":"",

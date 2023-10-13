@@ -11,20 +11,20 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 
 service PlacementGroupService {
     rpc Create(CreatePlacementGroupRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }
 
     rpc Delete(DeletePlacementGroupRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             metadata: "DeletePlacementGroupMetadata"
             response: "google.protobuf.Empty"
         };
     }
 
     rpc Alter(AlterPlacementGroupMembershipRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }

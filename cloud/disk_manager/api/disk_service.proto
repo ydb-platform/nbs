@@ -12,7 +12,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 
 service DiskService {
     rpc Create(CreateDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             metadata: "CreateDiskMetadata"
             response: "google.protobuf.Empty"
         };
@@ -20,34 +20,34 @@ service DiskService {
 
     // Delete the disk without deleting its snapshots.
     rpc Delete(DeleteDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             metadata: "DeleteDiskMetadata"
             response: "google.protobuf.Empty"
         };
     }
 
     rpc Resize(ResizeDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }
 
     rpc Alter(AlterDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }
 
     // Should be called before starting the VM with proper token.
     rpc Assign(AssignDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }
 
     // Should be called after stopping the VM.
     rpc Unassign(UnassignDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }
@@ -62,7 +62,7 @@ service DiskService {
     //
     // Can be cancelled by performing |operations.Cancel| on returned operation, but only before FINISH_MIGRATION signal has been sent.
     rpc Migrate(MigrateDiskRequest) returns (operation.Operation) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             metadata: "MigrateDiskMetadata"
             response: "google.protobuf.Empty"
         };
@@ -70,7 +70,7 @@ service DiskService {
 
     // Sends a signal to the migration operation, advancing migration process forward.
     rpc SendMigrationSignal(SendMigrationSignalRequest) returns (google.protobuf.Empty) {
-        option (yandex.cloud.api.operation) = {
+        option (cloud.disk_manager.operation) = {
             response: "google.protobuf.Empty"
         };
     }
