@@ -5442,7 +5442,6 @@ migrations:
     - yabs/sb-bins/post_startreck_comment
     - yabs/sbyt/devutils/add_table_replica
     - yabs/server/cs/importers/autobudget_order_experiment_week_stat/pylib
-    - yabs/server/cs/importers/banner_brand/pylib
     - yabs/server/cs/pylibs/base_gen
     - yabs/server/cs/pylibs/janitor
     - yabs/server/cs/pylibs/servant_app
@@ -7115,7 +7114,6 @@ migrations:
     - logos/libs/monitoring_tools/delay/realtime
     - logos/libs/monitoring_tools/reactor_traversal
     - logos/libs/monitoring_tools/runner
-    - logos/libs/monitoring_tools/ut
     - logos/libs/precommit_validators
     - logos/libs/samplers
     - logos/libs/task_palette/publish_task
@@ -7305,7 +7303,6 @@ migrations:
     - yweb/antiporno/nirvana/operations/self_updateable
     - yweb/antispam/clean_web/external_services/deduplicator/lib
     - yweb/antispam/clean_web/lib
-    - yweb/antispam/clean_web/lib/balancer
     - yweb/antispam/clean_web/lib/tests/lib
     - yweb/antispam/clean_web/lib/tests/lib/pipeline
     - yweb/antispam/clean_web/toloka/lib
@@ -7480,7 +7477,6 @@ migrations:
     - yabs/qa/oneshots/sergtaim/BSSERVER-14259/AddKeywordToYT-Via-Simple-IudYtOneshot
     - yabs/qa/oneshots/serval/BSSERVER-14292/first_json_option_new
     - yabs/sbyt/ytstatcollector/advmachine/tests
-    - yabs/server/cs/test/cs_import/yt_banner_with_history
     - yabs/server/libs/py_db_cluster
     - yabs/server/test/ft/BSSERVER-14309
     - yabs/server/test/qabs_bsserver_pytest
@@ -8410,7 +8406,6 @@ migrations:
     - ml/tensorflow/ytensorflow/tests/layers
     - taxi/uservices/services/grocery-pro-misc/testsuite/tests_grocery_pro_misc
     - taxi/uservices/services/grocery-uber-gw/testsuite/tests_grocery_uber_gw
-    - yabs/server/test/ft/BSSERVER-8736
   PLW0109:
     ignore:
     - PLW0109
