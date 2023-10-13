@@ -18,9 +18,7 @@ func NewStorage(
 ) (Storage, error) {
 
 	tablesPath := db.AbsolutePath(config.GetStorageFolder())
-	probeGZIPCompressionPercentage := config.GetProbeGZIPCompressionPercentage()
-	probeZSTDCompressionPercentage := config.GetProbeZSTDCompressionPercentage()
-	probeZSTDCGOCompressionPercentage := config.GetProbeZSTDCGOCompressionPercentage()
+	probeCompressionPercentage := config.GetProbeCompressionPercentage()
 
 	var chunkStorageS3 *chunks.StorageS3
 	// TODO: remove when s3 will always be initialized.
@@ -32,9 +30,7 @@ func NewStorage(
 			config.GetChunkBlobsS3KeyPrefix(),
 			tablesPath,
 			metrics.New(metricsRegistry, "s3"),
-			probeGZIPCompressionPercentage,
-			probeZSTDCompressionPercentage,
-			probeZSTDCGOCompressionPercentage,
+			probeCompressionPercentage,
 		)
 	}
 
@@ -51,9 +47,7 @@ func NewStorage(
 			db,
 			tablesPath,
 			ydbMetrics,
-			probeGZIPCompressionPercentage,
-			probeZSTDCompressionPercentage,
-			probeZSTDCGOCompressionPercentage,
+			probeCompressionPercentage,
 		),
 		chunkStorageS3: chunkStorageS3,
 	}, nil

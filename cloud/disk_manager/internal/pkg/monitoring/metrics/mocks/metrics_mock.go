@@ -2,6 +2,8 @@ package mocks
 
 import (
 	"fmt"
+	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -16,13 +18,52 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type sensor interface {
-	asMock() *mock.Mock
+	asMock() *Mock
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type Mock struct {
+	mock.Mock
+	ignoreUnknownCalls bool
+}
+
+func (o *Mock) On(methodName string, arguments ...interface{}) *mock.Call {
+	if o.ignoreUnknownCalls {
+		o.ignoreUnknownCalls = false
+	}
+	return o.Mock.On(methodName, arguments...)
+}
+
+func (o *Mock) Called(arguments ...interface{}) mock.Arguments {
+	// mock.Mock.Called uses reflection, so we can't just call the parent's
+	// Called method.
+	if o.ignoreUnknownCalls {
+		return nil
+	}
+
+	// Here is the same code as in Mock.Called
+	// https://github.com/stretchr/testify/blob/master/mock/mock.go#L450
+	pc, _, _, ok := runtime.Caller(1)
+	if !ok {
+		panic("Couldn't get the caller information")
+	}
+
+	functionPath := runtime.FuncForPC(pc).Name()
+	re := regexp.MustCompile(`\.pN\d+_`)
+	if re.MatchString(functionPath) {
+		functionPath = re.Split(functionPath, -1)[0]
+	}
+
+	parts := strings.Split(functionPath, ".")
+	functionName := parts[len(parts)-1]
+	return o.MethodCalled(functionName, arguments...)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type CounterMock struct {
-	mock.Mock
+	Mock
 }
 
 func (c *CounterMock) Inc() {
@@ -33,14 +74,14 @@ func (c *CounterMock) Add(delta int64) {
 	c.Called(delta)
 }
 
-func (c *CounterMock) asMock() *mock.Mock {
+func (c *CounterMock) asMock() *Mock {
 	return &c.Mock
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type GaugeMock struct {
-	mock.Mock
+	Mock
 }
 
 func (g *GaugeMock) Set(value float64) {
@@ -51,14 +92,14 @@ func (g *GaugeMock) Add(value float64) {
 	g.Called(value)
 }
 
-func (g *GaugeMock) asMock() *mock.Mock {
+func (g *GaugeMock) asMock() *Mock {
 	return &g.Mock
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type IntGaugeMock struct {
-	mock.Mock
+	Mock
 }
 
 func (g *IntGaugeMock) Set(value int64) {
@@ -69,14 +110,14 @@ func (g *IntGaugeMock) Add(value int64) {
 	g.Called(value)
 }
 
-func (g *IntGaugeMock) asMock() *mock.Mock {
+func (g *IntGaugeMock) asMock() *Mock {
 	return &g.Mock
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type HistogramMock struct {
-	mock.Mock
+	Mock
 
 	Buckets core_metrics.Buckets
 }
@@ -85,28 +126,28 @@ func (h *HistogramMock) RecordValue(value float64) {
 	h.Called(value)
 }
 
-func (h *HistogramMock) asMock() *mock.Mock {
+func (h *HistogramMock) asMock() *Mock {
 	return &h.Mock
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type TimerMock struct {
-	mock.Mock
+	Mock
 }
 
 func (t *TimerMock) RecordDuration(value time.Duration) {
 	t.Called(value)
 }
 
-func (t *TimerMock) asMock() *mock.Mock {
+func (t *TimerMock) asMock() *Mock {
 	return &t.Mock
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type DurationHistogramMock struct {
-	mock.Mock
+	Mock
 
 	Buckets core_metrics.DurationBuckets
 }
@@ -115,7 +156,7 @@ func (d *DurationHistogramMock) RecordDuration(value time.Duration) {
 	d.Called(value)
 }
 
-func (d *DurationHistogramMock) asMock() *mock.Mock {
+func (d *DurationHistogramMock) asMock() *Mock {
 	return &d.Mock
 }
 
@@ -262,8 +303,9 @@ func createSensorKey(name string, tags map[string]string) string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type RegistryMock struct {
-	sensors      map[string]sensor
-	sensorsMutex sync.Mutex
+	sensors            map[string]sensor
+	sensorsMutex       sync.Mutex
+	ignoreUnknownCalls bool
 }
 
 func NewRegistryMock() *RegistryMock {
@@ -272,11 +314,18 @@ func NewRegistryMock() *RegistryMock {
 	}
 }
 
+func NewIgnoreUnknownCallsRegistryMock() *RegistryMock {
+	registryMock := NewRegistryMock()
+	registryMock.ignoreUnknownCalls = true
+	return registryMock
+}
+
 func (r *RegistryMock) getOrNewSensor(
 	name string,
 	tags map[string]string,
 	sensor sensor,
 ) sensor {
+
 	r.sensorsMutex.Lock()
 	defer r.sensorsMutex.Unlock()
 
@@ -285,6 +334,9 @@ func (r *RegistryMock) getOrNewSensor(
 	actualSensor, ok := r.sensors[key]
 	if ok {
 		return actualSensor
+	}
+	if r.ignoreUnknownCalls {
+		sensor.asMock().ignoreUnknownCalls = true
 	}
 	r.sensors[key] = sensor
 	return sensor

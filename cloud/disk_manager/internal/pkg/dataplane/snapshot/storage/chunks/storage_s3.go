@@ -19,13 +19,11 @@ import (
 // Stores chunks metadata in YDB and data in S3.
 type StorageS3 struct {
 	storageCommon
-	s3                                *persistence.S3Client
-	metrics                           metrics.Metrics
-	bucket                            string
-	keyPrefix                         string
-	ProbeGZIPCompressionPercentage    uint32
-	ProbeZSTDCompressionPercentage    uint32
-	ProbeZSTDCGOCompressionPercentage uint32
+	s3                         *persistence.S3Client
+	metrics                    metrics.Metrics
+	bucket                     string
+	keyPrefix                  string
+	probeCompressionPercentage map[string]uint32
 }
 
 func NewStorageS3(
@@ -35,20 +33,16 @@ func NewStorageS3(
 	keyPrefix string,
 	tablesPath string,
 	metrics metrics.Metrics,
-	probeGZIPCompressionPercentage uint32,
-	probeZSTDCompressionPercentage uint32,
-	probeZSTDCGOCompressionPercentage uint32,
+	probeCompressionPercentage map[string]uint32,
 ) *StorageS3 {
 
 	return &StorageS3{
-		storageCommon:                     newStorageCommon(db, tablesPath),
-		s3:                                s3,
-		bucket:                            bucket,
-		keyPrefix:                         keyPrefix,
-		metrics:                           metrics,
-		ProbeGZIPCompressionPercentage:    probeGZIPCompressionPercentage,
-		ProbeZSTDCompressionPercentage:    probeZSTDCompressionPercentage,
-		ProbeZSTDCGOCompressionPercentage: probeZSTDCGOCompressionPercentage,
+		storageCommon:              newStorageCommon(db, tablesPath),
+		s3:                         s3,
+		bucket:                     bucket,
+		keyPrefix:                  keyPrefix,
+		metrics:                    metrics,
+		probeCompressionPercentage: probeCompressionPercentage,
 	}
 }
 
@@ -192,9 +186,7 @@ func (s *StorageS3) writeChunkData(
 		metadata.compression,
 		chunk.Data,
 		s.metrics,
-		s.ProbeGZIPCompressionPercentage,
-		s.ProbeZSTDCompressionPercentage,
-		s.ProbeZSTDCGOCompressionPercentage,
+		s.probeCompressionPercentage,
 	)
 	if err != nil {
 		return err

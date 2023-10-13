@@ -57,12 +57,19 @@ func newStorage(
 			config.GetChunkBlobsS3KeyPrefix(),
 			tablesPath,
 			metrics,
-			0,
-			0,
-			0,
+			map[string]uint32{
+				"gzip": 0,
+			},
 		)
 	} else {
-		return NewStorageYDB(db, tablesPath, metrics, 0, 0, 0)
+		return NewStorageYDB(
+			db,
+			tablesPath,
+			metrics,
+			map[string]uint32{
+				"gzip": 0,
+			},
+		)
 	}
 }
 

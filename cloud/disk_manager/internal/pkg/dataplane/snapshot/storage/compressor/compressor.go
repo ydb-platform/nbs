@@ -50,9 +50,7 @@ func Compress(
 	format string,
 	data []byte,
 	metrics metrics.Metrics,
-	ProbeGZIPCompressionPercentage uint32,
-	ProbeZSTDCompressionPercentage uint32,
-	ProbeZSTDCGOCompressionPercentage uint32,
+	probeCompressionPercentage map[string]uint32,
 ) ([]byte, error) {
 
 	compressedData, err := compress(format, data, metrics)
@@ -60,20 +58,27 @@ func Compress(
 		return nil, errors.NewNonRetriableError(err)
 	}
 
-	if len(format) != 0 {
+	if probeCompressionPercentage == nil {
+		return compressedData, nil
+	}
+
+	experimentalCodecs := []string{
 		// We do not write compressed by GZIP data we just want to obtain
 		// compression rate. See: NBS-3876.
-		if rand.Uint32() < ProbeGZIPCompressionPercentage {
-			_, _ = compress("gzip", data, metrics)
-		}
-
+		"gzip",
 		// After comparing different codecs we decided to test cgo and pure-go
 		// implementation of zstd. See: NBS-3164.
-		if rand.Uint32() < ProbeZSTDCompressionPercentage {
-			_, _ = compress("zstd", data, metrics)
+		"zstd",
+		"zstd_cgo",
+	}
+
+	for _, codec := range experimentalCodecs {
+		compressionPercentage, ok := probeCompressionPercentage[codec]
+		if !ok {
+			continue
 		}
-		if rand.Uint32() < ProbeZSTDCGOCompressionPercentage {
-			_, _ = compress("zstd_cgo", data, metrics)
+		if rand.Uint32() < compressionPercentage {
+			_, _ = compress(codec, data, metrics)
 		}
 	}
 

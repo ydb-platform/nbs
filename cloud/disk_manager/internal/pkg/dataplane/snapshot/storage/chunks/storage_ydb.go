@@ -21,27 +21,21 @@ import (
 // Stores chunks data and metadata in YDB.
 type StorageYDB struct {
 	storageCommon
-	metrics                           metrics.Metrics
-	ProbeGZIPCompressionPercentage    uint32
-	ProbeZSTDCompressionPercentage    uint32
-	ProbeZSTDCGOCompressionPercentage uint32
+	metrics                    metrics.Metrics
+	probeCompressionPercentage map[string]uint32
 }
 
 func NewStorageYDB(
 	db *persistence.YDBClient,
 	tablesPath string,
 	metrics metrics.Metrics,
-	probeGZIPCompressionPercentage uint32,
-	probeZSTDCompressionPercentage uint32,
-	probeZSTDCGOCompressionPercentage uint32,
+	probeCompressionPercentage map[string]uint32,
 ) *StorageYDB {
 
 	return &StorageYDB{
-		storageCommon:                     newStorageCommon(db, tablesPath),
-		metrics:                           metrics,
-		ProbeGZIPCompressionPercentage:    probeGZIPCompressionPercentage,
-		ProbeZSTDCompressionPercentage:    probeZSTDCompressionPercentage,
-		ProbeZSTDCGOCompressionPercentage: probeZSTDCGOCompressionPercentage,
+		storageCommon:              newStorageCommon(db, tablesPath),
+		metrics:                    metrics,
+		probeCompressionPercentage: probeCompressionPercentage,
 	}
 }
 
@@ -141,9 +135,7 @@ func (s *StorageYDB) WriteChunk(
 		chunk.Compression,
 		chunk.Data,
 		s.metrics,
-		s.ProbeGZIPCompressionPercentage,
-		s.ProbeZSTDCompressionPercentage,
-		s.ProbeZSTDCGOCompressionPercentage,
+		s.probeCompressionPercentage,
 	)
 	if err != nil {
 		return err

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
@@ -18,6 +19,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
@@ -298,12 +300,13 @@ func newStorage(
 	config *snapshot_config.SnapshotConfig,
 	db *persistence.YDBClient,
 	s3 *persistence.S3Client,
+	registry metrics.Registry,
 ) Storage {
 
 	err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, metrics.NewEmptyRegistry(), db, s3)
+	storage, err := NewStorage(config, registry, db, s3)
 	require.NoError(t, err)
 
 	return storage
@@ -357,7 +360,7 @@ func createFixture(t *testing.T) *fixture {
 		ChunkBlobsS3KeyPrefix:     &chunkBlobsS3KeyPrefix,
 	}
 
-	storage := newStorage(t, ctx, config, db, s3)
+	storage := newStorage(t, ctx, config, db, s3, metrics.NewEmptyRegistry())
 
 	return &fixture{
 		t:       t,
@@ -1106,7 +1109,14 @@ func TestChunkCompression(t *testing.T) {
 
 			comp := "lz4"
 			f.config.ChunkCompression = &comp
-			f.storage = newStorage(t, f.ctx, f.config, f.db, f.s3)
+			f.storage = newStorage(
+				t,
+				f.ctx,
+				f.config,
+				f.db,
+				f.s3,
+				metrics.NewEmptyRegistry(),
+			)
 
 			chunk := makeChunk(0, "abc")
 			chunkID, err := f.storage.WriteChunk(f.ctx, "", "test", chunk, testCase.useS3)
@@ -1170,4 +1180,67 @@ func TestGetDataChunkCount(t *testing.T) {
 			require.Equal(t, uint64(4), chunkCount)
 		})
 	}
+}
+
+func TestCompressionMetricsCollection(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(
+			testCase.name, func(t *testing.T) {
+				f := createFixture(t)
+				defer f.teardown()
+
+				comp := "lz4"
+				f.config.ChunkCompression = &comp
+				f.config.ProbeCompressionPercentage = map[string]uint32{
+					"gzip":     4294967295,
+					"zstd":     4294967295,
+					"zstd_cgo": 4294967295,
+				}
+				registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+				histogramName := "chunkCompressionRatio"
+				for compression := range f.config.ProbeCompressionPercentage {
+					expectHistogramCalledOnce(
+						registry,
+						histogramName,
+						map[string]string{"compression": compression},
+					)
+				}
+
+				f.storage = newStorage(t, f.ctx, f.config, f.db, f.s3, registry)
+				chunk := makeChunk(0, "abc")
+				chunkID, err := f.storage.WriteChunk(
+					f.ctx,
+					"",
+					"test",
+					chunk,
+					testCase.useS3,
+				)
+				require.NoError(t, err)
+
+				readChunk := common.Chunk{
+					ID:         chunkID,
+					Data:       make([]byte, len(chunk.Data)),
+					StoredInS3: testCase.useS3,
+				}
+				err = f.storage.ReadChunk(f.ctx, &readChunk)
+				require.NoError(t, err)
+				require.Equal(t, chunk.Data, readChunk.Data)
+			},
+		)
+	}
+}
+
+func expectHistogramCalledOnce(registry *mocks.RegistryMock, name string, gzipCompressionTags map[string]string) *mock.Call {
+	return registry.GetHistogram(
+		name,
+		gzipCompressionTags,
+		metrics.NewExponentialBuckets(1, 1.5, 10),
+	).On(
+		"RecordValue",
+		mock.MatchedBy(
+			func(i float64) bool {
+				return true
+			},
+		),
+	).Return(nil).Once()
 }

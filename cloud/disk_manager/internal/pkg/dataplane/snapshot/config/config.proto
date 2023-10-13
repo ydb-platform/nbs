@@ -21,7 +21,5 @@ message SnapshotConfig {
     optional string ChunkCompression = 10 [default = "lz4"];
     optional string S3Bucket = 11;
     optional string ChunkBlobsS3KeyPrefix = 12 [default = "snapshot/chunks"];
-    optional uint32 ProbeGZIPCompressionPercentage = 13;
-    optional uint32 ProbeZSTDCompressionPercentage = 14;
-    optional uint32 ProbeZSTDCGOCompressionPercentage = 15;
+    map<string, uint32> ProbeCompressionPercentage = 13;  // by codec
 }
