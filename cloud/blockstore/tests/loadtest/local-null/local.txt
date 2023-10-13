@@ -1,0 +1,45 @@
+Vertices {
+    Test {
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 0
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MinRequestSize: 32
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 300
+        Name: "write"
+    }
+}
+Vertices {
+    Test {
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 0
+                ReadRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MinRequestSize: 32
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 300
+        Name: "read"
+    }
+}
+
+Dependencies {
+    key: "read",
+    value {
+        Names: "write"
+    }
+}

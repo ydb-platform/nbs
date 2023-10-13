@@ -1,0 +1,52 @@
+Vertices {
+    Test {
+        StartEndpointRequest {
+            IpcType: IPC_GRPC
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 70
+                ReadRate: 30
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MinRequestSize: 32
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 300
+        Name: "grpc_read_write"
+    }
+}
+Vertices {
+    Test {
+        StartEndpointRequest {
+            IpcType: IPC_NBD
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 70
+                ReadRate: 30
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MinRequestSize: 32
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 300
+        Name: "nbd_read_write"
+    }
+}
+
+Dependencies {
+    key: "nbd_read_write",
+    value {
+        Names: "grpc_read_write"
+    }
+}
+
