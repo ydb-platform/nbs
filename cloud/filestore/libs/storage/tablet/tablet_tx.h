@@ -146,7 +146,10 @@ struct TProfileAware {
 protected:
     void Clear()
     {
+        const ui32 requestType = ProfileLogRequest.GetRequestType();
+
         ProfileLogRequest.Clear();
+        ProfileLogRequest.SetRequestType(requestType);
     }
 };
 
