@@ -4,6 +4,7 @@ import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/filestore/config/storage.proto";
 
 package NCloud.NFileStore.NProtoPrivate;
 
@@ -214,4 +215,31 @@ message TGetStorageConfigFieldsResponse
 
     // Mapping of storage config fields to values.
     map<string, string> StorageConfigFieldsToValues = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Change StorageConfig request/response
+
+message TChangeStorageConfigRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Storage config
+    NProto.TStorageConfig StorageConfig = 3;
+
+    // Merge with storage config from tablet database
+    optional bool MergeWithStorageConfigFromTabletDB = 4;
+}
+
+message TChangeStorageConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Result Storage config.
+    NProto.TStorageConfig StorageConfig = 2;
 }

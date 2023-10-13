@@ -40,6 +40,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "getstorageconfigfields",
             &TStorageServiceActor::CreateGetStorageConfigFieldsActionActor
         },
+        {
+            "changestorageconfig",
+            &TStorageServiceActor::CreateChangeStorageConfigActionActor
+        },
     };
 
     auto it = actions.find(action);

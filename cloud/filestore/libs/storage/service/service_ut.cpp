@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -1219,6 +1220,136 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             storageValues["CompactionThreshold"],
             "1000");
+    }
+
+    NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
+        NProto::TStorageConfig config,
+        TServiceClient& service,
+        bool mergeWithConfig = false)
+    {
+        NProtoPrivate::TChangeStorageConfigRequest request;
+        request.SetFileSystemId("test");
+
+        *request.MutableStorageConfig() = std::move(config);
+        request.SetMergeWithStorageConfigFromTabletDB(mergeWithConfig);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        auto jsonResponse = service.ExecuteAction(
+            "changestorageconfig", buf);
+        NProtoPrivate::TChangeStorageConfigResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response).ok());
+        return response;
+    }
+
+    void CheckStorageConfigValues(
+        TVector<TString> names,
+        THashMap<TString, TString> answer,
+        TServiceClient& service)
+    {
+
+        NProtoPrivate::TGetStorageConfigFieldsRequest request;
+        request.SetFileSystemId("test");
+        for (const auto& name: names) {
+            request.AddStorageConfigFields(name);
+        }
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+        auto jsonResponse = service.ExecuteAction("getstorageconfigfields", buf);
+        NProtoPrivate::TGetStorageConfigFieldsResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response).ok());
+
+        auto storageValues = response.GetStorageConfigFieldsToValues();
+
+        for (const auto& [name, value] : answer) {
+            UNIT_ASSERT_VALUES_EQUAL(storageValues[name], value);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldChangeStorageConfig)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1'000);
+
+        CheckStorageConfigValues(
+            {"CleanupThresholdForBackpressure"},
+            {{"CleanupThresholdForBackpressure", "Default"}},
+            service);
+
+        {
+            // Check that new config was set
+            NProto::TStorageConfig newConfig;
+            newConfig.SetCleanupThresholdForBackpressure(5);
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCleanupThresholdForBackpressure(),
+                5);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(2));
+        }
+
+        CheckStorageConfigValues(
+            {"CleanupThresholdForBackpressure"},
+            {{"CleanupThresholdForBackpressure", "5"}},
+            service);
+
+        {
+            // Check that configs are merged, when
+            // MergeWithStorageConfigFromTabletDB is true
+            NProto::TStorageConfig newConfig;
+            newConfig.SetCompactionThresholdForBackpressure(10);
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service, true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCleanupThresholdForBackpressure(),
+                5);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionThresholdForBackpressure(),
+                10);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(2));
+        }
+
+        CheckStorageConfigValues(
+            {"CleanupThresholdForBackpressure",
+            "CompactionThresholdForBackpressure"},
+            {
+                {"CleanupThresholdForBackpressure", "5"},
+                {"CompactionThresholdForBackpressure", "10"}
+            },
+            service);
+
+        {
+            // Check that configs aren't merged, when
+            // MergeWithStorageConfigFromTabletDB is false
+            NProto::TStorageConfig newConfig;
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service, false);
+            UNIT_ASSERT(
+                !response.GetStorageConfig().GetCleanupThresholdForBackpressure());
+            UNIT_ASSERT(
+                !response.GetStorageConfig().GetCompactionThresholdForBackpressure());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(2));
+        }
+
+        CheckStorageConfigValues(
+            {"CleanupThresholdForBackpressure", "CompactionThresholdForBackpressure"},
+            {
+                {"CleanupThresholdForBackpressure", "Default"},
+                {"CompactionThresholdForBackpressure", "Default"}
+            },
+            service);
     }
 }
 

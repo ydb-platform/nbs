@@ -15,6 +15,7 @@ SRCS(
     tablet_actor_acquirelock.cpp
     tablet_actor_addblob.cpp
     tablet_actor_allocatedata.cpp
+    tablet_actor_change_storage_config.cpp
     tablet_actor_cleanup.cpp
     tablet_actor_cleanupsessions.cpp
     tablet_actor_cluster.cpp

@@ -12,6 +12,7 @@ target_link_libraries(filestore-libs-storage-api PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
+  cloud-filestore-config
   filestore-libs-service
   filestore-private-api-protos
   filestore-public-api-protos

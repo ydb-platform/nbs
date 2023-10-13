@@ -11,6 +11,7 @@ add_library(filestore-libs-storage-api)
 target_link_libraries(filestore-libs-storage-api PUBLIC
   contrib-libs-cxxsupp
   yutil
+  cloud-filestore-config
   filestore-libs-service
   filestore-private-api-protos
   filestore-public-api-protos

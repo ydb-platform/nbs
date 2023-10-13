@@ -110,6 +110,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ZeroRange,                          __VA_ARGS__)                       \
                                                                                \
     xxx(FilterAliveNodes,                   __VA_ARGS__)                       \
+    xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
 // FILESTORE_TABLET_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1555,6 +1556,36 @@ struct TTxIndexTablet
         void Clear()
         {
             Blobs.clear();
+        }
+    };
+
+    //
+    // ChangeStorageConfig
+    //
+
+    struct TChangeStorageConfig
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TStorageConfig StorageConfigNew;
+        const bool MergeWithStorageConfigFromTabletDB;
+
+        TMaybe<NProto::TStorageConfig> StorageConfigFromDB;
+        NProto::TStorageConfig ResultStorageConfig;
+
+        TChangeStorageConfig(
+                TRequestInfoPtr requestInfo,
+                NProto::TStorageConfig storageConfig,
+                bool mergeWithStorageConfigFromTabletDB)
+            : RequestInfo(std::move(requestInfo))
+            , StorageConfigNew(std::move(storageConfig))
+            , MergeWithStorageConfigFromTabletDB(
+                mergeWithStorageConfigFromTabletDB)
+        {}
+
+        void Clear()
+        {
+            StorageConfigFromDB.Clear();
+            ResultStorageConfig.Clear();
         }
     };
 };

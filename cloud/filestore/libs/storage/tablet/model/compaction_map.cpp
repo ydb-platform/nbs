@@ -9,6 +9,7 @@
 #include <util/system/align.h>
 
 #include <array>
+#include <functional>
 
 namespace NCloud::NFileStore::NStorage {
 
