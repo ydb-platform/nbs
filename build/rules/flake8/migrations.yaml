@@ -8796,7 +8796,6 @@ migrations:
     - ads/libs/py_mapreduce/yabs-mapreduce-modules/py-modules/yabs/tabtools
     - ads/libs/py_mapreduce/yabs-mapreduce-modules/py-modules/yabs/tabutils
     - ads/libs/py_ml_factors/factor
-    - ads/libs/py_test_mapreduce
     - ads/ml_engine/learn/result/flow_generate_extended_fstr
     - ads/ml_engine/learn/result/local_extended_fstr
     - ads/ml_engine/learn/result/local_extended_fstr/lib
