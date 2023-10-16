@@ -25,6 +25,10 @@ void TConfigInitializerServer::InitAppConfig()
         serverConfig.SetPort(Options->ServerPort);
     }
 
+    if (Options->SecureServerPort) {
+        serverConfig.SetSecurePort(Options->SecureServerPort);
+    }
+
     ServerConfig = std::make_shared<NServer::TServerConfig>(serverConfig);
 }
 
