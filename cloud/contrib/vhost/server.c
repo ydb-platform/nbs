@@ -221,7 +221,7 @@ bool vhd_dequeue_request(struct vhd_request_queue *rq,
     out_req->vdev = io->vring->vdev;
     out_req->io = io;
 
-    ++rq->metrics.dequeued;
+    catomic_inc(&rq->metrics.dequeued);
     return true;
 }
 
@@ -230,7 +230,7 @@ int vhd_enqueue_request(struct vhd_request_queue *rq, struct vhd_io *io)
     vhd_vring_inc_in_flight(io->vring);
 
     TAILQ_INSERT_TAIL(&rq->submission, io, submission_link);
-    ++rq->metrics.enqueued;
+    catomic_inc(&rq->metrics.enqueued);
     return 0;
 }
 
@@ -245,7 +245,7 @@ void vhd_cancel_queued_requests(struct vhd_request_queue *rq,
             TAILQ_REMOVE(&rq->submission, io, submission_link);
             io->status = VHD_BDEV_CANCELED;
             req_complete(io);
-            ++rq->metrics.cancelled;
+            catomic_inc(&rq->metrics.cancelled);
         }
         io = next;
     }
