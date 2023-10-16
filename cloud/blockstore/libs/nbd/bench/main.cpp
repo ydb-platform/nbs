@@ -22,7 +22,7 @@ void CheckError(TFuture<T> future)
     const auto& response = future.GetValueSync();
     if (HasError(response)) {
         auto error = FormatError(response.GetError());
-        Y_FAIL("Request failed with error: %s", error.c_str());
+        Y_ABORT("Request failed with error: %s", error.c_str());
     }
 }
 

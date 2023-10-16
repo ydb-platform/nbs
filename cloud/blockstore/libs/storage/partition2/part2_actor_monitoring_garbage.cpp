@@ -111,7 +111,7 @@ void THttpGarbageActor::Bootstrap(const TActorContext& ctx)
             break;
         }
         default:
-            Y_FAIL("Invalid action");
+            Y_ABORT("Invalid action");
     }
 
     Become(&TThis::StateWork);

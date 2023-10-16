@@ -29,7 +29,7 @@ EWellKnownResultCodes OverlapStatusToResult(
             return E_REJECTED;
             break;
     }
-    Y_FAIL();
+    Y_ABORT();
     return E_REJECTED;
 }
 

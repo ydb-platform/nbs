@@ -53,7 +53,7 @@ i64 Aggregate(const auto& metrics, i64 base, EAggregationType type)
         case EAggregationType::AT_MIN: return AggregateMin(metrics, Max<i64>());
         case EAggregationType::AT_MAX: return AggregateMax(metrics, Min<i64>());
         default:
-            Y_FAIL("Unknown aggregation type!!!");
+            Y_ABORT("Unknown aggregation type!!!");
     }
 }
 

@@ -420,7 +420,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     }
 
                     default: {
-                        Y_FAIL("unsupported kind: %u", static_cast<ui32>(kind));
+                        Y_ABORT("unsupported kind: %u", static_cast<ui32>(kind));
                     }
                 }
             }

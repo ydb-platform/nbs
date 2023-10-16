@@ -97,7 +97,7 @@ private:
             HFunc(TEvDiskAgent::TEvChecksumDeviceBlocksRequest, HandleChecksumDeviceBlocks);
 
             default:
-                Y_FAIL("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
         }
     }
 

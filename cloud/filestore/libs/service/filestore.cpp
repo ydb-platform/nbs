@@ -213,7 +213,7 @@ i16 LockTypeToFcntlMode(NProto::ELockType source)
         default:
             break;
     }
-    Y_FAIL("Unsupported NProto::ELockType's type field value %d", source);
+    Y_ABORT("Unsupported NProto::ELockType's type field value %d", source);
 }
 
 i32 LockTypeToFlockMode(NProto::ELockType source)
@@ -228,7 +228,7 @@ i32 LockTypeToFlockMode(NProto::ELockType source)
         default:
             break;
     }
-    Y_FAIL("Unsupported NProto::ELockType's type field value %d", source);
+    Y_ABORT("Unsupported NProto::ELockType's type field value %d", source);
 }
 
 }   // namespace NCloud::NFileStore

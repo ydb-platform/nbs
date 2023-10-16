@@ -105,7 +105,7 @@ int main(int argc, const char** argv)
                         break;
                     }
                     default: {
-                        Y_FAIL("unknown item");
+                        Y_ABORT("unknown item");
                     }
                 }
             }

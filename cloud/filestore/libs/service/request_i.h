@@ -87,7 +87,7 @@ TString GetStorageMediaKind(const T& request)
                 return "hdd";
             }
             default: {
-                Y_FAIL(
+                Y_ABORT(
                     "unknown storage media kind: %u",
                     static_cast<ui32>(request.GetStorageMediaKind()));
             }

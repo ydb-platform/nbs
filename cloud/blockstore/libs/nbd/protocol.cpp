@@ -137,7 +137,7 @@ void TRequestWriter::WriteExportInfo(const TExportInfo& exp, ui16 type)
             break;
 
         default:
-            Y_FAIL();
+            Y_ABORT();
     }
 
     Flush();

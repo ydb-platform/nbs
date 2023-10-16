@@ -32,7 +32,7 @@ void HandleUnexpectedEvent(
 #if defined(NDEBUG)
     LogUnexpectedEvent(ev, component);
 #else
-    Y_FAIL(
+    Y_ABORT(
         "[%s] Unexpected event: (0x%08X) %s",
         TlsActivationContext->LoggerSettings()->ComponentName(component),
         ev.GetTypeRewrite(),

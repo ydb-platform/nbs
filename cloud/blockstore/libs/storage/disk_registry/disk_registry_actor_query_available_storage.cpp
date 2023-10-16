@@ -23,7 +23,7 @@ NProto::EDevicePoolKind ToDevicePoolKind(NProto::EStoragePoolKind kind)
             return NProto::DEVICE_POOL_KIND_DEFAULT;
 
         default:
-            Y_FAIL("enexpected storage pool kind %d", kind);
+            Y_ABORT("enexpected storage pool kind %d", kind);
     }
 }
 

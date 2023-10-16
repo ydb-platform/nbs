@@ -289,7 +289,7 @@ public:
             default: {}
         }
 
-        Y_FAIL("unsupported media kind: %u", static_cast<ui32>(mediaKind));
+        Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
     }
 
     TTotalCounters& GetCounters(const NProto::TVolume& volume)

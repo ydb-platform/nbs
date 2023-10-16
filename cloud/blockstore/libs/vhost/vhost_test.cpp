@@ -188,7 +188,7 @@ public:
                 FailedEvent.Signal();
                 return -1;
             default:
-                Y_FAIL();
+                Y_ABORT();
         }
     }
 

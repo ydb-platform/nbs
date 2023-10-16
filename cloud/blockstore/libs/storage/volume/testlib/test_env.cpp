@@ -72,7 +72,7 @@ void TFakeHiveProxy::HandleGetStorageInfo(
             msg->TabletId,
             TTabletTypes::BlockStorePartition);
     } else {
-        Y_FAIL("Unexpected tablet id in fake hive proxy");
+        Y_ABORT("Unexpected tablet id in fake hive proxy");
     }
 
     auto response = std::make_unique<TEvHiveProxy::TEvGetStorageInfoResponse>(
@@ -97,7 +97,7 @@ void TFakeHiveProxy::HandleBootExternal(
             msg->TabletId,
             TTabletTypes::BlockStorePartition);
     } else {
-        Y_FAIL("Unexpected tablet id in fake hive proxy");
+        Y_ABORT("Unexpected tablet id in fake hive proxy");
     }
 
     auto response = std::make_unique<TEvHiveProxy::TEvBootExternalResponse>(

@@ -92,7 +92,7 @@ auto GetTimestampMcs(
             return record.GetBlobUpdateLists(item.Index).GetTimestampMcs();
         }
         default: {
-            Y_FAIL("unknown item");
+            Y_ABORT("unknown item");
         }
     }
 }

@@ -19,7 +19,7 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
         case EHostService::Nbs: return config.GetNbsMonPort();
 
         default:
-            Y_FAIL("Wrong EHostService: %d", serviceType);
+            Y_ABORT("Wrong EHostService: %d", serviceType);
     }
 }
 

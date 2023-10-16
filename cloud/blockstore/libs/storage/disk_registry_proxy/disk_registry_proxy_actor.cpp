@@ -152,7 +152,7 @@ void TDiskRegistryProxyActor::CancelActiveRequests(const TActorContext& ctx)
         TAutoPtr<IEventHandle> ev(kv.second.release());
 
         if (!ReplyWithError(ctx, ev)) {
-            Y_FAIL("Unexpected event: (0x%08X)", ev->GetTypeRewrite());
+            Y_ABORT("Unexpected event: (0x%08X)", ev->GetTypeRewrite());
         }
     }
 }

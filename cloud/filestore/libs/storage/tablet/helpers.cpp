@@ -324,7 +324,7 @@ NProto::ELockOrigin ConvertToImpl(ELockOrigin source, TTag<NProto::ELockOrigin>)
         case ELockOrigin::Fcntl:
             return NProto::E_FCNTL;
         default:
-            Y_FAIL("Unsupported lock origin");
+            Y_ABORT("Unsupported lock origin");
     }
 }
 
@@ -354,7 +354,7 @@ NProto::ELockType ConvertToImpl(ELockMode source, TTag<NProto::ELockType>)
         case ELockMode::Unlock:
             return NProto::ELockType::E_UNLOCK;
         default:
-            Y_FAIL("Unsupported lock type");
+            Y_ABORT("Unsupported lock type");
     }
 }
 

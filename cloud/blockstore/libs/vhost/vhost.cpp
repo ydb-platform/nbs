@@ -83,7 +83,7 @@ private:
             case CANCELLED:
                 return VHD_BDEV_CANCELED;
         }
-        Y_FAIL("Unexpected vhost result");
+        Y_ABORT("Unexpected vhost result");
     }
 };
 

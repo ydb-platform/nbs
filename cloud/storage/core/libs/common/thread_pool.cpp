@@ -282,7 +282,7 @@ private:
             worker.ThreadPark.Signal();
             return true;
         default:
-            Y_FAIL("unknown worker state: %u", state);
+            Y_ABORT("unknown worker state: %u", state);
         }
     }
 };

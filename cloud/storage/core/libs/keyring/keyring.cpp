@@ -195,7 +195,7 @@ ui32 GetRootKeySerial(TKeyring::ERootKeyring keyring)
         case TKeyring::UserSession:
             return KEY_SPEC_USER_SESSION_KEYRING;
         default:
-            Y_FAIL("Undefined root keyring: %d", keyring);
+            Y_ABORT("Undefined root keyring: %d", keyring);
     }
 }
 
@@ -367,114 +367,114 @@ void PrintAllKeys()
 
 TKeyring::TKeyring()
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring TKeyring::Create(ui32 keySerial)
 {
     Y_UNUSED(keySerial);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring TKeyring::GetRoot(ERootKeyring keyring)
 {
     Y_UNUSED(keyring);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring TKeyring::GetProcKey(const TString& desc)
 {
     Y_UNUSED(desc);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring& TKeyring::operator=(const TKeyring& other)
 {
     Y_UNUSED(other);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 bool TKeyring::operator==(const TKeyring& other) const
 {
     Y_UNUSED(other);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring::operator bool() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 ui32 TKeyring::GetId() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TString TKeyring::GetType() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TString TKeyring::GetDesc() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 ui32 TKeyring::GetValueSize() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TString TKeyring::GetValue() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 bool TKeyring::SetPerm(ui32 mask)
 {
     Y_UNUSED(mask);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring TKeyring::AddKeyring(const TString& desc)
 {
     Y_UNUSED(desc);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring TKeyring::SearchKeyring(const TString& desc) const
 {
     Y_UNUSED(desc);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 bool TKeyring::LinkKeyring(const TKeyring& keyring)
 {
     Y_UNUSED(keyring);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 bool TKeyring::UnlinkKeyring(const TKeyring& keyring)
 {
     Y_UNUSED(keyring);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TKeyring TKeyring::AddUserKey(const TString& desc, const TString& value)
 {
     Y_UNUSED(desc);
     Y_UNUSED(value);
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 TVector<TKeyring> TKeyring::GetUserKeys() const
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 void PrintAllKeys()
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 #endif

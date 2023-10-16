@@ -84,7 +84,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
             return TPermissionList().Flip();  // Require admin permissions.
 
         case EFileStoreRequest::MAX:
-            Y_FAIL("EFileStoreRequest::MAX is not valid");
+            Y_ABORT("EFileStoreRequest::MAX is not valid");
     }
 }
 

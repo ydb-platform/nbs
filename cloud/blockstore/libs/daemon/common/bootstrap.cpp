@@ -497,7 +497,7 @@ void TBootstrapBase::Init()
                 Configs->ServerConfig->GetEndpointStorageDir());
             break;
         default:
-            Y_FAIL(
+            Y_ABORT(
                 "unsupported endpoint storage type %d",
                 Configs->ServerConfig->GetEndpointStorageType());
     }

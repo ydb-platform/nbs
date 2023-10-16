@@ -19,7 +19,7 @@ NRdma::EWaitMode Convert(NProto::EWaitMode mode)
             return NRdma::EWaitMode::AdaptiveWait;;
 
         default:
-            Y_FAIL("unsupported wait mode %d", mode);
+            Y_ABORT("unsupported wait mode %d", mode);
     }
 }
 

@@ -445,7 +445,7 @@ TMaybe<TBlockMark> TBlockList::FindBlock(
                 }
 
                 default:
-                    Y_FAIL();
+                    Y_ABORT();
             }
         }
     }
@@ -499,7 +499,7 @@ ui64 TBlockList::FindDeletedBlock(ui16 blobOffset) const
                 }
 
                 default:
-                    Y_FAIL();
+                    Y_ABORT();
             }
         }
     }
@@ -563,7 +563,7 @@ ui32 TBlockList::CountBlocks() const
                 }
 
                 default:
-                    Y_FAIL();
+                    Y_ABORT();
             }
         }
     }
@@ -628,7 +628,7 @@ void TBlockList::DecodeBlocks(T& builder) const
                 }
 
                 default:
-                    Y_FAIL();
+                    Y_ABORT();
             }
         }
     }
@@ -672,7 +672,7 @@ void TBlockList::DecodeDeletedBlocks(T& builder) const
                 }
 
                 default:
-                    Y_FAIL();
+                    Y_ABORT();
             }
         }
     }

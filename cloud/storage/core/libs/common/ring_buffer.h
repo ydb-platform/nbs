@@ -101,7 +101,7 @@ public:
     {
         if (IsEmpty() || offset >= Size()) {
             if (!DefaultValue) {
-                Y_FAIL();
+                Y_ABORT();
             }
             return *DefaultValue;
         }
@@ -112,7 +112,7 @@ public:
     {
         if (IsEmpty() || offset >= Size()) {
             if (!DefaultValue) {
-                Y_FAIL();
+                Y_ABORT();
             }
             return *DefaultValue;
         }

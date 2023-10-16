@@ -65,7 +65,7 @@ NProto::EDiskState ToDiskState(NProto::EAgentState agentState)
     case NProto::AGENT_STATE_UNAVAILABLE:
         return NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE;
     default:
-        Y_FAIL("unknown agent state");
+        Y_ABORT("unknown agent state");
     }
 }
 
@@ -80,7 +80,7 @@ NProto::EDiskState ToDiskState(NProto::EDeviceState deviceState)
     case NProto::DEVICE_STATE_ERROR:
         return NProto::DISK_STATE_ERROR;
     default:
-        Y_FAIL("unknown device state");
+        Y_ABORT("unknown device state");
     }
 }
 

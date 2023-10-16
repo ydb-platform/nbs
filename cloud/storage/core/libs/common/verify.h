@@ -58,7 +58,7 @@ struct TWellKnownEntityTypes
                     TStringBuilder() << entityType                             \
                         << "\t" << entityId << "\n");                          \
             }                                                                  \
-            Y_FAIL("%s", sb.c_str());                                          \
+            Y_ABORT("%s", sb.c_str());                                          \
         }                                                                      \
     } while (false)                                                            \
 // STORAGE_VERIFY_C

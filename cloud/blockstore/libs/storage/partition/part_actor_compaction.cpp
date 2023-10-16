@@ -1764,7 +1764,7 @@ void CompleteRangeCompaction(
 
     if (!dataBlobId && !zeroBlobId) {
         const auto rangeDescr = DescribeRange(args.BlockRange);
-        Y_FAIL("No blocks in compacted range: %s", rangeDescr.c_str());
+        Y_ABORT("No blocks in compacted range: %s", rangeDescr.c_str());
     }
     Y_ABORT_UNLESS(requests.size() - initialRequestsSize == dataBlocksCount);
 }

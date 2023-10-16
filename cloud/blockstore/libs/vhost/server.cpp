@@ -249,7 +249,7 @@ public:
                 ProcessRequest<TReadBlocksLocalMethod>(std::move(request));
                 break;
             default:
-                Y_FAIL("Unexpected request type: %d",
+                Y_ABORT("Unexpected request type: %d",
                     static_cast<int>(requestType));
                 break;
         }

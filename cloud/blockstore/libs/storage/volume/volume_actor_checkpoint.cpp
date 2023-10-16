@@ -873,7 +873,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
             break;
         }
         default:
-            Y_FAIL();
+            Y_ABORT();
     }
 
     Actors.insert(actorId);

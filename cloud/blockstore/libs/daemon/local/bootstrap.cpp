@@ -39,7 +39,7 @@ void TBootstrapLocal::InitRdmaServer()
 
 void TBootstrapLocal::InitKikimrService()
 {
-    Y_FAIL("Not implemented");
+    Y_ABORT("Not implemented");
 }
 
 void TBootstrapLocal::InitAuthService()

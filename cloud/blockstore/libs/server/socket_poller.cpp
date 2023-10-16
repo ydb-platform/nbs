@@ -114,22 +114,22 @@ class TSocketPoller::TImpl
 public:
     void WaitRead(SOCKET, void*)
     {
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     void WaitClose(SOCKET, void*)
     {
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     void Unwait(SOCKET)
     {
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     size_t Wait(void**, size_t)
     {
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 };
 

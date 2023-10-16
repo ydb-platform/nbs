@@ -169,7 +169,7 @@ private:
 
             default:
                 //HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
-                Y_FAIL("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
         }
     }
 

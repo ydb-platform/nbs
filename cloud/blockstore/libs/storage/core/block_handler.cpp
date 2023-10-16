@@ -174,7 +174,7 @@ public:
         NProto::TReadBlocksLocalResponse& response) override
     {
         Y_UNUSED(response);
-        Y_FAIL("Not supported");
+        Y_ABORT("Not supported");
     }
 
 private:
@@ -326,7 +326,7 @@ public:
     void GetResponse(NProto::TReadBlocksResponse& response) override
     {
         Y_UNUSED(response);
-        Y_FAIL("Not supported");
+        Y_ABORT("Not supported");
     }
 
     TGuardedSgList GetLocalResponse(

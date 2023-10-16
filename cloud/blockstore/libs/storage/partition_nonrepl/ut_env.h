@@ -60,7 +60,7 @@ private:
             HFunc(TEvStatsService::TEvVolumePartCounters, HandleVolumePartCounters);
 
             default:
-                Y_FAIL("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
         }
     }
 
@@ -113,7 +113,7 @@ private:
             HFunc(TEvDiskRegistry::TEvFinishMigrationRequest, HandleFinishMigration);
 
             default:
-                Y_FAIL("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
         }
     }
 

@@ -155,7 +155,7 @@ private:
                 return ZeroBlocksPercentiles;
 
             default:
-                Y_FAIL();
+                Y_ABORT();
         }
     }
 };

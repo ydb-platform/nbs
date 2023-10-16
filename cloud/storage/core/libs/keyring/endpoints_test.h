@@ -43,7 +43,7 @@ TString SerializeEndpoint(const TRequest& request)
     auto data = TString::Uninitialized(request.ByteSize());
 
     if (!request.SerializeToArray(const_cast<char*>(data.data()), data.size())) {
-        Y_FAIL("Could not serialize endpoint: %s",
+        Y_ABORT("Could not serialize endpoint: %s",
             request.ShortDebugString().c_str());
     }
 

@@ -91,7 +91,7 @@ ui32 CalculateWriteRequestBlockCount(
         bytes += buffer.Size();
     }
     if (bytes % blockSize) {
-        Y_FAIL("bytes %u not divisible by blockSize %u", bytes, blockSize);
+        Y_ABORT("bytes %u not divisible by blockSize %u", bytes, blockSize);
     }
 
     return bytes / blockSize;

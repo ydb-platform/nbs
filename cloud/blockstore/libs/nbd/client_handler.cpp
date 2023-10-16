@@ -565,7 +565,7 @@ void TClientHandler::ProcessRequests_Structured(TRequestReader& in)
                 break;
             }
             case EClientRequestType::MountVolume: {
-                Y_FAIL("MountVolume request should not get receive");
+                Y_ABORT("MountVolume request should not get receive");
             }
         }
 

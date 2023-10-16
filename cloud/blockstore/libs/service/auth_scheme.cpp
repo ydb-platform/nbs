@@ -24,7 +24,7 @@ TString ToString(EPermission permission)
         case EPermission::Write:
             return "nbsInternal.disks.write";
         case EPermission::MAX:
-            Y_FAIL("EPermission::MAX is invalid");
+            Y_ABORT("EPermission::MAX is invalid");
     }
 }
 
@@ -76,7 +76,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
             return CreatePermissionList({});
 
         case EBlockStoreRequest::MountVolume:
-            Y_FAIL("MountVolume must have been handled separately");
+            Y_ABORT("MountVolume must have been handled separately");
 
         case EBlockStoreRequest::AssignVolume:
             return CreatePermissionList({EPermission::Update});
@@ -127,13 +127,13 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
             return CreatePermissionList({EPermission::List});
 
         case EBlockStoreRequest::ExecuteAction:
-            Y_FAIL("ExecuteAction must have been handled separately");
+            Y_ABORT("ExecuteAction must have been handled separately");
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
             return TPermissionList().Flip();  // Require admin permissions.
 
         case EBlockStoreRequest::MAX:
-            Y_FAIL("EBlockStoreRequest::MAX is not valid");
+            Y_ABORT("EBlockStoreRequest::MAX is not valid");
     }
 }
 

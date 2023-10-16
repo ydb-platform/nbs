@@ -24,7 +24,7 @@ TString ToString(EPermission permission)
         case EPermission::Write:
             return "nbsInternal.disks.write";
         case EPermission::MAX:
-            Y_FAIL("EPermission::MAX is invalid");
+            Y_ABORT("EPermission::MAX is invalid");
     }
 }
 

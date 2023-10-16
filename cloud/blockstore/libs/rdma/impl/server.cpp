@@ -520,7 +520,7 @@ void TServerSession::HandleQueuedRequests()
                 break;
 
             default:
-                Y_FAIL("unexpected state: %d", (int)req->State);
+                Y_ABORT("unexpected state: %d", (int)req->State);
         }
     }
 }

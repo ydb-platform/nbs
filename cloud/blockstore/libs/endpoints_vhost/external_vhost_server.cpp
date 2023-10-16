@@ -162,7 +162,7 @@ TChild SpawnChild(
 
     int err = errno;
     char buf[64] {};
-    Y_FAIL("Process was not created: %s", ::strerror_r(err, buf, sizeof(buf)));
+    Y_ABORT("Process was not created: %s", ::strerror_r(err, buf, sizeof(buf)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

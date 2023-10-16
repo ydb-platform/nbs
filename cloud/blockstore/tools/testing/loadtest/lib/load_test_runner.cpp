@@ -45,7 +45,7 @@ bool NeedSocketPath(NProto::EClientIpcType ipcType)
 
         default:
             // not supported
-            Y_FAIL();
+            Y_ABORT();
             return false;
     }
 }

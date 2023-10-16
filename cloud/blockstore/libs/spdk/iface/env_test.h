@@ -136,7 +136,7 @@ struct TTestSpdkTarget
     {
         Y_UNUSED(name);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 };
 
@@ -165,7 +165,7 @@ struct TTestSpdkEnv
 
     IAllocator* GetAllocator() override
     {
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TString> RegisterNullDevice(
@@ -177,7 +177,7 @@ struct TTestSpdkEnv
         Y_UNUSED(blocksCount);
         Y_UNUSED(blockSize);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TString> RegisterMemoryDevice(
@@ -189,7 +189,7 @@ struct TTestSpdkEnv
         Y_UNUSED(blocksCount);
         Y_UNUSED(blockSize);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TString> RegisterFileDevice(
@@ -201,7 +201,7 @@ struct TTestSpdkEnv
         Y_UNUSED(path);
         Y_UNUSED(blockSize);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TString> RegisterSCSIDevice(
@@ -213,7 +213,7 @@ struct TTestSpdkEnv
         Y_UNUSED(targetUrl);
         Y_UNUSED(initiatorIqn);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TVector<TString>> RegisterNVMeDevices(
@@ -223,7 +223,7 @@ struct TTestSpdkEnv
         Y_UNUSED(baseName);
         Y_UNUSED(transportId);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> UnregisterDevice(
@@ -231,7 +231,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(name);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<ISpdkDevicePtr> OpenDevice(
@@ -241,7 +241,7 @@ struct TTestSpdkEnv
         Y_UNUSED(name);
         Y_UNUSED(write);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TDeviceStats> QueryDeviceStats(
@@ -249,7 +249,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(name);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TString> RegisterDeviceProxy(
@@ -259,7 +259,7 @@ struct TTestSpdkEnv
         Y_UNUSED(deviceName);
         Y_UNUSED(proxyName);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TString> RegisterDeviceWrapper(
@@ -273,7 +273,7 @@ struct TTestSpdkEnv
         Y_UNUSED(blocksCount);
         Y_UNUSED(blockSize);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> SetRateLimits(
@@ -283,7 +283,7 @@ struct TTestSpdkEnv
         Y_UNUSED(deviceName);
         Y_UNUSED(limits);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TDeviceRateLimits> GetRateLimits(
@@ -291,7 +291,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(deviceName);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TDeviceIoStats> GetDeviceIoStats(
@@ -299,7 +299,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(deviceName);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> EnableHistogram(
@@ -308,7 +308,7 @@ struct TTestSpdkEnv
         Y_UNUSED(deviceName);
         Y_UNUSED(enable);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<TVector<TBucketInfo>> GetHistogramBuckets(
@@ -316,7 +316,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(deviceName);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> AddTransport(
@@ -324,7 +324,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(transportId);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> StartListen(
@@ -332,7 +332,7 @@ struct TTestSpdkEnv
     {
         Y_UNUSED(transportId);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<ISpdkTargetPtr> CreateNVMeTarget(
@@ -344,7 +344,7 @@ struct TTestSpdkEnv
         Y_UNUSED(devices);
         Y_UNUSED(transportIds);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> CreatePortalGroup(
@@ -354,7 +354,7 @@ struct TTestSpdkEnv
         Y_UNUSED(tag);
         Y_UNUSED(portals);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<void> CreateInitiatorGroup(
@@ -364,7 +364,7 @@ struct TTestSpdkEnv
         Y_UNUSED(tag);
         Y_UNUSED(initiators);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 
     NThreading::TFuture<ISpdkTargetPtr> CreateSCSITarget(
@@ -376,7 +376,7 @@ struct TTestSpdkEnv
         Y_UNUSED(devices);
         Y_UNUSED(groups);
 
-        Y_FAIL("Not implemented");
+        Y_ABORT("Not implemented");
     }
 };
 

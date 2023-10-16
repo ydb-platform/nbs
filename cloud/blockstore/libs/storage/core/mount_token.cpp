@@ -40,7 +40,7 @@ void TMountToken::SetSecret(EFormat format, const TString& secret)
     TString salt;
     switch (format) {
         case EFormat::EMPTY:
-            Y_FAIL("Cannot set secret when format is empty");
+            Y_ABORT("Cannot set secret when format is empty");
         case EFormat::SHA384_V1:
             salt.resize(16);
             EntropyPool().Read(salt.Detach(), salt.size());
@@ -53,7 +53,7 @@ void TMountToken::SetSecret(EFormat format, const TString& secret, const TString
 {
     switch (format) {
         case EFormat::EMPTY:
-            Y_FAIL("Cannot set secret when format is empty");
+            Y_ABORT("Cannot set secret when format is empty");
         case EFormat::SHA384_V1:
             Format = format;
             Salt = salt;

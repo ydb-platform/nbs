@@ -530,7 +530,7 @@ void TTestEnv::BootStandardTablet(
             factory = &CreateFlatBsController;
             break;
         default:
-            Y_FAIL("Unexpected tablet type");
+            Y_ABORT("Unexpected tablet type");
     }
 
     auto bootstrapper = CreateTestBootstrapper(
