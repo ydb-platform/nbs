@@ -319,7 +319,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         // blobs are confirmed, but AddBlobs request will be executed
         // (for this commit) later
         State->BlobsConfirmed(commitId);
-        Y_VERIFY_DEBUG(msg->CollectGarbageBarrierAcquired);
+        Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added
     } else {
@@ -335,7 +335,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         ScheduleYellowStateUpdate(ctx);
     }
 
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress >= requestCount);
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
     WriteAndZeroRequestsInProgress -= requestCount;
 
     DrainActorCompanion.ProcessDrainRequests(ctx);

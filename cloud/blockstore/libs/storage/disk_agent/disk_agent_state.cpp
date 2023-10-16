@@ -162,7 +162,7 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 {
     auto bytesCount = CalculateBytesCount(req, blockSize);
     if (bytesCount % blockSize != 0) {
-        Y_VERIFY_DEBUG(false);
+        Y_DEBUG_ABORT_UNLESS(false);
         return {};
     }
 
@@ -177,7 +177,7 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 
     auto sglistOrError = SgListNormalize(GetSgList(req), blockSize);
     if (HasError(sglistOrError)) {
-        Y_VERIFY_DEBUG(false);
+        Y_DEBUG_ABORT_UNLESS(false);
         return {};
     }
     auto sglist = sglistOrError.ExtractResult();

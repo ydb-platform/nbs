@@ -147,7 +147,7 @@ void TMirrorPartitionState::PrepareMigrationConfig()
     }
 
     if (deviceIdx == devices.size()) {
-        Y_VERIFY_DEBUG(0);
+        Y_DEBUG_ABORT_UNLESS(0);
 
         return;
     }

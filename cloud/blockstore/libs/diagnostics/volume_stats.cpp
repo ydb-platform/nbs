@@ -222,7 +222,7 @@ private:
                 return Zero;
             }
             default: {
-                Y_VERIFY_DEBUG(0, "Unexpected requestType %d", requestType);
+                Y_DEBUG_ABORT_UNLESS(0, "Unexpected requestType %d", requestType);
                 return Read;
             }
         }
@@ -1185,7 +1185,7 @@ IVolumeStatsPtr CreateVolumeStats(
     EVolumeStatsType type,
     ITimerPtr timer)
 {
-    Y_VERIFY_DEBUG(diagnosticsConfig);
+    Y_DEBUG_ABORT_UNLESS(diagnosticsConfig);
     return std::make_shared<TVolumeStats>(
         std::move(monitoring),
         inactiveClientsTimeout,

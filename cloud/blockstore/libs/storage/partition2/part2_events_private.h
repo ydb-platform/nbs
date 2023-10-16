@@ -216,7 +216,7 @@ struct TEvPartitionPrivate
             , BlobsSkippedByCompaction(0)
             , BlocksSkippedByCompaction(0)
         {
-            Y_VERIFY_DEBUG(mode != EAddBlobMode::ADD_COMPACTION_RESULT);
+            Y_DEBUG_ABORT_UNLESS(mode != EAddBlobMode::ADD_COMPACTION_RESULT);
         }
 
         TAddBlobsRequest(

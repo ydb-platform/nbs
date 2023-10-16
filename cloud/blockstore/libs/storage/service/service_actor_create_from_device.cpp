@@ -165,7 +165,7 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
         return;
     }
 
-    Y_VERIFY_DEBUG(msg->Record.GetBlockCount() != 0);
+    Y_DEBUG_ABORT_UNLESS(msg->Record.GetBlockCount() != 0);
 
     auto volumeConfig = CreateVolumeConfig();
 

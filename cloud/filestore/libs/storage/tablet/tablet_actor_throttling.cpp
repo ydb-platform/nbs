@@ -93,7 +93,7 @@ void TIndexTabletActor::UpdateDelayCounter(
             return;
         }
         default:
-            Y_VERIFY_DEBUG(false);
+            Y_DEBUG_ABORT_UNLESS(false);
     }
 }
 
@@ -134,7 +134,7 @@ NProto::TError TIndexTabletActor::Throttle(
             return err;
         }
         default:
-            Y_VERIFY_DEBUG(false);
+            Y_DEBUG_ABORT_UNLESS(false);
     }
 
     return ok;

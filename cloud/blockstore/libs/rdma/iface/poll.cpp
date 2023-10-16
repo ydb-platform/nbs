@@ -178,7 +178,7 @@ size_t TPollHandle::Wait(TDuration timeout)
         }
     }
 
-    Y_VERIFY_DEBUG(res >= 0 && res < MAX_EVENTS);
+    Y_DEBUG_ABORT_UNLESS(res >= 0 && res < MAX_EVENTS);
     return res;
 }
 

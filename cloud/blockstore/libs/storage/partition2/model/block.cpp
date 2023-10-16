@@ -27,7 +27,7 @@ bool IsContinuousBlockRange(const TVector<TBlock>& blocks)
     Y_ABORT_UNLESS(blocks);
     ui32 prev = blocks[0].BlockIndex;
     for (size_t i = 1; i < blocks.size(); ++i) {
-        Y_VERIFY_DEBUG(prev <= blocks[i].BlockIndex);
+        Y_DEBUG_ABORT_UNLESS(prev <= blocks[i].BlockIndex);
         if (blocks[i].BlockIndex - prev > 1) {
             return false;
         }

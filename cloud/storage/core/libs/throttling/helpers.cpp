@@ -47,7 +47,7 @@ TDuration SecondsToDuration(double seconds)
 
 TDuration CostPerIO(ui32 maxIops, ui32 maxBandwidth, ui32 byteCount)
 {
-    Y_VERIFY_DEBUG(maxIops);
+    Y_DEBUG_ABORT_UNLESS(maxIops);
 
     double cost = 1.0 / static_cast<double>(maxIops);
 

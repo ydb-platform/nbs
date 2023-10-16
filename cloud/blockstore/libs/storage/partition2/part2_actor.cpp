@@ -161,7 +161,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         auto& counter = Counters->Cumulative()                                 \
             [TPartitionCounters::CUMULATIVE_COUNTER_##category##_##name];      \
         ui64 value = stats.Get##category##Counters().Get##name();              \
-        Y_VERIFY_DEBUG(value >= counter.Get());                                \
+        Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                                \
         if (value < counter.Get()) {                                           \
             ReportCounterUpdateRace();                                         \
         }                                                                      \

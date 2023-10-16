@@ -219,7 +219,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUndelivery(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
+    Y_DEBUG_ABORT_UNLESS(ev->Cookie == VolumeRequestId);
 
     LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] %s request undelivered to partition",
@@ -238,7 +238,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleResponse(
     const typename TMethod::TResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
+    Y_DEBUG_ABORT_UNLESS(ev->Cookie == VolumeRequestId);
 
     auto* msg = ev->Get();
     const bool error = HasError(msg->Record);
@@ -268,7 +268,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksResponse(
     const TEvVolume::TEvUpdateUsedBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
+    Y_DEBUG_ABORT_UNLESS(ev->Cookie == VolumeRequestId);
 
     auto* msg = ev->Get();
 
@@ -291,7 +291,7 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksUndelivery(
     const TEvVolume::TEvUpdateUsedBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_VERIFY_DEBUG(ev->Cookie == VolumeRequestId);
+    Y_DEBUG_ABORT_UNLESS(ev->Cookie == VolumeRequestId);
 
     Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
         << TMethod::Name << " used blocks update undelivered"));

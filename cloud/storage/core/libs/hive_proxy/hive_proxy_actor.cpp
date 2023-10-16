@@ -433,7 +433,7 @@ void THiveProxyActor::HandleMetricsResponse(
 {
     const auto* msg = ev->Get();
     auto size = msg->Record.TabletIdSize();
-    Y_VERIFY_DEBUG(msg->Record.FollowerIdSize() == size);
+    Y_DEBUG_ABORT_UNLESS(msg->Record.FollowerIdSize() == size);
 
     for (size_t i = 0; i < size; ++i) {
         ui64 hive = GetHive(ctx, msg->Record.GetTabletId(i));

@@ -406,7 +406,7 @@ void TVolumeActor::HandleMultipartitionWriteOrZeroCompleted(
     WriteAndZeroRequestsInFlight.RemoveRequest(msg->VolumeRequestId);
     ReplyToDuplicateRequests(ctx, msg->VolumeRequestId, msg->ResultCode);
 
-    Y_VERIFY_DEBUG(MultipartitionWriteAndZeroRequestsInProgress > 0);
+    Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
     --MultipartitionWriteAndZeroRequestsInProgress;
     ProcessNextCheckpointRequest(ctx);
 }

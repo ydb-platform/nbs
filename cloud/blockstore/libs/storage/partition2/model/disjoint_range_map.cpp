@@ -53,7 +53,7 @@ struct TDisjointRangeMap::TBinaryTreeMap
                 } else {
                     // *----lo----*
                     //   *--br--*
-                    Y_VERIFY_DEBUG(lo == hi);
+                    Y_DEBUG_ABORT_UNLESS(lo == hi);
 
                     Data[br.Start - 1] = lo->second;
                     Data[br.End] = {br.Start, mark};
@@ -78,7 +78,7 @@ struct TDisjointRangeMap::TBinaryTreeMap
         }
 
         if (hi != Data.end() && hi->second.Start <= br.End) {
-            Y_VERIFY_DEBUG(hi->second.Start >= br.Start);
+            Y_DEBUG_ABORT_UNLESS(hi->second.Start >= br.Start);
 
             if (hi->second.Mark < mark) {
                 //    *--hi--*
@@ -89,13 +89,13 @@ struct TDisjointRangeMap::TBinaryTreeMap
                 if (hi->second.Start == br.Start) {
                     // *--br--*
                     // *----hi----*
-                    Y_VERIFY_DEBUG(lo == hi);
+                    Y_DEBUG_ABORT_UNLESS(lo == hi);
                     // drop this mark
                     return;
                 } else {
                     // *--br--*
                     //    *--hi--*
-                    Y_VERIFY_DEBUG(hi->second.Start > br.Start);
+                    Y_DEBUG_ABORT_UNLESS(hi->second.Start > br.Start);
                     br.End = hi->second.Start - 1;
                     // *br* *--hi--*
                 }
@@ -126,7 +126,7 @@ struct TDisjointRangeMap::TBinaryTreeMap
                 //        ^
                 //        |
                 //      start
-                Y_VERIFY_DEBUG(start < lo->second.Start);
+                Y_DEBUG_ABORT_UNLESS(start < lo->second.Start);
                 Data[lo->second.Start - 1] = {start, mark};
             }
 
@@ -339,7 +339,7 @@ struct TDisjointRangeMap::TWideTreeMap
             while (true) {
                 auto c = CurrentNode->Children[CurrentPath[CurrentDepth]];
                 if (!CurrentNode->IsLeaf && c.Node) {
-                    Y_VERIFY_DEBUG(CurrentDepth < 3);
+                    Y_DEBUG_ABORT_UNLESS(CurrentDepth < 3);
                     CurrentNode = c.Node;
                     ++CurrentDepth;
                 } else if (CurrentNode->IsLeaf && c.Mark) {
@@ -379,7 +379,7 @@ struct TDisjointRangeMap::TWideTreeMap
             }
 
             CurrentNode = Node(CurrentPath, CurrentDepth);
-            Y_VERIFY_DEBUG(CurrentNode);
+            Y_DEBUG_ABORT_UNLESS(CurrentNode);
 
             return true;
         }
@@ -410,8 +410,8 @@ struct TDisjointRangeMap::TWideTreeMap
                 }
             }
 
-            Y_VERIFY_DEBUG(node);
-            Y_VERIFY_DEBUG(node->IsLeaf);
+            Y_DEBUG_ABORT_UNLESS(node);
+            Y_DEBUG_ABORT_UNLESS(node->IsLeaf);
 
             auto& value = node->Children[path[3]].Mark;
             value = Max(value, mark);
@@ -446,7 +446,7 @@ struct TDisjointRangeMap::TWideTreeMap
         TConstIterator it(blockRange, &Root);
         while (it.IsValid()) {
             const auto m = it.Get();
-            Y_VERIFY_DEBUG(m);
+            Y_DEBUG_ABORT_UNLESS(m);
             if (m <= maxMark) {
                 marks->push_back({it.Index(), m});
             }

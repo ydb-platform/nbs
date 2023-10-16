@@ -20,7 +20,7 @@ TVector<ui8> GetAffinityCores()
 
     cpu_set_t mask;
     int res = sched_getaffinity(0, sizeof(cpu_set_t), &mask);
-    Y_VERIFY_DEBUG(res == 0);
+    Y_DEBUG_ABORT_UNLESS(res == 0);
 
     size_t count = CPU_COUNT(&mask);
     ui8 num = 0;
@@ -47,7 +47,7 @@ void SetAffinityCores(const TVector<ui8>& cores)
     }
 
     int res = sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    Y_VERIFY_DEBUG(res == 0);
+    Y_DEBUG_ABORT_UNLESS(res == 0);
 }
 
 #else

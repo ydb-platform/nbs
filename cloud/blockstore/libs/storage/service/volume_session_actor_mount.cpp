@@ -63,7 +63,7 @@ inline TString AccessModeToString(const NProto::EVolumeAccessMode mode)
         case NProto::VOLUME_ACCESS_USER_READ_ONLY:
             return "user-read-only";
         default:
-            Y_VERIFY_DEBUG(false, "Unknown EVolumeAccessMode: %d", mode);
+            Y_DEBUG_ABORT_UNLESS(false, "Unknown EVolumeAccessMode: %d", mode);
             return "undefined";
     }
 }

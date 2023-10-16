@@ -147,7 +147,7 @@ NProto::TAgentConfig& TAgentList::AddNewAgent(
     THashSet<TDeviceId>* newDevices)
 {
     Y_ABORT_UNLESS(newDevices);
-    Y_VERIFY_DEBUG(
+    Y_DEBUG_ABORT_UNLESS(
         agentConfig.GetState() == NProto::AGENT_STATE_ONLINE,
         "Trying to add a new agent which is not in online state");
 
@@ -219,8 +219,8 @@ void TAgentList::TransferAgent(
     NProto::TAgentConfig& agent,
     TNodeId newNodeId)
 {
-    Y_VERIFY_DEBUG(newNodeId != 0);
-    Y_VERIFY_DEBUG(!FindAgent(newNodeId));
+    Y_DEBUG_ABORT_UNLESS(newNodeId != 0);
+    Y_DEBUG_ABORT_UNLESS(!FindAgent(newNodeId));
 
     NodeIdToIdx.erase(agent.GetNodeId());
     NodeIdToIdx[newNodeId] = std::distance(&Agents[0], &agent);

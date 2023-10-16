@@ -444,7 +444,7 @@ void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
     ui32 cookie = 0;
     for (const auto& x: PartitionDescrs) {
         if (x.DiskRegistryBasedDisk) {
-            Y_VERIFY_DEBUG(PartitionDescrs.size() == 1);
+            Y_DEBUG_ABORT_UNLESS(PartitionDescrs.size() == 1);
             // It is not required to send requests to the actor, we reject
             // zero/write requests in TVolume (see CanExecuteWriteRequest).
 
@@ -908,7 +908,7 @@ void TVolumeActor::ExecuteSaveCheckpointRequest(
     //  we will raise the status in memory to Saved too.
     auto checkpointRequestCopy =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
-    Y_VERIFY_DEBUG(
+    Y_DEBUG_ABORT_UNLESS(
         checkpointRequestCopy.State == ECheckpointRequestState::Received);
     checkpointRequestCopy.State = ECheckpointRequestState::Saved;
 

@@ -730,7 +730,7 @@ void TPartitionActor::CompleteWriteBlocks(
     }
 
     State->GetCommitQueue().ReleaseBarrier(args.CommitId);
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress >= args.Requests.size());
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= args.Requests.size());
     WriteAndZeroRequestsInProgress -= args.Requests.size();
 
     EnqueueFlushIfNeeded(ctx);

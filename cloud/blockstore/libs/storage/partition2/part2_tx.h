@@ -646,7 +646,7 @@ struct TTxPartition
 
         ui32 GetBlockMarkIndex(ui32 blockIndex)
         {
-            Y_VERIFY_DEBUG(DescribeRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(DescribeRange.Contains(blockIndex));
             return blockIndex - DescribeRange.Start;
         }
 

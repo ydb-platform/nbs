@@ -28,7 +28,7 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         RdmaServer,
         NvmeManager);
 
-    Y_VERIFY_DEBUG(
+    Y_DEBUG_ABORT_UNLESS(
         OldRequestCounters.Delayed && OldRequestCounters.Rejected &&
         OldRequestCounters.Already);
     TRdmaTargetConfig rdmaTargetConfig{

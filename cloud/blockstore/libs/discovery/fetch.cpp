@@ -174,7 +174,7 @@ public:
         , State(MakeIntrusive<TFetcherState>())
     {
         auto result = NNeh::SetProtocolOption("http/AsioThreads", "1");
-        Y_VERIFY_DEBUG(result);
+        Y_DEBUG_ABORT_UNLESS(result);
     }
 
 public:

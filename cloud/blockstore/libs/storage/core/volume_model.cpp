@@ -341,7 +341,7 @@ void SetExplicitChannelProfiles(
             }
 
             default: {
-                Y_VERIFY_DEBUG(0);
+                Y_DEBUG_ABORT_UNLESS(0);
             }
         }
 
@@ -450,7 +450,7 @@ ui32 ComputeAllocationUnitCount(
     const auto unit = GetAllocationUnit(config, volumeParams.MediaKind);
 
     ui32 unitCount = std::ceil(volumeSize / unit);
-    Y_VERIFY_DEBUG(unitCount >= 1);
+    Y_DEBUG_ABORT_UNLESS(unitCount >= 1);
 
     return unitCount;
 }

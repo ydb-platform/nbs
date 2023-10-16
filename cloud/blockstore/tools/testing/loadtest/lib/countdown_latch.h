@@ -48,7 +48,7 @@ public:
     void CountDown()
     {
         auto result = Counter.fetch_sub(1);
-        Y_VERIFY_DEBUG(result >= 0);
+        Y_DEBUG_ABORT_UNLESS(result >= 0);
         if (result == 0) {
             Event.Signal();
         }

@@ -363,7 +363,7 @@ void TPartitionActor::HandleZeroBlocksCompleted(
 
     Actors.erase(ev->Sender);
 
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress > 0);
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
@@ -455,7 +455,7 @@ void TPartitionActor::CompleteZeroBlocks(
 
     State->GetCommitQueue().ReleaseBarrier(args.CommitId);
 
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress > 0);
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;
 
     EnqueueFlushIfNeeded(ctx);

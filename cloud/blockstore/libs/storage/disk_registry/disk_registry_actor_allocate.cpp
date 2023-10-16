@@ -67,7 +67,7 @@ void TDiskRegistryActor::HandleAllocateDisk(
         msg->Record.GetPlacementGroupId().c_str(),
         msg->Record.GetPlacementPartitionIndex());
 
-    Y_VERIFY_DEBUG(
+    Y_DEBUG_ABORT_UNLESS(
         msg->Record.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT);
 
     ExecuteTx<TAddDisk>(

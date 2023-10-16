@@ -21,7 +21,7 @@ void TNonreplicatedPartitionMigrationActor::HandleWriteOrZeroCompleted(
 {
     const auto counter = ev->Get()->RequestCounter;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(counter)) {
-        Y_VERIFY_DEBUG(0);
+        Y_DEBUG_ABORT_UNLESS(0);
     }
 
     ContinueMigrationIfNeeded(ctx);

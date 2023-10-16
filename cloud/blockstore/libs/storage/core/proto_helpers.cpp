@@ -227,7 +227,7 @@ void FillDeviceInfo(
         if (source) {
             m->SetSourceTransportId(source->GetTransportId());
         } else {
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
         }
         const auto& deviceConfig = migration.GetTargetDevice();
         auto* device = m->MutableTargetDevice();

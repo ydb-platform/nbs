@@ -476,7 +476,7 @@ public:
         const TBlockRange32& blockRange,
         TVector<TBlock>& blocks) const
     {
-        Y_VERIFY_DEBUG(CheckSortedWithGaps(blocks));
+        Y_DEBUG_ABORT_UNLESS(CheckSortedWithGaps(blocks));
 
         ui32 updateCount = 0;
 
@@ -1262,7 +1262,7 @@ bool TBlobIndex::TImpl::AddGarbage(
     ui32 prevGarbageBlockCount = 0;
 
     if (blob->Garbage) {
-        Y_VERIFY_DEBUG(blob->Garbage->BlockCount <= blockCount);
+        Y_DEBUG_ABORT_UNLESS(blob->Garbage->BlockCount <= blockCount);
         prevGarbageBlockCount = blob->Garbage->BlockCount;
         zone->Garbage->Remove(blob);
         DeleteImpl(

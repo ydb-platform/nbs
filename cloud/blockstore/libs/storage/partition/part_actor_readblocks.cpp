@@ -378,7 +378,7 @@ void TReadBlocksActor::ReadBlocks(
     bool baseDisk)
 {
     const ui32 batchRequestsOldSize = BatchRequests.size();
-    Y_VERIFY_DEBUG(IsSorted(
+    Y_DEBUG_ABORT_UNLESS(IsSorted(
         requests.begin(),
         requests.end(),
         TCompareByBlobIdAndOffset()
@@ -711,7 +711,7 @@ TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
     const TBlockRange32& readRange,
     const TBlockMarks& marks)
 {
-    Y_VERIFY_DEBUG(readRange.Size() == marks.size());
+    Y_DEBUG_ABORT_UNLESS(readRange.Size() == marks.size());
 
     const auto empty = [] (const auto& mark) {
         return std::holds_alternative<TEmptyMark>(mark);

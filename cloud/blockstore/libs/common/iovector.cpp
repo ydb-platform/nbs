@@ -34,7 +34,7 @@ TSgList GetSgList(const NProto::TWriteBlocksRequest& request)
         if (buffer) {
             sglist.emplace_back(buffer.data(), buffer.size());
         } else {
-            Y_VERIFY_DEBUG(false, "write-request has empty buffer");
+            Y_DEBUG_ABORT_UNLESS(false, "write-request has empty buffer");
         }
     }
 

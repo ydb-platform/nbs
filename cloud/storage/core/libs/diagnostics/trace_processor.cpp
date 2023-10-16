@@ -137,7 +137,7 @@ bool ReaderIdMatch(const TString& traceType, const TString& readerId)
 TString FindDiskIdParam(const NLWTrace::TTrackLog::TItem& ringItem)
 {
     const auto* traceDiskId = FindParam(ringItem, "diskId");
-    Y_VERIFY_DEBUG(traceDiskId);
+    Y_DEBUG_ABORT_UNLESS(traceDiskId);
     return traceDiskId ? traceDiskId->Get<TString>() : TString{};
 }
 
@@ -329,7 +329,7 @@ public:
             ++SeenStartProbes[tl.Items.front().Probe->Event.Name];
         }
 
-        Y_VERIFY_DEBUG(mediaKindParam, "expected to find mediaKind at start: %s",
+        Y_DEBUG_ABORT_UNLESS(mediaKindParam, "expected to find mediaKind at start: %s",
             DumpLogItem(tl.Items.front()).c_str());
 
         if (!mediaKindParam) {
@@ -460,7 +460,7 @@ public:
         , LWManager(lwManager)
         , Readers(std::move(readers))
     {
-        Y_VERIFY_DEBUG(Readers.size());
+        Y_DEBUG_ABORT_UNLESS(Readers.size());
 
         auto rootPage = monitoring->RegisterIndexPage("tracelogs", "Traces Logs");
         auto& index = static_cast<TIndexMonPage&>(*rootPage);
@@ -507,7 +507,7 @@ private:
                 LWManager.ExtractItemsFromCyclicDepot(reader->Id, *reader);
             } catch (...) {
                 STORAGE_ERROR("Tracing error: " << CurrentExceptionMessage());
-                Y_VERIFY_DEBUG(0);
+                Y_DEBUG_ABORT_UNLESS(0);
             }
         }
     }
@@ -622,7 +622,7 @@ NLWTrace::TQuery ProbabilisticQuery(
 {
     NLWTrace::TQuery q;
 
-    Y_VERIFY_DEBUG(samplingRate > 0);
+    Y_DEBUG_ABORT_UNLESS(samplingRate > 0);
     if (samplingRate == 0) {
         return q;
     }
@@ -658,7 +658,7 @@ TRequestThresholds ConvertRequestThresholds(const TProtoRequestThresholds& value
                 TDuration::MilliSeconds(typeThresh);
         }
         const auto mediaKind = threshold.GetMediaKind();
-        Y_VERIFY_DEBUG(!requestThresholds.count(mediaKind));
+        Y_DEBUG_ABORT_UNLESS(!requestThresholds.count(mediaKind));
         requestThresholds[mediaKind] = std::move(requestThreshold);
     }
     return requestThresholds;

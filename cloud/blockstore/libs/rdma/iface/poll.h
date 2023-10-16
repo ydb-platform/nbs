@@ -80,7 +80,7 @@ public:
 
     const epoll_event& GetEvent(size_t index) const
     {
-        Y_VERIFY_DEBUG(index < MAX_EVENTS);
+        Y_DEBUG_ABORT_UNLESS(index < MAX_EVENTS);
         return Events[index];
     }
 };

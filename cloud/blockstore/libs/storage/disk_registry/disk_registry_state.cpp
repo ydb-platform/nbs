@@ -352,7 +352,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         } else if (disk.ReplicaCount == 2) {
             disk.MediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3;
         } else {
-            Y_VERIFY_DEBUG(
+            Y_DEBUG_ABORT_UNLESS(
                 disk.ReplicaCount == 0,
                 "unexpected ReplicaCount: %d",
                 disk.ReplicaCount
@@ -656,7 +656,7 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
     device.SetPoolKind(poolConfig->GetKind());
 
     const ui64 unit = poolConfig->GetAllocationUnit();
-    Y_VERIFY_DEBUG(unit != 0);
+    Y_DEBUG_ABORT_UNLESS(unit != 0);
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR ||
         !DeviceList.FindDiskId(device.GetDeviceUUID()).empty())
@@ -696,7 +696,7 @@ void TDiskRegistryState::RemoveAgentFromNode(
     TVector<TDiskId>* affectedDisks,
     TVector<TDiskId>* disksToReallocate)
 {
-    Y_VERIFY_DEBUG(agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE);
+    Y_DEBUG_ABORT_UNLESS(agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE);
 
     const ui32 nodeId = agent.GetNodeId();
     agent.SetNodeId(0);
@@ -1023,7 +1023,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
 
         if (disk.MasterDiskId) {
             auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
-            Y_VERIFY_DEBUG(masterDisk);
+            Y_DEBUG_ABORT_UNLESS(masterDisk);
             if (masterDisk) {
                 auto it = Find(
                     masterDisk->DeviceReplacementIds.begin(),
@@ -1046,7 +1046,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
                     deviceId,
                     targetDevice.GetDeviceUUID());
 
-                Y_VERIFY_DEBUG(replaced);
+                Y_DEBUG_ABORT_UNLESS(replaced);
             }
         }
 
@@ -2266,7 +2266,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         }
 
         for (const auto& affectedDiskId: affectedDisks) {
-            Y_VERIFY_DEBUG(affectedDiskId.StartsWith(diskId + "/"));
+            Y_DEBUG_ABORT_UNLESS(affectedDiskId.StartsWith(diskId + "/"));
             PendingCleanup.Insert(
                 diskId,
                 DeallocateSimpleDisk(db, affectedDiskId, "DeallocateDisk:Replica")
@@ -3130,7 +3130,7 @@ TVector<TString> TDiskRegistryState::CollectBrokenDevices(
             continue;
         }
 
-        Y_VERIFY_DEBUG(device->GetNodeId() == stats.GetNodeId());
+        Y_DEBUG_ABORT_UNLESS(device->GetNodeId() == stats.GetNodeId());
 
         if (device->GetState() != NProto::DEVICE_STATE_ERROR) {
             uuids.push_back(uuid);
@@ -3832,7 +3832,7 @@ ui64 TDiskRegistryState::AddReallocateRequest(
     TString diskId)
 {
     const auto* disk = Disks.FindPtr(diskId);
-    Y_VERIFY_DEBUG(disk, "unknown disk: %s", diskId.c_str());
+    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
 
     if (disk && disk->MasterDiskId) {
         diskId = disk->MasterDiskId;
@@ -4224,7 +4224,7 @@ ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
             ++i;
 
             auto* disk = Disks.FindPtr(diskInfo.GetDiskId());
-            Y_VERIFY_DEBUG(disk);
+            Y_DEBUG_ABORT_UNLESS(disk);
             if (!disk) {
                 continue;
             }
@@ -4857,7 +4857,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
                 sourceId,
                 targetId);
 
-            Y_VERIFY_DEBUG(replaced);
+            Y_DEBUG_ABORT_UNLESS(replaced);
         }
     }
 
@@ -5795,7 +5795,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     const TVector<NProto::TDeviceConfig>& devices,
     TAllocateDiskResult* result)
 {
-    Y_VERIFY_DEBUG(result);
+    Y_DEBUG_ABORT_UNLESS(result);
 
     if (devices.empty()) {
         return MakeError(E_ARGUMENT, "empty device list");

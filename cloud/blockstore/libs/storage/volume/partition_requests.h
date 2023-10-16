@@ -921,7 +921,7 @@ TPartitionRequestActor<TMethod>::TPartitionRequestActor(
     , TraceInfo(std::move(traceInfo))
     , ChildCallContexts(Reserve(PartitionRequests.size()))
 {
-    Y_VERIFY_DEBUG(PartitionsCount >= PartitionRequests.size());
+    Y_DEBUG_ABORT_UNLESS(PartitionsCount >= PartitionRequests.size());
     TBase::ActivityType = TBlockStoreActivities::VOLUME;
 }
 

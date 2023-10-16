@@ -1117,7 +1117,7 @@ struct TTxIndexTablet
             , Blocks(AlignedByteRange.BlockCount())
             , Bytes(AlignedByteRange.BlockCount())
         {
-            Y_VERIFY_DEBUG(AlignedByteRange.IsAligned());
+            Y_DEBUG_ABORT_UNLESS(AlignedByteRange.IsAligned());
         }
 
         void Clear()

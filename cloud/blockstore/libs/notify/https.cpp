@@ -216,7 +216,7 @@ template <typename T>
 void MultiSetOpt(CURLM* handle, CURLMoption opt, T val)
 {
     auto code = curl_multi_setopt(handle, opt, val);
-    Y_VERIFY_DEBUG(code == CURLM_OK);
+    Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
 }
 
 }   // namespace
@@ -292,7 +292,7 @@ public:
             curlsocktype purpose,
             struct curl_sockaddr *address)
         {
-            Y_VERIFY_DEBUG(purpose == CURLSOCKTYPE_IPCXN);
+            Y_DEBUG_ABORT_UNLESS(purpose == CURLSOCKTYPE_IPCXN);
             OpenConnections.fetch_add(1);
             return socket(address->family, address->socktype, address->protocol);
         }
@@ -306,7 +306,7 @@ public:
         static int SeekFunction(void *userp, curl_off_t offset, int origin)
         {
             TPostDataInfo* data = static_cast<TPostDataInfo*>(userp);
-            Y_VERIFY_DEBUG(origin == SEEK_SET);
+            Y_DEBUG_ABORT_UNLESS(origin == SEEK_SET);
             data->Current = data->Begin + offset;
             return CURL_SEEKFUNC_OK;
         }
@@ -608,7 +608,7 @@ void THttpsClient::TImpl::ProcessAddQueue() {
                 CURL_SOCKET_TIMEOUT,
                 0,
                 &MultiHolder.StillRunning);
-            Y_VERIFY_DEBUG(status == CURLM_OK);
+            Y_DEBUG_ABORT_UNLESS(status == CURLM_OK);
             MultiHolder.Started = true;
             Process();
         }
@@ -621,13 +621,13 @@ void THttpsClient::TImpl::ProcessRemoveQueue()
         auto* e = req->Handle;
 
         auto code = curl_multi_remove_handle(MultiHolder.Handle, e);
-        Y_VERIFY_DEBUG(code == CURLM_OK);
+        Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
         Singleton<TEasyPool>()->Return(e);
         if (--MultiHolder.Size == 0) {
             MultiHolder.Started = false;
             MultiHolder.Deadline = TInstant::Max();
         }
-        Y_VERIFY_DEBUG(InFlight > 0);
+        Y_DEBUG_ABORT_UNLESS(InFlight > 0);
         InFlight--;
 
         req->UnRef();
@@ -664,7 +664,7 @@ void THttpsClient::TImpl::ResetSignalled()
     if (AddVector.empty() && Signalled.load()) {
         char buf[1];
         auto bytes = read(SignalSockets[0], buf, sizeof(buf));
-        Y_VERIFY_DEBUG(bytes == sizeof(buf));
+        Y_DEBUG_ABORT_UNLESS(bytes == sizeof(buf));
         Signalled.store(false);
     }
 }
@@ -701,7 +701,7 @@ void THttpsClient::TImpl::Perform()
                 fd,
                 e.second,
                 &MultiHolder.StillRunning);
-            Y_VERIFY_DEBUG(code == CURLM_OK);
+            Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
             Process();
         }
     } else {
@@ -714,7 +714,7 @@ void THttpsClient::TImpl::Perform()
                     CURL_SOCKET_TIMEOUT,
                     0,
                     &MultiHolder.StillRunning);
-                Y_VERIFY_DEBUG(code == CURLM_OK);
+                Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
                 Process();
             }
         }
@@ -725,14 +725,14 @@ void THttpsClient::TImpl::Process()
 {
     int msgsInQueue;
     while (auto curlMsg = curl_multi_info_read(MultiHolder.Handle, &msgsInQueue)) {
-        Y_VERIFY_DEBUG(curlMsg->msg == CURLMSG_DONE);
+        Y_DEBUG_ABORT_UNLESS(curlMsg->msg == CURLMSG_DONE);
 
         TCurlRequestHandle* req = nullptr;
 
         auto ret =
             curl_easy_getinfo(curlMsg->easy_handle, CURLINFO_PRIVATE, &req);
-        Y_VERIFY_DEBUG(ret == CURLE_OK);
-        Y_VERIFY_DEBUG(req != nullptr);
+        Y_DEBUG_ABORT_UNLESS(ret == CURLE_OK);
+        Y_DEBUG_ABORT_UNLESS(req != nullptr);
 
         if (curlMsg->msg == CURLMSG_DONE && ret == CURLE_OK) {
             auto result = curlMsg->data.result;
@@ -742,13 +742,13 @@ void THttpsClient::TImpl::Process()
                     curlMsg->easy_handle,
                     CURLINFO_TOTAL_TIME_T,
                     &totaltime);
-                Y_VERIFY_DEBUG(code == CURLE_OK);
+                Y_DEBUG_ABORT_UNLESS(code == CURLE_OK);
                 long retCode = 0;
                 code = curl_easy_getinfo(
                     curlMsg->easy_handle,
                     CURLINFO_RESPONSE_CODE,
                     &retCode);
-                Y_VERIFY_DEBUG(code == CURLE_OK);
+                Y_DEBUG_ABORT_UNLESS(code == CURLE_OK);
                 req->Callback(retCode, req->WriteDataInfo.Data.Str());
             } else if ((result == CURLE_SEND_ERROR || result == CURLE_RECV_ERROR)
                     && req->RetryCount < MaxRetryCount)
@@ -756,10 +756,10 @@ void THttpsClient::TImpl::Process()
                 auto code = curl_multi_remove_handle(
                     MultiHolder.Handle,
                     curlMsg->easy_handle);
-                Y_VERIFY_DEBUG(code == CURLM_OK);
+                Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
                 req->Retry();
                 code = curl_multi_add_handle(MultiHolder.Handle, req->Handle);
-                Y_VERIFY_DEBUG(code == CURLM_OK);
+                Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
                 continue;
             } else {
                 req->SetError(req->ErrorString);
@@ -799,7 +799,7 @@ int THttpsClient::TImpl::SocketFunction(
     } else if (!e) {
         e = new TEvent(sock);
         auto code = curl_multi_assign(impl->MultiHolder.Handle, sock, e);
-        Y_VERIFY_DEBUG(code == CURLM_OK);
+        Y_DEBUG_ABORT_UNLESS(code == CURLM_OK);
     }
 
     impl->SocketPoller->AddWait(sock, what, e);
@@ -809,7 +809,7 @@ int THttpsClient::TImpl::SocketFunction(
 
 int THttpsClient::TImpl::TimerFunction(CURLM*, long timeoutMs, TInstant* userp)
 {
-    Y_VERIFY_DEBUG(userp != nullptr);
+    Y_DEBUG_ABORT_UNLESS(userp != nullptr);
 
     switch (timeoutMs) {
         case -1:
@@ -870,7 +870,7 @@ THttpsClient::TImpl::~TImpl()
     }
 
     CURLMcode ret = curl_multi_cleanup(MultiHolder.Handle);
-    Y_VERIFY_DEBUG(ret == CURLM_OK);
+    Y_DEBUG_ABORT_UNLESS(ret == CURLM_OK);
 }
 
 void THttpsClient::TImpl::SetCaCerts(const TString& caPath)
@@ -912,7 +912,7 @@ void THttpsClient::TImpl::Signal()
     if (Signalled.compare_exchange_strong(expected, true)) {
         static const char buf[1] = {0};
         auto bytes = write(SignalSockets[1], buf, 1);
-        Y_VERIFY_DEBUG(bytes == sizeof(buf));
+        Y_DEBUG_ABORT_UNLESS(bytes == sizeof(buf));
     }
 }
 

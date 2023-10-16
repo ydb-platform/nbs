@@ -39,7 +39,7 @@ TVector<double> CalculateWeightedPercentiles(
     const TVector<TBucketInfo>& buckets,
     const TVector<TPercentileDesc>& percentiles)
 {
-    Y_VERIFY_DEBUG(IsSorted(buckets.begin(), buckets.end(),
+    Y_DEBUG_ABORT_UNLESS(IsSorted(buckets.begin(), buckets.end(),
         [] (const auto& l, const auto& r) { return l.first < r.first; }));
 
     TVector<double> result(Reserve(percentiles.size()));

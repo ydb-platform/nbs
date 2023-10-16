@@ -293,7 +293,7 @@ ui32 ComputeAllocationUnitCount(
         fileStore.GetStorageMediaKind());
 
     ui32 unitCount = std::ceil(fileStoreSize / unit);
-    Y_VERIFY_DEBUG(unitCount >= 1, "size %f unit %lu", fileStoreSize, unit);
+    Y_DEBUG_ABORT_UNLESS(unitCount >= 1, "size %f unit %lu", fileStoreSize, unit);
 
     return unitCount;
 }

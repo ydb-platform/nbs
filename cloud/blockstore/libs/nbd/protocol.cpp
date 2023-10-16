@@ -80,7 +80,7 @@ void TRequestWriter::WriteClientHello(ui32 flags)
 
 void TRequestWriter::WriteOption(ui32 option, TStringBuf optionData)
 {
-    Y_VERIFY_DEBUG(optionData.Size() <= NBD_MAX_OPTION_SIZE);
+    Y_DEBUG_ABORT_UNLESS(optionData.Size() <= NBD_MAX_OPTION_SIZE);
 
     Write<ui64>(NBD_OPTS_MAGIC);
     Write<ui32>(option);
@@ -92,8 +92,8 @@ void TRequestWriter::WriteOption(ui32 option, TStringBuf optionData)
 
 void TRequestWriter::WriteExportInfoRequest(const TExportInfoRequest& request)
 {
-    Y_VERIFY_DEBUG(request.Name.size() <= NBD_MAX_NAME_SIZE);
-    Y_VERIFY_DEBUG(request.InfoTypes.size() <= NBD_MAX_NAME_SIZE);
+    Y_DEBUG_ABORT_UNLESS(request.Name.size() <= NBD_MAX_NAME_SIZE);
+    Y_DEBUG_ABORT_UNLESS(request.InfoTypes.size() <= NBD_MAX_NAME_SIZE);
 
     Write<ui32>(request.Name.size());
     Write(request.Name);
@@ -108,7 +108,7 @@ void TRequestWriter::WriteExportInfoRequest(const TExportInfoRequest& request)
 
 void TRequestWriter::WriteExportList(const TExportInfo& exp)
 {
-    Y_VERIFY_DEBUG(exp.Name.size() <= NBD_MAX_NAME_SIZE);
+    Y_DEBUG_ABORT_UNLESS(exp.Name.size() <= NBD_MAX_NAME_SIZE);
 
     Write<ui32>(exp.Name.size());
     Write(exp.Name);
@@ -148,7 +148,7 @@ void TRequestWriter::WriteOptionReply(
     ui32 type,
     TStringBuf replyData)
 {
-    Y_VERIFY_DEBUG(replyData.Size() <= NBD_MAX_OPTION_SIZE);
+    Y_DEBUG_ABORT_UNLESS(replyData.Size() <= NBD_MAX_OPTION_SIZE);
 
     Write<ui64>(NBD_REP_MAGIC);
     Write<ui32>(option);
@@ -163,10 +163,10 @@ void TRequestWriter::WriteRequest(
     const TRequest& request,
     TStringBuf requestData)
 {
-    Y_VERIFY_DEBUG(request.Magic == NBD_REQUEST_MAGIC);
+    Y_DEBUG_ABORT_UNLESS(request.Magic == NBD_REQUEST_MAGIC);
 
     if (request.Type != NBD_CMD_TRIM) {
-        Y_VERIFY_DEBUG(request.Length <= NBD_MAX_BUFFER_SIZE);
+        Y_DEBUG_ABORT_UNLESS(request.Length <= NBD_MAX_BUFFER_SIZE);
     }
 
     Write<ui32>(request.Magic);
@@ -177,10 +177,10 @@ void TRequestWriter::WriteRequest(
     Write<ui32>(request.Length);
 
     if (request.Type == NBD_CMD_WRITE) {
-        Y_VERIFY_DEBUG(requestData.Size() == request.Length);
+        Y_DEBUG_ABORT_UNLESS(requestData.Size() == request.Length);
         Write(requestData);
     } else {
-        Y_VERIFY_DEBUG(!requestData);
+        Y_DEBUG_ABORT_UNLESS(!requestData);
     }
 
     Flush();
@@ -190,8 +190,8 @@ void TRequestWriter::WriteRequest(
     const TRequest& request,
     const TSgList& requestData)
 {
-    Y_VERIFY_DEBUG(request.Magic == NBD_REQUEST_MAGIC);
-    Y_VERIFY_DEBUG(request.Length <= NBD_MAX_BUFFER_SIZE);
+    Y_DEBUG_ABORT_UNLESS(request.Magic == NBD_REQUEST_MAGIC);
+    Y_DEBUG_ABORT_UNLESS(request.Length <= NBD_MAX_BUFFER_SIZE);
 
     Write<ui32>(request.Magic);
     Write<ui16>(request.Flags);
@@ -202,9 +202,9 @@ void TRequestWriter::WriteRequest(
 
     if (request.Type == NBD_CMD_WRITE) {
         size_t length = Write(requestData);
-        Y_VERIFY_DEBUG(length == request.Length);
+        Y_DEBUG_ABORT_UNLESS(length == request.Length);
     } else {
-        Y_VERIFY_DEBUG(!requestData);
+        Y_DEBUG_ABORT_UNLESS(!requestData);
     }
 
     Flush();
@@ -236,7 +236,7 @@ void TRequestWriter::WriteStructuredReadData(
     ui32 length,
     bool final)
 {
-    Y_VERIFY_DEBUG(length <= NBD_MAX_BUFFER_SIZE);
+    Y_DEBUG_ABORT_UNLESS(length <= NBD_MAX_BUFFER_SIZE);
 
     Write<ui32>(NBD_STRUCTURED_REPLY_MAGIC);
     Write<ui16>(final ? NBD_REPLY_FLAG_DONE : NBD_REPLY_FLAG_NONE);
@@ -255,7 +255,7 @@ void TRequestWriter::WriteStructuredReadHole(
     ui32 length,
     bool final)
 {
-    Y_VERIFY_DEBUG(length <= NBD_MAX_BUFFER_SIZE);
+    Y_DEBUG_ABORT_UNLESS(length <= NBD_MAX_BUFFER_SIZE);
 
     Write<ui32>(NBD_STRUCTURED_REPLY_MAGIC);
     Write<ui16>(final ? NBD_REPLY_FLAG_DONE : NBD_REPLY_FLAG_NONE);
@@ -274,7 +274,7 @@ void TRequestWriter::WriteStructuredError(
     ui32 error,
     TStringBuf message)
 {
-    Y_VERIFY_DEBUG(message.Size() <= NBD_MAX_BUFFER_SIZE);
+    Y_DEBUG_ABORT_UNLESS(message.Size() <= NBD_MAX_BUFFER_SIZE);
 
     Write<ui32>(NBD_STRUCTURED_REPLY_MAGIC);
     Write<ui16>(NBD_REPLY_FLAG_DONE);

@@ -26,7 +26,7 @@ void TReplicaTable::UpdateReplica(
     const ui32 replicaNo,
     const TVector<TDeviceId>& devices)
 {
-    Y_VERIFY_DEBUG(devices.size());
+    Y_DEBUG_ABORT_UNLESS(devices.size());
     if (devices.empty()) {
         return;
     }
@@ -126,7 +126,7 @@ bool TReplicaTable::ChangeDevice(
         }
     }
 
-    Y_VERIFY_DEBUG(unit);
+    Y_DEBUG_ABORT_UNLESS(unit);
     if (!unit) {
         return false;
     }
@@ -215,7 +215,7 @@ TMirroredDisksStat TReplicaTable::CalculateReplicaCountStats() const
         ++counter;
     }
 
-    Y_VERIFY_DEBUG(dummyField == 0);
+    Y_DEBUG_ABORT_UNLESS(dummyField == 0);
     return result;
 }
 
@@ -242,7 +242,7 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
             }
         }
         ui32 replacementAndErrorCount = cellReplacementCount + cellErrorCount;
-        Y_VERIFY_DEBUG(replacementAndErrorCount < result.CellsByState.size());
+        Y_DEBUG_ABORT_UNLESS(replacementAndErrorCount < result.CellsByState.size());
         if (replacementAndErrorCount >= result.CellsByState.size()) {
             replacementAndErrorCount = result.CellsByState.size() - 1;
         }

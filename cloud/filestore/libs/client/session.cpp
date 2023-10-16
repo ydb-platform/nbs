@@ -143,25 +143,25 @@ void GetResponse(const TFuture<T>& future, T& response)
 
 TString GetSessionId(const NProto::TCreateSessionResponse& response)
 {
-    Y_VERIFY_DEBUG(!HasError(response));
+    Y_DEBUG_ABORT_UNLESS(!HasError(response));
     return response.GetSession().GetSessionId();
 }
 
 ui64 GetSessionSeqNo(const NProto::TCreateSessionResponse& response)
 {
-    Y_VERIFY_DEBUG(!HasError(response));
+    Y_DEBUG_ABORT_UNLESS(!HasError(response));
     return response.GetSession().GetSessionSeqNo();
 }
 
 bool GetReadOnly(const NProto::TCreateSessionResponse& response)
 {
-    Y_VERIFY_DEBUG(!HasError(response));
+    Y_DEBUG_ABORT_UNLESS(!HasError(response));
     return response.GetSession().GetReadOnly();
 }
 
 TString GetSessionState(const NProto::TCreateSessionResponse& response)
 {
-    Y_VERIFY_DEBUG(!HasError(response));
+    Y_DEBUG_ABORT_UNLESS(!HasError(response));
     return response.GetSession().GetSessionState();
 }
 

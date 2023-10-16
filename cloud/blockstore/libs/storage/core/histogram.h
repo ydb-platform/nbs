@@ -200,7 +200,7 @@ struct THistogram
     void Publish()
     {
         if (!HistSolomonCounters && !PercSolomonCounters) {
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
             return;
         }
 

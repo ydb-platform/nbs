@@ -15,12 +15,12 @@ TRequestCounters MakeRequestCounters(
         std::move(timer),
         BlockStoreRequestsCount,
         [] (TRequestCounters::TRequestType t) {
-            Y_VERIFY_DEBUG(t < BlockStoreRequestsCount);
+            Y_DEBUG_ABORT_UNLESS(t < BlockStoreRequestsCount);
             const auto bt = static_cast<EBlockStoreRequest>(t);
             return GetBlockStoreRequestName(bt);
         },
         [] (TRequestCounters::TRequestType t) {
-            Y_VERIFY_DEBUG(t < BlockStoreRequestsCount);
+            Y_DEBUG_ABORT_UNLESS(t < BlockStoreRequestsCount);
             const auto bt = static_cast<EBlockStoreRequest>(t);
             return IsNonLocalReadWriteRequest(bt);
         },

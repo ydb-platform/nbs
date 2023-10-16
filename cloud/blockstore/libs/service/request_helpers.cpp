@@ -43,7 +43,7 @@ bool IsReadWriteMode(const NProto::EVolumeAccessMode mode)
         case NProto::VOLUME_ACCESS_REPAIR:
             return true;
         default:
-            Y_VERIFY_DEBUG(false, "Unknown EVolumeAccessMode: %d", mode);
+            Y_DEBUG_ABORT_UNLESS(false, "Unknown EVolumeAccessMode: %d", mode);
             return false;
     }
 }
@@ -112,7 +112,7 @@ ui32 CalculateWriteRequestBlockCount(
             }
         }
 
-        Y_VERIFY_DEBUG(
+        Y_DEBUG_ABORT_UNLESS(
             false,
             "blockSize %u != request.BlockSize %u, request.BlocksCount=%u"
             ", sglist size=%lu, sglist buffer size=%lu",

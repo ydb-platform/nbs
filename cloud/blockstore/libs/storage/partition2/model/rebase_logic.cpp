@@ -128,9 +128,9 @@ ui32 MarkOverwrittenBlocks(
     const TVector<TBlock>& overwritten,
     TVector<TBlock>& blocks)
 {
-    Y_VERIFY_DEBUG(IsSorted(overwritten.begin(), overwritten.end()));
-    Y_VERIFY_DEBUG(CheckSortedWithGaps(blocks));
-    Y_VERIFY_DEBUG(overwritten.size() <= blocks.size());
+    Y_DEBUG_ABORT_UNLESS(IsSorted(overwritten.begin(), overwritten.end()));
+    Y_DEBUG_ABORT_UNLESS(CheckSortedWithGaps(blocks));
+    Y_DEBUG_ABORT_UNLESS(overwritten.size() <= blocks.size());
 
     auto o = overwritten.begin();
     auto b = blocks.begin();

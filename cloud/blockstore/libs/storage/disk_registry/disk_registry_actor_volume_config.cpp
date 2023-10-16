@@ -212,7 +212,7 @@ void TDiskRegistryActor::UpdateVolumeConfigs(
     const TVector<TString>& diskIds,
     TPrincipalTaskId principalTaskId)
 {
-    Y_VERIFY_DEBUG(!diskIds.empty());
+    Y_DEBUG_ABORT_UNLESS(!diskIds.empty());
     for (const auto& diskId: diskIds) {
         NCloud::Send(
             ctx,

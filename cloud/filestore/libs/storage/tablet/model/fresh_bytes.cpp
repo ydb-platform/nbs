@@ -44,14 +44,14 @@ void TFreshBytes::DeleteBytes(
 
         if (lo->second.Offset < offset) {
             // cutting lo from the right side
-            Y_VERIFY_DEBUG(lo->second.CommitId < commitId);
+            Y_DEBUG_ABORT_UNLESS(lo->second.CommitId < commitId);
             auto& loRef = c.Refs[{nodeId, offset}];
             loRef = lo->second;
             loRef.Buf = loRef.Buf.substr(0, offset - loRef.Offset);
 
             if (lo->first.End <= end) {
                 // blockRange is not contained strictly inside lo
-                Y_VERIFY_DEBUG(lo != hi);
+                Y_DEBUG_ABORT_UNLESS(lo != hi);
                 c.Refs.erase(lo++);
             }
         }
@@ -62,7 +62,7 @@ void TFreshBytes::DeleteBytes(
         {
             // cutting hi from the left side
             // hi might be equal to lo - it's not a problem
-            Y_VERIFY_DEBUG(hi->second.CommitId < commitId);
+            Y_DEBUG_ABORT_UNLESS(hi->second.CommitId < commitId);
             const auto shift = end - hi->second.Offset;
             hi->second.Buf = hi->second.Buf.substr(
                 shift,

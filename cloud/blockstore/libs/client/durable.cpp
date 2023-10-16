@@ -204,7 +204,7 @@ private:
     {
         auto request = CreateRequestToSend(*state);
         if (!request) {
-            Y_VERIFY_DEBUG(state->Response.HasValue());
+            Y_DEBUG_ABORT_UNLESS(state->Response.HasValue());
             return;
         }
 

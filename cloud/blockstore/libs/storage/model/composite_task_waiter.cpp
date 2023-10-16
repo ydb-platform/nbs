@@ -11,7 +11,7 @@ void TWaitDependentAndReply::IncCounter()
 
 void TWaitDependentAndReply::DecCounter(const NActors::TActorContext& ctx)
 {
-    Y_VERIFY_DEBUG(WaitCount != 0);
+    Y_DEBUG_ABORT_UNLESS(WaitCount != 0);
     --WaitCount;
     FinishIfReady(ctx);
 }
@@ -26,7 +26,7 @@ void TWaitDependentAndReply::FinishIfReady(const NActors::TActorContext& ctx)
     if (WaitCount != 0) {
         return;
     }
-    Y_VERIFY_DEBUG(Response);
+    Y_DEBUG_ABORT_UNLESS(Response);
     ctx.Send(Recipient, Response.release(), Flags, Cookie);
 }
 
@@ -50,7 +50,7 @@ TDependentTaskId TCompositeTaskList::StartDependentTaskAwait(
     }
 
     auto* compositeTask = PrincipalTasks.FindPtr(principalTaskId);
-    Y_VERIFY_DEBUG(compositeTask);
+    Y_DEBUG_ABORT_UNLESS(compositeTask);
     if (!compositeTask) {
         ReportReceivedUnknownTaskId();
         return INVALID_TASK_ID;
@@ -73,7 +73,7 @@ void TCompositeTaskList::FinishDependentTaskAwait(
     }
 
     auto nestedTaskIt = DependentTasks.find(dependentTaskId);
-    Y_VERIFY_DEBUG(nestedTaskIt != DependentTasks.end());
+    Y_DEBUG_ABORT_UNLESS(nestedTaskIt != DependentTasks.end());
     if (nestedTaskIt == DependentTasks.end()) {
         ReportReceivedUnknownTaskId();
         return;

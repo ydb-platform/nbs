@@ -183,7 +183,7 @@ void TPartitionState::InitChannels()
 
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
-    Y_VERIFY_DEBUG(Config.GetBlocksCount() <= Max<ui32>());
+    Y_DEBUG_ABORT_UNLESS(Config.GetBlocksCount() <= Max<ui32>());
     const auto validRange =
         TBlockRange64::WithLength(0, Config.GetBlocksCount());
     return validRange.Contains(range);
@@ -204,7 +204,7 @@ TVector<ui32> TPartitionState::GetChannelsByKind(
 EChannelDataKind TPartitionState::GetChannelDataKind(ui32 channel) const
 {
     // FIXME(NBS-2088): use Y_ABORT_UNLESS
-    Y_VERIFY_DEBUG(channel < ChannelCount);
+    Y_DEBUG_ABORT_UNLESS(channel < ChannelCount);
     if (channel >= ChannelCount) {
         return EChannelDataKind::Merged;
     }
@@ -257,7 +257,7 @@ bool TPartitionState::UpdateChannelFreeSpaceShare(ui32 channel, double share)
         if (share < threshold && (!prevShare || prevShare >= threshold)) {
             ++AlmostFullChannelCount;
         } else if (share >= threshold && prevShare && prevShare < threshold) {
-            Y_VERIFY_DEBUG(AlmostFullChannelCount);
+            Y_DEBUG_ABORT_UNLESS(AlmostFullChannelCount);
             --AlmostFullChannelCount;
         }
 
@@ -369,7 +369,7 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
             }
 
             default: {
-                Y_VERIFY_DEBUG(0);
+                Y_DEBUG_ABORT_UNLESS(0);
             }
         }
     }
@@ -643,7 +643,7 @@ void TPartitionState::ConfirmedBlobsAdded(
 void TPartitionState::BlobsConfirmed(ui64 commitId)
 {
     auto it = UnconfirmedBlobs.find(commitId);
-    Y_VERIFY_DEBUG(it != UnconfirmedBlobs.end());
+    Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
 
     ConfirmedBlobs[commitId] = std::move(it->second);
     UnconfirmedBlobs.erase(it);
@@ -995,7 +995,7 @@ void TPartitionState::SetUsedBlocks(
     TPartitionDatabase& db,
     const TVector<ui32>& blocks)
 {
-    Y_VERIFY_DEBUG(IsSorted(blocks.begin(), blocks.end()));
+    Y_DEBUG_ABORT_UNLESS(IsSorted(blocks.begin(), blocks.end()));
 
     ui32 blockCount = 0;
     ui32 logicalBlockCount = 0;
@@ -1058,7 +1058,7 @@ void TPartitionState::UnsetUsedBlocks(
     TPartitionDatabase& db,
     const TVector<ui32>& blocks)
 {
-    Y_VERIFY_DEBUG(IsSorted(blocks.begin(), blocks.end()));
+    Y_DEBUG_ABORT_UNLESS(IsSorted(blocks.begin(), blocks.end()));
 
     ui32 blockCount = 0;
     ui32 logicalBlockCount = 0;

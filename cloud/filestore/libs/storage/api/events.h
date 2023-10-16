@@ -37,7 +37,7 @@ struct TRequestEvent
         : TArgs(std::forward<Args>(args)...)
         , CallContext(std::move(callContext))
     {
-        Y_VERIFY_DEBUG(CallContext);
+        Y_DEBUG_ABORT_UNLESS(CallContext);
     }
 
     template <typename ...Args>
@@ -98,14 +98,14 @@ struct TProtoRequestEvent
     TProtoRequestEvent(TCallContextPtr callContext)
         : CallContext(std::move(callContext))
     {
-        Y_VERIFY_DEBUG(CallContext);
+        Y_DEBUG_ABORT_UNLESS(CallContext);
     }
 
     template <typename T>
     TProtoRequestEvent(TCallContextPtr callContext, T&& proto)
         : CallContext(std::move(callContext))
     {
-        Y_VERIFY_DEBUG(CallContext);
+        Y_DEBUG_ABORT_UNLESS(CallContext);
         TProtoRequestEvent::Record = std::forward<T>(proto);
     }
 };

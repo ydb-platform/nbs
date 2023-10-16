@@ -93,7 +93,7 @@ struct TRequestCounters
                     ExternalRequestBytes += size;
                     break;
                 default:
-                    Y_VERIFY_DEBUG(0, "unsupported kind");
+                    Y_DEBUG_ABORT_UNLESS(0, "unsupported kind");
             }
         }
         Total.Increment(time, requestCount);

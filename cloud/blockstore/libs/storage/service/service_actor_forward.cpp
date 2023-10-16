@@ -169,7 +169,7 @@ void TServiceActor::ForwardRequest(
                     msg->Record,
                     volume->VolumeInfo->GetBlockSize()));
         } else {
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
         }
     }
 

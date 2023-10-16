@@ -15,7 +15,7 @@ namespace NCloud {
 
 inline NKikimr::TLogoBlobID MakeBlobId(ui64 tabletId, const TPartialBlobId& blobId)
 {
-    Y_VERIFY_DEBUG(blobId.PartId() == 0);
+    Y_DEBUG_ABORT_UNLESS(blobId.PartId() == 0);
     return NKikimr::TLogoBlobID(
         tabletId,
         blobId.Generation(),

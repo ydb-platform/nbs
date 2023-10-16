@@ -19,7 +19,7 @@ ui32 SafeDistance(ui32 l, ui32 r)
 
 ui32 SafeAdd(ui32 start, ui32 count)
 {
-    Y_VERIFY_DEBUG(count);
+    Y_DEBUG_ABORT_UNLESS(count);
     if (start < TBlockRange32::MaxIndex - (count - 1)) {
         return start + (count - 1);
     } else {
@@ -33,8 +33,8 @@ TVector<TBlockRange32> SplitInRanges(
     const TVector<ui32>& blocks,
     ui32 rangeSize = ScanRangeSize)
 {
-    Y_VERIFY_DEBUG(!blocks.empty());
-    Y_VERIFY_DEBUG(IsSorted(blocks.begin(), blocks.end()));
+    Y_DEBUG_ABORT_UNLESS(!blocks.empty());
+    Y_DEBUG_ABORT_UNLESS(IsSorted(blocks.begin(), blocks.end()));
 
     TVector<TBlockRange32> result;
 
@@ -229,7 +229,7 @@ bool TPartitionDatabase::FindMixedBlocks(
 
     while (it.IsValid()) {
         ui32 blockIndex = it.GetValue<TTable::BlockIndex>();
-        Y_VERIFY_DEBUG(blockIndex >= readRange.Start);
+        Y_DEBUG_ABORT_UNLESS(blockIndex >= readRange.Start);
 
         if (blockIndex > readRange.End) {
             break;  // out of range
@@ -289,7 +289,7 @@ bool TPartitionDatabase::FindMixedBlocks(
                 ++i;
             }
 
-            Y_VERIFY_DEBUG(blockIndex <= blocks[i]);
+            Y_DEBUG_ABORT_UNLESS(blockIndex <= blocks[i]);
             if (blockIndex == blocks[i]) {
                 ui64 commitId = ReverseCommitId(it.GetValue<TTable::CommitId>());
                 if (commitId <= maxCommitId) {
@@ -393,8 +393,8 @@ bool TPartitionDatabase::FindMergedBlocks(
             it.GetValue<TTable::RangeStart>(),
             it.GetValue<TTable::RangeEnd>());
 
-        Y_VERIFY_DEBUG(range.End >= readRange.Start);
-        Y_VERIFY_DEBUG(range.Size() <= maxBlocksInBlob);
+        Y_DEBUG_ABORT_UNLESS(range.End >= readRange.Start);
+        Y_DEBUG_ABORT_UNLESS(range.Size() <= maxBlocksInBlob);
 
         if (SafeDistance(readRange.End, range.End) > maxBlocksInBlob) {
             break;  // out of range
@@ -482,8 +482,8 @@ bool TPartitionDatabase::FindMergedBlocks(
                 it.GetValue<TTable::RangeStart>(),
                 it.GetValue<TTable::RangeEnd>());
 
-            Y_VERIFY_DEBUG(range.End >= readRange.Start);
-            Y_VERIFY_DEBUG(range.Size() <= maxBlocksInBlob);
+            Y_DEBUG_ABORT_UNLESS(range.End >= readRange.Start);
+            Y_DEBUG_ABORT_UNLESS(range.Size() <= maxBlocksInBlob);
 
             auto start = LowerBound(blocks.begin(), blocks.end(), range.Start);
             auto end = UpperBound(start, blocks.end(), range.End);

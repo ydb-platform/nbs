@@ -564,7 +564,7 @@ struct TRequestCounters::TStatCounters
             case EDiagnosticsErrorKind::ErrorAborted:
             case EDiagnosticsErrorKind::ErrorFatal:
             case EDiagnosticsErrorKind::ErrorSilent:
-                Y_VERIFY_DEBUG(false);
+                Y_DEBUG_ABORT_UNLESS(false);
                 return;
         }
 

@@ -40,7 +40,7 @@ void TCallContextBase::SetResponseSentCycles(ui64 cycles) {
 
 void TCallContextBase::Postpone(ui64 nowCycles)
 {
-    Y_VERIFY_DEBUG(
+    Y_DEBUG_ABORT_UNLESS(
         AtomicGet(PostponeTsCycles) == 0,
         "Request was not advanced.");
     AtomicSet(PostponeTsCycles, nowCycles);
@@ -49,7 +49,7 @@ void TCallContextBase::Postpone(ui64 nowCycles)
 TDuration TCallContextBase::Advance(ui64 nowCycles)
 {
     const auto start = AtomicGet(PostponeTsCycles);
-    Y_VERIFY_DEBUG(start != 0, "Request was not postponed.");
+    Y_DEBUG_ABORT_UNLESS(start != 0, "Request was not postponed.");
 
     const auto delay = CyclesToDurationSafe(nowCycles - start);
     AddTime(EProcessingStage::Postponed, delay);

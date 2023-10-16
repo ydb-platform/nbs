@@ -127,7 +127,7 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     TVolumeDatabase::TPartStats partStats;
 
     auto kind = State->GetConfig().GetStorageMediaKind();
-    Y_VERIFY_DEBUG(IsDiskRegistryMediaKind(kind));
+    Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(kind));
 
     CopyPartCountersToCachedStats(*msg->DiskCounters, partStats.Stats);
 
@@ -176,7 +176,7 @@ void TVolumeActor::HandlePartCounters(
     TVolumeDatabase::TPartStats partStats;
 
     auto kind = State->GetConfig().GetStorageMediaKind();
-    Y_VERIFY_DEBUG(!IsDiskRegistryMediaKind(kind));
+    Y_DEBUG_ABORT_UNLESS(!IsDiskRegistryMediaKind(kind));
     partStats.Id = State->GetPartitions()[index].TabletId;
 
     CopyPartCountersToCachedStats(*msg->DiskCounters, partStats.Stats);

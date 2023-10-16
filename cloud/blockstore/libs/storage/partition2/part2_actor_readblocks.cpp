@@ -380,13 +380,13 @@ void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
 
 void TReadBlocksActor::DescribeBlocks(const TActorContext& ctx)
 {
-    Y_VERIFY_DEBUG(DescribeBlocksRange);
-    Y_VERIFY_DEBUG(DescribeBlocksRange->Size());
-    Y_VERIFY_DEBUG(BaseDiskId);
-    Y_VERIFY_DEBUG(BaseDiskCheckpointId);
-    Y_VERIFY_DEBUG(ReadRange.Size());
-    Y_VERIFY_DEBUG(BlockMarks.size() == ReadRange.Size());
-    Y_VERIFY_DEBUG(ReadRange.Contains(*DescribeBlocksRange));
+    Y_DEBUG_ABORT_UNLESS(DescribeBlocksRange);
+    Y_DEBUG_ABORT_UNLESS(DescribeBlocksRange->Size());
+    Y_DEBUG_ABORT_UNLESS(BaseDiskId);
+    Y_DEBUG_ABORT_UNLESS(BaseDiskCheckpointId);
+    Y_DEBUG_ABORT_UNLESS(ReadRange.Size());
+    Y_DEBUG_ABORT_UNLESS(BlockMarks.size() == ReadRange.Size());
+    Y_DEBUG_ABORT_UNLESS(ReadRange.Contains(*DescribeBlocksRange));
 
     DescribeBlocksInProgress = true;
 
@@ -472,7 +472,7 @@ void TReadBlocksActor::ReadBlocks(
     TReadBlocksRequests requests,
     bool baseDisk)
 {
-    Y_VERIFY_DEBUG(IsSorted(
+    Y_DEBUG_ABORT_UNLESS(IsSorted(
         requests.begin(),
         requests.end(),
         TCompareByBlobIdAndOffset()
@@ -798,7 +798,7 @@ TMaybe<TBlockRange32> ComputeDescribeBlocksRange(
     const TBlockRange32& readRange,
     const TBlockMarks& blocks)
 {
-    Y_VERIFY_DEBUG(readRange.Size() == blocks.size());
+    Y_DEBUG_ABORT_UNLESS(readRange.Size() == blocks.size());
 
     const auto firstEmptyIt = FindIf(blocks, [](const auto& b) { return b.Empty; });
     if (firstEmptyIt == blocks.end()) {

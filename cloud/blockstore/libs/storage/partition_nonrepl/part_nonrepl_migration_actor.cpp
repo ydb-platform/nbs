@@ -165,7 +165,7 @@ void TNonreplicatedPartitionMigrationActor::HandlePoisonPill(
         ev->Cookie,
         MakeIntrusive<TCallContext>());
 
-    Y_VERIFY_DEBUG(SrcActorId || DstActorId);
+    Y_DEBUG_ABORT_UNLESS(SrcActorId || DstActorId);
 
     if (SrcActorId || DstActorId) {
         return;

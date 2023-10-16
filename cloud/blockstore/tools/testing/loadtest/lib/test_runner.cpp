@@ -282,7 +282,7 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
         << "WriteBlocks request: ("
         << range.Start << ", " << range.Size() << ")");
 
-    Y_VERIFY_DEBUG(Volume.GetBlockSize() >= sizeof(RequestsSent));
+    Y_DEBUG_ABORT_UNLESS(Volume.GetBlockSize() >= sizeof(RequestsSent));
     auto buffer = Allocator->Allocate(Volume.GetBlockSize() * range.Size());
     auto guardedSgList = TGuardedSgList(BuildSgList(buffer));
 

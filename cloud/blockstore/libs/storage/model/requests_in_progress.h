@@ -65,8 +65,8 @@ public:
 
     void AddReadRequest(const TKey& key, TValue value = {})
     {
-        Y_VERIFY_DEBUG(!RequestsInProgress.contains(key));
-        Y_VERIFY_DEBUG(
+        Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
+        Y_DEBUG_ABORT_UNLESS(
             AllowedRequests == EAllowedRequests::ReadOnly ||
             AllowedRequests == EAllowedRequests::ReadWrite);
         RequestsInProgress.emplace(key, TRequest{std::move(value), false});
@@ -81,8 +81,8 @@ public:
 
     void AddWriteRequest(const TKey& key, TValue value = {})
     {
-        Y_VERIFY_DEBUG(!RequestsInProgress.contains(key));
-        Y_VERIFY_DEBUG(
+        Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
+        Y_DEBUG_ABORT_UNLESS(
             AllowedRequests == EAllowedRequests::WriteOnly ||
             AllowedRequests == EAllowedRequests::ReadWrite);
         RequestsInProgress.emplace(key, TRequest{std::move(value), true});
@@ -101,7 +101,7 @@ public:
         if (auto* requestInfo = RequestsInProgress.FindPtr(key)) {
             return requestInfo->Value;
         } else {
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
         }
         return {};
     }
@@ -111,7 +111,7 @@ public:
         auto it = RequestsInProgress.find(key);
 
         if (it == RequestsInProgress.end()) {
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
             return false;
         }
 

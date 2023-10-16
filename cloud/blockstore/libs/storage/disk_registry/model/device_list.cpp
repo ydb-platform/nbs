@@ -104,7 +104,7 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
 {
     if (agent.GetNodeId() == 0) {
         for (const auto& device: agent.GetDevices()) {
-            Y_VERIFY_DEBUG(device.GetNodeId() == 0);
+            Y_DEBUG_ABORT_UNLESS(device.GetNodeId() == 0);
 
             const auto& uuid = device.GetDeviceUUID();
             AllDevices[uuid] = device;
@@ -468,7 +468,7 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
             for (; it != end; ++it) {
                 const auto& device = *it;
 
-                Y_VERIFY_DEBUG(device.GetRack() == freeDevices->Rack);
+                Y_DEBUG_ABORT_UNLESS(device.GetRack() == freeDevices->Rack);
 
                 const ui64 size = device.GetBlockSize() * device.GetBlocksCount();
 
@@ -531,7 +531,7 @@ TVector<NProto::TDeviceConfig> TDeviceList::AllocateDevices(
         for (const auto& device: MakeIteratorRange(it, end)) {
             const auto& uuid = device.GetDeviceUUID();
 
-            Y_VERIFY_DEBUG(device.GetState() == NProto::DEVICE_STATE_ONLINE);
+            Y_DEBUG_ABORT_UNLESS(device.GetState() == NProto::DEVICE_STATE_ONLINE);
 
             AllocatedDevices.emplace(uuid, diskId);
             allocated.emplace_back(device);
@@ -736,7 +736,7 @@ TVector<NProto::TDeviceConfig> FilterDevices(
                 break;
             }
             default: {
-                Y_VERIFY_DEBUG(0);
+                Y_DEBUG_ABORT_UNLESS(0);
             }
         }
 

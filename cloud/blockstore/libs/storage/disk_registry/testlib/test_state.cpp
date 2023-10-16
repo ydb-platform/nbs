@@ -146,7 +146,7 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     TVector<TVector<TString>> uuids,
     NProto::EDiskState state)
 {
-    Y_VERIFY_DEBUG(uuids.size() > 0, "Mirror disk must have replicas");
+    Y_DEBUG_ABORT_UNLESS(uuids.size() > 0, "Mirror disk must have replicas");
 
     TVector<NProto::TDiskConfig> result;
 

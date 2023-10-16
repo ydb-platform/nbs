@@ -29,12 +29,12 @@ TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
     , BlockSize(blockSize)
     , BlockMarks(std::move(blockMarks))
 {
-    Y_VERIFY_DEBUG(BaseDiskBlocksRange.Size());
-    Y_VERIFY_DEBUG(BaseDiskId);
-    Y_VERIFY_DEBUG(BaseDiskCheckpointId);
-    Y_VERIFY_DEBUG(BlocksRange.Size());
-    Y_VERIFY_DEBUG(BlockMarks.size() == BlocksRange.Size());
-    Y_VERIFY_DEBUG(BlocksRange.Contains(BaseDiskBlocksRange));
+    Y_DEBUG_ABORT_UNLESS(BaseDiskBlocksRange.Size());
+    Y_DEBUG_ABORT_UNLESS(BaseDiskId);
+    Y_DEBUG_ABORT_UNLESS(BaseDiskCheckpointId);
+    Y_DEBUG_ABORT_UNLESS(BlocksRange.Size());
+    Y_DEBUG_ABORT_UNLESS(BlockMarks.size() == BlocksRange.Size());
+    Y_DEBUG_ABORT_UNLESS(BlocksRange.Contains(BaseDiskBlocksRange));
 }
 
 void TDescribeBaseDiskBlocksActor::Bootstrap(const TActorContext& ctx)

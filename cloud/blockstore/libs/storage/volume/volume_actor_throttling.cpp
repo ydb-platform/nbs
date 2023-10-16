@@ -123,7 +123,7 @@ void TVolumeActor::UpdateDelayCounter(
             return;
         case TVolumeThrottlingPolicy::EOpType::Last:
         default:
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
     }
 }
 
@@ -206,7 +206,7 @@ NProto::TError TVolumeActor::Throttle(
             VolumeSelfCounters->Cumulative.ThrottlerRejectedRequests.Increment(1);
             return err;
         default:
-            Y_VERIFY_DEBUG(false);
+            Y_DEBUG_ABORT_UNLESS(false);
     }
 
     return ok;

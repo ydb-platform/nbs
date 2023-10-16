@@ -113,7 +113,7 @@ private:
 
         void OnHiveAck()
         {
-            Y_VERIFY_DEBUG(State != STATE_NO_STATS);
+            Y_DEBUG_ABORT_UNLESS(State != STATE_NO_STATS);
 
             switch (State) {
                 case STATE_HAS_STATS: State = STATE_NO_STATS; break;

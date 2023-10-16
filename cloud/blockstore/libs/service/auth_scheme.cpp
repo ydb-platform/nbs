@@ -153,7 +153,7 @@ TPermissionList GetMountPermissions(
         default:
             // In case we get unknown volume access mode, assume
             // read-only permission.
-            Y_VERIFY_DEBUG(false, "Unknown EVolumeAccessMode: %d", mode);
+            Y_DEBUG_ABORT_UNLESS(false, "Unknown EVolumeAccessMode: %d", mode);
             return CreatePermissionList({EPermission::Read});
     }
 }

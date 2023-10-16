@@ -606,7 +606,7 @@ bool TEncryptionClient::Encrypt(
     const TSgList& dst,
     ui64 startIndex)
 {
-    Y_VERIFY_DEBUG(dst.size() >= src.size());
+    Y_DEBUG_ABORT_UNLESS(dst.size() >= src.size());
     if (dst.size() < src.size()) {
         return false;
     }
@@ -626,7 +626,7 @@ bool TEncryptionClient::Decrypt(
     ui64 startIndex,
     const TString& unencryptedBlockMask)
 {
-    Y_VERIFY_DEBUG(dst.size() == src.size());
+    Y_DEBUG_ABORT_UNLESS(dst.size() == src.size());
     if (dst.size() != src.size()) {
         return false;
     }
@@ -639,7 +639,7 @@ bool TEncryptionClient::Decrypt(
                 return false;
             }
         } else {
-            Y_VERIFY_DEBUG(dst[i].Size() == src[i].Size());
+            Y_DEBUG_ABORT_UNLESS(dst[i].Size() == src[i].Size());
             if (dst[i].Size() != src[i].Size()) {
                 return false;
             }

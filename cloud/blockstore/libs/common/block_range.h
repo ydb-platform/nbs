@@ -48,7 +48,7 @@ struct TBlockRange
         TBlockIndex start,
         TBlockIndex includedEnd)
     {
-        Y_VERIFY_DEBUG(start <= includedEnd);
+        Y_DEBUG_ABORT_UNLESS(start <= includedEnd);
         return TBlockRange{start, includedEnd};
     }
 
@@ -75,7 +75,7 @@ struct TBlockRange
         TBlockIndex start,
         TBlockIndex excludedEnd)
     {
-        Y_VERIFY_DEBUG(start < excludedEnd);
+        Y_DEBUG_ABORT_UNLESS(start < excludedEnd);
         return TBlockRange{start, excludedEnd - 1};
     }
 
@@ -84,7 +84,7 @@ struct TBlockRange
     // may be shorter than the requested one.
     static TBlockRange WithLength(TBlockIndex start, TBlockIndex count)
     {
-        Y_VERIFY_DEBUG(count);
+        Y_DEBUG_ABORT_UNLESS(count);
         if (start < MaxIndex - (count - 1)) {
             return {start, start + (count - 1)};
         } else {
@@ -96,7 +96,7 @@ struct TBlockRange
 
     [[nodiscard]] TBlockIndex Size() const
     {
-        Y_VERIFY_DEBUG(Start <= End);
+        Y_DEBUG_ABORT_UNLESS(Start <= End);
         return (End - Start) + 1;
     }
 
@@ -122,7 +122,7 @@ struct TBlockRange
     // ranges must overlap.
     [[nodiscard]] TBlockRange Intersect(const TBlockRange& other) const
     {
-        Y_VERIFY_DEBUG(Overlaps(other));
+        Y_DEBUG_ABORT_UNLESS(Overlaps(other));
 
         auto start = ::Max(Start, other.Start);
         auto end = ::Min(End, other.End);
@@ -158,7 +158,7 @@ struct TBlockRange
     // overlap.
     [[nodiscard]] TBlockRange Union(const TBlockRange& other) const
     {
-        Y_VERIFY_DEBUG(Overlaps(other));
+        Y_DEBUG_ABORT_UNLESS(Overlaps(other));
 
         auto start = ::Min(Start, other.Start);
         auto end = ::Max(End, other.End);

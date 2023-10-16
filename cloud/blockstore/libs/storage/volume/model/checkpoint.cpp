@@ -46,7 +46,7 @@ const TCheckpointRequest& TCheckpointStore::CreateNew(
 void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
-    Y_VERIFY_DEBUG(
+    Y_DEBUG_ABORT_UNLESS(
         checkpointRequest.State == ECheckpointRequestState::Received);
     checkpointRequest.State = ECheckpointRequestState::Saved;
 }
@@ -54,7 +54,7 @@ void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
 void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
-    Y_VERIFY_DEBUG(checkpointRequest.State == ECheckpointRequestState::Saved);
+    Y_DEBUG_ABORT_UNLESS(checkpointRequest.State == ECheckpointRequestState::Saved);
 
     CheckpointRequestInProgress = requestId;
     CheckpointBeingCreated =
@@ -65,10 +65,10 @@ void TCheckpointStore::SetCheckpointRequestFinished(
     ui64 requestId,
     bool success)
 {
-    Y_VERIFY_DEBUG(CheckpointRequestInProgress == requestId);
+    Y_DEBUG_ABORT_UNLESS(CheckpointRequestInProgress == requestId);
     if (requestId == CheckpointRequestInProgress) {
         auto& checkpointRequest = GetRequest(requestId);
-        Y_VERIFY_DEBUG(
+        Y_DEBUG_ABORT_UNLESS(
             checkpointRequest.State == ECheckpointRequestState::Saved);
         checkpointRequest.State = success ? ECheckpointRequestState::Completed
                                           : ECheckpointRequestState::Rejected;
@@ -103,13 +103,13 @@ bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
 
 bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
 {
-    Y_VERIFY_DEBUG(requestId);
+    Y_DEBUG_ABORT_UNLESS(requestId);
 
     for (const auto& [key, checkpointRequest]: CheckpointRequests) {
         if (checkpointRequest.State != ECheckpointRequestState::Saved) {
             continue;
         }
-        Y_VERIFY_DEBUG(key == checkpointRequest.RequestId);
+        Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
         if (requestId) {
             *requestId = checkpointRequest.RequestId;
         }
@@ -157,7 +157,7 @@ const TCheckpointRequest& TCheckpointStore::GetRequestById(ui64 requestId) const
     if (const TCheckpointRequest* checkpointRequest =
             CheckpointRequests.FindPtr(requestId))
     {
-        Y_VERIFY_DEBUG(requestId == checkpointRequest->RequestId);
+        Y_DEBUG_ABORT_UNLESS(requestId == checkpointRequest->RequestId);
         return *checkpointRequest;
     }
     STORAGE_VERIFY(0, TWellKnownEntityTypes::DISK, DiskID);
@@ -178,7 +178,7 @@ TCheckpointRequest& TCheckpointStore::GetRequest(ui64 requestId)
     if (TCheckpointRequest* checkpointRequest =
             CheckpointRequests.FindPtr(requestId))
     {
-        Y_VERIFY_DEBUG(requestId == checkpointRequest->RequestId);
+        Y_DEBUG_ABORT_UNLESS(requestId == checkpointRequest->RequestId);
         return *checkpointRequest;
     }
     STORAGE_VERIFY(0, TWellKnownEntityTypes::DISK, DiskID);
@@ -192,7 +192,7 @@ TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
     auto requestId = checkpointRequest.RequestId;
     auto [it, inserted] =
         CheckpointRequests.insert({requestId, std::move(checkpointRequest)});
-    Y_VERIFY_DEBUG(inserted);
+    Y_DEBUG_ABORT_UNLESS(inserted);
     Apply(it->second);
     return it->second;
 }
@@ -254,7 +254,7 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
             break;
         }
         default: {
-            Y_VERIFY_DEBUG(0);
+            Y_DEBUG_ABORT_UNLESS(0);
         }
     }
 }

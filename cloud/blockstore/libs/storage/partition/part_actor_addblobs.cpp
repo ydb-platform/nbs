@@ -40,7 +40,7 @@ bool HasDuplicates(const TVector<ui32>& items)
 {
     if (items.size() > 1) {
         for (size_t i = 1; i < items.size(); ++i) {
-            Y_VERIFY_DEBUG(items[i - 1] <= items[i]);
+            Y_DEBUG_ABORT_UNLESS(items[i - 1] <= items[i]);
             if (items[i - 1] == items[i]) {
                 return true;
             }
@@ -111,7 +111,7 @@ public:
             if (Args.Mode == ADD_COMPACTION_RESULT) {
                 const auto& cm = State.GetCompactionMap();
                 const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
-                Y_VERIFY_DEBUG(blockIndex == cm.GetRangeStart(blob.BlockRange.End));
+                Y_DEBUG_ABORT_UNLESS(blockIndex == cm.GetRangeStart(blob.BlockRange.End));
                 auto& rangeInfo = CompactionCounters[blockIndex];
                 rangeInfo.BlobsSkippedByCompaction =
                     Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
@@ -147,8 +147,8 @@ private:
         TPartitionDatabase& db,
         const TAddMixedBlob& blob)
     {
-        Y_VERIFY_DEBUG(blob.BlobId.CommitId() == Args.CommitId);
-        Y_VERIFY_DEBUG(!HasDuplicates(blob.Blocks));
+        Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
+        Y_DEBUG_ABORT_UNLESS(!HasDuplicates(blob.Blocks));
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
@@ -204,7 +204,7 @@ private:
         TPartitionDatabase& db,
         const TAddMergedBlob& blob)
     {
-        Y_VERIFY_DEBUG(blob.BlobId.CommitId() == Args.CommitId);
+        Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
@@ -263,10 +263,10 @@ private:
         TPartitionDatabase& db,
         const TAddFreshBlob& blob)
     {
-        Y_VERIFY_DEBUG(blob.BlobId.CommitId() == Args.CommitId);
+        Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
 
         // duplicates are allowed
-        Y_VERIFY_DEBUG(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
+        Y_DEBUG_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
@@ -431,7 +431,7 @@ private:
 
         for (size_t i = 0; i < blob.Blocks.size(); ++i) {
             ui32 blockIndex = cm.GetRangeStart(BlockIndex(blob, i));
-            Y_VERIFY_DEBUG(prevBlockIndex <= blockIndex);
+            Y_DEBUG_ABORT_UNLESS(prevBlockIndex <= blockIndex);
 
             if (i == 0 || prevBlockIndex != blockIndex) {
                 prevBlockIndex = blockIndex;

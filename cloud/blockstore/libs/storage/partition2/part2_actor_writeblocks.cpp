@@ -299,7 +299,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
 
     Actors.erase(ev->Sender);
 
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress >= requestCount);
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
     WriteAndZeroRequestsInProgress -= requestCount;
 
     DrainActorCompanion.ProcessDrainRequests(ctx);

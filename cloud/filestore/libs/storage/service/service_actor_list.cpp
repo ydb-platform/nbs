@@ -121,7 +121,7 @@ private:
         }
 
         if (RequestsCompleted != RequestsScheduled) {
-            Y_VERIFY_DEBUG(RequestsCompleted < RequestsScheduled);
+            Y_DEBUG_ABORT_UNLESS(RequestsCompleted < RequestsScheduled);
             return;
         }
 

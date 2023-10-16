@@ -113,7 +113,7 @@ void TFlushActor::Bootstrap(const TActorContext& ctx)
     for (const auto& request: Requests) {
         auto blockContent = request.BlobContent.Get().GetBlocks().begin();
 
-        Y_VERIFY_DEBUG(request.BlobContent.Get().GetBlocks().size()
+        Y_DEBUG_ABORT_UNLESS(request.BlobContent.Get().GetBlocks().size()
             == request.Blocks.size());
 
         for (const auto& block: request.Blocks) {
@@ -503,7 +503,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
     auto& flushCtx = State->GetFlushContext();
 
     const ui64 commitId = flushCtx.CommitId;
-    Y_VERIFY_DEBUG(!State->HasFreshBlocksInFlightUntil(commitId));
+    Y_DEBUG_ABORT_UNLESS(!State->HasFreshBlocksInFlightUntil(commitId));
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] Starting flush @%lu",

@@ -93,7 +93,7 @@ private:
             static_cast<NCloud::NProto::EStorageMediaKind>(mediaKind);
 
         if (volumeConfig.ExplicitChannelProfilesSize()) {
-            Y_VERIFY_DEBUG(volumeConfig.ExplicitChannelProfilesSize() > 3);
+            Y_DEBUG_ABORT_UNLESS(volumeConfig.ExplicitChannelProfilesSize() > 3);
             for (ui32 i = 3; i < volumeConfig.ExplicitChannelProfilesSize(); ++i) {
                 const auto& channelProfile =
                     volumeConfig.GetExplicitChannelProfiles(i);

@@ -11,8 +11,8 @@ TBackoffDelayProvider::TBackoffDelayProvider(
     , MaxDelay(maxDelay)
     , CurrentDelay(initialDelay)
 {
-    Y_VERIFY_DEBUG(InitialDelay > TDuration());
-    Y_VERIFY_DEBUG(InitialDelay <= MaxDelay);
+    Y_DEBUG_ABORT_UNLESS(InitialDelay > TDuration());
+    Y_DEBUG_ABORT_UNLESS(InitialDelay <= MaxDelay);
 }
 
 TDuration TBackoffDelayProvider::GetDelay() const

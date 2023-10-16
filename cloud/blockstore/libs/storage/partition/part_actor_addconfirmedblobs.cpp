@@ -148,7 +148,7 @@ void TAddConfirmedBlobsActor::HandleAddBlobsResponse(
         return;
     }
 
-    Y_VERIFY_DEBUG(RequestsCompleted < Requests.size());
+    Y_DEBUG_ABORT_UNLESS(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }

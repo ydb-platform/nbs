@@ -69,7 +69,7 @@ TAlignedBuffer AllocateAligned(size_t byteCount, bool zeroInit)
 {
     void* p = memalign(DefaultBlockSize, byteCount);
     Y_ABORT_UNLESS(p);
-    Y_VERIFY_DEBUG((uintptr_t)p % DefaultBlockSize == 0);
+    Y_DEBUG_ABORT_UNLESS((uintptr_t)p % DefaultBlockSize == 0);
 
     if (zeroInit) {
         memset(p, 0, byteCount);

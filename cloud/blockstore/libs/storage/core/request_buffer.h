@@ -25,7 +25,7 @@ private:
 public:
     void Put(TRequestInBuffer<TData> request)
     {
-        Y_VERIFY_DEBUG(request.Weight);
+        Y_DEBUG_ABORT_UNLESS(request.Weight);
         Weight += request.Weight;
         Requests.push_back(std::move(request));
     }

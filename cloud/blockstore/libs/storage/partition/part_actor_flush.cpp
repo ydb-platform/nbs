@@ -151,7 +151,7 @@ void TFlushActor::Bootstrap(const TActorContext& ctx)
 
         if (request.BlobContent.Get()) {
             // BlobContent is empty only for zero blocks
-            Y_VERIFY_DEBUG(request.BlobContent.Get().GetBlocks().size()
+            Y_DEBUG_ABORT_UNLESS(request.BlobContent.Get().GetBlocks().size()
                 == request.Blocks.size());
         }
 
@@ -788,7 +788,7 @@ void TPartitionActor::HandleFlushCompleted(
     Actors.erase(ev->Sender);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
-    Y_VERIFY_DEBUG(msg->Stats.GetSysReadCounters().GetBlocksCount() == 0);
+    Y_DEBUG_ABORT_UNLESS(msg->Stats.GetSysReadCounters().GetBlocksCount() == 0);
     ui32 blocks = msg->Stats.GetSysWriteCounters().GetBlocksCount();
     PartCounters->RequestCounters.Flush.AddRequest(
         d.MicroSeconds(),

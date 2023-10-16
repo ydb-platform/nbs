@@ -36,7 +36,7 @@ bool CompareRequests(
     const NProto::TKmsKey& left,
     const NProto::TKmsKey& right)
 {
-    Y_VERIFY_DEBUG(3 == GetFieldCount<NProto::TKmsKey>());
+    Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TKmsKey>());
     return left.GetKekId() == right.GetKekId()
         && left.GetEncryptedDEK() == right.GetEncryptedDEK()
         && left.GetTaskId() == right.GetTaskId();
@@ -46,7 +46,7 @@ bool CompareRequests(
     const NProto::TKeyPath& left,
     const NProto::TKeyPath& right)
 {
-    Y_VERIFY_DEBUG(3 == GetFieldCount<NProto::TKeyPath>());
+    Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TKeyPath>());
     return left.GetKeyringId() == right.GetKeyringId()
         && left.GetFilePath() == right.GetFilePath()
         && CompareRequests(left.GetKmsKey(), right.GetKmsKey());
@@ -56,7 +56,7 @@ bool CompareRequests(
     const NProto::TEncryptionSpec& left,
     const NProto::TEncryptionSpec& right)
 {
-    Y_VERIFY_DEBUG(3 == GetFieldCount<NProto::TEncryptionSpec>());
+    Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TEncryptionSpec>());
     return left.GetMode() == right.GetMode()
         && CompareRequests(left.GetKeyPath(), right.GetKeyPath())
         && left.GetKeyHash() == right.GetKeyHash();
@@ -66,7 +66,7 @@ bool CompareRequests(
     const NProto::TClientProfile& left,
     const NProto::TClientProfile& right)
 {
-    Y_VERIFY_DEBUG(2 == GetFieldCount<NProto::TClientProfile>());
+    Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TClientProfile>());
     return left.GetCpuUnitCount() == right.GetCpuUnitCount()
         && left.GetHostType() == right.GetHostType();
 }
@@ -75,7 +75,7 @@ bool CompareRequests(
     const NProto::TClientMediaKindPerformanceProfile& left,
     const NProto::TClientMediaKindPerformanceProfile& right)
 {
-    Y_VERIFY_DEBUG(4 == GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
+    Y_DEBUG_ABORT_UNLESS(4 == GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
     return left.GetMaxReadIops() == right.GetMaxReadIops()
         && left.GetMaxWriteIops() == right.GetMaxWriteIops()
         && left.GetMaxReadBandwidth() == right.GetMaxReadBandwidth()
@@ -86,7 +86,7 @@ bool CompareRequests(
     const NProto::TClientPerformanceProfile& left,
     const NProto::TClientPerformanceProfile& right)
 {
-    Y_VERIFY_DEBUG(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
+    Y_DEBUG_ABORT_UNLESS(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
     return CompareRequests(left.GetHDDProfile(), right.GetHDDProfile())
         && CompareRequests(left.GetSSDProfile(), right.GetSSDProfile())
         && CompareRequests(left.GetNonreplProfile(), right.GetNonreplProfile())
@@ -100,7 +100,7 @@ bool CompareRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right)
 {
-    Y_VERIFY_DEBUG(23 == GetFieldCount<NProto::TStartEndpointRequest>());
+    Y_DEBUG_ABORT_UNLESS(23 == GetFieldCount<NProto::TStartEndpointRequest>());
     return left.GetUnixSocketPath() == right.GetUnixSocketPath()
         && left.GetDiskId() == right.GetDiskId()
         && left.GetInstanceId() == right.GetInstanceId()

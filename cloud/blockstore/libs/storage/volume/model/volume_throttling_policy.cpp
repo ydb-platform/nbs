@@ -166,7 +166,7 @@ struct TVolumeThrottlingPolicy::TImpl
             static_cast<EOpType>(requestInfo.OpType),
             requestInfo.ByteCount);
         if (PostponedWeight < weight) {
-            Y_VERIFY_DEBUG(false);
+            Y_DEBUG_ABORT_UNLESS(false);
             PostponedWeight = 0;
         } else {
             PostponedWeight -= weight;

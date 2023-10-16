@@ -19,7 +19,7 @@ template <typename T>
 void* PtrEventTag(T* ptr, int event)
 {
     auto tag = reinterpret_cast<uintptr_t>(ptr);
-    Y_VERIFY_DEBUG((tag & EVENT_MASK) == 0);
+    Y_DEBUG_ABORT_UNLESS((tag & EVENT_MASK) == 0);
     return reinterpret_cast<void*>(tag | (event & EVENT_MASK));
 }
 

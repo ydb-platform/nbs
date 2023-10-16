@@ -79,7 +79,7 @@ NProto::TError ParseFreshBlobContent(
         }
     }
 
-    Y_VERIFY_DEBUG(offset == buffer.size());
+    Y_DEBUG_ABORT_UNLESS(offset == buffer.size());
 
     return {};
 }

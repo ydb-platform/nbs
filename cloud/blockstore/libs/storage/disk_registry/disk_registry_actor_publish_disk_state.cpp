@@ -104,7 +104,7 @@ void TDiskRegistryActor::HandlePublishDiskStates(
 
         TString s;
         const bool ok = state.SerializeToString(&s);
-        Y_VERIFY_DEBUG(ok);
+        Y_DEBUG_ABORT_UNLESS(ok);
         messages.push_back({ std::move(s), u.SeqNo });
     }
 

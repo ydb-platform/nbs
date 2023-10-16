@@ -65,7 +65,7 @@ IOutputStream& operator <<(
         case NProto::VOLUME_ACCESS_USER_READ_ONLY:
             return out << "User read only";
         default:
-            Y_VERIFY_DEBUG(false, "Unknown EVolumeAccessMode: %d", accessMode);
+            Y_DEBUG_ABORT_UNLESS(false, "Unknown EVolumeAccessMode: %d", accessMode);
             return out << "Undefined";
     }
 }

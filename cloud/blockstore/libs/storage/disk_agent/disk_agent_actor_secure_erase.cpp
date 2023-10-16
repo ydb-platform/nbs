@@ -122,7 +122,7 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
 
         auto& [deviceId, pendingRequests] = *it;
 
-        Y_VERIFY_DEBUG(!pendingRequests.empty());
+        Y_DEBUG_ABORT_UNLESS(!pendingRequests.empty());
 
         if (pendingRequests.empty()) {
             SecureErasePendingRequests.erase(it);

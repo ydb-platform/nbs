@@ -84,7 +84,7 @@ void TNotificationSystem::PullInUserNotifications(
     // Transform
     for (auto& notif: userNotifications) {
         const auto& id = GetEntityId(notif);
-        Y_VERIFY_DEBUG(!id.empty());
+        Y_DEBUG_ABORT_UNLESS(!id.empty());
         UserNotifications.Storage[id].Notifications.push_back(std::move(notif));
         ++UserNotifications.Count;
     }

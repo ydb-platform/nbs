@@ -24,7 +24,7 @@ void TMirrorPartitionActor::HandlePartCounters(
             ToString(ev->Sender).c_str(),
             State.GetReplicaInfos()[0].Config->GetName().Quote().c_str());
 
-        Y_VERIFY_DEBUG(0);
+        Y_DEBUG_ABORT_UNLESS(0);
     }
 }
 

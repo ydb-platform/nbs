@@ -59,8 +59,8 @@ public:
             return std::nullopt;
         }
 
-        Y_VERIFY_DEBUG(EndIndex != InvalidIndex);
-        Y_VERIFY_DEBUG(BeginIndex != InvalidIndex);
+        Y_DEBUG_ABORT_UNLESS(EndIndex != InvalidIndex);
+        Y_DEBUG_ABORT_UNLESS(BeginIndex != InvalidIndex);
 
         BeginIndex = GetPrevious(BeginIndex);
         std::optional<T> result = std::nullopt;
@@ -84,8 +84,8 @@ public:
             return std::nullopt;
         }
 
-        Y_VERIFY_DEBUG(EndIndex != InvalidIndex);
-        Y_VERIFY_DEBUG(BeginIndex != InvalidIndex);
+        Y_DEBUG_ABORT_UNLESS(EndIndex != InvalidIndex);
+        Y_DEBUG_ABORT_UNLESS(BeginIndex != InvalidIndex);
 
         EndIndex = GetNext(EndIndex);
         std::optional<T> result = std::nullopt;
@@ -140,7 +140,7 @@ public:
             return 0;
         }
 
-        Y_VERIFY_DEBUG(BeginIndex != InvalidIndex);
+        Y_DEBUG_ABORT_UNLESS(BeginIndex != InvalidIndex);
 
         if (EndIndex >= BeginIndex) {
             return EndIndex - BeginIndex + 1;

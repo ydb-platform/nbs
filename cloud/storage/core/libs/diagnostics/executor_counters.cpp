@@ -52,13 +52,13 @@ struct TExecutorCounters::TExecutor
     void Started(int index)
     {
         auto started = AtomicSwap(&Activities[index], GetCycleCount());
-        Y_VERIFY_DEBUG(!started);
+        Y_DEBUG_ABORT_UNLESS(!started);
     }
 
     TDuration Completed(int index)
     {
         auto started = AtomicSwap(&Activities[index], 0);
-        Y_VERIFY_DEBUG(started);
+        Y_DEBUG_ABORT_UNLESS(started);
 
         return CyclesToDurationSafe(GetCycleCount() - started);
     }

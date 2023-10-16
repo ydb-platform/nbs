@@ -363,7 +363,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
     }
 
     if (group == Max<ui32>()) {
-        Y_VERIFY_DEBUG(0, "HandleWriteBlobCompleted: invalid blob id received");
+        Y_DEBUG_ABORT_UNLESS(0, "HandleWriteBlobCompleted: invalid blob id received");
     } else {
         UpdateWriteThroughput(ctx, channel, group, msg->BlobId.BlobSize());
     }

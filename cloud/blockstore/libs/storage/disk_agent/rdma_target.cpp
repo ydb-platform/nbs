@@ -354,7 +354,7 @@ private:
             } else if (result == S_ALREADY) {
                 synchronizedData.OldRequestCounters.Already->Inc();
             } else {
-                Y_VERIFY_DEBUG(false);
+                Y_DEBUG_ABORT_UNLESS(false);
             }
 
             if (!RejectLateRequestsAtDiskAgentEnabled) {

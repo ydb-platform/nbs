@@ -67,7 +67,7 @@ private:
 public:
     void Push(T* wr)
     {
-        Y_VERIFY_DEBUG(wr);
+        Y_DEBUG_ABORT_UNLESS(wr);
         wr->wr.next = Head ? &Head->wr : nullptr;
         wr->context = nullptr;
         Head = wr;

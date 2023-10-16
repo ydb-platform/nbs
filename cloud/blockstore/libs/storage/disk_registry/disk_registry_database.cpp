@@ -180,7 +180,7 @@ void TDiskRegistryDatabase::DeleteDisk(const TString& diskId)
 
 void TDiskRegistryDatabase::UpdateOldAgent(const NProto::TAgentConfig& config)
 {
-    Y_VERIFY_DEBUG(config.GetNodeId() != 0);
+    Y_DEBUG_ABORT_UNLESS(config.GetNodeId() != 0);
 
     using TTable = TDiskRegistrySchema::Agents;
     Table<TTable>()

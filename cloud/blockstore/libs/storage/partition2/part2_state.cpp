@@ -206,7 +206,7 @@ TPartitionState::TPartitionState(
 
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
-    Y_VERIFY_DEBUG(Config.GetBlocksCount() <= Max<ui32>());
+    Y_DEBUG_ABORT_UNLESS(Config.GetBlocksCount() <= Max<ui32>());
     auto validRange = TBlockRange64::WithLength(0, Config.GetBlocksCount());
     return validRange.Contains(range);
 }
@@ -261,7 +261,7 @@ TVector<ui32> TPartitionState::GetChannelsByKind(
 EChannelDataKind TPartitionState::GetChannelDataKind(ui32 channel) const
 {
     // FIXME(NBS-2088): use Y_ABORT_UNLESS
-    Y_VERIFY_DEBUG(channel < ChannelCount);
+    Y_DEBUG_ABORT_UNLESS(channel < ChannelCount);
     if (channel >= ChannelCount) {
         return EChannelDataKind::Merged;
     }
@@ -314,7 +314,7 @@ bool TPartitionState::UpdateChannelFreeSpaceShare(ui32 channel, double share)
         if (share < threshold && (!prevShare || prevShare >= threshold)) {
             ++AlmostFullChannelCount;
         } else if (share >= threshold && prevShare && prevShare < threshold) {
-            Y_VERIFY_DEBUG(AlmostFullChannelCount);
+            Y_DEBUG_ABORT_UNLESS(AlmostFullChannelCount);
             --AlmostFullChannelCount;
         }
 
@@ -428,7 +428,7 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
             }
 
             default: {
-                Y_VERIFY_DEBUG(0);
+                Y_DEBUG_ABORT_UNLESS(0);
             }
         }
     }
@@ -620,7 +620,7 @@ TPartialBlobId TPartitionState::GenerateBlobId(
 
 void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks)
 {
-    Y_VERIFY_DEBUG(IsSorted(freshBlocks.begin(), freshBlocks.end(),
+    Y_DEBUG_ABORT_UNLESS(IsSorted(freshBlocks.begin(), freshBlocks.end(),
         [](const auto& lhs, const auto& rhs) {
             return std::make_pair(lhs.Meta.BlockIndex, lhs.Meta.MinCommitId)
                 <  std::make_pair(rhs.Meta.BlockIndex, rhs.Meta.MinCommitId);
@@ -837,7 +837,7 @@ void TPartitionState::WriteBlob(
     const TPartialBlobId& blobId,
     TVector<TBlock>& blocks)
 {
-    Y_VERIFY_DEBUG(CheckBlob(blobId, blocks, GetBlockSize()));
+    Y_DEBUG_ABORT_UNLESS(CheckBlob(blobId, blocks, GetBlockSize()));
 
     auto blockRanges = BuildRanges(blocks, MaxRangesPerBlob);
 
@@ -1597,7 +1597,7 @@ void TPartitionState::UpdateCompactionMap(
 
     for (size_t i = 0; i < blocks.size(); ++i) {
         ui32 blockIndex = CompactionMap.GetRangeStart(blocks[i].BlockIndex);
-        Y_VERIFY_DEBUG(prevBlockIndex <= blockIndex);
+        Y_DEBUG_ABORT_UNLESS(prevBlockIndex <= blockIndex);
 
         if (i == 0 || prevBlockIndex != blockIndex) {
             flush();
@@ -1641,7 +1641,7 @@ void TPartitionState::ResetCompactionMap(
 
     for (size_t i = 0; i < blocks.size(); ++i) {
         ui32 blockIndex = CompactionMap.GetRangeStart(blocks[i].BlockIndex);
-        Y_VERIFY_DEBUG(prevBlockIndex <= blockIndex);
+        Y_DEBUG_ABORT_UNLESS(prevBlockIndex <= blockIndex);
 
         if (i == 0 || prevBlockIndex != blockIndex) {
             flush();

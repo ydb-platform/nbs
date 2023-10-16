@@ -42,7 +42,7 @@ public:
 
     ui64 Advance()
     {
-        Y_VERIFY_DEBUG(CanAdvance());
+        Y_DEBUG_ABORT_UNLESS(CanAdvance());
         ++Values.RequestId;
         return GetValue();
     }

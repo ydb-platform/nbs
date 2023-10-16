@@ -430,7 +430,7 @@ bool TSharedServiceCounters::TryAcquireLocalVolume()
 
 void TSharedServiceCounters::ReleaseLocalVolume()
 {
-    Y_VERIFY_DEBUG(AtomicGet(LocalVolumeCount));
+    Y_DEBUG_ABORT_UNLESS(AtomicGet(LocalVolumeCount));
     AtomicDecrement(LocalVolumeCount);
 }
 

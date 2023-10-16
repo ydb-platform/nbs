@@ -52,7 +52,7 @@ struct TExt4BlockDigestGenerator final
 
     bool ShouldProcess(ui64 blockIndex, ui32 blockSize) const
     {
-        Y_VERIFY_DEBUG(blockSize);
+        Y_DEBUG_ABORT_UNLESS(blockSize);
         if (!blockSize) {
             return false;
         }
@@ -100,7 +100,7 @@ struct TTestBlockDigestGenerator final
             return 0;
         }
 
-        Y_VERIFY_DEBUG(blockContent.Size() >= 4);
+        Y_DEBUG_ABORT_UNLESS(blockContent.Size() >= 4);
         if (blockContent.Size() < 4) {
             return Nothing();
         }

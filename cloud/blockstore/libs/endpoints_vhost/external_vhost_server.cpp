@@ -418,7 +418,7 @@ public:
 
     ~TEndpoint()
     {
-        Y_VERIFY_DEBUG(ShouldStop);
+        Y_DEBUG_ABORT_UNLESS(ShouldStop);
     }
 
     void Start() override
@@ -431,7 +431,7 @@ public:
     TFuture<NProto::TError> Stop() override
     {
         with_lock (Mutex) {
-            Y_VERIFY_DEBUG(Process);
+            Y_DEBUG_ABORT_UNLESS(Process);
 
             ShouldStop = true;
             Process->Stop();

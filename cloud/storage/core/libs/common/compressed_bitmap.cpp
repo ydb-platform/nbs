@@ -193,7 +193,7 @@ private:
 
         explicit operator bool() const
         {
-            Y_VERIFY_DEBUG(End >= Begin);
+            Y_DEBUG_ABORT_UNLESS(End >= Begin);
             return End > Begin;
         }
     };
@@ -255,7 +255,7 @@ private:
 
         void Delete(TRun* begin, TRun* end)
         {
-            Y_VERIFY_DEBUG(end >= begin);
+            Y_DEBUG_ABORT_UNLESS(end >= begin);
             auto len = end - begin;
             if (!len) {
                 return;
@@ -314,7 +314,7 @@ private:
             auto* pe = Find(e);
 
             if (pb) {
-                Y_VERIFY_DEBUG(pe);
+                Y_DEBUG_ABORT_UNLESS(pe);
 
                 if (pb->End >= b) {
                     // pb intersects with [b, e)
@@ -381,7 +381,7 @@ private:
                 return prevBegin - b;
             }
 
-            Y_VERIFY_DEBUG(pe);
+            Y_DEBUG_ABORT_UNLESS(pe);
             firstRun.End = Max(e, pe->End);
             Delete(&firstRun + 1, pe + 1);
             return Count() - c;
@@ -401,7 +401,7 @@ private:
             auto* pe = Find(e);
 
             if (pb) {
-                Y_VERIFY_DEBUG(pe);
+                Y_DEBUG_ABORT_UNLESS(pe);
 
                 if (pb->End >= b) {
                     // pb intersects with [b, e)
@@ -457,7 +457,7 @@ private:
             if (!firstRun || firstRun.Begin >= e) {
                 return 0;
             }
-            Y_VERIFY_DEBUG(pe);
+            Y_DEBUG_ABORT_UNLESS(pe);
 
             if (firstRun.End > e) {
                 const auto prevBegin = firstRun.Begin;
@@ -555,32 +555,32 @@ private:
 
         TPlainChunkData* Plain()
         {
-            Y_VERIFY_DEBUG(Type() == PLAIN);
+            Y_DEBUG_ABORT_UNLESS(Type() == PLAIN);
             return Data.Plain.Data;
         }
 
         const TPlainChunkData* Plain() const
         {
-            Y_VERIFY_DEBUG(Type() == PLAIN);
+            Y_DEBUG_ABORT_UNLESS(Type() == PLAIN);
             return Data.Plain.Data;
         }
 
         TCompressedChunkData* Compressed()
         {
-            Y_VERIFY_DEBUG(Type() == RLE);
+            Y_DEBUG_ABORT_UNLESS(Type() == RLE);
             return &Data.Compressed.Data;
         }
 
         const TCompressedChunkData* Compressed() const
         {
-            Y_VERIFY_DEBUG(Type() == RLE);
+            Y_DEBUG_ABORT_UNLESS(Type() == RLE);
             return &Data.Compressed.Data;
         }
 
         void DeleteData()
         {
             if (Type() == PLAIN) {
-                Y_VERIFY_DEBUG(Plain());
+                Y_DEBUG_ABORT_UNLESS(Plain());
                 delete Plain();
             }
 
@@ -665,9 +665,9 @@ private:
         }
 
 #define VERIFY_RANGE(b, e)                      \
-        Y_VERIFY_DEBUG(b < CHUNK_SIZE);         \
-        Y_VERIFY_DEBUG(e <= CHUNK_SIZE);        \
-        Y_VERIFY_DEBUG(b < e);                  \
+        Y_DEBUG_ABORT_UNLESS(b < CHUNK_SIZE);         \
+        Y_DEBUG_ABORT_UNLESS(e <= CHUNK_SIZE);        \
+        Y_DEBUG_ABORT_UNLESS(b < e);                  \
 // VERIFY_RANGE
 
         ui16 Set(ui32 b, ui32 e, ui64& compressedChunkCount)
@@ -805,10 +805,10 @@ public:
     {
         // TODO: endianness
         chunk->UnsetAll(compressedChunkCount);
-        Y_VERIFY_DEBUG(data.Size() > 0);
+        Y_DEBUG_ABORT_UNLESS(data.Size() > 0);
         switch (chunk->Type() = data[0]) {
             case PLAIN: {
-                Y_VERIFY_DEBUG(data.Size() >= sizeof(TPlainChunkData) + 1);
+                Y_DEBUG_ABORT_UNLESS(data.Size() >= sizeof(TPlainChunkData) + 1);
                 auto& plain = chunk->Data.Plain;
                 plain.Data = new TPlainChunkData;
                 memcpy(
@@ -823,7 +823,7 @@ public:
             }
 
             case RLE: {
-                Y_VERIFY_DEBUG(data.Size() >= sizeof(TCompressedChunkData) + 1);
+                Y_DEBUG_ABORT_UNLESS(data.Size() >= sizeof(TCompressedChunkData) + 1);
                 auto& compressed = chunk->Data.Compressed;
                 memcpy(
                     compressed.Data.Runs,
@@ -902,7 +902,7 @@ public:
 
         ui64 c = 0;
         const auto rangeInfo = NPrivate::RangeInfo<ui64, CHUNK_SIZE>(b, e);
-        Y_VERIFY_DEBUG(rangeInfo.Last < ChunkCount);
+        Y_DEBUG_ABORT_UNLESS(rangeInfo.Last < ChunkCount);
 
         c += Chunks[rangeInfo.First].Set(
             b % CHUNK_SIZE,
@@ -933,7 +933,7 @@ public:
 
         ui64 c = 0;
         const auto rangeInfo = NPrivate::RangeInfo<ui64, CHUNK_SIZE>(b, e);
-        Y_VERIFY_DEBUG(rangeInfo.Last < ChunkCount);
+        Y_DEBUG_ABORT_UNLESS(rangeInfo.Last < ChunkCount);
 
         c += Chunks[rangeInfo.First].Unset(
             b % CHUNK_SIZE,
@@ -958,7 +958,7 @@ public:
 
     void Update(const TSerializedChunk& chunk)
     {
-        Y_VERIFY_DEBUG(chunk.ChunkIdx < ChunkCount);
+        Y_DEBUG_ABORT_UNLESS(chunk.ChunkIdx < ChunkCount);
         auto& target = Chunks[chunk.ChunkIdx];
         Parse(chunk.Data, &target, CompressedChunkCount);
     }
@@ -966,7 +966,7 @@ public:
     ui64 Update(const TCompressedBitmap::TImpl& other, ui64 b)
     {
         const auto j = b / CHUNK_SIZE;
-        Y_VERIFY_DEBUG(b % CHUNK_SIZE == 0);
+        Y_DEBUG_ABORT_UNLESS(b % CHUNK_SIZE == 0);
         ui64 c = 0;
         for (ui64 i = 0; i < other.ChunkCount && i + j < ChunkCount; ++i) {
             const auto& source = other.Chunks[i];
@@ -1003,7 +1003,7 @@ public:
     ui64 Count(ui64 b, ui64 e) const
     {
         const auto rangeInfo = NPrivate::RangeInfo<ui64, CHUNK_SIZE>(b, e);
-        Y_VERIFY_DEBUG(rangeInfo.Last < ChunkCount);
+        Y_DEBUG_ABORT_UNLESS(rangeInfo.Last < ChunkCount);
 
         ui64 c = Chunks[rangeInfo.First].Count(
             b % CHUNK_SIZE,
@@ -1026,12 +1026,12 @@ public:
 
     bool Test(ui64 i) const
     {
-        Y_VERIFY_DEBUG(i / CHUNK_SIZE < ChunkCount);
+        Y_DEBUG_ABORT_UNLESS(i / CHUNK_SIZE < ChunkCount);
         return Chunks[i / CHUNK_SIZE].Test(i % CHUNK_SIZE);
     }
 
     ui64 MemSize() const {
-        Y_VERIFY_DEBUG(ChunkCount >= CompressedChunkCount);
+        Y_DEBUG_ABORT_UNLESS(ChunkCount >= CompressedChunkCount);
         const auto plainChunkCount = ChunkCount - CompressedChunkCount;
         return ChunkCount * sizeof(TChunk)
             + plainChunkCount * sizeof(TPlainChunkData);
@@ -1078,7 +1078,7 @@ bool TCompressedBitmap::TRangeSerializer::Next(TSerializedChunk* sc)
         return false;
     }
 
-    Y_VERIFY_DEBUG(First < Parent->ChunkCount);
+    Y_DEBUG_ABORT_UNLESS(First < Parent->ChunkCount);
     const auto& chunk = Parent->Chunks[First];
     sc->ChunkIdx = First;
     auto len = TCompressedBitmap::TImpl::Serialize(chunk, Buffer + BufferPos);

@@ -115,7 +115,7 @@ void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
 
 void TDiskRegistryActor::BecomeAux(const TActorContext& ctx, EState state)
 {
-    Y_VERIFY_DEBUG(state < STATE_MAX);
+    Y_DEBUG_ABORT_UNLESS(state < STATE_MAX);
 
     Become(States[state].Func);
     CurrentState = state;
@@ -395,7 +395,7 @@ void TDiskRegistryActor::HandleServerConnected(
     Y_UNUSED(ctx);
     auto* msg = ev->Get();
     auto [it, inserted] = ServerToAgentId.emplace(msg->ServerId, TString());
-    Y_VERIFY_DEBUG(inserted);
+    Y_DEBUG_ABORT_UNLESS(inserted);
 }
 
 void TDiskRegistryActor::HandleServerDisconnected(

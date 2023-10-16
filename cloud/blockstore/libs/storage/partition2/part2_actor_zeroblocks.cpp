@@ -370,7 +370,7 @@ void TPartitionActor::HandleZeroBlocksCompleted(
 
     Actors.erase(ev->Sender);
 
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress > 0);
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
@@ -421,7 +421,7 @@ void TPartitionActor::CompleteZeroBlocks(
 {
     if (args.CommitId == InvalidCommitId) {
         RebootPartitionOnCommitIdOverflow(ctx, "ZeroBlocks");
-        Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress > 0);
+        Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
         --WriteAndZeroRequestsInProgress;
         return;
     }
@@ -468,7 +468,7 @@ void TPartitionActor::CompleteZeroBlocks(
         ScheduleYellowStateUpdate(ctx);
     }
 
-    Y_VERIFY_DEBUG(WriteAndZeroRequestsInProgress > 0);
+    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;
 
     DrainActorCompanion.ProcessDrainRequests(ctx);

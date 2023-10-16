@@ -214,7 +214,7 @@ void TWriteMergedBlocksActor::AddBlobs(
     const TActorContext& ctx,
     bool confirmed)
 {
-    Y_VERIFY_DEBUG(RequestInfo);
+    Y_DEBUG_ABORT_UNLESS(RequestInfo);
 
     IEventBasePtr request;
 

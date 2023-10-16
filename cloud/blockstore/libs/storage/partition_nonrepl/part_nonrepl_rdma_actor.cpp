@@ -134,7 +134,7 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
         if (!ep) {
             auto* f = AgentId2EndpointFuture.FindPtr(r.Device.GetAgentId());
             if (!f) {
-                Y_VERIFY_DEBUG(0);
+                Y_DEBUG_ABORT_UNLESS(0);
 
                 reply(ctx, requestInfo, PartConfig->MakeError(
                     E_INVALID_STATE,

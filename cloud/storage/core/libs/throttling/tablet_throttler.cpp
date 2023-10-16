@@ -75,7 +75,7 @@ public:
 
     void StartFlushing(const NActors::TActorContext& ctx) override
     {
-        Y_VERIFY_DEBUG(PostponedQueueFlushScheduled);
+        Y_DEBUG_ABORT_UNLESS(PostponedQueueFlushScheduled);
         PostponedQueueFlushScheduled = false;
         PostponedQueueFlushInProgress = true;
 
@@ -109,7 +109,7 @@ public:
     {
         bool rejected = false;
         if (PostponedRequests && !PostponedQueueFlushInProgress) {
-            Y_VERIFY_DEBUG(PostponedQueueFlushScheduled);
+            Y_DEBUG_ABORT_UNLESS(PostponedQueueFlushScheduled);
 
             if (Policy.TryPostpone(ctx.Now(), requestInfo)) {
                 Logger.LogRequestPostponedAfterSchedule(
@@ -151,7 +151,7 @@ public:
                         std::move(callContext),
                         eventReleaser());
 
-                    Y_VERIFY_DEBUG(!PostponedQueueFlushScheduled);
+                    Y_DEBUG_ABORT_UNLESS(!PostponedQueueFlushScheduled);
                     PostponedQueueFlushScheduled = true;
 
                     ctx.Schedule(
@@ -187,7 +187,7 @@ private:
         NActors::IEventHandlePtr ev)
     {
         if (PostponedQueueFlushInProgress) {
-            Y_VERIFY_DEBUG(!PostponedRequests.front().Event);
+            Y_DEBUG_ABORT_UNLESS(!PostponedRequests.front().Event);
             auto& pr = PostponedRequests.front();
             pr.Event = std::move(ev);
             pr.Info = requestInfo;

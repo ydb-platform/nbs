@@ -683,7 +683,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     } else if (garbageScore >= 1) {
         compactionMode = TEvPartitionPrivate::GarbageCompaction;
     } else {
-        Y_VERIFY_DEBUG(false);
+        Y_DEBUG_ABORT_UNLESS(false);
         return;
     }
 

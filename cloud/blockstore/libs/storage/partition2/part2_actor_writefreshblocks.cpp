@@ -505,7 +505,7 @@ void TPartitionActor::WriteFreshBlocks(
 
         blockCount += r.Weight;
 
-        Y_VERIFY_DEBUG(r.Weight == r.Data.Range.Size());
+        Y_DEBUG_ABORT_UNLESS(r.Weight == r.Data.Range.Size());
         State->AddFreshBlocksInFlight(r.Data.Range, commitId);
 
         blockRanges.push_back(r.Data.Range);

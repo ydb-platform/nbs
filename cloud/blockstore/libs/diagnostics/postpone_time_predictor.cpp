@@ -127,7 +127,7 @@ private:
                 break;
             }
             if (PostponedBySecond.IsFull()) {
-                Y_VERIFY_DEBUG(
+                Y_DEBUG_ABORT_UNLESS(
                     false,
                     "postpone time predictor's buffer is overflowed");
                 break;

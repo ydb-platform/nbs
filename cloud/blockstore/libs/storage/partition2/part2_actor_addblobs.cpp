@@ -69,7 +69,7 @@ bool TPartitionActor::PrepareAddBlobs(
     bool ready = true;
     TPartitionDatabase db(tx.DB);
     for (const auto& blob: args.NewBlobs) {
-        Y_VERIFY_DEBUG(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
+        Y_DEBUG_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
         ready &= State->InitIndex(
             db,
             TBlockRange32::MakeClosedInterval(

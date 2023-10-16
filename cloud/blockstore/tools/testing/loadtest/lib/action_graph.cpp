@@ -48,7 +48,7 @@ void TGraphExecutor::Run()
                 with_lock (Lock) {
                     for (const auto other : OutgoingEdges[vertexId]) {
                         auto& depCount = Vertex2DepCount[other];
-                        Y_VERIFY_DEBUG(depCount > 0);
+                        Y_DEBUG_ABORT_UNLESS(depCount > 0);
                         if (!--depCount) {
                             Ready.push_back(other);
                         }

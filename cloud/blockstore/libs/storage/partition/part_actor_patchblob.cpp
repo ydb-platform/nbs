@@ -346,7 +346,7 @@ void TPartitionActor::HandlePatchBlobCompleted(
     }
 
     if (patchedGroup == Max<ui32>()) {
-        Y_VERIFY_DEBUG(0, "HandlePatchBlobCompleted: invalid blob id received");
+        Y_DEBUG_ABORT_UNLESS(0, "HandlePatchBlobCompleted: invalid blob id received");
     } else {
         UpdateWriteThroughput(
             ctx.Now(),

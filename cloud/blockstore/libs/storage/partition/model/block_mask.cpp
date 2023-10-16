@@ -31,7 +31,7 @@ bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
         const auto chunk = mask.GetChunks()[i];
         if (blockCount < blocksInChunk) {
             const TBitMap<blocksInChunk> m(chunk);
-            Y_VERIFY_DEBUG(m.Count() <= blockCount);
+            Y_DEBUG_ABORT_UNLESS(m.Count() <= blockCount);
             return m.Count() == blockCount;
         } else if (chunk != ~TBlockMask::TChunk(0)) {
             return false;

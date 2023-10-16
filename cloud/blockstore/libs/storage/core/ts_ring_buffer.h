@@ -63,7 +63,7 @@ public:
             return;
         }
 
-        Y_VERIFY_DEBUG(Entries.IsEmpty() || LastTs() <= entry.Ts);
+        Y_DEBUG_ABORT_UNLESS(Entries.IsEmpty() || LastTs() <= entry.Ts);
         Entries.PushBack(std::move(entry));
     }
 };

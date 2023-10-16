@@ -496,7 +496,7 @@ private:
         const NProto::TClientPerformanceProfile& lft,
         const NProto::TClientPerformanceProfile& rgt)
     {
-        Y_VERIFY_DEBUG(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
+        Y_DEBUG_ABORT_UNLESS(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
         return ProfilesEqual(lft.GetHDDProfile(), rgt.GetHDDProfile())
             && ProfilesEqual(lft.GetSSDProfile(), rgt.GetSSDProfile())
             && ProfilesEqual(lft.GetNonreplProfile(), rgt.GetNonreplProfile())
@@ -510,7 +510,7 @@ private:
         const NProto::TClientMediaKindPerformanceProfile& lft,
         const NProto::TClientMediaKindPerformanceProfile& rgt)
     {
-        Y_VERIFY_DEBUG(4 ==
+        Y_DEBUG_ABORT_UNLESS(4 ==
             GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
         return lft.GetMaxReadBandwidth() == rgt.GetMaxReadBandwidth()
             && lft.GetMaxReadIops() == rgt.GetMaxReadIops()

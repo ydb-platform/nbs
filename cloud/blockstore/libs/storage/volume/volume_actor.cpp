@@ -113,7 +113,7 @@ void TVolumeActor::DefaultSignalTabletActive(const TActorContext& ctx)
 
 void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
 {
-    Y_VERIFY_DEBUG(state < STATE_MAX);
+    Y_DEBUG_ABORT_UNLESS(state < STATE_MAX);
 
     if (state == EState::STATE_INIT) {
         VolumeRequestIdGenerator =

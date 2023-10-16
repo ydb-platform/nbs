@@ -134,7 +134,7 @@ void TMirrorPartitionActor::HandlePoisonPill(
         ev->Cookie,
         MakeIntrusive<TCallContext>());
 
-    Y_VERIFY_DEBUG(AliveReplicas != 0);
+    Y_DEBUG_ABORT_UNLESS(AliveReplicas != 0);
 
     if (AliveReplicas == 0) {
         ReplyAndDie(ctx);

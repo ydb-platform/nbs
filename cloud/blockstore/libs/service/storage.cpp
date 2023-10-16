@@ -158,7 +158,7 @@ public:
         for (auto& [id, request]: Inflight) {
             const bool isTimedOut = request.Ts + MaxRequestDuration < now;
             if (isTimedOut) {
-                Y_VERIFY_DEBUG(
+                Y_DEBUG_ABORT_UNLESS(
                     !request.Promise.HasValue() &&
                     !request.Promise.HasException());
 

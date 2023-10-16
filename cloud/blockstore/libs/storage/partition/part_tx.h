@@ -262,13 +262,13 @@ struct TTxPartition
 
         ui64& GetBlockMarkCommitId(ui32 blockIndex)
         {
-            Y_VERIFY_DEBUG(ReadRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(ReadRange.Contains(blockIndex));
             return BlockMarkCommitIds[blockIndex - ReadRange.Start];
         }
 
         TBlockMark& GetBlockMark(ui32 blockIndex)
         {
-            Y_VERIFY_DEBUG(ReadRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(ReadRange.Contains(blockIndex));
             return BlockMarks[blockIndex - ReadRange.Start];
         }
 
@@ -377,7 +377,7 @@ struct TTxPartition
 
         TBlockMark& GetBlockMark(ui32 blockIndex)
         {
-            Y_VERIFY_DEBUG(BlockRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
             return BlockMarks[blockIndex - BlockRange.Start];
         }
 
@@ -774,7 +774,7 @@ struct TTxPartition
             const TPartialBlobId& blobId,
             ui16 blobOffset)
         {
-            Y_VERIFY_DEBUG(BlockRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
             BlockMarks.push_back({ blobId, commitId, blockIndex, blobOffset });
         }
     };
@@ -856,7 +856,7 @@ struct TTxPartition
             const TPartialBlobId& blobId,
             ui16 blobOffset)
         {
-            Y_VERIFY_DEBUG(BlockRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
             BlockMarks_Index.push_back({ blobId, commitId, blockIndex, blobOffset });
         }
 
@@ -866,7 +866,7 @@ struct TTxPartition
             const TPartialBlobId& blobId,
             ui16 blobOffset)
         {
-            Y_VERIFY_DEBUG(BlockRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
             BlockMarks_Blobs.push_back({ blobId, commitId, blockIndex, blobOffset });
         }
     };
@@ -991,7 +991,7 @@ struct TTxPartition
 
         ui32 GetBlockMarkIndex(ui32 blockIndex)
         {
-            Y_VERIFY_DEBUG(DescribeRange.Contains(blockIndex));
+            Y_DEBUG_ABORT_UNLESS(DescribeRange.Contains(blockIndex));
             return blockIndex - DescribeRange.Start;
         }
 
