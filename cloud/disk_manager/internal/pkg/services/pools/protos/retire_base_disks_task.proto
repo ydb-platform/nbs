@@ -13,7 +13,5 @@ message RetireBaseDisksRequest {
 }
 
 message RetireBaseDisksTaskState {
-    reserved 1;
-
     repeated string BaseDiskIds = 2;
 }

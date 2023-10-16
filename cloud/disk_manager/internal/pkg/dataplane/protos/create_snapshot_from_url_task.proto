@@ -21,8 +21,6 @@ message CreateSnapshotFromURLResponse {
 }
 
 message CreateSnapshotFromURLTaskState {
-    reserved 1;
-
     double Progress = 2;
     uint32 MilestoneChunkIndex = 3;
     uint32 TransferredChunkCount = 8;

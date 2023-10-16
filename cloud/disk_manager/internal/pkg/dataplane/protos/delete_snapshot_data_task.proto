@@ -10,6 +10,4 @@ message DeleteSnapshotDataRequest {
     string SnapshotId = 1;
 }
 
-message DeleteSnapshotDataTaskState {
-    reserved 1;
-}
+message DeleteSnapshotDataTaskState {}

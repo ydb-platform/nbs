@@ -17,7 +17,5 @@ message CreatePlacementGroupRequest {
     uint32 PlacementPartitionCount = 5;
 }
 
-message CreatePlacementGroupTaskState {
-    reserved 1;
-}
+message CreatePlacementGroupTaskState {}
 

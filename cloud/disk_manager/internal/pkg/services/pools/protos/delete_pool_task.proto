@@ -13,6 +13,4 @@ message DeletePoolRequest {
     string ZoneId = 2;
 }
 
-message DeletePoolTaskState {
-    reserved 1;
-}
+message DeletePoolTaskState {}

@@ -15,6 +15,4 @@ message RebaseOverlayDiskRequest {
     uint64 SlotGeneration = 3;
 }
 
-message RebaseOverlayDiskTaskState {
-    reserved 1;
-}
+message RebaseOverlayDiskTaskState {}

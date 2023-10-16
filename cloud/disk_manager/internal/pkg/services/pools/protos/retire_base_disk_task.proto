@@ -15,8 +15,6 @@ message RetireBaseDiskRequest {
 }
 
 message RetireBaseDiskTaskState {
-    reserved 1;
-
     // Used to save GetCheckpointSize execution state.
     uint64 SrcDiskMilestoneBlockIndex = 2;
     // Used to save GetCheckpointSize execution state.

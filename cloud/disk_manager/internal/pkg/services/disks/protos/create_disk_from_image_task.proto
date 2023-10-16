@@ -18,7 +18,6 @@ message CreateDiskFromImageRequest {
 }
 
 message CreateDiskFromImageTaskState {
-    reserved 1;
     reserved 2;
 
     string DataplaneTaskId = 3;

@@ -9,6 +9,4 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message CreateEmptyDiskTaskState {
-    reserved 1;
-}
+message CreateEmptyDiskTaskState {}

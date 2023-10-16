@@ -17,6 +17,4 @@ message ConfigurePoolRequest {
     bool UseImageSize = 5;
 }
 
-message ConfigurePoolTaskState {
-    reserved 1;
-}
+message ConfigurePoolTaskState {}

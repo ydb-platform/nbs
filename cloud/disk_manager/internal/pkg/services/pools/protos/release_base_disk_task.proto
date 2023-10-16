@@ -12,6 +12,4 @@ message ReleaseBaseDiskRequest {
     types.Disk OverlayDisk = 1;
 }
 
-message ReleaseBaseDiskTaskState {
-    reserved 1;
-}
+message ReleaseBaseDiskTaskState {}

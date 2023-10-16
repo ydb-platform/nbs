@@ -12,6 +12,4 @@ message DeleteImageRequest {
     string OperationFolderId = 3;
 }
 
-message DeleteImageTaskState {
-    reserved 1;
-}
+message DeleteImageTaskState {}

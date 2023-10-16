@@ -15,8 +15,6 @@ message TransferFromSnapshotToDiskRequest {
 }
 
 message TransferFromSnapshotToDiskTaskState {
-    reserved 1;
-
     uint32 MilestoneChunkIndex = 2;
     uint32 TransferredChunkCount = 5;
     double Progress = 4;

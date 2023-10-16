@@ -17,8 +17,6 @@ message CreateSnapshotFromSnapshotResponse {
 }
 
 message CreateSnapshotFromSnapshotTaskState {
-    reserved 1;
-
     uint32 MilestoneChunkIndex = 2;
     double Progress = 6;
     uint64 SnapshotSize = 3;

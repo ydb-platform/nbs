@@ -14,6 +14,4 @@ message AlterDiskRequest {
     string FolderId = 3;
 }
 
-message AlterDiskTaskState {
-    reserved 1;
-}
+message AlterDiskTaskState {}

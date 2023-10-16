@@ -13,6 +13,4 @@ message ResizeDiskRequest {
     uint64 Size = 2;
 }
 
-message ResizeDiskTaskState {
-    reserved 1;
-}
+message ResizeDiskTaskState {}

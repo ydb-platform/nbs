@@ -12,6 +12,4 @@ message DeleteSnapshotRequest {
     string OperationFolderId = 3;
 }
 
-message DeleteSnapshotTaskState {
-    reserved 1;
-}
+message DeleteSnapshotTaskState {}

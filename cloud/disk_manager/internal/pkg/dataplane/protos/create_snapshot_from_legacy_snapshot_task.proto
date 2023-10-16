@@ -19,8 +19,6 @@ message CreateSnapshotFromLegacySnapshotResponse {
 }
 
 message CreateSnapshotFromLegacySnapshotTaskState {
-    reserved 1;
-
     uint32 MilestoneChunkIndex = 2;
     uint32 TransferredChunkCount = 8;
     double Progress = 6;

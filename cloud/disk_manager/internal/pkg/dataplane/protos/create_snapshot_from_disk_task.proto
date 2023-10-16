@@ -27,7 +27,6 @@ message CreateSnapshotFromDiskResponse {
 }
 
 message CreateSnapshotFromDiskTaskState {
-    reserved 1;
     reserved 2;
     reserved 6;
 

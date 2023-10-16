@@ -19,6 +19,4 @@ message CreateFilesystemRequest {
     types.FilesystemStorageKind StorageKind = 7;
 }
 
-message CreateFilesystemTaskState {
-    reserved 1;
-}
+message CreateFilesystemTaskState {}

@@ -11,7 +11,5 @@ message DeletePlacementGroupRequest {
     string GroupId = 2;
 }
 
-message DeletePlacementGroupTaskState {
-    reserved 1;
-}
+message DeletePlacementGroupTaskState {}
 

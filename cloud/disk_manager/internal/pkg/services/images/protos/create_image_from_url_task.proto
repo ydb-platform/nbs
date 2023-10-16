@@ -24,7 +24,6 @@ message CreateImageFromURLRequest {
 }
 
 message CreateImageFromURLTaskState {
-    reserved 1;
     reserved 7;
 
     int64 Offset = 2;

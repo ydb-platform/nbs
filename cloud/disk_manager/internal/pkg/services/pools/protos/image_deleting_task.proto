@@ -12,6 +12,4 @@ message ImageDeletingRequest {
     string ImageId = 1;
 }
 
-message ImageDeletingTaskState {
-    reserved 1;
-}
+message ImageDeletingTaskState {}

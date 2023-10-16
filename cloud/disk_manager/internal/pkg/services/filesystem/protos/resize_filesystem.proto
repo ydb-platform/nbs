@@ -13,6 +13,4 @@ message ResizeFilesystemRequest {
     uint64 Size = 2;
 }
 
-message ResizeFilesystemTaskState {
-    reserved 1;
-}
+message ResizeFilesystemTaskState {}

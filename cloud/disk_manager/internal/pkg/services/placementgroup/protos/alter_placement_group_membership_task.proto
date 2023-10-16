@@ -16,6 +16,4 @@ message AlterPlacementGroupMembershipRequest {
     repeated string DisksToRemove = 4;
 }
 
-message AlterPlacementGroupMembershipTaskState {
-    reserved 1;
-}
+message AlterPlacementGroupMembershipTaskState {}

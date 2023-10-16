@@ -22,8 +22,6 @@ message CreateSnapshotFromDiskRequest {
 }
 
 message CreateSnapshotFromDiskTaskState {
-    reserved 1;
-
     int64 Offset = 2;
     double Progress = 3;
     int64 SnapshotSize = 4;

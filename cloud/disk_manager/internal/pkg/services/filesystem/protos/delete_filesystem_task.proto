@@ -12,6 +12,4 @@ message DeleteFilesystemRequest {
     FilesystemId Filesystem = 1;
 }
 
-message DeleteFilesystemTaskState {
-    reserved 1;
-}
+message DeleteFilesystemTaskState {}

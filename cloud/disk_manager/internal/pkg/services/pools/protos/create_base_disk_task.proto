@@ -19,7 +19,5 @@ message CreateBaseDiskRequest {
 }
 
 message CreateBaseDiskTaskState {
-    reserved 1;
-
     uint32 Step = 2;
 }
