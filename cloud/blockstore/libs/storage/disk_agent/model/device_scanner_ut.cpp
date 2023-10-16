@@ -169,6 +169,8 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             f.SetFileSize(fileSize);
 
             r.emplace_back(std::move(f), pathIndex);
+
+            return MakeError(S_OK);
         });
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());

@@ -15,7 +15,7 @@ TDeviceGenerator::TDeviceGenerator(TLog log, TString agentId)
     , AgentId(std::move(agentId))
 {}
 
-void TDeviceGenerator::operator () (
+NProto::TError TDeviceGenerator::operator () (
     const TString& path,
     const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
     ui32 deviceNumber,
@@ -32,12 +32,16 @@ void TDeviceGenerator::operator () (
 
         STORAGE_INFO("Found " << file);
 
-        return;
+        return {};
     }
 
     const auto& layout = poolConfig.GetLayout();
 
-    Y_ABORT_UNLESS(layout.GetDeviceSize());
+    if (!layout.GetDeviceSize()) {
+        STORAGE_ERROR("Invalid layout for " << path << ":" << deviceNumber);
+
+        return MakeError(E_ARGUMENT, "invalid layout");
+    }
 
     ui64 offset = layout.GetHeaderSize();
 
@@ -64,6 +68,8 @@ void TDeviceGenerator::operator () (
             break;
         }
     }
+
+    return {};
 }
 
 TVector<NProto::TFileDeviceArgs> TDeviceGenerator::ExtractResult()

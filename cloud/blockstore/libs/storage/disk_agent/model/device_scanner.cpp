@@ -83,13 +83,16 @@ NProto::TError FindDevices(
                         << "unable to find the appropriate pool for " << path);
                 }
 
-                cb(
+                auto error = cb(
                     path.c_str(),
                     *pool,
                     deviceNumber,
                     p.GetMaxDeviceCount(),
                     GetBlockSize(path),
                     size);
+                if (HasError(error)) {
+                    return error;
+                }
             }
         }
     } catch (...) {

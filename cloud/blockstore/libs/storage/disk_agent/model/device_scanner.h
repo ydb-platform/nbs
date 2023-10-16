@@ -13,7 +13,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDeviceCallback = std::function <void (
+using TDeviceCallback = std::function <NProto::TError (
     const TString& path,
     const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
     ui32 deviceNumber,

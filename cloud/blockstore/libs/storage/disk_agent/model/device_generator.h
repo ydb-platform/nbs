@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/logger/log.h>
 
 #include <util/generic/string.h>
@@ -22,7 +24,7 @@ private:
 public:
     TDeviceGenerator(TLog log, TString agentId);
 
-    void operator () (
+    NProto::TError operator () (
         const TString& path,
         const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
         ui32 deviceNumber,
