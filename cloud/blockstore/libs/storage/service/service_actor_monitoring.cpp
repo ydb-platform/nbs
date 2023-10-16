@@ -1,5 +1,6 @@
 #include "service_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -150,6 +151,7 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
         BuildSearchButton(out);
 
         TAG(TH3) { out << "Volumes"; }
+        RenderDownDisks(out);
         RenderVolumeList(out);
 
         TAG(TH3) { out << "Config"; }
@@ -160,6 +162,42 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
             Counters->OutputHtml(out);
         }
         GenerateServiceActionsJS(out);
+    }
+}
+
+void TServiceActor::RenderDownDisks(IOutputStream& out) const
+{
+    HTML(out)
+    {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLEH() { out << "Volume"; }
+                    TABLEH() { out << "Downtime"; }
+
+                }
+            }
+
+            auto addVolumeRow = [&](const TString& diskId) {
+                TABLER() {
+                    TABLEH() { out << diskId; }
+                    TABLEH() {
+                        TSvgWithDownGraph svg(out);
+                        auto history = VolumeStats->GetDowntimeHistory(diskId);
+                        for (const auto& [time, state]: history) {
+                            svg.AddEvent(time, state == EDowntimeStateChange::DOWN);
+                        }
+                    }
+                }
+            };
+
+            for (const auto& p: State.GetVolumes()) {
+                addVolumeRow(p.first);
+            }
+        }
     }
 }
 

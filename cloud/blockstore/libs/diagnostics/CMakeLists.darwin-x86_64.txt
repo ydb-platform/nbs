@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(data)
 add_subdirectory(events)
 add_subdirectory(ut)
 
@@ -17,6 +18,7 @@ target_link_libraries(blockstore-libs-diagnostics PUBLIC
   cloud-blockstore-config
   blockstore-libs-common
   libs-diagnostics-events
+  libs-diagnostics-data
   blockstore-libs-service
   core-libs-common
   core-libs-diagnostics
@@ -40,6 +42,7 @@ target_sources(blockstore-libs-diagnostics PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/block_digest.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/critical_events.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/diag_down_graph.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/dumpable.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/fault_injection.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/incomplete_request_processor.cpp

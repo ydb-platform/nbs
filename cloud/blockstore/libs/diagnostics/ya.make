@@ -4,6 +4,7 @@ SRCS(
     block_digest.cpp
     config.cpp
     critical_events.cpp
+    diag_down_graph.cpp
     dumpable.cpp
     fault_injection.cpp
     incomplete_request_processor.cpp
@@ -30,6 +31,7 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics/events
+    cloud/blockstore/libs/diagnostics/data
     cloud/blockstore/libs/service
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

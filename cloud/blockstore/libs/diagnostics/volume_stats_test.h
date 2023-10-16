@@ -255,6 +255,12 @@ public:
     {
         return {};
     }
+
+    TDowntimeHistory GetDowntimeHistory(const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return {};
+    }
 };
 
 }   // namespace NCloud::NBlockStore

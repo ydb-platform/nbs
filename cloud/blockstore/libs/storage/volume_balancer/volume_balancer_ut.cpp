@@ -170,6 +170,12 @@ struct TVolumeStatsTestMock final
     {
         return PerfStats;
     }
+
+    TDowntimeHistory GetDowntimeHistory(const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return {};
+    }
 };
 
 

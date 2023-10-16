@@ -258,6 +258,64 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TDowntimeHistoryHolder
+{
+public:
+    using TDowntimeEvents = TSimpleRingBuffer<TDowntimeChange>;
+
+private:
+    // Max change frequency is 5 sec, here we hold info at least for one hour
+    static constexpr size_t MAX_HISTORY_DEPTH = 12 * 60;
+    static constexpr TDuration MAX_HISTORY_DURATION = TDuration::Hours(1);
+    TDowntimeEvents DownEvents;
+    ITimerPtr Timer;
+
+public:
+    TDowntimeHistoryHolder(ITimerPtr timer)
+        : DownEvents(MAX_HISTORY_DEPTH)
+        , Timer(std::move(timer))
+    {
+    }
+
+    bool Empty() const
+    {
+        return DownEvents.TotalSize() == 0;
+    }
+
+    void PushBack(EDowntimeStateChange state)
+    {
+        const auto now = Timer->Now();
+        if (DownEvents.TotalSize() == 0
+            || (DownEvents[ DownEvents.TotalSize() - 1 ].second != state))
+        {
+            DownEvents.PushBack(std::make_pair(now, state));
+        }
+    }
+
+    TDowntimeHistory RecentEvents() const
+    {
+        if (DownEvents.TotalSize() == 0) {
+            return {};
+        }
+
+        const auto now = Timer->Now();
+        size_t i = DownEvents.FirstIndex();
+        for (; i + 1 < DownEvents.TotalSize(); ++i) {
+            if ((now - DownEvents[ i + 1 ].first) < MAX_HISTORY_DURATION) {
+                break;
+            }
+        }
+        TDowntimeHistory result;
+        result.reserve(DownEvents.TotalSize() - i);
+        for (; i < DownEvents.TotalSize(); ++i) {
+            result.push_back(DownEvents[i]);
+        }
+        return result;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TVolumeInfoBase
 {
     const NProto::TVolume Volume;
@@ -266,6 +324,7 @@ struct TVolumeInfoBase
     IPostponeTimePredictorPtr PostponeTimePredictor;
     TPostponeTimePredictorStats PostponeTimePredictorStats;
     TDowntimeCalculator DowntimeCalculator;
+    TDowntimeHistoryHolder DowntimeHistory;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
 
@@ -280,6 +339,7 @@ struct TVolumeInfoBase
         , PostponeTimePredictor(std::move(postponeTimePredictor))
         , PostponeTimePredictorStats(volumeGroup, timer)
         , DowntimeCalculator(diagnosticsConfig, Volume, timer)
+        , DowntimeHistory(timer)
         , ThrottlerRejects(timer)
         , CheckpointRejects(timer)
     {
@@ -788,9 +848,18 @@ public:
             volumeBase.PostponeTimePredictorStats.OnUpdateStats();
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
-            if (volumeBase.DowntimeCalculator.OnUpdateStats()) {
+
+            const auto hasDowntime = volumeBase.DowntimeCalculator.OnUpdateStats();
+            if (hasDowntime) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];
+            }
+
+            if (updateIntervalFinished) {
+                volumeBase.DowntimeHistory.PushBack(
+                    hasDowntime
+                    ? EDowntimeStateChange::DOWN
+                    : EDowntimeStateChange::UP);
             }
 
             for (auto& [key, instance]: holder.VolumeInfos) {
@@ -869,6 +938,18 @@ public:
     NCloud::NStorage::IUserMetricsSupplierPtr GetUserCounters() const override
     {
         return UserCounters;
+    }
+
+    TDowntimeHistory GetDowntimeHistory(const TString& diskId) const override
+    {
+        TReadGuard guard(Lock);
+
+        const auto volumeIt = Volumes.find(diskId);
+        if (volumeIt == Volumes.end()) {
+            return {};
+        }
+
+        return volumeIt->second.VolumeBase->DowntimeHistory.RecentEvents();
     }
 
 private:
@@ -1084,6 +1165,13 @@ struct TVolumeStatsStub final
     {
         return {};
     }
+
+    TDowntimeHistory GetDowntimeHistory(const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return {};
+    }
+
 };
 
 }   // namespace

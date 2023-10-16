@@ -92,6 +92,7 @@ private:
     void ScheduleStatsUpload(const NActors::TActorContext& ctx);
 
     void RenderHtmlInfo(IOutputStream& out) const;
+    void RenderDownDisks(IOutputStream& out) const;
     void RenderVolumeList(IOutputStream& out) const;
 
     template <typename TMethod>
