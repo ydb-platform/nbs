@@ -937,6 +937,7 @@
   "cloud/disk_manager/api/filesystem_service.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/filesystem_service.proto",
   "cloud/disk_manager/api/image.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/image.proto",
   "cloud/disk_manager/api/image_service.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/image_service.proto",
+  "cloud/disk_manager/api/operation/operation.proto":"cloud/disk_manager/github/operation/operation.proto",
   "cloud/disk_manager/api/operation_service.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/operation_service.proto",
   "cloud/disk_manager/api/placement_group.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/placement_group.proto",
   "cloud/disk_manager/api/placement_group_service.proto":"cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1/placement_group_service.proto",
