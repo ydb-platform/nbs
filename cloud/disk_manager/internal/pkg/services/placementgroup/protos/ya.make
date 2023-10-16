@@ -2,8 +2,7 @@ OWNER(g:cloud-nbs)
 
 PROTO_LIBRARY()
 
-INCLUDE_TAGS(GO_PROTO)
-EXCLUDE_TAGS(JAVA_PROTO)
+ONLY_TAGS(GO_PROTO)
 
 SRCS(
     alter_placement_group_membership_task.proto
