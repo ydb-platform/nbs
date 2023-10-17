@@ -286,10 +286,10 @@ void TCreateSessionActor::HandleCreateSession(
     const TActorContext& ctx)
 {
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
-        "%s got create session: seqno %lu rw %u",
+        "%s got create session: seqno %lu ro %u",
         LogTag().c_str(),
         ev->Get()->SessionSeqNo,
-        static_cast<ui32>(ev->Get()->ReadOnly));
+        ev->Get()->ReadOnly);
 
     auto* msg = ev->Get();
     LastPing = ctx.Now();
