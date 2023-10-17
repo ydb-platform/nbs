@@ -94,7 +94,7 @@ func (r *runnerForRun) lockTask(
 
 	logging.Info(
 		ctx,
-		"started with taskInfo %v, host %v, runner id %v",
+		"locking task with taskInfo %v, host %v, runner id %v",
 		taskInfo,
 		r.host,
 		r.id,
@@ -336,7 +336,7 @@ func (r *runnerForCancel) lockTask(
 
 	logging.Info(
 		ctx,
-		"started with taskInfo %v, host %v, runner id %v",
+		"locking task with taskInfo %v, host %v, runner id %v",
 		taskInfo,
 		r.host,
 		r.id,
