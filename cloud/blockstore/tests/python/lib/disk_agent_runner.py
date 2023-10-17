@@ -19,7 +19,6 @@ from ydb.core.protos.config_pb2 import TLogConfig
 from ydb.core.protos import console_config_pb2 as console
 from ydb.core.protos import msgbus_pb2 as msgbus
 from google.protobuf.text_format import MessageToBytes, MessageToString
-from ydb.tests.library.harness.param_constants import kikimr_driver_path
 from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 from .access_service import AccessService
 
@@ -68,10 +67,12 @@ class LocalDiskAgent(Daemon):
             self.__binary_path = disk_agent_binary_path
         else:
             self.__binary_path = yatest_common.binary_path(
-                "cloud/nbs_internal/blockstore/disk_agent/blockstore-disk-agent")
-        self.__kikimr_binary_path = kikimr_driver_path()
+                "cloud/blockstore/apps/disk_agent/diskagentd")
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path
+        else:
+            self.__kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
+
         self.__unstable_process_args = None
 
         if restart_interval is not None:

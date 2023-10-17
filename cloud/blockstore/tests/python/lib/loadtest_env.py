@@ -11,6 +11,8 @@ from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
 
 from .nbs_runner import LocalNbs
 
+import yatest.common as yatest_common
+
 import logging
 import os
 
@@ -44,12 +46,17 @@ class LocalLoadTest:
             nrd_device_count=1,
             rack='',
             bs_cache_file_path=None,
+            kikimr_binary_path=None,
     ):
 
         self.__endpoint = endpoint
 
+        if kikimr_binary_path is None:
+            kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
+
         self.configurator = KikimrConfigGenerator(
             erasure=None,
+            binary_path=kikimr_binary_path,
             has_cluster_uuid=False,
             use_in_memory_pdisks=use_in_memory_pdisks,
             dynamic_pdisks=dynamic_pdisks,
