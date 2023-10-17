@@ -126,7 +126,7 @@ std::string_view TSvgWithDownGraph::ColorForState(EState state)
         case EState::Fail:
             return FAIL_STATE_COLOR;
     }
-    Y_VERIFY_DEBUG(false, "Unknown graph state");
+    Y_DEBUG_ABORT_UNLESS(false, "Unknown graph state");
     return UNKNOWN_STATE_COLOR;
 }
 
