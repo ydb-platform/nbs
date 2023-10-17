@@ -39,7 +39,7 @@ inline std::optional<TSubscriptionId> TSubscriptionManager::Subscribe(TFuture<T>
             case ECallbackStatus::ExecutedSynchronously:
                 return {};
             default:
-                Y_FAIL("Unexpected callback status");
+                Y_ABORT("Unexpected callback status");
         }
     }
 }
@@ -106,7 +106,7 @@ inline TVector<TSubscriptionId> TSubscriptionManager::SubscribeImpl(TFutures con
                     }
                     break;
                 default:
-                    Y_FAIL("Unexpected callback status");
+                    Y_ABORT("Unexpected callback status");
             }
             r.SetSubId(Revision);
             ++i;
