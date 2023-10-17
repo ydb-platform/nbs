@@ -85,7 +85,7 @@ const (
 	EMountFlag_MF_NONE                EMountFlag = 0
 	EMountFlag_MF_THROTTLING_DISABLED EMountFlag = 1
 	EMountFlag_MF_FORCE_WRITE         EMountFlag = 2
-	EMountFlag_MF_FILL                EMountFlag = 3
+	EMountFlag_MF_FILL                EMountFlag = 3 // TODO: NBS-4488. Remove this Mount flag.
 )
 
 // Enum value maps for EMountFlag.

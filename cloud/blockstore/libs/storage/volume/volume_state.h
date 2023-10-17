@@ -594,7 +594,6 @@ private:
         ui64 clientMountSeqNumber);
 
     bool CanAcceptClient(
-        bool isFill,
         ui64 newFillSeqNumber,
         ui64 proposedFillGeneration);
 

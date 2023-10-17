@@ -374,11 +374,9 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         return res;
     }
 
-    bool isFill = HasProtoFlag(info.GetMountFlags(), NProto::MF_FILL);
     bool readWriteAccess = IsReadWriteMode(info.GetVolumeAccessMode());
 
     if (readWriteAccess && !CanAcceptClient(
-                               isFill,
                                info.GetFillSeqNumber(),
                                info.GetFillGeneration()))
    {
@@ -390,7 +388,6 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
                 << ", current FillSeqNumber: " << Meta.GetFillSeqNumber()
                 << ", proposed FillGeneration: " << info.GetFillGeneration()
                 << ", actual FillGeneration: " << Meta.GetVolumeConfig().GetFillGeneration()
-                << ", is fill: " << isFill
                 << ", is disk filling finished: " << Meta.GetVolumeConfig().GetIsFillFinished());
         return res;
     }
@@ -680,12 +677,12 @@ bool TVolumeState::CanPreemptClient(
 }
 
 bool TVolumeState::CanAcceptClient(
-    bool isFill,
     ui64 newFillSeqNumber,
     ui64 proposedFillGeneration)
 {
-    if (!isFill) {
-        // TODO: NBS-4425: do not accept client without IS_FILL flag if fill is not finished
+    if (proposedFillGeneration == 0) {
+        // TODO: NBS-4425: do not accept client with zero fillGeneration if fill
+        // is not finished.
         return true;
     }
 

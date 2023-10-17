@@ -4591,11 +4591,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TServiceClient service1(runtime, nodeIdx1);
         TServiceClient service2(runtime, nodeIdx2);
-        service1.CreateVolume();
+        {
+            auto request = service1.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(1);
+            service1.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service1.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+        }
 
         ui32 mountFlags = 0;
         SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
-        SetProtoFlag(mountFlags, NProto::MF_FILL);
 
         ui64 mountSeqNumber = 0;
 
@@ -4609,7 +4615,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0  // fillSeqNumber
+            0,  // fillSeqNumber
+            1   // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -4627,7 +4634,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1  // fillSeqNumber
+            1,  // fillSeqNumber
+            1   // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -4645,7 +4653,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0  // fillSeqNumber
+            0,  // fillSeqNumber
+            1   // fillGeneration
         );
 
         {
@@ -4667,7 +4676,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0  // fillSeqNumber
+            0,  // fillSeqNumber
+            1   // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -4689,7 +4699,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0  // fillSeqNumber
+            0,  // fillSeqNumber
+            1   // fillGeneration
         );
 
         {
@@ -4712,7 +4723,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1  // fillSeqNumber
+            1,  // fillSeqNumber
+            1   // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -4732,11 +4744,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto& runtime = env.GetRuntime();
 
         TServiceClient service(runtime, nodeIdx);
-        service.CreateVolume();
+        {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(1);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+        }
 
         ui32 mountFlags = 0;
         SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
-        SetProtoFlag(mountFlags, NProto::MF_FILL);
 
         ui64 mountSeqNumber = 0;
 
@@ -4750,7 +4768,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1  // fillSeqNumber
+            1,  // fillSeqNumber
+            1   // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -4771,7 +4790,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0  // fillSeqNumber
+            0,  // fillSeqNumber
+            1   // fillGeneration
         );
 
         {
@@ -4806,12 +4826,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
         }
 
-        ui32 mountFlagsFill = 0;
-        SetProtoFlag(mountFlagsFill, NProto::MF_THROTTLING_DISABLED);
-        SetProtoFlag(mountFlagsFill, NProto::MF_FILL);
-
-        ui32 mountFlagsNotFill = 0;
-        SetProtoFlag(mountFlagsNotFill, NProto::MF_THROTTLING_DISABLED);
+        ui32 mountFlags = 0;
+        SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
 
         ui64 mountSeqNumber = 0;
 
@@ -4822,7 +4838,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_REMOTE,
-            mountFlagsFill,
+            mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
             1, // fillSeqNumber
@@ -4859,7 +4875,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_REMOTE,
-            mountFlagsFill,
+            mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
             2, // fillSeqNumber
@@ -4875,7 +4891,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             );
         }
 
-        // Should be able to mount when IS_FILL flag is not set and fill is finished
+        // Should be able to mount when fill is finished
         // In particular, should not check fillSeqNumber here
         response = service.MountVolume(
             DefaultDiskId,
@@ -4884,7 +4900,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_REMOTE,
-            mountFlagsNotFill,
+            mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
             0, // fillSeqNumber
@@ -4903,7 +4919,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_REMOTE,
-            mountFlagsFill,
+            mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
             0, // fillSeqNumber
@@ -4943,7 +4959,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 mountFlags = 0;
         SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
-        SetProtoFlag(mountFlags, NProto::MF_FILL);
 
         ui64 mountSeqNumber = 0;
 
