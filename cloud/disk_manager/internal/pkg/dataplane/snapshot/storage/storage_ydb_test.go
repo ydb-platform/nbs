@@ -1192,9 +1192,9 @@ func TestCompressionMetricsCollection(t *testing.T) {
 				comp := "lz4"
 				f.config.ChunkCompression = &comp
 				f.config.ProbeCompressionPercentage = map[string]uint32{
-					"gzip":     4294967295,
-					"zstd":     4294967295,
-					"zstd_cgo": 4294967295,
+					"gzip":     100,
+					"zstd":     100,
+					"zstd_cgo": 100,
 				}
 				registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 				histogramName := "chunkCompressionRatio"

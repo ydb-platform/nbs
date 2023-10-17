@@ -77,7 +77,7 @@ func Compress(
 		if !ok {
 			continue
 		}
-		if rand.Uint32() < compressionPercentage {
+		if rand.Uint32()%100 < compressionPercentage {
 			_, _ = compress(codec, data, metrics)
 		}
 	}
