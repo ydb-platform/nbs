@@ -68,16 +68,31 @@ func WaitResponse(
 		)
 	}
 
+	err = parseOperationResponse(ctx, o, response)
+	if err != nil {
+		return err
+	}
+
+	logging.Debug(ctx, "Operation %v finished", operationID)
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func parseOperationResponse(
+	ctx context.Context,
+	o *operation.Operation,
+	response proto.Message,
+) error {
+
 	switch result := o.Result.(type) {
 	case *operation.Operation_Error:
 		return grpc_status.ErrorProto(result.Error)
 	case *operation.Operation_Response:
 		if response != nil {
-			err = ptypes.UnmarshalAny(result.Response, response)
-			return err
+			return ptypes.UnmarshalAny(result.Response, response)
 		}
 
-		logging.Debug(ctx, "Operation %v finished", operationID)
 		return nil
 	default:
 		return errors.NewNonRetriableErrorf(
@@ -87,7 +102,31 @@ func WaitResponse(
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// If |done && err != nil| then operation is ended with error which is
+// represented by |err|.
+func GetOperationResponse(
+	ctx context.Context,
+	client sdk_client.Client,
+	operationID string,
+	response proto.Message,
+) (done bool, err error) {
+
+	o, err := client.GetOperation(
+		ctx,
+		&disk_manager.GetOperationRequest{
+			OperationId: operationID,
+		},
+	)
+	if err != nil {
+		return false, err
+	}
+
+	if !o.Done {
+		return false, nil
+	}
+
+	return true, parseOperationResponse(ctx, o, response)
+}
 
 func GetOperationMetadata(
 	ctx context.Context,

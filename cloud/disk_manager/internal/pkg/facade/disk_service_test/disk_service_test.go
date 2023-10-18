@@ -103,7 +103,7 @@ func successfullyMigrateDisk(
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
 
 	err = waitForWrite()
 	require.NoError(t, err)
@@ -127,7 +127,7 @@ func successfullyMigrateDisk(
 	})
 	require.NoError(t, err)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
 
 	diskSize := uint64(param.DiskSize)
 
@@ -152,7 +152,7 @@ func successfullyMigrateDisk(
 	})
 	require.NoError(t, err)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_FINISHED)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_FINISHED)
 
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func checkFreezeAndUnfreezeDuringMigration(
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
 
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 		OperationId: operation.Id,
@@ -223,7 +223,7 @@ func checkFreezeAndUnfreezeDuringMigration(
 	})
 	require.NoError(t, err)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
 
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, srcZoneID)
 
@@ -257,7 +257,7 @@ func checkFreezeAndUnfreezeDuringMigration(
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Cancelled by client")
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_STATUS_UNSPECIFIED)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_STATUS_UNSPECIFIED)
 }
 */
 
@@ -283,7 +283,7 @@ func successfullyMigrateEmptyDisk(
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
 
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 		OperationId: operation.Id,
@@ -291,7 +291,7 @@ func successfullyMigrateEmptyDisk(
 	})
 	require.NoError(t, err)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
 
 	diskSize := uint64(migrationTestsDiskSize)
 
@@ -310,7 +310,7 @@ func successfullyMigrateEmptyDisk(
 	})
 	require.NoError(t, err)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_FINISHED)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_FINISHED)
 
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
@@ -325,7 +325,7 @@ func successfullyMigrateEmptyDisk(
 	require.Equal(t, srcCrc32, dstCrc32)
 }
 
-func waitForMigrationMetadataUpdate(
+func waitForMigrationStatus(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
@@ -334,8 +334,51 @@ func waitForMigrationMetadataUpdate(
 ) {
 
 	for i := 0; ; i++ {
+		_, err := internal_client.GetOperationResponse(ctx, client, operation.Id, nil)
+		require.NoError(t, err)
+
 		metadata := &disk_manager.MigrateDiskMetadata{}
-		err := internal_client.GetOperationMetadata(ctx, client, operation.Id, metadata)
+		err = internal_client.GetOperationMetadata(ctx, client, operation.Id, metadata)
+		require.NoError(t, err)
+
+		if metadata.Status != status {
+			if i%10 == 0 && i != 0 {
+				logging.Info(
+					ctx,
+					"Still waiting for migration status %v, actual status is %v, request %v, progress %v, seconds_remaining: %v",
+					status,
+					metadata.Status,
+					i,
+					metadata.Progress,
+					metadata.SecondsRemaining,
+				)
+			}
+			time.Sleep(time.Second)
+			continue
+		}
+
+		return
+	}
+}
+
+func waitForMigrationStatusOrError(
+	t *testing.T,
+	ctx context.Context,
+	client sdk_client.Client,
+	operation *operation_proto.Operation,
+	status disk_manager.MigrateDiskMetadata_Status,
+) {
+
+	for i := 0; ; i++ {
+		done, err := internal_client.GetOperationResponse(ctx, client, operation.Id, nil)
+		if done && err != nil {
+			return
+		}
+
+		require.NoError(t, err)
+
+		metadata := &disk_manager.MigrateDiskMetadata{}
+		err = internal_client.GetOperationMetadata(ctx, client, operation.Id, metadata)
 		require.NoError(t, err)
 
 		if metadata.Status != status {
@@ -1481,7 +1524,7 @@ func TestDiskServiceCancelMigrateDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
-	waitForMigrationMetadataUpdate(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
+	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
 
 	_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 		OperationId: operation.Id,
@@ -1887,20 +1930,32 @@ func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, operation := range operations {
-		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
+		waitForMigrationStatusOrError(
+			t,
+			ctx,
+			client,
+			operation,
+			disk_manager.MigrateDiskMetadata_REPLICATING,
+		)
+	}
+
+	for _, operation := range operations {
+		err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 			OperationId: operation.Id,
 			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION,
 		})
+		require.NoError(t, err)
 	}
 
 	// Need to add some variance for better testing.
 	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
 
 	for _, operation := range operations {
-		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
+		err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 			OperationId: operation.Id,
 			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_MIGRATION,
 		})
+		require.NoError(t, err)
 	}
 
 	successCount := 0
