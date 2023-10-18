@@ -70,7 +70,7 @@ IRequestStatsRegistryPtr CreateRequestStatsRegistry(
     TDiagnosticsConfigPtr diagnosticsConfig,
     NMonitoring::TDynamicCountersPtr rootCounters,
     ITimerPtr timer,
-    std::shared_ptr<NCloud::NStorage::NUserStats::TUserCounterSupplier> userCounters);
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters);
 
 IRequestStatsRegistryPtr CreateRequestStatsRegistryStub();
 

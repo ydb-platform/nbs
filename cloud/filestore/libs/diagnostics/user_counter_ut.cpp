@@ -14,6 +14,8 @@
 
 namespace NCloud::NFileStore::NUserCounter {
 
+using namespace NCloud::NStorage::NUserStats;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,13 +84,13 @@ struct TEnv
 {
     NMonitoring::TDynamicCountersPtr Counters;
     ITimerPtr Timer;
-    std::shared_ptr<NStorage::NUserStats::TUserCounterSupplier> Supplier;
+    std::shared_ptr<IUserCounterSupplier> Supplier;
     IRequestStatsRegistryPtr Registry;
 
     TEnv()
         : Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
         , Timer(CreateWallClockTimer())
-        , Supplier(std::make_shared<NStorage::NUserStats::TUserCounterSupplier>())
+        , Supplier(CreateUserCounterSupplier())
         , Registry(CreateRequestStatsRegistry(
             METRIC_COMPONENT,
             nullptr,

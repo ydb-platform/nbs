@@ -41,6 +41,8 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using IUserCounterSupplier = NCloud::NStorage::NUserStats::IUserCounterSupplier;
+
 class TBootstrapCommon {
 private:
     const TString MetricsComponent;
@@ -50,7 +52,7 @@ private:
     TConfigInitializerCommonPtr Configs;
     ILoggingServicePtr BootstrapLogging;
     TProgramShouldContinue ProgramShouldContinue;
-    std::shared_ptr<NCloud::NStorage::NUserStats::TUserCounterSupplier> UserCounters;
+    std::shared_ptr<IUserCounterSupplier> UserCounters;
 
 protected:
     TLog Log;
@@ -75,7 +77,7 @@ public:
         std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
         TString logComponent,
         TString metricsComponent,
-        bool enableUserCounters);
+        std::shared_ptr<IUserCounterSupplier> userCounters);
     virtual ~TBootstrapCommon();
 
     void ParseOptions(int argc, char** argv);

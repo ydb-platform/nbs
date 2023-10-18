@@ -34,29 +34,22 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUserCounterSupplier
+class IUserCounterSupplier
     : public NMonitoring::IMetricSupplier
 {
-private:
-    TRWMutex Lock;
-    THashMap<NMonitoring::TLabels, TUserCounter> Metrics;
-
 public:
-    // NMonitoring::IMetricSupplier
-    void Accept(
-        TInstant time,
-        NMonitoring::IMetricConsumer* consumer) const override;
-    void Append(
-        TInstant time,
-        NMonitoring::IMetricConsumer* consumer) const override;
+    virtual ~IUserCounterSupplier() = default;
 
-    void AddUserMetric(
+    virtual void AddUserMetric(
         NMonitoring::TLabels labels,
         TStringBuf name,
-        TUserCounter metric);
-    void RemoveUserMetric(
+        TUserCounter metric) = 0;
+    virtual void RemoveUserMetric(
         NMonitoring::TLabels labels,
-        TStringBuf name);
+        TStringBuf name) = 0;
 };
+
+std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplier();
+std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub();
 
 }   // NCloud::NStorage::NUserStats

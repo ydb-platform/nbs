@@ -24,8 +24,6 @@ namespace NCloud::NFileStore {
 
 using namespace NMonitoring;
 
-using TUserCounterSupplier = NCloud::NStorage::NUserStats::TUserCounterSupplier;
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -499,7 +497,7 @@ private:
     TDynamicCountersPtr FsCounters;
     TRWMutex Lock;
     THashMap<std::pair<TString, TString>, TFileSystemStatsHolder> StatsMap;
-    std::shared_ptr<TUserCounterSupplier> UserCounters;
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
 
 public:
     TRequestStatsRegistry(
@@ -507,7 +505,7 @@ public:
             TDiagnosticsConfigPtr diagnosticsConfig,
             NMonitoring::TDynamicCountersPtr rootCounters,
             ITimerPtr timer,
-            std::shared_ptr<TUserCounterSupplier> userCounters)
+            std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
         , RootCounters(std::move(rootCounters))
         , Timer(std::move(timer))
@@ -581,7 +579,7 @@ public:
                 ->GetSubgroup("filesystem", fileSystemId)
                 ->GetSubgroup("client", clientId);
 
-            NCloud::NFileStore::NUserCounter::RegisterFilestore(
+            NUserCounter::RegisterFilestore(
                 *UserCounters,
                 cloudId,
                 folderId,
@@ -610,14 +608,12 @@ public:
 
         if (it->second.Release()) {
             const auto& userMetadata = it->second.Stats->GetUserMetadata();
-            if (UserCounters) {
-                NCloud::NFileStore::NUserCounter::UnregisterFilestore(
-                    *UserCounters,
-                    userMetadata.CloudId,
-                    userMetadata.FolderId,
-                    fileSystemId,
-                    clientId);
-            }
+            NUserCounter::UnregisterFilestore(
+                *UserCounters,
+                userMetadata.CloudId,
+                userMetadata.FolderId,
+                fileSystemId,
+                clientId);
             it->second.Stats->Reset();
             StatsMap.erase(it);
             FsCounters->GetSubgroup("filesystem", fileSystemId)
@@ -728,7 +724,7 @@ IRequestStatsRegistryPtr CreateRequestStatsRegistry(
     TDiagnosticsConfigPtr diagnosticsConfig,
     NMonitoring::TDynamicCountersPtr rootCounters,
     ITimerPtr timer,
-    std::shared_ptr<TUserCounterSupplier> userCounters)
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters)
 {
     return std::make_shared<TRequestStatsRegistry>(
         std::move(component),

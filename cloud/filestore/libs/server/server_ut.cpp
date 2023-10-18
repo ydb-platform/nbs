@@ -224,7 +224,7 @@ public:
             {},
             Counters,
             CreateWallClockTimer(),
-            nullptr);
+            NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
 
         ServerConfig = CreateConfig(serverConfig);
 

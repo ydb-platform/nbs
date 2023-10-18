@@ -45,8 +45,6 @@ using namespace NServer;
 
 using namespace NCloud::NStorage;
 
-using TUserCounterSupplier = NCloud::NStorage::NUserStats::TUserCounterSupplier;
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,11 +88,10 @@ TBootstrapCommon::TBootstrapCommon(
         std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
         TString logComponent,
         TString metricsComponent,
-        bool enableUserCounters)
+        std::shared_ptr<NUserStats::IUserCounterSupplier> userCounters)
     : MetricsComponent(std::move(metricsComponent))
     , ModuleFactories(std::move(moduleFactories))
-    , UserCounters(
-        enableUserCounters ? std::make_shared<TUserCounterSupplier>() : nullptr)
+    , UserCounters(std::move(userCounters))
 {
     TLogSettings logSettings;
     logSettings.UseLocalTimestamps = true;

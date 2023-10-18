@@ -9,6 +9,8 @@
 
 namespace NCloud::NBlockStore::NUserCounter {
 
+using namespace NCloud::NStorage::NUserStats;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,9 +125,9 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         makeCounters("WriteBlocks");
         makeCounters("ZeroBlocks");
 
-        TUserCounterSupplier supplier;
+        auto supplier = CreateUserCounterSupplier();
         RegisterServerVolumeInstance(
-            supplier,
+            *supplier,
             "cloudId",
             "folderId",
             "diskId",
@@ -413,7 +415,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
         TStringStream jsonOut;
         auto encoder = EncoderJson(&jsonOut);
-        supplier.Accept(TInstant::Seconds(12), encoder.Get());
+        supplier->Accept(TInstant::Seconds(12), encoder.Get());
 
         NJson::TJsonValue resultJson =
             NJson::ReadJsonFastTree(jsonOut.Str(), true);
@@ -464,9 +466,9 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         makeCounters("WriteBlocks");
         makeCounters("ZeroBlocks");
 
-        TUserCounterSupplier supplier;
+        auto supplier = CreateUserCounterSupplier();
         RegisterServiceVolume(
-            supplier,
+            *supplier,
             "cloudId",
             "folderId",
             "diskId",
@@ -541,7 +543,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
         TStringStream jsonOut;
         auto encoder = EncoderJson(&jsonOut);
-        supplier.Accept(TInstant::Seconds(12), encoder.Get());
+        supplier->Accept(TInstant::Seconds(12), encoder.Get());
 
         NJson::TJsonValue resultJson =
             NJson::ReadJsonFastTree(jsonOut.Str(), true);

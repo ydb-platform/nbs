@@ -6,10 +6,12 @@
 
 namespace NCloud::NFileStore::NUserCounter {
 
+using IUserCounterSupplier = NCloud::NStorage::NUserStats::IUserCounterSupplier;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void RegisterFilestore(
-    NCloud::NStorage::NUserStats::TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& filestoreId,
@@ -17,7 +19,7 @@ void RegisterFilestore(
     NMonitoring::TDynamicCounterPtr src);
 
 void UnregisterFilestore(
-    NCloud::NStorage::NUserStats::TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& filestoreId,

@@ -13,7 +13,7 @@ using namespace NActors;
 
 using namespace NKikimr;
 
-using TUserCounterSupplier = NCloud::NStorage::NUserStats::TUserCounterSupplier;
+using namespace NCloud::NStorage::NUserStats;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -27,7 +27,7 @@ TStatsServiceActor::TStatsServiceActor(
     , StatsUploader(std::move(uploader))
     , ClientStatsAggregator(std::move(clientStatsAggregator))
     , State(*Config)
-    , UserCounters(std::make_shared<TUserCounterSupplier>())
+    , UserCounters(CreateUserCounterSupplier())
 {
     ActivityType = TBlockStoreActivities::STATS_SERVICE;
 }

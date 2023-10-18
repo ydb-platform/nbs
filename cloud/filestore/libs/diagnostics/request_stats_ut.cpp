@@ -13,6 +13,8 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NMonitoring;
 
+using namespace NCloud::NStorage::NUserStats;
+
 namespace
 {
 
@@ -35,7 +37,7 @@ struct TBootstrap
             nullptr,
             Counters,
             Timer,
-            nullptr)}
+            CreateUserCounterSupplierStub())}
     {}
 };
 

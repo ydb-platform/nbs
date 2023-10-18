@@ -142,7 +142,7 @@ public:
         // StorageUserStats
         //
 
-        auto storageUserStats = NCloud::NStorage::NUserStats::CreateStorageUserStats(
+        auto storageUserStats = NUserStats::CreateStorageUserStats(
             "filestore",
             "FileStore",
             {Args.UserCounters});
@@ -351,7 +351,7 @@ void TActorSystem::Init()
         {},
         FILESTORE_COUNTERS_ROOT(AppData->Counters),
         CreateWallClockTimer(),
-        nullptr);
+        NUserStats::CreateUserCounterSupplierStub());
     auto services = CreateServiceInitializersList(runConfig, servicesMask);
     services->AddServiceInitializer(
         new TStorageServicesInitializer(Args, std::move(statsRegistry)));

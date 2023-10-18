@@ -9,25 +9,25 @@
 
 namespace NCloud::NBlockStore::NUserCounter {
 
-using TUserCounterSupplier = NCloud::NStorage::NUserStats::TUserCounterSupplier;
+using IUserCounterSupplier = NCloud::NStorage::NUserStats::IUserCounterSupplier;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void RegisterServiceVolume(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
     NMonitoring::TDynamicCounterPtr src);
 
 void UnregisterServiceVolume(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId);
 
 void RegisterServerVolumeInstance(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
@@ -35,7 +35,7 @@ void RegisterServerVolumeInstance(
     NMonitoring::TDynamicCounterPtr src);
 
 void UnregisterServerVolumeInstance(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,

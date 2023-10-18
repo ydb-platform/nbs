@@ -133,7 +133,7 @@ TTestEnv::TTestEnv(
         {},
         Counters,
         CreateWallClockTimer(),
-        nullptr);
+        NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
 
     Registry = NMetrics::CreateMetricsRegistry(
         {NMetrics::CreateLabel("counters", "filestore")},

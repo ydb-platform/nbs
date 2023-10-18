@@ -31,7 +31,7 @@ struct TActorSystemArgs
     ITraceSerializerPtr TraceSerializer;
     NMetrics::IMetricsServicePtr Metrics;
 
-    std::shared_ptr<NCloud::NStorage::NUserStats::TUserCounterSupplier> UserCounters;
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
 
     NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
 };

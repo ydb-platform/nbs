@@ -25,6 +25,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
 #include <ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <ydb/core/tablet_flat/probes.h>
@@ -36,10 +37,16 @@ namespace NCloud::NFileStore::NDaemon {
 using namespace NActors;
 using namespace NKikimr;
 
+using namespace NCloud::NStorage;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapServer::TBootstrapServer(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories)
-    : TBootstrapCommon(std::move(moduleFactories), "NFS_SERVER", "server", false)
+    : TBootstrapCommon(
+        std::move(moduleFactories),
+        "NFS_SERVER",
+        "server",
+        NUserStats::CreateUserCounterSupplierStub())
 {}
 
 TBootstrapServer::~TBootstrapServer()

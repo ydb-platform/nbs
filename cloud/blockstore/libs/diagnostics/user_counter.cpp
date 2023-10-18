@@ -160,7 +160,7 @@ struct TUserSumHistogramWrapper
 using TBaseDynamicCounters = std::pair<TDynamicCounterPtr, TString>;
 
 void AddUserMetric(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TLabels& commonLabels,
     const TVector<TBaseDynamicCounters>& baseCounters,
     TStringBuf newName)
@@ -189,7 +189,7 @@ void AddUserMetric(
 
 auto AddHistogramUserMetric(
     const TBuckets& buckets,
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TLabels& commonLabels,
     const TVector<TBaseDynamicCounters>& baseCounters,
     TStringBuf newName)
@@ -246,7 +246,7 @@ TLabels MakeVolumeInstanceLabels(
 ////////////////////////////////////////////////////////////////////////////////
 
 void RegisterServiceVolume(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
@@ -285,7 +285,7 @@ void RegisterServiceVolume(
 }
 
 void UnregisterServiceVolume(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId)
@@ -300,7 +300,7 @@ void UnregisterServiceVolume(
 }
 
 void RegisterServerVolumeInstance(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
@@ -424,7 +424,7 @@ void RegisterServerVolumeInstance(
 }
 
 void UnregisterServerVolumeInstance(
-    TUserCounterSupplier& dsc,
+    IUserCounterSupplier& dsc,
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,

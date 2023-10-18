@@ -23,7 +23,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 void RegisterVolumeSelfCounters(
-    std::shared_ptr<NUserCounter::TUserCounterSupplier> userCounters,
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
     NMonitoring::TDynamicCounterPtr& counters,
     TVolumeStatsInfo& volume)
 {
@@ -50,7 +50,7 @@ void RegisterVolumeSelfCounters(
 }
 
 void UnregisterVolumeSelfCounters(
-    std::shared_ptr<NUserCounter::TUserCounterSupplier> userCounters,
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
     NMonitoring::TDynamicCounterPtr& counters,
     const TString& diskId,
     TVolumeStatsInfo& volume)

@@ -622,7 +622,7 @@ private:
     const THashSet<TString> CloudIdsWithStrictSLA;
 
     TDynamicCountersPtr Counters;
-    std::shared_ptr<NUserCounter::TUserCounterSupplier> UserCounters;
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
     std::unique_ptr<TSufferCounters> StrictSLASufferCounters;
@@ -654,7 +654,7 @@ public:
         , CloudIdsWithStrictSLA([] (const TVector<TString>& v) {
             return THashSet<TString>(v.begin(), v.end());
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
-        , UserCounters(std::make_shared<NUserCounter::TUserCounterSupplier>())
+        , UserCounters(CreateUserCounterSupplier())
     {
     }
 
