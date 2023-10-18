@@ -547,30 +547,44 @@ func isValidUUID(s string) bool {
 func CheckConsistency(t *testing.T, ctx context.Context) {
 	nbsClient := NewNbsClient(t, ctx, "zone")
 
-	diskIDs, err := nbsClient.List(ctx)
-	require.NoError(t, err)
+	for {
+		ok := true
 
-	for _, diskID := range diskIDs {
-		// TODO: should remove dependency on disk id here.
-		require.False(
-			t,
-			strings.Contains(diskID, "proxy_"),
-			"proxy overlay disk was leaked: %v",
-			diskID,
-		)
+		diskIDs, err := nbsClient.List(ctx)
+		require.NoError(t, err)
 
-		if isValidUUID(diskID) {
-			// UUID v4 ids are used for base disks.
-			// TODO: should use prefix 'base' for base disk ids (NBS-3860).
-			continue
+		for _, diskID := range diskIDs {
+			// TODO: should remove dependency on disk id here.
+			if strings.Contains(diskID, "proxy_") {
+				ok = false
+
+				logging.Info(
+					ctx,
+					"waiting for proxy overlay disk %v deletion",
+					diskID,
+				)
+				continue
+			}
+
+			if isValidUUID(diskID) {
+				// UUID v4 ids are used for base disks.
+				// TODO: should use prefix 'base' for base disk ids (NBS-3860).
+				continue
+			}
+
+			require.True(
+				t,
+				strings.Contains(diskID, "Test"),
+				"disk with unexpected id is found: %v",
+				diskID,
+			)
 		}
 
-		require.True(
-			t,
-			strings.Contains(diskID, "Test"),
-			"disk with unexpected id is found: %v",
-			diskID,
-		)
+		if ok {
+			break
+		}
+
+		time.Sleep(time.Second)
 	}
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
