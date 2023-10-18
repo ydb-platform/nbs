@@ -54,8 +54,10 @@ struct TTotalCounters
     TSimpleCounter TotalDiskCountLast15Min;
     TSimpleCounter TotalDiskCountLastHour;
     TSimpleCounter TotalPartitionCount;
+    TSimpleCounter VolumeLoadTimeUnder1Sec;
     TSimpleCounter VolumeLoadTime1To5Sec;
     TSimpleCounter VolumeLoadTimeOver5Sec;
+    TSimpleCounter VolumeStartTimeUnder1Sec;
     TSimpleCounter VolumeStartTime1To5Sec;
     TSimpleCounter VolumeStartTimeOver5Sec;
 
@@ -121,6 +123,8 @@ struct TVolumeStatsInfo
 
     TDiskPerfData PerfCounters;
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;
+    TInstant ApproximateStartTs;
+    TDuration ApproximateBootstrapTime;
 
     TVolumeStatsInfo(NProto::TVolume config)
         : VolumeInfo(std::move(config))

@@ -14,8 +14,10 @@ void TTotalCounters::Register(NMonitoring::TDynamicCountersPtr counters)
     TotalDiskCountLast15Min.Register(counters, "TotalDiskCountLast15Min");
     TotalDiskCountLastHour.Register(counters, "TotalDiskCountLastHour");
     TotalPartitionCount.Register(counters, "TotalPartitionCount");
+    VolumeLoadTimeUnder1Sec.Register(counters, "VolumeLoadTimeUnder1Sec");
     VolumeLoadTime1To5Sec.Register(counters, "VolumeLoadTime1To5Sec");
     VolumeLoadTimeOver5Sec.Register(counters, "VolumeLoadTimeOver5Sec");
+    VolumeStartTimeUnder1Sec.Register(counters, "VolumeStartTimeUnder1Sec");
     VolumeStartTime1To5Sec.Register(counters, "VolumeStartTime1To5Sec");
     VolumeStartTimeOver5Sec.Register(counters, "VolumeStartTimeOver5Sec");
 }
@@ -34,8 +36,10 @@ void TTotalCounters::Publish(TInstant now)
     TotalDiskCountLast15Min.Publish(now);
     TotalDiskCountLastHour.Publish(now);
     TotalPartitionCount.Publish(now);
+    VolumeLoadTimeUnder1Sec.Publish(now);
     VolumeLoadTime1To5Sec.Publish(now);
     VolumeLoadTimeOver5Sec.Publish(now);
+    VolumeStartTimeUnder1Sec.Publish(now);
     VolumeStartTime1To5Sec.Publish(now);
     VolumeStartTimeOver5Sec.Publish(now);
 }

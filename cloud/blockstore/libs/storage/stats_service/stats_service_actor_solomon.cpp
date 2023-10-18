@@ -22,6 +22,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsRecentlyStarted(TInstant now, const TVolumeStatsInfo& v)
+{
+    return now <= v.ApproximateStartTs + TDuration::Minutes(5);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void RegisterVolumeSelfCounters(
     std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
     NMonitoring::TDynamicCounterPtr& counters,
@@ -37,7 +44,8 @@ void RegisterVolumeSelfCounters(
 
         volume.PerfCounters.DiskCounters.Register(volumeCounters, false);
         volume.PerfCounters.VolumeSelfCounters.Register(volumeCounters, false);
-        volume.PerfCounters.VolumeBindingCounter = volumeCounters->GetCounter("LocalVolume", false);
+        volume.PerfCounters.VolumeBindingCounter =
+            volumeCounters->GetCounter("LocalVolume", false);
         volume.PerfCounters.CountersRegistered = true;
 
         NUserCounter::RegisterServiceVolume(
@@ -95,8 +103,10 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         tc->TotalDiskCountLast15Min.Reset();
         tc->TotalDiskCountLastHour.Reset();
         tc->TotalPartitionCount.Reset();
+        tc->VolumeLoadTimeUnder1Sec.Reset();
         tc->VolumeLoadTime1To5Sec.Reset();
         tc->VolumeLoadTimeOver5Sec.Reset();
+        tc->VolumeStartTimeUnder1Sec.Reset();
         tc->VolumeStartTime1To5Sec.Reset();
         tc->VolumeStartTimeOver5Sec.Reset();
     }
@@ -109,28 +119,36 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         auto& vol = p.second;
         auto& tc = State.GetCounters(vol.VolumeInfo);
 
-        const auto& selfSimple = vol.PerfCounters.VolumeSelfCounters.Simple;
-        const auto loadTime =
-            TDuration::MicroSeconds(selfSimple.LastVolumeLoadTime.Value);
-        if (loadTime >= TDuration::Seconds(1)) {
-            if (loadTime < TDuration::Seconds(5)) {
-                tc.VolumeLoadTime1To5Sec.Increment(1);
-                serviceTotal.VolumeLoadTime1To5Sec.Increment(1);
+        if (IsRecentlyStarted(ctx.Now(), vol)) {
+            const auto& selfSimple = vol.PerfCounters.VolumeSelfCounters.Simple;
+            const auto loadTime =
+                TDuration::MicroSeconds(selfSimple.LastVolumeLoadTime.Value);
+            if (loadTime >= TDuration::Seconds(1)) {
+                if (loadTime < TDuration::Seconds(5)) {
+                    tc.VolumeLoadTime1To5Sec.Increment(1);
+                    serviceTotal.VolumeLoadTime1To5Sec.Increment(1);
+                } else {
+                    tc.VolumeLoadTimeOver5Sec.Increment(1);
+                    serviceTotal.VolumeLoadTimeOver5Sec.Increment(1);
+                }
             } else {
-                tc.VolumeLoadTimeOver5Sec.Increment(1);
-                serviceTotal.VolumeLoadTimeOver5Sec.Increment(1);
+                tc.VolumeLoadTimeUnder1Sec.Increment(1);
+                serviceTotal.VolumeLoadTimeUnder1Sec.Increment(1);
             }
-        }
 
-        const auto startTime =
-            TDuration::MicroSeconds(selfSimple.LastVolumeStartTime.Value);
-        if (startTime >= TDuration::Seconds(1)) {
-            if (startTime < TDuration::Seconds(5)) {
-                tc.VolumeStartTime1To5Sec.Increment(1);
-                serviceTotal.VolumeStartTime1To5Sec.Increment(1);
+            const auto startTime =
+                TDuration::MicroSeconds(selfSimple.LastVolumeStartTime.Value);
+            if (startTime >= TDuration::Seconds(1)) {
+                if (startTime < TDuration::Seconds(5)) {
+                    tc.VolumeStartTime1To5Sec.Increment(1);
+                    serviceTotal.VolumeStartTime1To5Sec.Increment(1);
+                } else {
+                    tc.VolumeStartTimeOver5Sec.Increment(1);
+                    serviceTotal.VolumeStartTimeOver5Sec.Increment(1);
+                }
             } else {
-                tc.VolumeStartTimeOver5Sec.Increment(1);
-                serviceTotal.VolumeStartTimeOver5Sec.Increment(1);
+                tc.VolumeStartTimeUnder1Sec.Increment(1);
+                serviceTotal.VolumeStartTimeUnder1Sec.Increment(1);
             }
         }
 
@@ -270,7 +288,7 @@ void TStatsServiceActor::HandleVolumePartCounters(
 {
     const auto* msg = ev->Get();
 
-    auto volume = State.GetVolume(msg->DiskId);
+    auto* volume = State.GetVolume(msg->DiskId);
 
     if (!volume) {
         LOG_DEBUG(ctx, TBlockStoreComponents::STATS_SERVICE,
@@ -302,9 +320,9 @@ void TStatsServiceActor::HandleVolumeSelfCounters(
     const TEvStatsService::TEvVolumeSelfCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
-    auto volume = State.GetVolume(msg->DiskId);
+    auto* volume = State.GetVolume(msg->DiskId);
 
     if (!volume) {
         LOG_DEBUG(ctx, TBlockStoreComponents::STATS_SERVICE,
@@ -313,16 +331,40 @@ void TStatsServiceActor::HandleVolumeSelfCounters(
         return;
     }
 
-    volume->PerfCounters.VolumeSelfCounters.Add(*msg->VolumeSelfCounters);
-    volume->PerfCounters.YdbVolumeSelfCounters.Add(*msg->VolumeSelfCounters);
+    if (!volume->ApproximateStartTs) {
+        volume->ApproximateStartTs = ctx.Now();
+    }
+
+    auto& selfNew = *msg->VolumeSelfCounters;
+
+    auto& selfSimpleNew = selfNew.Simple;
+    auto& loadTimeNew = selfSimpleNew.LastVolumeLoadTime.Value;
+    auto& startTimeNew = selfSimpleNew.LastVolumeStartTime.Value;
+    const auto bootstrapTimeNew =
+        TDuration::MicroSeconds(loadTimeNew + startTimeNew);
+    if (!volume->ApproximateStartTs
+            || volume->ApproximateBootstrapTime != bootstrapTimeNew)
+    {
+        // it's the first time we are getting stats for this volume or the
+        // volume restarted recently
+        volume->ApproximateStartTs = ctx.Now();
+        volume->ApproximateBootstrapTime = bootstrapTimeNew;
+    }
+
+    volume->PerfCounters.VolumeSelfCounters.Add(selfNew);
+    volume->PerfCounters.YdbVolumeSelfCounters.Add(selfNew);
     volume->PerfCounters.HasClients = msg->HasClients;
     volume->PerfCounters.IsPreempted = msg->IsPreempted;
 
     FailedPartitionBoots->Add(msg->FailedBoots);
 
-    State.GetTotalCounters().UpdateVolumeSelfCounters(*msg->VolumeSelfCounters);
+    if (!IsRecentlyStarted(ctx.Now(), *volume)) {
+        loadTimeNew = 0;
+        startTimeNew = 0;
+    }
 
-    State.GetCounters(volume->VolumeInfo).UpdateVolumeSelfCounters(*msg->VolumeSelfCounters);
+    State.GetTotalCounters().UpdateVolumeSelfCounters(selfNew);
+    State.GetCounters(volume->VolumeInfo).UpdateVolumeSelfCounters(selfNew);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -16,7 +16,8 @@ enum class ECounterExpirationPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSolomonValueHolder {
+class TSolomonValueHolder
+{
 private:
     ECounterExpirationPolicy ExpirationPolicy = ECounterExpirationPolicy::Permanent;
     TInstant LastNonZeroValueTs;

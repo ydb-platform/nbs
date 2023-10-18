@@ -704,7 +704,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service");
 
-#define CHECK_STATS(dc, dc15m, dc1h, pc, lt1to5, lto5, st1to5, sto5)           \
+#define CHECK_STATS(dc, dc15m, dc1h, pc, ltu1, lt1to5, lto5, stu1, st1to5, sto5)\
         UNIT_ASSERT_VALUES_EQUAL(                                              \
             dc,                                                                \
             ssd->GetCounter("TotalDiskCount")->Val());                         \
@@ -718,11 +718,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             pc,                                                                \
             ssd->GetCounter("TotalPartitionCount")->Val());                    \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
+            ltu1,                                                              \
+            ssd->GetCounter("VolumeLoadTimeUnder1Sec")->Val());                \
+        UNIT_ASSERT_VALUES_EQUAL(                                              \
             lt1to5,                                                            \
             ssd->GetCounter("VolumeLoadTime1To5Sec")->Val());                  \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
             lto5,                                                              \
             ssd->GetCounter("VolumeLoadTimeOver5Sec")->Val());                 \
+        UNIT_ASSERT_VALUES_EQUAL(                                              \
+            stu1,                                                              \
+            ssd->GetCounter("VolumeStartTimeUnder1Sec")->Val());               \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
             st1to5,                                                            \
             ssd->GetCounter("VolumeStartTime1To5Sec")->Val());                 \
@@ -742,11 +748,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             pc,                                                                \
             totalCounters->GetCounter("TotalPartitionCount")->Val());          \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
+            ltu1,                                                              \
+            totalCounters->GetCounter("VolumeLoadTimeUnder1Sec")->Val());      \
+        UNIT_ASSERT_VALUES_EQUAL(                                              \
             lt1to5,                                                            \
             totalCounters->GetCounter("VolumeLoadTime1To5Sec")->Val());        \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
             lto5,                                                              \
             totalCounters->GetCounter("VolumeLoadTimeOver5Sec")->Val());       \
+        UNIT_ASSERT_VALUES_EQUAL(                                              \
+            stu1,                                                              \
+            totalCounters->GetCounter("VolumeStartTimeUnder1Sec")->Val());     \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
             st1to5,                                                            \
             totalCounters->GetCounter("VolumeStartTime1To5Sec")->Val());       \
@@ -791,7 +803,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         }
 
         crank();
-        CHECK_STATS(3, 3, 3, 3, 1, 1, 2, 1);
+        CHECK_STATS(3, 3, 3, 3, 1, 1, 1, 0, 2, 1);
 
         for (const auto& diskId: {"disk-1", "disk-2"}) {
             UnregisterVolume(runtime, diskId);
@@ -799,15 +811,15 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         sendDiskStats(disks[2]);
 
         crank();
-        CHECK_STATS(1, 3, 3, 1, 0, 1, 1, 0);
+        CHECK_STATS(1, 3, 3, 1, 0, 0, 1, 0, 1, 0);
 
         runtime.AdvanceCurrentTime(TDuration::Minutes(14));
         crank();
-        CHECK_STATS(1, 3, 3, 1, 0, 0, 0, 0);
+        CHECK_STATS(1, 3, 3, 1, 0, 0, 0, 0, 0, 0);
 
         runtime.AdvanceCurrentTime(TDuration::Minutes(2));
         crank();
-        CHECK_STATS(1, 1, 3, 1, 0, 0, 0, 0);
+        CHECK_STATS(1, 1, 3, 1, 0, 0, 0, 0, 0, 0);
 
         for (const auto& diskId: {"disk-1"}) {
             RegisterVolume(runtime, diskId);
@@ -816,11 +828,13 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         sendDiskStats(disks[2]);
 
         crank();
-        CHECK_STATS(2, 2, 3, 2, 0, 1, 1, 1);
+        // only disk-1 is counted in start/load time metrics since disk-3 is
+        // not considered to be a recently-started disk
+        CHECK_STATS(2, 2, 3, 2, 1, 0, 0, 0, 0, 1);
 
         runtime.AdvanceCurrentTime(TDuration::Minutes(45));
         crank();
-        CHECK_STATS(2, 2, 2, 2, 0, 0, 0, 0);
+        CHECK_STATS(2, 2, 2, 2, 0, 0, 0, 0, 0, 0);
 
         for (const auto& diskId: {"disk-1", "disk-3"}) {
             UnregisterVolume(runtime, diskId);
@@ -828,11 +842,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         sendDiskStats(disks[1]);
 
         crank();
-        CHECK_STATS(0, 2, 2, 0, 0, 0, 0, 0);
+        CHECK_STATS(0, 2, 2, 0, 0, 0, 0, 0, 0, 0);
 
         runtime.AdvanceCurrentTime(TDuration::Minutes(61));
         crank();
-        CHECK_STATS(0, 0, 0, 0, 0, 0, 0, 0);
+        CHECK_STATS(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     Y_UNIT_TEST(ShouldReportYdbStatsInBatches)
