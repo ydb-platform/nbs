@@ -38,7 +38,6 @@ migrations:
     - billing/dwh/src/dwh/core/migrations
     - cloud/ai/speechkit/stt/bin/experiments/libri_speech_mer_pipeline/fetch_texts
     - cloud/blockstore/tests/loadtest/local-emergency
-    - cloud/blockstore/tests/loadtest/local-metrics
     - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_buckets_usage
     - cloud/support/tools/qcalc/app/quota/services
     - cloud/support/tools/quotactl-l2/quota/services
@@ -2115,7 +2114,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-5462
     - yabs/server/test/ft/BSSERVER-5766
     - yabs/server/test/ft/BSSERVER-7703
-    - yabs/server/test/ft/DOOH-1070
     - yabs/server/test/ft/YABSMODELS-2
     - yabs/server/test/ft/YABSMODELS-85
     - yabs/server/test/qabs_bsserver_pytest/bs_objects
@@ -5449,7 +5447,6 @@ migrations:
     - yabs/server/infra/bstr/config
     - yabs/server/infra/transport
     - yabs/server/test/ft/BSSERVER-2063
-    - yabs/server/test/ft/DOOH-1070
     - yabs/server/test/ft/ads_adfox/request_context
     - yabs/server/test/pylibs/simulator
     - yabs/server/test/qabs_bsserver_pytest
@@ -8381,7 +8378,6 @@ migrations:
     - yabs/python-libs/common
     - yabs/server/test/qabs_bsserver_pytest
     - ydo/tools/dispatch/dispatch_tester/lib
-    - yweb/antimalware/directchecker/metrics/merge_incoming_age/bin
     - yweb/antispam/webspam/export/porno/porno_hosts
     - zen/mstand/squeeze_zen/utils
   PLR1733:
