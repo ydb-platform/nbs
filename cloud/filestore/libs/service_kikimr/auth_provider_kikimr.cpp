@@ -85,6 +85,9 @@ public:
 private:
     void AuthorizeRequest(const TActorContext& ctx)
     {
+        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            CallContext->LogString() << " authorizing request");
+
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
             std::move(AuthToken),
             std::move(Permissions));
@@ -109,7 +112,12 @@ private:
     {
         try {
             Response.SetValue(std::move(response));
-        } catch (...) {}
+        } catch (...) {
+            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+                CallContext->LogString() <<
+                " exception in callback: " <<
+                CurrentExceptionMessage());
+        }
 
         RequestCompleted = true;
         TThis::Die(ctx);
@@ -140,6 +148,11 @@ private:
             GetFileStoreRequestName(CallContext->RequestType),
             CallContext->RequestId);
 
+        if (FAILED(msg->GetStatus())) {
+            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+                CallContext->LogString() << " unauthorized request");
+        }
+
         CompleteRequest(ctx, msg->Error);
     }
 
@@ -148,6 +161,9 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
+
+        LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            CallContext->LogString() << " request timed out");
 
         NProto::TError error;
         error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT
