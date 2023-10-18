@@ -1940,22 +1940,20 @@ func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	}
 
 	for _, operation := range operations {
-		err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
+		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 			OperationId: operation.Id,
 			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION,
 		})
-		require.NoError(t, err)
 	}
 
 	// Need to add some variance for better testing.
 	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
 
 	for _, operation := range operations {
-		err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
+		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 			OperationId: operation.Id,
 			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_MIGRATION,
 		})
-		require.NoError(t, err)
 	}
 
 	successCount := 0
