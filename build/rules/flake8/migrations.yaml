@@ -9805,6 +9805,8 @@ migrations:
     - library/python/solomon
     - library/python/startrek_python_client
     - library/python/statface_client
+    - library/python/swag
+    - library/python/swag/lib
     - library/python/testing/testpy/tests/testmod
     - library/python/tools_mongodb_cache
     - library/python/tvm2
