@@ -1,0 +1,12 @@
+{
+    "bottles": {},
+    "resources": {
+        "4449551218": "https://storage.nemax.nebius.cloud/nbs-oss-resources/qemu-bin.tar.gz",
+        "3307630510": "https://storage.nemax.nebius.cloud/nbs-oss-resources/rootfs.img"
+    },
+    "resources_descriptions": {
+        "4449551218": "cloud/storage/core/tools/testing/qemu/bin",
+        "3307630510": "cloud/storage/core/tools/testing/qemu/image"
+    },
+    "tasks": {}
+}

@@ -52,6 +52,8 @@ def start_instance(args, inst_index):
     elif virtio == "blk":
         vhost_socket = os.getenv("NBS_VHOST_SOCKET")
 
+    use_virtiofs_server = _get_vm_use_virtiofs_server(args)
+
     qemu = Qemu(qemu_kmv=_get_qemu_kvm(args),
                 qemu_firmware=_get_qemu_firmware(args),
                 rootfs=_get_rootfs(args),
@@ -65,7 +67,8 @@ def start_instance(args, inst_index):
                 vhost_socket=vhost_socket,
                 enable_kvm=_get_vm_enable_kvm(args),
                 inst_index=inst_index,
-                shared_nic_port=args.shared_nic_port)
+                shared_nic_port=args.shared_nic_port,
+                use_virtiofs_server=use_virtiofs_server)
 
     qemu.set_mount_paths(mount_paths)
     qemu.start()
@@ -80,7 +83,11 @@ def start_instance(args, inst_index):
 
     for tag, path, _ in mount_paths:
         ssh("sudo mkdir -p {path}".format(path=path))
-        ssh("sudo mount -t virtiofs {tag} {path}".format(tag=tag, path=path))
+        if use_virtiofs_server:
+            ssh("sudo mount -t virtiofs {tag} {path}".format(tag=tag, path=path))
+        else:
+            ssh("sudo mount -t 9p {tag} {path} -o trans=virtio,version=9p2000.L,cache=loose,rw".format(
+                tag=tag, path=path))
 
         # the code below fixes situation where /home is a link to /place/home and source and build roots can come
         # in both ways, e.g. build root can be in a form of /place/home/... and source root /home/...
@@ -151,6 +158,7 @@ def _parse_args(argv):
     parser.add_argument(
         "--instance-count", help="Number of qemu instances to start")
     parser.add_argument("--invoke-test", default="Invoke test from qemu after starting")
+    parser.add_argument("--use-virtiofs-server", default="False")
 
     args = parser.parse_args(argv)
     if args.instance_count == "$QEMU_INSTANCE_COUNT":
@@ -215,8 +223,11 @@ def _get_qemu_firmware(args):
 def _get_rootfs(args):
     if args.rootfs == "$QEMU_ROOTFS":
         raise QemuKvmRecipeException(
-            "Rootfs image is not set for the recipe, please, foolow the docs to know how to fix it")
+            "Rootfs image is not set for the recipe, please, follow the docs to know how to fix it")
     rootfs = yatest.common.build_path(args.rootfs)
+    if not os.path.exists(rootfs):
+        rootfs = yatest.common.source_path(args.rootfs)
+
     if not os.path.exists(rootfs):
         raise QemuKvmRecipeException(
             "Cannot find rootfs image by '{}'".format(rootfs))
@@ -319,6 +330,12 @@ def _get_ssh_key(args):
     os.chmod(new_ssh_key, 0o0600)
     library.python.testing.recipe.set_env("QEMU_SSH_KEY", new_ssh_key)
     return new_ssh_key
+
+
+def _get_vm_use_virtiofs_server(args):
+    if args.use_virtiofs_server == "$QEMU_USE_VIRTIOFS_SERVER":
+        return False
+    return _str_to_bool(args.use_virtiofs_server)
 
 
 def _prepare_test_environment(ssh, virtio):

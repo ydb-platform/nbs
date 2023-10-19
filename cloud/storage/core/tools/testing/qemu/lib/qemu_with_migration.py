@@ -55,7 +55,8 @@ class QemuWithMigration:
             virtio='fs',
             qemu_options=[],
             vhost_socket="",
-            enable_kvm=True)
+            enable_kvm=True,
+            use_virtiofs_server=True)
 
         self.socket_generator = socket_generator
 

@@ -24,7 +24,10 @@ DEPENDS(
     cloud/storage/core/tests/recipes/qemu
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
+IF (NOT OPENSOURCE)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
+    SET(QEMU_USE_VIRTIOFS_SERVER True)
+ENDIF()
 
 TAG(ya:dirty)
 
@@ -47,6 +50,7 @@ USE_RECIPE(
     --enable-kvm $QEMU_ENABLE_KVM
     --instance-count $QEMU_INSTANCE_COUNT
     --invoke-test $QEMU_INVOKE_TEST
+    --use-virtiofs-server $QEMU_USE_VIRTIOFS_SERVER
 )
 
 REQUIREMENTS(kvm)
