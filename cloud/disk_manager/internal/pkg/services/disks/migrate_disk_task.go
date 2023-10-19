@@ -13,6 +13,7 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
@@ -59,11 +60,6 @@ func (t *migrateDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.start(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	for {
 
 		t.logDebug(
@@ -74,8 +70,14 @@ func (t *migrateDiskTask) Run(
 		)
 
 		switch t.state.Status {
+		case protos.MigrationStatus_Unspecified:
+			err := t.start(ctx, execCtx)
+			if err != nil {
+				return err
+			}
+
 		case protos.MigrationStatus_Replicating:
-			_, err = t.scheduler.WaitTask(ctx, execCtx, t.state.ReplicateTaskID)
+			_, err := t.scheduler.WaitTask(ctx, execCtx, t.state.ReplicateTaskID)
 			if err != nil {
 				return err
 			}
@@ -98,7 +100,7 @@ func (t *migrateDiskTask) Run(
 					int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION),
 				) {
 					t.state.Status = protos.MigrationStatus_Finishing
-					err = execCtx.SaveState(ctx)
+					err := execCtx.SaveState(ctx)
 					if err != nil {
 						return err
 					}
@@ -188,6 +190,11 @@ func (t *migrateDiskTask) start(
 
 	t.logInfo(ctx, execCtx, "starting")
 
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
 	if t.state.FillGeneration == 0 {
 		fillGeneration, err := t.incrementFillGeneration(ctx, execCtx)
 		if err != nil {
@@ -234,6 +241,32 @@ func (t *migrateDiskTask) start(
 	}
 
 	t.logInfo(ctx, execCtx, "started")
+	return nil
+}
+
+func (t *migrateDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	stats, err := client.Stat(
+		ctx,
+		t.request.Disk.DiskId,
+	)
+	if err != nil {
+		return err
+	}
+
+	execCtx.SetEstimate(performance.Estimate(
+		stats.StorageSize,
+		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
+	))
+
 	return nil
 }
 
