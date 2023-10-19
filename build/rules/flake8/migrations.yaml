@@ -2552,9 +2552,6 @@ migrations:
     - kikimr/yf/scripts
     - kinopoisk/backend/yamake/ott-oo-promocode-refresh
     - laas/viewers/toloka
-    - lbs/base_building/prepare_yandex_mobile_bssid_bans
-    - lbs/metrics/push_completeness_metrics_to_statface
-    - lbs/metrics/push_quality_metrics_to_statface
     - library/go/yandex/uatraits/test_generator
     - library/python/django/example/django_rest_api/polls
     - library/recipes/docker_compose_healthcheck
@@ -6005,7 +6002,6 @@ migrations:
     - kikimr/ci/tests/client/pq
     - kikimr/tools/check_yc_access
     - kikimr/tools/duty_bot
-    - lbs/research/LBS380_use_multiple_gsm/markup_using_exp_algo
     - lbs/research/LBS448_anonymize_signals/scramble_signals_table
     - library/python/fs/test
     - logfeller/python/logfeller/infra/config
@@ -7365,7 +7361,6 @@ migrations:
     - infra/kernel/test/recipe/cgleak_check/example
     - infra/yp_quota_distributor/lib
     - intranet/table_flow/tests
-    - lbs/research_tools/find_keys_causing_losses
     - logbroker/tools/deploy_consistency_test
     - mail/github/calendar-attach-processor
     - maps_adv/common/shared_mock
@@ -7679,7 +7674,6 @@ migrations:
     - infra/yp_dns/tools/handle_duplicate_records/lib
     - infra/yp_quota_distributor/lib
     - keyboard/dict/synthetic_ngrams/synthetic_ngrams_builder
-    - lbs/metrics/lbs_binbase_diff
     - logbroker/tools/manual/collect_capacity/base_2020
     - logbroker/tools/manual/collect_capacity/collect_pre
     - logbroker/tools/manual/collect_capacity/set_capacity_pre
@@ -9805,8 +9799,6 @@ migrations:
     - library/python/solomon
     - library/python/startrek_python_client
     - library/python/statface_client
-    - library/python/swag
-    - library/python/swag/lib
     - library/python/testing/testpy/tests/testmod
     - library/python/tools_mongodb_cache
     - library/python/tvm2
