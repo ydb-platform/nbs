@@ -50,14 +50,18 @@ void TPartitionActor::HandleReadBlob(
         TabletID(),
         State->GetBlockSize(),
         StorageAccessMode,
-        std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(msg.Release()));
+        std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            msg.Release()),
+        GetDowntimeThreshold(
+            *DiagnosticsConfig,
+            PartitionConfig.GetStorageMediaKind()));
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.
         // TODO(svartmetal): verify that |blobTabletId| corresponds to base
         // disk partition tablet.
         auto actorId = NCloud::Register(ctx, std::move(readBlobActor));
-        Actors.insert(actorId);
+        Actors.Insert(actorId);
         return;
     }
 
@@ -73,7 +77,7 @@ void TPartitionActor::HandleReadBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     const auto& blobTabletId = msg->BlobId.TabletID();
 

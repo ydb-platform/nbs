@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <ydb/core/base/blobstorage.h>
 
@@ -24,6 +25,7 @@ namespace {
 
 class TWriteBlobActor final
     : public TActorBootstrapped<TWriteBlobActor>
+    , public TLongRunningOperationCompanion
 {
     using TRequest = TEvPartitionPrivate::TEvWriteBlobRequest;
     using TResponse = TEvPartitionPrivate::TEvWriteBlobResponse;
@@ -45,7 +47,8 @@ public:
         const TActorId& tabletActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        std::unique_ptr<TRequest> request);
+        std::unique_ptr<TRequest> request,
+        TDuration longRunningThreshold);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -81,8 +84,13 @@ TWriteBlobActor::TWriteBlobActor(
         const TActorId& tabletActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        std::unique_ptr<TRequest> request)
-    : TabletActorId(tabletActorId)
+        std::unique_ptr<TRequest> request,
+        TDuration longRunningThreshold)
+    : TLongRunningOperationCompanion(
+          tabletActorId,
+          longRunningThreshold,
+          TLongRunningOperationCompanion::EOperation::WriteBlob)
+    , TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , Request(std::move(request))
@@ -103,6 +111,7 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     SendPutRequest(ctx);
+    TLongRunningOperationCompanion::RequestStarted(ctx);
 }
 
 void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
@@ -174,6 +183,7 @@ void TWriteBlobActor::ReplyAndDie(
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    TLongRunningOperationCompanion::RequestFinished(ctx);
     Die(ctx);
 }
 
@@ -241,6 +251,7 @@ STFUNC(TWriteBlobActor::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvWakeup, TLongRunningOperationCompanion::HandleTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvBlobStorage::TEvPutResult, HandlePutResult);
@@ -318,11 +329,17 @@ void TPartitionActor::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
 
-    State->EnqueueIORequest(channel, std::make_unique<TWriteBlobActor>(
-        SelfId(),
-        requestInfo,
-        TabletID(),
-        std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(msg.Release())));
+    State->EnqueueIORequest(
+        channel,
+        std::make_unique<TWriteBlobActor>(
+            SelfId(),
+            requestInfo,
+            TabletID(),
+            std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                msg.Release()),
+            GetDowntimeThreshold(
+                *DiagnosticsConfig,
+                PartitionConfig.GetStorageMediaKind())));
 
     ProcessIOQueue(ctx, channel);
 }
@@ -333,7 +350,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     ui32 channel = msg->BlobId.Channel();
     ui32 group = Info()->GroupFor(channel, msg->BlobId.Generation());
@@ -401,6 +418,30 @@ void TPartitionActor::HandleWriteBlobCompleted(
     State->CompleteIORequest(channel);
 
     ProcessIOQueue(ctx, channel);
+}
+
+void TPartitionActor::HandleLongRunningBlobOperation(
+    const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    using TEvLongRunningOperation =
+        TEvPartitionCommonPrivate::TEvLongRunningOperation;
+
+    if (ev->Get()->Reason !=
+        TEvLongRunningOperation::EReason::LongRunningDetected)
+    {
+        return;
+    }
+
+    Actors.MarkLongRunning(ev->Sender, ev->Get()->Operation);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%lu] %s long running for %s",
+        TabletID(),
+        ToString(ev->Get()->Operation).c_str(),
+        ev->Get()->Duration.ToString().c_str());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

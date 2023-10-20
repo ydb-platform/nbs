@@ -665,7 +665,7 @@ void TPartitionActor::HandleCollectGarbage(
         std::move(mixedAndMergedChannels),
         !State->GetStartupGcExecuted());
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleCollectGarbageCompleted(
@@ -696,7 +696,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
 
     State->GetCollectGarbageState().SetStatus(EOperationStatus::Idle);
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
     UpdateExecutorStats(ctx);
@@ -761,7 +761,7 @@ void TPartitionActor::CompleteCollectGarbage(
         std::move(args.KnownBlobIds),
         std::move(mixedAndMergedChannels));
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

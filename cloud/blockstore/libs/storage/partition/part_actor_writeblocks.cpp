@@ -329,7 +329,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         }
     }
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     if (Executor()->GetStats().IsAnyChannelYellowMove) {
         ScheduleYellowStateUpdate(ctx);

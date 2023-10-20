@@ -126,4 +126,9 @@ public:
     void DumpHtml(IOutputStream& out) const;
 };
 
+// Returns the DowntimeThreshold corresponding to the media kind.
+TDuration GetDowntimeThreshold(
+    const TDiagnosticsConfig& config,
+    NCloud::NProto::EStorageMediaKind kind);
+
 }   // namespace NCloud::NBlockStore

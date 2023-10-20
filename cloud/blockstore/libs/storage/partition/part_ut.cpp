@@ -10239,6 +10239,163 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(2, resultCompactionRangeCountPerRun);
         }
     }
+
+    template <typename FSend, typename FReceive>
+    void DoShouldReportLongRunningBlobOperations(
+        FSend sendRequest,
+        FReceive receiveResponse,
+        size_t expectedLongRunngingReads,
+        size_t expectedLongRunngingWrites)
+    {
+        auto config = DefaultConfig();
+        TTestPartitionInfo testPartitionInfo;
+        testPartitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            testPartitionInfo,
+            {},
+            EStorageAccessMode::Default);
+
+        // Enable Schedule for all actors!!!
+        runtime->SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        // Make partition client.
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 255));
+
+        // Make handler for stealing nested messages
+        std::vector<std::unique_ptr<IEventHandle>> stolenRequests;
+        auto requestThief =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvGetResult:
+                case TEvBlobStorage::EvPutResult: {
+                    stolenRequests.push_back(
+                        std::unique_ptr<IEventHandle>{event.Release()});
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+
+        // Make handler for taking counters from EvVolumePartCounters message.
+        TSimpleCounter readCounter;
+        TSimpleCounter writeCounter;
+        auto takeCounters =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvStatsService::EvVolumePartCounters: {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    readCounter = msg->DiskCounters->Simple.LongRunningReadBlob;
+                    writeCounter =
+                        msg->DiskCounters->Simple.LongRunningWriteBlob;
+                    break;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+
+        // Ready to postpone request.
+        runtime->SetObserverFunc(requestThief);
+
+        // Starting the execution of the request. It won't
+        // be finished since we stole it EvPutResult message.
+        sendRequest(partition);
+        runtime->DispatchEvents({}, TDuration());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, stolenRequests.size());
+
+        // Wait for EvLongRunningOperation arrived.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionCommonPrivate::EvLongRunningOperation);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        // Ready to check counters.
+        runtime->SetObserverFunc(takeCounters);
+
+        // Returning stolen requests to complete the execution of the request.
+        for (auto& request: stolenRequests) {
+            runtime->Send(request.release());
+        }
+
+        // Wait for background operations completion.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // Check request completed.
+        {
+            auto response = receiveResponse(partition);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // Wait for EvVolumePartCounters arrived.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedLongRunngingReads,
+                readCounter.Value);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedLongRunngingWrites,
+                writeCounter.Value);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportLongRunningReadBlobOperations)
+    {
+        auto sendRequest = [](TPartitionClient& partition)
+        {
+            partition.SendReadBlocksRequest(0);   //
+        };
+        auto receiveResponse = [](TPartitionClient& partition)
+        {
+            return partition.RecvReadBlocksResponse();   //
+        };
+
+        DoShouldReportLongRunningBlobOperations(
+            sendRequest,
+            receiveResponse,
+            1,
+            0);
+    }
+
+    Y_UNIT_TEST(ShouldReportLongRunningWriteBlobOperations)
+    {
+        auto sendRequest = [](TPartitionClient& partition)
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 255));   //
+        };
+        auto receiveResponse = [](TPartitionClient& partition)
+        {
+            return partition.RecvWriteBlocksResponse();   //
+        };
+
+        DoShouldReportLongRunningBlobOperations(
+            sendRequest,
+            receiveResponse,
+            0,
+            1);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

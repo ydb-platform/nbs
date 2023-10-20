@@ -26,6 +26,8 @@
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -322,6 +324,7 @@ private:
     // requests in progress
     THashSet<NActors::TActorId> Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
+    TRunningActors LongRunningActors;
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
 
@@ -892,6 +895,10 @@ private:
 
     bool GetChangedBlocksForLightCheckpoints(
         const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLongRunningBlobOperation(
+        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void StartPartitionsImpl(const NActors::TActorContext& ctx);

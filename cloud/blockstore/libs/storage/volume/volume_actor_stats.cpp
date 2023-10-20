@@ -101,6 +101,18 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 {
     auto* msg = ev->Get();
 
+    {
+        using EOperation =
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation;
+
+        auto blobOperationTimeouts = LongRunningActors.ExtractLongRunningStat();
+
+        msg->DiskCounters->Simple.LongRunningReadBlob.Set(
+            blobOperationTimeouts[EOperation::ReadBlob]);
+        msg->DiskCounters->Simple.LongRunningWriteBlob.Set(
+            blobOperationTimeouts[EOperation::WriteBlob]);
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -366,6 +378,31 @@ void TVolumeActor::HandleGetVolumeLoadInfo(
     stats.SetHost(FQDNHostName());
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TVolumeActor::HandleLongRunningBlobOperation(
+    const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    using TEvLongRunningOperation =
+        TEvPartitionCommonPrivate::TEvLongRunningOperation;
+
+    if (ev->Get()->Reason ==
+        TEvLongRunningOperation::EReason::LongRunningDetected)
+    {
+        LongRunningActors.Insert(ev->Sender);
+        LongRunningActors.MarkLongRunning(ev->Sender, ev->Get()->Operation);
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] For volume %s detected %s long running for %s",
+            TabletID(),
+            State->GetDiskId().Quote().c_str(),
+            ToString(ev->Get()->Operation).c_str(),
+            ev->Get()->Duration.ToString().c_str());
+    } else {
+        LongRunningActors.Erase(ev->Sender);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

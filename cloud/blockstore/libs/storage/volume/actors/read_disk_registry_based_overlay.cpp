@@ -30,27 +30,31 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         TRequestInfoPtr requestInfo,
         TRequest originalRequest,
         const TCompressedBitmap* usedBlocks,
+        TActorId volumeActorId,
         TActorId partActorId,
         ui64 volumeTabletId,
         TString baseDiskId,
         TString baseDiskCheckpointId,
         ui32 blockSize,
         EStorageAccessMode mode,
-        bool replyWithUnencryptedBlockMask)
+        bool replyWithUnencryptedBlockMask,
+        TDuration longRunningThreshold)
     : RequestInfo(std::move(requestInfo))
+    , VolumeActorId(volumeActorId)
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , BaseDiskId(std::move(baseDiskId))
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
     , BlockSize(blockSize)
     , ReplyWithUnencryptedBlockMask(replyWithUnencryptedBlockMask)
+    , LongRunningThreshold(longRunningThreshold)
     , Mode(mode)
     , OriginalRequest(std::move(originalRequest))
     , BlockMarks(MakeBlockMarks(
-        usedBlocks,
-        TBlockRange64::WithLength(
-            OriginalRequest.GetStartIndex(),
-            OriginalRequest.GetBlocksCount())))
+          usedBlocks,
+          TBlockRange64::WithLength(
+              OriginalRequest.GetStartIndex(),
+              OriginalRequest.GetBlocksCount())))
 {
     TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 
@@ -353,6 +357,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
         TEvPartitionCommonPrivate::TEvReadBlobRequest>();
     currentRequest->Deadline = TInstant::Max();
     TSgList currentSgList;
+
     for (const auto& request: requests) {
         const auto& requestRef = request.BlobMark;
         const auto& dataRef = request.DataRef;
@@ -368,7 +373,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     VolumeTabletId,
                     BlockSize,
                     Mode,
-                    std::move(currentRequest));
+                    std::move(currentRequest),
+                    LongRunningThreshold);
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
                 currentRequest->Deadline = TInstant::Max();
@@ -392,7 +398,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             VolumeTabletId,
             BlockSize,
             EStorageAccessMode::Default,
-            std::move(currentRequest));
+            std::move(currentRequest),
+            LongRunningThreshold);
     }
 }
 
@@ -416,6 +423,15 @@ template <ReadRequest TMethod>
     } else if (RequestsInFlight == 0) {
         ReplyAndDie(ctx, msg->GetError());
     }
+}
+
+template <ReadRequest TMethod>
+void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleLongRunningBlobOperation(
+    const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
+    const TActorContext& ctx)
+{
+    // Forward request to TVolumeActor
+    ctx.Send(ev->Forward(VolumeActorId));
 }
 
 template <ReadRequest TMethod>
@@ -452,6 +468,9 @@ STFUNC(TReadDiskRegistryBasedOverlayActor<TMethod>::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted,
             HandleDescribeBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLongRunningOperation,
+            HandleLongRunningBlobOperation);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);

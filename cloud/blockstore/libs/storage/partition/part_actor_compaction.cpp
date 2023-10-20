@@ -1351,7 +1351,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     State->GetCompactionState().SetStatus(EOperationStatus::Idle);
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
     ui32 blocks = msg->Stats.GetSysReadCounters().GetBlocksCount()
@@ -1875,7 +1875,7 @@ void TPartitionActor::CompleteCompaction(
         std::move(rangeCompactionInfos),
         std::move(requests));
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

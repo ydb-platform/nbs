@@ -70,7 +70,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 0,
                 blockSize,
                 EStorageAccessMode::Default,
-                std::move(request)));
+                std::move(request),
+                TDuration()));
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();
@@ -154,7 +155,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 0,
                 blockSize,
                 EStorageAccessMode::Default,
-                std::move(request)));
+                std::move(request),
+                TDuration()));
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();
@@ -222,7 +224,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 0,
                 blockSize,
                 EStorageAccessMode::Default,
-                std::move(request)));
+                std::move(request),
+                TDuration()));
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();

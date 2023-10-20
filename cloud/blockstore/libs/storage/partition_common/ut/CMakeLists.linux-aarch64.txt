@@ -36,6 +36,7 @@ target_sources(cloud-blockstore-libs-storage-partition_common-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/actor_read_blob_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/drain_actor_companion_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/long_running_operation_companion_ut.cpp
 )
 set_property(
   TARGET

@@ -64,13 +64,15 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
+                NActors::TActorId(),
                 EdgeActor,
                 0,
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false});
+                false,
+                TDuration()});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -129,13 +131,15 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
+                NActors::TActorId(),
                 EdgeActor,
                 0,
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false});
+                false,
+                TDuration()});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -181,13 +185,15 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
+                NActors::TActorId(),
                 EdgeActor,
                 0,
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false});
+                false,
+                TDuration()});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -365,13 +371,15 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
+                NActors::TActorId(),
                 EdgeActor,
                 0,
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false});
+                false,
+                TDuration()});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -418,13 +426,15 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
+                NActors::TActorId(),
                 EdgeActor,
                 0,
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false});
+                false,
+                TDuration()});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -508,13 +518,15 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
+                NActors::TActorId(),
                 EdgeActor,
                 0,
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false});
+                false,
+                TDuration()});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<

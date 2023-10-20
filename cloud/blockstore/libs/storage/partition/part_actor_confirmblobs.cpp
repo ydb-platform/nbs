@@ -209,7 +209,7 @@ void TPartitionActor::ConfirmBlobs(const TActorContext& ctx)
         SelfId(),
         std::move(requests));
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleConfirmBlobsCompleted(
@@ -229,7 +229,7 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
         return;
     }
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] ConfirmBlobs: start tx",

@@ -197,6 +197,35 @@ void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
 #undef BLOCKSTORE_CONFIG_DUMP
 }
 
+TDuration GetDowntimeThreshold(
+    const TDiagnosticsConfig& config,
+    NCloud::NProto::EStorageMediaKind kind)
+{
+    switch (kind) {
+        case NCloud::NProto::STORAGE_MEDIA_SSD: {
+            return config.GetSSDDowntimeThreshold();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
+            return config.GetNonreplicatedSSDDowntimeThreshold();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            return config.GetNonreplicatedHDDDowntimeThreshold();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
+            return config.GetMirror3SSDDowntimeThreshold();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
+            return config.GetMirror2SSDDowntimeThreshold();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
+            return config.GetLocalSSDDowntimeThreshold();
+        }
+        default: {
+            return config.GetHDDDowntimeThreshold();
+        }
+    }
+}
+
 }   // namespace NCloud::NBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////

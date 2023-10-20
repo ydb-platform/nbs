@@ -198,9 +198,9 @@ TDuration MSeconds(ui32 value)
     xxx(SSDMaxWriteIops,                    ui32,      40000                  )\
     xxx(RealSSDUnitReadIops,                ui32,      400                    )\
     xxx(RealSSDUnitWriteIops,               ui32,      1000                   )\
-    /* 16000 ReadBlob requests per sec utilize all our cpus
-     * We need cpu for at least 2 fully utilized disks
-     * CompactionRangeSize / (MaxBandwidth / BlockSize / 8000) = 70
+    /* 16000 ReadBlob requests per sec utilize all our cpus                    \
+     * We need cpu for at least 2 fully utilized disks                         \
+     * CompactionRangeSize / (MaxBandwidth / BlockSize / 8000) = 70            \
      */                                                                        \
     xxx(SSDMaxBlobsPerRange,                ui32,      70                     )\
     xxx(SSDV2MaxBlobsPerRange,              ui32,      20                     )\
@@ -218,7 +218,7 @@ TDuration MSeconds(ui32 value)
     xxx(HDDMaxWriteIops,                    ui32,      11000                  )\
     xxx(RealHDDUnitReadIops,                ui32,      10                     )\
     xxx(RealHDDUnitWriteIops,               ui32,      300                    )\
-    /* TODO: properly calculate def value for this param for network-hdd disks
+    /* TODO: properly calculate def value for this param for network-hdd disks \
      */                                                                        \
     xxx(HDDMaxBlobsPerRange,                ui32,      70                     )\
     xxx(HDDV2MaxBlobsPerRange,              ui32,      20                     )\

@@ -303,7 +303,7 @@ void TPartitionActor::HandlePatchBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     ui32 patchedChannel = msg->PatchedBlobId.Channel();
     ui32 patchedGroup = Info()->GroupFor(

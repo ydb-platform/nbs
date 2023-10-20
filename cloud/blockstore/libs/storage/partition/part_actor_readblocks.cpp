@@ -897,7 +897,7 @@ void TPartitionActor::HandleReadBlocksCompleted(
     const TEvPartitionPrivate::TEvReadBlocksCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     FinalizeReadBlocks(ctx, std::move(*ev->Get()));
 }
@@ -1042,7 +1042,7 @@ void TPartitionActor::CompleteReadBlocks(
             std::move(requests),
             std::move(args.BlockInfos),
             describeBlocksRange.Defined());
-        Actors.insert(selfActor);
+        Actors.Insert(selfActor);
 
         if (describeBlocksRange.Defined()) {
             auto requestInfo = CreateRequestInfo(
@@ -1060,7 +1060,7 @@ void TPartitionActor::CompleteReadBlocks(
                 std::move(args.BlockMarks),
                 State->GetBlockSize());
 
-            Actors.insert(baseDiskActor);
+            Actors.Insert(baseDiskActor);
         }
 
         return;

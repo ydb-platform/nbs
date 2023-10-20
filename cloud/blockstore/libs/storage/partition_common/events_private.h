@@ -138,6 +138,40 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // Tracking long running ReadBlob and WriteBlob operations
+    //
+
+    struct TLongRunningOperation
+    {
+        enum EOperation
+        {
+            DontCare,
+            ReadBlob,
+            WriteBlob,
+            Count,
+        };
+        enum EReason
+        {
+            LongRunningDetected,
+            Finished,
+        };
+
+        const EOperation Operation;
+        const EReason Reason;
+        const TDuration Duration;
+
+        TLongRunningOperation(
+            EOperation operation,
+            TDuration duration,
+            bool finished)
+            : Operation(operation)
+            , Reason(
+                  finished ? EReason::Finished : EReason::LongRunningDetected)
+            , Duration(duration)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -151,6 +185,7 @@ struct TEvPartitionCommonPrivate
         EvTrimFreshLogCompleted,
         EvReadBlobCompleted,
         EvTDescribeBlocksCompleted,
+        EvLongRunningOperation,
 
         EvEnd
     };
@@ -164,6 +199,7 @@ struct TEvPartitionCommonPrivate
     using TEvTrimFreshLogCompleted = TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
     using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
+    using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

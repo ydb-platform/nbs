@@ -308,7 +308,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
         requestInfo,
         std::move(requests));
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleAddConfirmedBlobsCompleted(
@@ -323,7 +323,7 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
 
     State->GetAddConfirmedBlobsState().SetStatus(EOperationStatus::Idle);
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Stop tablet because of AddConfirmedBlobs error: %s",

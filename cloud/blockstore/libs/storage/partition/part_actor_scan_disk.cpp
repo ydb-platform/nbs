@@ -374,7 +374,7 @@ NProto::TError TPartitionActor::DoHandleScanDisk(
             Config->GetCompactionRetryTimeout(),
             CreateScanDiskBlockBuffer(blobsPerBatch)));
 
-    Actors.insert(actorId);
+    Actors.Insert(actorId);
 
     return MakeError(S_OK, "Scan disk has been started");
 }
@@ -497,7 +497,7 @@ void TPartitionActor::HandleScanDiskCompleted(
         EnqueueCleanupIfNeeded(ctx);
     }
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -331,7 +331,7 @@ void TPartitionActor::HandleZeroBlocks(
             commitId,
             std::move(requests));
 
-        Actors.insert(actor);
+        Actors.Insert(actor);
     }
 }
 
@@ -361,7 +361,7 @@ void TPartitionActor::HandleZeroBlocksCompleted(
 
     State->GetCommitQueue().ReleaseBarrier(commitId);
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;

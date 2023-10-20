@@ -347,7 +347,7 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
 
 void TPartitionActor::KillActors(const TActorContext& ctx)
 {
-    for (auto& actor: Actors) {
+    for (const auto& actor: Actors.GetActors()) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
 }
@@ -393,7 +393,7 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto requestActor = State->DequeueIORequest(channel)) {
         auto actorId = NCloud::Register(ctx, std::move(requestActor));
-        Actors.insert(actorId);
+        Actors.Insert(actorId);
     }
 }
 
@@ -820,6 +820,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvProcessWriteQueue, HandleProcessWriteQueue);
 
         HFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted, HandleReadBlobCompleted);
+        HFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation, HandleLongRunningBlobOperation);
         HFunc(TEvPartitionPrivate::TEvWriteBlobCompleted, HandleWriteBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
@@ -873,6 +874,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted);

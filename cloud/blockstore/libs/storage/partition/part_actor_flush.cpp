@@ -709,7 +709,7 @@ void TPartitionActor::HandleFlush(
             State->GetUnflushedFreshBlobByteCount(),
             std::move(requests));
 
-        Actors.insert(actor);
+        Actors.Insert(actor);
     }
 }
 
@@ -785,7 +785,7 @@ void TPartitionActor::HandleFlushCompleted(
     State->GetFlushedCommitIdsInProgress().clear();
     State->GetFlushState().SetStatus(EOperationStatus::Idle);
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
     Y_DEBUG_ABORT_UNLESS(msg->Stats.GetSysReadCounters().GetBlocksCount() == 0);

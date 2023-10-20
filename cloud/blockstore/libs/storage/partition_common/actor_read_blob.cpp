@@ -1,9 +1,11 @@
 #include "actor_read_blob.h"
 
 #include <cloud/blockstore/libs/storage/api/public.h>
+#include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NPartition;
 using namespace NActors;
 using namespace NKikimr;
 
@@ -17,8 +19,13 @@ TReadBlobActor::TReadBlobActor(
         ui64 tabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request)
-    : RequestInfo(std::move(requestInfo))
+        std::unique_ptr<TRequest> request,
+        TDuration longRunningThreshold)
+    : TLongRunningOperationCompanion(
+          tablet,
+          longRunningThreshold,
+          TLongRunningOperationCompanion::EOperation::ReadBlob)
+    , RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
     , BlockSize(blockSize)
@@ -41,6 +48,7 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     SendGetRequest(ctx);
+    TLongRunningOperationCompanion::RequestStarted(ctx);
 }
 
 void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
@@ -114,6 +122,7 @@ void TReadBlobActor::ReplyAndDie(
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    TLongRunningOperationCompanion::RequestFinished(ctx);
     Die(ctx);
 }
 
@@ -269,6 +278,7 @@ STFUNC(TReadBlobActor::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvWakeup, TLongRunningOperationCompanion::HandleTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);

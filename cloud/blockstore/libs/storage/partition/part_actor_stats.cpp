@@ -116,6 +116,18 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
 
     PartCounters->Simple.CheckpointBytes.Set(State->CalculateCheckpointBytes());
 
+    {
+        using EOperation =
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation;
+
+        auto blobOperationTimeouts = Actors.ExtractLongRunningStat();
+
+        PartCounters->Simple.LongRunningReadBlob.Set(
+            blobOperationTimeouts[EOperation::ReadBlob]);
+        PartCounters->Simple.LongRunningWriteBlob.Set(
+            blobOperationTimeouts[EOperation::WriteBlob]);
+    }
+
     ui64 sysCpuConsumption  = 0;
     for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx) {
         sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_EXECUTE_CPUTIME).Get();

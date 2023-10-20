@@ -1,11 +1,14 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(events_private.h)
+
 SRCS(
     actor_read_blob.cpp
     actor_describe_base_disk_blocks.cpp
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
     drain_actor_companion.cpp
+    long_running_operation_companion.cpp
 )
 
 PEERDIR(

@@ -205,7 +205,8 @@ public:
 
         auto maxTime = Max(readTime, Max(writeTime, zeroTime));
 
-        return GetDowntimeThreshold(MediaKind) <= TDuration::MicroSeconds(maxTime);
+        return GetDowntimeThreshold(*DiagnosticsConfig, MediaKind) <=
+               TDuration::MicroSeconds(maxTime);
     }
 
 private:
@@ -224,33 +225,6 @@ private:
             default: {
                 Y_DEBUG_ABORT_UNLESS(0, "Unexpected requestType %d", requestType);
                 return Read;
-            }
-        }
-    }
-
-    TDuration GetDowntimeThreshold(NProto::EStorageMediaKind kind) const
-    {
-        switch (kind) {
-            case NProto::STORAGE_MEDIA_SSD: {
-                return DiagnosticsConfig->GetSSDDowntimeThreshold();
-            }
-            case NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
-                return DiagnosticsConfig->GetNonreplicatedSSDDowntimeThreshold();
-            }
-            case NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
-                return DiagnosticsConfig->GetNonreplicatedHDDDowntimeThreshold();
-            }
-            case NProto::STORAGE_MEDIA_SSD_MIRROR3: {
-                return DiagnosticsConfig->GetMirror3SSDDowntimeThreshold();
-            }
-            case NProto::STORAGE_MEDIA_SSD_MIRROR2: {
-                return DiagnosticsConfig->GetMirror2SSDDowntimeThreshold();
-            }
-            case NProto::STORAGE_MEDIA_SSD_LOCAL: {
-                return DiagnosticsConfig->GetLocalSSDDowntimeThreshold();
-            }
-            default: {
-                return DiagnosticsConfig->GetHDDDowntimeThreshold();
             }
         }
     }

@@ -518,7 +518,7 @@ bool TPartitionActor::WriteMixedBlocks(
         std::move(requests),
         std::move(writeHandler)
     );
-    Actors.insert(actor);
+    Actors.Insert(actor);
 
     return true;
 }

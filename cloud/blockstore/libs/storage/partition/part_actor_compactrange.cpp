@@ -221,7 +221,7 @@ void TPartitionActor::HandleForcedCompactionCompleted(
         state.OperationId,
         TForcedCompactionResult(state.RangesCount, ctx.Now()));
     State->ResetForcedCompaction();
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
     EnqueueForcedCompaction(ctx);
 }
 
@@ -330,7 +330,7 @@ void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
 
         PendingForcedCompactionRequests.pop_front();
 
-        Actors.insert(actorId);
+        Actors.Insert(actorId);
     }
 }
 

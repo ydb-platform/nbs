@@ -1,8 +1,9 @@
 #include "volume_ut.h"
 
-#include <util/system/hostname.h>
-
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -7702,7 +7703,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 "DuplicatedRequestReceived_Volume"));
     }
 
-    Y_UNIT_TEST(ShouldReadFromBaseDisk)
+    Y_UNIT_TEST(ShouldDescribeFromBaseDisk)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
 
@@ -7788,6 +7789,159 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.RecvReadBlocksResponse();
 
         UNIT_ASSERT(describeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldReportLongRunningForBaseDisk)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(), runtime->AllocateEdgeActor(), 0);
+
+        // Enable Schedule for all actors!!!
+        runtime->SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2,  // blocksPerStripe
+            "",  // tags
+            "disk1",  // baseDiskId
+            "ch"  // baseDiskCheckpointId
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        auto makeDescribeResponse = []()
+        {
+            NKikimrProto::TLogoBlobID protoLogoBlobID1;
+            protoLogoBlobID1.SetRawX1(142);
+            protoLogoBlobID1.SetRawX2(143);
+            protoLogoBlobID1.SetRawX3(0x8000);   // blob size 2028
+
+            NKikimr::TLogoBlobID logoBlobID1(
+                protoLogoBlobID1.GetRawX1(),
+                protoLogoBlobID1.GetRawX2(),
+                protoLogoBlobID1.GetRawX3());
+
+            NProto::TRangeInBlob RangeInBlob1;
+            RangeInBlob1.SetBlobOffset(0);
+            RangeInBlob1.SetBlockIndex(0);
+            RangeInBlob1.SetBlocksCount(1);
+
+            NProto::TBlobPiece TBlobPiece1;
+            TBlobPiece1.MutableBlobId()->CopyFrom(protoLogoBlobID1);
+            TBlobPiece1.SetBSGroupId(2181038123);
+            TBlobPiece1.MutableRanges()->Add(std::move(RangeInBlob1));
+
+            auto result =
+                std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+            result->Record.MutableBlobPieces()->Add(std::move(TBlobPiece1));
+            return result;
+        };
+        // Make handler for stealing nested messages
+        std::vector<std::unique_ptr<IEventHandle>> stolenRequests;
+        auto requestThief =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvVolume::TEvDescribeBlocksRequest::EventType:
+                    runtime.Send(new IEventHandle(
+                        event->Sender,
+                        event->Sender,
+                        makeDescribeResponse().release()
+                        ));
+                    return TTestActorRuntime::EEventAction::DROP;
+                case TEvBlobStorage::EvGet: {
+                    stolenRequests.push_back(
+                        std::unique_ptr<IEventHandle>{event.Release()});
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+
+        // Make handler for taking counters from EvVolumePartCounters message.
+        int longRunningReads = 0;
+        TSimpleCounter writeCounter;
+        auto takeCounters =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+            {
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumePartCounters>();
+                longRunningReads +=
+                    msg->DiskCounters->Simple.LongRunningReadBlob.Value;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+
+        // Ready to postpone request.
+        runtime->SetObserverFunc(requestThief);
+
+        // Starting the execution of the request. It won't be finished since we
+        // stole it EvGet message.
+        auto readRequest = volume.CreateReadBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId());
+        volume.SendToPipe(std::move(readRequest));
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_UNEQUAL(0, stolenRequests.size());
+
+        // Wait for EvLongRunningOperation arrived.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionCommonPrivate::EvLongRunningOperation);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        // Wait for EvDiskRegistryBasedPartitionCounters arrived.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolume::TEvDiskRegistryBasedPartitionCounters::EventType);
+            runtime->DispatchEvents(options);
+        }
+
+        // Wait for counters.
+        {
+            runtime->SetObserverFunc(takeCounters);
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolumePrivate::TEvPartStatsSaved::EventType);
+            runtime->DispatchEvents(options);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, longRunningReads);
+        }
     }
 
     Y_UNIT_TEST(ShouldStartPartitionsAfterStop)

@@ -26,7 +26,7 @@ void TPartitionActor::LoadFreshBlobs(const TActorContext& ctx)
         State->GetMeta().GetTrimFreshLogToCommitId(),
         std::move(freshChannels));
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleLoadFreshBlobsCompleted(
@@ -50,7 +50,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
         "[%lu] Loaded fresh blobs",
         TabletID());
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     TVector<TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {

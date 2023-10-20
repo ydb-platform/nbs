@@ -79,15 +79,19 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
                     State->GetUsedBlocks(),
+                    SelfId(),
                     partActorId,
                     TabletID(),
                     State->GetBaseDiskId(),
                     State->GetBaseDiskCheckpointId(),
                     State->GetBlockSize(),
                     State->GetStorageAccessMode(),
-                    encryptedDiskRegistryBasedDisk);
+                    encryptedDiskRegistryBasedDisk,
+                    GetDowntimeThreshold(
+                        *DiagnosticsConfig,
+                        NProto::STORAGE_MEDIA_SSD));
 
-                    return true;
+                return true;
             }
 
             if (!isOnlyOverlayDisk) {

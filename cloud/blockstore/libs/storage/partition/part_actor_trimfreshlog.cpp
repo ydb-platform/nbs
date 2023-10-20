@@ -133,7 +133,7 @@ void TPartitionActor::HandleTrimFreshLog(
         collectCounter,
         std::move(freshChannels));
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleTrimFreshLogCompleted(
@@ -161,7 +161,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
     State->GetTrimFreshLogState().SetStatus(EOperationStatus::Idle);
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
     UpdateExecutorStats(ctx);

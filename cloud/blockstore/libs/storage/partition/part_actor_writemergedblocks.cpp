@@ -496,7 +496,7 @@ void TPartitionActor::WriteMergedBlocks(
         Config->GetAddingUnconfirmedBlobsEnabled(),
         std::move(requestInBuffer.Data.Handler)
     );
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

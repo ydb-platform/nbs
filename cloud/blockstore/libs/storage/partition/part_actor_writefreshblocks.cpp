@@ -476,7 +476,7 @@ void TPartitionActor::WriteFreshBlocks(
             std::move(writeHandlers),
             BlockDigestGenerator);
 
-        Actors.insert(actor);
+        Actors.Insert(actor);
     } else {
         // write fresh blocks to FreshBlocks table
         TVector<TTxPartition::TWriteBlocks::TSubRequestInfo> subRequests(

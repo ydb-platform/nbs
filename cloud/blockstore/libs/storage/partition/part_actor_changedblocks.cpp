@@ -294,7 +294,7 @@ void TPartitionActor::HandleGetChangedBlocksCompleted(
     const TEvPartitionPrivate::TEvGetChangedBlocksCompleted::TPtr& ev,
     const NActors::TActorContext &ctx)
 {
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
     FinalizeGetChangedBlocks(ctx, std::move(*ev->Get()));
 }
@@ -503,7 +503,7 @@ void TPartitionActor::CompleteGetChangedBlocks(
             State->GetBaseDiskCheckpointId(),
             std::move(args.ChangedBlocks));
 
-        Actors.insert(actor);
+        Actors.Insert(actor);
         return;
     }
 

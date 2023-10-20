@@ -870,6 +870,10 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvVolume::TEvUpdateResyncState, HandleUpdateResyncState);
         HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLongRunningOperation,
+            HandleLongRunningBlobOperation);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);

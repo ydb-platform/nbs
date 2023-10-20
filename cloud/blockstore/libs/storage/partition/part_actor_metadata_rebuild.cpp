@@ -132,7 +132,7 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                     State->GetBlocksCount(),
                     Config->GetCompactionRetryTimeout()));
 
-            Actors.insert(actorId);
+            Actors.Insert(actorId);
 
             return MakeError(S_OK, "Metadata rebuild(used blocks) has been started");
         }
@@ -154,7 +154,7 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                     State->GetMergedBlocksCount(),
                     Config->GetCompactionRetryTimeout()));
 
-            Actors.insert(actorId);
+            Actors.Insert(actorId);
 
             return MakeError(S_OK, "Metadata rebuild has been started");
         }
@@ -181,7 +181,7 @@ void TPartitionActor::HandleMetadataRebuildCompleted(
             EnqueueCleanupIfNeeded(ctx);
         }
     }
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

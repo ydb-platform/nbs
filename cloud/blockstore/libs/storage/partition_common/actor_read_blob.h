@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <ydb/core/base/blobstorage.h>
 
@@ -15,6 +16,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TReadBlobActor final
     : public NActors::TActorBootstrapped<TReadBlobActor>
+    , public TLongRunningOperationCompanion
 {
 public:
     using TRequest = TEvPartitionCommonPrivate::TEvReadBlobRequest;
@@ -39,7 +41,8 @@ public:
         ui64 tabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request);
+        std::unique_ptr<TRequest> request,
+        TDuration longRunningThreshold);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -66,12 +66,11 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         NActors::TActorId statActorId);
 
-    ~TNonreplicatedPartitionActor();
+    ~TNonreplicatedPartitionActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void KillActors(const NActors::TActorContext& ctx);
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
@@ -82,7 +81,6 @@ private:
     void ReplyAndDie(const NActors::TActorContext& ctx);
 
 private:
-    //STFUNC(StateInit);
     STFUNC(StateWork);
     STFUNC(StateZombie);
 

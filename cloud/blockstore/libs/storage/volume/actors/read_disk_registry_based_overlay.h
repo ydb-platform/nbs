@@ -34,12 +34,14 @@ private:
     using TBase = NActors::TActorBootstrapped<TReadDiskRegistryBasedOverlayActor<TMethod>>;
 
     const TRequestInfoPtr RequestInfo;
+    const TActorId VolumeActorId;
     const TActorId PartActorId;
     const ui64 VolumeTabletId;
     const TString BaseDiskId;
     const TString BaseDiskCheckpointId;
     const ui32 BlockSize;
     const bool ReplyWithUnencryptedBlockMask;
+    const TDuration LongRunningThreshold;
     const EStorageAccessMode Mode;
 
     TRequest OriginalRequest;
@@ -56,13 +58,15 @@ public:
         TRequestInfoPtr requestInfo,
         TRequest originalRequest,
         const TCompressedBitmap* usedBlocks,
+        TActorId volumeActorId,
         TActorId partActorId,
         ui64 volumeTabletId,
         TString baseDiskId,
         TString baseDiskCheckpointId,
         ui32 blockSize,
         EStorageAccessMode mode,
-        bool replyWithUnencryptedBlockMask);
+        bool replyWithUnencryptedBlockMask,
+        TDuration longRunningThreshold);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -103,6 +107,10 @@ private:
 
     void HandleReadBlobResponse(
         const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleLongRunningBlobOperation(
+        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
