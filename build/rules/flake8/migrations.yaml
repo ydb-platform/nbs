@@ -266,7 +266,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-3143
     - yabs/server/test/ft/BSSERVER-8275
     - yabs/server/test/ft/BSSERVER-9277
-    - yabs/server/test/ft/NANPU-963
     - yabs/server/test/ft/supply_chain
     - yabs/server/test/qabs_bsserver_pytest/bs_objects
     - yabs/stat/direct_monitoring/libs/checks
@@ -600,7 +599,6 @@ migrations:
     - logfeller/python/logfeller/infra/yt/tests/yt_tests
     - logfeller/python/logfeller/infra/yt/util
     - logos/projects/ads/tasks/ads_map_and_join_simulator_log_raw
-    - mail/borador/src
     - mail/library/python/json_value/tests
     - mail/python/theatre/stages/db_stats/roles
     - mail/sheltie/tests/unit/python
@@ -811,7 +809,6 @@ migrations:
     - sandbox/projects/geosearch/AddrsRatingsTest
     - sandbox/projects/geosearch/BuildAddrsBaseAdditionalResources
     - sandbox/projects/geosearch/BuildAddrsWebIndexann
-    - sandbox/projects/goods/MakeGoodsShardmapGencfg
     - sandbox/projects/hollywood/UpdateHollywoodReleaseTickets
     - sandbox/projects/images/ImagesBuildCommercialDataDeployBundle
     - sandbox/projects/images/ImagesBuildFastIndexDeployBundle_v2
@@ -1683,7 +1680,6 @@ migrations:
     - sandbox/projects/finsrv/FinsrvPythonPrecommitCheck
     - sandbox/projects/geosearch/AddrsBaseDatabaseYtBuild
     - sandbox/projects/geosearch/UpdateMenuConfigs
-    - sandbox/projects/goods/MakeGoodsShardmapGencfg
     - sandbox/projects/images/ImagesReleaseReportDataRuntimeBundle
     - sandbox/projects/images/rim/ImagesBuildRimThumbsShootingPlan
     - sandbox/projects/impulse/BuildCodeQLQueries
@@ -3947,7 +3943,6 @@ migrations:
     - antiadblock/tasks/money_by_service_id/lib
     - antiadblock/tasks/performance_shoots_log_analyzer
     - antirobot/captcha/fingerprint/server
-    - antirobot/captcha/greed_example/server
     - antirobot/cbb/cbb_django/cbb/forms
     - antirobot/cbb/cbb_django/cbb/library
     - antirobot/cbb/cbb_django/cbb/views
@@ -4481,9 +4476,6 @@ migrations:
     - logos/projects/ads/tasks/tsar_pytorch_rsya_bc/lib
     - logos/projects/money_dwh/tasks/bs_chevent_cooked_log/builder
     - logos/projects/statkey_py3/tasks/cubes/domains/metrika/utils
-    - mail/borador/devpack/components
-    - mail/borador/status_hook
-    - mail/borador/tests
     - mail/bots/dev_bot/lib
     - mail/collectors/tests-system/src/helpers
     - mail/contrib/ccs-caldavtester/src
@@ -5026,7 +5018,6 @@ migrations:
     - sandbox/projects/geosuggest/GeoSuggestAcceptance
     - sandbox/projects/geosuggest/common
     - sandbox/projects/goods/MakeGoodsShardmap
-    - sandbox/projects/goods/MakeGoodsShardmapGencfg
     - sandbox/projects/images/ImagesInspectCbirIntegrity
     - sandbox/projects/images/ImagesLoadBasesearchDatabase
     - sandbox/projects/images/ImagesSampleCbirPlan
@@ -5328,8 +5319,6 @@ migrations:
     - travel/library/python/logbroker
     - travel/library/recipes/library
     - travel/rasp/bus/db
-    - travel/rasp/library/python/mapping
-    - travel/rasp/library/python/route_search/transfers
     - travel/rasp/rasp_scripts/scripts
     - travel/rasp/tasks/min_prices
     - vcs/bitbucket/log_parser
@@ -5525,7 +5514,6 @@ migrations:
     - ydo/libs/saas_lb_client
     - ydo/libs/simple_geobase
     - ydo/libs/tests_lib
-    - ydo/modules/workers_personal_cabinet/lib
     - ydo/server/apphost_source/lib
     - ydo/server/apphost_source/lib/endpoints
     - ydo/server/apphost_source/tests
@@ -6357,7 +6345,6 @@ migrations:
     - alice/vins/core/vins_core/utils
     - analytics/plotter_lib
     - antiadblock/tasks/detect_verification
-    - antirobot/captcha/captcha_test_service/bin
     - apphost/daemons/horizon/src/server/services/checker/reducers
     - apphost/lib/python/split/charts
     - april/badb/badb/structure/interest
@@ -6831,7 +6818,6 @@ migrations:
     - strm/generate/lib/parser
     - strm/tools/links_metrics/lib
     - sup/ml/super_graph/read_config
-    - taxi/antifraud/purga/automation/arbitrage/close
     - taxi/antifraud/purga/automation/arbitrage/create
     - taxi/eda/eda_analytics/utility
     - testenv/core/engine/metatests
@@ -9385,7 +9371,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-2454
     - yabs/server/test/ft/BSSERVER-3895
     - yabs/server/test/ft/BSSERVER-9233
-    - yabs/server/test/ft/NANPU-817
     - yabs/server/test/ft/checks
     - yabs/server/test/pylibs/qxl
     - yabs/server/test/pylibs/simulator
@@ -10000,13 +9985,6 @@ migrations:
     - quality/relev_tools/lboost_ops/nirvana/api
     - quality/relev_tools/web_learn/stream_size_opt/graphs/lib
     - quality/relev_tools/web_learn/stream_size_opt/opt_with_goal_dbd/lib
-    - quality/short_beak/build_db
-    - quality/short_beak/content_db_lib
-    - quality/short_beak/manip_db
-    - quality/short_beak/prepare_db_source
-    - quality/short_beak/update_content
-    - quality/short_beak/upload_trie
-    - quality/short_beak/wui_new/context_lib
     - quality/tools/find_word
     - quality/user_sessions/createlib/qb3/tools/merge
     - quality/user_sessions/data_com/merge_details_to_dataset
@@ -10833,7 +10811,6 @@ migrations:
     - quality/relev_tools/xfactor-yt/lib/ut/convert_output
     - quality/relev_tools/xfactor-yt/lib/ut/metric_export
     - quality/relev_tools/xfactor-yt/lib/ut/prepare_input
-    - quality/short_beak/sg_collector/tests
     - quality/tools/scripts/tests
     - quality/traffic/tests/iterator/tests
     - quality/trailer/rich_suggest_data/fast_thematic_personalization/tests
