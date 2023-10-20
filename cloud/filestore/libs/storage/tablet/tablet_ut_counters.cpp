@@ -11,11 +11,14 @@
 
 #include <memory>
 
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using NCloud::NFileStore::NMetrics::TLabel;
 
 TFileSystemConfig MakeThrottlerConfig(
     bool throttlingEnabled,
@@ -55,20 +58,105 @@ TFileSystemConfig MakeThrottlerConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TTestRegistryVisitor
+    : public NMetrics::IRegistryVisitor
+{
+private:
+    struct TMetricsEntry
+    {
+        TInstant Time;
+        NMetrics::EAggregationType AggrType;
+        NMetrics::EMetricType MetrType;
+        THashMap<TString, TString> Labels;
+        i64 Value;
+
+        bool Matches(const TVector<TLabel>& labels) const
+        {
+            for (auto& label: labels) {
+                auto it = Labels.find(label.GetName());
+                if (it == Labels.end() || it->second != label.GetValue()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
+    TVector<TMetricsEntry> MetricsEntries;
+    TMetricsEntry CurrentEntry;;
+
+public:
+    void OnStreamBegin() override
+    {
+        CurrentEntry = TMetricsEntry();
+        MetricsEntries.clear();
+    }
+
+    void OnStreamEnd() override
+    {}
+
+    void OnMetricBegin(
+        TInstant time,
+        NMetrics::EAggregationType aggrType,
+        NMetrics::EMetricType metrType) override
+    {
+        CurrentEntry.Time = time;
+        CurrentEntry.AggrType = aggrType;
+        CurrentEntry.MetrType = metrType;
+    }
+
+    void OnMetricEnd() override
+    {
+        MetricsEntries.emplace_back(std::move(CurrentEntry));
+    }
+
+    void OnLabelsBegin() override
+    {}
+
+    void OnLabelsEnd() override
+    {}
+
+    void OnLabel(TStringBuf name, TStringBuf value) override
+    {
+        CurrentEntry.Labels.emplace(TString(name), TString(value));
+    }
+
+    void OnValue(i64 value) override
+    {
+        CurrentEntry.Value = value;
+    }
+
+public:
+    const TVector<TMetricsEntry>& GetEntries() const
+    {
+        return MetricsEntries;
+    }
+
+    void ValidateExpectedCounters(
+        const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters)
+    {
+        for (const auto& [labels, value] : expectedCounters) {
+            int matchingCountersCount = 0;
+            for (const auto& entry : MetricsEntries) {
+                if (entry.Matches(labels)) {
+                    ++matchingCountersCount;
+                    UNIT_ASSERT_EQUAL(entry.Value, value);
+                }
+            }
+            UNIT_ASSERT_EQUAL(matchingCountersCount, 1);
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEnv
     : public NUnitTest::TBaseFixture
 {
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
 
-    TStringStream Data;
-    NMetrics::IRegistryVisitorPtr Visitor;
-
-    std::unique_ptr<TFileInput> FileStream;
-
-    TEnv()
-        : Visitor(NMetrics::CreateRegistryVisitor(Data))
-    {}
+    TTestRegistryVisitor Visitor;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -86,13 +174,6 @@ struct TEnv
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {}
 
-    void SetupTestFile(const TString& fileName)
-    {
-        FileStream = std::make_unique<TFileInput>(
-            GetWorkPath() + "/" + fileName + ".txt",
-            OpenExisting | RdOnly | CloseOnExec);
-    }
-
 };
 
 }   // namespace
@@ -103,34 +184,42 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 {
     Y_UNIT_TEST_F(ShouldRegisterCounters, TEnv)
     {
-        return; // FIXME NBS-4552
-
-        SetupTestFile("ShouldRegisterCountersOnLoad");
         auto registry = Env.GetRegistry();
 
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        // clang-format off
+        Visitor.ValidateExpectedCounters({
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "FreshBytesCount"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "GarbageQueueSize"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "MixedBytesCount"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "PostponedRequests"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "RejectedRequests"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "UsedSessionsCount"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "UsedBytesCount"}}, 0},
+            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "UsedQuota"}}, 0},
+            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "FreshBytesCount"}}, 0},
+            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "GarbageQueueSize"}}, 0},
+            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "MixedBytesCount"}}, 0},
+            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "UsedSessionsCount"}}, 0},
+            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "UsedBytesCount"}}, 0}
+        });
+        // clang-format on
     }
 
     Y_UNIT_TEST_F(ShouldCorrectlyWriteThrottlerMaxParams, TEnv)
     {
-        return; // FIXME NBS-4552
-
-        SetupTestFile("ShouldCorrectlyWriteThrottlerMaxParams");
         auto registry = Env.GetRegistry();
-
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
-
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "MaxWriteBandwidth"}}, 4_GB - 1},
+            {{{"sensor", "MaxReadIops"}}, 4_GB - 1},
+            {{{"sensor", "MaxWriteIops"}}, 4_GB - 1},
+            {{{"sensor", "MaxReadBandwidth"}}, 4_GB - 1}
+        });
         const auto config = MakeThrottlerConfig(
             true,                                    // throttlingEnabled
             100,                                     // maxReadIops
@@ -152,53 +241,47 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Tablet->AdvanceTime(TDuration::Seconds(15));
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "MaxWriteBandwidth"}}, 8_KB},
+            {{{"sensor", "MaxReadIops"}}, 100},
+            {{{"sensor", "MaxWriteIops"}}, 200},
+            {{{"sensor", "MaxReadBandwidth"}}, 4_KB}
+        });
     }
 
     Y_UNIT_TEST_F(ShouldIncrementAndDecrementSessionCount, TEnv)
     {
-        return; // FIXME NBS-4552
-
-        SetupTestFile("ShouldIncrementAndDecrementSessionCount");
         auto registry = Env.GetRegistry();
 
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+           {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 0},
+        });
 
         Tablet->InitSession("client", "session");
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 1},
+        });
 
         Tablet->DestroySession();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
-        registry->Visit(TInstant::Zero(), *Visitor);
-        UNIT_ASSERT_VALUES_EQUAL(FileStream->ReadLine(), Data.Str());
-        Data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 0},
+        });
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyUpdateValuesOnThrottling)
+    Y_UNIT_TEST_F(ShouldCorrectlyUpdateValuesOnThrottling, TEnv)
     {
-        return; // FIXME NBS-4552
-
-        TStringStream data;
-        NMetrics::IRegistryVisitorPtr visitor =
-            NMetrics::CreateRegistryVisitor(data);
-
-        TFileInput fileStream(
-            GetWorkPath() + "/ShouldUpdateValuesOnThrottling.txt",
-            OpenExisting | RdOnly | CloseOnExec);
-
         NProto::TStorageConfig storageConfig;
         storageConfig.SetThrottlingEnabled(true);
 
@@ -247,19 +330,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             tablet.AssertWriteDataQuickResponse(S_OK);
         }
 
-        registry->Visit(TInstant::Zero(), *visitor);
-        UNIT_ASSERT_VALUES_EQUAL(fileStream.ReadLine(), data.Str());
-        data.Clear();
-
         // 1. Testing that excess requests are postponed.
         for (size_t i = 0; i < 20; ++i) {
             tablet.SendReadDataRequest(handle, 4_KB * i, 4_KB);
             tablet.AssertReadDataNoResponse();
         }
 
-        registry->Visit(TInstant::Zero(), *visitor);
-        UNIT_ASSERT_VALUES_EQUAL(fileStream.ReadLine(), data.Str());
-        data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "UsedQuota"}}, 100},
+            {{{"sensor", "MaxUsedQuota"}}, 100},
+            {{{"sensor", "MaxWriteBandwidth"}}, 8_KB},
+            {{{"sensor", "MaxReadBandwidth"}}, 8_KB},
+            {{{"sensor", "MaxWriteIops"}}, 2},
+            {{{"sensor", "MaxReadIops"}}, 2},
+            {{{"sensor", "PostponedRequests"}}, 20},
+        });
 
         // Now we have 20_KB in PostponeQueue.
 
@@ -268,9 +354,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             tablet.AssertWriteDataNoResponse();
         }
 
-        registry->Visit(TInstant::Zero(), *visitor);
-        UNIT_ASSERT_VALUES_EQUAL(fileStream.ReadLine(), data.Str());
-        data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "PostponedRequests"}}, 23},
+        });
 
         // Now we have 32_KB in PostponedQueue. Equal to MaxPostponedWeight.
 
@@ -281,9 +368,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         tablet.SendReadDataRequest(handle, 0, 1_KB);
         tablet.AssertReadDataQuickResponse(E_FS_THROTTLED);
 
-        registry->Visit(TInstant::Zero(), *visitor);
-        UNIT_ASSERT_VALUES_EQUAL(fileStream.ReadLine(), data.Str());
-        data.Clear();
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "RejectedRequests"}}, 2},
+        });
     }
 }
 
