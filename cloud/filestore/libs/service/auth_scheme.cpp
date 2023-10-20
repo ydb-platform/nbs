@@ -1,5 +1,8 @@
 #include "auth_scheme.h"
 
+#include <util/generic/string.h>
+#include <util/generic/hash.h>
+
 namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,15 +80,44 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
                 EPermission::Read,
                 EPermission::Write});
 
+        case EFileStoreRequest::ExecuteAction:
+            Y_ABORT("ExecuteAction must have been handled separately");
+
         case EFileStoreRequest::ListEndpoints:
             return CreatePermissionList({EPermission::List});
-
-        case EFileStoreRequest::ExecuteAction:
-            return TPermissionList().Flip();  // Require admin permissions.
 
         case EFileStoreRequest::MAX:
             Y_ABORT("EFileStoreRequest::MAX is not valid");
     }
+}
+
+TPermissionList GetRequestPermissions(
+    const NProto::TExecuteActionRequest& request)
+{
+    TString action = request.GetAction();
+    action.to_lower();
+
+    auto perms = [] (TString name, TPermissionList lst) {
+        return std::pair {name, std::move(lst)};
+    };
+
+    static const THashMap<TString, TPermissionList> actions = {
+        // Get
+        perms("getstorageconfigfields", CreatePermissionList({EPermission::Get})),
+
+        // Update
+        perms("draintablets", CreatePermissionList({EPermission::Update})),
+
+        // Admin
+        perms("changestorageconfig", TPermissionList().Flip())
+    };
+
+    auto it = actions.find(action);
+    if (it != actions.end()) {
+        return it->second;
+    }
+
+    return TPermissionList().Flip();
 }
 
 }  // namespace NCloud::NBlockStore

@@ -6,7 +6,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <cloud/filestore/config/server.pb.h>
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore {
 
@@ -63,9 +63,11 @@ public:
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
-        Y_UNUSED(responseHandler);
+        // TODO: support auth for this method
+        Service->GetSessionEventsStream(
+            std::move(callContext),
+            std::move(request),
+            std::move(responseHandler));
     }
 
 private:
@@ -76,7 +78,7 @@ private:
     {
         const auto& headers = request->GetHeaders();
         const auto& internal = headers.GetInternal();
-        auto permissions = GetRequestPermissions(ctx->RequestType);
+        auto permissions = GetRequestPermissions(*request);
 
         bool needAuth = AuthProvider->NeedAuth(
             internal.GetRequestSource(),

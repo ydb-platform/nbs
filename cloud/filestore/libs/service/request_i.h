@@ -4,6 +4,19 @@
 #error "should not be included directly - include request.h instead"
 #endif
 
+#include <cloud/filestore/public/api/protos/action.pb.h>
+#include <cloud/filestore/public/api/protos/checkpoint.pb.h>
+#include <cloud/filestore/public/api/protos/cluster.pb.h>
+#include <cloud/filestore/public/api/protos/const.pb.h>
+#include <cloud/filestore/public/api/protos/data.pb.h>
+#include <cloud/filestore/public/api/protos/endpoint.pb.h>
+#include <cloud/filestore/public/api/protos/fs.pb.h>
+#include <cloud/filestore/public/api/protos/headers.pb.h>
+#include <cloud/filestore/public/api/protos/locks.pb.h>
+#include <cloud/filestore/public/api/protos/node.pb.h>
+#include <cloud/filestore/public/api/protos/ping.pb.h>
+#include <cloud/filestore/public/api/protos/session.pb.h>
+
 #include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/protos/request_source.pb.h>
 
@@ -27,9 +40,32 @@ concept THasStorageMediaKind = requires (T v)
     {v.SetStorageMediaKind(std::declval<NCloud::NProto::EStorageMediaKind>())} -> std::same_as<void>;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+struct TServiceRequest {};
+
+#define FILESTORE_DECLARE_REQUEST(name, ...)                                   \
+    template <>                                                                \
+    struct TServiceRequest<NProto::T##name##Request>                           \
+    {                                                                          \
+        static constexpr EFileStoreRequest Request = EFileStoreRequest::name;  \
+    };                                                                         \
+// FILESTORE_DECLARE_REQUEST
+
+FILESTORE_SERVICE(FILESTORE_DECLARE_REQUEST)
+
+#undef FILESTORE_DECLARE_REQUEST
+
 }    // namespace NImpl
 
 ////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+constexpr EFileStoreRequest GetFileStoreServiceRequest()
+{
+    return NImpl::TServiceRequest<T>::Request;
+}
 
 template <typename T>
 TString GetClientId(const T& request)

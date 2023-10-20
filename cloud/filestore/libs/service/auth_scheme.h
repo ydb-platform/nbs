@@ -6,14 +6,21 @@
 
 #include <cloud/storage/core/libs/auth/auth_scheme.h>
 
-#include <util/generic/bitmap.h>
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
 
 namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TPermissionList GetRequestPermissions(EFileStoreRequest requestType);
+
+template <typename T>
+TPermissionList GetRequestPermissions(const T& request)
+{
+    Y_UNUSED(request);
+    return GetRequestPermissions(GetFileStoreServiceRequest<T>());
+}
+
+TPermissionList GetRequestPermissions(
+    const NProto::TExecuteActionRequest& request);
 
 }   // namespace NCloud::NFileStore

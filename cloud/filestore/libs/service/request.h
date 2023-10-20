@@ -144,6 +144,9 @@ IOutputStream& operator <<(IOutputStream& out, const TRequestInfo& info);
 ui64 CreateRequestId();
 
 template <typename T>
+constexpr EFileStoreRequest GetFileStoreServiceRequest();
+
+template <typename T>
 TString GetClientId(const T& request);
 
 template <typename T>
