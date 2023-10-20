@@ -440,8 +440,6 @@ migrations:
     - cloud/mdb/pg/pgproxy/s3db/scripts/util
     - cloud/support/tools/quotactl-l2/quota/utils
     - cloud/support/tools/websaint/app/saint
-    - cmnt/tools/regression/request_classes
-    - cmnt/tools/request_generator
     - comdep_analytics/client_clustering/lib
     - comdep_analytics/comdep_recsys/etl_core/utils
     - comdep_analytics/revenue_forecasting/lib
@@ -1423,7 +1421,6 @@ migrations:
     - cloud/iam/ydb_tools/set_default
     - cloud/iam/ydb_tools/ydb_copy
     - cloud/support/tools/quotactl-l2
-    - cmnt/tools/regression/lib
     - comdep_analytics/comdep_recsys/etl/logic/signals/geo
     - comdep_analytics/comdep_recsys/etl/logic/web/stats
     - comdep_analytics/comdep_recsys/etl_core/utils
@@ -1919,7 +1916,6 @@ migrations:
     - cloud/blockstore/public/sdk/python/client/ut
     - cloud/blockstore/tests/python/lib
     - cloud/blockstore/tools/cms/config
-    - cmnt/tools/regression
     - comdep_analytics/comdep_recsys/etl_core/etl/yt
     - crypta/lib/python/yt/dyntables/ut
     - crypta/lib/python/yt/local_tests
@@ -2306,8 +2302,6 @@ migrations:
     - cloud/extservicesintegration/billing/client
     - cloud/kms/client/python/example
     - cloud/mdb/pg/pgproxy/s3db/scripts/s3_closer
-    - cmnt/tools/regression
-    - cmnt/tools/request_generator
     - comdep_analytics/comdep_recsys/etl/logic/dashboards/categories
     - crm/infra/pymonitor
     - crypta/lib/python/swagger
@@ -4045,7 +4039,6 @@ migrations:
     - cloud/mdb/sandbox/tasklets/teamcity/impl
     - cloud/support/tools/qcalc/app
     - cloud/tools/update-ssh-keys
-    - cmnt/tools/request_generator
     - cmnt/tools/yql
     - comdep_analytics/comdep_recsys/etl_core/utils
     - comdep_analytics/exceller_py2/exceller/formatting
@@ -7617,7 +7610,6 @@ migrations:
     - cloud/marketplace/queue/yc_marketplace_queue
     - cloud/netinfra/rknfilter/yc_rkn_common
     - cloud/netinfra/rknfilter/yc_rkn_config_node
-    - cmnt/tools/regression/request_classes
     - cv/imageproc/ocr/tools/database_extraction/nirvana/imgaug/src/augmenters
     - cv/short2long/training/yt_calc_factors
     - datacloud/log_reader/lib
