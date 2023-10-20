@@ -166,8 +166,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         ui32 createChannelsCount = 0;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -181,7 +180,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -189,8 +188,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT(createChannelsCount > 0);
 
         ui32 alterChannelsCount = 0;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -204,7 +202,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
         service.ResizeFileStore("test", 4_TB/DefaultBlockSize);
         UNIT_ASSERT(alterChannelsCount > 0);
@@ -223,8 +221,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1000);
 
         auto error = MakeError(E_ARGUMENT, "Error");
-        runtime.SetObserverFunc(
-            [=] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
@@ -241,7 +238,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.AssertAlterFileStoreFailed("test", "xxxx", "yyyy");
@@ -355,10 +352,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         bool fail = true;
         TActorId worker;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (!fail) {
-                    return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                    return TTestActorRuntime::DefaultObserverFunc(event);
                 }
 
                 switch (event->GetTypeRewrite()) {
@@ -377,7 +373,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         THeaders headers = {"test", "client", ""};
@@ -397,8 +393,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         TActorId worker;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreRequest: {
                         worker = event->Sender;
@@ -406,7 +401,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         THeaders headers = {"test", "client", ""};
@@ -448,10 +443,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         bool fail = true;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (!fail) {
-                    return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                    return TTestActorRuntime::DefaultObserverFunc(event);
                 }
 
                 switch (event->GetTypeRewrite()) {
@@ -474,7 +468,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         THeaders headers = {"test", "client", ""};
@@ -495,10 +489,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         bool fail = true;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (!fail) {
-                    return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                    return TTestActorRuntime::DefaultObserverFunc(event);
                 }
 
                 switch (event->GetTypeRewrite()) {
@@ -521,7 +514,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         THeaders headers = {"test", "client", ""};
@@ -539,8 +532,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         ui64 tabletId = -1;
         TActorId session;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreResponse: {
                         TEvSSProxy::TEvDescribeFileStoreResponse::TPtr* ptr =
@@ -559,7 +551,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -813,8 +805,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto error = MakeError(E_ARGUMENT, "Error");
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc(
-            [=] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
@@ -830,7 +821,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         auto response = service.AssertListFileStoresFailed();
@@ -1057,8 +1048,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TActorId worker;
         TAutoPtr<IEventHandle> resp;
         bool fail = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvCreateSessionRequest: {
                         worker = event->Sender;
@@ -1073,7 +1063,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         THeaders headers = {"test", "client", ""};
@@ -1105,8 +1095,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TActorId worker;
         bool fail = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvCreateSessionResponse: {
                         if (fail) {
@@ -1129,7 +1118,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         THeaders headers = {"test", "client", ""};

@@ -198,15 +198,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
                         // selecting a partition actor - doesn't matter which one
                         && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -242,8 +241,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TDeque<std::unique_ptr<IEventHandle>> addBlobsRequests;
         bool intercept = true;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (intercept) {
                     switch (event->GetTypeRewrite()) {
@@ -254,7 +252,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -310,15 +308,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
                         // selecting a partition actor - doesn't matter which one
                         && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -353,8 +350,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         );
 
         std::unique_ptr<IEventHandle> partWriteBlocksRequest;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (event->Recipient == partActorId) {
                     switch (event->GetTypeRewrite()) {
@@ -365,7 +361,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -417,15 +413,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
                         // selecting a partition actor - doesn't matter which one
                         && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -460,8 +455,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         );
 
         bool intercepted = false;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointRequest
                         && event->Recipient == partActorId)
                 {
@@ -469,7 +463,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -501,14 +495,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.RebootTablet();
         volume.AddClient(clientInfo);
         intercepted = false;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointResponse) {
                     intercepted = true;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
         volume.WaitReady();
@@ -555,15 +548,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
                         // selecting a partition actor - doesn't matter which one
                         && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -598,8 +590,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         );
 
         bool intercepted = false;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointRequest
                         && event->Recipient == partActorId)
                 {
@@ -608,7 +599,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                         MakeError(E_FAIL, "epic failure")
                     );
 
-                    runtime.Send(new IEventHandle(
+                    runtime->Send(new IEventHandle(
                         event->Sender,
                         event->Recipient,
                         response.release(),
@@ -619,7 +610,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -628,14 +619,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(intercepted);
 
         intercepted = false;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointResponse) {
                     intercepted = true;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
         volume.ReconnectPipe();
@@ -976,8 +966,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Steal the first write or zero request to the device.
         // We will return it later to complete the execution of the request.
         std::unique_ptr<IEventHandle> stolenDeviceRequest;
-        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
-                                           TAutoPtr<IEventHandle>& event) {
+        auto stealFirstDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
             const bool zeroOrWriteRequest =
                 event->GetTypeRewrite() ==
                     TEvDiskAgent::EvWriteDeviceBlocksRequest ||
@@ -987,7 +976,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 stolenDeviceRequest.reset(event.Release());
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         runtime->SetObserverFunc(stealFirstDeviceRequest);
 
@@ -1172,8 +1161,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TAutoPtr<IEventHandle> evRangeMigrated;
 
-        auto oldObsereverFunc = runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto oldObsereverFunc = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1187,7 +1175,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1616,17 +1604,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WaitReady();
 
         bool patchRequest = true;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointRequest) {
                     if (patchRequest) {
                         patchRequest = false;
                         auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
-                        SendUndeliverableRequest(runtime, event, std::move(request));
+                        SendUndeliverableRequest(*runtime, event, std::move(request));
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         auto httpResponse = volume.RemoteHttpInfo(
@@ -1872,12 +1859,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointResponse) {
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         runtime->SetObserverFunc(obs);

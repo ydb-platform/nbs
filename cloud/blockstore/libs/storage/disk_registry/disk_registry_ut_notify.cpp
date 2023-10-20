@@ -107,8 +107,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("nonrepl-vol", 10_GB, 4_KB, "", 0, "", "");
 
         int notifications = 0;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvNotifyUserEventRequest: {
                         ++notifications;
@@ -116,7 +115,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
@@ -175,8 +174,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.WaitReady();
 
         int notifications = 0;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvNotifyUserEventRequest: {
                         ++notifications;
@@ -184,7 +182,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);
@@ -440,8 +438,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("nonrepl-vol", 10_GB, 4_KB, "", 0, "", "");
 
         int notifications = 0;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvNotifyUserEventRequest: {
                         ++notifications;
@@ -449,7 +446,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_UNAVAILABLE);

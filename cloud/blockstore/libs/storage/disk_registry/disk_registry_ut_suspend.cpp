@@ -98,15 +98,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         size_t cleanDevices = 0;
 
-        Runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
                     auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                     cleanDevices += msg->CleanDevices;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         UNIT_ASSERT_VALUES_EQUAL(

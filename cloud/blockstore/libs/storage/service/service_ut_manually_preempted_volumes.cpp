@@ -59,15 +59,14 @@ void PushVolumeNoSync(
     using TResponse = TEvService::TEvChangeVolumeBindingResponse;
 
     bool syncSeen = false;
-    runtime.SetObserverFunc(
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+    runtime.SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
                     syncSeen = true;
                     break;
                 }
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
     {
@@ -100,15 +99,14 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto& runtime = env.GetRuntime();
         bool responseSeen = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvRunVolumesLivenessCheckResponse: {
                         responseSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         SetupTestEnv(env, config);
@@ -130,15 +128,14 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto& runtime = env.GetRuntime();
         bool responseSeen = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvRunVolumesLivenessCheckResponse: {
                         responseSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         SetupTestEnv(env, config);
@@ -173,8 +170,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         auto& runtime = env.GetRuntime();
         bool syncSeen = false;
         TAutoPtr<IEventHandle> syncComplete;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
                         syncSeen = true;
@@ -182,7 +178,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         using TRequest = TEvService::TEvChangeVolumeBindingRequest;
@@ -201,8 +197,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         bool responseSeen = false;
         bool describeSeen = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         describeSeen = true;
@@ -213,7 +208,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         runtime.AdvanceCurrentTime(livenessCheckPeriod);
@@ -250,8 +245,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         auto& runtime = env.GetRuntime();
         bool syncSeen = false;
         TAutoPtr<IEventHandle> syncComplete;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
                         syncSeen = true;
@@ -259,7 +253,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         using TRequest = TEvService::TEvChangeVolumeBindingRequest;
@@ -280,15 +274,14 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         UNIT_ASSERT(syncComplete);
 
         syncSeen = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
                         syncSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         {
@@ -330,8 +323,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         TVector<TAutoPtr<IEventHandle>> describeResponses;
         TVector<ui64> cookies;
         THashMap<ui64, TString> cookieToDisk;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         const auto* msg =
@@ -373,7 +365,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TDispatchOptions options;
@@ -403,8 +395,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         bool describeSeen = false;
         ui32 checkReplyCnt = 0;
         ui32 checkRequestCnt = 0;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         describeSeen = true;
@@ -419,7 +410,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         runtime.DispatchEvents({}, 2 * livenessCheckPeriod);
@@ -451,8 +442,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         ui32 startVolumeRequestCnt = 0;
         ui32 startVolumeresponseCnt = 0;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeRequest: {
                         ++startVolumeRequestCnt;
@@ -463,7 +453,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.MountVolume("volume1");

@@ -277,8 +277,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         bool sendError = true;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
@@ -315,7 +314,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -362,8 +361,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         bool deleteGarbageObserved = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         collectGarbageObserved = true;
@@ -375,7 +373,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 

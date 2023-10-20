@@ -496,15 +496,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TVector<NProto::TAction> actions;
         actions.push_back(action);
 
-        runtime->SetObserverFunc(
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskRegistryPrivate::EvUpdateCmsHostDeviceStateRequest: {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
         diskRegistry.SendCmsActionRequest(std::move(actions));

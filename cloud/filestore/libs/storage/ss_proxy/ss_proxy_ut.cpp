@@ -223,14 +223,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         auto& runtime = env.GetRuntime();
         auto error = MakeError(E_FAIL, "Error");
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& ctx, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
                                 error);
 
-                        ctx.Send(
+                        runtime.Send(
                             new NActors::IEventHandle(
                                 event->Sender,
                                 event->Recipient,
@@ -240,7 +239,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         ssProxy.SendDescribeFileStoreRequest("test");
@@ -258,14 +257,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         ui32 nodeIdx = env.CreateNode("nfs");
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);

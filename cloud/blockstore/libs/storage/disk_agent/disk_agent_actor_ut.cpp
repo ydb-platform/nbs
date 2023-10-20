@@ -624,8 +624,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         // We will return it later to start the execution of the next overlapped
         // request.
         std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
-        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
-                                           TAutoPtr<IEventHandle>& event) {
+        auto stealFirstDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
             {
@@ -633,7 +632,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     std::unique_ptr<IEventHandle>{event.Release()});
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
 
@@ -807,8 +806,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         // We will return it later to start the execution of the next overlapped
         // request.
         std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
-        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
-                                           TAutoPtr<IEventHandle>& event) {
+        auto stealFirstDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
             {
@@ -816,7 +814,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     std::unique_ptr<IEventHandle>{event.Release()});
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
 
@@ -911,8 +909,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         // Steal TEvWriteOrZeroCompleted request.
         // We will return it later. This should not delay the request of another device.
         std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
-        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime,
-                                           TAutoPtr<IEventHandle>& event) {
+        auto stealFirstDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
             {
@@ -920,7 +917,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     std::unique_ptr<IEventHandle>{event.Release()});
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
 
@@ -1732,8 +1729,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         NProto::TAgentConfig registeredAgent;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvRegisterAgentRequest: {
                         auto& msg = *event->Get<TEvDiskRegistry::TEvRegisterAgentRequest>();
@@ -1743,7 +1739,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         auto env = TTestEnvBuilder(runtime)
@@ -1988,8 +1984,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         NProto::TAgentConfig registeredAgent;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvRegisterAgentRequest: {
                         auto& msg = *event->Get<TEvDiskRegistry::TEvRegisterAgentRequest>();
@@ -1999,7 +1994,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         auto env = TTestEnvBuilder(runtime)
@@ -2474,15 +2469,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TTestBasicRuntime runtime;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvRegisterAgentRequest:
                         ++registrationCount;
                     break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         auto env = TTestEnvBuilder(runtime)

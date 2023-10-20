@@ -506,8 +506,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TActorId notifiedActor;
         ui32 notificationCount = 0;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRdmaUnavailable: {
                         notifiedActor = event->Recipient;
@@ -517,7 +516,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -588,8 +587,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId reacquireDiskRecipient;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvReacquireDisk: {
                         reacquireDiskRecipient = event->Recipient;
@@ -598,7 +596,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 

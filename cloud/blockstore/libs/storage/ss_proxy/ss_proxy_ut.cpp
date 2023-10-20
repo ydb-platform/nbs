@@ -805,8 +805,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         auto error = MakeError(E_FAIL, "Error");
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
                         auto response =
@@ -820,7 +819,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TActorId sender = runtime.AllocateEdgeActor();
@@ -843,8 +842,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         const ui32 blockSize = 1;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         auto* msg =
@@ -864,7 +862,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         CreateVolumeWithFailure(runtime, "volume", blockSize);
@@ -876,8 +874,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         SetupTestEnv(env);
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         auto* msg =
@@ -894,7 +891,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         CreateVolumeWithFailure(runtime, "volume");
@@ -910,8 +907,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             NKikimrScheme::StatusPathDoesNotExist,
             "path does not exist");
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case NKikimr::NSchemeShard::TEvSchemeShard::EvDescribeSchemeResult: {
                         auto record = event->Get<NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult>()->MutableRecord();
@@ -921,7 +917,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TActorId sender = runtime.AllocateEdgeActor();
@@ -948,14 +944,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         SetupTestEnv(env);
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TActorId sender = runtime.AllocateEdgeActor();
@@ -1003,8 +998,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         ui32 count = 0;
         TActorId senderId;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         senderId = event->Sender;
@@ -1032,7 +1026,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TActorId sender = runtime.AllocateEdgeActor();
@@ -1234,8 +1228,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         auto config = CreateStorageConfig();
         SetupTestEnv(env, config);
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         auto response =
@@ -1265,7 +1258,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
 
@@ -1342,8 +1335,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         auto txStatus = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ProxyNotReady;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvProposeTransaction: {
                         auto response =
@@ -1356,7 +1348,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
 
@@ -1415,8 +1407,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         SetupTestEnv(env, config);
         CreateVolumeViaModifySchemeDeprecated(runtime, config, "volume");
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         auto request = event->Get<TEvTxUserProxy::TEvNavigate>()->Record;
@@ -1435,7 +1426,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TActorId sender = runtime.AllocateEdgeActor();

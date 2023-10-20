@@ -54,8 +54,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         ui32 status = E_FAIL;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyResponse: {
                         auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>(
@@ -71,7 +70,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -102,8 +101,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         const auto notFoundStatus = NKikimrScheme::StatusPathDoesNotExist;
         bool describeRequested = false;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case NSchemeShard::TEvSchemeShard::EvDescribeSchemeResult: {
                         using NSchemeShard::TEvSchemeShard;
@@ -118,7 +116,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         describeRequested = true;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -446,8 +444,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         bool detectedCreateVolumeRequest = false;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -462,7 +459,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.CreateVolume();
@@ -480,8 +477,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         bool detectedCreateVolumeRequest = false;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg =
@@ -501,7 +497,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.CreateVolume(
@@ -1154,15 +1150,14 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service2.StatVolume();
 
         bool tabletDeadSeen = false;
-        env.GetRuntime().SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTablet::EvTabletDead: {
                         tabletDeadSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service2.DestroyVolume();
@@ -1285,8 +1280,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         auto& runtime = env.GetRuntime();
         TServiceClient service(runtime, nodeIdx);
 
-        runtime.SetObserverFunc(
-            [=] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvModifySchemeResponse>(
@@ -1304,7 +1298,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.SendDestroyVolumeRequest();
@@ -1323,8 +1317,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         auto error = MakeError(NKikimrScheme::StatusAccessDenied, "Access denied");
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifyVolumeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(
@@ -1340,7 +1333,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.SendDestroyVolumeRequest();
@@ -1435,8 +1428,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.CreateVolume();
         service.DestroyVolume();
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -1455,7 +1447,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         for (size_t i = 0; i < sentMediaKinds.size(); ++i) {
@@ -1482,8 +1474,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.CreateVolume();
 
         NProto::TError error;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyRequest: {
                         auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>(
@@ -1499,7 +1490,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.SendDestroyVolumeRequest(DefaultDiskId, true);
@@ -1538,8 +1529,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         client.SetClientId("c");
         client.SetInstanceId("i");
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvStatVolumeRequest: {
                         auto response =
@@ -1556,7 +1546,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.CreateVolume();
@@ -1647,8 +1637,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         bool detectedCreateVolumeRequest = false;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -1663,7 +1652,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service.CreateVolume();
@@ -1691,9 +1680,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         bool syncDealloc = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (
-            TTestActorRuntimeBase& runtime,
-            TAutoPtr<IEventHandle>& event)
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() == TEvDiskRegistry::EvDeallocateDiskRequest) {
                 auto* msg = event->Get<TEvDiskRegistry::TEvDeallocateDiskRequest>();
@@ -1701,7 +1688,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     syncDealloc = msg->Record.GetSync();
                 }
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
         service.DestroyVolume(

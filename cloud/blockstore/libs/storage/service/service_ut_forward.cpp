@@ -88,8 +88,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         int event_counter = 0;
         int pipe_counter = 0;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvSend: {
                         if (event->Type == TEvService::EvWriteBlocksRequest) {
@@ -108,7 +107,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         runtime.Send(
@@ -158,8 +157,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         auto KillerActor = runtime.AllocateEdgeActor(nodeIdx1);
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvSend: {
                         if (event->Type == TEvService::EvWriteBlocksRequest) {
@@ -173,7 +171,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service2.SendWriteBlocksRequest(
@@ -205,8 +203,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         ui64 tabletId = 0;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvClientConnected: {
                         auto* msg = reinterpret_cast<TEvTabletPipe::TEvClientConnected::TPtr*>(&event);
@@ -229,7 +226,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         service2.StatVolume();
@@ -451,8 +448,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         TActorId volumeActorId;
         bool pendingVolumeTabletStatus = false;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -463,7 +459,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TServiceClient service(runtime, nodeIdx);

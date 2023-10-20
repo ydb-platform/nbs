@@ -1079,8 +1079,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId reacquireDiskRecipient;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvReadDeviceBlocksRequest: {
                         auto response = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
@@ -1137,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1257,8 +1256,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TTestEnv env(runtime);
 
         bool done = false;
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvStatsService::EvVolumePartCounters:
                         if (event->Recipient == MakeStorageStatsServiceId()) {
@@ -1267,7 +1265,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                         break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 

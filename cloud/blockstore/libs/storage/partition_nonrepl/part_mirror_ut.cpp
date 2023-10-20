@@ -517,8 +517,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         THashMap<TString, TBlockRange64> device2WriteRange;
         THashMap<TString, TBlockRange64> device2ZeroRange;
 
-        runtime.SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
                         using TRequest =
@@ -545,7 +544,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -729,7 +728,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TMigrationTestRuntime()
         {
-            auto obs = [&] (auto& runtime, auto& event) {
+            auto obs = [&] (auto& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvFinishMigrationRequest: {
                         UNIT_ASSERT(!FinishRequestObserved);
@@ -757,7 +756,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             };
 
             Runtime.SetRegistrationObserverFunc(

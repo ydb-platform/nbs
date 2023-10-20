@@ -175,8 +175,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         bool registerAgentSeen = false;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvRegisterAgentRequest:
                         {
@@ -203,7 +202,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TDiskRegistryClient diskRegistry(*runtime);
@@ -635,13 +634,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         ui32 updateCount = 0;
 
-        runtime->SetObserverFunc([&] (auto& runtime, auto& event) {
+        runtime->SetObserverFunc([&] (auto& event) {
             switch (event->GetTypeRewrite()) {
             case TEvDiskRegistryPrivate::EvUpdateVolumeConfigRequest:
                 updateCount++;
                 break;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
         diskRegistry.CreatePlacementGroup(
@@ -979,14 +978,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices->Val());
 
         TAutoPtr<IEventHandle> secureEraseDeviceResponse;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceResponse) {
                     secureEraseDeviceResponse = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));

@@ -144,8 +144,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         bool suppressFailure = false;
         bool shouldStart = false;
         size_t errorCount = 0;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPutResult: {
                         if (suppressFailure || errorCount >= MAX_ERROR_COUNT) {
@@ -163,7 +162,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -532,8 +531,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         TAutoPtr<IEventHandle> evRangeMigrated;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -547,7 +545,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -602,8 +600,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVector<NProto::TWriteDeviceBlocksRequest> writeBlocksRequests;
         TVector<NProto::TZeroDeviceBlocksRequest> zeroBlocksRequests;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
                     auto* msg = event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
                     if (msg->Record.GetBlocks().BuffersSize() != 1024) {
@@ -614,7 +611,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     zeroBlocksRequests.push_back(msg->Record);
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -888,8 +885,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         diskRegistryState->MigrationMode = EMigrationMode::InProgress;
         ui32 migratedRanges = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent
                     = TEvNonreplPartitionPrivate::EvRangeMigrated;
                 if (event->GetTypeRewrite() == migratedEvent)
@@ -897,7 +893,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     ++migratedRanges;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -972,8 +968,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TAutoPtr<IEventHandle> evWriteCompleted;
         bool interceptWrite = false;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto completionEvent =
                     TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted;
                 const auto migratedEvent =
@@ -994,7 +989,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1120,8 +1115,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         state->MigrationMode = EMigrationMode::InProgress;
         TBlockRange64 migratedRange;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1132,7 +1126,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1199,8 +1193,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         state->MigrationMode = EMigrationMode::InProgress;
         ui32 rangeMigratedCount = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 if (event->GetTypeRewrite() == migratedEvent) {
@@ -1210,7 +1203,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     *msg->Record.MutableError() = MakeError(E_FAIL, "failure");
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1278,8 +1271,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 migrationProgressCounter = 0;
 
         bool drop = false;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1301,7 +1293,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         msg->VolumeSelfCounters->Simple.MigrationProgress.Value;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1325,8 +1317,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.RebootTablet();
         volume.AddClient(clientInfo);
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1339,7 +1330,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     );
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1429,8 +1420,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TBlockRange64 lastMigratedRange;
         ui32 migratedRanges = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 using TMigratedEvent =
                     TEvNonreplPartitionPrivate::TEvRangeMigrated;
 
@@ -1442,7 +1432,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     ++migratedRanges;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1496,8 +1486,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 writerAcquireRequests = 0;
         ui32 readerAcquireRequests = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskRegistry::EvAcquireDiskRequest) {
                     auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
                     if (msg->Record.GetAccessMode()
@@ -1509,7 +1498,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1593,8 +1582,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui64 mountSeqNumber = 0;
         ui32 volumeGeneration = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvAcquireDiskRequest: {
                         auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
@@ -1615,7 +1603,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1677,15 +1665,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui32 acquireRequests = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
                         auto response = std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
                             MakeError(E_BS_INVALID_SESSION, "invalid session")
                         );
 
-                        runtime.Send(new IEventHandle(
+                        runtime->Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -1702,7 +1689,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1760,8 +1747,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             ), 0);
         };
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
                         if (intercept) {
@@ -1784,7 +1770,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -2267,7 +2253,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui64 writeRequests = 0;
 
-        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->Recipient == MakeStorageStatsServiceId()
                     && event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
             {
@@ -2277,7 +2263,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     msg->DiskCounters->RequestCounters.WriteBlocks.Count;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         runtime->SetObserverFunc(obs);
@@ -2440,8 +2426,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui64 writeRequestId = 0;
         ui64 zeroRequestId = 0;
-        auto checkDeviceRequest = [&](TTestActorRuntimeBase& runtime,
-                                      TAutoPtr<IEventHandle>& event) {
+        auto checkDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvWriteDeviceBlocksRequest)
             {
@@ -2457,7 +2442,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 zeroRequestId = msg->Record.GetVolumeRequestId();
 
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         runtime->SetObserverFunc(checkDeviceRequest);
 
@@ -2496,8 +2481,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui32 migrationProgressCounter = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->Recipient == MakeStorageStatsServiceId()
                     && event->GetTypeRewrite() == TEvStatsService::EvVolumeSelfCounters)
                 {
@@ -2506,7 +2490,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         msg->VolumeSelfCounters->Simple.MigrationProgress.Value;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -2565,13 +2549,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse) {
                     UNIT_ASSERT(!partActorId);
                     partActorId = event->Sender;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         volume.UpdateVolumeConfig();
@@ -2802,14 +2785,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         auto runtime = PrepareTestActorRuntime();
 
-        runtime->SetObserverFunc(
-            [] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartition::EvWaitReadyResponse: {
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         TVolumeClient volume(*runtime);
@@ -4762,7 +4744,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui64 loadTime = 0;
         ui64 startTime = 0;
 
-        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
                 ++partStatsSaved;
             } else if (event->Recipient == MakeStorageStatsServiceId()
@@ -4785,7 +4767,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
 
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         runtime->SetObserverFunc(obs);
@@ -4948,7 +4930,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui64 bytesCount = 0;
         ui32 partStatsSaved = 0;
 
-        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
                 ++partStatsSaved;
             } else if (event->Recipient == MakeStorageStatsServiceId()
@@ -4959,7 +4941,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         runtime->SetObserverFunc(obs);
@@ -5420,7 +5402,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui32 cnt = 0;
 
-        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvService::EvWriteBlocksResponse &&
                 !cnt++)
             {
@@ -5432,7 +5414,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         runtime->SetObserverFunc(obs);
@@ -5548,15 +5530,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TAutoPtr<IEventHandle> evPut;
         bool evPutSeen = false;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvBlobStorage::EvPutResult && !evPutSeen) {
                     evPut = event.Release();
                     evPutSeen = true;
                     return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -5652,12 +5633,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         auto runtime = PrepareTestActorRuntime();
 
-        auto observer = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto observer = [] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse) {
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         runtime->SetObserverFunc(observer);
@@ -5906,15 +5887,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         updateVolumeConfig("track-used");
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvUpdateUsedBlocksRequest: {
                         auto response = std::make_unique<TEvVolume::TEvUpdateUsedBlocksResponse>(
                             MakeError(E_REJECTED, "some error")
                         );
 
-                        runtime.Send(new IEventHandle(
+                        runtime->Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -5926,7 +5906,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -6083,16 +6063,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.WaitReady();
 
         NBlobMetrics::TBlobLoadMetrics volumeMetrics;
-        auto obs = [&volumeMetrics] (
-            TTestActorRuntimeBase& runtime,
-            TAutoPtr<IEventHandle>& ev)
+        auto obs = [&volumeMetrics] (TAutoPtr<IEventHandle>& ev)
         {
             if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters) {
                 TEvStatsService::TVolumePartCounters* msg =
                     ev->Get<TEvStatsService::TEvVolumePartCounters>();
                 volumeMetrics += msg->BlobLoadMetrics;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
+            return TTestActorRuntime::DefaultObserverFunc(ev);
         };
 
         runtime->SetObserverFunc(obs);
@@ -6184,16 +6162,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 cnt = 0;
         bool allowPoison = true;
 
-        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
+        auto obs = [&] (TAutoPtr<IEventHandle>& ev) {
             if (ev->GetTypeRewrite() == TEvVolume::EvRebuildMetadataResponse &&
                 ++cnt == 1 &&
                 allowPoison)
             {
-                runtime.Send(
+                runtime->Send(
                     new IEventHandle(ev->Sender, ev->Sender, new TEvents::TEvPoisonPill()));
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
+            return TTestActorRuntime::DefaultObserverFunc(ev);
         };
 
         runtime->SetObserverFunc(obs);
@@ -6259,8 +6237,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         bool undeliver = true;
         TActorId volumeActorId;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvVolume::EvWaitReadyResponse) {
                     volumeActorId = event->Sender;
@@ -6269,7 +6246,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     undeliver)
                 {
                     auto sendTo = event->Sender;
-                    runtime.Send(
+                    runtime->Send(
                         new IEventHandle(
                             sendTo,
                             sendTo,
@@ -6281,7 +6258,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     undeliver = false;
                     return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -6337,8 +6314,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.AddClient(clientInfo);
 
         std::unique_ptr<IEventHandle> writeDeviceBlocksRes;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvWriteDeviceBlocksResponse: {
@@ -6347,7 +6323,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -6426,8 +6402,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         bool firstAttempt = true;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvHiveProxy::EvBootExternalRequest) {
                     const auto* msg =
@@ -6441,7 +6416,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                                 MakeKikimrError(
                                     NKikimrProto::EReplyStatus::TRYLATER,
                                     "Timeout"));
-                        runtime.Send(
+                        runtime->Send(
                             new IEventHandle(
                                 sendTo,
                                 sendTo,
@@ -6458,7 +6433,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                             msg->RequestTimeout);
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -6476,8 +6451,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TActorId volumeActorId;
         TActorId partActorId;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartition::EvWaitReadyResponse: {
@@ -6492,7 +6466,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -6719,8 +6693,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui32 resyncProgressCounter = 0;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->Recipient == MakeStorageStatsServiceId()
                     && event->GetTypeRewrite() == TEvStatsService::EvVolumeSelfCounters)
                 {
@@ -6729,7 +6702,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         msg->VolumeSelfCounters->Simple.ResyncProgress.Value;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -6928,8 +6901,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.WaitReady();
 
         ui32 resyncStartedCounter = 0;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->Recipient == MakeStorageStatsServiceId()
                         && event->GetTypeRewrite() == TEvStatsService::EvVolumeSelfCounters)
                 {
@@ -6939,7 +6911,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         msg->VolumeSelfCounters->Simple.ResyncStarted.Value;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -7024,15 +6996,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         clientInfo.SetMountSeqNumber(0);
         clientInfo.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
 
-        auto obs = [&] (
-            TTestActorRuntimeBase& runtime,
-            TAutoPtr<IEventHandle>& event)
+        auto obs = [] (TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() == TEvVolume::EvResyncFinished) {
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         runtime->SetObserverFunc(obs);
 
@@ -7127,15 +7097,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(
             config.GetResyncAfterClientInactivityInterval()));
 
-        auto obs = [&] (
-            TTestActorRuntimeBase& runtime,
-            TAutoPtr<IEventHandle>& event)
+        auto obs = [] (TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() == TEvVolume::EvResyncFinished) {
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
         runtime->SetObserverFunc(obs);
 
@@ -7741,15 +7709,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         bool firstWriteRequest = true;
         bool describeRequest = false;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::TEvWriteBlocksRequest::EventType:
                         if (firstWriteRequest) {
                             firstWriteRequest = false;
                             break;
                         }
-                        runtime.Send(new IEventHandle(
+                        runtime->Send(new IEventHandle(
                             event->Sender,
                             event->Sender,
                             new TEvService::TEvWriteBlocksResponse(
@@ -7760,14 +7727,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     case TEvVolume::TEvDescribeBlocksRequest::EventType:
                         describeRequest = true;
-                        runtime.Send(new IEventHandle(
+                        runtime->Send(new IEventHandle(
                             event->Sender,
                             event->Sender,
                             new TEvVolume::TEvDescribeBlocksResponse(
                                 MakeError(E_REJECTED))));
                         return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -7863,12 +7830,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         };
         // Make handler for stealing nested messages
         std::vector<std::unique_ptr<IEventHandle>> stolenRequests;
-        auto requestThief =
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        auto requestThief = [&](TAutoPtr<IEventHandle>& event)
         {
             switch (event->GetTypeRewrite()) {
                 case TEvVolume::TEvDescribeBlocksRequest::EventType:
-                    runtime.Send(new IEventHandle(
+                    runtime->Send(new IEventHandle(
                         event->Sender,
                         event->Sender,
                         makeDescribeResponse().release()
@@ -7880,14 +7846,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         // Make handler for taking counters from EvVolumePartCounters message.
         int longRunningReads = 0;
         TSimpleCounter writeCounter;
-        auto takeCounters =
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        auto takeCounters = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->Recipient == MakeStorageStatsServiceId() &&
                 event->GetTypeRewrite() ==
@@ -7899,7 +7864,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     msg->DiskCounters->Simple.LongRunningReadBlob.Value;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         // Ready to postpone request.

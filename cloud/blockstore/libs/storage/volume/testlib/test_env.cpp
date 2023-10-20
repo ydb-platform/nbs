@@ -738,7 +738,7 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     ui32 partStatsSaved = 0;
     bool stopPartCounters = false;
 
-    auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+    auto obs = [&] (TAutoPtr<IEventHandle>& event) {
         if (event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters &&
             event->Recipient != MakeStorageStatsServiceId() &&
             stopPartCounters)
@@ -755,7 +755,7 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
             channelHistorySize = msg->DiskCounters->Simple.ChannelHistorySize.Value;
         }
 
-        return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        return TTestActorRuntime::DefaultObserverFunc(event);
     };
 
     runtime->SetObserverFunc(obs);

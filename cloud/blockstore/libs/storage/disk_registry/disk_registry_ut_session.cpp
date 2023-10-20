@@ -530,8 +530,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TAutoPtr<IEventHandle> startAcquireDiskResp;
         TAutoPtr<IEventHandle> finishAcquireDiskReq;
 
-        auto observerFunc = runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto observerFunc = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvStartAcquireDiskResponse: {
                         startAcquireDiskResp = std::move(event);
@@ -543,7 +542,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
@@ -598,15 +597,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT(!HasError(response->GetError()));
         }
 
-        auto observerFunc = runtime->SetObserverFunc(
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto observerFunc = runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskAgent::EvReleaseDevicesRequest: {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
         diskRegistry.SendReleaseDiskRequest("disk-1", "session-1");
@@ -650,15 +648,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("disk-1", 40_GB);
         diskRegistry.AcquireDisk("disk-1", "session-1");
 
-        auto observerFunc = runtime->SetObserverFunc(
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto observerFunc = runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskAgent::EvReleaseDevicesRequest: {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
         diskRegistry.SendReleaseDiskRequest("disk-1", "session-1");

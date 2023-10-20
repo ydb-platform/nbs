@@ -606,8 +606,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<TString> destroyedDiskIds;
         TAutoPtr<IEventHandle> destroyVolumeRequest;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
                         && event->Recipient == MakeStorageServiceId())
                 {
@@ -618,7 +617,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1216,8 +1215,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         TVector<NProto::TDeviceConfig> dirtyDevices;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() ==
                         TEvDiskRegistryPrivate::EvSecureEraseRequest)
                 {
@@ -1229,7 +1227,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         msg->DirtyDevices.end());
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1583,8 +1581,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
 
-        auto oldOfn = runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto oldOfn = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceRequest) {
                     event->DropRewrite();
                     secureEraseDeviceRequests.push_back(std::unique_ptr<IEventHandle> {
@@ -1594,7 +1591,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1694,8 +1691,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
 
-        auto oldOfn = runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto oldOfn = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceRequest) {
                     event->DropRewrite();
                     secureEraseDeviceRequests.push_back(std::unique_ptr<IEventHandle> {
@@ -1705,7 +1701,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -1772,8 +1768,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<TString> destroyedDiskIds;
         TAutoPtr<IEventHandle> destroyVolumeRequest;
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
                         && event->Recipient == MakeStorageServiceId())
                 {
@@ -1784,7 +1779,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 

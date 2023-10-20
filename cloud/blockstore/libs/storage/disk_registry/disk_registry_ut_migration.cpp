@@ -715,8 +715,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         size_t cleanDevices = 0;
         size_t reallocateCount = 0;
 
-        runtime->SetObserverFunc(
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskAgent::EvSecureEraseDeviceResponse: {
                     auto* msg = event->Get<TEvDiskAgent::TEvSecureEraseDeviceResponse>();
@@ -730,7 +729,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
         auto addAgent = [&] (int i) {
@@ -1335,8 +1334,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         ui32 cleanDevices = 0;
         TAutoPtr<IEventHandle> reallocRequest;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvSecureEraseResponse: {
                         auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
@@ -1350,7 +1348,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         // cancel migration
@@ -1491,8 +1489,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         RegisterAndWaitForAgents(*runtime, agents);
 
         TString enabledDeviceUUID;
-        runtime->SetObserverFunc(
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvEnableAgentDeviceRequest: {
                         auto& msg = *event->Get<
@@ -1501,7 +1498,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         diskRegistry.ChangeDeviceState("uuid-1.1", NProto::DEVICE_STATE_WARNING);

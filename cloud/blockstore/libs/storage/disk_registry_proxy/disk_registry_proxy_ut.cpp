@@ -660,13 +660,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         int lookupCount = 1;
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvHiveProxy::EvLookupTabletRequest) {
                     ++lookupCount;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -699,13 +698,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             .With(config)
             .Build();
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvHiveProxy::EvLookupTabletRequest) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -753,13 +751,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         auto runtime = TTestRuntimeBuilder().Build();
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskRegistry::EvAllocateDiskResponse) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
@@ -796,8 +793,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob =
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
                 const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
@@ -805,7 +801,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         auto runtime = TTestRuntimeBuilder()
@@ -828,8 +824,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob =
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
                 const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
@@ -837,7 +832,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         auto runtime = TTestRuntimeBuilder()
@@ -870,8 +865,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob =
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
                 const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
@@ -879,7 +873,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         auto runtime = TTestRuntimeBuilder()
@@ -908,8 +902,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob =
-        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
                 const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
@@ -917,7 +910,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
         auto runtime = TTestRuntimeBuilder()
@@ -954,13 +947,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         client.SendReassignRequest("hdd", "hdd", "hdd");
 
-        runtime->SetObserverFunc(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
 
