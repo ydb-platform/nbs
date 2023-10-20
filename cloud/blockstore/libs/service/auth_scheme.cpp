@@ -174,7 +174,7 @@ TPermissionList GetRequestPermissions(
         return std::pair {name, NCloud::CreatePermissionList(lst)};
     };
 
-    const THashMap<TString, TPermissionList> actions = {
+    static const THashMap<TString, TPermissionList> actions = {
         // Get
         perms("backupdiskregistrystate", {EPermission::Get}),
         perms("checkblob", {EPermission::Get}),
