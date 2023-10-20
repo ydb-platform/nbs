@@ -127,8 +127,8 @@ enum class EPublishingPolicy
     xxx(MaxReadIops,                Generic, Permanent,            __VA_ARGS__)\
     xxx(MaxWriteIops,               Generic, Permanent,            __VA_ARGS__)\
     xxx(MaxUsedQuota,               Generic, Permanent,            __VA_ARGS__)\
-    xxx(LastVolumeLoadTime,         Generic, Permanent,            __VA_ARGS__)\
-    xxx(LastVolumeStartTime,        Generic, Permanent,            __VA_ARGS__)\
+    xxx(LastVolumeLoadTime,         Max,     Permanent,            __VA_ARGS__)\
+    xxx(LastVolumeStartTime,        Max,     Permanent,            __VA_ARGS__)\
 
 #define BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(xxx, ...)            \
     xxx(ThrottlerRejectedRequests,  Generic, Expiring,             __VA_ARGS__)\
