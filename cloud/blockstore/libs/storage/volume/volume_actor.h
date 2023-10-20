@@ -893,7 +893,11 @@ private:
         ui64 requestId,
         const TString& checkpointId);
 
-    bool GetChangedBlocksForLightCheckpoints(
+    void GetChangedBlocksForLightCheckpoints(
+        const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(
         const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 

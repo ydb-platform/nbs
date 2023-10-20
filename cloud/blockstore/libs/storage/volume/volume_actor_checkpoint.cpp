@@ -518,13 +518,23 @@ void TVolumeActor::CreateCheckpointLightRequest(
     ui64 requestId,
     const TString& checkpointId)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] %s created light checkpoint %s",
-        TabletID(),
-        TCreateCheckpointMethod::Name,
-        checkpointId.Quote().c_str());
+    const auto type = State->GetCheckpointStore().GetCheckpointType(checkpointId);
 
-    State->CreateCheckpointLight(checkpointId);
+    if (type && *type == ECheckpointType::Light) {
+        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] %s: light checkpoint %s already exists",
+            TabletID(),
+            TCreateCheckpointMethod::Name,
+            checkpointId.Quote().c_str());
+    } else {
+        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] %s created light checkpoint %s",
+            TabletID(),
+            TCreateCheckpointMethod::Name,
+            checkpointId.Quote().c_str());
+
+        State->CreateCheckpointLight(checkpointId);
+    }
 
     const TCheckpointRequestInfo* requestInfo =
         CheckpointRequests.FindPtr(requestId);
@@ -561,32 +571,17 @@ void TVolumeActor::DeleteCheckpointLightRequest(
     );
 }
 
-bool TVolumeActor::GetChangedBlocksForLightCheckpoints(
+void TVolumeActor::GetChangedBlocksForLightCheckpoints(
     const TGetChangedBlocksMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
     auto requestInfo =
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    NProto::TError error;
-    TString mask;
-
-    if (msg->Record.GetBlocksCount() == 0) {
-        error = MakeError(E_ARGUMENT, "Empty block range is forbidden for GetChangedBlocks");
-    } else {
-        error = State->FindDirtyBlocksBetweenLightCheckpoints(
-            TBlockRange64::WithLength(
-                msg->Record.GetStartIndex(),
-                msg->Record.GetBlocksCount()),
-            &mask);
-    }
-
-    if (SUCCEEDED(error.GetCode())) {
-        *response->Record.MutableMask() = std::move(mask);
-    } else {
+    auto replyError = [&](NProto::TError error)
+    {
         TString errorMsg = TStringBuilder()
             << "[%lu] %s for light checkpoints failed, request parameters are:"
             << " LowCheckpointId: " << msg->Record.GetLowCheckpointId() << ","
@@ -599,11 +594,80 @@ bool TVolumeActor::GetChangedBlocksForLightCheckpoints(
             TabletID(),
             TGetChangedBlocksMethod::Name);
 
-        *response->Record.MutableError() = std::move(error);
+        NCloud::Reply(ctx, *requestInfo,
+            std::make_unique<TGetChangedBlocksMethod::TResponse>(std::move(error)));
+    };
+
+    if (!msg->Record.GetHighCheckpointId().empty()) {
+        const auto highCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+                msg->Record.GetHighCheckpointId());
+
+        if (!highCheckpointType || *highCheckpointType != ECheckpointType::Light){
+            replyError(MakeError(E_ARGUMENT, "High light checkpoint does not exist"));
+            return;
+        }
     }
 
+    if (!msg->Record.GetLowCheckpointId().empty()) {
+        const auto lowCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+                msg->Record.GetLowCheckpointId());
+
+        if (!lowCheckpointType || *lowCheckpointType != ECheckpointType::Light){
+            replyError(MakeError(E_ARGUMENT, "Low light checkpoint does not exist"));
+            return;
+        }
+    }
+
+    if (msg->Record.GetBlocksCount() == 0) {
+        replyError(MakeError(E_ARGUMENT, "Empty block range is forbidden for GetChangedBlocks"));
+        return;
+    }
+
+    TString mask;
+
+    auto error = State->FindDirtyBlocksBetweenLightCheckpoints(
+        msg->Record.GetLowCheckpointId(),
+        msg->Record.GetHighCheckpointId(),
+        TBlockRange64::WithLength(
+            msg->Record.GetStartIndex(),
+            msg->Record.GetBlocksCount()),
+        &mask);
+
+    if (!SUCCEEDED(error.GetCode())) {
+        replyError(error);
+        return;
+    }
+
+    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
+    *response->Record.MutableMask() = std::move(mask);
+
     NCloud::Reply(ctx, *requestInfo, std::move(response));
-    return true;
+}
+
+void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(
+    const TGetChangedBlocksMethod::TRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
+    auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    TString errorMsg = TStringBuilder()
+        << "[%lu] %s: " << "Disk registry based disks can not handle"
+        << " GetChangedBlocks requests for normal checkpoints,"
+        << " Checkpoints requested:"
+        << " LowCheckpointId: " << msg->Record.GetLowCheckpointId() << ","
+        << " HighCheckpointId: " << msg->Record.GetHighCheckpointId();
+
+    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+        errorMsg.c_str(),
+        TabletID(),
+        TGetChangedBlocksMethod::Name);
+
+    *response->Record.MutableError() = MakeError(E_ARGUMENT, errorMsg);
+    NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
 static ECheckpointType ProtoCheckpointType2CheckpointType(bool isLight, NProto::ECheckpointType checkpointType)
@@ -1000,9 +1064,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         request.CheckpointId.Quote().c_str(),
         args.Completed ? "completed" : "rejected");
 
-    State->GetCheckpointStore().SetCheckpointRequestFinished(
-        request.RequestId,
-        args.Completed);
+    State->SetCheckpointRequestFinished(request, args.Completed);
     CheckpointRequests.erase(request.RequestId);
 
     if (request.Type == ECheckpointType::Light) {

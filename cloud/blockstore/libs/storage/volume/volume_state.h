@@ -352,9 +352,13 @@ public:
 
     void DeleteCheckpointLight(TString checkpointId);
 
+    void StopCheckpointLight();
+
     bool HasCheckpointLight() const;
 
     NProto::TError FindDirtyBlocksBetweenLightCheckpoints(
+        TString lowCheckpointId,
+        TString highCheckpointId,
         const TBlockRange64& blockRange,
         TString* mask) const;
 
@@ -520,6 +524,10 @@ public:
     {
         return CheckpointStore;
     }
+
+    void SetCheckpointRequestFinished(
+        const TCheckpointRequest& request,
+        bool success);
 
     //
     // UsedBlocks

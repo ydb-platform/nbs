@@ -68,17 +68,25 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
         checkpoint.CreateCheckpoint("Checkpoint_2");
 
         UNIT_ASSERT(!SUCCEEDED(checkpoint.FindDirtyBlocksBetweenCheckpoints(
+            "Checkpoint_1",
+            "Checkpoint_2",
             TBlockRange64::MakeHalfOpenInterval(0, 11),
             nullptr).GetCode()));
         UNIT_ASSERT(!SUCCEEDED(checkpoint.FindDirtyBlocksBetweenCheckpoints(
+            "Checkpoint_1",
+            "Checkpoint_2",
             TBlockRange64::MakeHalfOpenInterval(5, 12),
             nullptr).GetCode()));
 
         TString mask;
         UNIT_ASSERT_VALUES_EQUAL(S_OK, checkpoint.FindDirtyBlocksBetweenCheckpoints(
+            "Checkpoint_1",
+            "Checkpoint_2",
             TBlockRange64::MakeHalfOpenInterval(0, 10),
             &mask).GetCode());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, checkpoint.FindDirtyBlocksBetweenCheckpoints(
+            "Checkpoint_1",
+            "Checkpoint_2",
             TBlockRange64::MakeHalfOpenInterval(3, 5),
             &mask).GetCode());
     }
@@ -96,24 +104,85 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
         checkpoint.CreateCheckpoint("Checkpoint_2");
 
         {
-            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(TBlockRange64::MakeHalfOpenInterval(0, 10), &mask);
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_2", TBlockRange64::MakeHalfOpenInterval(0, 10), &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL("\xCC\x01", mask); // 0011001110
         }
         {
-            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(TBlockRange64::MakeHalfOpenInterval(3, 9), &mask);
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_2", TBlockRange64::MakeHalfOpenInterval(3, 9), &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL("\x39", mask); // 100111
         }
         {
-            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(TBlockRange64::MakeHalfOpenInterval(0, 8), &mask);
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_2", TBlockRange64::MakeHalfOpenInterval(0, 8), &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL("\xCC", mask); // 00110011
         }
         {
-            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(TBlockRange64::MakeHalfOpenInterval(8, 10), &mask);
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_2", TBlockRange64::MakeHalfOpenInterval(8, 10), &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL("\x01", mask); // 10
+        }
+
+        const auto& blockRangeFull = TBlockRange64::MakeHalfOpenInterval(0, 10);
+        TString allOnesMask = "\xff\x03";
+
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("", "Checkpoint_2", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_x", "Checkpoint_2", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_x", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_2", "Checkpoint_1", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("", "", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_1", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_2", "Checkpoint_2", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_2", "", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL("\xCC\x01", mask); // 0011001110
+        }
+
+        checkpoint.DeleteCheckpoint("Checkpoint_1");
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("", "Checkpoint_2", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
+        }
+        {
+            auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints("Checkpoint_1", "Checkpoint_2", blockRangeFull, &mask);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(allOnesMask, mask);
         }
     }
 }

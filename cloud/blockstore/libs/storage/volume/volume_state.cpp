@@ -814,6 +814,20 @@ bool TVolumeState::GetMuteIOErrors() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeState::SetCheckpointRequestFinished(
+    const TCheckpointRequest& request,
+    bool success)
+{
+    GetCheckpointStore().SetCheckpointRequestFinished(
+        request.RequestId,
+        success);
+    if (GetCheckpointStore().GetLightCheckpoints().empty()) {
+        StopCheckpointLight();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TVolumeState::StartCheckpointLight()
 {
     if (!CheckpointLight) {
@@ -834,9 +848,12 @@ void TVolumeState::DeleteCheckpointLight(TString checkpointId)
     if (!CheckpointLight) {
         return;
     }
-    if (checkpointId == CheckpointLight->GetCheckpointId()) {
-        CheckpointLight.reset();
-    }
+    CheckpointLight->DeleteCheckpoint(checkpointId);
+}
+
+void TVolumeState::StopCheckpointLight()
+{
+    CheckpointLight.reset();
 }
 
 bool TVolumeState::HasCheckpointLight() const
@@ -845,6 +862,8 @@ bool TVolumeState::HasCheckpointLight() const
 }
 
 NProto::TError TVolumeState::FindDirtyBlocksBetweenLightCheckpoints(
+    TString lowCheckpointId,
+    TString highCheckpointId,
     const TBlockRange64& blockRange,
     TString* mask) const
 {
@@ -853,6 +872,8 @@ NProto::TError TVolumeState::FindDirtyBlocksBetweenLightCheckpoints(
     }
 
     return CheckpointLight->FindDirtyBlocksBetweenCheckpoints(
+        std::move(lowCheckpointId),
+        std::move(highCheckpointId),
         blockRange,
         mask);
 }

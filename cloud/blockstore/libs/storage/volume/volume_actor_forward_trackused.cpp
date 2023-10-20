@@ -112,10 +112,31 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     }
 
     if constexpr (std::is_same_v<TMethod, TEvService::TGetChangedBlocksMethod>) {
-        const auto type = State->GetCheckpointStore().GetCheckpointType(
+        const auto highCheckpointType = State->GetCheckpointStore().GetCheckpointType(
             msg->Record.GetHighCheckpointId());
-        if (type && *type == ECheckpointType::Light){
-            return GetChangedBlocksForLightCheckpoints(ev, ctx);
+        const auto lowCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+            msg->Record.GetLowCheckpointId());
+
+        if (highCheckpointType && *highCheckpointType == ECheckpointType::Light
+                || lowCheckpointType && *lowCheckpointType == ECheckpointType::Light)
+        {
+            GetChangedBlocksForLightCheckpoints(ev, ctx);
+            return true;
+        }
+
+        // TODO: NBS-3228: remove checks for disk registry based disks after normal checkpoints
+        // for disk registry based disks are implemented completely.
+        if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())
+                && msg->Record.GetHighCheckpointId() == ""
+                && msg->Record.GetLowCheckpointId() == "")
+        {
+            GetChangedBlocksForLightCheckpoints(ev, ctx);
+            return true;
+        }
+
+        if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+            ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(ev, ctx);
+            return true;
         }
     }
 
