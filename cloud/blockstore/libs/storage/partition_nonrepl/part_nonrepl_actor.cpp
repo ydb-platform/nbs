@@ -27,7 +27,8 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , PartConfig(std::move(partConfig))
     , StatActorId(statActorId)
     , DeviceStats(PartConfig->GetDevices().size())
-    , PartCounters(CreatePartitionDiskCounters(EPublishingPolicy::NonRepl))
+    , PartCounters(
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased))
 {
     ActivityType = TBlockStoreActivities::PARTITION;
 }

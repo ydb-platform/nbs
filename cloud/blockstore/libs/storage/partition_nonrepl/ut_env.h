@@ -31,7 +31,7 @@ const ui64 DefaultDeviceBlockSize = 512;
 struct TStorageStatsServiceState
     : TAtomicRefCount<TStorageStatsServiceState>
 {
-    TPartitionDiskCounters Counters{EPublishingPolicy::NonRepl};
+    TPartitionDiskCounters Counters{EPublishingPolicy::DiskRegistryBased};
 };
 
 using TStorageStatsServiceStatePtr = TIntrusivePtr<TStorageStatsServiceState>;

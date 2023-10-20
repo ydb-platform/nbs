@@ -30,7 +30,8 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
 
 void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
 {
-    auto stats = CreatePartitionDiskCounters(EPublishingPolicy::NonRepl);
+    auto stats =
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
 
     if (MirrorCounters) {
         stats->AggregateWith(*MirrorCounters);

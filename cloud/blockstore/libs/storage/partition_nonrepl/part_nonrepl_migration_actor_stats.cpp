@@ -32,7 +32,8 @@ void TNonreplicatedPartitionMigrationActor::HandlePartCounters(
 
 void TNonreplicatedPartitionMigrationActor::SendStats(const TActorContext& ctx)
 {
-    auto stats = CreatePartitionDiskCounters(EPublishingPolicy::NonRepl);
+    auto stats =
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
 
     if (SrcCounters) {
         stats->AggregateWith(*SrcCounters);

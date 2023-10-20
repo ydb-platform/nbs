@@ -13,7 +13,7 @@ enum class EPublishingPolicy
 {
     All,
     Repl,
-    NonRepl
+    DiskRegistryBased,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,10 +51,10 @@ enum class EPublishingPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_NONREPL_PART_SIMPLE_COUNTERS(xxx, ...)                      \
+#define BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(xxx, ...)                      \
     xxx(HasBrokenDevice,        Generic, Permanent,                __VA_ARGS__)\
     xxx(HasBrokenDeviceSilent,  Generic, Permanent,                __VA_ARGS__)\
-// BLOCKSTORE_NONREPL_PART_SIMPLE_COUNTERS
+// BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -159,12 +159,12 @@ enum class EPublishingPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_NONREPL_VOLUME_SELF_SIMPLE_COUNTERS(xxx, ...)               \
+#define BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(xxx, ...)               \
     xxx(MigrationStarted,           Generic, Permanent,            __VA_ARGS__)\
     xxx(MigrationProgress,          Generic, Permanent,            __VA_ARGS__)\
     xxx(ResyncStarted,              Generic, Permanent,            __VA_ARGS__)\
     xxx(ResyncProgress,             Generic, Permanent,            __VA_ARGS__)\
-// BLOCKSTORE_NONREPL_VOLUME_SELF_SIMPLE_COUNTERS
+// BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -180,7 +180,7 @@ struct TPartitionDiskCounters
 
         BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
         BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-        BLOCKSTORE_NONREPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
+        BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
 #undef BLOCKSTORE_SIMPLE_COUNTER
     } Simple;
 
@@ -251,7 +251,7 @@ struct TVolumeSelfCounters
 
         BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
         BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-        BLOCKSTORE_NONREPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
+        BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
 #undef BLOCKSTORE_SIMPLE_COUNTER
     } Simple;
 

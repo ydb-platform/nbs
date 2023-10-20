@@ -33,7 +33,8 @@ void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(),
         std::move(PartCounters));
 
-    PartCounters = CreatePartitionDiskCounters(EPublishingPolicy::NonRepl);
+    PartCounters =
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }

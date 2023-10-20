@@ -157,7 +157,7 @@ void TVolumeActor::CompleteLoadState(
         const bool isDiskRegistryBased =
             IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind());
         if (isDiskRegistryBased) {
-            CountersPolicy = EPublishingPolicy::NonRepl;
+            CountersPolicy = EPublishingPolicy::DiskRegistryBased;
         } else {
             CountersPolicy = EPublishingPolicy::Repl;
         }

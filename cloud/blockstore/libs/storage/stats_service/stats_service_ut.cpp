@@ -641,7 +641,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldReportBytesCountForSSDNonreplVolumes)
     {
         DoTestShouldReportBytesCount(
-            EPublishingPolicy::NonRepl,
+            EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             "ssd_nonrepl",
             false);
@@ -650,7 +650,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldReportBytesCountForHDDNonreplVolumes)
     {
         DoTestShouldReportBytesCount(
-            EPublishingPolicy::NonRepl,
+            EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
             "hdd_nonrepl",
             false);
@@ -659,7 +659,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldReportBytesCountForSSDMirror2Volumes)
     {
         DoTestShouldReportBytesCount(
-            EPublishingPolicy::NonRepl,
+            EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
             "ssd_mirror2",
             false);
@@ -668,7 +668,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldReportBytesCountForSSDMirror3Volumes)
     {
         DoTestShouldReportBytesCount(
-            EPublishingPolicy::NonRepl,
+            EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
             "ssd_mirror3",
             false);
@@ -1096,28 +1096,28 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            EPublishingPolicy::NonRepl);
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForHddNonreplDisks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-            EPublishingPolicy::NonRepl);
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror2Disks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            EPublishingPolicy::NonRepl);
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror3Disks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            EPublishingPolicy::NonRepl);
+            EPublishingPolicy::DiskRegistryBased);
     }
 }
 

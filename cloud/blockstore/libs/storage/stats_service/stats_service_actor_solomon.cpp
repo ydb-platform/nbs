@@ -221,7 +221,8 @@ void TStatsServiceActor::HandleRegisterVolume(
     auto volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
 
     if (volume->IsDiskRegistryBased()) {
-        volume->PerfCounters = TDiskPerfData(EPublishingPolicy::NonRepl);
+        volume->PerfCounters =
+            TDiskPerfData(EPublishingPolicy::DiskRegistryBased);
     } else {
         volume->PerfCounters = TDiskPerfData(EPublishingPolicy::Repl);
     }

@@ -189,7 +189,8 @@ void TVolumeState::Reset()
 
     if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
         if (Meta.GetDevices().size()) {
-            PartitionStatInfos.emplace_back(EPublishingPolicy::NonRepl);
+            PartitionStatInfos.emplace_back(
+                EPublishingPolicy::DiskRegistryBased);
         }
         const auto& encryptionDesc = Meta.GetVolumeConfig().GetEncryptionDesc();
         if (encryptionDesc.GetMode() != NProto::NO_ENCRYPTION) {

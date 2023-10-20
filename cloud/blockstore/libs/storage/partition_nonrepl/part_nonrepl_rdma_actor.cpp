@@ -40,7 +40,8 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
     , PartConfig(std::move(partConfig))
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
-    , PartCounters(CreatePartitionDiskCounters(EPublishingPolicy::NonRepl))
+    , PartCounters(
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased))
 {
     ActivityType = TBlockStoreActivities::PARTITION;
 }
