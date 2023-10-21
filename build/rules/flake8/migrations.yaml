@@ -1379,7 +1379,6 @@ migrations:
     ignore:
     - E225
     prefixes:
-    - adfox/amacs/tests/functional/tests_amacs/antiscrew
     - adfox/amacs/tests/functional/tests_amacs/banner_view
     - adfox/amacs/tests/functional/tests_amacs/hb_startup
     - adfox/amacs/tests/functional/tests_amacs/session_json
