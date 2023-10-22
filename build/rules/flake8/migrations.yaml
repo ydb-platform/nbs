@@ -2294,8 +2294,6 @@ migrations:
     - captcha/tools/kikimr_uploader
     - captcha/tools/make_fallback_archive
     - captcha/tools/make_sharded_session_table
-    - cloud/blockstore/tools/analytics/billing-metrics
-    - cloud/blockstore/tools/analytics/tablets-for-prune
     - cloud/bootstrap/api/src/backend/core
     - cloud/extservicesintegration/auth
     - cloud/extservicesintegration/billing/client
@@ -6359,7 +6357,6 @@ migrations:
     - balancer/test/configs/lib/locations_test
     - balancer/test/functional/openssl
     - balancer/test/util/dnsfake
-    - cloud/blockstore/tools/analytics/top-disks
     - cloud/blockstore/tools/cms/lib
     - cloud/kms/client/python
     - cloud/mdb/salt/salt/_states
