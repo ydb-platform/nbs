@@ -250,13 +250,15 @@ std::unique_ptr<TEvVolume::TEvRemoveClientRequest> TVolumeClient::CreateRemoveCl
 
 std::unique_ptr<TEvService::TEvStatVolumeRequest> TVolumeClient::CreateStatVolumeRequest(
     const TString& clientId,
-    const TVector<TString>& storageConfigFields)
+    const TVector<TString>& storageConfigFields,
+    const bool noPartition)
 {
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.MutableHeaders()->SetClientId(clientId);
     for (const auto& field: storageConfigFields) {
         request->Record.AddStorageConfigFields(field);
     }
+    request->Record.SetNoPartition(noPartition);
     return request;
 }
 

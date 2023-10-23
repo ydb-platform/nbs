@@ -633,6 +633,9 @@ message TStatVolumeRequest
 
     // Storage config fields to get values for.
     repeated string StorageConfigFields = 4;
+
+    // Don't return partition stats (skips partition readiness check).
+    bool NoPartition = 5;
 }
 
 message TStatVolumeResponse

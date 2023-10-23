@@ -228,7 +228,9 @@ void TVolumeActor::HandleStatVolume(
         "StatVolume",
         requestInfo->CallContext->RequestId);
 
-    if (State->GetPartitionsState() != TPartitionInfo::READY) {
+    const bool noPartition = msg->Record.GetNoPartition();
+
+    if (!noPartition && State->GetPartitionsState() != TPartitionInfo::READY) {
         StartPartitionsIfNeeded(ctx);
 
         if (!State->Ready()) {
@@ -297,7 +299,7 @@ void TVolumeActor::HandleStatVolume(
     TVector<TString> checkpoints =
         State->GetCheckpointStore().GetCheckpointsWithData();
 
-    if (State->GetPartitions()) {
+    if (!noPartition && State->GetPartitions()) {
         TVector<TActorId> partActorIds;
         for (const auto& partition: State->GetPartitions()) {
             partActorIds.push_back(partition.Owner);

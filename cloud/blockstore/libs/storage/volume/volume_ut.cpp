@@ -2187,6 +2187,49 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldStatVolumeWithoutPartitionReadiness)
+    {
+        NProto::TStorageServiceConfig config;
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->CurrentErrorCode = E_BS_RESOURCE_EXHAUSTED;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize,
+            "fail"
+        );
+
+        {
+            NProto::TVolumeClientInfo info;
+            info.SetClientId("c");
+            info.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_WRITE);
+            info.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
+            volume.AddClient(info);
+        }
+
+        volume.SendStatVolumeRequest(
+            TString(),          // clientId
+            TVector<TString>(), // storageConfigFields
+            true                // noPartition
+        );
+
+        {
+            auto response = volume.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            const auto& clients = response->Record.GetClients();
+            UNIT_ASSERT_VALUES_EQUAL(1, clients.size());
+            UNIT_ASSERT_VALUES_EQUAL("c", clients[0].GetClientId());
+        }
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestsToMirroredPartition)
     {
         NProto::TStorageServiceConfig config;

@@ -168,6 +168,8 @@ void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.SetDiskId(DiskId);
+    // no need to check partition readiness and retrieve partition stats
+    request->Record.SetNoPartition(true);
 
     NCloud::Send(
         ctx,

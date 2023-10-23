@@ -353,7 +353,8 @@ public:
 
     std::unique_ptr<TEvService::TEvStatVolumeRequest> CreateStatVolumeRequest(
         const TString& clientId = {},
-        const TVector<TString>& storageConfigFields = {});
+        const TVector<TString>& storageConfigFields = {},
+        const bool noPartition = false);
 
     std::unique_ptr<TEvService::TEvReadBlocksRequest> CreateReadBlocksRequest(
         const TBlockRange64& readRange,
