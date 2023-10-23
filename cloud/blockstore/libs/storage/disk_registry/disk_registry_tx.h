@@ -619,7 +619,7 @@ struct TTxDiskRegistry
         const bool DryRun;
 
         NProto::TError Error;
-        TString AffectedDisk;
+        TVector<TString> AffectedDisks;
         TInstant TxTs;
         TDuration Timeout;
 
@@ -638,7 +638,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            AffectedDisk.clear();
+            AffectedDisks.clear();
             Error.Clear();
         }
     };

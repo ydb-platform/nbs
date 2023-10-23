@@ -75,20 +75,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TString affectedDisk;
+            TVector<TString> affectedDisks;
             TDuration timeout;
 
             auto error = state.UpdateCmsDeviceState(
                 db,
-                devices[0].GetDeviceUUID(),
+                devices[0].GetAgentId(),
+                devices[0].GetDeviceName(),
                 NProto::DEVICE_STATE_WARNING,
                 {}, // now
                 false,
-                affectedDisk,
+                affectedDisks,
                 timeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), E_TRY_AGAIN, error);
-            UNIT_ASSERT_VALUES_EQUAL("vol0", affectedDisk);
+            ASSERT_VECTORS_EQUAL(TVector{"vol0"}, affectedDisks);
         });
 
         TString target;

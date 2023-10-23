@@ -469,11 +469,12 @@ public:
 
     NProto::TError UpdateCmsDeviceState(
         TDiskRegistryDatabase& db,
-        const TString& deviceId,
+        const TAgentId& agentId,
+        const TString& path,
         NProto::EDeviceState state,
         TInstant now,
         bool dryRun,
-        TDiskId& affectedDisk,
+        TVector<TDiskId>& affectedDisks,
         TDuration& timeout);
 
     NProto::TError ReplaceDevice(
@@ -804,7 +805,7 @@ private:
         TInstant timestamp) const;
 
     NProto::TError CheckDeviceStateTransition(
-        const TString& deviceId,
+        const NProto::TDeviceConfig& device,
         NProto::EDeviceState newState,
         TInstant timestamp);
 
@@ -1004,6 +1005,26 @@ private:
         TString message);
 
     NProto::EVolumeIOMode GetIoMode(TDiskState& disk, TInstant now) const;
+
+    auto ResolveDevices(const TAgentId& agentId, const TString& path)
+        -> std::pair<NProto::TAgentConfig*, TVector<NProto::TDeviceConfig*>>;
+
+    NProto::TError CmsAddDevice(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        NProto::TDeviceConfig& device,
+        TInstant now,
+        bool dryRun,
+        TDuration& timeout);
+
+    NProto::TError CmsRemoveDevice(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        NProto::TDeviceConfig& device,
+        TInstant now,
+        bool dryRun,
+        TDiskId& affectedDisk,
+        TDuration& timeout);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

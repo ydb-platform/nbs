@@ -59,44 +59,15 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
     TDiskRegistryDatabase db(tx.DB);
 
     args.TxTs = ctx.Now();
-
-    auto deviceIds = State->GetDeviceIds(args.Host, args.Path);
-
-    if (deviceIds) {
-        // not transactional actually but it's not a big problem
-        ui32 processed = 0;
-        for (const auto& deviceId: deviceIds) {
-            args.Error = State->UpdateCmsDeviceState(
-                db,
-                deviceId,
-                args.State,
-                args.TxTs,
-                args.DryRun,
-                args.AffectedDisk,
-                args.Timeout);
-
-            if (HasError(args.Error)) {
-                LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                    "UpdateCmsDeviceState stopped after processing %u devices"
-                    ", current deviceId: %s",
-                    processed,
-                    deviceId.c_str());
-
-                break;
-            }
-
-            ++processed;
-        }
-    } else {
-        args.Error = MakeError(
-            E_NOT_FOUND,
-            TStringBuilder()
-                << "Device not found ("
-                << args.Host
-                << ","
-                << args.Path
-                << ')');
-    }
+    args.Error = State->UpdateCmsDeviceState(
+        db,
+        args.Host,
+        args.Path,
+        args.State,
+        args.TxTs,
+        args.DryRun,
+        args.AffectedDisks,
+        args.Timeout);
 }
 
 void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
@@ -119,9 +90,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
 
     auto response = std::make_unique<TResponse>(std::move(args.Error));
     response->Timeout = args.Timeout;
-    if (args.AffectedDisk) {
-        response->DependentDiskIds = {args.AffectedDisk};
-    }
+    response->DependentDiskIds = std::move(args.AffectedDisks);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

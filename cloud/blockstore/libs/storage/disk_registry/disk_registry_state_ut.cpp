@@ -5801,20 +5801,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TString affectedDisk;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
-                "uuid-2",
+                agent1.GetAgentId(),
+                "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts,
                 false,
-                affectedDisk,
+                affectedDisks,
                 timeout);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(storageConfig->GetNonReplicatedInfraTimeout(), timeout);
-            UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisk);
+            ASSERT_VECTORS_EQUAL(TVector{"disk-3"}, affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
@@ -5859,22 +5860,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // cms comes and request host removal
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TString affectedDisk;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
-                "uuid-2",
+                agent1.GetAgentId(),
+                "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts + TDuration::Seconds(10),
                 false,
-                affectedDisk,
+                affectedDisks,
                 timeout);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 TDuration(),
                 timeout);
-            UNIT_ASSERT(affectedDisk.Empty());
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
         });
 
         // mark agent is unavailable
@@ -6896,37 +6898,39 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TString affectedDisk;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
-                "uuid-2",
+                agent1.GetAgentId(),
+                "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts,
                 false,
-                affectedDisk,
+                affectedDisks,
                 timeout);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TString affectedDisk;
+            TVector<TString> affectedDisks;
             TDuration timeout;
             auto error = state.UpdateCmsDeviceState(
                 db,
-                "uuid-2",
+                agent1.GetAgentId(),
+                "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts + TDuration::Seconds(10),
                 true,
-                affectedDisk,
+                affectedDisks,
                 timeout);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
         });
     }
 

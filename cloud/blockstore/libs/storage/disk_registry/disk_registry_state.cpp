@@ -4531,19 +4531,15 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     TString reason,
     TDiskId& affectedDisk)
 {
-    auto error = CheckDeviceStateTransition(deviceId, newState, now);
-    if (FAILED(error.GetCode())) {
-        return error;
-    }
-
     auto [agentPtr, devicePtr] = FindDeviceLocation(deviceId);
     if (!agentPtr || !devicePtr) {
-        auto message = ReportDiskRegistryDeviceLocationNotFound(
-            TStringBuilder() << "UpdateDeviceState:DeviceId: " << deviceId
-            << ", agentPtr?: " << !!agentPtr
-            << ", devicePtr?: " << !!devicePtr);
+        return MakeError(E_NOT_FOUND, TStringBuilder() <<
+            "device " << deviceId.Quote() << " not found");
+    }
 
-        return MakeError(E_FAIL, message);
+    auto error = CheckDeviceStateTransition(*devicePtr, newState, now);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     const auto cmsTs = TInstant::MicroSeconds(devicePtr->GetCmsTs());
@@ -4570,41 +4566,102 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     return error;
 }
 
-NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
+auto TDiskRegistryState::ResolveDevices(
+        const TAgentId& agentId,
+        const TString& path)
+    -> std::pair<NProto::TAgentConfig*, TVector<NProto::TDeviceConfig*>>
+{
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return {};
+    }
+
+    TVector<NProto::TDeviceConfig*> devices;
+    for (auto& device: *agent->MutableDevices()) {
+        if (device.GetDeviceName() == path) {
+            devices.push_back(&device);
+        }
+    }
+
+    return { agent, std::move(devices) };
+}
+
+NProto::TError TDiskRegistryState::CmsAddDevice(
     TDiskRegistryDatabase& db,
-    const TString& deviceId,
-    NProto::EDeviceState newState,
+    NProto::TAgentConfig& agent,
+    NProto::TDeviceConfig& device,
+    TInstant now,
+    bool dryRun,
+    TDuration& timeout)
+{
+    NProto::TError error = CheckDeviceStateTransition(
+        device,
+        NProto::DEVICE_STATE_ONLINE,
+        now);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    error = {};
+    timeout = {};
+
+    if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+        // CMS can't return device from 'error' state.
+        // Should retry while device is in 'error' state.
+        error = MakeError(E_TRY_AGAIN, "device is in error state");
+        if (!timeout) {
+            timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
+        }
+    }
+
+    if (dryRun) {
+        return error;
+    }
+
+    if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
+        device.SetState(NProto::DEVICE_STATE_ONLINE);
+        device.SetStateMessage("cms add device action");
+    }
+
+    device.SetStateTs(now.MicroSeconds());
+
+    TDiskId affectedDisk;
+    ApplyDeviceStateChange(db, agent, device, now, affectedDisk);
+    Y_UNUSED(affectedDisk);
+
+    return error;
+}
+
+NProto::TError TDiskRegistryState::CmsRemoveDevice(
+    TDiskRegistryDatabase& db,
+    NProto::TAgentConfig& agent,
+    NProto::TDeviceConfig& device,
     TInstant now,
     bool dryRun,
     TDiskId& affectedDisk,
     TDuration& timeout)
 {
-    auto error = CheckDeviceStateTransition(deviceId, newState, now);
-    if (FAILED(error.GetCode())) {
+    NProto::TError error = CheckDeviceStateTransition(
+        device,
+        NProto::DEVICE_STATE_WARNING,
+        now);
+
+    if (HasError(error)) {
         return error;
     }
 
-    auto [agentPtr, devicePtr] = FindDeviceLocation(deviceId);
-    if (!agentPtr || !devicePtr) {
-        auto message = ReportDiskRegistryDeviceLocationNotFound(
-            TStringBuilder() << "UpdateCmsDeviceState:DeviceId: " << deviceId
-            << ", agentPtr?: " << !!agentPtr
-            << ", devicePtr?: " << !!devicePtr);
-
-        return MakeError(E_FAIL, message);
-    }
-
-    NProto::TError result = MakeError(S_OK);
     TInstant cmsTs;
-    timeout = TDuration::Zero();
+    error = {};
+    timeout = {};
 
-    const auto diskId = FindDisk(devicePtr->GetDeviceUUID());
+    const auto& deviceId = device.GetDeviceUUID();
+    const auto diskId = FindDisk(deviceId);
     const bool hasDependentDisk = diskId
-        && devicePtr->GetState() < NProto::DEVICE_STATE_ERROR
-        && newState != NProto::DEVICE_STATE_ONLINE;
+        && device.GetState() < NProto::DEVICE_STATE_ERROR;
 
     if (hasDependentDisk) {
-        result = MakeError(
+        error = MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "have dependent disk: " << diskId);
     }
@@ -4615,17 +4672,15 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
         StorageConfig->GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval();
 
     if (brokenPlacementGroupPartitions > maxBrokenPartitions) {
-        result = MakeError(
+        error = MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "will break too many partitions: "
                 << brokenPlacementGroupPartitions);
     }
 
-    if (HasError(result)) {
-        cmsTs = TInstant::MicroSeconds(devicePtr->GetCmsTs());
-        if (cmsTs == TInstant::Zero()
-                || cmsTs + StorageConfig->GetNonReplicatedInfraTimeout() <= now)
-        {
+    if (HasError(error)) {
+        cmsTs = TInstant::MicroSeconds(device.GetCmsTs());
+        if (!cmsTs || cmsTs + StorageConfig->GetNonReplicatedInfraTimeout() <= now) {
             // restart timer
             cmsTs = now;
         }
@@ -4633,31 +4688,83 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
         timeout = cmsTs + StorageConfig->GetNonReplicatedInfraTimeout() - now;
     }
 
-    if (devicePtr->GetState() == NProto::DEVICE_STATE_ERROR) {
-        // CMS can't return device from 'error' state.
+    if (dryRun) {
+        return error;
+    }
+
+    if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
+        device.SetState(NProto::DEVICE_STATE_WARNING);
+        device.SetStateMessage("cms remove device action");
+    }
+
+    device.SetStateTs(now.MicroSeconds());
+    device.SetCmsTs(cmsTs.MicroSeconds());
+
+    ApplyDeviceStateChange(db, agent, device, now, affectedDisk);
+
+    return error;
+}
+
+NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
+    TDiskRegistryDatabase& db,
+    const TAgentId& agentId,
+    const TString& path,
+    NProto::EDeviceState newState,
+    TInstant now,
+    bool dryRun,
+    TVector<TDiskId>& affectedDisks,
+    TDuration& timeout)
+{
+    if (newState != NProto::DEVICE_STATE_ONLINE &&
+        newState != NProto::DEVICE_STATE_WARNING)
+    {
+        return MakeError(E_NOT_FOUND, "Unexpected state");
+    }
+
+    auto [agent, devices] = ResolveDevices(agentId, path);
+    if (!agent || devices.empty()) {
+        return MakeError(E_NOT_FOUND, TStringBuilder()
+            << "Device not found (" << agentId << "," << path << ')');
+    }
+
+    NProto::TError error;
+
+    // not transactional actually but it's not a big problem
+    ui32 processed = 0;
+    for (auto* device: devices) {
         if (newState == NProto::DEVICE_STATE_ONLINE) {
-            // Should retry while device is in 'error' state.
-            result = MakeError(E_TRY_AGAIN, "device is in error state");
-            if (timeout == TDuration::Zero()) {
-                timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
+            error = CmsAddDevice(db, *agent, *device, now, dryRun, timeout);
+        } else {
+            TString affectedDisk;
+            error = CmsRemoveDevice(
+                db,
+                *agent,
+                *device,
+                now,
+                dryRun,
+                affectedDisk,
+                timeout);
+            if (!affectedDisk.empty()) {
+                affectedDisks.push_back(std::move(affectedDisk));
             }
         }
+
+        if (HasError(error)) {
+            STORAGE_WARN(
+                "UpdateCmsDeviceState stopped after processing %u devices"
+                ", current deviceId: %s",
+                processed,
+                device->GetDeviceUUID().c_str());
+
+            break;
+        }
+
+        ++processed;
     }
 
-    if (dryRun) {
-        return result;
-    }
+    SortUnique(affectedDisks);
 
-    if (devicePtr->GetState() != NProto::DEVICE_STATE_ERROR) {
-        devicePtr->SetState(newState);
-        devicePtr->SetStateMessage("cms action");
-    }
-    devicePtr->SetStateTs(now.MicroSeconds());
-    devicePtr->SetCmsTs(cmsTs.MicroSeconds());
-
-    ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
-
-    return result;
+    return error;
 }
 
 void TDiskRegistryState::ApplyDeviceStateChange(
@@ -4946,21 +5053,15 @@ TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
 }
 
 NProto::TError TDiskRegistryState::CheckDeviceStateTransition(
-    const TString& deviceId,
+    const NProto::TDeviceConfig& device,
     NProto::EDeviceState newState,
     TInstant timestamp)
 {
-    auto [agentPtr, devicePtr] = FindDeviceLocation(deviceId);
-    if (!agentPtr || !devicePtr) {
-        return MakeError(E_NOT_FOUND, TStringBuilder() <<
-            "device " << deviceId.Quote() << " not found");
-    }
-
-    if (devicePtr->GetState() == newState) {
+    if (device.GetState() == newState) {
         return MakeError(S_ALREADY);
     }
 
-    if (TInstant::MicroSeconds(devicePtr->GetStateTs()) > timestamp) {
+    if (TInstant::MicroSeconds(device.GetStateTs()) > timestamp) {
         return MakeError(E_INVALID_STATE, "out of order");
     }
 
