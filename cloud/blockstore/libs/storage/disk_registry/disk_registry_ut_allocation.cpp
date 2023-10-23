@@ -1769,19 +1769,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TVector<TString> destroyedDiskIds;
         TAutoPtr<IEventHandle> destroyVolumeRequest;
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
-                        && event->Recipient == MakeStorageServiceId())
-                {
-                    auto* msg = event->Get<TEvService::TEvDestroyVolumeRequest>();
-                    UNIT_ASSERT(msg->Record.GetDestroyIfBroken());
-                    destroyedDiskIds.push_back(msg->Record.GetDiskId());
-                    destroyVolumeRequest = event.Release();
-                    return TTestActorRuntime::EEventAction::DROP;
-                }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
+            if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
+                    && event->Recipient == MakeStorageServiceId())
+            {
+                auto* msg = event->Get<TEvService::TEvDestroyVolumeRequest>();
+                UNIT_ASSERT(msg->Record.GetDestroyIfBroken());
+                destroyedDiskIds.push_back(msg->Record.GetDiskId());
+                destroyVolumeRequest = event.Release();
+                return TTestActorRuntime::EEventAction::DROP;
             }
-        );
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
 
         diskRegistry.SendAllocateDiskRequest("vol0", 1000_GB);
 
@@ -1825,6 +1824,72 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry.ListBrokenDisks();
             UNIT_ASSERT_VALUES_EQUAL(1, response->DiskIds.size());
             UNIT_ASSERT_VALUES_EQUAL("vol1", response->DiskIds[0]);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleDestroyVolumeError)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", { Device("dev-1", "uuid-1") })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, agents);
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeResponse) {
+                auto* msg = event->Get<TEvService::TEvDestroyVolumeResponse>();
+                *msg->Record.MutableError() =
+                    MakeError(E_REJECTED, "transient error");
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        diskRegistry.SendAllocateDiskRequest("vol0", 1000_GB);
+
+        {
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus(),
+                response->GetError());
+        }
+
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->DiskIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", response->DiskIds[0]);
+        }
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 1s);
+
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->DiskIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", response->DiskIds[0]);
+        }
+
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 1s);
+
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->DiskIds.size());
         }
     }
 }
