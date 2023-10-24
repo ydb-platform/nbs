@@ -86,8 +86,10 @@ func (t *createSnapshotFromURLTask) Run(
 	}
 
 	if t.state.ETag != source.ETag() {
-		return errors.NewAbortedErrorf(
-			"wrong ETag: expected %v, actual %v",
+		// TODO: NBS-4002: use AbortedError here.
+		return errors.NewNonRetriableErrorf(
+			"task with id %v has wrong ETag, expected %v, actual %v",
+			selfTaskID,
 			t.state.ETag,
 			source.ETag(),
 		)

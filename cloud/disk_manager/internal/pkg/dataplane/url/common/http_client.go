@@ -256,7 +256,8 @@ func (c *httpClient) body(
 	}
 
 	if resp.Header.Get("Etag") != etag {
-		return nil, errors.NewAbortedErrorf(
+		// TODO: NBS-4002: use AbortedError here.
+		return nil, errors.NewNonRetriableErrorf(
 			"wrong ETag: requested %v, actual %v",
 			etag,
 			resp.Header.Get("Etag"),
