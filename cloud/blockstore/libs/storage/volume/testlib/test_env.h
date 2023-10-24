@@ -439,6 +439,9 @@ public:
         const TString& diskId,
         const THashMap<TString, NProto::TUpdateVolumeParamsMapValue>& volumeParams);
 
+    std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> CreateChangeStorageConfigRequest(
+        NProto::TStorageServiceConfig patch);
+
     void SendRemoteHttpInfo(
         const TString& params,
         HTTP_METHOD method);

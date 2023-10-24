@@ -107,6 +107,7 @@ void TVolumeActor::CompleteLoadState(
     if (args.StorageConfig.Defined()) {
         Config = std::make_shared<TStorageConfig>(*Config);
         Config->Merge(*args.StorageConfig.Get());
+        HasStorageConfigPatch = !Config->Equals(*GlobalStorageConfig);
     }
 
     if (args.Meta.Defined()) {

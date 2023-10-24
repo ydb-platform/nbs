@@ -7410,6 +7410,35 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.UpdateVolumeConfig();
         volume.WaitReady();
 
+        ui32 hasStorageConfigPatchCounter = 0;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->Recipient == MakeStorageStatsServiceId()
+                    && event->GetTypeRewrite() == TEvStatsService::EvVolumeSelfCounters)
+            {
+                auto* msg = event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+
+                hasStorageConfigPatchCounter =
+                    msg->VolumeSelfCounters->Simple.HasStorageConfigPatch.Value;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, hasStorageConfigPatchCounter);
+
+        NProto::TStorageServiceConfig patch;
+        patch.SetCompactionRangeCountPerRun(11);
+        volume.ChangeStorageConfig(std::move(patch));
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, hasStorageConfigPatchCounter);
+
         TVector<TString> requestedFields = {
             "CompactionRangeCountPerRun", "MaxSSDGroupWriteIops", "Unknown"};
 
@@ -7419,7 +7448,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto mapping = response->Record.GetStorageConfigFieldsToValues();
 
         UNIT_ASSERT_VALUES_EQUAL(mapping.size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(mapping["CompactionRangeCountPerRun"], "10");
+        UNIT_ASSERT_VALUES_EQUAL(mapping["CompactionRangeCountPerRun"], "11");
         UNIT_ASSERT_VALUES_EQUAL(mapping["MaxSSDGroupWriteIops"], "Default");
         UNIT_ASSERT_VALUES_EQUAL(mapping["Unknown"], "Not found");
     }

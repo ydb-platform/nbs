@@ -34,6 +34,8 @@ public:
 
     void Merge(const NProto::TStorageServiceConfig& storageServiceConfig);
 
+    bool Equals(const TStorageConfig& other) const;
+
     struct TValueByName
     {
         enum class ENameStatus

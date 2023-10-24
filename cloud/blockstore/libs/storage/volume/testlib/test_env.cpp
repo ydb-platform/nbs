@@ -503,6 +503,14 @@ TVolumeClient::CreateUpdateVolumeParamsRequest(
     return request;
 }
 
+std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> TVolumeClient::CreateChangeStorageConfigRequest(
+    NProto::TStorageServiceConfig patch)
+{
+    auto request = std::make_unique<TEvVolume::TEvChangeStorageConfigRequest>();
+    *request->Record.MutableStorageConfig() = std::move(patch);
+    return request;
+}
+
 void TVolumeClient::SendRemoteHttpInfo(
     const TString& params,
     HTTP_METHOD method)

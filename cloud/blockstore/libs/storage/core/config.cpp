@@ -9,6 +9,7 @@
 #include <util/generic/size_literals.h>
 
 #include <google/protobuf/text_format.h>
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -604,6 +605,13 @@ struct TStorageConfig::TImpl
     {
         StorageServiceConfig.MergeFrom(storageServiceConfig);
     }
+
+    bool Equals(const TStorageConfig::TImpl& other) const
+    {
+        return google::protobuf::util::MessageDifferencer::Equals(
+            StorageServiceConfig,
+            other.StorageServiceConfig);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -749,6 +757,11 @@ void TStorageConfig::Merge(
     const NProto::TStorageServiceConfig& storageServiceConfig)
 {
     Impl->Merge(storageServiceConfig);
+}
+
+bool TStorageConfig::Equals(const TStorageConfig& other) const
+{
+    return Impl->Equals(*other.Impl);
 }
 
 ui64 GetAllocationUnit(

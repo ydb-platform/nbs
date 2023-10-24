@@ -184,6 +184,7 @@ public:
 private:
     TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
+    bool HasStorageConfigPatch = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
