@@ -2356,7 +2356,6 @@ migrations:
     - devtools/search-env
     - dict/bert/make/lib/models
     - dict/bert/make/lib/tasks
-    - dict/misspell/fixlist_manager/util
     - dict/misspell/spellchecker/offline/build
     - dict/moria/nirvana/context/begemot_thesaurus_rule
     - dict/moria/nirvana/quality/production_coverage
@@ -5743,7 +5742,6 @@ migrations:
     - ydo/database/active_record
     - ydo/database/lib
     - ydo/database/sending_center/test/small
-    - ydo/database/tests
     - ydo/libs/read_kikimr_dump/read_as_namedtuple
     - ydo/server/apphost_source/lib
     - ydo/tools/orders_prediction/lib
