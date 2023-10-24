@@ -127,6 +127,8 @@ struct IVolumeStats
     }
 
     virtual TDowntimeHistory GetDowntimeHistory(const TString& diskId) const = 0;
+
+    virtual bool HasStorageConfigPatch(const TString& diskId) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

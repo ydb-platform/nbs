@@ -214,7 +214,8 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                     TABLEH() { out << "Tablet"; }
                     TABLEH() { out << "Size"; }
                     TABLEH() { out << "PartitionCount"; }
-                    TABLEH() { out << "Media kind"; }
+                    TABLEH() { out << "MediaKind"; }
+                    TABLEH() { out << "HasStorageConfigPatch"; }
                     TABLEH() { out << "Status"; }
                     TABLEH() { out << "Clients"; }
                     TABLEH() { out << "Meets perf guarantees"; }
@@ -227,12 +228,13 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                 if (!volume.VolumeInfo.Defined()) {
                     continue;
                 }
+                const auto& diskId = volume.VolumeInfo->GetDiskId();
                 TABLER() {
                     TABLED() {
                         out << "<a href='../tablets?TabletID="
                             << volume.TabletId
                             << "'>"
-                            << volume.VolumeInfo->GetDiskId()
+                            << diskId
                             << "</a>";
                     }
                     TABLED() {
@@ -251,6 +253,11 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                     }
                     TABLED() {
                         out << MediaKindToString(volume.VolumeInfo->GetStorageMediaKind());
+                    }
+                    TABLED() {
+                        if (VolumeStats->HasStorageConfigPatch(diskId)) {
+                            out << "patched";
+                        }
                     }
                     TABLED() {
                         TString statusText = "Online";

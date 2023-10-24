@@ -301,6 +301,7 @@ struct TVolumeInfoBase
     TDowntimeHistoryHolder DowntimeHistory;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
+    TDynamicCounters::TCounterPtr HasStorageConfigPatchCounter;
 
     TVolumeInfoBase(
             NProto::TVolume volume,
@@ -316,6 +317,8 @@ struct TVolumeInfoBase
         , DowntimeHistory(timer)
         , ThrottlerRejects(timer)
         , CheckpointRejects(timer)
+        , HasStorageConfigPatchCounter(
+            volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
         BusyIdleCalc.Register(*volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
@@ -926,6 +929,18 @@ public:
         return volumeIt->second.VolumeBase->DowntimeHistory.RecentEvents();
     }
 
+    bool HasStorageConfigPatch(const TString& diskId) const override
+    {
+        TReadGuard guard(Lock);
+
+        const auto volumeIt = Volumes.find(diskId);
+        if (volumeIt == Volumes.end()) {
+            return {};
+        }
+
+        return volumeIt->second.VolumeBase->HasStorageConfigPatchCounter->Val();
+    }
+
 private:
     const TString& SelectInstanceId(
         const TString& clientId,
@@ -1141,6 +1156,12 @@ struct TVolumeStatsStub final
     }
 
     TDowntimeHistory GetDowntimeHistory(const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return {};
+    }
+
+    bool HasStorageConfigPatch(const TString& diskId) const override
     {
         Y_UNUSED(diskId);
         return {};

@@ -176,6 +176,12 @@ struct TVolumeStatsTestMock final
         Y_UNUSED(diskId);
         return {};
     }
+
+    bool HasStorageConfigPatch(const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return {};
+    }
 };
 
 

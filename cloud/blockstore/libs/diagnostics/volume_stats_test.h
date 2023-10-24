@@ -251,12 +251,18 @@ public:
     void TrimVolumes() override
     {}
 
-    TVolumePerfStatuses GatherVolumePerfStatuses()  override
+    TVolumePerfStatuses GatherVolumePerfStatuses() override
     {
         return {};
     }
 
     TDowntimeHistory GetDowntimeHistory(const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return {};
+    }
+
+    bool HasStorageConfigPatch(const TString& diskId) const override
     {
         Y_UNUSED(diskId);
         return {};
