@@ -481,7 +481,7 @@ public:
         TAutoPtr<IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
-        UNIT_ASSERT(handle);
+        UNIT_ASSERT_C(handle, TypeName<TResponse>() << " is expected");
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
@@ -4509,8 +4509,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvCompactionCompleted:
-                    case TEvPartitionPrivate::EvCompactionResponse: {
+                    case TEvPartitionPrivate::EvCompactionCompleted: {
                         return TTestActorRuntime::EEventAction::DROP ;
                     }
                 }
