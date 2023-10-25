@@ -182,13 +182,24 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
             }
 
             auto addVolumeRow = [&](const TString& diskId) {
-                TABLER() {
-                    TABLEH() { out << diskId; }
-                    TABLEH() {
-                        TSvgWithDownGraph svg(out);
-                        auto history = VolumeStats->GetDowntimeHistory(diskId);
-                        for (const auto& [time, state]: history) {
-                            svg.AddEvent(time, state == EDowntimeStateChange::DOWN);
+                auto history = VolumeStats->GetDowntimeHistory(diskId);
+                bool hasDowntimes = false;
+                for (const auto& [_, state]: history) {
+                    if (state == EDowntimeStateChange::DOWN) {
+                        hasDowntimes = true;
+                        break;
+                    }
+                }
+                if (hasDowntimes) {
+                    TABLER() {
+                        TABLEH() { out << diskId; }
+                        TABLEH() {
+                            TSvgWithDownGraph svg(out);
+                            for (const auto& [time, state]: history) {
+                                svg.AddEvent(
+                                    time,
+                                    state == EDowntimeStateChange::DOWN);
+                            }
                         }
                     }
                 }
