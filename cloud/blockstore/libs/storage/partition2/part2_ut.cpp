@@ -4507,29 +4507,49 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), 2048);
 
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
+        partition.WriteBlocks(TBlockRange32::WithLength(1024,1024));
+
+        TAutoPtr<IEventHandle> addBlobs;
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvCompactionCompleted: {
-                        return TTestActorRuntime::EEventAction::DROP ;
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        if (!addBlobs) {
+                            addBlobs = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
 
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
-        partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024));
-
         partition.SendCompactionRequest(0);
 
         partition.SendCompactionRequest(1024);
 
-        auto compactResponse1 = partition.RecvCompactionResponse();
-        UNIT_ASSERT(FAILED(compactResponse1->GetStatus()));
-        UNIT_ASSERT_VALUES_EQUAL(compactResponse1->GetStatus(), E_TRY_AGAIN);
+        {
+            auto compactResponse = partition.RecvCompactionResponse();
+            UNIT_ASSERT(FAILED(compactResponse->GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, compactResponse->GetStatus());
+        }
+
+        runtime->SetObserverFunc(&TTestActorRuntimeBase::DefaultObserverFunc);
+        runtime->Send(addBlobs.Release());
+
+        {
+            auto compactResponse = partition.RecvCompactionResponse();
+            UNIT_ASSERT(SUCCEEDED(compactResponse->GetStatus()));
+        }
+
+        {
+            partition.SendCompactionRequest(0);
+            auto compactResponse = partition.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, compactResponse->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldStartCompactionOnCompactRagesRequest)
