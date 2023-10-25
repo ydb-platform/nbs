@@ -8,7 +8,6 @@ migrations:
     ignore:
     - E122
     prefixes:
-    - addappter/backend/addappter/pg_models/statistics
     - adfox/amacs/tests/functional/tests_amacs/dynamic_monetization/mob_mediation
     - adfox/amacs/tests/functional/tests_amacs/dynamic_monetization/v2
     - adfox/amacs/tests/functional/tests_amacs/identification
@@ -314,8 +313,6 @@ migrations:
     - E127
     prefixes:
     - maps/statistics/validator/task
-    - addappter/backend/addappter_backoffice/views/tools
-    - addappter/backend/addappter_partners_api/components
     - addappter/libs/fixtures
     - adfox/amacs/tests/functional/conftest/bsserver
     - adfox/amacs/tests/functional/libs/marshaller
@@ -921,7 +918,6 @@ migrations:
     - weather/libs/utils/yt
     - weather/ml/formulas/common/filter_rows_by_climate_zone
     - weather/ml/nirvana_operations/add_features_from_yt_npz/lib
-    - weather/workers/exports/yt/s3
     - weather/workers/imports/resorts
     - web/daemons/begemot/scripts/nanny_tidiness
     - web/daemons/begemot/scripts/nanny_tidiness/tests
@@ -2155,7 +2151,6 @@ migrations:
     - E305
     prefixes:
     - contrib/nginx/tests
-    - addappter/backend/migrations
     - adfox/amacs/tests/functional/libs/config
     - adfox/amacs/tests/functional/tests_amacs/yabs
     - adfox/amacs/tests/functional/utils
@@ -3293,7 +3288,6 @@ migrations:
     ignore:
     - E402
     prefixes:
-    - addappter/backend/migrations
     - adfox/broker_notify/tests/functional/utils
     - bigrt/cli
     - ads/libs/py_logger
@@ -3764,8 +3758,6 @@ migrations:
     prefixes:
     - contrib/python/botocore/py2/tests
     - contrib/python/mongolock
-    - addappter/backend/addappter_cli/components/statistics_common/value_getters
-    - addappter/backend/addappter_cli/components/statistics_report/value_getters
     - adfox/amacs/tests/functional/libs/builders
     - adfox/amacs/tests/functional/tests_amacs/antiadblock
     - adfox/amacs/tests/functional/tests_amacs/bulk
@@ -5785,8 +5777,6 @@ migrations:
     - zen/yweb/video/faas/vh_wrappers
     - zootopia/analytics/drive/source/drive/operations/support/registrations/reg_quality/utils
     - zootopia/analytics/drive/source/drive/operations/users
-    - addappter/backend/addappter/reports/data_sources
-    - addappter/backend/addappter/reports/report_fields
     - adfox/amacs/tests/functional/tests_amacs/effective_id
     - adfox/amacs/tests/functional/tests_amacs/limits/test_event_frequency
     - adfox/amacs/tests/functional/tests_amacs/robots
@@ -6267,7 +6257,6 @@ migrations:
     - yweb/video/faas/lib/drm
     - yweb/yasap/answers/admin/admin/resources
     - zen/yweb/video/faas/lib/drm
-    - addappter/backend/addappter_cli/commands/bonus
     - adfox/amacs/tests/functional/libs/builders
     - adfox/amacs/tests/functional/libs/models
     - adfox/amacs/tests/functional/tests_amacs/targeting/browser
@@ -6928,8 +6917,6 @@ migrations:
     - yweb/antispam/arknight/arknight_tool
     - yweb/antispam/cid/library/tests
     - yweb/antispam/clean_web/clients/collections/lib
-    - yweb/antispam/clean_web/lib
-    - yweb/antispam/clean_web/lib/module
     - yweb/antispam/clean_web/router/lib
     - yweb/antispam/clean_web/tools/hitrobot_content_check/hydra_casino_check
     - yweb/antispam/common/python
@@ -8743,8 +8730,6 @@ migrations:
     ignore:
     - W605
     prefixes:
-    - addappter/backend/testing
-    - addappter/backend/testing/fixtures/configuration/ios
     - adfox/amacs/tests/functional/tests_amacs/bugs/medium
     - adfox/amacs/tests/functional/tests_amacs/dynamic_monetization/v2
     - adfox/amacs/tests/functional/tests_amacs/targeting/targeting_logic_tree_puids
@@ -9433,12 +9418,6 @@ migrations:
     ignore:
     - '*'
     prefixes:
-    - addappter/backend/addappter/tests
-    - addappter/backend/addappter_less/tests
-    - addappter/backend/addappter_partners_api/tests
-    - addappter/backend/addappter_statistics
-    - addappter/backend/scripts
-    - addappter/backend/web_api/tests
     - addappter/libs/fixtures/tests
     - addappter/web/libs/tests
     - adfox/contrib/clickhouse
@@ -10878,7 +10857,6 @@ migrations:
     - yabs/vh/cms-pgaas/test/ft/content_ksiva_api
     - yabs/vh/cms-pgaas/test/ft/self_service_api
     - yabs/vh/frontend/test/ft/VH-3242
-    - yql/library/embedded/python/test
     - yql/scripts/local
     - yql/tests/jdbc
     - yt/admin/drive_monitor/tests/unit
