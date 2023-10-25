@@ -316,7 +316,13 @@ type Client interface {
 
 type MultiZoneClient interface {
 	// Deletes volume with outdated FillGeneration if exists and clones volume.
-	Clone(ctx context.Context, diskID string, fillGeneration uint64) error
+	Clone(
+		ctx context.Context,
+		diskID string,
+		dstPlacementGroupID string,
+		dstPlacementPartitionIndex uint32,
+		fillGeneration uint64,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

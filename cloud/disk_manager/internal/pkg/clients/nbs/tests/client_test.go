@@ -1038,7 +1038,13 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	diskID := t.Name()
 	uniqueNumber := uint64(1751352)
 
-	err := multiZoneClient.Clone(ctx, diskID, 1 /* fillGeneration */)
+	err := multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "Path not found")
@@ -1051,7 +1057,13 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = multiZoneClient.Clone(ctx, diskID, 1 /* fillGeneration */)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+	)
 	require.NoError(t, err)
 
 	params, err := client.Describe(ctx, diskID)
@@ -1059,13 +1071,31 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	require.Equal(t, uniqueNumber, params.BlocksCount)
 
 	// Check idempotency.
-	err = multiZoneClient.Clone(ctx, diskID, 1 /* fillGeneration */)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+	)
 	require.NoError(t, err)
 
-	err = multiZoneClient.Clone(ctx, diskID, 2 /* fillGeneration */)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		2,  // fillGeneration
+	)
 	require.NoError(t, err)
 
-	err = multiZoneClient.Clone(ctx, diskID, 1 /* fillGeneration */)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "config mismatch")
 
@@ -1088,7 +1118,13 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = multiZoneClient.Clone(ctx, diskID, 3 /* fillGeneration */)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		3,  // fillGeneration
+	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "filling is finished")
@@ -1115,7 +1151,13 @@ func TestFinishFillDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = multiZoneClient.Clone(ctx, diskID, 1 /* fillGeneration */)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+	)
 	require.NoError(t, err)
 
 	err = otherZoneClient.FinishFillDisk(

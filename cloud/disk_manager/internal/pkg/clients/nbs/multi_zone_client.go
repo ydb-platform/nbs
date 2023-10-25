@@ -21,6 +21,8 @@ type multiZoneClient struct {
 func (c *multiZoneClient) Clone(
 	ctx context.Context,
 	diskID string,
+	dstPlacementGroupID string,
+	dstPlacementPartitionIndex uint32,
 	fillGeneration uint64,
 ) (err error) {
 
@@ -28,7 +30,13 @@ func (c *multiZoneClient) Clone(
 
 	retries := 0
 	for {
-		err = c.clone(ctx, diskID, fillGeneration)
+		err = c.clone(
+			ctx,
+			diskID,
+			dstPlacementGroupID,
+			dstPlacementPartitionIndex,
+			fillGeneration,
+		)
 		if err != nil {
 			if !isAbortedError(err) {
 				return err
@@ -74,6 +82,8 @@ func (c *multiZoneClient) Clone(
 func (c *multiZoneClient) clone(
 	ctx context.Context,
 	diskID string,
+	dstPlacementGroupID string,
+	dstPlacementPartitionIndex uint32,
 	fillGeneration uint64,
 ) (err error) {
 
@@ -95,8 +105,8 @@ func (c *multiZoneClient) clone(
 			CloudId:                 volume.CloudId,
 			FolderId:                volume.FolderId,
 			TabletVersion:           volume.TabletVersion,
-			PlacementGroupId:        volume.PlacementGroupId,
-			PlacementPartitionIndex: volume.PlacementPartitionIndex,
+			PlacementGroupId:        dstPlacementGroupID,
+			PlacementPartitionIndex: dstPlacementPartitionIndex,
 			PartitionsCount:         volume.PartitionsCount,
 			IsSystem:                volume.IsSystem,
 			ProjectId:               volume.ProjectId,

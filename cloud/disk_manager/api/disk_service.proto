@@ -159,6 +159,8 @@ message StatDiskRequest {
 message MigrateDiskRequest {
     DiskId disk_id = 1;
     string dst_zone_id = 2;
+    string dst_placement_group_id = 3;
+    uint32 dst_placement_partition_index = 4;
 }
 
 message MigrateDiskMetadata {

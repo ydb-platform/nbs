@@ -220,6 +220,8 @@ func (t *migrateDiskTask) start(
 		err = multiZoneClient.Clone(
 			ctx,
 			t.request.Disk.DiskId,
+			t.request.DstPlacementGroupId,
+			t.request.DstPlacementPartitionIndex,
 			t.state.FillGeneration,
 		)
 		if err != nil {
