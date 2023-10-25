@@ -481,12 +481,26 @@ func testCreateQCOW2ImageFromURL(t *testing.T) {
 	)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func TestImageServiceCreateGeneratedVMDKImageFromURL(t *testing.T) {
 	testCreateImageFromURL(
 		t,
 		testcommon.GetGeneratedVMDKImageFileURL(),
 		testcommon.GetGeneratedVMDKImageSize(t),
 		testcommon.GetGeneratedVMDKImageCrc32(t),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Reproduces panic issue (NBS-4635).
+func TestImageServiceCreateQCOW2PanicImageFromURL(t *testing.T) {
+	testCreateImageFromURL(
+		t,
+		testcommon.GetQCOW2PanicImageFileURL(),
+		testcommon.GetQCOW2PanicImageSize(t),
+		testcommon.GetQCOW2PanicImageCrc32(t),
 	)
 }
 

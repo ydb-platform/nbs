@@ -22,6 +22,7 @@ REQUIREMENTS(
 )
 
 DATA(
+    sbr://5274078903=qcow2_images
     sbr://4709742882=vmdk_images
 )
 
