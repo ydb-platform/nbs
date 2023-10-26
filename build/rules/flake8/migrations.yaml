@@ -1776,8 +1776,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-20427
     - yabs/server/test/ft/BSSERVER-21779
     - yabs/server/test/ft/BSSERVER-22647
-    - yabs/server/test/ft/BSSERVER-22790
-    - yabs/server/test/ft/BSSERVER-23371
     - yabs/server/test/ft/ads_adfox/metadsp_request
     - yabs/server/test/qabs_bsserver_pytest/bs_objects
     - yabs/vh/cms-pgaas/lb/max_unix_time_tool
@@ -3109,7 +3107,6 @@ migrations:
     - yabs/server/infra/tools/cs_servants_manager
     - yabs/server/libs/internal_ver/depgrapher/lib
     - yabs/server/libs/py_db_shards
-    - yabs/server/test/ft/BSDEV-70956
     - yabs/server/test/ft/BSSERVER-23252
     - yabs/server/test/ft/BSSERVER-3381
     - yabs/server/test/ft/BSSERVER-4068
@@ -4027,7 +4024,6 @@ migrations:
     - cloud/mdb/sandbox/tasklets/teamcity/impl
     - cloud/support/tools/qcalc/app
     - cloud/tools/update-ssh-keys
-    - cmnt/tools/yql
     - comdep_analytics/comdep_recsys/etl_core/utils
     - comdep_analytics/exceller_py2/exceller/formatting
     - comdep_analytics/sharepoint_yt_sync/lib
@@ -4680,8 +4676,6 @@ migrations:
     - passport/backend/core/validators
     - passport/backend/dbscripts/split_phonenumber_alias
     - passport/backend/oauth/tvm_api/tvm_api/db
-    - passport/infra/daemons/vault/cli/yav/vault_client_cli/commands
-    - passport/infra/daemons/vault/cli/yav_deploy/vault_client_deploy
     - passport/infra/tasklets/teamcity/impl
     - payplatform/scrooge/scrooge/api
     - paysys/sre/apps/mongo_idm/mongo_idm
@@ -4847,7 +4841,6 @@ migrations:
     - quasar/infra/tasklets/make_quasmodrom_groups/impl
     - quasar/infra/tasklets/yt_quasmodrom_maintenance/impl
     - quasar/manifest_scripts/manifestlib
-    - quasar/manufacturing/aml_tool/libs
     - quasar/manufacturing/elenchus/midi
     - quasar/manufacturing/flash_points/libs
     - quasar/manufacturing/utils
@@ -5728,7 +5721,6 @@ migrations:
     - yabs/vh/cms-pgaas/dao/biz
     - yabs/web-bins/id_generator/tests
     - yaphone/localization_admin/src/views/common
-    - ydb/tests/functional/tenants
     - ydo/async_api/tasks/handlers
     - ydo/async_api/tests/handlers
     - ydo/database/active_record
@@ -6547,7 +6539,6 @@ migrations:
     - maps/wikimap/mapspro/services/mrc/eye/experiments/signs_map/matcher/pylibs
     - market/analytics/market_search/ranking_formula/get_best_assessor_formula_threshold
     - market/forecast/elasticity_common/data
-    - market/library/shiny/external/rps_limiter/scripts/generate_configs_for_rpslimiter_ui
     - market/promocoordinator/tickets
     - market/pylibrary/ytdumper/tests
     - market/replenishment/algorithms/lib/common
@@ -6592,7 +6583,6 @@ migrations:
     - opensource/sync/bin/pr_ch/tasklet
     - passport/backend/logbroker_client/mail_unsubscriptions/tests
     - passport/backend/utils
-    - passport/infra/daemons/vault/cli/yav_deploy/vault_client_deploy
     - payplatform/nirvana/send_juggler_raw_events
     - quality/antifraud/analytics/Mami/Mami
     - quality/antifraud/analytics/sessionsviewer_period
@@ -6867,7 +6857,6 @@ migrations:
     - yabs/server/infra/transport
     - yabs/server/libs/internal_ver/py_parser/lib
     - yabs/server/test/ft/BSSERVER-10571
-    - yabs/server/test/ft/BSSERVER-22790
     - yabs/server/test/ft/BSSERVER-2454
     - yabs/server/test/ft/BSSERVER-4506
     - yabs/server/test/ft/BSSERVER-4669
