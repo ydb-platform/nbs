@@ -13,6 +13,7 @@ GO_XTEST_SRCS(
 
 DATA(
     sbr://2951476475=qcow2_images
+    sbr://5274078903=qcow2_images
 )
 
 REQUIREMENTS(
