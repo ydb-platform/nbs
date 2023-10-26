@@ -902,6 +902,85 @@ func (s *storageYDB) diskScanned(
 	return tx.Commit(ctx)
 }
 
+func (s *storageYDB) diskRelocated(
+	ctx context.Context,
+	session *persistence.Session,
+	diskID string,
+	newZoneID string,
+	fillGeneration uint64,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	state, err := s.getDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+
+	if fillGeneration == state.fillGeneration {
+		state.zoneID = newZoneID
+	} else {
+		return tx.Commit(ctx)
+	}
+
+	err = s.updateDiskState(ctx, tx, state)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) getDiskState(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+) (state diskState, err error) {
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from disks
+		where id = $id
+	`, s.disksPath), ydb_table.NewQueryParameters(
+		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+	))
+	if err != nil {
+		return state, err
+	}
+	defer res.Close()
+
+	states, err := scanDiskStates(ctx, res)
+	if err != nil {
+		commitErr := tx.Commit(ctx)
+		if commitErr != nil {
+			return state, commitErr
+		}
+
+		return state, err
+	}
+
+	if len(states) == 0 {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return state, err
+		}
+
+		return state, errors.NewSilentNonRetriableErrorf(
+			"unable to find disk %q",
+			diskID,
+		)
+	}
+	return states[0], nil
+}
+
 func (s *storageYDB) updateDiskState(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -1075,6 +1154,27 @@ func (s *storageYDB) DiskScanned(
 				diskID,
 				scannedAt,
 				foundBrokenBlobs,
+			)
+		},
+	)
+}
+
+func (s *storageYDB) DiskRelocated(
+	ctx context.Context,
+	diskID string,
+	newZoneID string,
+	fillGeneration uint64,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.diskRelocated(
+				ctx,
+				session,
+				diskID,
+				newZoneID,
+				fillGeneration,
 			)
 		},
 	)

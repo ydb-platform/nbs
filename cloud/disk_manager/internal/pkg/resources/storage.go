@@ -272,4 +272,11 @@ type Storage interface {
 		scannedAt time.Time,
 		foundBrokenBlobs bool,
 	) error
+
+	DiskRelocated(
+		ctx context.Context,
+		diskID string,
+		newZoneID string,
+		fillGeneration uint64,
+	) error
 }

@@ -345,3 +345,47 @@ func TestDiskScanned(t *testing.T) {
 	require.WithinDuration(t, scannedAt, actual.ScannedAt, time.Microsecond)
 	require.False(t, actual.ScanFoundBrokenBlobs)
 }
+
+func TestDiskRelocated(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	diskID := t.Name()
+	oldZoneID := "zone"
+	newZoneID := "other"
+
+	err := storage.DiskRelocated(ctx, diskID, newZoneID, 0)
+	require.Error(t, err)
+
+	diskMeta := DiskMeta{
+		ID:     diskID,
+		ZoneID: oldZoneID,
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	actual, err := storage.CreateDisk(ctx, diskMeta)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+
+	_, err = storage.IncrementFillGeneration(ctx, diskID)
+	require.NoError(t, err)
+
+	getZoneID := func() string {
+		diskMeta, err := storage.GetDiskMeta(ctx, diskID)
+		require.NoError(t, err)
+		return diskMeta.ZoneID
+	}
+
+	err = storage.DiskRelocated(ctx, diskID, newZoneID, 0)
+	require.NoError(t, err)
+	require.Equal(t, oldZoneID, getZoneID())
+
+	err = storage.DiskRelocated(ctx, diskID, newZoneID, 1)
+	require.NoError(t, err)
+	require.Equal(t, newZoneID, getZoneID())
+}

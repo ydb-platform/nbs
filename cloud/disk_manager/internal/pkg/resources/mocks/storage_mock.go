@@ -417,6 +417,17 @@ func (s *StorageMock) DiskScanned(
 	return args.Error(0)
 }
 
+func (s *StorageMock) DiskRelocated(
+	ctx context.Context,
+	diskID string,
+	newZoneID string,
+	fillGeneration uint64,
+) error {
+
+	args := s.Called(ctx, diskID, newZoneID, fillGeneration)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

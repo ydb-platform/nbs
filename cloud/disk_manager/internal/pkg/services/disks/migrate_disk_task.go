@@ -477,6 +477,16 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
+	err = t.storage.DiskRelocated(
+		ctx,
+		t.request.Disk.DiskId,
+		t.request.DstZoneId,
+		t.state.FillGeneration,
+	)
+	if err != nil {
+		return err
+	}
+
 	t.state.Status = protos.MigrationStatus_Finished
 	err = execCtx.SaveState(ctx)
 	if err != nil {

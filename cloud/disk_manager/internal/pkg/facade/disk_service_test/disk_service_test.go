@@ -1484,10 +1484,11 @@ func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 }
 
 func TestDiskServiceMigrateDisk(t *testing.T) {
+	diskID := t.Name()
 	param := migrationTestParams{
 		SrcZoneID: "zone",
 		DstZoneID: "other",
-		DiskID:    t.Name(),
+		DiskID:    diskID,
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
 		FillDisk:  true,
@@ -1497,6 +1498,29 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 	defer client.Close()
 
 	successfullyMigrateDisk(t, ctx, client, param)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "any_string", // deprecated field
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	// Check that disk is deleted.
+	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, param.SrcZoneID)
+	_, err = srcZoneNBSClient.Describe(ctx, param.DiskID)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Path not found")
+
+	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, param.DstZoneID)
+	_, err = dstZoneNBSClient.Describe(ctx, param.DiskID)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Path not found")
 
 	testcommon.CheckConsistency(t, ctx)
 }
