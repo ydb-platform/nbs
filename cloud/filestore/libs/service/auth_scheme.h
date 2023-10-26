@@ -17,7 +17,7 @@ template <typename T>
 TPermissionList GetRequestPermissions(const T& request)
 {
     Y_UNUSED(request);
-    return GetRequestPermissions(GetFileStoreServiceRequest<T>());
+    return GetRequestPermissions(GetFileStoreRequest<T>());
 }
 
 TPermissionList GetRequestPermissions(

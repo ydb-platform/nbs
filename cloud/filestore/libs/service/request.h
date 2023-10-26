@@ -112,6 +112,16 @@ namespace NCloud::NFileStore {
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
 // FILESTORE_REQUESTS
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_PROTO_REQUESTS(xxx, ...)                                     \
+    xxx(Ping,                               __VA_ARGS__)                       \
+    xxx(PingSession,                        __VA_ARGS__)                       \
+    FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
+    FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
+    FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
+// FILESTORE_PROTO_REQUESTS
+
 #define FILESTORE_DECLARE_REQUEST(name, ...) name,
 
 enum class EFileStoreRequest

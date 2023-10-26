@@ -43,17 +43,17 @@ concept THasStorageMediaKind = requires (T v)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TServiceRequest {};
+struct TFileStoreRequest {};
 
 #define FILESTORE_DECLARE_REQUEST(name, ...)                                   \
     template <>                                                                \
-    struct TServiceRequest<NProto::T##name##Request>                           \
+    struct TFileStoreRequest<NProto::T##name##Request>                         \
     {                                                                          \
         static constexpr EFileStoreRequest Request = EFileStoreRequest::name;  \
     };                                                                         \
 // FILESTORE_DECLARE_REQUEST
 
-FILESTORE_SERVICE(FILESTORE_DECLARE_REQUEST)
+FILESTORE_PROTO_REQUESTS(FILESTORE_DECLARE_REQUEST)
 
 #undef FILESTORE_DECLARE_REQUEST
 
@@ -62,9 +62,9 @@ FILESTORE_SERVICE(FILESTORE_DECLARE_REQUEST)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-constexpr EFileStoreRequest GetFileStoreServiceRequest()
+constexpr EFileStoreRequest GetFileStoreRequest()
 {
-    return NImpl::TServiceRequest<T>::Request;
+    return NImpl::TFileStoreRequest<T>::Request;
 }
 
 template <typename T>
