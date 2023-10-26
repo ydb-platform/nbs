@@ -82,10 +82,9 @@ func (c *cache) read(
 		bytesRead, ok := c.readChunk(start, chunkStart, data)
 
 		if !ok {
-			// We read at most one chunk,
-			// so we will retrieve at most 2 chunks and save them
-			// to cache (in case the read data crosses the border between two
-			// chunks).
+			// We read at most one chunk, so we will retrieve at most 2 chunks and
+			// save them to cache (in case the read data crosses the border between
+			// two chunks).
 			retrievedChunk := c.chunkPool.Get().(*chunk)
 			retrievedChunk.start = chunkStart
 			err := readOnCacheMiss(retrievedChunk.start, retrievedChunk.data)
@@ -93,8 +92,8 @@ func (c *cache) read(
 				return err
 			}
 
-			c.put(retrievedChunk)
 			bytesRead = retrievedChunk.read(start, data)
+			c.put(retrievedChunk)
 		}
 
 		data = data[bytesRead:]
