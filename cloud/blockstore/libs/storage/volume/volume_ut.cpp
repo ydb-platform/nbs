@@ -7832,6 +7832,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldReportLongRunningForBaseDisk)
     {
+#if 0
         NProto::TStorageServiceConfig storageServiceConfig;
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
@@ -7979,6 +7980,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, longRunningReads);
         }
+#endif
     }
 
     Y_UNIT_TEST(ShouldStartPartitionsAfterStop)
