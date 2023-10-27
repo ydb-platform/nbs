@@ -415,6 +415,7 @@ public:
     void DestroyQP() noexcept;
     void StartReceive();
     void ResetConnection(NVerbs::TConnectionPtr connection) noexcept;
+    TString PeerAddress() const;
     int ReconnectTimerHandle() const;
 
     // called from client thread
@@ -526,7 +527,7 @@ void TClientEndpoint::ChangeState(EEndpointState newState) noexcept
 {
     auto currentState = State.exchange(newState);
 
-    STORAGE_DEBUG("change state from %s to %s",
+    STORAGE_INFO("change state from %s to %s",
         GetEndpointStateName(currentState),
         GetEndpointStateName(newState));
 }
@@ -1004,6 +1005,11 @@ void TClientEndpoint::ResetConnection(
 {
     connection->context = this;
     Connection = std::move(connection);
+}
+
+TString TClientEndpoint::PeerAddress() const
+{
+    return NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get()));
 }
 
 int TClientEndpoint::ReconnectTimerHandle() const
@@ -1635,7 +1641,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
 
 void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
-    STORAGE_DEBUG(NVerbs::GetEventName(event->event) << " received");
+    STORAGE_INFO(NVerbs::GetEventName(event->event) << " received");
 
     TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
 
@@ -1752,12 +1758,12 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             endpoint->Host, endpoint->Port, &hints);
 
         if (addrinfo->ai_src_addr) {
-            STORAGE_DEBUG("resolve source address "
+            STORAGE_INFO("resolve source address "
                 << NVerbs::PrintAddress(addrinfo->ai_src_addr));
         }
 
         if (addrinfo->ai_dst_addr) {
-            STORAGE_DEBUG("resolve destination address "
+            STORAGE_INFO("resolve destination address "
                 << NVerbs::PrintAddress(addrinfo->ai_dst_addr));
         }
 
@@ -1776,8 +1782,7 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
 
 void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 {
-    STORAGE_DEBUG("resolve route to "
-        << NVerbs::PrintAddress(rdma_get_peer_addr(endpoint->Connection.get())));
+    STORAGE_INFO("resolve route to " << endpoint->PeerAddress());
 
     endpoint->ChangeState(
         EEndpointState::ResolvingAddress,
@@ -1821,8 +1826,7 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .rnr_retry_count = 7,
         };
 
-        STORAGE_DEBUG("connect to "
-            << NVerbs::PrintAddress(rdma_get_peer_addr(endpoint->Connection.get()))
+        STORAGE_INFO("connect to " << endpoint->PeerAddress()
             << " " << NVerbs::PrintConnectionParams(&param));
 
         Verbs->Connect(endpoint->Connection.get(), &param);
@@ -1839,8 +1843,7 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    STORAGE_DEBUG("validate connection from "
-        << NVerbs::PrintAddress(rdma_get_peer_addr(event->id))
+    STORAGE_INFO("validate connection from " << endpoint->PeerAddress()
         << " " << NVerbs::PrintConnectionParams(param));
 
     if (param->private_data == nullptr ||
@@ -1894,14 +1897,14 @@ void TClient::HandleRejected(
     if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
         if (endpoint->Config.QueueSize > msg->QueueSize) {
             STORAGE_INFO("set QueueSize=" << msg->QueueSize
-                << " supported by server");
+                << " supported by server " << endpoint->PeerAddress());
 
             endpoint->Config.QueueSize = msg->QueueSize;
         }
 
         if (endpoint->Config.MaxBufferSize > msg->MaxBufferSize) {
             STORAGE_INFO("set MaxBufferSize=" << msg->MaxBufferSize
-                << " supported by server");
+                << " supported by server " << endpoint->PeerAddress());
 
             endpoint->Config.MaxBufferSize = msg->MaxBufferSize;
         }

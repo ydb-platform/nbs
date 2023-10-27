@@ -429,7 +429,8 @@ TServerSession::TServerSession(
 
 TServerSession::~TServerSession()
 {
-    STORAGE_DEBUG("destroy client session");
+    STORAGE_INFO("close session to "
+        << NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get())));
 
     Verbs->DestroyQP(Connection.get());
 
@@ -1491,7 +1492,7 @@ void TServer::Listen(TServerEndpoint* endpoint)
 
 void TServer::HandleConnectionEvent(rdma_cm_event* event) noexcept
 {
-    STORAGE_DEBUG(NVerbs::GetEventName(event->event) << " received");
+    STORAGE_INFO(NVerbs::GetEventName(event->event) << " received");
 
     switch (event->event) {
         case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -1539,7 +1540,7 @@ void TServer::HandleConnectRequest(
 {
     const rdma_conn_param* connectParams = &event->param.conn;
 
-    STORAGE_DEBUG("validate connection from "
+    STORAGE_INFO("validate connection from "
         << NVerbs::PrintAddress(rdma_get_peer_addr(event->id))
         << " " << NVerbs::PrintConnectionParams(connectParams));
 
@@ -1591,7 +1592,7 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
             .rnr_retry_count = 7,
         };
 
-        STORAGE_DEBUG("accept connection from "
+        STORAGE_INFO("accept connection from "
             << NVerbs::PrintAddress(rdma_get_peer_addr(event->id))
             << " " << NVerbs::PrintConnectionParams(&acceptParams));
 
@@ -1625,7 +1626,7 @@ void TServer::HandleDisconnected(TServerSession* session) noexcept
 
 void TServer::Reject(rdma_cm_id* id, int status) noexcept
 {
-    STORAGE_DEBUG("reject with status " << status);
+    STORAGE_INFO("reject with status " << status);
 
     TRejectMessage rejectMsg = {
         .Status = SafeCast<ui16>(status),
