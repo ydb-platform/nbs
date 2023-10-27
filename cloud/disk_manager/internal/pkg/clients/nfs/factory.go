@@ -3,6 +3,7 @@ package nfs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
@@ -129,12 +130,20 @@ func (f *factory) NewClient(
 		)
 	}
 
+	durableClientTimeout, err := time.ParseDuration(
+		f.config.GetDurableClientTimeout(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	nfs, err := nfs_client.NewClient(
 		&nfs_client.GrpcClientOpts{
 			Endpoint:    common.RandomElement(zone.Endpoints),
 			Credentials: clientCreds,
 		},
 		&nfs_client.DurableClientOpts{
+			Timeout: &durableClientTimeout,
 			OnError: func(err nfs_client.ClientError) {
 				f.metrics.OnError(err)
 			},
