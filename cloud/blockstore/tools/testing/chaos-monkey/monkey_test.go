@@ -437,25 +437,23 @@ func (tc *TestContext) saveResult(t *testing.T, output []byte) {
 	canon.SaveFile(t, canonFile, canon.WithLocal(true))
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-func TestStateAnalysis(t *testing.T) {
+func doStateAnalysis(t *testing.T, args ...string) {
 	binary, err := yatest.BinaryPath(
 		"cloud/blockstore/tools/testing/chaos-monkey/chaos-monkey")
 	require.NoError(t, err)
 
 	drStatePath := yatest.SourcePath(
-		"cloud/blockstore/tools/testing/chaos-monkey/tests/data/dr.json")
+		"cloud/blockstore/tools/testing/chaos-monkey/tests/data/dr3.json")
 
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "canon_")
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
+	appendedArgs := append([]string{"--dr-state"}, drStatePath)
+	appendedArgs = append(appendedArgs, args...)
 	cmd := exec.Command(
 		binary,
-		"--dr-state", drStatePath,
-		"--disk-id", "cga7mpius6uopt9beskc",
-		"--max-targets", "100",
+		appendedArgs...,
 	)
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
@@ -473,7 +471,54 @@ func TestStateAnalysis(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestFetchAnalyzeDisable(t *testing.T) {
+func TestStateAnalysis(t *testing.T) {
+	doStateAnalysis(
+		t,
+		"--disk-id", "fsa0uap9g03n6o91mjnl",
+		"--max-targets", "5")
+}
+
+func TestStateAnalysisPreferFresh(t *testing.T) {
+	doStateAnalysis(
+		t,
+		"--disk-id", "fsa0uap9g03n6o91mjnl",
+		"--max-targets", "5",
+		"--prefer-fresh")
+}
+
+func TestStateAnalysisPreferMinusOne(t *testing.T) {
+	doStateAnalysis(
+		t,
+		"--disk-id", "fsa0uap9g03n6o91mjnl",
+		"--max-targets", "5",
+		"--prefer-minus-one")
+}
+
+func TestStateAnalysisBreakTwo(t *testing.T) {
+	doStateAnalysis(
+		t,
+		"--disk-id", "fsa0uap9g03n6o91mjnl",
+		"--max-targets", "2",
+		"--can-break-two")
+}
+
+func TestStateAnalysisBreakDevice(t *testing.T) {
+	doStateAnalysis(
+		t,
+		"--disk-id", "fsa0uap9g03n6o91mjnl",
+		"--device-id", "bb0fbae0ae5c1285b29ad657069a8abb")
+}
+
+func TestStateAnalysisHealDevice(t *testing.T) {
+	doStateAnalysis(
+		t,
+		"--disk-id", "fsa0uap9g03n6o91mjnl",
+		"--device-id", "0750cecf67723c52d8b6501e882f9673")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestFetchAnalyzeApply(t *testing.T) {
 	tc := TestContext{}
 	tc.init(t, "dr")
 	defer tc.cleanup(t)

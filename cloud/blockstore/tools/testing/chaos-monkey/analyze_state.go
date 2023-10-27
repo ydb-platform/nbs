@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 )
 
@@ -297,7 +298,8 @@ func describeDisk(state *DiskRegistryStateBackup, diskID string) (*DiskInfo, err
 	for _, deviceInfo := range allDevices {
 		if (deviceInfo.Device.State == "DEVICE_STATE_ERROR") &&
 			(strings.HasPrefix(deviceInfo.Device.StateMessage, stateMessagePrefix) ||
-				isDeviceFromDisk(&diskInfo, deviceInfo.Device.DeviceUUID)) {
+				isDeviceFromDisk(&diskInfo, deviceInfo.Device.DeviceUUID) ||
+				deviceInfo.Device.StateMessage == "IO errors") {
 			diskInfo.BrokenDevices = append(diskInfo.BrokenDevices, deviceInfo.DeviceInfo)
 		}
 	}
@@ -319,6 +321,7 @@ func isDeviceInList(cursedDevices []Target, deviceUUID string) bool {
 func findTargetsToCurse(
 	diskInfo *DiskInfo,
 	targetCount int,
+	sacrificeDeviceID string,
 	cursedDevices []Target,
 	targetType DeviceTargetType,
 ) []Target {
@@ -332,28 +335,34 @@ func findTargetsToCurse(
 			break
 		}
 
-		// Check that no device in the cell will be cursed by previous calls.
-		hasCursedDevice := false
-		for _, device := range cell.Devices {
-			isCursedDevice := isDeviceInList(cursedDevices, device.DeviceUUID)
-			if isCursedDevice {
-				hasCursedDevice = true
-				break
+		// Its fine to break two fresh devices in one cell,
+		// in other cases it is forbidden to break two devices in a cell.
+		if targetType != FreshDevice {
+			// Check that no device in the cell will be cursed by previous calls.
+			hasCursedDevice := false
+			for _, device := range cell.Devices {
+				isCursedDevice := isDeviceInList(cursedDevices, device.DeviceUUID)
+				if isCursedDevice {
+					hasCursedDevice = true
+					break
+				}
 			}
-		}
-		if hasCursedDevice {
-			continue
+			if hasCursedDevice {
+				continue
+			}
 		}
 
 		// Curse two devices.
-		if targetType == TwoDevicesForMirror3 && cell.GoodCount == 3 && targetCount > 1 {
-			// curse two devices only when disk is mirror-3 and all devices are online
-			for i := 0; i < 2; i++ {
-				device := cell.Devices[i]
-				devicesToCurse[device.AgentID] = append(
-					devicesToCurse[device.AgentID],
-					device.DeviceUUID)
-				targetCount--
+		if targetType == TwoDevicesForMirror3 {
+			if cell.GoodCount == 3 && targetCount > 1 {
+				// curse two devices only when disk is mirror-3 and all devices are online
+				for i := 0; i < 2; i++ {
+					device := cell.Devices[i]
+					devicesToCurse[device.AgentID] = append(
+						devicesToCurse[device.AgentID],
+						device.DeviceUUID)
+					targetCount--
+				}
 			}
 			continue
 		}
@@ -372,6 +381,9 @@ func findTargetsToCurse(
 		}
 
 		for _, device := range cell.Devices {
+			if len(sacrificeDeviceID) != 0 && device.DeviceUUID != sacrificeDeviceID {
+				continue
+			}
 			isReadyDevice := len(device.State) == 0
 			isFreshDevice := device.State == "fresh"
 			canCurse := (targetType == OneDeviceForAllFine && isReadyDevice) ||
@@ -390,6 +402,7 @@ func findTargetsToCurse(
 	}
 
 	for agentID, deviceUUIDs := range devicesToCurse {
+		sort.Strings(deviceUUIDs)
 		targets = append(targets, Target{
 			DiskID:      diskInfo.DiskID,
 			AgentID:     agentID,
@@ -405,38 +418,53 @@ func findAllTargetsToCurse(
 	diskInfo *DiskInfo,
 	targetCount int,
 	canBreakTwoDevicesInCell bool,
+	preferFreshDevices bool,
+	preferMinusOneCells bool,
+	sacrificeDeviceID string,
 ) []Target {
-
 	var result []Target
 
+	findTargets := func(targetType DeviceTargetType) {
+		remains := targetCount
+		for _, target := range result {
+			remains -= len(target.DeviceUUIDs)
+		}
+		if remains == 0 {
+			return
+		}
+		targets := findTargetsToCurse(diskInfo, remains, sacrificeDeviceID, result, targetType)
+		result = append(result, targets...)
+	}
+
+	if preferFreshDevices {
+		findTargets(FreshDevice)
+	}
+
+	if preferMinusOneCells {
+		findTargets(OneDeviceForMinusOne)
+	}
+
+	if canBreakTwoDevicesInCell && len(sacrificeDeviceID) == 0 {
+		findTargets(TwoDevicesForMirror3)
+	}
+
+	findTargets(OneDeviceForAllFine)
+
 	if canBreakTwoDevicesInCell {
-		result = findTargetsToCurse(diskInfo, targetCount, result, TwoDevicesForMirror3)
+		findTargets(OneDeviceForMinusOne)
 	}
 
-	targetCount -= len(result)
-	if targetCount > 0 {
-		oneForAllFine := findTargetsToCurse(diskInfo, targetCount, result, OneDeviceForAllFine)
-		result = append(result, oneForAllFine...)
-	}
-
-	targetCount -= len(result)
-	if targetCount > 0 && canBreakTwoDevicesInCell {
-		minusOneTargets := findTargetsToCurse(diskInfo, targetCount, result, OneDeviceForMinusOne)
-		result = append(result, minusOneTargets...)
-	}
-
-	targetCount -= len(result)
-	if targetCount > 0 {
-		freshDeviceTargets := findTargetsToCurse(diskInfo, targetCount, result, FreshDevice)
-		result = append(result, freshDeviceTargets...)
-	}
-
+	findTargets(FreshDevice)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].AgentID < result[j].AgentID
+	})
 	return result
 }
 
 func findTargetsToHeal(
 	diskInfo *DiskInfo,
 	targetCount int,
+	luckyDeviceID string,
 ) []BriefDeviceInfo {
 
 	var devicesToHeal []BriefDeviceInfo
@@ -445,8 +473,15 @@ func findTargetsToHeal(
 		if targetCount == 0 {
 			break
 		}
-		devicesToHeal = append(
-			devicesToHeal, brokenDevice)
+		if len(luckyDeviceID) != 0 && luckyDeviceID != brokenDevice.DeviceUUID {
+			continue
+		}
+		// Device with StateMessage "IO errors" should be healed explicitly
+		if brokenDevice.StateMessage == "IO errors" &&
+			len(luckyDeviceID) == 0 {
+			continue
+		}
+		devicesToHeal = append(devicesToHeal, brokenDevice)
 		targetCount--
 	}
 

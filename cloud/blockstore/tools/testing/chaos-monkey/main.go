@@ -21,8 +21,11 @@ type options struct {
 	NbsPort                   int
 	NbsToken                  string
 	DiskID                    string
+	DeviceID                  string
 	MaxTargets                int
 	CanBreakTwoDevicesInCell  bool
+	PreferFreshDevices        bool
+	PreferMinusOneCells       bool
 	FolderIDs                 []string
 	Apply                     bool
 	WaitForReplicationStart   bool
@@ -112,7 +115,11 @@ func run(ctx context.Context, opts *options) error {
 	}
 	fmt.Println(string(output))
 
-	targetsToCurse := findAllTargetsToCurse(diskInfo, opts.MaxTargets, opts.CanBreakTwoDevicesInCell)
+	targetsToCurse := findAllTargetsToCurse(diskInfo, opts.MaxTargets,
+		opts.CanBreakTwoDevicesInCell,
+		opts.PreferFreshDevices,
+		opts.PreferMinusOneCells,
+		opts.DeviceID)
 	fmt.Println("Targets to curse:")
 	output, err = json.MarshalIndent(targetsToCurse, "", "    ")
 	if err != nil {
@@ -120,7 +127,7 @@ func run(ctx context.Context, opts *options) error {
 	}
 	fmt.Println(string(output))
 
-	targetsToHeal := findTargetsToHeal(diskInfo, opts.MaxTargets)
+	targetsToHeal := findTargetsToHeal(diskInfo, opts.MaxTargets, opts.DeviceID)
 	fmt.Println("Targets to heal:")
 	output, err = json.MarshalIndent(targetsToHeal, "", "    ")
 	if err != nil {
@@ -231,6 +238,13 @@ func main() {
 		"disk id",
 	)
 
+	rootCmd.Flags().StringVar(
+		&opts.DeviceID,
+		"device-id",
+		"",
+		"Explicit device ID to be cursed or healed",
+	)
+
 	rootCmd.Flags().IntVar(
 		&opts.MaxTargets,
 		"max-targets",
@@ -243,6 +257,20 @@ func main() {
 		"can-break-two",
 		false,
 		"allows the monkey to break two devices in the cell",
+	)
+
+	rootCmd.Flags().BoolVar(
+		&opts.PreferFreshDevices,
+		"prefer-fresh",
+		false,
+		"tell the monkey to break fresh devices",
+	)
+
+	rootCmd.Flags().BoolVar(
+		&opts.PreferMinusOneCells,
+		"prefer-minus-one",
+		false,
+		"tell the monkey to break devices in the cells with minus one",
 	)
 
 	rootCmd.Flags().BoolVar(

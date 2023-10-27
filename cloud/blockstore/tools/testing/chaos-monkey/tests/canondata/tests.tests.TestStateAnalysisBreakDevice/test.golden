@@ -428,29 +428,11 @@ Targets to curse:
     {
         "DiskId": "fsa0uap9g03n6o91mjnl",
         "DeviceUUIDs": [
-            "c5228e9dc6f2b6e59d3364f72609a828"
-        ],
-        "AgentId": "vla04-ct5-4.cloud.yandex.net",
-        "Reason": "OneDeviceForAllFine"
-    },
-    {
-        "DiskId": "fsa0uap9g03n6o91mjnl",
-        "DeviceUUIDs": [
-            "0668602e4ed326e410f7f0a8d99599ef",
-            "6a427266571e102b0b6c145a829427af",
-            "759361c90e1c3e61537f2e84729e1cf8",
-            "78628d24e420ae99cb76e082c0fcd2cb"
+            "bb0fbae0ae5c1285b29ad657069a8abb"
         ],
         "AgentId": "vla04-ct5-8.cloud.yandex.net",
         "Reason": "OneDeviceForAllFine"
     }
 ]
 Targets to heal:
-[
-    {
-        "AgentId": "vla04-ct5-4.cloud.yandex.net",
-        "DeviceUUID": "0750cecf67723c52d8b6501e882f9673",
-        "State": "DEVICE_STATE_ERROR",
-        "StateMessage": "MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure"
-    }
-]
+null

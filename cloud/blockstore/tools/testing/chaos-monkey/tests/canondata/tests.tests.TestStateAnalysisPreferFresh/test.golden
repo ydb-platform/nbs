@@ -436,10 +436,17 @@ Targets to curse:
     {
         "DiskId": "fsa0uap9g03n6o91mjnl",
         "DeviceUUIDs": [
+            "e69e8e7332a453ecd314ea7dd8c01cfc"
+        ],
+        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+        "Reason": "FreshDevice"
+    },
+    {
+        "DiskId": "fsa0uap9g03n6o91mjnl",
+        "DeviceUUIDs": [
             "0668602e4ed326e410f7f0a8d99599ef",
             "6a427266571e102b0b6c145a829427af",
-            "759361c90e1c3e61537f2e84729e1cf8",
-            "78628d24e420ae99cb76e082c0fcd2cb"
+            "759361c90e1c3e61537f2e84729e1cf8"
         ],
         "AgentId": "vla04-ct5-8.cloud.yandex.net",
         "Reason": "OneDeviceForAllFine"

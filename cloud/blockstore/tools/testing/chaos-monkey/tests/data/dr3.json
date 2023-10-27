@@ -1,0 +1,1834 @@
+{
+    "Backup": {
+        "Disks": [
+            {
+                "DiskId": "fsauk4545ttgv2mf6roj",
+                "DeviceUUIDs": [
+                    "f7af37373a6ebbe2d773eac4dccd6af9"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1692863598886200",
+                "CloudId": "yc.compute.cloud",
+                "FolderId": "yc.compute.acceptance-tests-1"
+            },
+            {
+                "DiskId": "fsa0uap9g03n6o91mjnl/0",
+                "DeviceUUIDs": [
+                    "e69e8e7332a453ecd314ea7dd8c01cfc",
+                    "c5228e9dc6f2b6e59d3364f72609a828",
+                    "0668602e4ed326e410f7f0a8d99599ef",
+                    "6a427266571e102b0b6c145a829427af",
+                    "759361c90e1c3e61537f2e84729e1cf8",
+                    "78628d24e420ae99cb76e082c0fcd2cb",
+                    "58a8532426613928a660cbb3a23a0cb1",
+                    "925200e09af4ef0c76e96a2e28266485",
+                    "aaeb1ca32827de3fc530ef4fa27e4bc0",
+                    "b155145db001496af602d643045eeb08",
+                    "bb0fbae0ae5c1285b29ad657069a8abb"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1694519557161337",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder",
+                "MasterDiskId": "fsa0uap9g03n6o91mjnl"
+            },
+            {
+                "DiskId": "fsa0uap9g03n6o91mjnl/2",
+                "DeviceUUIDs": [
+                    "8836b1055b15ff7194c8ddcaeceece9e",
+                    "7d5484af33f2c4a50826144c4d168158",
+                    "dc72273b0fb80ed83cd748bfc7c567fd",
+                    "9547e2120f160d7690de6c8e1e137e32",
+                    "4a98c8cedf5d81671b5aea8a1cbd8b97",
+                    "6b25edd2a7753df36c34462dd078df09",
+                    "4f4bf53de0438cd7c9bb665adc6f7d55",
+                    "af9102488dcaafaae1a52258554c33ac",
+                    "f04df48f58b8b06b5d0b7dc3f7ea3343",
+                    "b47a4674b40c0d8b43c39a52032b05be",
+                    "eb20aebb3dccf40224687ac01bc8258a"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1697106862511054",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder",
+                "MasterDiskId": "fsa0uap9g03n6o91mjnl"
+            },
+            {
+                "DiskId": "fsa32oku58vbddvkqrid",
+                "DeviceUUIDs": [
+                    "56c2dedaa91802edc843702716496001"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1690557080999727",
+                "CloudId": "yc.compute.cloud",
+                "FolderId": "yc.compute.acceptance-tests-1"
+            },
+            {
+                "DiskId": "fsaeqeprmmr9ojlcf0r0",
+                "DeviceUUIDs": [
+                    "011b6a38bb2387eb8ecb6b24962fddea"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1692890184672352",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder"
+            },
+            {
+                "DiskId": "fsa3ab4sle4a0ccfv3ae",
+                "DeviceUUIDs": [
+                    "4ec6170a8f52b457702fa6db998471d7"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1692960089781930",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder"
+            },
+            {
+                "DiskId": "fsa0uap9g03n6o91mjnl/1",
+                "DeviceUUIDs": [
+                    "56436cba3e28735109ff3abe2bf15e59",
+                    "5b6388aa375e3b64c18e5f193e63ebd2",
+                    "7b21beedc298eb7a6eadbd1df76af406",
+                    "8a37a49ae1679f55c3d8ecc30789ad66",
+                    "ad98d5b47b53b917a3985246b6a952e0",
+                    "b0ffc477c0c514086de68abf759de709",
+                    "b51f2986ba92d69a22c3288d83da785c",
+                    "bf4f8caa0b72c07889f30db5729f048e",
+                    "c4bead9d69a8b62d02e0ce79b9fa5bd3",
+                    "cf71a43961bb538b88cf83082c9e6636",
+                    "d6d2cd433c255f04e136339049aa3173"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1694519557161337",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder",
+                "MasterDiskId": "fsa0uap9g03n6o91mjnl"
+            },
+            {
+                "DiskId": "fsa0uap9g03n6o91mjnl",
+                "BlockSize": 4096,
+                "StateTs": "1697777775748868",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder",
+                "ReplicaCount": 2,
+                "DeviceReplacementUUIDs": [
+                    "e69e8e7332a453ecd314ea7dd8c01cfc"
+                ]
+            },
+            {
+                "DiskId": "fsa9tpvniroui4b3kq9i",
+                "DeviceUUIDs": [
+                    "c93cb26e7b4916b0e15f49b8dccadf9a"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1691177195281015",
+                "CloudId": "yc.compute.cloud",
+                "FolderId": "yc.compute.acceptance-tests-1"
+            },
+            {
+                "DiskId": "fsav6dqpd1m8ho8bl1o7",
+                "DeviceUUIDs": [
+                    "273aa27027d7c31d45c2f5d29b3a909c"
+                ],
+                "BlockSize": 4096,
+                "StateTs": "1692944792146218",
+                "CloudId": "yc.nbs.tests.cloud",
+                "FolderId": "nbs.tests.folder"
+            }
+        ],
+        "PlacementGroups": [
+            {
+                "GroupId": "fsa0uap9g03n6o91mjnl/g",
+                "Disks": [
+                    {
+                        "DiskId": "fsa0uap9g03n6o91mjnl/0",
+                        "DeviceRacks": [
+                            "vla-04:4B42.6",
+                            "vla-04:4B42.1"
+                        ]
+                    },
+                    {
+                        "DiskId": "fsa0uap9g03n6o91mjnl/1",
+                        "DeviceRacks": [
+                            "vla-04:4B42.4"
+                        ]
+                    },
+                    {
+                        "DiskId": "fsa0uap9g03n6o91mjnl/2",
+                        "DeviceRacks": [
+                            "vla-04:4B42.5"
+                        ]
+                    }
+                ],
+                "ConfigVersion": 53
+            },
+            {
+                "GroupId": "fsa7fttk57njeufe0bce",
+                "ConfigVersion": 21,
+                "PlacementStrategy": "PLACEMENT_STRATEGY_PARTITION",
+                "PlacementPartitionCount": 5
+            }
+        ],
+        "Agents": [
+            {
+                "NodeId": 1563,
+                "Devices": [
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+                        "DeviceUUID": "0750cecf67723c52d8b6501e882f9673",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "State": "DEVICE_STATE_ERROR",
+                        "StateTs": "1697777775741177",
+                        "StateMessage": "MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+                        "DeviceUUID": "0a0167afc0a6b21856ba7a92e68612f4",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1684941798129051",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+                        "DeviceUUID": "0e1fe0b8b29f0cbdf34fe2be8a2e6184",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1696928103069128",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+                        "DeviceUUID": "378c9b0c4a62708d4997374183f672c1",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1696928103113304",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+                        "DeviceUUID": "469b6a62d2b17ff00393d2b8380fec94",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1684941798129051",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+                        "DeviceUUID": "54d6d790aad0a054be3dc88b34854d7e",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1696928103025417",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+                        "DeviceUUID": "56c2dedaa91802edc843702716496001",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1690290524127944",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsam7knndbrduuavu45c, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+                        "DeviceUUID": "6c4d3c85946ac2b3b740686205b1a501",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1696924836323277",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+                        "DeviceUUID": "a274b4969a5dd42aa86efba44fcbc1d9",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1684941798129051",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+                        "DeviceUUID": "c5228e9dc6f2b6e59d3364f72609a828",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1694765746808476",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+                        "DeviceUUID": "c8329616c369664259c14ee5b072ab87",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1690290524333171",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsam7knndbrduuavu45c, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+                        "DeviceUUID": "cc24976f171bc1596c26d2f5453af1dd",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1684941798129051",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+                        "DeviceUUID": "d3e9b5fa96078b671db25146ae2ea558",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1696928102980817",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+                        "DeviceUUID": "dbbb69641331854c2422b5de438c7f56",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1694765746882873",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+                        "DeviceUUID": "ee8817c2c5755c43fb2a08238f47f346",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1563,
+                        "Rack": "vla-04:4B42.1",
+                        "StateTs": "1696924836412171",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-4.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NF0M501146      "
+                    }
+                ],
+                "AgentId": "vla04-ct5-4.cloud.yandex.net",
+                "StateTs": "1684941798129051",
+                "SeqNumber": "1",
+                "DedicatedDiskAgent": true,
+                "StateMessage": "New agent",
+                "WorkTs": "1684941798"
+            },
+            {
+                "NodeId": 50008,
+                "Devices": [
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+                        "DeviceUUID": "1126902e829b9df51aebcfb78ba690b3",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128182345",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+                        "DeviceUUID": "2053328a5a1dfcf2e46bc42dfb36d4a1",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128151434",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+                        "DeviceUUID": "38ae5fd6021c4d7b8971831fc4e4b028",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128169119",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+                        "DeviceUUID": "4776b95ac92636a0bf62b8e2e6b7dd4d",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128161685",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+                        "DeviceUUID": "5136c56bcbd1080c5e6839d3f547916e",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128163209",
+                        "CmsTs": "1697100128163209",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+                        "DeviceUUID": "5733e27adeb030e8b2ec437409b99290",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128165073",
+                        "CmsTs": "1697100128165073",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+                        "DeviceUUID": "6d32e7a7249761f4c412d386f849c9be",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128186505",
+                        "CmsTs": "1697100128186505",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+                        "DeviceUUID": "77c8c8dc0a517f27ee4bc89df48a6bd7",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128184586",
+                        "CmsTs": "1697100128184586",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+                        "DeviceUUID": "85bf6aa8e671c416ee37cc490cc1358e",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128187401",
+                        "CmsTs": "1697100128187401",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+                        "DeviceUUID": "a07ce5a417d283f2728fd3c4e98a3514",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128148554",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+                        "DeviceUUID": "a6cd132a3dd680bf0f2cf8e8329d0431",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128185545",
+                        "CmsTs": "1697100128185545",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+                        "DeviceUUID": "a78ae120bea65f75f8de81073a7f8a60",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128153101",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+                        "DeviceUUID": "bc37158ee755513c3c0120ee31ea800d",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128175497",
+                        "CmsTs": "1697100128175497",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+                        "DeviceUUID": "c6d317d49941b0c3216e54cf2864304e",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128156747",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "PoolName": "local-ssd",
+                        "PoolKind": "DEVICE_POOL_KIND_LOCAL",
+                        "SerialNumber": "S4C9NX0M600964      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+                        "DeviceUUID": "d65aa254b073ea1f6b72f0cf8c203b54",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 50008,
+                        "Rack": "vla-04:4B42.3",
+                        "State": "DEVICE_STATE_WARNING",
+                        "StateTs": "1697100128159180",
+                        "StateMessage": "cms action",
+                        "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-5.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600964      "
+                    }
+                ],
+                "AgentId": "vla04-ct5-5.cloud.yandex.net",
+                "StateTs": "1697484485507454",
+                "SeqNumber": "1",
+                "DedicatedDiskAgent": true,
+                "StateMessage": "cms action",
+                "WorkTs": "1697483132"
+            },
+            {
+                "NodeId": 1508,
+                "Devices": [
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+                        "DeviceUUID": "4ec6170a8f52b457702fa6db998471d7",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+                        "DeviceUUID": "56436cba3e28735109ff3abe2bf15e59",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+                        "DeviceUUID": "5b6388aa375e3b64c18e5f193e63ebd2",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+                        "DeviceUUID": "7b21beedc298eb7a6eadbd1df76af406",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+                        "DeviceUUID": "845abc1499a2ec6bf1768e040f41da91",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1694434504428217",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: IO errors",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+                        "DeviceUUID": "8a37a49ae1679f55c3d8ecc30789ad66",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+                        "DeviceUUID": "9190cd334412819293cc2cbce2e8eea1",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1694430585781756",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa6480l25gaqm31oq0b, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+                        "DeviceUUID": "ad98d5b47b53b917a3985246b6a952e0",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+                        "DeviceUUID": "b0ffc477c0c514086de68abf759de709",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+                        "DeviceUUID": "b51f2986ba92d69a22c3288d83da785c",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+                        "DeviceUUID": "bf4f8caa0b72c07889f30db5729f048e",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+                        "DeviceUUID": "c4bead9d69a8b62d02e0ce79b9fa5bd3",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+                        "DeviceUUID": "cf71a43961bb538b88cf83082c9e6636",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+                        "DeviceUUID": "d6d2cd433c255f04e136339049aa3173",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+                        "DeviceUUID": "de0a2bbb3b1228e690511dc7abc8d415",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1508,
+                        "Rack": "vla-04:4B42.4",
+                        "StateTs": "1692869176445983",
+                        "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-6.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500073      "
+                    }
+                ],
+                "AgentId": "vla04-ct5-6.cloud.yandex.net",
+                "StateTs": "1692869176445983",
+                "SeqNumber": "1",
+                "DedicatedDiskAgent": true,
+                "StateMessage": "New agent",
+                "WorkTs": "1692869176"
+            },
+            {
+                "NodeId": 1519,
+                "Devices": [
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+                        "DeviceUUID": "011b6a38bb2387eb8ecb6b24962fddea",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869282739939",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+                        "DeviceUUID": "273aa27027d7c31d45c2f5d29b3a909c",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869292791778",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+                        "DeviceUUID": "4a98c8cedf5d81671b5aea8a1cbd8b97",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1696924836367563",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+                        "DeviceUUID": "4f4bf53de0438cd7c9bb665adc6f7d55",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1696924836279325",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+                        "DeviceUUID": "62105184dd61a86d92e370a2defd2f1a",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1694595145339436",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+                        "DeviceUUID": "6b25edd2a7753df36c34462dd078df09",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1696926651417424",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+                        "DeviceUUID": "7d5484af33f2c4a50826144c4d168158",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1694595085435792",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+                        "DeviceUUID": "8836b1055b15ff7194c8ddcaeceece9e",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1694765746947517",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+                        "DeviceUUID": "9016ede877326e81cc12654eaab7222a",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1694765747003566",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+                        "DeviceUUID": "9547e2120f160d7690de6c8e1e137e32",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869293912163",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+                        "DeviceUUID": "af9102488dcaafaae1a52258554c33ac",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869294040569",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+                        "DeviceUUID": "b47a4674b40c0d8b43c39a52032b05be",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869294159543",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+                        "DeviceUUID": "dc72273b0fb80ed83cd748bfc7c567fd",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869294280682",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+                        "DeviceUUID": "eb20aebb3dccf40224687ac01bc8258a",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869294400355",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+                        "DeviceUUID": "f04df48f58b8b06b5d0b7dc3f7ea3343",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1519,
+                        "Rack": "vla-04:4B42.5",
+                        "StateTs": "1692869294524258",
+                        "StateMessage": "private api: -",
+                        "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-7.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NA0M500253      "
+                    }
+                ],
+                "AgentId": "vla04-ct5-7.cloud.yandex.net",
+                "StateTs": "1692054005714756",
+                "SeqNumber": "1",
+                "DedicatedDiskAgent": true,
+                "StateMessage": "cms action",
+                "WorkTs": "1692051941"
+            },
+            {
+                "NodeId": 1540,
+                "Devices": [
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS14",
+                        "DeviceUUID": "0668602e4ed326e410f7f0a8d99599ef",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1694765747059693",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS07",
+                        "DeviceUUID": "188a6a7949cddb64faafda8f87befe54",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1696928157224781",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS15",
+                        "DeviceUUID": "58a8532426613928a660cbb3a23a0cb1",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1694749690869164",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS08",
+                        "DeviceUUID": "6a427266571e102b0b6c145a829427af",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1694749690823369",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS11",
+                        "DeviceUUID": "759361c90e1c3e61537f2e84729e1cf8",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1694749690777451",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS10",
+                        "DeviceUUID": "78628d24e420ae99cb76e082c0fcd2cb",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1694749690913006",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS13",
+                        "DeviceUUID": "8cd32e9ec39725e1dab627d6fd98a00f",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1696928102935826",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS12",
+                        "DeviceUUID": "925200e09af4ef0c76e96a2e28266485",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1684941797526682",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS04",
+                        "DeviceUUID": "aaeb1ca32827de3fc530ef4fa27e4bc0",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1684941797526682",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS09",
+                        "DeviceUUID": "b155145db001496af602d643045eeb08",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1684941797526682",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS03",
+                        "DeviceUUID": "bb0fbae0ae5c1285b29ad657069a8abb",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1684941797526682",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS05",
+                        "DeviceUUID": "c93cb26e7b4916b0e15f49b8dccadf9a",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1684941797526682",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS01",
+                        "DeviceUUID": "e69e8e7332a453ecd314ea7dd8c01cfc",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1696926651462026",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS06",
+                        "DeviceUUID": "f7af37373a6ebbe2d773eac4dccd6af9",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1684941797526682",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    },
+                    {
+                        "DeviceName": "/dev/disk/by-partlabel/NVMENBS02",
+                        "DeviceUUID": "fb73723036307f51fc13a25074c735e2",
+                        "BlockSize": 4096,
+                        "BlocksCount": "24379392",
+                        "NodeId": 1540,
+                        "Rack": "vla-04:4B42.6",
+                        "StateTs": "1696928157270044",
+                        "StateMessage": "private api: chaos-monkey: restoring device state, prev state message: MirroredDiskId=fsa0uap9g03n6o91mjnl, ReplacementReason=device failure",
+                        "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                        "UnadjustedBlockCount": "24413696",
+                        "RdmaEndpoint": {
+                            "Host": "vla04-ct5-8.cloud.yandex.net",
+                            "Port": 10020
+                        },
+                        "SerialNumber": "S4C9NX0M600986      "
+                    }
+                ],
+                "AgentId": "vla04-ct5-8.cloud.yandex.net",
+                "StateTs": "1684941797526682",
+                "SeqNumber": "1",
+                "DedicatedDiskAgent": true,
+                "StateMessage": "New agent",
+                "WorkTs": "1684941797"
+            }
+        ],
+        "Config": {
+            "Version": 16,
+            "KnownAgents": [
+                {
+                    "Devices": [
+                        {
+                            "DeviceUUID": "0750cecf67723c52d8b6501e882f9673"
+                        },
+                        {
+                            "DeviceUUID": "0a0167afc0a6b21856ba7a92e68612f4"
+                        },
+                        {
+                            "DeviceUUID": "0e1fe0b8b29f0cbdf34fe2be8a2e6184"
+                        },
+                        {
+                            "DeviceUUID": "378c9b0c4a62708d4997374183f672c1"
+                        },
+                        {
+                            "DeviceUUID": "469b6a62d2b17ff00393d2b8380fec94"
+                        },
+                        {
+                            "DeviceUUID": "54d6d790aad0a054be3dc88b34854d7e"
+                        },
+                        {
+                            "DeviceUUID": "56c2dedaa91802edc843702716496001"
+                        },
+                        {
+                            "DeviceUUID": "6c4d3c85946ac2b3b740686205b1a501"
+                        },
+                        {
+                            "DeviceUUID": "a274b4969a5dd42aa86efba44fcbc1d9"
+                        },
+                        {
+                            "DeviceUUID": "c5228e9dc6f2b6e59d3364f72609a828"
+                        },
+                        {
+                            "DeviceUUID": "c8329616c369664259c14ee5b072ab87"
+                        },
+                        {
+                            "DeviceUUID": "cc24976f171bc1596c26d2f5453af1dd"
+                        },
+                        {
+                            "DeviceUUID": "d3e9b5fa96078b671db25146ae2ea558"
+                        },
+                        {
+                            "DeviceUUID": "dbbb69641331854c2422b5de438c7f56"
+                        },
+                        {
+                            "DeviceUUID": "ee8817c2c5755c43fb2a08238f47f346"
+                        }
+                    ],
+                    "AgentId": "vla04-ct5-4.cloud.yandex.net"
+                },
+                {
+                    "Devices": [
+                        {
+                            "DeviceUUID": "1126902e829b9df51aebcfb78ba690b3"
+                        },
+                        {
+                            "DeviceUUID": "2053328a5a1dfcf2e46bc42dfb36d4a1"
+                        },
+                        {
+                            "DeviceUUID": "38ae5fd6021c4d7b8971831fc4e4b028"
+                        },
+                        {
+                            "DeviceUUID": "4776b95ac92636a0bf62b8e2e6b7dd4d"
+                        },
+                        {
+                            "DeviceUUID": "5136c56bcbd1080c5e6839d3f547916e"
+                        },
+                        {
+                            "DeviceUUID": "5733e27adeb030e8b2ec437409b99290"
+                        },
+                        {
+                            "DeviceUUID": "6d32e7a7249761f4c412d386f849c9be"
+                        },
+                        {
+                            "DeviceUUID": "77c8c8dc0a517f27ee4bc89df48a6bd7"
+                        },
+                        {
+                            "DeviceUUID": "85bf6aa8e671c416ee37cc490cc1358e"
+                        },
+                        {
+                            "DeviceUUID": "a07ce5a417d283f2728fd3c4e98a3514"
+                        },
+                        {
+                            "DeviceUUID": "a6cd132a3dd680bf0f2cf8e8329d0431"
+                        },
+                        {
+                            "DeviceUUID": "a78ae120bea65f75f8de81073a7f8a60"
+                        },
+                        {
+                            "DeviceUUID": "bc37158ee755513c3c0120ee31ea800d"
+                        },
+                        {
+                            "DeviceUUID": "c6d317d49941b0c3216e54cf2864304e"
+                        },
+                        {
+                            "DeviceUUID": "d65aa254b073ea1f6b72f0cf8c203b54"
+                        }
+                    ],
+                    "AgentId": "vla04-ct5-5.cloud.yandex.net"
+                },
+                {
+                    "Devices": [
+                        {
+                            "DeviceUUID": "4ec6170a8f52b457702fa6db998471d7"
+                        },
+                        {
+                            "DeviceUUID": "56436cba3e28735109ff3abe2bf15e59"
+                        },
+                        {
+                            "DeviceUUID": "5b6388aa375e3b64c18e5f193e63ebd2"
+                        },
+                        {
+                            "DeviceUUID": "7b21beedc298eb7a6eadbd1df76af406"
+                        },
+                        {
+                            "DeviceUUID": "845abc1499a2ec6bf1768e040f41da91"
+                        },
+                        {
+                            "DeviceUUID": "8a37a49ae1679f55c3d8ecc30789ad66"
+                        },
+                        {
+                            "DeviceUUID": "9190cd334412819293cc2cbce2e8eea1"
+                        },
+                        {
+                            "DeviceUUID": "ad98d5b47b53b917a3985246b6a952e0"
+                        },
+                        {
+                            "DeviceUUID": "b0ffc477c0c514086de68abf759de709"
+                        },
+                        {
+                            "DeviceUUID": "b51f2986ba92d69a22c3288d83da785c"
+                        },
+                        {
+                            "DeviceUUID": "bf4f8caa0b72c07889f30db5729f048e"
+                        },
+                        {
+                            "DeviceUUID": "c4bead9d69a8b62d02e0ce79b9fa5bd3"
+                        },
+                        {
+                            "DeviceUUID": "cf71a43961bb538b88cf83082c9e6636"
+                        },
+                        {
+                            "DeviceUUID": "d6d2cd433c255f04e136339049aa3173"
+                        },
+                        {
+                            "DeviceUUID": "de0a2bbb3b1228e690511dc7abc8d415"
+                        }
+                    ],
+                    "AgentId": "vla04-ct5-6.cloud.yandex.net"
+                },
+                {
+                    "Devices": [
+                        {
+                            "DeviceUUID": "011b6a38bb2387eb8ecb6b24962fddea"
+                        },
+                        {
+                            "DeviceUUID": "273aa27027d7c31d45c2f5d29b3a909c"
+                        },
+                        {
+                            "DeviceUUID": "4a98c8cedf5d81671b5aea8a1cbd8b97"
+                        },
+                        {
+                            "DeviceUUID": "4f4bf53de0438cd7c9bb665adc6f7d55"
+                        },
+                        {
+                            "DeviceUUID": "62105184dd61a86d92e370a2defd2f1a"
+                        },
+                        {
+                            "DeviceUUID": "6b25edd2a7753df36c34462dd078df09"
+                        },
+                        {
+                            "DeviceUUID": "7d5484af33f2c4a50826144c4d168158"
+                        },
+                        {
+                            "DeviceUUID": "8836b1055b15ff7194c8ddcaeceece9e"
+                        },
+                        {
+                            "DeviceUUID": "9016ede877326e81cc12654eaab7222a"
+                        },
+                        {
+                            "DeviceUUID": "9547e2120f160d7690de6c8e1e137e32"
+                        },
+                        {
+                            "DeviceUUID": "af9102488dcaafaae1a52258554c33ac"
+                        },
+                        {
+                            "DeviceUUID": "b47a4674b40c0d8b43c39a52032b05be"
+                        },
+                        {
+                            "DeviceUUID": "dc72273b0fb80ed83cd748bfc7c567fd"
+                        },
+                        {
+                            "DeviceUUID": "eb20aebb3dccf40224687ac01bc8258a"
+                        },
+                        {
+                            "DeviceUUID": "f04df48f58b8b06b5d0b7dc3f7ea3343"
+                        }
+                    ],
+                    "AgentId": "vla04-ct5-7.cloud.yandex.net"
+                },
+                {
+                    "Devices": [
+                        {
+                            "DeviceUUID": "0668602e4ed326e410f7f0a8d99599ef"
+                        },
+                        {
+                            "DeviceUUID": "188a6a7949cddb64faafda8f87befe54"
+                        },
+                        {
+                            "DeviceUUID": "58a8532426613928a660cbb3a23a0cb1"
+                        },
+                        {
+                            "DeviceUUID": "6a427266571e102b0b6c145a829427af"
+                        },
+                        {
+                            "DeviceUUID": "759361c90e1c3e61537f2e84729e1cf8"
+                        },
+                        {
+                            "DeviceUUID": "78628d24e420ae99cb76e082c0fcd2cb"
+                        },
+                        {
+                            "DeviceUUID": "8cd32e9ec39725e1dab627d6fd98a00f"
+                        },
+                        {
+                            "DeviceUUID": "925200e09af4ef0c76e96a2e28266485"
+                        },
+                        {
+                            "DeviceUUID": "aaeb1ca32827de3fc530ef4fa27e4bc0"
+                        },
+                        {
+                            "DeviceUUID": "b155145db001496af602d643045eeb08"
+                        },
+                        {
+                            "DeviceUUID": "bb0fbae0ae5c1285b29ad657069a8abb"
+                        },
+                        {
+                            "DeviceUUID": "c93cb26e7b4916b0e15f49b8dccadf9a"
+                        },
+                        {
+                            "DeviceUUID": "e69e8e7332a453ecd314ea7dd8c01cfc"
+                        },
+                        {
+                            "DeviceUUID": "f7af37373a6ebbe2d773eac4dccd6af9"
+                        },
+                        {
+                            "DeviceUUID": "fb73723036307f51fc13a25074c735e2"
+                        }
+                    ],
+                    "AgentId": "vla04-ct5-8.cloud.yandex.net"
+                }
+            ],
+            "LastDiskStateSeqNo": "53",
+            "WritableState": true,
+            "DeviceOverrides": [
+                {
+                    "Device": "4f4bf53de0438cd7c9bb665adc6f7d55",
+                    "DiskId": "fsa6480l25gaqm31oq0b/2",
+                    "BlocksCount": "24379392"
+                },
+                {
+                    "Device": "4a98c8cedf5d81671b5aea8a1cbd8b97",
+                    "DiskId": "fsa6480l25gaqm31oq0b/2",
+                    "BlocksCount": "24379392"
+                },
+                {
+                    "Device": "4f4bf53de0438cd7c9bb665adc6f7d55",
+                    "DiskId": "fsa6480l25gaqm31oq0b",
+                    "BlocksCount": "24379392"
+                },
+                {
+                    "Device": "4a98c8cedf5d81671b5aea8a1cbd8b97",
+                    "DiskId": "fsa6480l25gaqm31oq0b",
+                    "BlocksCount": "24379392"
+                }
+            ],
+            "DevicePoolConfigs": [
+                {
+                    "Name": "local-ssd",
+                    "AllocationUnit": "99857989632",
+                    "Kind": "DEVICE_POOL_KIND_LOCAL"
+                }
+            ]
+        },
+        "DirtyDevices": [
+            {
+                "Id": "0750cecf67723c52d8b6501e882f9673",
+                "DiskId": "fsa0uap9g03n6o91mjnl/0"
+            }
+        ],
+        "AutomaticallyReplacedDevices": [
+            {
+                "DeviceId": "0750cecf67723c52d8b6501e882f9673",
+                "ReplacementTs": "1697777775741177"
+            }
+        ],
+        "SuspendedDevices": [
+            {
+                "Id": "2053328a5a1dfcf2e46bc42dfb36d4a1"
+            },
+            {
+                "Id": "a07ce5a417d283f2728fd3c4e98a3514"
+            },
+            {
+                "Id": "a78ae120bea65f75f8de81073a7f8a60"
+            },
+            {
+                "Id": "c6d317d49941b0c3216e54cf2864304e"
+            },
+            {}
+        ]
+    }
+}
