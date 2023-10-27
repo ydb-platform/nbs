@@ -28,6 +28,12 @@ message TFeatureConfig
 
     // Optional value - for non-binary features.
     optional string Value = 4;
+
+    // If set, feature can be enabled (for whitelist-features) or disabled
+    // (for blacklist-features) even if CloudId and FolderId are not matched by
+    // filters - with these probabilities.
+    optional double CloudProbability = 5;
+    optional double FolderProbability = 6;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -18,7 +18,9 @@ class TFeaturesConfig
     {
         THashSet<TString> CloudIds;
         THashSet<TString> FolderIds;
-        bool IsBlacklist;
+        bool IsBlacklist = false;
+        double CloudProbability = 0;
+        double FolderProbability = 0;
         TString Value;
     };
 

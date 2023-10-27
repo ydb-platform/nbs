@@ -1,6 +1,21 @@
 #include "features_config.h"
 
+#include <util/digest/city.h>
+
 namespace NCloud::NBlockStore::NStorage {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool ProbabilityMatch(double p, const TString& s)
+{
+    return p && CityHash64(s) / static_cast<double>(Max<ui64>()) < p;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 TFeaturesConfig::TFeaturesConfig(
         NProto::TFeaturesConfig config)
@@ -8,10 +23,12 @@ TFeaturesConfig::TFeaturesConfig(
 {
     for (const auto& feature: Config.GetFeatures()) {
         TFeatureInfo info;
-        info.IsBlacklist = !feature.HasWhitelist();
+        info.IsBlacklist = feature.HasBlacklist();
+        info.CloudProbability = feature.GetCloudProbability();
+        info.FolderProbability = feature.GetFolderProbability();
 
-        const auto& cloudList =
-            (feature.HasBlacklist() ? feature.GetBlacklist() : feature.GetWhitelist());
+        const auto& cloudList = feature.HasBlacklist()
+            ? feature.GetBlacklist() : feature.GetWhitelist();
 
         for (const auto& cloudId: cloudList.GetCloudIds()) {
             info.CloudIds.emplace(cloudId);
@@ -61,8 +78,13 @@ bool TFeaturesConfig::GetFeature(
     auto it = Features.find(featureName);
     if (it != Features.end()) {
         auto isBlacklist = it->second.IsBlacklist;
+        const bool probabilityMatch =
+            ProbabilityMatch(it->second.CloudProbability, cloudId)
+            || ProbabilityMatch(it->second.FolderProbability, folderId);
+
         if (it->second.CloudIds.contains(cloudId)
-                || it->second.FolderIds.contains(folderId))
+                || it->second.FolderIds.contains(folderId)
+                || probabilityMatch)
         {
             result = !isBlacklist;
         } else {
