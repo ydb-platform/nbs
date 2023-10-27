@@ -964,7 +964,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-5039
     - yabs/server/test/ft/BSSERVER-5360
     - yabs/server/test/ft/BSSERVER-9277
-    - yabs/server/test/ft/BSSERVER-9499
     - yabs/server/test/ft/BSSERVER-9782
     - yabs/server/test/ft/BSSERVER-9961
     - yabs/server/test/ft/DSP-85
