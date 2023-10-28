@@ -95,7 +95,6 @@ migrations:
     - load/projects/tankapi_server/tankapi
     - load/projects/tankapi_server/tankapi/tests
     - logos/projects/ads/tasks/ads_map_and_join_simulator_log_raw
-    - logos/projects/ads/tasks/distribution_monitoring_bk_installs_stat_task
     - logos/projects/money_dwh/tasks/pages/v1
     - logos/projects/statkey_py3/tasks/cubes/domains/metrika/utils
     - logos/projects/statkey_py3/tasks/marketplace_clusterdomain_parsed
@@ -2082,7 +2081,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-20224
     - yabs/server/test/ft/BSSERVER-2063
     - yabs/server/test/ft/BSSERVER-2124
-    - yabs/server/test/ft/BSSERVER-21534
     - yabs/server/test/ft/BSSERVER-22055
     - yabs/server/test/ft/BSSERVER-22647
     - yabs/server/test/ft/BSSERVER-2293
