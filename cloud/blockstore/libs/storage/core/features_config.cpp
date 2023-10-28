@@ -67,6 +67,15 @@ TString TFeaturesConfig::GetFeatureValue(
     return value;
 }
 
+TVector<TString> TFeaturesConfig::CollectAllFeatures() const
+{
+    TVector<TString> result;
+    for (const auto& x: Features) {
+        result.push_back(x.first);
+    }
+    return result;
+}
+
 bool TFeaturesConfig::GetFeature(
     const TString& cloudId,
     const TString& folderId,

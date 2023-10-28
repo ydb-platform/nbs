@@ -1,4 +1,5 @@
 RECURSE(
+    featureconfig
     formatter
     readbdev
 )
