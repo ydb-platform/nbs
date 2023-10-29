@@ -53,9 +53,28 @@ struct TTestNvmeManager
         return MakeFuture<NProto::TError>();
     }
 
+    TFuture<NProto::TError> Deallocate(
+        const TString &path,
+        ui64 offsetBytes,
+        ui64 sizeBytes) override
+    {
+        Y_UNUSED(path);
+        Y_UNUSED(offsetBytes);
+        Y_UNUSED(sizeBytes);
+
+        return MakeFuture<NProto::TError>();
+    }
+
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
         return "SN-" + path;
+    }
+
+    TResultOrError<bool> IsSsd(const TString& path) override
+    {
+        Y_UNUSED(path);
+
+        return true;
     }
 };
 

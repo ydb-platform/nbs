@@ -3,8 +3,10 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <util/generic/yexception.h>
+#include <util/string/printf.h>
 #include <util/system/file.h>
 
+#include <linux/fs.h>
 #include <linux/nvme_ioctl.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -139,6 +141,36 @@ private:
         NVMeFormatImpl(device, nsId, format, Timeout);
     }
 
+    void DeallocateImpl(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
+    {
+        TFileHandle device(path, OpenExisting | RdWr);
+        Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
+
+        ui64 devSizeBytes = 0;
+        int err = ioctl(device, BLKGETSIZE64, &devSizeBytes);
+        if (err) {
+            err = errno;
+            ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+                << "NVMeDeallocateImpl failed to read device size: "
+                << strerror(err);
+        }
+
+        Y_ENSURE(offsetBytes + sizeBytes <= devSizeBytes,
+            "invalid deallocate range: "
+            "offsetBytes=" << offsetBytes <<
+            ", sizeBytes=" << sizeBytes <<
+            ", devSizeBytes=" << devSizeBytes);
+
+        ui64 range[2] = { offsetBytes, sizeBytes };
+        err = ioctl(device, BLKDISCARD, range);
+        if (err) {
+            err = errno;
+            ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+                << "NVMeDeallocateImpl failed to deallocate: "
+                << strerror(err);
+        }
+    }
+
 public:
     TNvmeManager(ITaskQueuePtr executor, TDuration timeout)
         : Executor(executor)
@@ -159,6 +191,23 @@ public:
         });
     }
 
+    TFuture<NProto::TError> Deallocate(
+        const TString& path,
+        ui64 offsetBytes,
+        ui64 sizeBytes) override
+    {
+        return Executor->Execute([=] {
+            try {
+                DeallocateImpl(path, offsetBytes, sizeBytes);
+                return NProto::TError();
+            } catch (const TServiceError &e) {
+                return MakeError(e.GetCode(), TString(e.GetMessage()));
+            } catch (...) {
+                return MakeError(E_FAIL, CurrentExceptionMessage());
+            }
+        });
+    }
+
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
         return SafeExecute<TResultOrError<TString>>([&] {
@@ -170,6 +219,23 @@ public:
             auto end = std::find(sn, sn + sizeof(ctrl.sn), '\0');
 
             return TString(sn, end);
+        });
+    }
+
+    TResultOrError<bool> IsSsd(const TString& path) override
+    {
+        return SafeExecute<TResultOrError<bool>>([&] {
+            TFileHandle device(path, OpenExisting | RdOnly);
+
+            unsigned short isRotational = 0;
+            int err = ioctl(device, BLKROTATIONAL, &isRotational);
+            if (err) {
+                int err = errno;
+                ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+                    << "NVMeIsSsd failed: " << strerror(err);
+            }
+
+            return isRotational == 0;
         });
     }
 };

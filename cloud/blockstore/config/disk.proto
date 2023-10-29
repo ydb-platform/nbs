@@ -16,6 +16,7 @@ enum EDeviceEraseMethod
     DEVICE_ERASE_METHOD_USER_DATA_ERASE = 1;
     DEVICE_ERASE_METHOD_CRYPTO_ERASE = 2;
     DEVICE_ERASE_METHOD_NONE = 3;
+    DEVICE_ERASE_METHOD_DEALLOCATE = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

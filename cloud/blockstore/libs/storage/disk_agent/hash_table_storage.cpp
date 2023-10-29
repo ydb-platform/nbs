@@ -133,6 +133,7 @@ struct THashTableStorage final
         NProto::EDeviceEraseMethod method) override
     {
         switch (method) {
+        case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
         case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
         case NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE:
             for (ui64 i = 0; i < BlockCount; i++) {

@@ -633,6 +633,16 @@ TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
 
 TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod method)
 {
+    if (method != NProto::DEVICE_ERASE_METHOD_NONE &&
+        method != NProto::DEVICE_ERASE_METHOD_ZERO_FILL)
+    {
+        auto isSsdOrError = NvmeManager->IsSsd(File.GetName());
+        if (HasError(isSsdOrError) || !isSsdOrError.GetResult()) {
+            // fallback to zero erase for mechanical disk
+            method = NProto::DEVICE_ERASE_METHOD_ZERO_FILL;
+        }
+    }
+
     switch (method) {
     case NProto::DEVICE_ERASE_METHOD_ZERO_FILL: {
         TWriteGuard writeGuard(WriteSubmissionLock);
@@ -659,9 +669,16 @@ TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod meth
             File.GetName(),
             NVME_FMT_NVM_SES_CRYPTO_ERASE);
 
+    case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
+        return NvmeManager->Deallocate(
+            File.GetName(),
+            StorageStartIndex * BlockSize,
+            StorageBlockCount * BlockSize);
+
     case NProto::DEVICE_ERASE_METHOD_NONE:
         return {};
     }
+
 }
 
 TStorageBuffer TAioStorage::AllocateBuffer(size_t byteCount)
