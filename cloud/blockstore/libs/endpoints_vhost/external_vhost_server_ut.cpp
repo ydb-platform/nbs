@@ -160,13 +160,26 @@ struct TFixture
 
         volume.SetDiskId("vol0");
         volume.SetBlocksCount(10'000);
-        volume.SetBlockSize(4096);
+        volume.SetBlockSize(4_KB);
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
 
-        auto* device = volume.AddDevices();
-        device->SetDeviceName("device");
-        device->SetDeviceUUID("uuid1");
-        device->SetAgentId("localhost");
+        {
+            auto* device = volume.AddDevices();
+            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceUUID("uuid1");
+            device->SetAgentId("localhost");
+            device->SetBlockCount(4'000);
+            device->SetPhysicalOffset(32'000);
+        }
+
+        {
+            auto* device = volume.AddDevices();
+            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceUUID("uuid2");
+            device->SetAgentId("localhost");
+            device->SetBlockCount(6'000);
+            device->SetPhysicalOffset(0);
+        }
 
         return volume;
     } ();
@@ -177,8 +190,8 @@ struct TFixture
         volume.SetDiskId("vol1");
 
         auto* device = volume.AddDevices();
-        device->SetDeviceName("device");
-        device->SetDeviceUUID("uuid2");
+        device->SetDeviceName("/dev/disk/by-partlable/NVMENBS02");
+        device->SetDeviceUUID("uuid3");
         device->SetAgentId("remote");
 
         return volume;
@@ -286,6 +299,27 @@ bool Equal(const NProto::TVolume& lhs, const NProto::TVolume& rhs)
         && Equal(lhs.GetDevices(), rhs.GetDevices());
 }
 
+TString GetArg(const TVector<TString>& args, TStringBuf name)
+{
+    auto it = Find(args, name);
+    if (it == args.end()) {
+        return {};
+    }
+    return *std::next(it);
+}
+
+TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
+{
+    TVector<TString> values;
+    for (size_t i = 0; i != args.size(); ++i) {
+        if (args[i] == name && i + 1 != args.size()) {
+            values.push_back(args[i + 1]);
+        }
+    }
+
+    return values;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,6 +343,42 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
 
             UNIT_ASSERT_VALUES_EQUAL(Volume.GetDiskId(), create->DiskId);
+
+            /*
+                --device ...                        2
+                --device ...                        2
+                --serial local0                     2
+                --socket-path /tmp/socket.vhost     2
+                -q 2                                2
+                --read-only                         1
+                                                   11
+            */
+            UNIT_ASSERT_VALUES_EQUAL(11, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "/tmp/socket.vhost",
+                GetArg(create->CmdArgs, "--socket-path"));
+
+            UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
+            UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
+
+            auto devices = GetArgN(create->CmdArgs, "--device");
+
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
+                    << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
+                    << (4'000 * 4_KB)
+                    << ":32000",
+                devices[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
+                    << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
+                    << (6'000 * 4_KB)
+                    << ":0",
+                devices[1]);
+
             UNIT_ASSERT_VALUES_EQUAL(request.GetClientId(), create->ClientId);
             UNIT_ASSERT_VALUES_EQUAL(2, create->Cgroups.size());
             UNIT_ASSERT_VALUES_EQUAL("cg-1", create->Cgroups[0]);

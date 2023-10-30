@@ -144,6 +144,7 @@ void FillDevice(
     device->SetDeviceUUID(deviceConfig.GetDeviceUUID());
     device->SetDeviceName(deviceConfig.GetDeviceName());
     device->MutableRdmaEndpoint()->CopyFrom(deviceConfig.GetRdmaEndpoint());
+    device->SetPhysicalOffset(deviceConfig.GetPhysicalOffset());
 }
 
 template <typename T>

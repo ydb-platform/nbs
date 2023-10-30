@@ -2033,7 +2033,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
     }
 
-    void ShouldProperlyReactToAcquireDiskError(NProto::EVolumeMountMode mountMode) {
+    void ShouldProperlyReactToAcquireDiskError(NProto::EVolumeMountMode mountMode)
+    {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
         config.SetAllocationUnitNonReplicatedSSD(1);
@@ -2102,6 +2103,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 128_MB / DefaultBlockSize,
                 volume.GetDevices(0).GetBlockCount()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                100500,
+                volume.GetDevices(0).GetPhysicalOffset()
             );
         }
     }

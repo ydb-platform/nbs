@@ -316,6 +316,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
             device.SetBlockSize(DefaultDeviceBlockSize);
             device.MutableRdmaEndpoint()->SetHost(Sprintf("rdma%u", i));
             device.MutableRdmaEndpoint()->SetPort(10020);
+            device.SetPhysicalOffset(100500);
         }
     }
 

@@ -700,20 +700,24 @@ private:
             : volume.GetDiskId();
 
         TVector<TString> args {
-            "-i", deviceName,
-            "-s", socketPath,
+            "--serial", deviceName,
+            "--socket-path", socketPath,
             "-q", ToString(request.GetVhostQueuesCount())
         };
 
         for (const auto& device: volume.GetDevices()) {
             const ui64 size = device.GetBlockCount() * volume.GetBlockSize();
+
             args.insert(args.end(), {
-                "-b", TStringBuilder() << device.GetDeviceName() << ":" << size
-            });
+                "--device", TStringBuilder()
+                    << device.GetDeviceName() << ":"
+                    << size << ":"
+                    << device.GetPhysicalOffset()
+                });
         }
 
         if (request.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY) {
-            args.emplace_back("-r");
+            args.emplace_back("--read-only");
         }
 
         TVector<TString> cgroups(

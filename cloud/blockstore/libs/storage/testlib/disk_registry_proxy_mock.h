@@ -756,8 +756,7 @@ private:
 
         for (const auto& d: req.GetDevices()) {
             auto* config = FindIfPtr(
-                State->Devices.begin(),
-                State->Devices.end(),
+                State->Devices,
                 [&] (const auto& x) {
                     if (d.GetDeviceUUID()) {
                         return x.GetDeviceUUID() == d.GetDeviceUUID();

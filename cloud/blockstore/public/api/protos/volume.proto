@@ -130,6 +130,8 @@ message TDevice
     string DeviceName = 6;
     // RDMA endpoint.
     TRdmaEndpoint RdmaEndpoint = 7;
+    // Physical offset in bytes.
+    uint64 PhysicalOffset = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
