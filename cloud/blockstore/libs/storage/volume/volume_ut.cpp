@@ -7832,7 +7832,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldReportLongRunningForBaseDisk)
     {
-#if 0
         NProto::TStorageServiceConfig storageServiceConfig;
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
@@ -7950,7 +7949,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             clientInfo.GetClientId());
         volume.SendToPipe(std::move(readRequest));
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvBlobStorage::EvGet);
+        runtime->DispatchEvents(options, TDuration());
         UNIT_ASSERT_VALUES_UNEQUAL(0, stolenRequests.size());
 
         // Wait for EvLongRunningOperation arrived.
@@ -7980,7 +7981,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, longRunningReads);
         }
-#endif
     }
 
     Y_UNIT_TEST(ShouldStartPartitionsAfterStop)
