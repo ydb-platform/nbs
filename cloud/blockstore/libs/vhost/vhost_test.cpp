@@ -81,7 +81,7 @@ public:
 
     TFuture<NProto::TError> Stop() override
     {
-        Stopped.test_and_set();
+        Y_UNUSED(Stopped.test_and_set());
         return Autostop.GetFuture().Apply([this] (const auto&) {
             with_lock (Lock) {
                 return WaitAll(Futures).Apply([] (const auto&) {

@@ -431,7 +431,7 @@ bool TSharedServiceCounters::TryAcquireLocalVolume()
 void TSharedServiceCounters::ReleaseLocalVolume()
 {
     Y_DEBUG_ABORT_UNLESS(AtomicGet(LocalVolumeCount));
-    AtomicDecrement(LocalVolumeCount);
+    Y_UNUSED(AtomicDecrement(LocalVolumeCount));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
