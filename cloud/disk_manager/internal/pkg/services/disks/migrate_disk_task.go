@@ -102,7 +102,9 @@ func (t *migrateDiskTask) Run(
 					t.state.Status = protos.MigrationStatus_Finishing
 					err := execCtx.SaveState(ctx)
 					if err != nil {
-						return err
+						// Can't fail while finishing migration - otherwise the system will
+						// end up in a non-consistent state (NBS-4677).
+						return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 					}
 				}
 			}
@@ -110,7 +112,9 @@ func (t *migrateDiskTask) Run(
 		case protos.MigrationStatus_Finishing:
 			err := t.finishMigration(ctx, execCtx)
 			if err != nil {
-				return err
+				// Can't fail while finishing migration - otherwise the system will end
+				// up in a non-consistent state (NBS-4677).
+				return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 			}
 
 		case protos.MigrationStatus_Finished:
