@@ -16,6 +16,17 @@ enum class EProcessingStage
     Last
 };
 
+struct TRequestTime
+{
+    TDuration TotalTime;
+    TDuration ExecutionTime;
+
+    explicit operator bool() const
+    {
+        return TotalTime || ExecutionTime;
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCallContextBase
@@ -25,6 +36,7 @@ private:
     TAtomic Stage2Time[static_cast<int>(EProcessingStage::Last)] = {};
     TAtomic RequestStartedCycles = 0;
     TAtomic ResponseSentCycles = 0;
+    TAtomic PossiblePostponeMicroSeconds = 0;
 
     // Used only in tablet throttler.
     TAtomic PostponeTs = 0;
@@ -37,6 +49,9 @@ public:
     NLWTrace::TOrbit LWOrbit;
 
     TCallContextBase(ui64 requestId);
+
+    TDuration GetPossiblePostponeDuration() const;
+    void SetPossiblePostponeDuration(TDuration d);
 
     ui64 GetRequestStartedCycles() const;
     void SetRequestStartedCycles(ui64 cycles);
@@ -52,6 +67,8 @@ public:
 
     TDuration Time(EProcessingStage stage) const;
     void AddTime(EProcessingStage stage, TDuration d);
+
+    TRequestTime CalcRequestTime(ui64 nowCycles) const;
 };
 
 }   // namespace NCloud

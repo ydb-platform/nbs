@@ -8,7 +8,7 @@
 #include <util/system/guard.h>
 #include <util/system/spinlock.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 namespace {
 
@@ -217,4 +217,4 @@ IPostponeTimePredictorPtr CreatePostponeTimePredictorStub()
     return std::make_shared<TPostponeTimePredictorStub>();
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

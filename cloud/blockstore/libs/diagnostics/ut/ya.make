@@ -11,7 +11,6 @@ PEERDIR(
 SRCS(
     block_digest_ut.cpp
     fault_injection_ut.cpp
-    postpone_time_predictor_ut.cpp
     profile_log_ut.cpp
     quota_metrics_ut.cpp
     request_stats_ut.cpp

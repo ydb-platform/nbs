@@ -3,7 +3,6 @@
 #include "config.h"
 #include "dumpable.h"
 #include "hostname.h"
-#include "postpone_time_predictor.h"
 #include "probes.h"
 #include "profile_log.h"
 #include "request_stats.h"
@@ -14,6 +13,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
 
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>

@@ -33,7 +33,6 @@ target_link_options(cloud-blockstore-libs-diagnostics-ut PRIVATE
 target_sources(cloud-blockstore-libs-diagnostics-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/block_digest_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/fault_injection_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/postpone_time_predictor_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/profile_log_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/quota_metrics_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/request_stats_ut.cpp

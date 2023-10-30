@@ -14,6 +14,7 @@ SRCS(
     histogram_types_ut.cpp
     logging_ut.cpp
     max_calculator_ut.cpp
+    postpone_time_predictor_ut.cpp
     request_counters_ut.cpp
     solomon_counters_ut.cpp
     trace_processor_ut.cpp

@@ -26,7 +26,6 @@ target_link_options(cloud-blockstore-libs-service-ut PRIVATE
   CoreFoundation
 )
 target_sources(cloud-blockstore-libs-service-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/context_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/device_handler_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/service_filtered_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/storage_ut.cpp

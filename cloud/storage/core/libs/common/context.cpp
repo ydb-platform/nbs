@@ -10,6 +10,47 @@ TCallContextBase::TCallContextBase(ui64 requestId)
     : RequestId(requestId)
 {}
 
+TRequestTime TCallContextBase::CalcRequestTime(ui64 nowCycles) const
+{
+    const ui64 startCycles = GetRequestStartedCycles();
+    if (!startCycles || startCycles >= nowCycles) {
+        return TRequestTime {
+            .TotalTime = TDuration::Zero(),
+            .ExecutionTime = TDuration::Zero(),
+        };
+    }
+
+    TRequestTime requestTime;
+    requestTime.TotalTime = CyclesToDurationSafe(nowCycles - startCycles);
+
+    const ui64 postponeStart = AtomicGet(PostponeTsCycles);
+    if (postponeStart && startCycles < postponeStart && postponeStart < nowCycles) {
+        nowCycles = postponeStart;
+    }
+
+    const auto postponeDuration = Time(EProcessingStage::Postponed);
+    const auto backoffTime = Time(EProcessingStage::Backoff);
+
+    auto responseSentCycles = GetResponseSentCycles();
+    auto responseDuration = CyclesToDurationSafe(
+        (responseSentCycles ? responseSentCycles : nowCycles) - startCycles);
+
+    requestTime.ExecutionTime = responseDuration - postponeDuration -
+        backoffTime - GetPossiblePostponeDuration();
+
+    return requestTime;
+}
+
+TDuration TCallContextBase::GetPossiblePostponeDuration() const
+{
+    return TDuration::MicroSeconds(AtomicGet(PossiblePostponeMicroSeconds));
+}
+
+void TCallContextBase::SetPossiblePostponeDuration(TDuration d)
+{
+    AtomicSet(PossiblePostponeMicroSeconds, d.MicroSeconds());
+}
+
 ui64 TCallContextBase::GetRequestStartedCycles() const
 {
     return AtomicGet(RequestStartedCycles);

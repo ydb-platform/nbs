@@ -1,7 +1,6 @@
 #include "volume_stats.h"
 
 #include "config.h"
-#include "postpone_time_predictor.h"
 #include "stats_helpers.h"
 #include "user_counter.h"
 #include "volume_perf.h"
@@ -12,6 +11,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 

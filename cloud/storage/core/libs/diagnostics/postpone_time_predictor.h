@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,4 +25,4 @@ IPostponeTimePredictorPtr CreatePostponeTimePredictor(
     TMaybe<TDuration> delayUpperBound);
 IPostponeTimePredictorPtr CreatePostponeTimePredictorStub();
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

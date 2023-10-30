@@ -10,7 +10,6 @@ SRCS(
     incomplete_request_processor.cpp
     incomplete_requests.cpp
     hostname.cpp
-    postpone_time_predictor.cpp
     probes.cpp
     profile_log.cpp
     quota_metrics.cpp

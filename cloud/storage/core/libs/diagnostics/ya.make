@@ -11,6 +11,7 @@ SRCS(
     logging.cpp
     max_calculator.cpp
     monitoring.cpp
+    postpone_time_predictor.cpp
     request_counters.cpp
     solomon_counters.cpp
     stats_updater.cpp

@@ -7,7 +7,7 @@
 #include <util/generic/maybe.h>
 #include <util/thread/factory.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 namespace {
 
@@ -296,7 +296,7 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(1'500),
             predictor->GetPossiblePostponeDuration());
-        
+
         timer->AdvanceTime(TDuration::MilliSeconds(5'999));
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -449,7 +449,7 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
                 predictor->GetPossiblePostponeDuration());
             timer->AdvanceTime(TDuration::Seconds(1));
         }
-        
+
         timer->AdvanceTime(TDuration::Seconds(1));
         predictor->Register(TDuration::MilliSeconds(12));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -487,15 +487,15 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         RunPredictorJobs(workers, predictor, timer, delayWindow);
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(p * (p + 1) / 2) / p,
-            predictor->GetPossiblePostponeDuration()); 
+            predictor->GetPossiblePostponeDuration());
 
         timer->AdvanceTime(TDuration::MilliSeconds(delayWindow.Seconds() * 50));
 
         RunPredictorJobs(workers, predictor, timer, delayWindow);
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(p * (p + 1) / 2) / p,
-            predictor->GetPossiblePostponeDuration()); 
+            predictor->GetPossiblePostponeDuration());
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

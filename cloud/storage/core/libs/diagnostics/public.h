@@ -11,14 +11,18 @@
 class TLog;
 
 namespace NMonitoring {
-    class IMonPage;
-    using IMonPagePtr = TIntrusivePtr<IMonPage>;
 
-    struct TDynamicCounters;
-    using TDynamicCountersPtr = TIntrusivePtr<TDynamicCounters>;
+////////////////////////////////////////////////////////////////////////////////
 
-    class IMetricConsumer;
-}
+class IMonPage;
+using IMonPagePtr = TIntrusivePtr<IMonPage>;
+
+struct TDynamicCounters;
+using TDynamicCountersPtr = TIntrusivePtr<TDynamicCounters>;
+
+class IMetricConsumer;
+
+}   // namespace NMonitoring
 
 namespace NCloud {
 
@@ -73,12 +77,16 @@ struct IIncompleteRequestProcessor;
 using IIncompleteRequestProcessorPtr =
     std::shared_ptr<IIncompleteRequestProcessor>;
 
+struct IPostponeTimePredictor;
+using IPostponeTimePredictorPtr = std::shared_ptr<IPostponeTimePredictor>;
+
 namespace NStorage {
 
-struct ICgroupStatsFetcher;
+////////////////////////////////////////////////////////////////////////////////
 
+struct ICgroupStatsFetcher;
 using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
 
-}
+}   // namespace NStorage
 
 }   // namespace NCloud

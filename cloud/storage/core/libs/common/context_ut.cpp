@@ -4,7 +4,7 @@
 
 #include <util/datetime/cputimer.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -12,7 +12,7 @@ Y_UNIT_TEST_SUITE(TCallContext)
 {
     void CheckCalcRequestTime(
         ui64 cycles,
-        TCallContextPtr context,
+        TCallContextBasePtr context,
         TRequestTime requestTimeAnswer)
     {
         auto requestTime = context->CalcRequestTime(cycles);
@@ -24,7 +24,7 @@ Y_UNIT_TEST_SUITE(TCallContext)
 
     Y_UNIT_TEST(CheckCalcRequestTime)
     {
-        auto callContext = MakeIntrusive<TCallContext>(static_cast<ui64>(0));
+        auto callContext = MakeIntrusive<TCallContextBase>(static_cast<ui64>(0));
         callContext->SetRequestStartedCycles(5);
         CheckCalcRequestTime(
             3, callContext, {TDuration::Zero(), TDuration::Zero()});
@@ -57,4 +57,4 @@ Y_UNIT_TEST_SUITE(TCallContext)
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

@@ -17,6 +17,7 @@ ENDIF()
 SRCS(
     backoff_delay_provider_ut.cpp
     concurrent_queue_ut.cpp
+    context_ut.cpp
     error_ut.cpp
     file_io_service_ut.cpp
     ring_buffer_ut.cpp
