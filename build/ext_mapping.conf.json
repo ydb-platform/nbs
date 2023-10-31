@@ -1,10 +1,12 @@
 {
     "bottles": {},
     "resources": {
+        "2326530962": "https://storage.nemax.nebius.cloud/nbs-oss-resources/fio-static.tgz",
         "4449551218": "https://storage.nemax.nebius.cloud/nbs-oss-resources/qemu-bin.tar.gz",
         "3307630510": "https://storage.nemax.nebius.cloud/nbs-oss-resources/rootfs.img"
     },
     "resources_descriptions": {
+        "2326530962": "cloud/storage/core/tools/testing/fio/bin",
         "4449551218": "cloud/storage/core/tools/testing/qemu/bin",
         "3307630510": "cloud/storage/core/tools/testing/qemu/image"
     },

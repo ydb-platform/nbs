@@ -6,10 +6,4 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(apps)
-add_subdirectory(config)
-add_subdirectory(libs)
-add_subdirectory(private)
-add_subdirectory(public)
-add_subdirectory(tests)
-add_subdirectory(tools)
+add_subdirectory(common)
