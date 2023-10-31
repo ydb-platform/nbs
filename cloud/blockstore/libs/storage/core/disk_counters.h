@@ -87,14 +87,6 @@ enum class EPublishingPolicy
     xxx(AddUnconfirmedBlobs,                                       __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_REQUEST_COUNTERS
 
-#define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_ONLY_COUNT(xxx, ...)             \
-    xxx(MetadataRebuild,                                           __VA_ARGS__)\
-    xxx(MetadataRebuildBatch,                                      __VA_ARGS__)\
-    xxx(CreateCheckpoint,                                          __VA_ARGS__)\
-    xxx(DeleteCheckpoint,                                          __VA_ARGS__)\
-    xxx(GetChangedBlocks,                                          __VA_ARGS__)\
-// BLOCKSTORE_REPL_PART_REQUEST_COUNTERS
-
 #define BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(xxx, ...)                   \
     xxx(ReadBlocks,                                                __VA_ARGS__)\
     xxx(WriteBlocks,                                               __VA_ARGS__)\
@@ -203,7 +195,6 @@ struct TPartitionDiskCounters
 // BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER
 
         BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER)
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_ONLY_COUNT(BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER)
         BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER)
 #undef BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER
 

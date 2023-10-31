@@ -31,7 +31,6 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 // BLOCKSTORE_REQUEST_COUNTER
 
     BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_ONLY_COUNT(BLOCKSTORE_REQUEST_COUNTER)
     BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
     BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
 #undef BLOCKSTORE_REQUEST_COUNTER
@@ -67,7 +66,6 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 // BLOCKSTORE_REQUEST_COUNTER
 
     BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_ONLY_COUNT(BLOCKSTORE_REQUEST_COUNTER)
     BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
     BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
 #undef BLOCKSTORE_REQUEST_COUNTER
@@ -112,7 +110,6 @@ void TPartitionDiskCounters::Publish(TInstant now)
 
     if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
         BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_ONLY_COUNT(BLOCKSTORE_REQUEST_COUNTER)
         BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
     }
     BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
@@ -139,8 +136,6 @@ void TPartitionDiskCounters::Register(
         requestCounterOptions =
             requestCounterOptions | ERequestCounterOption::ReportHistogram;
     }
-    ERequestCounterOptions counterOnlyCounterOptions =
-        requestCounterOptions | ERequestCounterOption::OnlySimple;
     ERequestCounterOptions counterOptions =
         requestCounterOptions;
     ERequestCounterOptions kindCounterOptions =
@@ -178,16 +173,6 @@ Cumulative.name.Register(counters, #name);                                     \
 
     if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
         BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-    }
-#undef BLOCKSTORE_REQUEST_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Register(                                             \
-        counters->GetSubgroup("request", #name), counterOnlyCounterOptions);   \
-//  BLOCKSTORE_REQUEST_COUNTER
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_ONLY_COUNT(BLOCKSTORE_REQUEST_COUNTER)
     }
 #undef BLOCKSTORE_REQUEST_COUNTER
 
