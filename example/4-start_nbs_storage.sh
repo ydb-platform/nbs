@@ -47,14 +47,19 @@ start_nbs_agent() {
     --load-configs-from-cms \
     --location-file      $BIN_DIR/nbs/nbs-location-$1.txt \
     --disk-agent-file    $BIN_DIR/nbs/nbs-disk-agent-$1.txt >logs/remote-da$1.log 2>&1 &
-
 }
 
 start_nbs_agent 1
 pid1=$!
+echo "Agent 1 started with pid $pid1"
 
 start_nbs_agent 2
 pid2=$!
+echo "Agent 2 started with pid $pid2"
+
+start_nbs_agent 3
+pid3=$!
+echo "Agent 3 started with pid $pid3"
 
 # trap ctrl-c and call ctrl_c()
 trap ctrl_c INT
@@ -62,6 +67,7 @@ trap ctrl_c INT
 function ctrl_c() {
     kill $pid1
     kill $pid2
+    kill $pid3
     exit 0
 }
 

@@ -4,5 +4,5 @@ AllocationUnitNonReplicatedSSD: 1
 NonReplicatedDiskRecyclingPeriod: 5000
 NonReplicatedMigrationStartAllowed: true
 AllocationUnitMirror2SSD: 1
+AllocationUnitMirror3SSD: 1
 NonReplicatedDontSuspendDevices: true
-

@@ -11,32 +11,31 @@ show_help() {
 Usage: ./5-create_disk.sh [-hk]
 Creates disk with requested kind
 -h, --help         Display help
--k, --kind         Kind of disk ssd|nonreplicated|mirror2 (default: ssd)
+-k, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3 (default: ssd)
 EOF
 }
 
 #defaults
 kind="ssd"
-options=$(getopt -l "help,kind" -o "hk:" -a -- "$@")
+options=$(getopt -l "help,kind:" -o "hk:" -a -- "$@")
 
 eval set -- "$options"
 
 while true
 do
 case "$1" in
--h|--help)
-    showHelp
+-h | --help )
+    show_help
     exit 0
     ;;
--k|--kind)
-    shift
-    kind=${1}
+-k | --kind )
+    kind=${2}
+    shift 2
     ;;
 --)
     shift
     break;;
 esac
-shift
 done
 
 case $kind in
@@ -51,6 +50,10 @@ case $kind in
     ;;
 "mirror2")
     id="mrr0"
+    blocks_count=262144
+    ;;
+"mirror3")
+    id="mrr1"
     blocks_count=262144
     ;;
 *)

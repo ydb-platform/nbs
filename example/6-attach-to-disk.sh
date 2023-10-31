@@ -11,32 +11,31 @@ show_help() {
 Usage: ./6-attach-to-disk.sh [-hk]
 Attaches to disk with requested kind and allows to use it. Should be used with the same kind as 5-create-disk.sh.
 -h, --help         Display help
--n, --kind         Kind of disk ssd|nonreplicated|mirror2 (default: ssd)
+-n, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3 (default: ssd)
 EOF
 }
 
 #defaults
 kind="ssd"
-options=$(getopt -l "help,kind" -o "hk:" -a -- "$@")
+options=$(getopt -l "help,kind:" -o "hk:" -a -- "$@")
 
 eval set -- "$options"
 
 while true
 do
 case "$1" in
--h|--help)
-    showHelp
+-h | --help )
+    show_help
     exit 0
     ;;
--k|--kind)
-    shift
-    kind=${1}
+-k | --kind )
+    kind=${2}
+    shift 2
     ;;
 --)
     shift
     break;;
 esac
-shift
 done
 
 case $kind in
@@ -51,6 +50,10 @@ case $kind in
     ;;
 "mirror2")
     id="mrr0"
+    blocks_count=262144
+    ;;
+"mirror3")
+    id="mrr1"
     blocks_count=262144
     ;;
 *)
@@ -68,4 +71,4 @@ SOCK="$BIN_DIR/$id.sock"
 
 sudo modprobe nbd
 touch $SOCK
-sudo $NBD --device-mode endpoint --disk-id $id --access-mode rw --mount-mode local --connect-device /dev/nbd0 --listen-path $SOCK >$BIN_DIR/logs/nbd.log 2>&1
+sudo $NBD --device-mode endpoint --disk-id $id --access-mode rw --mount-mode local --connect-device /dev/$id --listen-path $SOCK >$BIN_DIR/logs/nbd.log 2>&1
