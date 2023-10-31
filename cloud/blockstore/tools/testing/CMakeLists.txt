@@ -6,5 +6,5 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(eternal-tests)
+add_subdirectory(eternal_tests)
 add_subdirectory(loadtest)

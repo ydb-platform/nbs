@@ -7,7 +7,7 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/blockstore/tools/testing/eternal-tests/eternal-load/bin
+    cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin
 )
 
 END()

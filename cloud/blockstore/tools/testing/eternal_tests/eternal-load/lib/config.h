@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/config.sc.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.sc.h>
 
 #include <library/cpp/config/config.h>
 #include <library/cpp/json/domscheme_traits.h>

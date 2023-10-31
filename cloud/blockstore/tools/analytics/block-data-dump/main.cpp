@@ -1,6 +1,6 @@
 #include "options.h"
 
-#include <cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/public.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/public.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 

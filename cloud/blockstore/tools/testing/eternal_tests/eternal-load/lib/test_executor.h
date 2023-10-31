@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/config.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/config/config.h>

@@ -7,8 +7,8 @@
 
 
 
-add_library(eternal-tests-eternal-load-lib)
-target_link_libraries(eternal-tests-eternal-load-lib PUBLIC
+add_library(eternal_tests-eternal-load-lib)
+target_link_libraries(eternal_tests-eternal-load-lib PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
@@ -18,7 +18,7 @@ target_link_libraries(eternal-tests-eternal-load-lib PUBLIC
   cpp-deprecated-atomic
   cpp-digest-crc32c
 )
-target_sources(eternal-tests-eternal-load-lib PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/config.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/test_executor.cpp
+target_sources(eternal_tests-eternal-load-lib PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.cpp
 )

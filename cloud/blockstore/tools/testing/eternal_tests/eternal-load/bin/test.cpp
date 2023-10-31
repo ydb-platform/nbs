@@ -2,7 +2,7 @@
 
 #include "options.h"
 
-#include <cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib/test_executor.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/size_literals.h>

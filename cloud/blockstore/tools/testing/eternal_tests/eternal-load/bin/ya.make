@@ -8,7 +8,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/tools/testing/eternal-tests/eternal-load/lib
+    cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib
 
     cloud/storage/core/libs/diagnostics
 

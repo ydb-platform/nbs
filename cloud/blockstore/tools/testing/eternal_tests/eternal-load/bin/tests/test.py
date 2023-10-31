@@ -12,7 +12,7 @@ _BLOCKSIZE = 4096  # KB
 _REQUEST_BLOCK_COUNT = 3
 _REQUEST_SIZE = _REQUEST_BLOCK_COUNT * _BLOCKSIZE
 _REQUEST_COUNT = (_FILE_SIZE * 1024 ** 3) / _REQUEST_SIZE
-_BINARY_PATH = 'cloud/blockstore/tools/testing/eternal-tests/eternal-load/bin/eternal-load'
+_BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/eternal-load'
 
 
 def __run_load(file_name):
