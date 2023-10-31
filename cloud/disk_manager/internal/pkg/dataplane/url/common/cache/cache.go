@@ -1,17 +1,9 @@
-package common
+package cache
 
 import (
 	"sort"
 	"sync"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-// 4 MiB.
-const chunkSize = 4 * 1024 * 1024
-
-// 1 GiB.
-const maxCacheSize = 1024 * 1024 * 1024
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,14 +25,18 @@ func (c *chunk) read(start uint64, data []byte) uint64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type cache struct {
-	chunkPool   sync.Pool
-	chunks      map[uint64]*chunk
-	chunksMutex sync.Mutex
+type Cache struct {
+	chunkPool    sync.Pool
+	chunks       map[uint64]*chunk
+	chunksMutex  sync.Mutex
+	maxCacheSize uint64
+	chunkSize    uint64
 }
 
-func newCache() *cache {
-	return &cache{
+func NewCache() *Cache {
+	// 4 MiB.
+	chunkSize := 4 * 1024 * 1024
+	return &Cache{
 		chunkPool: sync.Pool{
 			New: func() interface{} {
 				return &chunk{
@@ -49,12 +45,15 @@ func newCache() *cache {
 			},
 		},
 		chunks: make(map[uint64]*chunk),
+		// 1 GiB.
+		maxCacheSize: 1024 * 1024 * 1024,
+		chunkSize:    uint64(chunkSize),
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *cache) readChunk(
+func (c *Cache) readChunk(
 	start,
 	chunkStart uint64,
 	data []byte,
@@ -70,7 +69,7 @@ func (c *cache) readChunk(
 	return retrievedChunk.read(start, data), true
 }
 
-func (c *cache) read(
+func (c *Cache) Read(
 	start uint64,
 	data []byte,
 	readOnCacheMiss func(start uint64, data []byte) error,
@@ -78,7 +77,7 @@ func (c *cache) read(
 
 	end := start + uint64(len(data))
 	for start < end {
-		chunkStart := (start / chunkSize) * chunkSize
+		chunkStart := (start / c.chunkSize) * c.chunkSize
 		bytesRead, ok := c.readChunk(start, chunkStart, data)
 
 		if !ok {
@@ -97,22 +96,22 @@ func (c *cache) read(
 		}
 
 		data = data[bytesRead:]
-		start = chunkStart + chunkSize
+		start = chunkStart + c.chunkSize
 	}
 
 	return nil
 }
 
 // Not thread-safe.
-func (c *cache) size() int {
-	return len(c.chunks) * chunkSize
+func (c *Cache) size() uint64 {
+	return uint64(len(c.chunks)) * c.chunkSize
 }
 
-func (c *cache) put(chunk *chunk) {
+func (c *Cache) put(chunk *chunk) {
 	c.chunksMutex.Lock()
 	defer c.chunksMutex.Unlock()
 
-	if c.size() >= maxCacheSize {
+	if c.size() >= c.maxCacheSize {
 		var keys []uint64
 		for key := range c.chunks {
 			keys = append(keys, key)
@@ -123,7 +122,7 @@ func (c *cache) put(chunk *chunk) {
 			c.chunkPool.Put(c.chunks[key])
 			delete(c.chunks, key)
 
-			if c.size() < maxCacheSize {
+			if c.size() < c.maxCacheSize {
 				break
 			}
 		}

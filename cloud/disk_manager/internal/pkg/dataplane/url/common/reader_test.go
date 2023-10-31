@@ -23,8 +23,8 @@ func newContext() context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func randomData(t *testing.T, chunkCount int) []byte {
-	data := make([]byte, chunkSize*chunkCount)
+func randomData(t *testing.T, size uint64) []byte {
+	data := make([]byte, size)
 	_, err := rand.Read(data)
 	require.NoError(t, err)
 	return data
@@ -105,6 +105,7 @@ func checkRead(
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestReader(t *testing.T) {
+	chunkSize := uint64(4 * 1024 * 1024)
 	testCases := [][]struct {
 		name  string
 		start uint64
@@ -123,7 +124,7 @@ func TestReader(t *testing.T) {
 
 	for _, testCaseSeries := range testCases {
 		for _, testCase := range testCaseSeries {
-			expectedData := randomData(t, 5)
+			expectedData := randomData(t, 5*chunkSize)
 			reader := newTestReader(t, expectedData)
 
 			t.Run(testCase.name, func(t *testing.T) {

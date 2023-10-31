@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/cache"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 )
 
@@ -38,7 +39,7 @@ type urlReader struct {
 	url        string
 	etag       string
 	size       uint64
-	cache      *cache
+	cache      *cache.Cache
 }
 
 func NewURLReader(
@@ -81,7 +82,7 @@ func NewURLReader(
 
 func (r *urlReader) EnableCache() {
 	if r.cache == nil {
-		r.cache = newCache()
+		r.cache = cache.NewCache()
 	}
 }
 
@@ -168,7 +169,7 @@ func (r *urlReader) Read(
 		return size, nil
 	}
 
-	err := r.cache.read(
+	err := r.cache.Read(
 		start,
 		data,
 		func(start uint64, data []byte) error {

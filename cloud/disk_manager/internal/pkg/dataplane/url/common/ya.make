@@ -3,7 +3,6 @@ OWNER(g:cloud-nbs)
 GO_LIBRARY()
 
 SRCS(
-    cache.go
     errors.go
     http_client.go
     image_map.go
@@ -18,6 +17,7 @@ GO_TEST_SRCS(
 END()
 
 RECURSE(
+    cache
     testing
 )
 
