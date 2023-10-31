@@ -37,6 +37,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         auto* f = fc.AddFeatures();
         f->SetName("some_feature");
         f->SetCloudProbability(0.2);
+        *f->MutableWhitelist()->AddCloudIds() = "whitelisted_cloud";
         TFeaturesConfig config(fc);
 
         auto clouds = RandomStrings(1000);
@@ -47,6 +48,11 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
 
         UNIT_ASSERT_C(150 < matches && matches < 250, TStringBuilder()
             << "match count: " << matches);
+
+        UNIT_ASSERT(config.IsFeatureEnabled(
+            "whitelisted_cloud",
+            {},
+            f->GetName()));
     }
 
     Y_UNIT_TEST(ShouldMatchFoldersByProbability)
@@ -55,6 +61,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         auto* f = fc.AddFeatures();
         f->SetName("some_feature");
         f->SetFolderProbability(0.3);
+        *f->MutableWhitelist()->AddFolderIds() = "whitelisted_folder";
         TFeaturesConfig config(fc);
 
         auto folders = RandomStrings(1000);
@@ -65,6 +72,11 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
 
         UNIT_ASSERT_C(250 < matches && matches < 350, TStringBuilder()
             << "match count: " << matches);
+
+        UNIT_ASSERT(config.IsFeatureEnabled(
+            {},
+            "whitelisted_folder",
+            f->GetName()));
     }
 }
 
