@@ -6225,7 +6225,6 @@ migrations:
     - geosuggest/tools/international_quality/vh3/similarweb_basket_prepare
     - logbroker/tools/cluster_migration/get_max_retention
     - maps/analyzer/pylibs/models
-    - maps/analyzer/pylibs/schema
     - maps/analyzer/sandbox/ab_tables_daily/bin
     - maps/analyzer/toolkit/lib
     - maps/analyzer/tools/qyp_quota
@@ -10408,7 +10407,6 @@ migrations:
     - voicetech/asr/tools_cloud/upload_records_to_yt/collect_audio
     - voicetech/asr/tools_cloud/upload_records_to_yt/collect_texts
     - voicetech/asr/tools_cloud/utils/generate_table_name
-    - voicetech/asr/tools_cloud/utils/tables_cache_cleaner
     - voicetech/bio/tf_future
     - voicetech/common/kaldi_features_lib/python-package/kaldi_features
     - voicetech/infra/lingwarefactory/yaldi-apply-soundset
