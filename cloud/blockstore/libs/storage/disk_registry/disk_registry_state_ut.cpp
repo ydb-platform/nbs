@@ -5908,6 +5908,118 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldStoreMediaKindInDB)
+    {
+        const TVector agents {
+            AgentConfig(1000, {
+                Device("dev-1", "uuid-1.1", "rack-1", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+            AgentConfig(2000, {
+                Device("dev-1", "uuid-2.1", "rack-1", 4_KB, 100_GB),
+            }),
+        };
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents(agents)
+            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .Build();
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto ts = Now();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-1",
+                {}, // placementGroupId
+                {}, // placementPartitionIndex
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "rot");
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(
+                db,
+                state,
+                "disk-2",
+                {}, // placementGroupId
+                {}, // placementPartitionIndex
+                100_GB,
+                devices,
+                ts,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", devices[0].GetDeviceUUID());
+        });
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<NProto::TDiskConfig> items;
+            db.ReadDisks(items);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, items.size());
+
+            const auto& disk1 = items[0];
+
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", disk1.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(1, disk1.DeviceUUIDsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::STORAGE_MEDIA_HDD_NONREPLICATED),
+                static_cast<int>(disk1.GetStorageMediaKind()));
+
+            const auto& disk2 = items[1];
+
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", disk2.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(1, disk2.DeviceUUIDsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::STORAGE_MEDIA_SSD_NONREPLICATED),
+                static_cast<int>(disk2.GetStorageMediaKind()));
+        });
+    }
+
+    Y_UNIT_TEST(ShouldGuessHddMediaKindByDevicePoolNames)
+    {
+        const TVector agents {
+            AgentConfig(1000, {
+                Device("dev-1", "uuid-1.1", "rack-1", 4_KB, 100_GB)
+                    | WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            }),
+        };
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents(agents)
+            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .WithDisks({
+                Disk("disk-1", {"uuid-1.1"}),
+            })
+            .Build();
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TDiskInfo info;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", info));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::STORAGE_MEDIA_HDD_NONREPLICATED),
+            static_cast<int>(info.MediaKind));
+    }
+
     Y_UNIT_TEST(ShouldHandleCmsRequestsForHostsWithDependentHddDisks)
     {
         /*

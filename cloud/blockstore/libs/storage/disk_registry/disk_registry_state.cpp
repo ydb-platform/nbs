@@ -290,13 +290,19 @@ TDiskRegistryState::TDiskRegistryState(
         AutomaticallyReplacedDeviceIds.insert(x.DeviceId);
     }
 
+    // Config doesn't depend on anything
     ProcessConfig(CurrentConfig);
-    ProcessDisks(std::move(disks));
-    ProcessPlacementGroups(std::move(placementGroups));
+    // fills DeviceList and shouldn't depend on anything apart from AgentList
     ProcessAgents();
+    // fills disk configs and may use DeviceList
+    ProcessDisks(std::move(disks));
+    // fills PlacementGroups and depends on Disks
+    ProcessPlacementGroups(std::move(placementGroups));
+    // fills DisksToCleanup and shouldn't depend on anything
     ProcessDisksToCleanup(std::move(disksToCleanup));
+    // fills PendingCleanup and shouldn't depend on anything as well
     ProcessDirtyDevices(std::move(dirtyDevices));
-
+    // fills Migrations and uses both Disks and DeviceList
     FillMigrations();
 
     if (Counters) {
@@ -352,11 +358,32 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         } else if (disk.ReplicaCount == 2) {
             disk.MediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3;
         } else {
-            Y_DEBUG_ABORT_UNLESS(
-                disk.ReplicaCount == 0,
-                "unexpected ReplicaCount: %d",
-                disk.ReplicaCount
-            );
+            // XXX temp hack, see NBS-4703
+            bool foundRotPool = false;
+            for (const auto& uuid: config.GetDeviceUUIDs()) {
+                const auto* device = DeviceList.FindDevice(uuid);
+                // can't use impossible events here since there are some uts
+                // that configure TDiskRegistryState in a 'peculiar' way
+                if (!device) {
+                    ReportDiskRegistryDeviceNotFoundSoft(
+                        TStringBuilder() << "ProcessDisks:DeviceId: " << uuid);
+                    continue;
+                }
+
+                if (device->GetPoolName() == "rot") {
+                    foundRotPool = true;
+                    break;
+                }
+            }
+
+            if (foundRotPool) {
+                disk.MediaKind = NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+            } else {
+                Y_DEBUG_ABORT_UNLESS(
+                    disk.ReplicaCount == 0,
+                    "unexpected ReplicaCount: %d",
+                    disk.ReplicaCount);
+            }
         }
 
         AllowNotifications(diskId, disk);
@@ -3945,6 +3972,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetUserId(diskState.UserId);
     config.SetReplicaCount(diskState.ReplicaCount);
     config.SetMasterDiskId(diskState.MasterDiskId);
+    config.SetStorageMediaKind(diskState.MediaKind);
 
     for (const auto& [uuid, seqNo]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
