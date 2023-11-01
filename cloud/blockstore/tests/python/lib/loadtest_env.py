@@ -76,7 +76,7 @@ class LocalLoadTest:
         self.__devices = []
 
         if with_nrd:
-            assert(run_kikimr)
+            assert run_kikimr
 
             storage = TStorageServiceConfig()
             storage.AllocationUnitNonReplicatedSSD = 1

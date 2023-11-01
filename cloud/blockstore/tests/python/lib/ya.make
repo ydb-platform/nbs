@@ -20,6 +20,9 @@ PEERDIR(
 PY_SRCS(
     __init__.py
     access_service.py
+    client.py
+    config.py
+    daemon.py
     disk_agent_runner.py
     endpoints.py
     loadtest_env.py
