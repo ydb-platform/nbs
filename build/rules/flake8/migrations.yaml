@@ -5346,7 +5346,6 @@ migrations:
     - voicetech/vqe/pylibs
     - voicetech/vqe/pylibs/utils
     - voicetech/vqe/tools/emb_benchmark/dash
-    - voicetech/vqe/tools/logs_loader
     - voicetech/vqe/tools/yt_downloader
     - weather/libs/utils/yt
     - weather/ml/nirvana_operations/fix_geoindex_with_input_clean/nirvana_operation
@@ -8329,7 +8328,6 @@ migrations:
     - quality/ab_testing/scripts/ems/library/ab_calculations
     - sandbox/projects/billing/tasks/Faas/BillingFaasBuildTask
     - search/priemka/yappy/tests/test_yappy_lib/test_yappy_lib
-    - voicetech/vqe/tools/health_check/lib
   PLR1736:
     ignore:
     - PLR1736
@@ -9323,7 +9321,6 @@ migrations:
     - yabs/server/infra/bstrbufbuf/plugin
     - yabs/server/infra/trivial_cron
     - yabs/server/libs/py_markdown_strings
-    - yabs/server/test/ft/BSSERVER-14195
     - yabs/server/test/ft/BSSERVER-2454
     - yabs/server/test/ft/BSSERVER-3895
     - yabs/server/test/ft/BSSERVER-9233
