@@ -20,7 +20,7 @@ func newYDBCheck(db *persistence.YDBClient) *ydbCheck {
 }
 
 func (c ydbCheck) Check(ctx context.Context) bool {
-	res, err := c.db.ExecuteRO(ctx, "SELECT 1", nil)
+	res, err := c.db.ExecuteRO(ctx, "SELECT 1")
 	if err != nil {
 		logging.Warn(ctx, "YDB health check failed: %v", err)
 		return false
