@@ -52,14 +52,14 @@ func (s *storageCommon) writeToChunkBlobs(
 		values
 			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum, $compression),
 			($shard_id, $chunk_id, $referer, null, null, null, null)
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunk.ID))),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunk.ID)),
 		ydb_table.ValueParam("$referer", ydb_types.UTF8Value(referer)),
 		ydb_table.ValueParam("$data", ydb_types.StringValue(compressedData)),
 		ydb_table.ValueParam("$checksum", ydb_types.Uint32Value(checksum)),
 		ydb_table.ValueParam("$compression", ydb_types.UTF8Value(chunk.Compression)),
-	))
+	)
 	return err
 }
 
@@ -103,11 +103,11 @@ func (s *storageCommon) refChunk(
 
 		upsert into chunk_blobs (shard_id, chunk_id, referer)
 		values ($shard_id, $chunk_id, $referer);
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
 		ydb_table.ValueParam("$referer", ydb_types.UTF8Value(referer)),
-	))
+	)
 	if err == nil {
 		logging.Debug(
 			ctx,
@@ -197,11 +197,11 @@ func (s *storageCommon) unrefChunk(
 
 		delete from chunk_blobs
 		on select * from $to_delete;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
 		ydb_table.ValueParam("$referer", ydb_types.UTF8Value(referer)),
-	))
+	)
 	if err != nil {
 		return 0, err
 	}

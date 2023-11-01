@@ -185,9 +185,9 @@ func chunkDataExistsInYDB(
 		select *
 		from chunk_blobs
 		where chunk_id = $chunk_id and referer = "";
-	`, db.AbsolutePath(config.GetStorageFolder())), ydb_table.NewQueryParameters(
+	`, db.AbsolutePath(config.GetStorageFolder())),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
-	))
+	)
 	require.NoError(t, err)
 	defer res.Close()
 
@@ -235,9 +235,9 @@ func deleteMetadata(
 		where chunk_id = $chunk_id and
 			referer = "" and
 			refcnt <= 1;
-	`, db.AbsolutePath(config.GetStorageFolder())), ydb_table.NewQueryParameters(
+	`, db.AbsolutePath(config.GetStorageFolder())),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
-	))
+	)
 	require.NoError(t, err)
 }
 

@@ -266,9 +266,9 @@ func (s *storageYDB) getPlacementGroupState(
 		select *
 		from placement_groups
 		where id = $id
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -362,9 +362,9 @@ func (s *storageYDB) createPlacementGroup(
 		select *
 		from placement_groups
 		where id = $id
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -442,12 +442,11 @@ func (s *storageYDB) createPlacementGroup(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.NewQueryParameters(
-			ydb_table.ValueParam(
-				"$states",
-				ydb_types.ListValue(state.structValue()),
-			),
-		))
+		ydb_table.ValueParam(
+			"$states",
+			ydb_types.ListValue(state.structValue()),
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -480,9 +479,9 @@ func (s *storageYDB) placementGroupCreated(
 		select *
 		from placement_groups
 		where id = $id
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -544,11 +543,9 @@ func (s *storageYDB) placementGroupCreated(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.NewQueryParameters(
-			ydb_table.ValueParam(
-				"$states",
-				ydb_types.ListValue(state.structValue()),
-			),
+		ydb_table.ValueParam(
+			"$states",
+			ydb_types.ListValue(state.structValue()),
 		),
 	)
 	if err != nil {
@@ -580,9 +577,9 @@ func (s *storageYDB) deletePlacementGroup(
 		select *
 		from placement_groups
 		where id = $id
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -631,11 +628,9 @@ func (s *storageYDB) deletePlacementGroup(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.NewQueryParameters(
-			ydb_table.ValueParam(
-				"$states",
-				ydb_types.ListValue(state.structValue()),
-			),
+		ydb_table.ValueParam(
+			"$states",
+			ydb_types.ListValue(state.structValue()),
 		),
 	)
 	if err != nil {
@@ -671,9 +666,9 @@ func (s *storageYDB) placementGroupDeleted(
 		select *
 		from placement_groups
 		where id = $id
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -728,12 +723,11 @@ func (s *storageYDB) placementGroupDeleted(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.NewQueryParameters(
-			ydb_table.ValueParam(
-				"$states",
-				ydb_types.ListValue(state.structValue()),
-			),
-		))
+		ydb_table.ValueParam(
+			"$states",
+			ydb_types.ListValue(state.structValue()),
+		),
+	)
 	if err != nil {
 		return err
 	}
@@ -746,13 +740,13 @@ func (s *storageYDB) placementGroupDeleted(
 
 		upsert into deleted (deleted_at, placement_group_id)
 		values ($deleted_at, $placement_group_id)
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		ydb_table.ValueParam(
 			"$placement_group_id",
 			ydb_types.UTF8Value(placementGroupID),
 		),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -777,13 +771,13 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 		from deleted
 		where deleted_at < $deleted_before
 		limit $limit
-	`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+	`, s.placementGroupsPath),
 		ydb_table.ValueParam(
 			"$deleted_before",
 			persistence.TimestampValue(deletedBefore),
 		),
 		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -818,7 +812,7 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 
 				delete from deleted
 				where deleted_at = $deleted_at and placement_group_id = $placement_group_id
-			`, s.placementGroupsPath), ydb_table.NewQueryParameters(
+			`, s.placementGroupsPath),
 				ydb_table.ValueParam(
 					"$deleted_at",
 					persistence.TimestampValue(deletedAt),
@@ -831,7 +825,7 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 					"$status",
 					ydb_types.Int64Value(int64(placementGroupStatusDeleted)),
 				),
-			))
+			)
 			if err != nil {
 				return err
 			}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,7 +18,8 @@ func (s *storageYDB) GetDeletingSnapshotCount(ctx context.Context) (count uint64
 
 		select count(*)
 		from deleting
-	`, s.tablesPath), ydb_table.NewQueryParameters())
+	`, s.tablesPath,
+	))
 	if err != nil {
 		return 0, err
 	}

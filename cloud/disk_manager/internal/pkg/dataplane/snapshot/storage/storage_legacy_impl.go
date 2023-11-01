@@ -234,9 +234,9 @@ func (s *legacyStorage) readSnapshotInfo(
 		select *
 		from snapshotsext
 		where id = $snapshot_id;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.StringValue([]byte(snapshotID))),
-	))
+	)
 	if err != nil {
 		return snapshotInfo{}, err
 	}
@@ -313,9 +313,9 @@ func (s *legacyStorage) readChunkInfo(
 		select *
 		from chunks
 		where id = $chunk_id;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
-	))
+	)
 	if err != nil {
 		return chunkInfo{}, err
 	}
@@ -371,9 +371,9 @@ func (s *legacyStorage) readChunkData(
 		select *
 		from blobs_on_hdd
 		where id = $chunk_id;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}

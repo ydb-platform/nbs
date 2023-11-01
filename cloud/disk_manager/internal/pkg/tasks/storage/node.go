@@ -107,11 +107,11 @@ func (s *storageYDB) heartbeat(
 
 		upsert into nodes (host, last_heartbeat, inflight_task_count)
 		values ($host, $last_heartbeat_ts, $inflight_task_count);
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$host", ydb_types.UTF8Value(host)),
 		ydb_table.ValueParam("$inflight_task_count", ydb_types.Uint32Value(inflightTaskCount)),
 		ydb_table.ValueParam("$last_heartbeat_ts", ydb_types.TimestampValueFromTime(ts)),
-	))
+	)
 	return err
 }
 
@@ -129,9 +129,9 @@ func (s *storageYDB) getAliveNodes(
 
 		select * from nodes
 		where last_heartbeat >= $liveness_ts;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$liveness_ts", ydb_types.TimestampValueFromTime(livenessTS)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -170,9 +170,9 @@ func (s *storageYDB) getNode(
 
 		select * from nodes
 		where host = $host;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$host", ydb_types.UTF8Value(host)),
-	))
+	)
 	if err != nil {
 		return Node{}, err
 	}

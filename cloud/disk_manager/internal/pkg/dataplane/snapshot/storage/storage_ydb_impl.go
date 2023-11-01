@@ -62,9 +62,9 @@ func (s *storageYDB) createSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -113,9 +113,9 @@ func (s *storageYDB) createSnapshot(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.tablesPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.tablesPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -154,9 +154,9 @@ func (s *storageYDB) snapshotCreated(
 		select *
 		from snapshots
 		where id = $id
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -229,9 +229,9 @@ func (s *storageYDB) snapshotCreated(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.tablesPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.tablesPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -263,9 +263,9 @@ func (s *storageYDB) deletingSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -311,9 +311,9 @@ func (s *storageYDB) deletingSnapshot(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.tablesPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.tablesPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -326,10 +326,10 @@ func (s *storageYDB) deletingSnapshot(
 
 		upsert into deleting (deleting_at, snapshot_id)
 		values ($deleting_at, $snapshot_id)
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$deleting_at", persistence.TimestampValue(deletingAt)),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -355,10 +355,10 @@ func (s *storageYDB) GetSnapshotsToDelete(
 		from deleting
 		where deleting_at < $deleting_before
 		limit $limit
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$deleting_before", persistence.TimestampValue(deletingBefore)),
 		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -441,11 +441,11 @@ func (s *storageYDB) deleteChunk(
 		where shard_id = $shard_id and
 			snapshot_id = $snapshot_id and
 			chunk_index = $chunk_index;
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 		ydb_table.ValueParam("$chunk_index", ydb_types.Uint32Value(entry.ChunkIndex)),
-	))
+	)
 
 	return err
 }
@@ -470,11 +470,11 @@ func (s *storageYDB) ClearDeletingSnapshots(
 
 			delete from deleting
 			where deleting_at = $deleting_at and snapshot_id = $snapshot_id
-		`, s.tablesPath), ydb_table.NewQueryParameters(
+		`, s.tablesPath),
 			ydb_table.ValueParam("$deleting_at", persistence.TimestampValue(key.DeletingAt.AsTime())),
 			ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(key.SnapshotId)),
 			ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(snapshotStatusDeleting))),
-		))
+		)
 		if err != nil {
 			return err
 		}
@@ -506,13 +506,13 @@ func (s *storageYDB) ShallowCopyChunk(
 
 		upsert into chunk_map (shard_id, snapshot_id, chunk_index, chunk_id, stored_in_s3)
 		values ($shard_id, $snapshot_id, $chunk_index, $chunk_id, $stored_in_s3);
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(dstSnapshotID))),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(dstSnapshotID)),
 		ydb_table.ValueParam("$chunk_index", ydb_types.Uint32Value(srcEntry.ChunkIndex)),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(srcEntry.ChunkID)),
 		ydb_table.ValueParam("$stored_in_s3", ydb_types.BoolValue(srcEntry.StoredInS3)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -648,13 +648,13 @@ func (s *storageYDB) writeDataChunk(
 
 		upsert into chunk_map (shard_id, snapshot_id, chunk_index, chunk_id, stored_in_s3)
 		values ($shard_id, $snapshot_id, $chunk_index, $chunk_id, $stored_in_s3)
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 		ydb_table.ValueParam("$chunk_index", ydb_types.Uint32Value(chunk.Index)),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunk.ID)),
 		ydb_table.ValueParam("$stored_in_s3", ydb_types.BoolValue(useS3)),
-	))
+	)
 	if err != nil {
 		return "", err
 	}
@@ -694,11 +694,11 @@ func (s *storageYDB) writeZeroChunk(
 
 		upsert into chunk_map (shard_id, snapshot_id, chunk_index, chunk_id)
 		values ($shard_id, $snapshot_id, $chunk_index, "");
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 		ydb_table.ValueParam("$chunk_index", ydb_types.Uint32Value(chunk.Index)),
-	))
+	)
 	if err == nil {
 		logging.Debug(
 			ctx,
@@ -887,10 +887,10 @@ func (s *storageYDB) GetDataChunkCount(
 		select count_if(chunk_id != '') as data_chunk_count
 		from chunk_map
 		where shard_id = $shard_id and snapshot_id = $snapshot_id
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -932,9 +932,9 @@ func (s *storageYDB) getSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}

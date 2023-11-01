@@ -95,9 +95,9 @@ func readChunkBlobsFromYDB(
 				select *
 				from chunk_blobs
 				where chunk_id in $chunk_ids and referer = "";
-			`, f.db.AbsolutePath(f.config.GetStorageFolder())), ydb_table.NewQueryParameters(
+			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
 				ydb_table.ValueParam("$chunk_ids", ydb_types.ListValue(values...)),
-			))
+			)
 			if err != nil {
 				return err
 			}
@@ -170,10 +170,10 @@ func readChunkMap(
 				select *
 				from chunk_map
 				where shard_id = $shard_id and snapshot_id = $snapshot_id
-			`, f.db.AbsolutePath(f.config.GetStorageFolder())), ydb_table.NewQueryParameters(
+			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
 				ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
 				ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-			))
+			)
 			if err != nil {
 				return err
 			}
@@ -260,11 +260,11 @@ func updateYDBBlobChecksum(f *fixture, chunkID string, checksum uint32) {
 					update chunk_blobs
 					set checksum = $checksum
 					where shard_id = $shard_id and chunk_id = $chunk_id
-			`, f.db.AbsolutePath(f.config.GetStorageFolder())), ydb_table.NewQueryParameters(
+			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
 				ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
 				ydb_table.ValueParam("$checksum", ydb_types.Uint32Value(checksum)),
 				ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
-			))
+			)
 			return err
 		},
 	)

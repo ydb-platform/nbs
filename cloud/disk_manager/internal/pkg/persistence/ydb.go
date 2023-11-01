@@ -106,7 +106,7 @@ type Transaction struct {
 func (t *Transaction) Execute(
 	ctx context.Context,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (res ydb_result.Result, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, t.callTimeout)
@@ -117,7 +117,7 @@ func (t *Transaction) Execute(
 	res, err = t.transaction.Execute(
 		ctx,
 		query,
-		params,
+		ydb_table.NewQueryParameters(params...),
 	)
 	if err != nil {
 		logging.Debug(
@@ -204,7 +204,7 @@ func (s *Session) BeginRWTransaction(
 func (s *Session) ExecuteRO(
 	ctx context.Context,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (ydb_result.Result, error) {
 
 	tx := ydb_table.TxControl(
@@ -213,17 +213,21 @@ func (s *Session) ExecuteRO(
 		),
 		ydb_table.CommitTx(),
 	)
-	_, res, err := s.execute(ctx, tx, query, params)
+	_, res, err := s.execute(ctx, tx, query, params...)
 	return res, err
 }
 
 func (s *Session) StreamExecuteRO(
 	ctx context.Context,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (ydb_result.StreamResult, error) {
 
-	res, err := s.session.StreamExecuteScanQuery(ctx, query, params)
+	res, err := s.session.StreamExecuteScanQuery(
+		ctx,
+		query,
+		ydb_table.NewQueryParameters(params...),
+	)
 	if err != nil {
 		// TODO: some errors should not be retriable.
 		return nil, errors.NewRetriableErrorf(
@@ -239,7 +243,7 @@ func (s *Session) StreamExecuteRO(
 func (s *Session) ExecuteRW(
 	ctx context.Context,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (ydb_result.Result, error) {
 
 	tx := ydb_table.TxControl(
@@ -248,7 +252,7 @@ func (s *Session) ExecuteRW(
 		),
 		ydb_table.CommitTx(),
 	)
-	_, res, err := s.execute(ctx, tx, query, params)
+	_, res, err := s.execute(ctx, tx, query, params...)
 	return res, err
 }
 
@@ -277,7 +281,7 @@ func (s *Session) execute(
 	ctx context.Context,
 	control *ydb_table.TransactionControl,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (transaction ydb_table.Transaction, res ydb_result.Result, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
@@ -289,7 +293,7 @@ func (s *Session) execute(
 		ctx,
 		control,
 		query,
-		params,
+		ydb_table.NewQueryParameters(params...),
 	)
 	if err != nil {
 		logging.Debug(
@@ -400,14 +404,14 @@ func (c *YDBClient) Execute(
 func (c *YDBClient) ExecuteRO(
 	ctx context.Context,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (ydb_result.Result, error) {
 
 	var res ydb_result.Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
 		var err error
-		res, err = session.ExecuteRO(ctx, query, params)
+		res, err = session.ExecuteRO(ctx, query, params...)
 		return err
 	})
 
@@ -417,14 +421,14 @@ func (c *YDBClient) ExecuteRO(
 func (c *YDBClient) ExecuteRW(
 	ctx context.Context,
 	query string,
-	params *ydb_table.QueryParameters,
+	params ...ydb_table.ParameterOption,
 ) (ydb_result.Result, error) {
 
 	var res ydb_result.Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
 		var err error
-		res, err = session.ExecuteRW(ctx, query, params)
+		res, err = session.ExecuteRW(ctx, query, params...)
 		return err
 	})
 

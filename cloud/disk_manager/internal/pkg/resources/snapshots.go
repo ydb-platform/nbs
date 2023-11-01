@@ -266,9 +266,9 @@ func (s *storageYDB) snapshotExists(
 		select count(*)
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return false, err
 	}
@@ -310,10 +310,10 @@ func (s *storageYDB) getIncremental(
 		select *
 		from incremental
 		where zone_id = $zone_id and disk_id = $disk_id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(disk.ZoneId)),
 		ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(disk.DiskId)),
-	))
+	)
 	if err != nil {
 		return "", "", err
 	}
@@ -351,9 +351,9 @@ func (s *storageYDB) getSnapshotMeta(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -421,9 +421,9 @@ func (s *storageYDB) createSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshot.ID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -522,9 +522,9 @@ func (s *storageYDB) createSnapshot(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -560,9 +560,9 @@ func (s *storageYDB) snapshotCreated(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -618,9 +618,9 @@ func (s *storageYDB) snapshotCreated(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -636,12 +636,12 @@ func (s *storageYDB) snapshotCreated(
 
 			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
 			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
-		`, s.snapshotsPath), ydb_table.NewQueryParameters(
+		`, s.snapshotsPath),
 			ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(state.zoneID)),
 			ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(state.diskID)),
 			ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 			ydb_table.ValueParam("$checkpoint_id", ydb_types.UTF8Value(state.checkpointID)),
-		))
+		)
 		if err != nil {
 			return err
 		}
@@ -661,13 +661,13 @@ func (s *storageYDB) snapshotCreated(
 
 			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
 			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
-		`, s.snapshotsPath), ydb_table.NewQueryParameters(
+		`, s.snapshotsPath),
 			ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(state.zoneID)),
 			ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(state.diskID)),
 			ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 			ydb_table.ValueParam("$checkpoint_id", ydb_types.UTF8Value(state.checkpointID)),
 			ydb_table.ValueParam("$base_snapshot_id", ydb_types.UTF8Value(state.baseSnapshotID)),
-		))
+		)
 		if err != nil {
 			return err
 		}
@@ -719,9 +719,9 @@ func (s *storageYDB) deleteSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -782,9 +782,9 @@ func (s *storageYDB) deleteSnapshot(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -798,11 +798,11 @@ func (s *storageYDB) deleteSnapshot(
 
 		delete from incremental
 		where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $snapshot_id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(state.zoneID)),
 		ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(state.diskID)),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -836,9 +836,9 @@ func (s *storageYDB) snapshotDeleted(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -890,9 +890,9 @@ func (s *storageYDB) snapshotDeleted(
 
 		select *
 		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -905,10 +905,10 @@ func (s *storageYDB) snapshotDeleted(
 
 		upsert into deleted (deleted_at, snapshot_id)
 		values ($deleted_at, $snapshot_id)
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -933,10 +933,10 @@ func (s *storageYDB) clearDeletedSnapshots(
 		from deleted
 		where deleted_at < $deleted_before
 		limit $limit
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
 		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -971,11 +971,11 @@ func (s *storageYDB) clearDeletedSnapshots(
 
 				delete from deleted
 				where deleted_at = $deleted_at and snapshot_id = $snapshot_id
-			`, s.snapshotsPath), ydb_table.NewQueryParameters(
+			`, s.snapshotsPath),
 				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 				ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(snapshotStatusDeleted))),
-			))
+			)
 			if err != nil {
 				return err
 			}
@@ -1006,9 +1006,9 @@ func (s *storageYDB) lockSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return false, err
 	}
@@ -1058,9 +1058,9 @@ func (s *storageYDB) lockSnapshot(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return false, err
 	}
@@ -1094,9 +1094,9 @@ func (s *storageYDB) unlockSnapshot(
 		select *
 		from snapshots
 		where id = $id
-	`, s.snapshotsPath), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -1143,9 +1143,9 @@ func (s *storageYDB) unlockSnapshot(
 		upsert into snapshots
 		select *
 		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}

@@ -221,9 +221,9 @@ func (s *storageYDB) getFilesystemMeta(
 		select *
 		from filesystems
 		where id = $id
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(filesystemID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -270,9 +270,9 @@ func (s *storageYDB) createFilesystem(
 		select *
 		from filesystems
 		where id = $id
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(filesystem.ID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -340,9 +340,9 @@ func (s *storageYDB) createFilesystem(
 		upsert into filesystems
 		select *
 		from AS_TABLE($states)
-	`, s.filesystemsPath, filesystemStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath, filesystemStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -375,9 +375,9 @@ func (s *storageYDB) filesystemCreated(
 		select *
 		from filesystems
 		where id = $id
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(filesystem.ID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -436,9 +436,9 @@ func (s *storageYDB) filesystemCreated(
 		upsert into filesystems
 		select *
 		from AS_TABLE($states)
-	`, s.filesystemsPath, filesystemStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath, filesystemStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -468,9 +468,9 @@ func (s *storageYDB) deleteFilesystem(
 		select *
 		from filesystems
 		where id = $id
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(filesystemID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -516,9 +516,9 @@ func (s *storageYDB) deleteFilesystem(
 		upsert into filesystems
 		select *
 		from AS_TABLE($states)
-	`, s.filesystemsPath, filesystemStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath, filesystemStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -552,9 +552,9 @@ func (s *storageYDB) filesystemDeleted(
 		select *
 		from filesystems
 		where id = $id
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(filesystemID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -606,9 +606,9 @@ func (s *storageYDB) filesystemDeleted(
 		upsert into filesystems
 		select *
 		from AS_TABLE($states)
-	`, s.filesystemsPath, filesystemStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath, filesystemStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -621,10 +621,10 @@ func (s *storageYDB) filesystemDeleted(
 
 		upsert into deleted (deleted_at, filesystem_id)
 		values ($deleted_at, $filesystem_id)
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		ydb_table.ValueParam("$filesystem_id", ydb_types.UTF8Value(filesystemID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -649,10 +649,10 @@ func (s *storageYDB) clearDeletedFilesystems(
 		from deleted
 		where deleted_at < $deleted_before
 		limit $limit
-	`, s.filesystemsPath), ydb_table.NewQueryParameters(
+	`, s.filesystemsPath),
 		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
 		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -687,11 +687,11 @@ func (s *storageYDB) clearDeletedFilesystems(
 
 				delete from deleted
 				where deleted_at = $deleted_at and filesystem_id = $filesystem_id
-			`, s.filesystemsPath), ydb_table.NewQueryParameters(
+			`, s.filesystemsPath),
 				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 				ydb_table.ValueParam("$filesystem_id", ydb_types.UTF8Value(filesystemID)),
 				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(filesystemStatusDeleted))),
-			))
+			)
 			if err != nil {
 				return err
 			}

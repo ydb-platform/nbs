@@ -104,9 +104,9 @@ func insertTableV1(ctx context.Context, db *YDBClient, path string, table string
 				upsert into %v
 				select *
 				from AS_TABLE($values)
-			`, path, tableV1StructTypeString(), table), ydb_table.NewQueryParameters(
+			`, path, tableV1StructTypeString(), table),
 				ydb_table.ValueParam("$values", ydb_types.ListValue(val.structValue())),
-			))
+			)
 			return err
 		},
 	)
@@ -123,7 +123,8 @@ func selectTableV1(ctx context.Context, db *YDBClient, path string, table string
 
 				select *
 				from %v
-			`, path, table), ydb_table.NewQueryParameters())
+			`, path, table,
+			))
 			if err != nil {
 				return err
 			}
@@ -199,9 +200,9 @@ func insertTableV2(ctx context.Context, db *YDBClient, path string, table string
 				upsert into %v
 				select *
 				from AS_TABLE($values)
-			`, path, tableV2StructTypeString(), table), ydb_table.NewQueryParameters(
+			`, path, tableV2StructTypeString(), table),
 				ydb_table.ValueParam("$values", ydb_types.ListValue(val.structValue())),
-			))
+			)
 			return err
 		},
 	)
@@ -218,7 +219,8 @@ func selectTableV2(ctx context.Context, db *YDBClient, path string, table string
 
 				select *
 				from %v
-			`, path, table), ydb_table.NewQueryParameters())
+			`, path, table,
+			))
 			if err != nil {
 				return err
 			}

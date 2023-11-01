@@ -224,9 +224,9 @@ func (s *storageYDB) imageExists(
 		select count(*)
 		from images
 		where id = $id
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
-	))
+	)
 	if err != nil {
 		return false, err
 	}
@@ -267,9 +267,9 @@ func (s *storageYDB) getImageState(
 		select *
 		from images
 		where id = $id
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -357,9 +357,9 @@ func (s *storageYDB) createImage(
 		select *
 		from images
 		where id = $id
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(image.ID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -440,9 +440,9 @@ func (s *storageYDB) createImage(
 		upsert into images
 		select *
 		from AS_TABLE($states)
-	`, s.imagesPath, imageStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.imagesPath, imageStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -479,9 +479,9 @@ func (s *storageYDB) imageCreated(
 		select *
 		from images
 		where id = $id
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -543,9 +543,9 @@ func (s *storageYDB) imageCreated(
 		upsert into images
 		select *
 		from AS_TABLE($states)
-	`, s.imagesPath, imageStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.imagesPath, imageStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -597,9 +597,9 @@ func (s *storageYDB) deleteImage(
 		select *
 		from images
 		where id = $id
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -646,9 +646,9 @@ func (s *storageYDB) deleteImage(
 		upsert into images
 		select *
 		from AS_TABLE($states)
-	`, s.imagesPath, imageStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.imagesPath, imageStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -682,9 +682,9 @@ func (s *storageYDB) imageDeleted(
 		select *
 		from images
 		where id = $id
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -736,9 +736,9 @@ func (s *storageYDB) imageDeleted(
 		upsert into images
 		select *
 		from AS_TABLE($states)
-	`, s.imagesPath, imageStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.imagesPath, imageStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -751,10 +751,10 @@ func (s *storageYDB) imageDeleted(
 
 		upsert into deleted (deleted_at, image_id)
 		values ($deleted_at, $image_id)
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -779,10 +779,10 @@ func (s *storageYDB) clearDeletedImages(
 		from deleted
 		where deleted_at < $deleted_before
 		limit $limit
-	`, s.imagesPath), ydb_table.NewQueryParameters(
+	`, s.imagesPath),
 		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
 		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -817,11 +817,11 @@ func (s *storageYDB) clearDeletedImages(
 
 				delete from deleted
 				where deleted_at = $deleted_at and image_id = $image_id
-			`, s.imagesPath), ydb_table.NewQueryParameters(
+			`, s.imagesPath),
 				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 				ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
 				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(imageStatusDeleted))),
-			))
+			)
 			if err != nil {
 				return err
 			}

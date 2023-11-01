@@ -58,10 +58,10 @@ func (s *StorageYDB) ReadChunk(
 		where shard_id = $shard_id and
 			chunk_id = $chunk_id and
 			referer = "";
-	`, s.tablesPath), ydb_table.NewQueryParameters(
+	`, s.tablesPath),
 		ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunk.ID))),
 		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunk.ID)),
-	))
+	)
 	if err != nil {
 		return err
 	}

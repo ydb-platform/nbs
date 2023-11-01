@@ -290,9 +290,9 @@ func (s *storageYDB) getDiskMeta(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -339,9 +339,9 @@ func (s *storageYDB) createDisk(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(disk.ID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -441,9 +441,9 @@ func (s *storageYDB) diskCreated(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(disk.ID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -527,9 +527,9 @@ func (s *storageYDB) deleteDisk(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -601,9 +601,9 @@ func (s *storageYDB) diskDeleted(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -660,10 +660,10 @@ func (s *storageYDB) diskDeleted(
 
 		upsert into deleted (deleted_at, disk_id)
 		values ($deleted_at, $disk_id)
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -688,10 +688,10 @@ func (s *storageYDB) clearDeletedDisks(
 		from deleted
 		where deleted_at < $deleted_before
 		limit $limit
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
 		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -726,11 +726,11 @@ func (s *storageYDB) clearDeletedDisks(
 
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id
-			`, s.disksPath), ydb_table.NewQueryParameters(
+			`, s.disksPath),
 				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 				ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(diskID)),
 				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(diskStatusDeleted))),
-			))
+			)
 			if err != nil {
 				return err
 			}
@@ -777,9 +777,9 @@ func (s *storageYDB) incrementFillGeneration(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -846,9 +846,9 @@ func (s *storageYDB) diskScanned(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return err
 	}
@@ -949,9 +949,9 @@ func (s *storageYDB) getDiskState(
 		select *
 		from disks
 		where id = $id
-	`, s.disksPath), ydb_table.NewQueryParameters(
+	`, s.disksPath),
 		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
-	))
+	)
 	if err != nil {
 		return state, err
 	}
@@ -995,9 +995,9 @@ func (s *storageYDB) updateDiskState(
 		upsert into disks
 		select *
 		from AS_TABLE($states)
-	`, s.disksPath, diskStateStructTypeString()), ydb_table.NewQueryParameters(
+	`, s.disksPath, diskStateStructTypeString()),
 		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
-	))
+	)
 	return err
 }
 

@@ -159,9 +159,9 @@ func listResources(
 
 			select id from %v
 			where creating_at < $creating_before
-		`, tablesPath, tableName), ydb_table.NewQueryParameters(
+		`, tablesPath, tableName),
 			ydb_table.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
-		))
+		)
 	} else {
 		res, err = session.StreamExecuteRO(ctx, fmt.Sprintf(`
 			--!syntax_v1
@@ -172,10 +172,10 @@ func listResources(
 			select id
 			from %v
 			where folder_id = $folder_id and creating_at < $creating_before
-		`, tablesPath, tableName), ydb_table.NewQueryParameters(
+		`, tablesPath, tableName),
 			ydb_table.ValueParam("$folder_id", ydb_types.UTF8Value(folderID)),
 			ydb_table.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
-		))
+		)
 	}
 	if err != nil {
 		return nil, err
