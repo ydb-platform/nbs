@@ -9,7 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -42,7 +41,7 @@ func (s *storageYDB) findBaseDisks(
 		from base_disks
 		where id in $ids
 	`, s.tablesPath),
-		ydb_table.ValueParam("$ids", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$ids", ydb_types.ListValue(values...)),
 	)
 	if err != nil {
 		return nil, err
@@ -81,7 +80,7 @@ func (s *storageYDB) findBaseDisksTx(
 		from base_disks
 		where id in $ids
 	`, s.tablesPath),
-		ydb_table.ValueParam("$ids", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$ids", ydb_types.ListValue(values...)),
 	)
 	if err != nil {
 		return nil, err
@@ -217,7 +216,7 @@ func (s *storageYDB) updateFreeTable(
 			select *
 			from AS_TABLE($values)
 		`, s.tablesPath, baseDiskKeyStructTypeString()),
-			ydb_table.ValueParam("$values", ydb_types.ListValue(toDelete...)),
+			persistence.ValueParam("$values", ydb_types.ListValue(toDelete...)),
 		)
 		if err != nil {
 			return err
@@ -237,7 +236,7 @@ func (s *storageYDB) updateFreeTable(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath, baseDiskKeyStructTypeString()),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(toUpsert...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(toUpsert...)),
 	)
 	return err
 }
@@ -275,7 +274,7 @@ func (s *storageYDB) updateSchedulingTable(
 			select *
 			from AS_TABLE($keys)
 		`, s.tablesPath, baseDiskKeyStructTypeString()),
-			ydb_table.ValueParam("$keys", ydb_types.ListValue(keys...)),
+			persistence.ValueParam("$keys", ydb_types.ListValue(keys...)),
 		)
 		if err != nil {
 			return err
@@ -311,7 +310,7 @@ func (s *storageYDB) updateSchedulingTable(
 		select *
 		from AS_TABLE($keys)
 	`, s.tablesPath, baseDiskKeyStructTypeString()),
-		ydb_table.ValueParam("$keys", ydb_types.ListValue(keys...)),
+		persistence.ValueParam("$keys", ydb_types.ListValue(keys...)),
 	)
 	return err
 }
@@ -345,7 +344,7 @@ func (s *storageYDB) updateDeletingTable(
 			select *
 			from AS_TABLE($values)
 		`, s.tablesPath),
-			ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+			persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 		)
 		if err != nil {
 			return err
@@ -376,7 +375,7 @@ func (s *storageYDB) updateDeletingTable(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -405,7 +404,7 @@ func (s *storageYDB) upsertSlots(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath, slotStructTypeString()),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -452,7 +451,7 @@ func (s *storageYDB) updateOverlayDiskIDs(
 			select *
 			from AS_TABLE($values)
 		`, s.tablesPath),
-			ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+			persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 		)
 		if err != nil {
 			return err
@@ -484,7 +483,7 @@ func (s *storageYDB) updateOverlayDiskIDs(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -533,7 +532,7 @@ func (s *storageYDB) updateSlots(
 			select *
 			from AS_TABLE($values)
 		`, s.tablesPath),
-			ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+			persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 		)
 		if err != nil {
 			return err
@@ -558,7 +557,7 @@ func (s *storageYDB) updateSlots(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath, slotStructTypeString()),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -605,7 +604,7 @@ func (s *storageYDB) updateDeletedTable(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -633,8 +632,8 @@ func (s *storageYDB) getPoolOrDefault(
 	res, err := tx.Execute(
 		ctx,
 		s.makeSelectPoolsQuery(),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return pool{}, err
@@ -731,7 +730,7 @@ func (s *storageYDB) updatePoolsTable(
 		select *
 		from AS_TABLE($pools)
 	`, s.tablesPath, poolStructTypeString()),
-		ydb_table.ValueParam("$pools", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$pools", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -798,7 +797,7 @@ func (s *storageYDB) updateBaseDisks(
 		select *
 		from AS_TABLE($base_disks)
 	`, s.tablesPath, baseDiskStructTypeString()),
-		ydb_table.ValueParam("$base_disks", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$base_disks", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -859,8 +858,8 @@ func (s *storageYDB) checkPoolConfigured(
 		from configs
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return 0, err
@@ -921,8 +920,8 @@ func (s *storageYDB) isPoolConfiguredTx(
 		from configs
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return false, err
@@ -962,8 +961,8 @@ func (s *storageYDB) isPoolConfigured(
 		from configs
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return false, err
@@ -1011,7 +1010,7 @@ func (s *storageYDB) acquireBaseDiskSlot(
 		from slots
 		where overlay_disk_id = $overlay_disk_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$overlay_disk_id", ydb_types.UTF8Value(overlayDiskID)),
+		persistence.ValueParam("$overlay_disk_id", ydb_types.UTF8Value(overlayDiskID)),
 	)
 	if err != nil {
 		return BaseDisk{}, err
@@ -1042,8 +1041,8 @@ func (s *storageYDB) acquireBaseDiskSlot(
 		from free
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return BaseDisk{}, err
@@ -1139,10 +1138,10 @@ func (s *storageYDB) acquireBaseDiskSlot(
 			upsert into configs (image_id, zone_id, kind, capacity)
 			values ($image_id, $zone_id, $kind, $capacity)
 		`, s.tablesPath),
-			ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-			ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
-			ydb_table.ValueParam("$kind", ydb_types.Int64Value(0)), // TODO: get rid of this param.
-			ydb_table.ValueParam("$capacity", ydb_types.Uint64Value(1)),
+			persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+			persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+			persistence.ValueParam("$kind", ydb_types.Int64Value(0)), // TODO: get rid of this param.
+			persistence.ValueParam("$capacity", ydb_types.Uint64Value(1)),
 		)
 		if err != nil {
 			return BaseDisk{}, err
@@ -1180,7 +1179,7 @@ func (s *storageYDB) releaseBaseDiskSlot(
 		from slots
 		where overlay_disk_id = $overlay_disk_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$overlay_disk_id", ydb_types.UTF8Value(overlayDiskID)),
+		persistence.ValueParam("$overlay_disk_id", ydb_types.UTF8Value(overlayDiskID)),
 	)
 	if err != nil {
 		return BaseDisk{}, err
@@ -1303,7 +1302,7 @@ func (s *storageYDB) overlayDiskRebasing(
 		from slots
 		where overlay_disk_id = $overlay_disk_id
 	`, s.tablesPath),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$overlay_disk_id",
 			ydb_types.UTF8Value(info.OverlayDisk.DiskId),
 		),
@@ -1493,7 +1492,7 @@ func (s *storageYDB) overlayDiskRebased(
 		from slots
 		where overlay_disk_id = $overlay_disk_id
 	`, s.tablesPath),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$overlay_disk_id",
 			ydb_types.UTF8Value(info.OverlayDisk.DiskId),
 		),
@@ -1683,7 +1682,7 @@ func (s *storageYDB) baseDiskCreationFailed(
 		from base_disks
 		where id = $id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(lookup.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(lookup.ID)),
 	)
 	if err != nil {
 		return err
@@ -1746,8 +1745,8 @@ func (s *storageYDB) getPoolConfig(
 		from configs
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return nil, err
@@ -1977,7 +1976,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		select *
 		from AS_TABLE($pool)
 	`, s.tablesPath, poolStructTypeString()),
-		ydb_table.ValueParam("$pool", ydb_types.ListValue(pool.structValue())),
+		persistence.ValueParam("$pool", ydb_types.ListValue(pool.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -1997,7 +1996,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		select *
 		from AS_TABLE($base_disks)
 	`, s.tablesPath, baseDiskStructTypeString()),
-		ydb_table.ValueParam("$base_disks", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$base_disks", ydb_types.ListValue(values...)),
 	)
 	if err != nil {
 		return nil, err
@@ -2132,8 +2131,8 @@ func (s *storageYDB) getReadyPoolInfos(
 			res, err := session.ExecuteRO(
 				ctx,
 				s.makeSelectPoolsQuery(),
-				ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(config.imageID)),
-				ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(config.zoneID)),
+				persistence.ValueParam("$image_id", ydb_types.UTF8Value(config.imageID)),
+				persistence.ValueParam("$zone_id", ydb_types.UTF8Value(config.zoneID)),
 			)
 			if err != nil {
 				return err
@@ -2272,11 +2271,11 @@ func (s *storageYDB) configurePool(
 		upsert into configs (image_id, zone_id, kind, capacity, image_size)
 		values ($image_id, $zone_id, $kind, $capacity, $image_size)
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
-		ydb_table.ValueParam("$kind", ydb_types.Int64Value(0)), // TODO: get rid of this param.
-		ydb_table.ValueParam("$capacity", ydb_types.Uint64Value(uint64(capacity))),
-		ydb_table.ValueParam("$image_size", ydb_types.Uint64Value(imageSize)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$kind", ydb_types.Int64Value(0)), // TODO: get rid of this param.
+		persistence.ValueParam("$capacity", ydb_types.Uint64Value(uint64(capacity))),
+		persistence.ValueParam("$image_size", ydb_types.Uint64Value(imageSize)),
 	)
 	if err != nil {
 		return err
@@ -2309,7 +2308,7 @@ func (s *storageYDB) markBaseDisksDeleting(
 		select *
 		from AS_TABLE($base_disks)
 	`, s.tablesPath, baseDiskStructTypeString()),
-		ydb_table.ValueParam("$base_disks", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$base_disks", ydb_types.ListValue(values...)),
 	)
 	if err != nil {
 		return err
@@ -2333,7 +2332,7 @@ func (s *storageYDB) markBaseDisksDeleting(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath),
-		ydb_table.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
 	)
 	return err
 }
@@ -2361,8 +2360,8 @@ func (s *storageYDB) deletePool(
 		from pools
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return err
@@ -2423,8 +2422,8 @@ func (s *storageYDB) deletePool(
 		delete from free where
 		image_id = $image_id and zone_id = $zone_id;
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(p.imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(p.zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(p.imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(p.zoneID)),
 	)
 	if err != nil {
 		return err
@@ -2449,7 +2448,7 @@ func (s *storageYDB) deletePool(
 		select *
 		from AS_TABLE($pool)
 	`, s.tablesPath, poolStructTypeString()),
-		ydb_table.ValueParam("$pool", ydb_types.ListValue(p.structValue())),
+		persistence.ValueParam("$pool", ydb_types.ListValue(p.structValue())),
 	)
 	if err != nil {
 		return err
@@ -2483,8 +2482,8 @@ func (s *storageYDB) imageDeleting(
 		from pools
 		where image_id = $image_id and status = $status
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(poolStatusReady))),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$status", ydb_types.Int64Value(int64(poolStatusReady))),
 	)
 	if err != nil {
 		return err
@@ -2523,7 +2522,7 @@ func (s *storageYDB) getBaseDisksToDelete(
 		from deleting
 		limit $limit
 	`, s.tablesPath),
-		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(limit)),
+		persistence.ValueParam("$limit", ydb_types.Uint64Value(limit)),
 	)
 	if err != nil {
 		return nil, err
@@ -2556,8 +2555,8 @@ func (s *storageYDB) getBaseDisksToDelete(
 				from base_disks
 				where id = $id and status = $status
 			`, s.tablesPath),
-				ydb_table.ValueParam("$id", ydb_types.UTF8Value(baseDiskID)),
-				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(baseDiskStatusDeleting))),
+				persistence.ValueParam("$id", ydb_types.UTF8Value(baseDiskID)),
+				persistence.ValueParam("$status", ydb_types.Int64Value(int64(baseDiskStatusDeleting))),
 			)
 			if err != nil {
 				return nil, err
@@ -2602,7 +2601,7 @@ func (s *storageYDB) baseDiskDeleted(
 		from base_disks
 		where id = $id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(lookup.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(lookup.ID)),
 	)
 	if err != nil {
 		return err
@@ -2690,8 +2689,8 @@ func (s *storageYDB) clearDeletedBaseDisks(
 		where deleted_at < $deleted_before
 		limit $limit
 	`, s.tablesPath),
-		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
-		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
+		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -2728,9 +2727,9 @@ func (s *storageYDB) clearDeletedBaseDisks(
 				delete from deleted
 				where deleted_at = $deleted_at and base_disk_id = $base_disk_id
 			`, s.tablesPath),
-				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-				ydb_table.ValueParam("$base_disk_id", ydb_types.UTF8Value(baseDiskID)),
-				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(baseDiskStatusDeleted))),
+				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
+				persistence.ValueParam("$base_disk_id", ydb_types.UTF8Value(baseDiskID)),
+				persistence.ValueParam("$status", ydb_types.Int64Value(int64(baseDiskStatusDeleted))),
 			)
 			if err != nil {
 				return err
@@ -2759,8 +2758,8 @@ func (s *storageYDB) clearReleasedSlots(
 		where released_at < $released_before
 		limit $limit
 	`, s.tablesPath),
-		ydb_table.ValueParam("$released_before", persistence.TimestampValue(releasedBefore)),
-		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$released_before", persistence.TimestampValue(releasedBefore)),
+		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -2797,9 +2796,9 @@ func (s *storageYDB) clearReleasedSlots(
 				delete from released
 				where released_at = $released_at and overlay_disk_id = $overlay_disk_id
 			`, s.tablesPath),
-				ydb_table.ValueParam("$released_at", persistence.TimestampValue(releasedAt)),
-				ydb_table.ValueParam("$overlay_disk_id", ydb_types.UTF8Value(overlayDiskID)),
-				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(slotStatusReleased))),
+				persistence.ValueParam("$released_at", persistence.TimestampValue(releasedAt)),
+				persistence.ValueParam("$overlay_disk_id", ydb_types.UTF8Value(overlayDiskID)),
+				persistence.ValueParam("$status", ydb_types.Int64Value(int64(slotStatusReleased))),
 			)
 			if err != nil {
 				return err
@@ -2825,7 +2824,7 @@ func (s *storageYDB) getAcquiredSlots(
 		from overlay_disk_ids
 		where base_disk_id = $base_disk_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$base_disk_id", ydb_types.UTF8Value(baseDiskID)),
+		persistence.ValueParam("$base_disk_id", ydb_types.UTF8Value(baseDiskID)),
 	)
 	if err != nil {
 		return nil, err
@@ -2863,7 +2862,7 @@ func (s *storageYDB) getAcquiredSlots(
 		from slots
 		where overlay_disk_id in $overlay_disk_ids
 	`, s.tablesPath),
-		ydb_table.ValueParam("$overlay_disk_ids", ydb_types.ListValue(overlayDiskIDs...)),
+		persistence.ValueParam("$overlay_disk_ids", ydb_types.ListValue(overlayDiskIDs...)),
 	)
 	if err != nil {
 		return nil, err
@@ -2909,8 +2908,8 @@ func (s *storageYDB) getFreeBaseDisks(
 		from free
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return nil, err
@@ -3142,7 +3141,7 @@ func (s *storageYDB) isBaseDiskRetired(
 		from base_disks
 		where id = $id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(baseDiskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(baseDiskID)),
 	)
 	if err != nil {
 		return false, err
@@ -3185,9 +3184,9 @@ func (s *storageYDB) listBaseDisks(
 		from base_disks
 		where image_id = $image_id and zone_id = $zone_id and status = $status
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
-		ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(baseDiskStatusReady))),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$status", ydb_types.Int64Value(int64(baseDiskStatusReady))),
 	)
 	if err != nil {
 		return nil, err
@@ -3234,8 +3233,8 @@ func (s *storageYDB) lockPool(
 		from pools
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return false, err
@@ -3296,7 +3295,7 @@ func (s *storageYDB) lockPool(
 		select *
 		from AS_TABLE($pools)
 	`, s.tablesPath, poolStructTypeString()),
-		ydb_table.ValueParam("$pools", ydb_types.ListValue(pool.structValue())),
+		persistence.ValueParam("$pools", ydb_types.ListValue(pool.structValue())),
 	)
 	if err != nil {
 		return false, err
@@ -3334,8 +3333,8 @@ func (s *storageYDB) unlockPool(
 		from pools
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-		ydb_table.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(zoneID)),
 	)
 	if err != nil {
 		return err
@@ -3389,7 +3388,7 @@ func (s *storageYDB) unlockPool(
 		select *
 		from AS_TABLE($pools)
 	`, s.tablesPath, poolStructTypeString()),
-		ydb_table.ValueParam("$pools", ydb_types.ListValue(pool.structValue())),
+		persistence.ValueParam("$pools", ydb_types.ListValue(pool.structValue())),
 	)
 	if err != nil {
 		return err

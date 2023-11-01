@@ -7,7 +7,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -160,7 +159,7 @@ func listResources(
 			select id from %v
 			where creating_at < $creating_before
 		`, tablesPath, tableName),
-			ydb_table.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
+			persistence.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
 		)
 	} else {
 		res, err = session.StreamExecuteRO(ctx, fmt.Sprintf(`
@@ -173,8 +172,8 @@ func listResources(
 			from %v
 			where folder_id = $folder_id and creating_at < $creating_before
 		`, tablesPath, tableName),
-			ydb_table.ValueParam("$folder_id", ydb_types.UTF8Value(folderID)),
-			ydb_table.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
+			persistence.ValueParam("$folder_id", ydb_types.UTF8Value(folderID)),
+			persistence.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
 		)
 	}
 	if err != nil {

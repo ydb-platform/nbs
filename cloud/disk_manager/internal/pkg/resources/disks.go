@@ -10,7 +10,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -291,7 +290,7 @@ func (s *storageYDB) getDiskMeta(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return nil, err
@@ -340,7 +339,7 @@ func (s *storageYDB) createDisk(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(disk.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(disk.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -442,7 +441,7 @@ func (s *storageYDB) diskCreated(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(disk.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(disk.ID)),
 	)
 	if err != nil {
 		return err
@@ -528,7 +527,7 @@ func (s *storageYDB) deleteDisk(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return nil, err
@@ -602,7 +601,7 @@ func (s *storageYDB) diskDeleted(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return err
@@ -661,8 +660,8 @@ func (s *storageYDB) diskDeleted(
 		upsert into deleted (deleted_at, disk_id)
 		values ($deleted_at, $disk_id)
 	`, s.disksPath),
-		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
+		persistence.ValueParam("$disk_id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return err
@@ -689,8 +688,8 @@ func (s *storageYDB) clearDeletedDisks(
 		where deleted_at < $deleted_before
 		limit $limit
 	`, s.disksPath),
-		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
-		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
+		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -727,9 +726,9 @@ func (s *storageYDB) clearDeletedDisks(
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id
 			`, s.disksPath),
-				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-				ydb_table.ValueParam("$disk_id", ydb_types.UTF8Value(diskID)),
-				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(diskStatusDeleted))),
+				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
+				persistence.ValueParam("$disk_id", ydb_types.UTF8Value(diskID)),
+				persistence.ValueParam("$status", ydb_types.Int64Value(int64(diskStatusDeleted))),
 			)
 			if err != nil {
 				return err
@@ -778,7 +777,7 @@ func (s *storageYDB) incrementFillGeneration(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return 0, err
@@ -847,7 +846,7 @@ func (s *storageYDB) diskScanned(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return err
@@ -950,7 +949,7 @@ func (s *storageYDB) getDiskState(
 		from disks
 		where id = $id
 	`, s.disksPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(diskID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(diskID)),
 	)
 	if err != nil {
 		return state, err
@@ -996,7 +995,7 @@ func (s *storageYDB) updateDiskState(
 		select *
 		from AS_TABLE($states)
 	`, s.disksPath, diskStateStructTypeString()),
-		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
 	)
 	return err
 }

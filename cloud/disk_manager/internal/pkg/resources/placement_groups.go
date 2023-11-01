@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -267,7 +266,7 @@ func (s *storageYDB) getPlacementGroupState(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
 	)
 	if err != nil {
 		return nil, err
@@ -363,7 +362,7 @@ func (s *storageYDB) createPlacementGroup(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -442,7 +441,7 @@ func (s *storageYDB) createPlacementGroup(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$states",
 			ydb_types.ListValue(state.structValue()),
 		),
@@ -480,7 +479,7 @@ func (s *storageYDB) placementGroupCreated(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
 	)
 	if err != nil {
 		return err
@@ -543,7 +542,7 @@ func (s *storageYDB) placementGroupCreated(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$states",
 			ydb_types.ListValue(state.structValue()),
 		),
@@ -578,7 +577,7 @@ func (s *storageYDB) deletePlacementGroup(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
 	)
 	if err != nil {
 		return nil, err
@@ -628,7 +627,7 @@ func (s *storageYDB) deletePlacementGroup(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$states",
 			ydb_types.ListValue(state.structValue()),
 		),
@@ -667,7 +666,7 @@ func (s *storageYDB) placementGroupDeleted(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
 	)
 	if err != nil {
 		return err
@@ -723,7 +722,7 @@ func (s *storageYDB) placementGroupDeleted(
 	`,
 		s.placementGroupsPath,
 		placementGroupStateStructTypeString()),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$states",
 			ydb_types.ListValue(state.structValue()),
 		),
@@ -741,8 +740,8 @@ func (s *storageYDB) placementGroupDeleted(
 		upsert into deleted (deleted_at, placement_group_id)
 		values ($deleted_at, $placement_group_id)
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		ydb_table.ValueParam(
+		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
+		persistence.ValueParam(
 			"$placement_group_id",
 			ydb_types.UTF8Value(placementGroupID),
 		),
@@ -772,11 +771,11 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 		where deleted_at < $deleted_before
 		limit $limit
 	`, s.placementGroupsPath),
-		ydb_table.ValueParam(
+		persistence.ValueParam(
 			"$deleted_before",
 			persistence.TimestampValue(deletedBefore),
 		),
-		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -813,15 +812,15 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 				delete from deleted
 				where deleted_at = $deleted_at and placement_group_id = $placement_group_id
 			`, s.placementGroupsPath),
-				ydb_table.ValueParam(
+				persistence.ValueParam(
 					"$deleted_at",
 					persistence.TimestampValue(deletedAt),
 				),
-				ydb_table.ValueParam(
+				persistence.ValueParam(
 					"$placement_group_id",
 					ydb_types.UTF8Value(placementGroupID),
 				),
-				ydb_table.ValueParam(
+				persistence.ValueParam(
 					"$status",
 					ydb_types.Int64Value(int64(placementGroupStatusDeleted)),
 				),

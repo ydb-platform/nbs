@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -105,7 +104,7 @@ func insertTableV1(ctx context.Context, db *YDBClient, path string, table string
 				select *
 				from AS_TABLE($values)
 			`, path, tableV1StructTypeString(), table),
-				ydb_table.ValueParam("$values", ydb_types.ListValue(val.structValue())),
+				ValueParam("$values", ydb_types.ListValue(val.structValue())),
 			)
 			return err
 		},
@@ -201,7 +200,7 @@ func insertTableV2(ctx context.Context, db *YDBClient, path string, table string
 				select *
 				from AS_TABLE($values)
 			`, path, tableV2StructTypeString(), table),
-				ydb_table.ValueParam("$values", ydb_types.ListValue(val.structValue())),
+				ValueParam("$values", ydb_types.ListValue(val.structValue())),
 			)
 			return err
 		},

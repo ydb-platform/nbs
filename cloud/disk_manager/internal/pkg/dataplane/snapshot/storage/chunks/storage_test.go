@@ -15,7 +15,6 @@ import (
 	monitoring_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -186,7 +185,7 @@ func chunkDataExistsInYDB(
 		from chunk_blobs
 		where chunk_id = $chunk_id and referer = "";
 	`, db.AbsolutePath(config.GetStorageFolder())),
-		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
+		persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
 	)
 	require.NoError(t, err)
 	defer res.Close()
@@ -236,7 +235,7 @@ func deleteMetadata(
 			referer = "" and
 			refcnt <= 1;
 	`, db.AbsolutePath(config.GetStorageFolder())),
-		ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
+		persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
 	)
 	require.NoError(t, err)
 }

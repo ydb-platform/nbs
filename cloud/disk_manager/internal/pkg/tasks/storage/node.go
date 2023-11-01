@@ -8,7 +8,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -108,9 +107,9 @@ func (s *storageYDB) heartbeat(
 		upsert into nodes (host, last_heartbeat, inflight_task_count)
 		values ($host, $last_heartbeat_ts, $inflight_task_count);
 	`, s.tablesPath),
-		ydb_table.ValueParam("$host", ydb_types.UTF8Value(host)),
-		ydb_table.ValueParam("$inflight_task_count", ydb_types.Uint32Value(inflightTaskCount)),
-		ydb_table.ValueParam("$last_heartbeat_ts", ydb_types.TimestampValueFromTime(ts)),
+		persistence.ValueParam("$host", ydb_types.UTF8Value(host)),
+		persistence.ValueParam("$inflight_task_count", ydb_types.Uint32Value(inflightTaskCount)),
+		persistence.ValueParam("$last_heartbeat_ts", ydb_types.TimestampValueFromTime(ts)),
 	)
 	return err
 }
@@ -130,7 +129,7 @@ func (s *storageYDB) getAliveNodes(
 		select * from nodes
 		where last_heartbeat >= $liveness_ts;
 	`, s.tablesPath),
-		ydb_table.ValueParam("$liveness_ts", ydb_types.TimestampValueFromTime(livenessTS)),
+		persistence.ValueParam("$liveness_ts", ydb_types.TimestampValueFromTime(livenessTS)),
 	)
 	if err != nil {
 		return nil, err
@@ -171,7 +170,7 @@ func (s *storageYDB) getNode(
 		select * from nodes
 		where host = $host;
 	`, s.tablesPath),
-		ydb_table.ValueParam("$host", ydb_types.UTF8Value(host)),
+		persistence.ValueParam("$host", ydb_types.UTF8Value(host)),
 	)
 	if err != nil {
 		return Node{}, err

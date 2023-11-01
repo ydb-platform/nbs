@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -225,7 +224,7 @@ func (s *storageYDB) imageExists(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return false, err
@@ -268,7 +267,7 @@ func (s *storageYDB) getImageState(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return nil, err
@@ -358,7 +357,7 @@ func (s *storageYDB) createImage(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(image.ID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(image.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -441,7 +440,7 @@ func (s *storageYDB) createImage(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -480,7 +479,7 @@ func (s *storageYDB) imageCreated(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return err
@@ -544,7 +543,7 @@ func (s *storageYDB) imageCreated(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -598,7 +597,7 @@ func (s *storageYDB) deleteImage(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return nil, err
@@ -647,7 +646,7 @@ func (s *storageYDB) deleteImage(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -683,7 +682,7 @@ func (s *storageYDB) imageDeleted(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		ydb_table.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return err
@@ -737,7 +736,7 @@ func (s *storageYDB) imageDeleted(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		ydb_table.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -752,8 +751,8 @@ func (s *storageYDB) imageDeleted(
 		upsert into deleted (deleted_at, image_id)
 		values ($deleted_at, $image_id)
 	`, s.imagesPath),
-		ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
+		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return err
@@ -780,8 +779,8 @@ func (s *storageYDB) clearDeletedImages(
 		where deleted_at < $deleted_before
 		limit $limit
 	`, s.imagesPath),
-		ydb_table.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
-		ydb_table.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
+		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -818,9 +817,9 @@ func (s *storageYDB) clearDeletedImages(
 				delete from deleted
 				where deleted_at = $deleted_at and image_id = $image_id
 			`, s.imagesPath),
-				ydb_table.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-				ydb_table.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-				ydb_table.ValueParam("$status", ydb_types.Int64Value(int64(imageStatusDeleted))),
+				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
+				persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+				persistence.ValueParam("$status", ydb_types.Int64Value(int64(imageStatusDeleted))),
 			)
 			if err != nil {
 				return err

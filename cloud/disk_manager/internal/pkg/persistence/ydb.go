@@ -14,7 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_metrics "github.com/ydb-platform/nbs/library/go/yandex/ydb/metrics"
+	ydb_metrics "github.com/ydb-platform/nbs/library/go/yandex/ydb/metrics/v2"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_credentials "github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
@@ -24,6 +24,12 @@ import (
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func ValueParam(name string, v ydb_types.Value) ydb_table.ParameterOption {
+	return ydb_table.ValueParam(name, v)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -23,7 +23,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
@@ -96,7 +95,7 @@ func readChunkBlobsFromYDB(
 				from chunk_blobs
 				where chunk_id in $chunk_ids and referer = "";
 			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
-				ydb_table.ValueParam("$chunk_ids", ydb_types.ListValue(values...)),
+				persistence.ValueParam("$chunk_ids", ydb_types.ListValue(values...)),
 			)
 			if err != nil {
 				return err
@@ -171,8 +170,8 @@ func readChunkMap(
 				from chunk_map
 				where shard_id = $shard_id and snapshot_id = $snapshot_id
 			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
-				ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
-				ydb_table.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
+				persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
+				persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
 			)
 			if err != nil {
 				return err
@@ -261,9 +260,9 @@ func updateYDBBlobChecksum(f *fixture, chunkID string, checksum uint32) {
 					set checksum = $checksum
 					where shard_id = $shard_id and chunk_id = $chunk_id
 			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
-				ydb_table.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
-				ydb_table.ValueParam("$checksum", ydb_types.Uint32Value(checksum)),
-				ydb_table.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
+				persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
+				persistence.ValueParam("$checksum", ydb_types.Uint32Value(checksum)),
+				persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
 			)
 			return err
 		},

@@ -16,7 +16,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	error_codes "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
-	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
@@ -235,7 +234,7 @@ func (s *legacyStorage) readSnapshotInfo(
 		from snapshotsext
 		where id = $snapshot_id;
 	`, s.tablesPath),
-		ydb_table.ValueParam("$snapshot_id", ydb_types.StringValue([]byte(snapshotID))),
+		persistence.ValueParam("$snapshot_id", ydb_types.StringValue([]byte(snapshotID))),
 	)
 	if err != nil {
 		return snapshotInfo{}, err
@@ -314,7 +313,7 @@ func (s *legacyStorage) readChunkInfo(
 		from chunks
 		where id = $chunk_id;
 	`, s.tablesPath),
-		ydb_table.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
+		persistence.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
 	)
 	if err != nil {
 		return chunkInfo{}, err
@@ -372,7 +371,7 @@ func (s *legacyStorage) readChunkData(
 		from blobs_on_hdd
 		where id = $chunk_id;
 	`, s.tablesPath),
-		ydb_table.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
+		persistence.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
 	)
 	if err != nil {
 		return nil, err
