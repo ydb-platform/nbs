@@ -88,8 +88,8 @@ func (f *flapSuppressor) detectFlapping() bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Adds the check state to the suppressor history.
-func (f *flapSuppressor) recordCheck(checkState bool) {
-	f.appendToHistory(checkState)
+func (f *flapSuppressor) recordCheck(result bool) {
+	f.appendToHistory(result)
 
 	flapping := f.detectFlapping()
 
@@ -99,5 +99,5 @@ func (f *flapSuppressor) recordCheck(checkState bool) {
 	}
 
 	// The check is not flapping, hence we can change the status of the check if it changed.
-	f.checkStatus.CompareAndSwap(!checkState, checkState)
+	f.checkStatus.CompareAndSwap(!result, result)
 }

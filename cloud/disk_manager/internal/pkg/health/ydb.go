@@ -10,22 +10,22 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type ydbCheck struct {
-	client *persistence.YDBClient
+	db *persistence.YDBClient
 }
 
-func newYDBCheck(client *persistence.YDBClient) *ydbCheck {
+func newYDBCheck(db *persistence.YDBClient) *ydbCheck {
 	return &ydbCheck{
-		client: client,
+		db: db,
 	}
 }
 
-func (y ydbCheck) Check(ctx context.Context) bool {
-	res, err := y.client.ExecuteRO(ctx, "SELECT 1", nil)
+func (c ydbCheck) Check(ctx context.Context) bool {
+	res, err := c.db.ExecuteRO(ctx, "SELECT 1", nil)
 	if err != nil {
 		logging.Warn(ctx, "YDB health check failed: %v", err)
 		return false
 	}
-
 	defer res.Close()
+
 	return true
 }

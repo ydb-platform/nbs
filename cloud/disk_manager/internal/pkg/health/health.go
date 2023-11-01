@@ -21,60 +21,63 @@ const healthCheckTimeout = 5 * time.Second
 func MonitorHealth(
 	ctx context.Context,
 	registry metrics.Registry,
-	ydb *persistence.YDBClient,
+	db *persistence.YDBClient,
 	nbsFactory nbs.Factory,
 	s3 *persistence.S3Client,
 	s3Bucket string,
-	healthCheckChangedCallback func(bool),
+	healthChangedCallback func(bool),
 ) {
 
-	healthChecker := healthcheck{
+	healthCheck := healthcheck{
 		interval: healthCheckPeriod,
-		checkers: make(map[string]checker, 2),
+		checks:   make(map[string]check, 2),
+		registry: registry,
 	}
 
-	bootDiskChecker := newBootDiskCheck()
-	bootDiskChecker.Start(ctx)
-	healthChecker.checkers["health/bootDisk"] = bootDiskChecker
+	bootDiskCheck := newBootDiskCheck()
+	bootDiskCheck.Start(ctx)
+	healthCheck.checks["health/bootDisk"] = bootDiskCheck
 
-	ydbChecker := newYDBCheck(ydb)
-	healthChecker.checkers["health/ydb"] = ydbChecker
+	ydbCheck := newYDBCheck(db)
+	healthCheck.checks["health/ydb"] = ydbCheck
 
 	if s3 != nil && len(s3Bucket) != 0 {
-		s3Checker := newS3Check(s3, s3Bucket)
-		healthChecker.checkers["health/s3"] = s3Checker
+		s3Check := newS3Check(s3, s3Bucket)
+		healthCheck.checks["health/s3"] = s3Check
 	}
 
 	for _, zone := range nbsFactory.GetZones() {
-		nbsChecker := newNbsCheck(nbsFactory, zone)
-		healthChecker.checkers[fmt.Sprintf("health/nbs/%v", zone)] = nbsChecker
+		nbsCheck := newNbsCheck(nbsFactory, zone)
+		healthCheck.checks[fmt.Sprintf("health/nbs/%v", zone)] = nbsCheck
 	}
 
-	suppressors := make(map[string]flapSuppressor)
-	for name := range healthChecker.checkers {
-		suppressors[name] = newFlapSuppressor()
+	healthCheck.flapSuppressors = make(map[string]flapSuppressor)
+	for name := range healthCheck.checks {
+		healthCheck.flapSuppressors[name] = newFlapSuppressor()
 	}
 
-	healthChecker.monitorHealth(ctx, registry, suppressors)
+	healthCheck.monitorHealth(ctx)
 
-	go detectorLoop(ctx, suppressors, healthCheckChangedCallback)
+	go evictionLoop(ctx, healthCheck.flapSuppressors, healthChangedCallback)
 }
 
 type healthcheck struct {
-	checkers map[string]checker
-	interval time.Duration
+	checks          map[string]check
+	flapSuppressors map[string]flapSuppressor
+	interval        time.Duration
+	registry        metrics.Registry
 }
 
-type checker interface {
+type check interface {
 	Check(ctx context.Context) bool
 }
 
 // Iterates over suppressed checks, if any of the checks are failed,
 // releases current tasks.
 // When all the checks are successful again, restarts the tasks.
-func detectorLoop(
+func evictionLoop(
 	ctx context.Context,
-	healthChecks map[string]flapSuppressor,
+	flapSuppressors map[string]flapSuppressor,
 	healthChangedCallback func(bool),
 ) {
 
@@ -90,12 +93,13 @@ mainLoop:
 		case <-ticker.C:
 		}
 
-		for name, healthCheck := range healthChecks {
+		for name, flapSuppressor := range flapSuppressors {
 			// If the check returns false, notify the task controller.
-			if !healthCheck.status() {
+			if !flapSuppressor.status() {
 				if evicted {
 					continue mainLoop
 				}
+
 				logging.Warn(ctx, "Evicting the node because %q check has failed", name)
 				healthChangedCallback(false)
 				evicted = true
@@ -110,42 +114,25 @@ mainLoop:
 	}
 }
 
-func (h *healthcheck) monitorHealth(
-	ctx context.Context,
-	registry metrics.Registry,
-	suppressors map[string]flapSuppressor,
-) {
-
-	for name, check := range h.checkers {
-		go func(name string, check checker) {
-			h.checkLoop(ctx, registry, name, check, suppressors[name])
-		}(name, check)
+func (c *healthcheck) monitorHealth(ctx context.Context) {
+	for name := range c.checks {
+		go c.checkLoop(ctx, name)
 	}
 }
 
-func (h *healthcheck) checkLoop(
-	ctx context.Context,
-	registry metrics.Registry,
-	name string,
-	check checker,
-	suppressor flapSuppressor,
-) {
-
+func (c *healthcheck) checkLoop(ctx context.Context, name string) {
 	ticker := time.NewTicker(healthCheckPeriod)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		checkResult := h.check(ctx, registry, name, check)
-		suppressor.recordCheck(checkResult)
+		result := c.check(ctx, name)
+		flapSuppressor := c.flapSuppressors[name]
+		flapSuppressor.recordCheck(result)
 	}
 }
 
-func (h *healthcheck) check(
-	ctx context.Context,
-	registry metrics.Registry,
-	name string,
-	check checker,
-) bool {
+func (c *healthcheck) check(ctx context.Context, name string) bool {
+	check := c.checks[name]
 
 	ctx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
 	defer cancel()
@@ -157,6 +144,6 @@ func (h *healthcheck) check(
 		gauge = 0
 	}
 
-	registry.Gauge(name).Set(gauge)
+	c.registry.Gauge(name).Set(gauge)
 	return success
 }
