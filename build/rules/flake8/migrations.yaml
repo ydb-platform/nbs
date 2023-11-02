@@ -955,7 +955,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-15417
     - yabs/server/test/ft/BSSERVER-17702
     - yabs/server/test/ft/BSSERVER-18972
-    - yabs/server/test/ft/BSSERVER-20717
     - yabs/server/test/ft/BSSERVER-2977
     - yabs/server/test/ft/BSSERVER-3108
     - yabs/server/test/ft/BSSERVER-3143
@@ -1768,7 +1767,6 @@ migrations:
     - yabs/server/test/ft/BSDEV-85352
     - yabs/server/test/ft/BSSERVER-16347
     - yabs/server/test/ft/BSSERVER-18008
-    - yabs/server/test/ft/BSSERVER-18463
     - yabs/server/test/ft/BSSERVER-19137
     - yabs/server/test/ft/BSSERVER-19352
     - yabs/server/test/ft/BSSERVER-20427
@@ -1905,7 +1903,6 @@ migrations:
     - billing/dwh/src/dwh/grocery
     - captcha/tools/ocr_blacklist_filter
     - cloud/blockstore/public/sdk/python/client/ut
-    - cloud/blockstore/tests/python/lib
     - cloud/blockstore/tools/cms/config
     - comdep_analytics/comdep_recsys/etl_core/etl/yt
     - crypta/lib/python/yt/dyntables/ut
@@ -2075,8 +2072,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-17351
     - yabs/server/test/ft/BSSERVER-17688
     - yabs/server/test/ft/BSSERVER-17838
-    - yabs/server/test/ft/BSSERVER-18463
-    - yabs/server/test/ft/BSSERVER-18640
     - yabs/server/test/ft/BSSERVER-19137
     - yabs/server/test/ft/BSSERVER-20224
     - yabs/server/test/ft/BSSERVER-2063
