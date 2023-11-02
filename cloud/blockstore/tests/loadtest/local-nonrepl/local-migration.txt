@@ -1,0 +1,205 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "create_placement_group"
+
+        CreatePlacementGroupRequest {
+            GroupId: "group0"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "create_volume"
+
+        CreateVolumeRequest {
+            DiskId: "vol0"
+            BlocksCount: 1048576
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_NONREPLICATED
+            PlacementGroupId: "group0"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot1"
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 500000
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Verify: true
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot2"
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 500001
+                End: 1048575
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Verify: true
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "describe_volume1"
+
+        DescribeVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "remove_device1"
+
+        CmsRemoveDeviceRequest {
+            DeviceRef: "vol0/0"
+            SuccessExpected: false
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "describe_volume2"
+
+        DescribeVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "remove_device2"
+
+        CmsRemoveDeviceRequest {
+            DeviceRef: "vol0/0"
+            SuccessExpected: true
+            Timeout: 3600
+            RetryTimeout: 30
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot3"
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 1048575
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "describe_volume3"
+
+        DescribeVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+
+Dependencies {
+    key: "create_volume",
+    value {
+        Names: "create_placement_group"
+    }
+}
+
+Dependencies {
+    key: "shoot1",
+    value {
+        Names: "create_volume"
+    }
+}
+
+Dependencies {
+    key: "shoot2",
+    value {
+        Names: "shoot1"
+    }
+}
+
+Dependencies {
+    key: "describe_volume1",
+    value {
+        Names: "shoot1"
+    }
+}
+
+Dependencies {
+    key: "remove_device1",
+    value {
+        Names: "describe_volume1"
+    }
+}
+
+Dependencies {
+    key: "describe_volume2",
+    value {
+        Names: "remove_device1"
+    }
+}
+
+Dependencies {
+    key: "remove_device2",
+    value {
+        Names: "shoot2"
+    }
+}
+
+Dependencies {
+    key: "shoot3",
+    value {
+        Names: "shoot2"
+    }
+}
+
+Dependencies {
+    key: "describe_volume3",
+    value {
+        Names: "shoot3"
+    }
+}

@@ -1,0 +1,25 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 1048576
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_NONREPLICATED
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 1048575
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 60
+        Verify: true
+        Name: "Test for localhost nonrepl disk"
+    }
+}

@@ -1,0 +1,72 @@
+Blocks {
+    ProbeDesc {
+        Name: "FaultInjection"
+        Provider: "BLOCKSTORE_DISK_AGENT_PROVIDER"
+    }
+    Action {
+        StatementAction {
+            Type: ST_INC
+            Argument { Variable: "counter" }
+        }
+    }
+    Predicate {
+        Operators {
+            Type: OT_EQ
+            Argument { Variable: "errors" }
+            Argument { Value: "0" }
+        }
+    }
+}
+Blocks {
+    ProbeDesc {
+        Name: "FaultInjection"
+        Provider: "BLOCKSTORE_DISK_AGENT_PROVIDER"
+    }
+    Action {
+        StatementAction {
+            Type: ST_MOV
+            Argument { Variable: "counter" }
+            Argument { Value: "0" }
+        }
+    }
+    Action {
+        StatementAction {
+            Type: ST_MOV
+            Argument { Variable: "errors" }
+            Argument { Value: "10" }
+        }
+    }
+    Predicate {
+        Operators {
+            Type: OT_EQ
+            Argument { Variable: "counter" }
+            Argument { Value: "100" }
+        }
+    }
+}
+Blocks {
+    ProbeDesc {
+        Name: "FaultInjection"
+        Provider: "BLOCKSTORE_DISK_AGENT_PROVIDER"
+    }
+    Action {
+        StatementAction {
+            Type: ST_DEC
+            Argument { Variable: "errors" }
+        }
+    }
+    Action {
+        CustomAction {
+            Name: "ServiceErrorAction"
+            Opts: "E_REJECTED"
+            Opts: "Io Error"
+        }
+    }
+    Predicate {
+        Operators {
+            Type: OT_GT
+            Argument { Variable: "errors" }
+            Argument { Value: "0" }
+        }
+    }
+}

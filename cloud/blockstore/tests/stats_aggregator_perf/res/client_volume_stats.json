@@ -1,0 +1,826 @@
+{
+  "sensors": [
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Size",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Size",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Size",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Size",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Size",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "Count"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "Errors"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "InProgress"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "InProgressBytes"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "MaxInProgress"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "MaxInProgressBytes"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "MaxPostponedQueueSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "MaxSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "MaxTime"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "PostponedCount"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "PostponedQueueSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "RequestBytes"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "Retries"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sensor": "Time"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ReadBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Size",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Size",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Size",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Size",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Size",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "Count"
+      },
+      "mode": "deriv",
+      "value": 5042
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "Errors"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "InProgress"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "InProgressBytes"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "MaxInProgress"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "MaxInProgressBytes"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "MaxPostponedQueueSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "MaxSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "MaxTime"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "PostponedCount"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "PostponedQueueSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "RequestBytes"
+      },
+      "mode": "deriv",
+      "value": 20652032
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "Retries"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sensor": "Time"
+      },
+      "mode": "deriv",
+      "value": 5078614
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "WriteBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Size",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Size",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Size",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Size",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Size",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "Count"
+      },
+      "mode": "deriv",
+      "value": 4958
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "Errors"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "InProgress"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "InProgressBytes"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "MaxInProgress"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "MaxInProgressBytes"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "MaxPostponedQueueSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "MaxSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "MaxTime"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "PostponedCount"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "PostponedQueueSize"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "RequestBytes"
+      },
+      "mode": "deriv",
+      "value": 20307968
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "Retries"
+      },
+      "mode": "deriv",
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sensor": "Time"
+      },
+      "mode": "deriv",
+      "value": 4976008
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Large",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "100"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "50"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "90"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "99"
+      },
+      "value": 0
+    },
+    {
+      "labels": {
+        "request": "ZeroBlocks",
+        "sizeclass": "Small",
+        "percentiles": "Time",
+        "sensor": "99.9"
+      },
+      "value": 0
+    }
+  ]
+}

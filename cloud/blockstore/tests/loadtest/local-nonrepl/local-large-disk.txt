@@ -1,0 +1,77 @@
+Vertices {
+    Test {
+        Name: "create_and_shoot_nr_volume"
+        CreateVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 17179869184
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_NONREPLICATED
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 17179769184
+                End: 17179869183
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 60
+        Verify: true
+        ValidationRangeStart: 17179769184
+        ValidationRangeBlockCount: 100000
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "resize_nr_volume"
+
+        ResizeVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 34359738368
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot_nr_volume"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 17179769184
+                End: 17179869183
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 60
+        Verify: true
+        ValidationRangeStart: 17179769184
+        ValidationRangeBlockCount: 100000
+    }
+}
+
+Dependencies {
+    key: "resize_nr_volume",
+    value {
+        Names: "create_and_shoot_nr_volume"
+    }
+}
+
+Dependencies {
+    key: "shoot_nr_volume",
+    value {
+        Names: "resize_nr_volume"
+    }
+}

@@ -7,3 +7,4 @@
 
 
 add_subdirectory(fuzzing)
+add_subdirectory(stats_aggregator_perf)
