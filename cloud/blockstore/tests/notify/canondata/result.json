@@ -1,0 +1,11 @@
+{
+    "test.test_notify[back-online]": {
+        "uri": "file://test.test_notify_back-online_/back-online-results.txt"
+    },
+    "test.test_notify[notify]": {
+        "uri": "file://test.test_notify_notify_/notify-results.txt"
+    },
+    "test.test_notify[user-id]": {
+        "uri": "file://test.test_notify_user-id_/user-id-results.txt"
+    }
+}

@@ -1,0 +1,17 @@
+{
+    "test.test_load[version1-throttled]": [
+        {
+            "uri": "file://test.test_load_version1-throttled_/stats_overflow-version1-throttled.txt"
+        }
+    ],
+    "test.test_load[version1]": [
+        {
+            "uri": "file://test.test_load_version1_/stats_overflow-version1.txt"
+        }
+    ],
+    "test.test_load[version2]": [
+        {
+            "uri": "file://test.test_load_version2_/stats_overflow-version2.txt"
+        }
+    ]
+}

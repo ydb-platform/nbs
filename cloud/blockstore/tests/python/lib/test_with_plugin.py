@@ -149,6 +149,6 @@ def run_plugin_test(
         result = call(params, stdout=stdout_file, stderr=stderr_file)
         assert result == 0
 
-    ret = common.canonical_file(results_path)
+    ret = common.canonical_file(results_path, local=True)
     env.tear_down()
     return ret

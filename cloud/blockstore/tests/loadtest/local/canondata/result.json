@@ -1,0 +1,55 @@
+{
+    "test.test_load[version1-smallreqs]": [
+        {
+            "uri": "file://test.test_load_version1-smallreqs_/stats_version1-smallreqs.txt"
+        }
+    ],
+    "test.test_load[version1-throttled-boosted]": [
+        {
+            "uri": "file://test.test_load_version1-throttled-boosted_/stats_version1-throttled-boosted.txt"
+        }
+    ],
+    "test.test_load[version1-throttled-tracked]": [
+        {
+            "uri": "file://test.test_load_version1-throttled-tracked_/stats_version1-throttled-tracked.txt"
+        },
+        {
+            "uri": "file://test.test_load_version1-throttled-tracked_/tracks_version1-throttled-tracked.txt"
+        }
+    ],
+    "test.test_load[version1-two-clients-remount-ro]": [
+        {
+            "uri": "file://test.test_load_version1-two-clients-remount-ro_/stats_version1-two-clients-remount-ro.txt"
+        }
+    ],
+    "test.test_load[version1-two-clients-remount-rw]": [
+        {
+            "uri": "file://test.test_load_version1-two-clients-remount-rw_/stats_version1-two-clients-remount-rw.txt"
+        }
+    ],
+    "test.test_load[version1-two-clients]": [
+        {
+            "uri": "file://test.test_load_version1-two-clients_/stats_version1-two-clients.txt"
+        }
+    ],
+    "test.test_load[version1]": [
+        {
+            "uri": "file://test.test_load_version1_/stats_version1.txt"
+        }
+    ],
+    "test.test_load[version2-smallreqs-skew]": [
+        {
+            "uri": "file://test.test_load_version2-smallreqs-skew_/stats_version2-smallreqs-skew.txt"
+        }
+    ],
+    "test.test_load[version2-smallreqs]": [
+        {
+            "uri": "file://test.test_load_version2-smallreqs_/stats_version2-smallreqs.txt"
+        }
+    ],
+    "test.test_load[version2]": [
+        {
+            "uri": "file://test.test_load_version2_/stats_version2.txt"
+        }
+    ]
+}

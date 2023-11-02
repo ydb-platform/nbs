@@ -1,0 +1,23 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 20000000
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 19999999
+                WriteRate: 100
+                ReadRate: 0
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 50
+                RequestsCount: 0
+                MinRequestSize: 1000
+                MaxRequestSize: 1000
+            }
+        }
+        SuccessOnError: 2147811330
+        Name: "Test for localhost tablet version 1"
+    }
+}

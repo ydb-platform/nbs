@@ -1,0 +1,26 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 1000000
+            BlockSize: 4096
+            TabletVersion: 2
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 0
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MinRequestSize: 1
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 120
+        Verify: true
+        Name: "Test for localhost tablet version 2 (small reqs, skew)"
+    }
+}

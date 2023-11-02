@@ -1,0 +1,1 @@
+{"data": {"diskId": "vol0", "cloudId": "yc-nbs", "folderId": "tests"}, "type": "nbs.nonrepl.error", "userId": "vasya"}

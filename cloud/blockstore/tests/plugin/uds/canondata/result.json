@@ -1,0 +1,26 @@
+{
+    "test.test_load[stable-endpoint2]": {
+        "uri": "file://test.test_load_stable-endpoint2_/endpoint2-stable_results.txt"
+    },
+    "test.test_load[stable-endpoint]": {
+        "uri": "file://test.test_load_stable-endpoint_/endpoint-stable_results.txt"
+    },
+    "test.test_load[stable-endpoint_nbd]": {
+        "uri": "file://test.test_load_stable-endpoint_nbd_/endpoint_nbd-stable_results.txt"
+    },
+    "test.test_load[stable-restarts]": {
+        "uri": "file://test.test_load_stable-restarts_/restarts-stable_results.txt"
+    },
+    "test.test_load[trunk-endpoint2]": {
+        "uri": "file://test.test_load_trunk-endpoint2_/endpoint2-trunk_results.txt"
+    },
+    "test.test_load[trunk-endpoint]": {
+        "uri": "file://test.test_load_trunk-endpoint_/endpoint-trunk_results.txt"
+    },
+    "test.test_load[trunk-endpoint_nbd]": {
+        "uri": "file://test.test_load_trunk-endpoint_nbd_/endpoint_nbd-trunk_results.txt"
+    },
+    "test.test_load[trunk-restarts]": {
+        "uri": "file://test.test_load_trunk-restarts_/restarts-trunk_results.txt"
+    }
+}

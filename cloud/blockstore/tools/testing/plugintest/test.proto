@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/volume.proto";
+
+package NCloud.NBlockStore.NProto.NTest;
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TMountVolumeRequest
+{
+    string DiskId = 1;
+    string Token = 2;
+    string InstanceId = 3;
+    EVolumeAccessMode VolumeAccessMode = 4;
+    EVolumeMountMode VolumeMountMode = 5;
+    uint64 MountSeqNumber = 6;
+    string Endpoint = 7;
+    bool UseConfigFile = 8;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TUnmountVolumeRequest
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TWriteBlocksRequest
+{
+    uint64 StartIndex = 1;
+    uint32 BlocksCount = 2;
+    uint32 Tag = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TReadBlocksRequest
+{
+    uint64 StartIndex = 1;
+    uint32 BlocksCount = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TZeroBlocksRequest
+{
+    uint64 StartIndex = 1;
+    uint32 BlocksCount = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TRequest
+{
+    oneof Request
+    {
+        TMountVolumeRequest MountVolumeRequest = 1;
+        TUnmountVolumeRequest UnmountVolumeRequest = 2;
+        TWriteBlocksRequest WriteBlocksRequest = 3;
+        TReadBlocksRequest ReadBlocksRequest = 4;
+        TZeroBlocksRequest ZeroBlocksRequest = 5;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPluginTest
+{
+    repeated TRequest Requests = 1;
+}

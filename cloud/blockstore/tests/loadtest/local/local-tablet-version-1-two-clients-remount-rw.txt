@@ -1,0 +1,130 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "create_vol0"
+
+        CreateVolumeRequest {
+            DiskId: "vol0"
+            BlocksCount: 1000000
+            BlockSize: 4096
+            PerformanceProfile {
+                MaxReadBandwidth: 2048000
+                MaxWriteBandwidth: 2048000
+                BurstPercentage: 1
+                MaxPostponedWeight: 100000000
+                BoostPercentage: 1
+                ThrottlingEnabled: 1
+            }
+        }
+    }
+}
+Vertices {
+    Test {
+        Name: "shoot_vol0_remote_ro"
+
+        VolumeName: "vol0"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 500000
+                ReadRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 5
+                RequestsCount: 0
+                MinRequestSize: 100
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 60
+    }
+}
+Vertices {
+    Test {
+        Name: "shoot_vol0_local_rw"
+
+        VolumeName: "vol0"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 500001
+                End: 999999
+                ReadRate: 100
+                WriteRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 5
+                RequestsCount: 0
+                MinRequestSize: 100
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 30
+    }
+}
+Vertices {
+    Test {
+        Name: "shoot1_vol0_local_rw"
+
+        VolumeName: "vol0"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 500001
+                End: 999999
+                ReadRate: 100
+                WriteRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 5
+                RequestsCount: 0
+                MinRequestSize: 100
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 30
+    }
+}
+Vertices {
+    ControlPlaneAction {
+        Name: "destroy_vol0"
+
+        DestroyVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+Dependencies {
+    key: "shoot_vol0_local_rw",
+    value {
+        Names: "create_vol0"
+    }
+}
+Dependencies {
+    key: "shoot_vol0_remote_ro",
+    value {
+        Names: "create_vol0"
+    }
+}
+Dependencies {
+    key: "shoot1_vol0_local_rw",
+    value {
+        Names: "shoot_vol0_local_rw"
+    }
+}
+Dependencies {
+    key: "destroy_vol0",
+    value {
+        Names: "shoot1_vol0_local_rw"
+        Names: "shoot_vol0_local_rw"
+    }
+}

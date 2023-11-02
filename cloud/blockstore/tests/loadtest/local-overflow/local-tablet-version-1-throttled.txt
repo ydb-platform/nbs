@@ -1,0 +1,33 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 20000000
+            BlockSize: 4096
+            PerformanceProfile {
+                MaxReadBandwidth: 204800
+                MaxWriteBandwidth: 204800
+                BurstPercentage: 200
+                MaxPostponedWeight: 409600
+                BoostPercentage: 0
+                ThrottlingEnabled: 1
+            }
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 19999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 10
+                RequestsCount: 0
+                MinRequestSize: 1000
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 60
+        SuccessOnError: 2147811330
+        Name: "Test for localhost tablet version 1 with throttling"
+    }
+}

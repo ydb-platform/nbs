@@ -1,0 +1,10 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "discover_instances"
+        Repetitions: 10000
+
+        DiscoverInstancesRequest {
+            Limit: 5
+        }
+    }
+}

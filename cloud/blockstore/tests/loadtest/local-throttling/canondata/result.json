@@ -1,0 +1,7 @@
+{
+    "test.test_load[fixed-requests-low-limits]": [
+        {
+            "uri": "file://test.test_load_fixed-requests-low-limits_/tracks_throttling-fixed-requests-low-limits.txt"
+        }
+    ]
+}

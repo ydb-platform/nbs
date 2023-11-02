@@ -1,0 +1,11 @@
+OK
+OK
+Confirm disk destruction by typing disk id to stdin
+vol0
+vol1
+Confirm disk destruction by typing disk id to stdin
+vol0
+vol1
+Confirm disk destruction by typing disk id to stdin
+OK
+vol1

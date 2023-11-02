@@ -170,7 +170,7 @@ class LoadTest(Daemon):
             stats_path = os.path.join(common.output_path(), "stats_%s.txt" % self.__test_name)
             with open(stats_path, "w") as f, open(full_stats_path, "w") as ff:
                 dump_stats(counters_url(host, mon_port), stat_filter, f, ff)
-            canonical_files.append(common.canonical_file(stats_path))
+            canonical_files.append(common.canonical_file(stats_path, local=True))
 
         with open(self.__results_path, "r") as f:
             for s in f:
@@ -214,7 +214,7 @@ class LoadTest(Daemon):
             tracks_path = os.path.join(common.output_path(), "tracks_%s.txt" % self.__test_name)
             with open(tracks_path, "w") as f:
                 _dump_tracks(tracks, f)
-            canonical_files.append(common.canonical_file(tracks_path))
+            canonical_files.append(common.canonical_file(tracks_path, local=True))
 
         return canonical_files if len(canonical_files) else None
 

@@ -1,0 +1,6 @@
+{
+global: BlockPlugin_GetPlugin;
+global: BlockPlugin_PutPlugin;
+global: BlockPlugin_GetVersion;
+local: *;
+};
