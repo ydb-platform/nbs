@@ -41,7 +41,6 @@ private:
     // Used only in tablet throttler.
     TAtomic PostponeTs = 0;
 
-protected:
     TAtomic PostponeTsCycles = 0;
 
 public:

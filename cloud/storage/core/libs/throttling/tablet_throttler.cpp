@@ -59,13 +59,15 @@ public:
         Policy = policy;
     }
 
-    void OnShutDown(const NActors::TActorContext&) override
+    void OnShutDown(const NActors::TActorContext& ctx) override
     {
         PostponedQueueFlushScheduled = false;
 
         while (PostponedRequests.size()) {
-            TAutoPtr<NActors::IEventHandle> ev =
-                PostponedRequests.front().Event.release();
+            auto& x = PostponedRequests.front();
+            Advance(ctx, x);
+
+            TAutoPtr<NActors::IEventHandle> ev = x.Event.release();
             Owner.Receive(ev);
 
             Y_ABORT_UNLESS(!PostponedQueueFlushScheduled);
@@ -82,16 +84,14 @@ public:
         while (PostponedRequests.size()) {
             auto& x = PostponedRequests.front();
             Policy.OnPostponedEvent(ctx.Now(), x.Info);
+            Advance(ctx, x);
+
             TAutoPtr<NActors::IEventHandle> ev = x.Event.release();
             Owner.Receive(ev);
 
             if (PostponedQueueFlushScheduled) {
                 Y_ABORT_UNLESS(x.Event);
                 break;
-            } else {
-                Logger.LogPostponedRequestAdvanced(
-                    *x.CallContext,
-                    x.Info.OpType);
             }
 
             PostponedRequests.pop_front();
@@ -186,20 +186,34 @@ private:
         TCallContextBasePtr callContext,
         NActors::IEventHandlePtr ev)
     {
+        const auto ts = ctx.Now().MicroSeconds();
+        callContext->Postpone(ts);
+
         if (PostponedQueueFlushInProgress) {
             Y_DEBUG_ABORT_UNLESS(!PostponedRequests.front().Event);
             auto& pr = PostponedRequests.front();
             pr.Event = std::move(ev);
             pr.Info = requestInfo;
         } else {
-            Logger.LogRequestPostponed(*callContext);
-            callContext->SetPostponeCycles(ctx.Now().MicroSeconds());
+            callContext->SetPostponeCycles(ts);
             PostponedRequests.push_back({
                 requestInfo,
                 std::move(callContext),
                 std::move(ev)});
        }
     }
+
+    void Advance(
+        const NActors::TActorContext& ctx,
+        TPostponedRequest& req)
+    {
+        const auto delay = req.CallContext->Advance(ctx.Now().MicroSeconds());
+        Logger.LogPostponedRequestAdvanced(
+            *req.CallContext,
+            req.Info.OpType,
+            delay);
+    }
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////

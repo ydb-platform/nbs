@@ -14,6 +14,7 @@ SRCS(
     media.proto
     request_source.proto
     tablet.proto
+    throttler.proto
     trace.proto
 )
 

@@ -87,6 +87,9 @@ message TResolvePathResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -156,6 +159,9 @@ message TCreateNodeResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -186,6 +192,9 @@ message TUnlinkNodeResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -229,6 +238,9 @@ message TRenameNodeResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +268,9 @@ message TAccessNodeResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -295,6 +310,9 @@ message TListNodesResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 5;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -322,6 +340,9 @@ message TReadLinkResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,6 +402,9 @@ message TSetNodeAttrResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -422,6 +446,9 @@ message TGetNodeAttrResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -455,6 +482,9 @@ message TGetNodeXAttrResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -498,6 +528,9 @@ message TSetNodeXAttrResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -525,6 +558,9 @@ message TListNodeXAttrResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -552,4 +588,7 @@ message TRemoveNodeXAttrResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
