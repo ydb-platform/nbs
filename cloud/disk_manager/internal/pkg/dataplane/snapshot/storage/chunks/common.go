@@ -7,7 +7,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -219,7 +218,7 @@ func (s *storageCommon) unrefChunk(
 
 	var refCount uint32
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("refcnt", &refCount),
+		persistence.OptionalWithDefault("refcnt", &refCount),
 	)
 	if err != nil {
 		return 0, err
@@ -231,7 +230,7 @@ func (s *storageCommon) unrefChunk(
 
 	var refsToDelete uint64
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("refs_to_delete", &refsToDelete),
+		persistence.OptionalWithDefault("refs_to_delete", &refsToDelete),
 	)
 	if err != nil {
 		return 0, err

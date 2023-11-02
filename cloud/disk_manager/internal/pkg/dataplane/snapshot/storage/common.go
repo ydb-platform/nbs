@@ -8,8 +8,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -89,18 +87,18 @@ func (s *snapshotState) structValue() ydb_types.Value {
 	)
 }
 
-func scanSnapshotState(res ydb_result.Result) (state snapshotState, err error) {
+func scanSnapshotState(res persistence.Result) (state snapshotState, err error) {
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("id", &state.id),
-		ydb_named.OptionalWithDefault("creating_at", &state.creatingAt),
-		ydb_named.OptionalWithDefault("created_at", &state.createdAt),
-		ydb_named.OptionalWithDefault("deleting_at", &state.deletingAt),
-		ydb_named.OptionalWithDefault("size", &state.size),
-		ydb_named.OptionalWithDefault("storage_size", &state.storageSize),
-		ydb_named.OptionalWithDefault("chunk_count", &state.chunkCount),
-		ydb_named.OptionalWithDefault("encryption_mode", &state.encryptionMode),
-		ydb_named.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
-		ydb_named.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("id", &state.id),
+		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
+		persistence.OptionalWithDefault("created_at", &state.createdAt),
+		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
+		persistence.OptionalWithDefault("size", &state.size),
+		persistence.OptionalWithDefault("storage_size", &state.storageSize),
+		persistence.OptionalWithDefault("chunk_count", &state.chunkCount),
+		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
+		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
+		persistence.OptionalWithDefault("status", &state.status),
 	)
 	if err != nil {
 		return state, errors.NewNonRetriableErrorf(
@@ -112,7 +110,7 @@ func scanSnapshotState(res ydb_result.Result) (state snapshotState, err error) {
 	return state, nil
 }
 
-func scanSnapshotStates(ctx context.Context, res ydb_result.Result) ([]snapshotState, error) {
+func scanSnapshotStates(ctx context.Context, res persistence.Result) ([]snapshotState, error) {
 	var states []snapshotState
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {

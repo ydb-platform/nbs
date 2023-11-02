@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/rtc/mediator/cityhash"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -76,9 +75,9 @@ func (s *StorageYDB) ReadChunk(
 		compression string
 	)
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("data", &data),
-		ydb_named.OptionalWithDefault("checksum", &checksum),
-		ydb_named.OptionalWithDefault("compression", &compression),
+		persistence.OptionalWithDefault("data", &data),
+		persistence.OptionalWithDefault("checksum", &checksum),
+		persistence.OptionalWithDefault("compression", &compression),
 	)
 	if err != nil {
 		return errors.NewNonRetriableErrorf(

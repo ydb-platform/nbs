@@ -11,8 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -116,24 +114,24 @@ func (s *imageState) structValue() ydb_types.Value {
 	)
 }
 
-func scanImageState(res ydb_result.Result) (state imageState, err error) {
+func scanImageState(res persistence.Result) (state imageState, err error) {
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("id", &state.id),
-		ydb_named.OptionalWithDefault("folder_id", &state.folderID),
-		ydb_named.OptionalWithDefault("create_request", &state.createRequest),
-		ydb_named.OptionalWithDefault("create_task_id", &state.createTaskID),
-		ydb_named.OptionalWithDefault("creating_at", &state.creatingAt),
-		ydb_named.OptionalWithDefault("created_at", &state.createdAt),
-		ydb_named.OptionalWithDefault("created_by", &state.createdBy),
-		ydb_named.OptionalWithDefault("delete_task_id", &state.deleteTaskID),
-		ydb_named.OptionalWithDefault("deleting_at", &state.deletingAt),
-		ydb_named.OptionalWithDefault("deleted_at", &state.deletedAt),
-		ydb_named.OptionalWithDefault("use_dataplane_tasks", &state.useDataplaneTasks),
-		ydb_named.OptionalWithDefault("status", &state.status),
-		ydb_named.OptionalWithDefault("size", &state.size),
-		ydb_named.OptionalWithDefault("storage_size", &state.storageSize),
-		ydb_named.OptionalWithDefault("encryption_mode", &state.encryptionMode),
-		ydb_named.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
+		persistence.OptionalWithDefault("id", &state.id),
+		persistence.OptionalWithDefault("folder_id", &state.folderID),
+		persistence.OptionalWithDefault("create_request", &state.createRequest),
+		persistence.OptionalWithDefault("create_task_id", &state.createTaskID),
+		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
+		persistence.OptionalWithDefault("created_at", &state.createdAt),
+		persistence.OptionalWithDefault("created_by", &state.createdBy),
+		persistence.OptionalWithDefault("delete_task_id", &state.deleteTaskID),
+		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
+		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
+		persistence.OptionalWithDefault("use_dataplane_tasks", &state.useDataplaneTasks),
+		persistence.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("size", &state.size),
+		persistence.OptionalWithDefault("storage_size", &state.storageSize),
+		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
+		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
 	)
 	if err != nil {
 		return state, errors.NewNonRetriableErrorf(
@@ -147,7 +145,7 @@ func scanImageState(res ydb_result.Result) (state imageState, err error) {
 
 func scanImageStates(
 	ctx context.Context,
-	res ydb_result.Result,
+	res persistence.Result,
 ) ([]imageState, error) {
 
 	var states []imageState
@@ -794,8 +792,8 @@ func (s *storageYDB) clearDeletedImages(
 				imageID   string
 			)
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("deleted_at", &deletedAt),
-				ydb_named.OptionalWithDefault("image_id", &imageID),
+				persistence.OptionalWithDefault("deleted_at", &deletedAt),
+				persistence.OptionalWithDefault("image_id", &imageID),
 			)
 			if err != nil {
 				return errors.NewNonRetriableErrorf(

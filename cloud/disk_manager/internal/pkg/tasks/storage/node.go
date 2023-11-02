@@ -8,8 +8,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -36,17 +34,17 @@ func (n *Node) structValue() ydb_types.Value {
 }
 
 // Scans single node from the YDB result set.
-func scanNode(result ydb_result.BaseResult) (node Node, err error) {
+func scanNode(result persistence.StreamResult) (node Node, err error) {
 	err = result.ScanNamed(
-		ydb_named.OptionalWithDefault("host", &node.Host),
-		ydb_named.OptionalWithDefault("last_heartbeat", &node.LastHeartbeat),
-		ydb_named.OptionalWithDefault("inflight_task_count", &node.InflightTaskCount),
+		persistence.OptionalWithDefault("host", &node.Host),
+		persistence.OptionalWithDefault("last_heartbeat", &node.LastHeartbeat),
+		persistence.OptionalWithDefault("inflight_task_count", &node.InflightTaskCount),
 	)
 	return
 }
 
 // Scans all nodes from the YDB result set.
-func scanNodes(ctx context.Context, res ydb_result.BaseResult) ([]Node, error) {
+func scanNodes(ctx context.Context, res persistence.StreamResult) ([]Node, error) {
 	var nodes []Node
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
@@ -121,6 +119,7 @@ func (s *storageYDB) getAliveNodes(
 ) ([]Node, error) {
 
 	livenessTS := time.Now().Add(-s.livenessWindow)
+
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";

@@ -9,8 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"golang.org/x/sync/errgroup"
 )
@@ -872,7 +870,7 @@ func (s *storageYDB) checkPoolConfigured(
 			rows++
 			var c uint64
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("capacity", &c),
+				persistence.OptionalWithDefault("capacity", &c),
 			)
 			if err != nil {
 				return 0, errors.NewNonRetriableErrorf(
@@ -1058,7 +1056,7 @@ func (s *storageYDB) acquireBaseDiskSlot(
 		for free.NextRow() {
 			var baseDiskID string
 			err = free.ScanNamed(
-				ydb_named.OptionalWithDefault("base_disk_id", &baseDiskID),
+				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
 			)
 			if err != nil {
 				return BaseDisk{}, errors.NewNonRetriableErrorf(
@@ -1841,7 +1839,7 @@ func (s *storageYDB) getBaseDisksScheduling(
 		for res.NextRow() {
 			var id string
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("base_disk_id", &id),
+				persistence.OptionalWithDefault("base_disk_id", &id),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(
@@ -2533,10 +2531,10 @@ func (s *storageYDB) getBaseDisksToDelete(
 		for deleting.NextRow() {
 			var (
 				baseDiskID string
-				res        ydb_result.Result
+				res        persistence.Result
 			)
 			err = deleting.ScanNamed(
-				ydb_named.OptionalWithDefault("base_disk_id", &baseDiskID),
+				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(
@@ -2704,8 +2702,8 @@ func (s *storageYDB) clearDeletedBaseDisks(
 				baseDiskID string
 			)
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("deleted_at", &deletedAt),
-				ydb_named.OptionalWithDefault("base_disk_id", &baseDiskID),
+				persistence.OptionalWithDefault("deleted_at", &deletedAt),
+				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
 			)
 			if err != nil {
 				return errors.NewNonRetriableErrorf(
@@ -2773,8 +2771,8 @@ func (s *storageYDB) clearReleasedSlots(
 				overlayDiskID string
 			)
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("released_at", &releasedAt),
-				ydb_named.OptionalWithDefault("overlay_disk_id", &overlayDiskID),
+				persistence.OptionalWithDefault("released_at", &releasedAt),
+				persistence.OptionalWithDefault("overlay_disk_id", &overlayDiskID),
 			)
 			if err != nil {
 				return errors.NewNonRetriableErrorf(
@@ -2836,7 +2834,7 @@ func (s *storageYDB) getAcquiredSlots(
 		for res.NextRow() {
 			var id string
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("overlay_disk_id", &id),
+				persistence.OptionalWithDefault("overlay_disk_id", &id),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(
@@ -2921,7 +2919,7 @@ func (s *storageYDB) getFreeBaseDisks(
 		for res.NextRow() {
 			var id string
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("base_disk_id", &id),
+				persistence.OptionalWithDefault("base_disk_id", &id),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(

@@ -7,8 +7,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -147,7 +145,7 @@ func listResources(
 ) ([]string, error) {
 
 	var (
-		res ydb_result.StreamResult
+		res persistence.StreamResult
 		err error
 	)
 	if len(folderID) == 0 {
@@ -187,7 +185,7 @@ func listResources(
 		for res.NextRow() {
 			var id string
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("id", &id),
+				persistence.OptionalWithDefault("id", &id),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(

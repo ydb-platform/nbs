@@ -17,7 +17,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/rtc/mediator/cityhash"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -368,8 +367,8 @@ func (s *storageYDB) GetSnapshotsToDelete(
 			key := &protos.DeletingSnapshotKey{}
 			var deletingAt time.Time
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("deleting_at", &deletingAt),
-				ydb_named.OptionalWithDefault("snapshot_id", &key.SnapshotId),
+				persistence.OptionalWithDefault("deleting_at", &deletingAt),
+				persistence.OptionalWithDefault("snapshot_id", &key.SnapshotId),
 			)
 			if err != nil {
 				return nil, task_errors.NewNonRetriableErrorf(
@@ -763,9 +762,9 @@ func (s *storageYDB) readChunkMap(
 			for res.NextRow() {
 				var entry ChunkMapEntry
 				err = res.ScanNamed(
-					ydb_named.OptionalWithDefault("chunk_index", &entry.ChunkIndex),
-					ydb_named.OptionalWithDefault("chunk_id", &entry.ChunkID),
-					ydb_named.OptionalWithDefault("stored_in_s3", &entry.StoredInS3),
+					persistence.OptionalWithDefault("chunk_index", &entry.ChunkIndex),
+					persistence.OptionalWithDefault("chunk_id", &entry.ChunkID),
+					persistence.OptionalWithDefault("stored_in_s3", &entry.StoredInS3),
 				)
 				if err != nil {
 					errors <- task_errors.NewNonRetriableErrorf(
@@ -902,7 +901,7 @@ func (s *storageYDB) GetDataChunkCount(
 	}
 
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("data_chunk_count", &dataChunkCount),
+		persistence.OptionalWithDefault("data_chunk_count", &dataChunkCount),
 	)
 	if err != nil {
 		return 0, task_errors.NewNonRetriableErrorf(

@@ -12,8 +12,6 @@ import (
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	grpc_codes "google.golang.org/grpc/codes"
 )
@@ -97,14 +95,14 @@ func isCancelledError(err error) bool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func scanTaskInfos(ctx context.Context, res ydb_result.Result) (taskInfos []TaskInfo, err error) {
+func scanTaskInfos(ctx context.Context, res persistence.Result) (taskInfos []TaskInfo, err error) {
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			var info TaskInfo
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("id", &info.ID),
-				ydb_named.OptionalWithDefault("generation_id", &info.GenerationID),
-				ydb_named.OptionalWithDefault("task_type", &info.TaskType),
+				persistence.OptionalWithDefault("id", &info.ID),
+				persistence.OptionalWithDefault("generation_id", &info.GenerationID),
+				persistence.OptionalWithDefault("task_type", &info.TaskType),
 			)
 			if err != nil {
 				return taskInfos, errors.NewNonRetriableErrorf(
@@ -247,7 +245,7 @@ func executingStructTypeString() string {
 		zone_id: Utf8>`
 }
 
-func (s *storageYDB) scanTaskState(res ydb_result.Result) (state TaskState, err error) {
+func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err error) {
 	var (
 		errorCode    int64
 		errorDetails []byte
@@ -257,37 +255,37 @@ func (s *storageYDB) scanTaskState(res ydb_result.Result) (state TaskState, err 
 		events       []byte
 	)
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("id", &state.ID),
-		ydb_named.OptionalWithDefault("idempotency_key", &state.IdempotencyKey),
-		ydb_named.OptionalWithDefault("account_id", &state.AccountID),
-		ydb_named.OptionalWithDefault("task_type", &state.TaskType),
-		ydb_named.OptionalWithDefault("regular", &state.Regular),
-		ydb_named.OptionalWithDefault("description", &state.Description),
-		ydb_named.OptionalWithDefault("created_at", &state.CreatedAt),
-		ydb_named.OptionalWithDefault("created_by", &state.CreatedBy),
-		ydb_named.OptionalWithDefault("modified_at", &state.ModifiedAt),
-		ydb_named.OptionalWithDefault("generation_id", &state.GenerationID),
-		ydb_named.OptionalWithDefault("status", &state.Status),
-		ydb_named.OptionalWithDefault("error_code", &errorCode),
-		ydb_named.OptionalWithDefault("error_message", &state.ErrorMessage),
-		ydb_named.OptionalWithDefault("error_silent", &state.ErrorSilent),
-		ydb_named.OptionalWithDefault("error_details", &errorDetails),
-		ydb_named.OptionalWithDefault("retriable_error_count", &state.RetriableErrorCount),
-		ydb_named.OptionalWithDefault("request", &state.Request),
-		ydb_named.OptionalWithDefault("state", &state.State),
-		ydb_named.OptionalWithDefault("metadata", &metadata),
-		ydb_named.OptionalWithDefault("dependencies", &dependencies),
-		ydb_named.OptionalWithDefault("changed_state_at", &state.ChangedStateAt),
-		ydb_named.OptionalWithDefault("ended_at", &state.EndedAt),
-		ydb_named.OptionalWithDefault("last_host", &state.LastHost),
-		ydb_named.OptionalWithDefault("last_runner", &state.LastRunner),
-		ydb_named.OptionalWithDefault("zone_id", &state.ZoneID),
-		ydb_named.OptionalWithDefault("cloud_id", &state.CloudID),
-		ydb_named.OptionalWithDefault("folder_id", &state.FolderID),
-		ydb_named.OptionalWithDefault("estimated_time", &state.EstimatedTime),
-		ydb_named.OptionalWithDefault("dependants", &dependants),
-		ydb_named.OptionalWithDefault("panic_count", &state.PanicCount),
-		ydb_named.OptionalWithDefault("events", &events),
+		persistence.OptionalWithDefault("id", &state.ID),
+		persistence.OptionalWithDefault("idempotency_key", &state.IdempotencyKey),
+		persistence.OptionalWithDefault("account_id", &state.AccountID),
+		persistence.OptionalWithDefault("task_type", &state.TaskType),
+		persistence.OptionalWithDefault("regular", &state.Regular),
+		persistence.OptionalWithDefault("description", &state.Description),
+		persistence.OptionalWithDefault("created_at", &state.CreatedAt),
+		persistence.OptionalWithDefault("created_by", &state.CreatedBy),
+		persistence.OptionalWithDefault("modified_at", &state.ModifiedAt),
+		persistence.OptionalWithDefault("generation_id", &state.GenerationID),
+		persistence.OptionalWithDefault("status", &state.Status),
+		persistence.OptionalWithDefault("error_code", &errorCode),
+		persistence.OptionalWithDefault("error_message", &state.ErrorMessage),
+		persistence.OptionalWithDefault("error_silent", &state.ErrorSilent),
+		persistence.OptionalWithDefault("error_details", &errorDetails),
+		persistence.OptionalWithDefault("retriable_error_count", &state.RetriableErrorCount),
+		persistence.OptionalWithDefault("request", &state.Request),
+		persistence.OptionalWithDefault("state", &state.State),
+		persistence.OptionalWithDefault("metadata", &metadata),
+		persistence.OptionalWithDefault("dependencies", &dependencies),
+		persistence.OptionalWithDefault("changed_state_at", &state.ChangedStateAt),
+		persistence.OptionalWithDefault("ended_at", &state.EndedAt),
+		persistence.OptionalWithDefault("last_host", &state.LastHost),
+		persistence.OptionalWithDefault("last_runner", &state.LastRunner),
+		persistence.OptionalWithDefault("zone_id", &state.ZoneID),
+		persistence.OptionalWithDefault("cloud_id", &state.CloudID),
+		persistence.OptionalWithDefault("folder_id", &state.FolderID),
+		persistence.OptionalWithDefault("estimated_time", &state.EstimatedTime),
+		persistence.OptionalWithDefault("dependants", &dependants),
+		persistence.OptionalWithDefault("panic_count", &state.PanicCount),
+		persistence.OptionalWithDefault("events", &events),
 	)
 	if err != nil {
 		return state, errors.NewNonRetriableErrorf(
@@ -346,7 +344,7 @@ func (s *storageYDB) scanTaskState(res ydb_result.Result) (state TaskState, err 
 	return state, nil
 }
 
-func (s *storageYDB) scanTaskStates(ctx context.Context, res ydb_result.Result) ([]TaskState, error) {
+func (s *storageYDB) scanTaskStates(ctx context.Context, res persistence.Result) ([]TaskState, error) {
 	var states []TaskState
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {

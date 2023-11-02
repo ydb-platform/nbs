@@ -17,7 +17,6 @@ import (
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	error_codes "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -84,8 +83,8 @@ func (s *legacyStorage) readChunkMap(
 					chunkID     []byte
 				)
 				err = res.ScanNamed(
-					ydb_named.OptionalWithDefault("chunkoffset", &chunkOffset),
-					ydb_named.OptionalWithDefault("chunkid", &chunkID),
+					persistence.OptionalWithDefault("chunkoffset", &chunkOffset),
+					persistence.OptionalWithDefault("chunkid", &chunkID),
 				)
 				if err != nil {
 					errors <- task_errors.NewNonRetriableErrorf(
@@ -264,12 +263,12 @@ func (s *legacyStorage) readSnapshotInfo(
 		state     []byte
 	)
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("base", &base),
-		ydb_named.OptionalWithDefault("tree", &tree),
-		ydb_named.OptionalWithDefault("chunksize", &chunkSize),
-		ydb_named.OptionalWithDefault("size", &size),
-		ydb_named.OptionalWithDefault("realsize", &realSize),
-		ydb_named.OptionalWithDefault("state", &state),
+		persistence.OptionalWithDefault("base", &base),
+		persistence.OptionalWithDefault("tree", &tree),
+		persistence.OptionalWithDefault("chunksize", &chunkSize),
+		persistence.OptionalWithDefault("size", &size),
+		persistence.OptionalWithDefault("realsize", &realSize),
+		persistence.OptionalWithDefault("state", &state),
 	)
 	if err != nil {
 		return snapshotInfo{}, task_errors.NewNonRetriableErrorf(
@@ -334,11 +333,11 @@ func (s *legacyStorage) readChunkInfo(
 		zero   bool
 	)
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("sum", &sum),
-		ydb_named.OptionalWithDefault("format", &format),
-		ydb_named.OptionalWithDefault("size", &size),
-		ydb_named.OptionalWithDefault("refcnt", &refcnt),
-		ydb_named.OptionalWithDefault("zero", &zero),
+		persistence.OptionalWithDefault("sum", &sum),
+		persistence.OptionalWithDefault("format", &format),
+		persistence.OptionalWithDefault("size", &size),
+		persistence.OptionalWithDefault("refcnt", &refcnt),
+		persistence.OptionalWithDefault("zero", &zero),
 	)
 	if err != nil {
 		return chunkInfo{}, task_errors.NewNonRetriableErrorf(
@@ -386,7 +385,7 @@ func (s *legacyStorage) readChunkData(
 	}
 	var data []byte
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("data", &data),
+		persistence.OptionalWithDefault("data", &data),
 	)
 	if err != nil {
 		return nil, task_errors.NewNonRetriableErrorf(

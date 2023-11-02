@@ -23,7 +23,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -106,9 +105,9 @@ func readChunkBlobsFromYDB(
 				for res.NextRow() {
 					var blob chunkBlob
 					err = res.ScanNamed(
-						ydb_named.OptionalWithDefault("chunk_id", &blob.chunkID),
-						ydb_named.OptionalWithDefault("refcnt", &blob.refcnt),
-						ydb_named.OptionalWithDefault("data", &blob.data),
+						persistence.OptionalWithDefault("chunk_id", &blob.chunkID),
+						persistence.OptionalWithDefault("refcnt", &blob.refcnt),
+						persistence.OptionalWithDefault("data", &blob.data),
 					)
 					require.NoError(f.t, err)
 					result = append(result, blob)
@@ -182,11 +181,11 @@ func readChunkMap(
 				for res.NextRow() {
 					var entry chunkMapEntry
 					err = res.ScanNamed(
-						ydb_named.OptionalWithDefault("shard_id", &entry.shardID),
-						ydb_named.OptionalWithDefault("snapshot_id", &entry.snapshotID),
-						ydb_named.OptionalWithDefault("chunk_index", &entry.chunkIndex),
-						ydb_named.OptionalWithDefault("chunk_id", &entry.chunkID),
-						ydb_named.OptionalWithDefault("stored_in_s3", &entry.storedInS3),
+						persistence.OptionalWithDefault("shard_id", &entry.shardID),
+						persistence.OptionalWithDefault("snapshot_id", &entry.snapshotID),
+						persistence.OptionalWithDefault("chunk_index", &entry.chunkIndex),
+						persistence.OptionalWithDefault("chunk_id", &entry.chunkID),
+						persistence.OptionalWithDefault("stored_in_s3", &entry.storedInS3),
 					)
 					require.NoError(f.t, err)
 					result = append(result, entry)

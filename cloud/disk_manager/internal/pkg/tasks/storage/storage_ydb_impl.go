@@ -9,7 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	grpc_codes "google.golang.org/grpc/codes"
 )
@@ -61,7 +60,7 @@ func (s *storageYDB) getTaskID(
 
 		var id string
 		err = res.ScanNamed(
-			ydb_named.OptionalWithDefault("task_id", &id),
+			persistence.OptionalWithDefault("task_id", &id),
 		)
 		if err != nil {
 			return "", errors.NewNonRetriableError(err)
@@ -700,9 +699,9 @@ func (s *storageYDB) createRegularTasks(
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("task_type", &sch.taskType),
-				ydb_named.OptionalWithDefault("scheduled_at", &sch.scheduledAt),
-				ydb_named.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
+				persistence.OptionalWithDefault("task_type", &sch.taskType),
+				persistence.OptionalWithDefault("scheduled_at", &sch.scheduledAt),
+				persistence.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
 			)
 			if err != nil {
 				commitErr := tx.Commit(ctx)
@@ -850,7 +849,7 @@ func (s *storageYDB) getTaskByIdempotencyKey(
 
 	var id string
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("task_id", &id),
+		persistence.OptionalWithDefault("task_id", &id),
 	)
 	if err != nil {
 		return TaskState{}, errors.NewNonRetriableErrorf(
@@ -929,8 +928,8 @@ func (s *storageYDB) listFailedTasks(
 			var id string
 			var generationID uint64
 			err := res.ScanNamed(
-				ydb_named.OptionalWithDefault("id", &id),
-				ydb_named.OptionalWithDefault("generation_id", &generationID),
+				persistence.OptionalWithDefault("id", &id),
+				persistence.OptionalWithDefault("generation_id", &generationID),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(
@@ -991,8 +990,8 @@ func (s *storageYDB) listSlowTasks(
 			var id string
 			var generationID uint64
 			err := res.ScanNamed(
-				ydb_named.OptionalWithDefault("id", &id),
-				ydb_named.OptionalWithDefault("generation_id", &generationID),
+				persistence.OptionalWithDefault("id", &id),
+				persistence.OptionalWithDefault("generation_id", &generationID),
 			)
 			if err != nil {
 				return nil, errors.NewNonRetriableErrorf(
@@ -1409,9 +1408,9 @@ func (s *storageYDB) decrementRegularTasksInflight(
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("task_type", &sch.taskType),
-				ydb_named.OptionalWithDefault("scheduled_at", &sch.scheduledAt),
-				ydb_named.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
+				persistence.OptionalWithDefault("task_type", &sch.taskType),
+				persistence.OptionalWithDefault("scheduled_at", &sch.scheduledAt),
+				persistence.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
 			)
 			if err != nil {
 				commitErr := tx.Commit(ctx)
@@ -1727,10 +1726,10 @@ func (s *storageYDB) clearEndedTasks(
 				accountID      string
 			)
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("ended_at", &endedAt),
-				ydb_named.OptionalWithDefault("id", &taskID),
-				ydb_named.OptionalWithDefault("idempotency_key", &idempotencyKey),
-				ydb_named.OptionalWithDefault("account_id", &accountID),
+				persistence.OptionalWithDefault("ended_at", &endedAt),
+				persistence.OptionalWithDefault("id", &taskID),
+				persistence.OptionalWithDefault("idempotency_key", &idempotencyKey),
+				persistence.OptionalWithDefault("account_id", &accountID),
 			)
 			if err != nil {
 				return errors.NewNonRetriableError(err)

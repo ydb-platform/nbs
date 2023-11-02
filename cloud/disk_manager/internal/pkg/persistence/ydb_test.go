@@ -11,8 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -51,13 +49,13 @@ type TableV1 struct {
 	val1 string
 }
 
-func scanTableV1s(ctx context.Context, res ydb_result.Result) (results []TableV1, err error) {
+func scanTableV1s(ctx context.Context, res Result) (results []TableV1, err error) {
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			var result TableV1
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("id", &result.id),
-				ydb_named.OptionalWithDefault("val1", &result.val1),
+				OptionalWithDefault("id", &result.id),
+				OptionalWithDefault("val1", &result.val1),
 			)
 			if err != nil {
 				return nil, err
@@ -143,14 +141,14 @@ type TableV2 struct {
 	val2 string
 }
 
-func scanTableV2s(ctx context.Context, res ydb_result.Result) (results []TableV2, err error) {
+func scanTableV2s(ctx context.Context, res Result) (results []TableV2, err error) {
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			var result TableV2
 			err = res.ScanNamed(
-				ydb_named.OptionalWithDefault("id", &result.id),
-				ydb_named.OptionalWithDefault("val1", &result.val1),
-				ydb_named.OptionalWithDefault("val2", &result.val2),
+				OptionalWithDefault("id", &result.id),
+				OptionalWithDefault("val1", &result.val1),
+				OptionalWithDefault("val2", &result.val2),
 			)
 			if err != nil {
 				return nil, err

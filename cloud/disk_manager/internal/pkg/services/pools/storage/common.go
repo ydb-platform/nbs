@@ -11,8 +11,6 @@ import (
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -248,27 +246,27 @@ func baseDisksTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func scanBaseDisk(res ydb_result.StreamResult) (baseDisk baseDisk, err error) {
+func scanBaseDisk(res persistence.StreamResult) (baseDisk baseDisk, err error) {
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("id", &baseDisk.id),
-		ydb_named.OptionalWithDefault("image_id", &baseDisk.imageID),
-		ydb_named.OptionalWithDefault("zone_id", &baseDisk.zoneID),
-		ydb_named.OptionalWithDefault("src_disk_zone_id", &baseDisk.srcDiskZoneID),
-		ydb_named.OptionalWithDefault("src_disk_id", &baseDisk.srcDiskID),
-		ydb_named.OptionalWithDefault("src_disk_checkpoint_id", &baseDisk.srcDiskCheckpointID),
-		ydb_named.OptionalWithDefault("checkpoint_id", &baseDisk.checkpointID),
-		ydb_named.OptionalWithDefault("create_task_id", &baseDisk.createTaskID),
-		ydb_named.OptionalWithDefault("image_size", &baseDisk.imageSize),
-		ydb_named.OptionalWithDefault("size", &baseDisk.size),
+		persistence.OptionalWithDefault("id", &baseDisk.id),
+		persistence.OptionalWithDefault("image_id", &baseDisk.imageID),
+		persistence.OptionalWithDefault("zone_id", &baseDisk.zoneID),
+		persistence.OptionalWithDefault("src_disk_zone_id", &baseDisk.srcDiskZoneID),
+		persistence.OptionalWithDefault("src_disk_id", &baseDisk.srcDiskID),
+		persistence.OptionalWithDefault("src_disk_checkpoint_id", &baseDisk.srcDiskCheckpointID),
+		persistence.OptionalWithDefault("checkpoint_id", &baseDisk.checkpointID),
+		persistence.OptionalWithDefault("create_task_id", &baseDisk.createTaskID),
+		persistence.OptionalWithDefault("image_size", &baseDisk.imageSize),
+		persistence.OptionalWithDefault("size", &baseDisk.size),
 
-		ydb_named.OptionalWithDefault("active_slots", &baseDisk.activeSlots),
-		ydb_named.OptionalWithDefault("max_active_slots", &baseDisk.maxActiveSlots),
-		ydb_named.OptionalWithDefault("active_units", &baseDisk.activeUnits),
-		ydb_named.OptionalWithDefault("units", &baseDisk.units),
-		ydb_named.OptionalWithDefault("from_pool", &baseDisk.fromPool),
-		ydb_named.OptionalWithDefault("retiring", &baseDisk.retiring),
-		ydb_named.OptionalWithDefault("deleted_at", &baseDisk.deletedAt),
-		ydb_named.OptionalWithDefault("status", &baseDisk.status),
+		persistence.OptionalWithDefault("active_slots", &baseDisk.activeSlots),
+		persistence.OptionalWithDefault("max_active_slots", &baseDisk.maxActiveSlots),
+		persistence.OptionalWithDefault("active_units", &baseDisk.activeUnits),
+		persistence.OptionalWithDefault("units", &baseDisk.units),
+		persistence.OptionalWithDefault("from_pool", &baseDisk.fromPool),
+		persistence.OptionalWithDefault("retiring", &baseDisk.retiring),
+		persistence.OptionalWithDefault("deleted_at", &baseDisk.deletedAt),
+		persistence.OptionalWithDefault("status", &baseDisk.status),
 	)
 	if err != nil {
 		return baseDisk, errors.NewNonRetriableErrorf(
@@ -282,7 +280,7 @@ func scanBaseDisk(res ydb_result.StreamResult) (baseDisk baseDisk, err error) {
 
 func scanBaseDisks(
 	ctx context.Context,
-	res ydb_result.StreamResult,
+	res persistence.StreamResult,
 ) ([]baseDisk, error) {
 
 	var baseDisks []baseDisk
@@ -489,23 +487,23 @@ func slotsTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func scanSlot(res ydb_result.Result) (slot slot, err error) {
+func scanSlot(res persistence.Result) (slot slot, err error) {
 	var diskKind int64
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("overlay_disk_id", &slot.overlayDiskID),
-		ydb_named.OptionalWithDefault("overlay_disk_kind", &diskKind),
-		ydb_named.OptionalWithDefault("overlay_disk_size", &slot.overlayDiskSize),
-		ydb_named.OptionalWithDefault("base_disk_id", &slot.baseDiskID),
-		ydb_named.OptionalWithDefault("image_id", &slot.imageID),
-		ydb_named.OptionalWithDefault("zone_id", &slot.zoneID),
-		ydb_named.OptionalWithDefault("allotted_slots", &slot.allottedSlots),
-		ydb_named.OptionalWithDefault("allotted_units", &slot.allottedUnits),
-		ydb_named.OptionalWithDefault("released_at", &slot.releasedAt),
-		ydb_named.OptionalWithDefault("target_base_disk_id", &slot.targetBaseDiskID),
-		ydb_named.OptionalWithDefault("target_allotted_slots", &slot.targetAllottedSlots),
-		ydb_named.OptionalWithDefault("target_allotted_units", &slot.targetAllottedUnits),
-		ydb_named.OptionalWithDefault("generation", &slot.generation),
-		ydb_named.OptionalWithDefault("status", &slot.status),
+		persistence.OptionalWithDefault("overlay_disk_id", &slot.overlayDiskID),
+		persistence.OptionalWithDefault("overlay_disk_kind", &diskKind),
+		persistence.OptionalWithDefault("overlay_disk_size", &slot.overlayDiskSize),
+		persistence.OptionalWithDefault("base_disk_id", &slot.baseDiskID),
+		persistence.OptionalWithDefault("image_id", &slot.imageID),
+		persistence.OptionalWithDefault("zone_id", &slot.zoneID),
+		persistence.OptionalWithDefault("allotted_slots", &slot.allottedSlots),
+		persistence.OptionalWithDefault("allotted_units", &slot.allottedUnits),
+		persistence.OptionalWithDefault("released_at", &slot.releasedAt),
+		persistence.OptionalWithDefault("target_base_disk_id", &slot.targetBaseDiskID),
+		persistence.OptionalWithDefault("target_allotted_slots", &slot.targetAllottedSlots),
+		persistence.OptionalWithDefault("target_allotted_units", &slot.targetAllottedUnits),
+		persistence.OptionalWithDefault("generation", &slot.generation),
+		persistence.OptionalWithDefault("status", &slot.status),
 	)
 	if err != nil {
 		return slot, errors.NewNonRetriableErrorf(
@@ -527,12 +525,12 @@ type poolConfig struct {
 	imageSize uint64
 }
 
-func scanPoolConfig(res ydb_result.Result) (config poolConfig, err error) {
+func scanPoolConfig(res persistence.Result) (config poolConfig, err error) {
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("image_id", &config.imageID),
-		ydb_named.OptionalWithDefault("zone_id", &config.zoneID),
-		ydb_named.OptionalWithDefault("capacity", &config.capacity),
-		ydb_named.OptionalWithDefault("image_size", &config.imageSize),
+		persistence.OptionalWithDefault("image_id", &config.imageID),
+		persistence.OptionalWithDefault("zone_id", &config.zoneID),
+		persistence.OptionalWithDefault("capacity", &config.capacity),
+		persistence.OptionalWithDefault("image_size", &config.imageSize),
 	)
 	if err != nil {
 		return config, errors.NewNonRetriableErrorf(
@@ -545,14 +543,14 @@ func scanPoolConfig(res ydb_result.Result) (config poolConfig, err error) {
 }
 
 func scanPoolConfigStream(
-	res ydb_result.StreamResult,
+	res persistence.StreamResult,
 ) (config poolConfig, err error) {
 
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("image_id", &config.imageID),
-		ydb_named.OptionalWithDefault("zone_id", &config.zoneID),
-		ydb_named.OptionalWithDefault("capacity", &config.capacity),
-		ydb_named.OptionalWithDefault("image_size", &config.imageSize),
+		persistence.OptionalWithDefault("image_id", &config.imageID),
+		persistence.OptionalWithDefault("zone_id", &config.zoneID),
+		persistence.OptionalWithDefault("capacity", &config.capacity),
+		persistence.OptionalWithDefault("image_size", &config.imageSize),
 	)
 	if err != nil {
 		return config, errors.NewNonRetriableErrorf(
@@ -644,17 +642,17 @@ func poolsTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func scanPool(res ydb_result.Result) (pool pool, err error) {
+func scanPool(res persistence.Result) (pool pool, err error) {
 	err = res.ScanNamed(
-		ydb_named.OptionalWithDefault("image_id", &pool.imageID),
-		ydb_named.OptionalWithDefault("zone_id", &pool.zoneID),
-		ydb_named.OptionalWithDefault("size", &pool.size),
-		ydb_named.OptionalWithDefault("free_units", &pool.freeUnits),
-		ydb_named.OptionalWithDefault("acquired_units", &pool.acquiredUnits),
-		ydb_named.OptionalWithDefault("base_disks_inflight", &pool.baseDisksInflight),
-		ydb_named.OptionalWithDefault("lock_id", &pool.lockID),
-		ydb_named.OptionalWithDefault("status", &pool.status),
-		ydb_named.OptionalWithDefault("created_at", &pool.createdAt),
+		persistence.OptionalWithDefault("image_id", &pool.imageID),
+		persistence.OptionalWithDefault("zone_id", &pool.zoneID),
+		persistence.OptionalWithDefault("size", &pool.size),
+		persistence.OptionalWithDefault("free_units", &pool.freeUnits),
+		persistence.OptionalWithDefault("acquired_units", &pool.acquiredUnits),
+		persistence.OptionalWithDefault("base_disks_inflight", &pool.baseDisksInflight),
+		persistence.OptionalWithDefault("lock_id", &pool.lockID),
+		persistence.OptionalWithDefault("status", &pool.status),
+		persistence.OptionalWithDefault("created_at", &pool.createdAt),
 	)
 	if err != nil {
 		return pool, errors.NewNonRetriableErrorf(

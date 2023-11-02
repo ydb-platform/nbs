@@ -21,11 +21,24 @@ import (
 	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
+	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+type Result = ydb_result.Result
+
+type StreamResult = ydb_result.StreamResult
+
+func OptionalWithDefault(
+	columnName string,
+	destinationValueReference interface{},
+) ydb_named.Value {
+
+	return ydb_named.OptionalWithDefault(columnName, destinationValueReference)
+}
 
 func ValueParam(name string, v ydb_types.Value) ydb_table.ParameterOption {
 	return ydb_table.ValueParam(name, v)
@@ -113,7 +126,7 @@ func (t *Transaction) Execute(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (res ydb_result.Result, err error) {
+) (res Result, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, t.callTimeout)
 	defer cancel()
@@ -211,7 +224,7 @@ func (s *Session) ExecuteRO(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (ydb_result.Result, error) {
+) (Result, error) {
 
 	tx := ydb_table.TxControl(
 		ydb_table.BeginTx(
@@ -227,7 +240,7 @@ func (s *Session) StreamExecuteRO(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (ydb_result.StreamResult, error) {
+) (StreamResult, error) {
 
 	res, err := s.session.StreamExecuteScanQuery(
 		ctx,
@@ -250,7 +263,7 @@ func (s *Session) ExecuteRW(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (ydb_result.Result, error) {
+) (Result, error) {
 
 	tx := ydb_table.TxControl(
 		ydb_table.BeginTx(
@@ -266,7 +279,7 @@ func (s *Session) StreamReadTable(
 	ctx context.Context,
 	path string,
 	opts ...ydb_options.ReadTableOption,
-) (ydb_result.StreamResult, error) {
+) (StreamResult, error) {
 
 	res, err := s.session.StreamReadTable(ctx, path, opts...)
 	if err != nil {
@@ -288,7 +301,7 @@ func (s *Session) execute(
 	control *ydb_table.TransactionControl,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (transaction ydb_table.Transaction, res ydb_result.Result, err error) {
+) (transaction ydb_table.Transaction, res Result, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
 	defer cancel()
@@ -411,9 +424,9 @@ func (c *YDBClient) ExecuteRO(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (ydb_result.Result, error) {
+) (Result, error) {
 
-	var res ydb_result.Result
+	var res Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
 		var err error
@@ -428,9 +441,9 @@ func (c *YDBClient) ExecuteRW(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (ydb_result.Result, error) {
+) (Result, error) {
 
-	var res ydb_result.Result
+	var res Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
 		var err error
