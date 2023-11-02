@@ -1,4 +1,5 @@
 import os
+import socket
 
 from ydb.tests.library.common.yatest_common import PortManager
 
@@ -277,7 +278,7 @@ def generate_disk_agent_txt():
     config.DedicatedDiskAgent = True
     config.Backend = DISK_AGENT_BACKEND_AIO
     config.DirectIoFlagDisabled = True
-    config.AgentId = "localhost"
+    config.AgentId = socket.gethostname()
     config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second

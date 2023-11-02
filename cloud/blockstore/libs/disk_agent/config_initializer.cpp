@@ -369,6 +369,11 @@ void TConfigInitializer::ApplyDiskAgentConfig(const TString& text)
     SetupDiskAgentConfig(config);
     ApplySpdkEnvConfig(config.GetSpdkEnvConfig());
 
+    if (!config.GetStorageDiscoveryConfig().PathConfigsSize()) {
+        config.MutableStorageDiscoveryConfig()->CopyFrom(
+            DiskAgentConfig->GetStorageDiscoveryConfig());
+    }
+
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(config),
         Rack);
