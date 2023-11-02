@@ -7,6 +7,11 @@ from cloud.storage.core.tools.common.python.daemon import Daemon
 
 import yatest.common as yatest_common
 
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
+
 from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
@@ -121,20 +126,7 @@ def start_disk_agent(config: NbsConfigurator):
     return agent
 
 
-def start_ydb():
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
-        has_cluster_uuid=False,
-        use_in_memory_pdisks=True,
-        dynamic_storage_pools=[
-            {"name": "dynamic_storage_pool:1", "kind": "hdd", "pdisk_user_kind": 0},
-            {"name": "dynamic_storage_pool:2", "kind": "ssd", "pdisk_user_kind": 0}
-        ])
-
-    ydb = kikimr_cluster_factory(configurator=configurator)
-    ydb.start()
-
+def __modify_scheme(ydb):
     request = """
         ModifyScheme {
             WorkingDir: "/Root"
@@ -161,5 +153,38 @@ def start_ydb():
         "db", "schema", "exec",
         request,
     ])
+
+
+def __enable_custom_cms_configs(ydb):
+    req = msgbus.TConsoleRequest()
+    configs_config = req.SetConfigRequest.Config.ConfigsConfig
+
+    restrictions = configs_config.UsageScopeRestrictions
+
+    restrictions.AllowedTenantUsageScopeKinds.append(
+        console.TConfigItem.NamedConfigsItem)
+    restrictions.AllowedNodeTypeUsageScopeKinds.append(
+        console.TConfigItem.NamedConfigsItem)
+
+    response = ydb.client.invoke(req, 'ConsoleRequest')
+    assert response.Status.Code == StatusIds.SUCCESS
+
+
+def start_ydb():
+    configurator = KikimrConfigGenerator(
+        erasure=None,
+        binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
+        has_cluster_uuid=False,
+        use_in_memory_pdisks=True,
+        dynamic_storage_pools=[
+            {"name": "dynamic_storage_pool:1", "kind": "hdd", "pdisk_user_kind": 0},
+            {"name": "dynamic_storage_pool:2", "kind": "ssd", "pdisk_user_kind": 0}
+        ])
+
+    ydb = kikimr_cluster_factory(configurator=configurator)
+    ydb.start()
+
+    __modify_scheme(ydb)
+    __enable_custom_cms_configs(ydb)
 
     return ydb

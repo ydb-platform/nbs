@@ -44,15 +44,19 @@ NProto::TError FindDevices(
 
     try {
         for (const auto& p: config.GetPathConfigs()) {
-            const std::string pattern = p.GetPathRegExp();
-            const std::regex re {pattern, std::regex_constants::ECMAScript};
-            const auto parentPath = NFs::path {pattern}.parent_path();
+            const NFs::path pathRegExp = std::string {p.GetPathRegExp()};
 
-            for (const auto& entry: NFs::directory_iterator {parentPath}) {
-                const std::string path = entry.path().string();
+            const std::regex re {
+                pathRegExp.filename().string(),
+                std::regex_constants::ECMAScript
+            };
+
+            for (const auto& entry: NFs::directory_iterator {pathRegExp.parent_path()}) {
+                const auto& path = entry.path();
+                const auto filename = path.filename().string();
 
                 std::smatch match;
-                if (!std::regex_match(path, match, re)) {
+                if (!std::regex_match(filename, match, re)) {
                     continue;
                 }
 
@@ -84,7 +88,7 @@ NProto::TError FindDevices(
                 }
 
                 auto error = cb(
-                    path.c_str(),
+                    TString {path.string()},
                     *pool,
                     deviceNumber,
                     p.GetMaxDeviceCount(),

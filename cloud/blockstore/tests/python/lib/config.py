@@ -11,17 +11,22 @@ from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig, \
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, \
     TKikimrServiceConfig, TServerConfig, TLocation
+
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+
+from ydb.core.protos.msgbus_pb2 import TConsoleRequest
 from ydb.core.protos.config_pb2 import TActorSystemConfig, \
     TDynamicNameserviceConfig, TLogConfig
 
 
 class NbsConfigurator:
 
-    def __init__(self, pm: PortManager, ydb):
+    def __init__(self, pm: PortManager, ydb, node_type=None):
         assert ydb.config
 
         self.__pm = pm
         self.__ydb = ydb
+        self.__node_type = node_type
 
         self.ic_port = None
         self.mon_port = None
@@ -40,6 +45,10 @@ class NbsConfigurator:
         return list(self.__ydb.nodes.values())[0].port
 
     @property
+    def node_type(self):
+        return self.__node_type
+
+    @property
     def params(self):
         return self.__params
 
@@ -55,26 +64,17 @@ class NbsConfigurator:
 
         self.load_configs_from_cms = True
 
-        self.files["sys"] = self.__generate_sys_txt()
-        self.files["log"] = self.__generate_log_txt()
+        self.files["sys"] = generate_sys_txt()
+        self.files["log"] = generate_log_txt()
 
-        self.files["server"] = self.__generate_server_txt()
+        self.files["server"] = generate_server_txt(self.server_port, self.data_port)
 
-        self.files["storage"] = self.__generate_storage_txt()
-        self.files["dynamic-naming"] = self.__generate_dyn_ns_txt()
-        self.files["diag"] = self.__generate_diag_txt()
-        self.files["dr-proxy"] = self.__generate_dr_proxy_txt()
+        self.files["storage"] = generate_storage_txt()
+        self.files["dynamic-naming"] = generate_dyn_ns_txt()
+        self.files["diag"] = generate_diag_txt()
+        self.files["dr-proxy"] = generate_dr_proxy_txt()
         self.files["domains"] = self.__ydb.config.domains_txt
-        self.files["location"] = self.__generate_location_txt()
-
-        return self
-
-    def generate_default_disk_agent_configs(self):
-        self.generate_default_nbs_configs()
-
-        self.files["disk-agent"] = self.__generate_disk_agent_txt()
-
-        return self
+        self.files["location"] = generate_location_txt()
 
     def install(self, config_folder):
 
@@ -88,6 +88,9 @@ class NbsConfigurator:
             "--load-configs-from-cms",
             "--mon-address", "localhost",
             ]
+
+        if self.node_type:
+            self.__params += ["--node-type", self.node_type]
 
         def filename(name):
             if name != "profile":
@@ -105,148 +108,179 @@ class NbsConfigurator:
         return self.__params
 
     def __install_cms_configs(self):
-        # TODO
-        pass
 
-    def __generate_location_txt(self):
-        location = TLocation()
-        location.Rack = "rack"
+        if len(self.cms) == 0:
+            return
 
-        return location
+        request = TConsoleRequest()
+        action = request.ConfigureRequest.Actions.add()
+        action.AddConfigItem.EnableAutoSplit = True
+        config_item = action.AddConfigItem.ConfigItem
 
-    def __generate_server_txt(self):
-        app = TServerAppConfig()
-        server = TServerConfig()
-        server.Port = self.server_port
-        server.DataPort = self.data_port
-        app.ServerConfig.CopyFrom(server)
-        app.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-        return app
+        for name, proto in self.cms.items():
+            config = config_item.Config.NamedConfigs.add()
+            config.Name = f"Cloud.NBS.{name}"
+            config.Config = MessageToString(proto, as_one_line=True).encode()
 
-    def __generate_sys_txt(self):
-        sys_config = TActorSystemConfig()
+        tenant_and_node_type = config_item.UsageScope.TenantAndNodeTypeFilter
+        tenant_and_node_type.Tenant = '/Root/nbs'
+        tenant_and_node_type.NodeType = self.node_type
 
-        sys_config.SysExecutor = 0
-        sys_config.Executor.add(
-            Type=sys_config.TExecutor.EType.Value("BASIC"),
-            Threads=4,
-            SpinThreshold=20,
-            Name="System"
-        )
+        config_item.MergeStrategy = 1  # OVERWRITE
 
-        sys_config.UserExecutor = 1
-        sys_config.Executor.add(
-            Type=sys_config.TExecutor.EType.Value("BASIC"),
-            Threads=4,
-            SpinThreshold=20,
-            Name="User"
-        )
+        response = self.__ydb.client.invoke(request, 'ConsoleRequest')
 
-        sys_config.BatchExecutor = 2
-        sys_config.Executor.add(
-            Type=sys_config.TExecutor.EType.Value("BASIC"),
-            Threads=4,
-            SpinThreshold=20,
-            Name="Batch"
-        )
+        assert response.Status.Code == StatusIds.SUCCESS
 
-        sys_config.IoExecutor = 3
-        sys_config.Executor.add(
-            Type=sys_config.TExecutor.EType.Value("IO"),
-            Threads=1,
-            Name="IO"
-        )
 
-        sys_config.Executor.add(
-            Type=sys_config.TExecutor.EType.Value("BASIC"),
-            Threads=1,
-            SpinThreshold=10,
-            Name="IC",
-            TimePerMailboxMicroSecs=100
-        )
-        sys_config.ServiceExecutor.add(
-            ServiceName="Interconnect",
-            ExecutorId=4
-        )
+def generate_server_txt(server_port, data_port):
+    app = TServerAppConfig()
+    server = TServerConfig()
+    server.Port = server_port
+    server.DataPort = data_port
+    app.ServerConfig.CopyFrom(server)
+    app.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-        sys_config.Scheduler.Resolution = 2048
-        sys_config.Scheduler.SpinThreshold = 0
-        sys_config.Scheduler.ProgressThreshold = 10000
+    return app
 
-        return sys_config
 
-    def __generate_log_txt(self):
-        services_info = [
-            b"TABLET_EXECUTOR",
-            b"INTERCONNECT",
-            b"BLOCKSTORE_AUTH",
-            b"BLOCKSTORE_BOOTSTRAPPER",
-            b"BLOCKSTORE_CLIENT",
-            b"BLOCKSTORE_NBD",
-            b"BLOCKSTORE_SCHEDULER",
-            b"BLOCKSTORE_SERVER",
-            b"BLOCKSTORE_SERVICE",
-            b"BLOCKSTORE_SERVICE_PROXY",
-            b"BLOCKSTORE_DISCOVERY",
-            b"BLOCKSTORE_DISK_REGISTRY_PROXY",
-            b"BLOCKSTORE_VOLUME",
-        ]
+def generate_location_txt():
+    location = TLocation()
+    location.Rack = "rack"
 
-        services_dbg = [
-            b"BLOCKSTORE_PARTITION",
-            b"BLOCKSTORE_DISK_REGISTRY",
-            b"BLOCKSTORE_DISK_REGISTRY_WORKER",
-            b"BLOCKSTORE_DISK_AGENT",
-            b"BLOCKSTORE_HIVE_PROXY",
-            b"BLOCKSTORE_SS_PROXY",
-        ]
+    return location
 
-        log_config = TLogConfig()
-        for service_name in services_info:
-            log_config.Entry.add(Component=service_name, Level=6)
 
-        for service_name in services_dbg:
-            log_config.Entry.add(Component=service_name, Level=7)
+def generate_sys_txt():
+    sys_config = TActorSystemConfig()
 
-        log_config.AllowDropEntries = False
+    sys_config.SysExecutor = 0
+    sys_config.Executor.add(
+        Type=sys_config.TExecutor.EType.Value("BASIC"),
+        Threads=4,
+        SpinThreshold=20,
+        Name="System"
+    )
 
-        return log_config
+    sys_config.UserExecutor = 1
+    sys_config.Executor.add(
+        Type=sys_config.TExecutor.EType.Value("BASIC"),
+        Threads=4,
+        SpinThreshold=20,
+        Name="User"
+    )
 
-    def __generate_diag_txt(self):
-        diag = TDiagnosticsConfig()
-        diag.ProfileLogTimeThreshold = 100
-        diag.SlowRequestSamplingRate = 0
+    sys_config.BatchExecutor = 2
+    sys_config.Executor.add(
+        Type=sys_config.TExecutor.EType.Value("BASIC"),
+        Threads=4,
+        SpinThreshold=20,
+        Name="Batch"
+    )
 
-        return diag
+    sys_config.IoExecutor = 3
+    sys_config.Executor.add(
+        Type=sys_config.TExecutor.EType.Value("IO"),
+        Threads=1,
+        Name="IO"
+    )
 
-    def __generate_storage_txt(self):
-        storage = TStorageServiceConfig()
-        storage.SchemeShardDir = "/Root/nbs"
-        storage.DiskSpaceScoreThrottlingEnabled = True
-        return storage
+    sys_config.Executor.add(
+        Type=sys_config.TExecutor.EType.Value("BASIC"),
+        Threads=1,
+        SpinThreshold=10,
+        Name="IC",
+        TimePerMailboxMicroSecs=100
+    )
+    sys_config.ServiceExecutor.add(
+        ServiceName="Interconnect",
+        ExecutorId=4
+    )
 
-    def __generate_dyn_ns_txt(self):
-        configs = TDynamicNameserviceConfig()
-        configs.MaxStaticNodeId = 1000
-        configs.MaxDynamicNodeId = 1064
-        return configs
+    sys_config.Scheduler.Resolution = 2048
+    sys_config.Scheduler.SpinThreshold = 0
+    sys_config.Scheduler.ProgressThreshold = 10000
 
-    def __generate_dr_proxy_txt(self):
-        config = TDiskRegistryProxyConfig()
-        config.Owner = 16045690984503103501
-        config.OwnerIdx = 2
-        return config
+    return sys_config
 
-    def __generate_disk_agent_txt(self):
-        config = TDiskAgentConfig()
-        config.Enabled = True
-        config.DedicatedDiskAgent = True
-        config.Backend = DISK_AGENT_BACKEND_AIO
-        config.DirectIoFlagDisabled = True
-        config.AgentId = "localhost"
-        config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
-        config.AcquireRequired = True
-        config.RegisterRetryTimeout = 1000  # 1 second
-        config.ShutdownTimeout = 0
 
-        return config
+def generate_log_txt():
+    services_info = [
+        b"TABLET_EXECUTOR",
+        b"INTERCONNECT",
+        b"BLOCKSTORE_AUTH",
+        b"BLOCKSTORE_BOOTSTRAPPER",
+        b"BLOCKSTORE_CLIENT",
+        b"BLOCKSTORE_NBD",
+        b"BLOCKSTORE_SCHEDULER",
+        b"BLOCKSTORE_SERVER",
+        b"BLOCKSTORE_SERVICE",
+        b"BLOCKSTORE_SERVICE_PROXY",
+        b"BLOCKSTORE_DISCOVERY",
+        b"BLOCKSTORE_DISK_REGISTRY_PROXY",
+        b"BLOCKSTORE_VOLUME",
+    ]
+
+    services_dbg = [
+        b"BLOCKSTORE_PARTITION",
+        b"BLOCKSTORE_DISK_REGISTRY",
+        b"BLOCKSTORE_DISK_REGISTRY_WORKER",
+        b"BLOCKSTORE_DISK_AGENT",
+        b"BLOCKSTORE_HIVE_PROXY",
+        b"BLOCKSTORE_SS_PROXY",
+    ]
+
+    log_config = TLogConfig()
+    for service_name in services_info:
+        log_config.Entry.add(Component=service_name, Level=6)
+
+    for service_name in services_dbg:
+        log_config.Entry.add(Component=service_name, Level=7)
+
+    log_config.AllowDropEntries = False
+
+    return log_config
+
+
+def generate_diag_txt():
+    diag = TDiagnosticsConfig()
+    diag.ProfileLogTimeThreshold = 100
+    diag.SlowRequestSamplingRate = 0
+
+    return diag
+
+
+def generate_storage_txt():
+    storage = TStorageServiceConfig()
+    storage.SchemeShardDir = "/Root/nbs"
+    storage.DiskSpaceScoreThrottlingEnabled = True
+    return storage
+
+
+def generate_dyn_ns_txt():
+    configs = TDynamicNameserviceConfig()
+    configs.MaxStaticNodeId = 1000
+    configs.MaxDynamicNodeId = 1064
+    return configs
+
+
+def generate_dr_proxy_txt():
+    config = TDiskRegistryProxyConfig()
+    config.Owner = 16045690984503103501
+    config.OwnerIdx = 2
+    return config
+
+
+def generate_disk_agent_txt():
+    config = TDiskAgentConfig()
+    config.Enabled = True
+    config.DedicatedDiskAgent = True
+    config.Backend = DISK_AGENT_BACKEND_AIO
+    config.DirectIoFlagDisabled = True
+    config.AgentId = "localhost"
+    config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
+    config.AcquireRequired = True
+    config.RegisterRetryTimeout = 1000  # 1 second
+    config.ShutdownTimeout = 0
+
+    return config
