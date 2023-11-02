@@ -26,3 +26,7 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    lib
+)
