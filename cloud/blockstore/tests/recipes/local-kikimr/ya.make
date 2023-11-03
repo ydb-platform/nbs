@@ -18,5 +18,3 @@ DATA(
 )
 
 END()
-
-RECURSE(examples)
