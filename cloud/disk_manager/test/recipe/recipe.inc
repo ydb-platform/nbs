@@ -1,5 +1,6 @@
-SET(RECIPE_DEPS_LIST
+DEPENDS(
     cloud/blockstore/apps/client
+    cloud/nbs_internal/blockstore/daemon
 
     cloud/filestore/server
 
@@ -15,22 +16,9 @@ SET(RECIPE_DEPS_LIST
 
     contrib/python/moto/bin
     library/recipes/s3mds
+
+    ydb/apps/ydbd
 )
-
-IF (STABLE_DEPS_RECIPE)
-    SET_APPEND(RECIPE_ARGS stable)
-    SET_APPEND(RECIPE_DEPS_LIST
-        kikimr/public/tools/package/stable
-        cloud/blockstore/tests/recipes/local-kikimr/stable-package-nbs
-    )
-ELSE()
-    SET_APPEND(RECIPE_DEPS_LIST
-        kikimr/driver
-        cloud/nbs_internal/blockstore/daemon
-    )
-ENDIF()
-
-DEPENDS(${RECIPE_DEPS_LIST})
 
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt

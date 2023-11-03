@@ -2,7 +2,6 @@ import os
 
 import ydb.tests.library.common.yatest_common as yatest_common
 from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
-from ydb.tests.library.harness.param_constants import kikimr_driver_path
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.disk_manager.test.recipe.access_service_launcher import AccessServiceLauncher
@@ -29,15 +28,9 @@ def start(argv):
     cert_key_file = os.path.join(certs_dir, "server.key")
     set_env("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE", root_certs_file)
 
-    kikimr_binary_path = kikimr_driver_path()
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/server/filestore-server")
-
-    if 'stable' in argv:
-        kikimr_binary_path = yatest_common.build_path(
-            "kikimr/public/tools/package/stable/Berkanavt/kikimr/bin/kikimr")
-        nbs_binary_path = yatest_common.build_path(
-            "cloud/blockstore/tests/recipes/local-kikimr/stable-package-nbs/usr/bin/blockstore-server")
 
     with_nemesis = 'nemesis' in argv
 
