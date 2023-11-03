@@ -16,7 +16,6 @@ import (
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/rtc/mediator/cityhash"
-	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -724,16 +723,16 @@ func (s *storageYDB) readChunkMap(
 	res, err := session.StreamReadTable(
 		ctx,
 		path.Join(s.tablesPath, "chunk_map"),
-		ydb_options.ReadOrdered(),
-		ydb_options.ReadColumn("chunk_index"),
-		ydb_options.ReadColumn("chunk_id"),
-		ydb_options.ReadColumn("stored_in_s3"),
-		ydb_options.ReadGreaterOrEqual(persistence.TupleValue(
+		persistence.ReadOrdered(),
+		persistence.ReadColumn("chunk_index"),
+		persistence.ReadColumn("chunk_id"),
+		persistence.ReadColumn("stored_in_s3"),
+		persistence.ReadGreaterOrEqual(persistence.TupleValue(
 			persistence.OptionalValue(persistence.Uint64Value(shardID)),
 			persistence.OptionalValue(persistence.UTF8Value(snapshotID)),
 			persistence.OptionalValue(persistence.Uint32Value(milestoneChunkIndex)),
 		)),
-		ydb_options.ReadLessOrEqual(persistence.TupleValue(
+		persistence.ReadLessOrEqual(persistence.TupleValue(
 			persistence.OptionalValue(persistence.Uint64Value(shardID)),
 			persistence.OptionalValue(persistence.UTF8Value(snapshotID)),
 			persistence.OptionalValue(persistence.Uint32Value(^uint32(0))),

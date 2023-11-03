@@ -16,7 +16,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	error_codes "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
-	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,15 +42,15 @@ func (s *legacyStorage) readChunkMap(
 	res, err := session.StreamReadTable(
 		ctx,
 		path.Join(s.tablesPath, "snapshotchunks"),
-		ydb_options.ReadOrdered(),
-		ydb_options.ReadColumn("chunkoffset"),
-		ydb_options.ReadColumn("chunkid"),
-		ydb_options.ReadGreaterOrEqual(persistence.TupleValue(
+		persistence.ReadOrdered(),
+		persistence.ReadColumn("chunkoffset"),
+		persistence.ReadColumn("chunkid"),
+		persistence.ReadGreaterOrEqual(persistence.TupleValue(
 			persistence.OptionalValue(persistence.StringValue([]byte(snapshotInfo.tree))),
 			persistence.OptionalValue(persistence.StringValue([]byte(snapshotID))),
 			persistence.OptionalValue(persistence.Int64Value(int64(milestoneChunkIndex))),
 		)),
-		ydb_options.ReadLessOrEqual(persistence.TupleValue(
+		persistence.ReadLessOrEqual(persistence.TupleValue(
 			persistence.OptionalValue(persistence.StringValue([]byte(snapshotInfo.tree))),
 			persistence.OptionalValue(persistence.StringValue([]byte(snapshotID))),
 			persistence.OptionalValue(persistence.Int64Value(math.MaxInt64)),

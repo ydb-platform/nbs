@@ -124,6 +124,24 @@ func ValueParam(name string, v Value) ydb_table.ParameterOption {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func ReadOrdered() ydb_options.ReadTableOption {
+	return ydb_options.ReadOrdered()
+}
+
+func ReadColumn(name string) ydb_options.ReadTableOption {
+	return ydb_options.ReadColumn(name)
+}
+
+func ReadLessOrEqual(v Value) ydb_options.ReadTableOption {
+	return ydb_options.ReadLessOrEqual(v)
+}
+
+func ReadGreaterOrEqual(v Value) ydb_options.ReadTableOption {
+	return ydb_options.ReadGreaterOrEqual(v)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type CreateTableDescription struct {
 	Columns                []ydb_options.Column
 	PrimaryKey             []string
