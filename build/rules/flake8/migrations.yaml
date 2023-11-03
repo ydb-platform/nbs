@@ -260,7 +260,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-22647
     - yabs/server/test/ft/BSSERVER-2306
     - yabs/server/test/ft/BSSERVER-23162
-    - yabs/server/test/ft/BSSERVER-23252
     - yabs/server/test/ft/BSSERVER-3143
     - yabs/server/test/ft/BSSERVER-8275
     - yabs/server/test/ft/BSSERVER-9277
@@ -2079,7 +2078,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-22055
     - yabs/server/test/ft/BSSERVER-22647
     - yabs/server/test/ft/BSSERVER-2293
-    - yabs/server/test/ft/BSSERVER-23252
     - yabs/server/test/ft/BSSERVER-23353
     - yabs/server/test/ft/BSSERVER-23412
     - yabs/server/test/ft/BSSERVER-23760
@@ -3099,7 +3097,6 @@ migrations:
     - yabs/server/infra/tools/cs_servants_manager
     - yabs/server/libs/internal_ver/depgrapher/lib
     - yabs/server/libs/py_db_shards
-    - yabs/server/test/ft/BSSERVER-23252
     - yabs/server/test/ft/BSSERVER-3381
     - yabs/server/test/ft/BSSERVER-4068
     - yabs/server/test/ft/BSSERVER-4764
