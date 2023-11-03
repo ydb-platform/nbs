@@ -106,7 +106,7 @@ func (m *storageMetricsImpl) getOrNewCompressionMetrics(
 	metrics := chunkCompressionMetrics{
 		ratio: subRegistry.Histogram(
 			"chunkCompressionRatio",
-			common_metrics.NewExponentialBuckets(1, 1.5, 10),
+			common_metrics.NewLinearBuckets(0, 1, 20),
 		),
 		compressionDuration: subRegistry.DurationHistogram(
 			"chunkCompressionTime",
@@ -145,7 +145,7 @@ func (m *storageMetricsImpl) OnChunkCompressed(
 
 	metrics := m.getOrNewCompressionMetrics(compression)
 	if compressedSize != 0 {
-		metrics.ratio.RecordValue(float64(origSize) / float64(compressedSize))
+		metrics.ratio.RecordValue(float64(compressedSize) / float64(origSize))
 	}
 	if duration != 0 {
 		metrics.compressionDuration.RecordDuration(duration)
