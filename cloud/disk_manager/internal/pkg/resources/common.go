@@ -7,7 +7,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,7 +169,7 @@ func listResources(
 			from %v
 			where folder_id = $folder_id and creating_at < $creating_before
 		`, tablesPath, tableName),
-			persistence.ValueParam("$folder_id", ydb_types.UTF8Value(folderID)),
+			persistence.ValueParam("$folder_id", persistence.UTF8Value(folderID)),
 			persistence.ValueParam("$creating_before", persistence.TimestampValue(creatingBefore)),
 		)
 	}

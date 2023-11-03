@@ -17,7 +17,6 @@ import (
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	error_codes "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,15 +46,15 @@ func (s *legacyStorage) readChunkMap(
 		ydb_options.ReadOrdered(),
 		ydb_options.ReadColumn("chunkoffset"),
 		ydb_options.ReadColumn("chunkid"),
-		ydb_options.ReadGreaterOrEqual(ydb_types.TupleValue(
-			ydb_types.OptionalValue(ydb_types.StringValue([]byte(snapshotInfo.tree))),
-			ydb_types.OptionalValue(ydb_types.StringValue([]byte(snapshotID))),
-			ydb_types.OptionalValue(ydb_types.Int64Value(int64(milestoneChunkIndex))),
+		ydb_options.ReadGreaterOrEqual(persistence.TupleValue(
+			persistence.OptionalValue(persistence.StringValue([]byte(snapshotInfo.tree))),
+			persistence.OptionalValue(persistence.StringValue([]byte(snapshotID))),
+			persistence.OptionalValue(persistence.Int64Value(int64(milestoneChunkIndex))),
 		)),
-		ydb_options.ReadLessOrEqual(ydb_types.TupleValue(
-			ydb_types.OptionalValue(ydb_types.StringValue([]byte(snapshotInfo.tree))),
-			ydb_types.OptionalValue(ydb_types.StringValue([]byte(snapshotID))),
-			ydb_types.OptionalValue(ydb_types.Int64Value(math.MaxInt64)),
+		ydb_options.ReadLessOrEqual(persistence.TupleValue(
+			persistence.OptionalValue(persistence.StringValue([]byte(snapshotInfo.tree))),
+			persistence.OptionalValue(persistence.StringValue([]byte(snapshotID))),
+			persistence.OptionalValue(persistence.Int64Value(math.MaxInt64)),
 		)),
 	)
 	if err != nil {
@@ -233,7 +232,7 @@ func (s *legacyStorage) readSnapshotInfo(
 		from snapshotsext
 		where id = $snapshot_id;
 	`, s.tablesPath),
-		persistence.ValueParam("$snapshot_id", ydb_types.StringValue([]byte(snapshotID))),
+		persistence.ValueParam("$snapshot_id", persistence.StringValue([]byte(snapshotID))),
 	)
 	if err != nil {
 		return snapshotInfo{}, err
@@ -312,7 +311,7 @@ func (s *legacyStorage) readChunkInfo(
 		from chunks
 		where id = $chunk_id;
 	`, s.tablesPath),
-		persistence.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
+		persistence.ValueParam("$chunk_id", persistence.StringValue([]byte(chunkID))),
 	)
 	if err != nil {
 		return chunkInfo{}, err
@@ -370,7 +369,7 @@ func (s *legacyStorage) readChunkData(
 		from blobs_on_hdd
 		where id = $chunk_id;
 	`, s.tablesPath),
-		persistence.ValueParam("$chunk_id", ydb_types.StringValue([]byte(chunkID))),
+		persistence.ValueParam("$chunk_id", persistence.StringValue([]byte(chunkID))),
 	)
 	if err != nil {
 		return nil, err

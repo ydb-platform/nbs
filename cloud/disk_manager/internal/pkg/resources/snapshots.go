@@ -11,14 +11,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type snapshotStatus uint32
 
-func (s *snapshotStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *snapshotStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = snapshotStatus(res.Int64())
 	return nil
 }
@@ -108,31 +107,31 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 	}
 }
 
-func (s *snapshotState) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(s.id)),
-		ydb_types.StructFieldValue("folder_id", ydb_types.UTF8Value(s.folderID)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(s.zoneID)),
-		ydb_types.StructFieldValue("disk_id", ydb_types.UTF8Value(s.diskID)),
-		ydb_types.StructFieldValue("checkpoint_id", ydb_types.UTF8Value(s.checkpointID)),
-		ydb_types.StructFieldValue("create_request", ydb_types.StringValue(s.createRequest)),
-		ydb_types.StructFieldValue("create_task_id", ydb_types.UTF8Value(s.createTaskID)),
-		ydb_types.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
-		ydb_types.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
-		ydb_types.StructFieldValue("created_by", ydb_types.UTF8Value(s.createdBy)),
-		ydb_types.StructFieldValue("delete_task_id", ydb_types.UTF8Value(s.deleteTaskID)),
-		ydb_types.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
-		ydb_types.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
-		ydb_types.StructFieldValue("incremental", ydb_types.BoolValue(true)), // deprecated
-		ydb_types.StructFieldValue("base_snapshot_id", ydb_types.UTF8Value(s.baseSnapshotID)),
-		ydb_types.StructFieldValue("base_checkpoint_id", ydb_types.UTF8Value(s.baseCheckpointID)),
-		ydb_types.StructFieldValue("use_dataplane_tasks", ydb_types.BoolValue(s.useDataplaneTasks)),
-		ydb_types.StructFieldValue("size", ydb_types.Uint64Value(s.size)),
-		ydb_types.StructFieldValue("storage_size", ydb_types.Uint64Value(s.storageSize)),
-		ydb_types.StructFieldValue("lock_task_id", ydb_types.UTF8Value(s.lockTaskID)),
-		ydb_types.StructFieldValue("encryption_mode", ydb_types.Uint32Value(s.encryptionMode)),
-		ydb_types.StructFieldValue("encryption_keyhash", ydb_types.StringValue(s.encryptionKeyHash)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(s.status))),
+func (s *snapshotState) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
+		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
+		persistence.StructFieldValue("disk_id", persistence.UTF8Value(s.diskID)),
+		persistence.StructFieldValue("checkpoint_id", persistence.UTF8Value(s.checkpointID)),
+		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
+		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(s.createTaskID)),
+		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
+		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.createdBy)),
+		persistence.StructFieldValue("delete_task_id", persistence.UTF8Value(s.deleteTaskID)),
+		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
+		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
+		persistence.StructFieldValue("incremental", persistence.BoolValue(true)), // deprecated
+		persistence.StructFieldValue("base_snapshot_id", persistence.UTF8Value(s.baseSnapshotID)),
+		persistence.StructFieldValue("base_checkpoint_id", persistence.UTF8Value(s.baseCheckpointID)),
+		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(s.useDataplaneTasks)),
+		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
+		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
+		persistence.StructFieldValue("lock_task_id", persistence.UTF8Value(s.lockTaskID)),
+		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
+		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
 
@@ -220,29 +219,29 @@ func snapshotStateStructTypeString() string {
 
 func snapshotStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("folder_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("checkpoint_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("create_request", ydb_types.Optional(ydb_types.TypeString)),
-		persistence.WithColumn("create_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("creating_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_by", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("delete_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("deleting_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("incremental", ydb_types.Optional(ydb_types.TypeBool)), // deprecated
-		persistence.WithColumn("base_snapshot_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("base_checkpoint_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("use_dataplane_tasks", ydb_types.Optional(ydb_types.TypeBool)),
-		persistence.WithColumn("size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("storage_size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("lock_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("encryption_mode", ydb_types.Optional(ydb_types.TypeUint32)),
-		persistence.WithColumn("encryption_keyhash", ydb_types.Optional(ydb_types.TypeString)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("delete_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("incremental", persistence.Optional(persistence.TypeBool)), // deprecated
+		persistence.WithColumn("base_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("base_checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
 }
@@ -264,7 +263,7 @@ func (s *storageYDB) snapshotExists(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return false, err
@@ -308,8 +307,8 @@ func (s *storageYDB) getIncremental(
 		from incremental
 		where zone_id = $zone_id and disk_id = $disk_id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(disk.ZoneId)),
-		persistence.ValueParam("$disk_id", ydb_types.UTF8Value(disk.DiskId)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(disk.ZoneId)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(disk.DiskId)),
 	)
 	if err != nil {
 		return "", "", err
@@ -349,7 +348,7 @@ func (s *storageYDB) getSnapshotMeta(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return nil, err
@@ -419,7 +418,7 @@ func (s *storageYDB) createSnapshot(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshot.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshot.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -520,7 +519,7 @@ func (s *storageYDB) createSnapshot(
 		select *
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -558,7 +557,7 @@ func (s *storageYDB) snapshotCreated(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return err
@@ -616,7 +615,7 @@ func (s *storageYDB) snapshotCreated(
 		select *
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -634,10 +633,10 @@ func (s *storageYDB) snapshotCreated(
 			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
 			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
 		`, s.snapshotsPath),
-			persistence.ValueParam("$zone_id", ydb_types.UTF8Value(state.zoneID)),
-			persistence.ValueParam("$disk_id", ydb_types.UTF8Value(state.diskID)),
-			persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-			persistence.ValueParam("$checkpoint_id", ydb_types.UTF8Value(state.checkpointID)),
+			persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
+			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
+			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
 		)
 		if err != nil {
 			return err
@@ -659,11 +658,11 @@ func (s *storageYDB) snapshotCreated(
 			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
 			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
 		`, s.snapshotsPath),
-			persistence.ValueParam("$zone_id", ydb_types.UTF8Value(state.zoneID)),
-			persistence.ValueParam("$disk_id", ydb_types.UTF8Value(state.diskID)),
-			persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-			persistence.ValueParam("$checkpoint_id", ydb_types.UTF8Value(state.checkpointID)),
-			persistence.ValueParam("$base_snapshot_id", ydb_types.UTF8Value(state.baseSnapshotID)),
+			persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
+			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
+			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
+			persistence.ValueParam("$base_snapshot_id", persistence.UTF8Value(state.baseSnapshotID)),
 		)
 		if err != nil {
 			return err
@@ -717,7 +716,7 @@ func (s *storageYDB) deleteSnapshot(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return nil, err
@@ -780,7 +779,7 @@ func (s *storageYDB) deleteSnapshot(
 		select *
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -796,9 +795,9 @@ func (s *storageYDB) deleteSnapshot(
 		delete from incremental
 		where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $snapshot_id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$zone_id", ydb_types.UTF8Value(state.zoneID)),
-		persistence.ValueParam("$disk_id", ydb_types.UTF8Value(state.diskID)),
-		persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return nil, err
@@ -834,7 +833,7 @@ func (s *storageYDB) snapshotDeleted(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return err
@@ -888,7 +887,7 @@ func (s *storageYDB) snapshotDeleted(
 		select *
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -904,7 +903,7 @@ func (s *storageYDB) snapshotDeleted(
 		values ($deleted_at, $snapshot_id)
 	`, s.snapshotsPath),
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return err
@@ -932,7 +931,7 @@ func (s *storageYDB) clearDeletedSnapshots(
 		limit $limit
 	`, s.snapshotsPath),
 		persistence.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -970,8 +969,8 @@ func (s *storageYDB) clearDeletedSnapshots(
 				where deleted_at = $deleted_at and snapshot_id = $snapshot_id
 			`, s.snapshotsPath),
 				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-				persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
-				persistence.ValueParam("$status", ydb_types.Int64Value(int64(snapshotStatusDeleted))),
+				persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+				persistence.ValueParam("$status", persistence.Int64Value(int64(snapshotStatusDeleted))),
 			)
 			if err != nil {
 				return err
@@ -1004,7 +1003,7 @@ func (s *storageYDB) lockSnapshot(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return false, err
@@ -1056,7 +1055,7 @@ func (s *storageYDB) lockSnapshot(
 		select *
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return false, err
@@ -1092,7 +1091,7 @@ func (s *storageYDB) unlockSnapshot(
 		from snapshots
 		where id = $id
 	`, s.snapshotsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return err
@@ -1141,7 +1140,7 @@ func (s *storageYDB) unlockSnapshot(
 		select *
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -1359,10 +1358,10 @@ func createSnapshotsYDBTables(
 		folder,
 		"incremental",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("snapshot_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("checkpoint_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("zone_id", "disk_id"),
 		),
 		dropUnusedColumns,
@@ -1377,8 +1376,8 @@ func createSnapshotsYDBTables(
 		folder,
 		"deleted",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("snapshot_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("deleted_at", "snapshot_id"),
 		),
 		dropUnusedColumns,

@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/rtc/mediator/cityhash"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,8 +56,8 @@ func (s *StorageYDB) ReadChunk(
 			chunk_id = $chunk_id and
 			referer = "";
 	`, s.tablesPath),
-		persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunk.ID))),
-		persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunk.ID)),
+		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunk.ID))),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunk.ID)),
 	)
 	if err != nil {
 		return err

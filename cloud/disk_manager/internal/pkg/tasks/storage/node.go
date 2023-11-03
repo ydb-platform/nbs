@@ -8,7 +8,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,11 +24,11 @@ type Node struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Returns ydb entity of the node object.
-func (n *Node) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("host", ydb_types.UTF8Value(n.Host)),
-		ydb_types.StructFieldValue("last_heartbeat", ydb_types.DatetimeValueFromTime(n.LastHeartbeat)),
-		ydb_types.StructFieldValue("inflight_task_count", ydb_types.Uint32Value(n.InflightTaskCount)),
+func (n *Node) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("host", persistence.UTF8Value(n.Host)),
+		persistence.StructFieldValue("last_heartbeat", persistence.DatetimeValueFromTime(n.LastHeartbeat)),
+		persistence.StructFieldValue("inflight_task_count", persistence.Uint32Value(n.InflightTaskCount)),
 	)
 }
 
@@ -70,9 +69,9 @@ func nodeStructTypeString() string {
 // Returns table description for the table that holds nodes.
 func nodeTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("host", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("last_heartbeat", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("inflight_task_count", ydb_types.Optional(ydb_types.TypeUint32)),
+		persistence.WithColumn("host", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("last_heartbeat", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("inflight_task_count", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithPrimaryKeyColumn("host"),
 	)
 }
@@ -105,9 +104,9 @@ func (s *storageYDB) heartbeat(
 		upsert into nodes (host, last_heartbeat, inflight_task_count)
 		values ($host, $last_heartbeat_ts, $inflight_task_count);
 	`, s.tablesPath),
-		persistence.ValueParam("$host", ydb_types.UTF8Value(host)),
-		persistence.ValueParam("$inflight_task_count", ydb_types.Uint32Value(inflightTaskCount)),
-		persistence.ValueParam("$last_heartbeat_ts", ydb_types.TimestampValueFromTime(ts)),
+		persistence.ValueParam("$host", persistence.UTF8Value(host)),
+		persistence.ValueParam("$inflight_task_count", persistence.Uint32Value(inflightTaskCount)),
+		persistence.ValueParam("$last_heartbeat_ts", persistence.TimestampValue(ts)),
 	)
 	return err
 }
@@ -128,7 +127,7 @@ func (s *storageYDB) getAliveNodes(
 		select * from nodes
 		where last_heartbeat >= $liveness_ts;
 	`, s.tablesPath),
-		persistence.ValueParam("$liveness_ts", ydb_types.TimestampValueFromTime(livenessTS)),
+		persistence.ValueParam("$liveness_ts", persistence.TimestampValue(livenessTS)),
 	)
 	if err != nil {
 		return nil, err
@@ -169,7 +168,7 @@ func (s *storageYDB) getNode(
 		select * from nodes
 		where host = $host;
 	`, s.tablesPath),
-		persistence.ValueParam("$host", ydb_types.UTF8Value(host)),
+		persistence.ValueParam("$host", persistence.UTF8Value(host)),
 	)
 	if err != nil {
 		return Node{}, err

@@ -7,7 +7,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,12 +50,12 @@ func (s *storageCommon) writeToChunkBlobs(
 			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum, $compression),
 			($shard_id, $chunk_id, $referer, null, null, null, null)
 	`, s.tablesPath),
-		persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunk.ID))),
-		persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunk.ID)),
-		persistence.ValueParam("$referer", ydb_types.UTF8Value(referer)),
-		persistence.ValueParam("$data", ydb_types.StringValue(compressedData)),
-		persistence.ValueParam("$checksum", ydb_types.Uint32Value(checksum)),
-		persistence.ValueParam("$compression", ydb_types.UTF8Value(chunk.Compression)),
+		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunk.ID))),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunk.ID)),
+		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),
+		persistence.ValueParam("$data", persistence.StringValue(compressedData)),
+		persistence.ValueParam("$checksum", persistence.Uint32Value(checksum)),
+		persistence.ValueParam("$compression", persistence.UTF8Value(chunk.Compression)),
 	)
 	return err
 }
@@ -102,9 +101,9 @@ func (s *storageCommon) refChunk(
 		upsert into chunk_blobs (shard_id, chunk_id, referer)
 		values ($shard_id, $chunk_id, $referer);
 	`, s.tablesPath),
-		persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
-		persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
-		persistence.ValueParam("$referer", ydb_types.UTF8Value(referer)),
+		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),
 	)
 	if err == nil {
 		logging.Debug(
@@ -196,9 +195,9 @@ func (s *storageCommon) unrefChunk(
 		delete from chunk_blobs
 		on select * from $to_delete;
 	`, s.tablesPath),
-		persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
-		persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
-		persistence.ValueParam("$referer", ydb_types.UTF8Value(referer)),
+		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),
 	)
 	if err != nil {
 		return 0, err

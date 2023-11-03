@@ -6,7 +6,6 @@ import (
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 func Create(
@@ -40,8 +39,8 @@ func Create(
 		config.GetStorageFolder(),
 		"deleting",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("deleting_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("snapshot_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("deleting_at", "snapshot_id"),
 		),
 		dropUnusedColumns,
@@ -56,13 +55,13 @@ func Create(
 		config.GetStorageFolder(),
 		"chunk_blobs",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("shard_id", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("chunk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("referer", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("data", ydb_types.Optional(ydb_types.TypeString)),
-			persistence.WithColumn("refcnt", ydb_types.Optional(ydb_types.TypeUint32)),
-			persistence.WithColumn("checksum", ydb_types.Optional(ydb_types.TypeUint32)),
-			persistence.WithColumn("compression", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("data", persistence.Optional(persistence.TypeString)),
+			persistence.WithColumn("refcnt", persistence.Optional(persistence.TypeUint32)),
+			persistence.WithColumn("checksum", persistence.Optional(persistence.TypeUint32)),
+			persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 			persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
 			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
@@ -79,11 +78,11 @@ func Create(
 		config.GetStorageFolder(),
 		"chunk_map",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("shard_id", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("snapshot_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("chunk_index", ydb_types.Optional(ydb_types.TypeUint32)),
-			persistence.WithColumn("chunk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("stored_in_s3", ydb_types.Optional(ydb_types.TypeBool)),
+			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("chunk_index", persistence.Optional(persistence.TypeUint32)),
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("stored_in_s3", persistence.Optional(persistence.TypeBool)),
 			persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_index"),
 			persistence.WithUniformPartitions(config.GetChunkMapTableShardCount()),
 		),
@@ -149,16 +148,16 @@ func Drop(
 
 func snapshotStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("creating_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("deleting_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("storage_size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("chunk_count", ydb_types.Optional(ydb_types.TypeUint32)),
-		persistence.WithColumn("encryption_mode", ydb_types.Optional(ydb_types.TypeUint32)),
-		persistence.WithColumn("encryption_keyhash", ydb_types.Optional(ydb_types.TypeString)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("chunk_count", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
 }

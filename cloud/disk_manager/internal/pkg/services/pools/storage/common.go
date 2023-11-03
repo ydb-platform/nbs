@@ -11,7 +11,6 @@ import (
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,7 +50,7 @@ func generateDiskID() string {
 
 type baseDiskStatus uint32
 
-func (s *baseDiskStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *baseDiskStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = baseDiskStatus(res.Int64())
 	return nil
 }
@@ -173,27 +172,27 @@ func (d *baseDisk) hasFreeSlots() bool {
 	return d.freeSlots() != 0
 }
 
-func (d *baseDisk) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(d.id)),
-		ydb_types.StructFieldValue("image_id", ydb_types.UTF8Value(d.imageID)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(d.zoneID)),
-		ydb_types.StructFieldValue("src_disk_zone_id", ydb_types.UTF8Value(d.srcDiskZoneID)),
-		ydb_types.StructFieldValue("src_disk_id", ydb_types.UTF8Value(d.srcDiskID)),
-		ydb_types.StructFieldValue("src_disk_checkpoint_id", ydb_types.UTF8Value(d.srcDiskCheckpointID)),
-		ydb_types.StructFieldValue("checkpoint_id", ydb_types.UTF8Value(d.checkpointID)),
-		ydb_types.StructFieldValue("create_task_id", ydb_types.UTF8Value(d.createTaskID)),
-		ydb_types.StructFieldValue("image_size", ydb_types.Uint64Value(d.imageSize)),
-		ydb_types.StructFieldValue("size", ydb_types.Uint64Value(d.size)),
+func (d *baseDisk) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(d.id)),
+		persistence.StructFieldValue("image_id", persistence.UTF8Value(d.imageID)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(d.zoneID)),
+		persistence.StructFieldValue("src_disk_zone_id", persistence.UTF8Value(d.srcDiskZoneID)),
+		persistence.StructFieldValue("src_disk_id", persistence.UTF8Value(d.srcDiskID)),
+		persistence.StructFieldValue("src_disk_checkpoint_id", persistence.UTF8Value(d.srcDiskCheckpointID)),
+		persistence.StructFieldValue("checkpoint_id", persistence.UTF8Value(d.checkpointID)),
+		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(d.createTaskID)),
+		persistence.StructFieldValue("image_size", persistence.Uint64Value(d.imageSize)),
+		persistence.StructFieldValue("size", persistence.Uint64Value(d.size)),
 
-		ydb_types.StructFieldValue("active_slots", ydb_types.Uint64Value(d.activeSlots)),
-		ydb_types.StructFieldValue("max_active_slots", ydb_types.Uint64Value(d.maxActiveSlots)),
-		ydb_types.StructFieldValue("active_units", ydb_types.Uint64Value(d.activeUnits)),
-		ydb_types.StructFieldValue("units", ydb_types.Uint64Value(d.units)),
-		ydb_types.StructFieldValue("from_pool", ydb_types.BoolValue(d.fromPool)),
-		ydb_types.StructFieldValue("retiring", ydb_types.BoolValue(d.retiring)),
-		ydb_types.StructFieldValue("deleted_at", persistence.TimestampValue(d.deletedAt)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(d.status))),
+		persistence.StructFieldValue("active_slots", persistence.Uint64Value(d.activeSlots)),
+		persistence.StructFieldValue("max_active_slots", persistence.Uint64Value(d.maxActiveSlots)),
+		persistence.StructFieldValue("active_units", persistence.Uint64Value(d.activeUnits)),
+		persistence.StructFieldValue("units", persistence.Uint64Value(d.units)),
+		persistence.StructFieldValue("from_pool", persistence.BoolValue(d.fromPool)),
+		persistence.StructFieldValue("retiring", persistence.BoolValue(d.retiring)),
+		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(d.deletedAt)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(d.status))),
 	)
 }
 
@@ -222,25 +221,25 @@ func baseDiskStructTypeString() string {
 
 func baseDisksTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("src_disk_zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("src_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("src_disk_checkpoint_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("checkpoint_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("create_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("image_size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("size", ydb_types.Optional(ydb_types.TypeUint64)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_disk_zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_disk_checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("image_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 
-		persistence.WithColumn("active_slots", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("max_active_slots", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("active_units", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("units", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("from_pool", ydb_types.Optional(ydb_types.TypeBool)),
-		persistence.WithColumn("retiring", ydb_types.Optional(ydb_types.TypeBool)),
-		persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
+		persistence.WithColumn("active_slots", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("max_active_slots", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("active_units", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("units", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("from_pool", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("retiring", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -389,7 +388,7 @@ func computePoolAction(t baseDiskTransition) poolAction {
 
 type slotStatus uint32
 
-func (s *slotStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *slotStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = slotStatus(res.Int64())
 	return nil
 }
@@ -430,22 +429,22 @@ type slot struct {
 	status              slotStatus
 }
 
-func (s *slot) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("overlay_disk_id", ydb_types.UTF8Value(s.overlayDiskID)),
-		ydb_types.StructFieldValue("overlay_disk_kind", ydb_types.Int64Value(int64(s.overlayDiskKind))),
-		ydb_types.StructFieldValue("overlay_disk_size", ydb_types.Uint64Value(s.overlayDiskSize)),
-		ydb_types.StructFieldValue("base_disk_id", ydb_types.UTF8Value(s.baseDiskID)),
-		ydb_types.StructFieldValue("image_id", ydb_types.UTF8Value(s.imageID)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(s.zoneID)),
-		ydb_types.StructFieldValue("allotted_slots", ydb_types.Uint64Value(s.allottedSlots)),
-		ydb_types.StructFieldValue("allotted_units", ydb_types.Uint64Value(s.allottedUnits)),
-		ydb_types.StructFieldValue("released_at", persistence.TimestampValue(s.releasedAt)),
-		ydb_types.StructFieldValue("target_base_disk_id", ydb_types.UTF8Value(s.targetBaseDiskID)),
-		ydb_types.StructFieldValue("target_allotted_slots", ydb_types.Uint64Value(s.targetAllottedSlots)),
-		ydb_types.StructFieldValue("target_allotted_units", ydb_types.Uint64Value(s.targetAllottedUnits)),
-		ydb_types.StructFieldValue("generation", ydb_types.Uint64Value(s.generation)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(s.status))),
+func (s *slot) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("overlay_disk_id", persistence.UTF8Value(s.overlayDiskID)),
+		persistence.StructFieldValue("overlay_disk_kind", persistence.Int64Value(int64(s.overlayDiskKind))),
+		persistence.StructFieldValue("overlay_disk_size", persistence.Uint64Value(s.overlayDiskSize)),
+		persistence.StructFieldValue("base_disk_id", persistence.UTF8Value(s.baseDiskID)),
+		persistence.StructFieldValue("image_id", persistence.UTF8Value(s.imageID)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
+		persistence.StructFieldValue("allotted_slots", persistence.Uint64Value(s.allottedSlots)),
+		persistence.StructFieldValue("allotted_units", persistence.Uint64Value(s.allottedUnits)),
+		persistence.StructFieldValue("released_at", persistence.TimestampValue(s.releasedAt)),
+		persistence.StructFieldValue("target_base_disk_id", persistence.UTF8Value(s.targetBaseDiskID)),
+		persistence.StructFieldValue("target_allotted_slots", persistence.Uint64Value(s.targetAllottedSlots)),
+		persistence.StructFieldValue("target_allotted_units", persistence.Uint64Value(s.targetAllottedUnits)),
+		persistence.StructFieldValue("generation", persistence.Uint64Value(s.generation)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
 
@@ -469,20 +468,20 @@ func slotStructTypeString() string {
 
 func slotsTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("overlay_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("overlay_disk_kind", ydb_types.Optional(ydb_types.TypeInt64)),
-		persistence.WithColumn("overlay_disk_size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
-		persistence.WithColumn("allotted_slots", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("allotted_units", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("released_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("target_base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("target_allotted_slots", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("target_allotted_units", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("generation", ydb_types.Optional(ydb_types.TypeUint64)),
+		persistence.WithColumn("overlay_disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("overlay_disk_kind", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("overlay_disk_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("allotted_slots", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("allotted_units", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("released_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("target_base_disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("target_allotted_slots", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("target_allotted_units", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("generation", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithPrimaryKeyColumn("overlay_disk_id"),
 	)
 }
@@ -566,7 +565,7 @@ func scanPoolConfigStream(
 
 type poolStatus uint32
 
-func (s *poolStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *poolStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = poolStatus(res.Int64())
 	return nil
 }
@@ -600,17 +599,17 @@ type pool struct {
 	createdAt         time.Time
 }
 
-func (p *pool) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("image_id", ydb_types.UTF8Value(p.imageID)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(p.zoneID)),
-		ydb_types.StructFieldValue("size", ydb_types.Uint64Value(p.size)),
-		ydb_types.StructFieldValue("free_units", ydb_types.Uint64Value(p.freeUnits)),
-		ydb_types.StructFieldValue("acquired_units", ydb_types.Uint64Value(p.acquiredUnits)),
-		ydb_types.StructFieldValue("base_disks_inflight", ydb_types.Uint64Value(p.baseDisksInflight)),
-		ydb_types.StructFieldValue("lock_id", ydb_types.UTF8Value(p.lockID)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(p.status))),
-		ydb_types.StructFieldValue("created_at", persistence.TimestampValue(p.createdAt)),
+func (p *pool) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("image_id", persistence.UTF8Value(p.imageID)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(p.zoneID)),
+		persistence.StructFieldValue("size", persistence.Uint64Value(p.size)),
+		persistence.StructFieldValue("free_units", persistence.Uint64Value(p.freeUnits)),
+		persistence.StructFieldValue("acquired_units", persistence.Uint64Value(p.acquiredUnits)),
+		persistence.StructFieldValue("base_disks_inflight", persistence.Uint64Value(p.baseDisksInflight)),
+		persistence.StructFieldValue("lock_id", persistence.UTF8Value(p.lockID)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(p.status))),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(p.createdAt)),
 	)
 }
 
@@ -629,15 +628,15 @@ func poolStructTypeString() string {
 
 func poolsTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("free_units", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("acquired_units", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("base_disks_inflight", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("lock_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
-		persistence.WithColumn("created_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
+		persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("free_units", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("acquired_units", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("base_disks_inflight", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("lock_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithPrimaryKeyColumn("image_id", "zone_id"),
 	)
 }
@@ -946,11 +945,11 @@ type baseDiskKey struct {
 	baseDiskID string
 }
 
-func (k *baseDiskKey) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("image_id", ydb_types.UTF8Value(k.imageID)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(k.zoneID)),
-		ydb_types.StructFieldValue("base_disk_id", ydb_types.UTF8Value(k.baseDiskID)),
+func (k *baseDiskKey) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("image_id", persistence.UTF8Value(k.imageID)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(k.zoneID)),
+		persistence.StructFieldValue("base_disk_id", persistence.UTF8Value(k.baseDiskID)),
 	)
 }
 
@@ -1009,8 +1008,8 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"overlay_disk_ids",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("overlay_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("overlay_disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("base_disk_id", "overlay_disk_id"),
 		),
 		dropUnusedColumns,
@@ -1025,11 +1024,11 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"configs",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("kind", ydb_types.Optional(ydb_types.TypeInt64)), // deprecated
-			persistence.WithColumn("capacity", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("image_size", ydb_types.Optional(ydb_types.TypeUint64)),
+			persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("kind", persistence.Optional(persistence.TypeInt64)), // deprecated
+			persistence.WithColumn("capacity", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("image_size", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithPrimaryKeyColumn("image_id", "zone_id", "kind"),
 		),
 		dropUnusedColumns,
@@ -1045,9 +1044,9 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"scheduling",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("image_id", "zone_id", "base_disk_id"),
 		),
 		dropUnusedColumns,
@@ -1063,9 +1062,9 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"free",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("image_id", "zone_id", "base_disk_id"),
 		),
 		dropUnusedColumns,
@@ -1093,7 +1092,7 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"deleting",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("base_disk_id"),
 		),
 		dropUnusedColumns,
@@ -1109,8 +1108,8 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"deleted",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("base_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("deleted_at", "base_disk_id"),
 		),
 		dropUnusedColumns,
@@ -1126,8 +1125,8 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"released",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("released_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("overlay_disk_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("released_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("overlay_disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("released_at", "overlay_disk_id"),
 		),
 		dropUnusedColumns,

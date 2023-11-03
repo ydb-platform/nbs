@@ -11,14 +11,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type imageStatus uint32
 
-func (s *imageStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *imageStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = imageStatus(res.Int64())
 	return nil
 }
@@ -93,24 +92,24 @@ func (s *imageState) toImageMeta() *ImageMeta {
 	}
 }
 
-func (s *imageState) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(s.id)),
-		ydb_types.StructFieldValue("folder_id", ydb_types.UTF8Value(s.folderID)),
-		ydb_types.StructFieldValue("create_request", ydb_types.StringValue(s.createRequest)),
-		ydb_types.StructFieldValue("create_task_id", ydb_types.UTF8Value(s.createTaskID)),
-		ydb_types.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
-		ydb_types.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
-		ydb_types.StructFieldValue("created_by", ydb_types.UTF8Value(s.createdBy)),
-		ydb_types.StructFieldValue("delete_task_id", ydb_types.UTF8Value(s.deleteTaskID)),
-		ydb_types.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
-		ydb_types.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
-		ydb_types.StructFieldValue("use_dataplane_tasks", ydb_types.BoolValue(s.useDataplaneTasks)),
-		ydb_types.StructFieldValue("size", ydb_types.Uint64Value(s.size)),
-		ydb_types.StructFieldValue("storage_size", ydb_types.Uint64Value(s.storageSize)),
-		ydb_types.StructFieldValue("encryption_mode", ydb_types.Uint32Value(s.encryptionMode)),
-		ydb_types.StructFieldValue("encryption_keyhash", ydb_types.StringValue(s.encryptionKeyHash)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(s.status))),
+func (s *imageState) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
+		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
+		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
+		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(s.createTaskID)),
+		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
+		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.createdBy)),
+		persistence.StructFieldValue("delete_task_id", persistence.UTF8Value(s.deleteTaskID)),
+		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
+		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
+		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(s.useDataplaneTasks)),
+		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
+		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
+		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
+		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
 
@@ -185,22 +184,22 @@ func imageStateStructTypeString() string {
 
 func imageStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("folder_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("create_request", ydb_types.Optional(ydb_types.TypeString)),
-		persistence.WithColumn("create_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("creating_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_by", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("delete_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("deleting_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("use_dataplane_tasks", ydb_types.Optional(ydb_types.TypeBool)),
-		persistence.WithColumn("size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("storage_size", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("encryption_mode", ydb_types.Optional(ydb_types.TypeUint32)),
-		persistence.WithColumn("encryption_keyhash", ydb_types.Optional(ydb_types.TypeString)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("delete_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
 }
@@ -222,7 +221,7 @@ func (s *storageYDB) imageExists(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return false, err
@@ -265,7 +264,7 @@ func (s *storageYDB) getImageState(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return nil, err
@@ -355,7 +354,7 @@ func (s *storageYDB) createImage(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(image.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(image.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -438,7 +437,7 @@ func (s *storageYDB) createImage(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -477,7 +476,7 @@ func (s *storageYDB) imageCreated(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return err
@@ -541,7 +540,7 @@ func (s *storageYDB) imageCreated(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -595,7 +594,7 @@ func (s *storageYDB) deleteImage(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return nil, err
@@ -644,7 +643,7 @@ func (s *storageYDB) deleteImage(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -680,7 +679,7 @@ func (s *storageYDB) imageDeleted(
 		from images
 		where id = $id
 	`, s.imagesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return err
@@ -734,7 +733,7 @@ func (s *storageYDB) imageDeleted(
 		select *
 		from AS_TABLE($states)
 	`, s.imagesPath, imageStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -750,7 +749,7 @@ func (s *storageYDB) imageDeleted(
 		values ($deleted_at, $image_id)
 	`, s.imagesPath),
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 	)
 	if err != nil {
 		return err
@@ -778,7 +777,7 @@ func (s *storageYDB) clearDeletedImages(
 		limit $limit
 	`, s.imagesPath),
 		persistence.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -816,8 +815,8 @@ func (s *storageYDB) clearDeletedImages(
 				where deleted_at = $deleted_at and image_id = $image_id
 			`, s.imagesPath),
 				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-				persistence.ValueParam("$image_id", ydb_types.UTF8Value(imageID)),
-				persistence.ValueParam("$status", ydb_types.Int64Value(int64(imageStatusDeleted))),
+				persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+				persistence.ValueParam("$status", persistence.Int64Value(int64(imageStatusDeleted))),
 			)
 			if err != nil {
 				return err
@@ -1001,8 +1000,8 @@ func createImagesYDBTables(
 		folder,
 		"deleted",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("image_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("deleted_at", "image_id"),
 		),
 		dropUnusedColumns,

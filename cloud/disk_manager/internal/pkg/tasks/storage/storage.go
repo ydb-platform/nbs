@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -16,7 +16,7 @@ import (
 
 type TaskStatus uint32
 
-func (s *TaskStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *TaskStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = TaskStatus(res.Int64())
 	return nil
 }

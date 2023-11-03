@@ -9,7 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	grpc_codes "google.golang.org/grpc/codes"
 )
 
@@ -45,7 +44,7 @@ func (s *storageYDB) getTaskID(
 		from task_ids
 		where idempotency_key = $idempotency_key
 	`, s.tablesPath),
-		persistence.ValueParam("$idempotency_key", ydb_types.UTF8Value(idempotencyKey)),
+		persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
 	)
 	if err != nil {
 		return "", err
@@ -94,9 +93,9 @@ func (s *storageYDB) getTaskID(
 			 $idempotency_key,
 			 $account_id)
 	`, s.tablesPath),
-		persistence.ValueParam("$task_id", ydb_types.UTF8Value(id)),
-		persistence.ValueParam("$idempotency_key", ydb_types.UTF8Value(idempotencyKey)),
-		persistence.ValueParam("$account_id", ydb_types.UTF8Value(accountID)),
+		persistence.ValueParam("$task_id", persistence.UTF8Value(id)),
+		persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
+		persistence.ValueParam("$account_id", persistence.UTF8Value(accountID)),
 	)
 	if err != nil {
 		return "", err
@@ -133,7 +132,7 @@ func (s *storageYDB) deleteFromTable(
 		delete from %v
 		where id = $id
 	`, s.tablesPath, tableName),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(id)),
+		persistence.ValueParam("$id", persistence.UTF8Value(id)),
 	)
 	return err
 }
@@ -146,15 +145,15 @@ func (s *storageYDB) updateReadyToExecute(
 	transitions []stateTransition,
 ) error {
 
-	var values []ydb_types.Value
+	var values []persistence.Value
 
 	for _, t := range transitions {
 		if t.lastState != nil &&
 			t.lastState.Status != t.newState.Status &&
 			t.lastState.Status == status {
 
-			values = append(values, ydb_types.StructValue(
-				ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.lastState.ID)),
+			values = append(values, persistence.StructValue(
+				persistence.StructFieldValue("id", persistence.UTF8Value(t.lastState.ID)),
 			))
 		}
 	}
@@ -169,7 +168,7 @@ func (s *storageYDB) updateReadyToExecute(
 			select *
 			from AS_TABLE($values)
 		`, s.tablesPath, tableName),
-			persistence.ValueParam("$values", ydb_types.ListValue(values...)),
+			persistence.ValueParam("$values", persistence.ListValue(values...)),
 		)
 		if err != nil {
 			return err
@@ -192,11 +191,11 @@ func (s *storageYDB) updateReadyToExecute(
 			continue
 		}
 
-		values = append(values, ydb_types.StructValue(
-			ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.newState.ID)),
-			ydb_types.StructFieldValue("generation_id", ydb_types.Uint64Value(t.newState.GenerationID)),
-			ydb_types.StructFieldValue("task_type", ydb_types.UTF8Value(t.newState.TaskType)),
-			ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(t.newState.ZoneID)),
+		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue("id", persistence.UTF8Value(t.newState.ID)),
+			persistence.StructFieldValue("generation_id", persistence.Uint64Value(t.newState.GenerationID)),
+			persistence.StructFieldValue("task_type", persistence.UTF8Value(t.newState.TaskType)),
+			persistence.StructFieldValue("zone_id", persistence.UTF8Value(t.newState.ZoneID)),
 		))
 	}
 
@@ -213,7 +212,7 @@ func (s *storageYDB) updateReadyToExecute(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath, readyToExecuteStructTypeString(), tableName),
-		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", persistence.ListValue(values...)),
 	)
 	return err
 }
@@ -226,15 +225,15 @@ func (s *storageYDB) updateExecuting(
 	transitions []stateTransition,
 ) error {
 
-	var values []ydb_types.Value
+	var values []persistence.Value
 
 	for _, t := range transitions {
 		if t.lastState != nil &&
 			t.lastState.Status != t.newState.Status &&
 			t.lastState.Status == status {
 
-			values = append(values, ydb_types.StructValue(
-				ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.lastState.ID)),
+			values = append(values, persistence.StructValue(
+				persistence.StructFieldValue("id", persistence.UTF8Value(t.lastState.ID)),
 			))
 		}
 	}
@@ -249,7 +248,7 @@ func (s *storageYDB) updateExecuting(
 			select *
 			from AS_TABLE($values)
 		`, s.tablesPath, tableName),
-			persistence.ValueParam("$values", ydb_types.ListValue(values...)),
+			persistence.ValueParam("$values", persistence.ListValue(values...)),
 		)
 		if err != nil {
 			return err
@@ -273,12 +272,12 @@ func (s *storageYDB) updateExecuting(
 			continue
 		}
 
-		values = append(values, ydb_types.StructValue(
-			ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.newState.ID)),
-			ydb_types.StructFieldValue("generation_id", ydb_types.Uint64Value(t.newState.GenerationID)),
-			ydb_types.StructFieldValue("modified_at", persistence.TimestampValue(t.newState.ModifiedAt)),
-			ydb_types.StructFieldValue("task_type", ydb_types.UTF8Value(t.newState.TaskType)),
-			ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(t.newState.ZoneID)),
+		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue("id", persistence.UTF8Value(t.newState.ID)),
+			persistence.StructFieldValue("generation_id", persistence.Uint64Value(t.newState.GenerationID)),
+			persistence.StructFieldValue("modified_at", persistence.TimestampValue(t.newState.ModifiedAt)),
+			persistence.StructFieldValue("task_type", persistence.UTF8Value(t.newState.TaskType)),
+			persistence.StructFieldValue("zone_id", persistence.UTF8Value(t.newState.ZoneID)),
 		))
 	}
 
@@ -295,7 +294,7 @@ func (s *storageYDB) updateExecuting(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath, executingStructTypeString(), tableName),
-		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", persistence.ListValue(values...)),
 	)
 	return err
 }
@@ -308,7 +307,7 @@ func (s *storageYDB) updateEnded(
 
 	// NOTE: deletion from 'ended' table is forbidden.
 
-	var values []ydb_types.Value
+	var values []persistence.Value
 
 	for _, t := range transitions {
 		if !IsEnded(t.newState.Status) {
@@ -322,11 +321,11 @@ func (s *storageYDB) updateEnded(
 			continue
 		}
 
-		values = append(values, ydb_types.StructValue(
-			ydb_types.StructFieldValue("ended_at", persistence.TimestampValue(t.newState.EndedAt)),
-			ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.newState.ID)),
-			ydb_types.StructFieldValue("idempotency_key", ydb_types.UTF8Value(t.newState.IdempotencyKey)),
-			ydb_types.StructFieldValue("account_id", ydb_types.UTF8Value(t.newState.AccountID)),
+		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue("ended_at", persistence.TimestampValue(t.newState.EndedAt)),
+			persistence.StructFieldValue("id", persistence.UTF8Value(t.newState.ID)),
+			persistence.StructFieldValue("idempotency_key", persistence.UTF8Value(t.newState.IdempotencyKey)),
+			persistence.StructFieldValue("account_id", persistence.UTF8Value(t.newState.AccountID)),
 		))
 	}
 
@@ -343,7 +342,7 @@ func (s *storageYDB) updateEnded(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath),
-		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", persistence.ListValue(values...)),
 	)
 	return err
 }
@@ -403,7 +402,7 @@ func (s *storageYDB) updateTaskStates(
 		return err
 	}
 
-	values := make([]ydb_types.Value, 0, len(transitions))
+	values := make([]persistence.Value, 0, len(transitions))
 	for _, t := range transitions {
 		values = append(values, t.newState.structValue())
 	}
@@ -421,7 +420,7 @@ func (s *storageYDB) updateTaskStates(
 		select *
 		from AS_TABLE($values)
 	`, s.tablesPath, taskStateStructTypeString()),
-		persistence.ValueParam("$values", ydb_types.ListValue(values...)),
+		persistence.ValueParam("$values", persistence.ListValue(values...)),
 	)
 	return err
 }
@@ -443,8 +442,8 @@ func (s *storageYDB) updateTaskEvents(
 		set events = $events
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
-		persistence.ValueParam("$events", ydb_types.BytesValue(common.MarshalInts(events))),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
+		persistence.ValueParam("$events", persistence.BytesValue(common.MarshalInts(events))),
 	)
 	return err
 }
@@ -469,8 +468,8 @@ func (s *storageYDB) prepareUnfinishedDependencies(
 			from tasks
 			where id = $id and status < $status
 		`, s.tablesPath),
-			persistence.ValueParam("$id", ydb_types.UTF8Value(id)),
-			persistence.ValueParam("$status", ydb_types.Int64Value(int64(TaskStatusFinished))),
+			persistence.ValueParam("$id", persistence.UTF8Value(id)),
+			persistence.ValueParam("$status", persistence.Int64Value(int64(TaskStatusFinished))),
 		)
 		if err != nil {
 			return []stateTransition{}, err
@@ -518,7 +517,7 @@ func (s *storageYDB) prepareCreateTask(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(state.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(state.ID)),
 	)
 	if err != nil {
 		return []stateTransition{}, err
@@ -686,7 +685,7 @@ func (s *storageYDB) createRegularTasks(
 		from schedules
 		where task_type = $task_type
 	`, s.tablesPath),
-		persistence.ValueParam("$task_type", ydb_types.UTF8Value(state.TaskType)),
+		persistence.ValueParam("$task_type", persistence.UTF8Value(state.TaskType)),
 	)
 	if err != nil {
 		return err
@@ -754,9 +753,9 @@ func (s *storageYDB) createRegularTasks(
 			upsert into schedules (task_type, scheduled_at, tasks_inflight)
 			values ($task_type, $scheduled_at, $tasks_inflight)
 		`, s.tablesPath),
-			persistence.ValueParam("$task_type", ydb_types.UTF8Value(sch.taskType)),
+			persistence.ValueParam("$task_type", persistence.UTF8Value(sch.taskType)),
 			persistence.ValueParam("$scheduled_at", persistence.TimestampValue(sch.scheduledAt)),
-			persistence.ValueParam("$tasks_inflight", ydb_types.Uint64Value(sch.tasksInflight)),
+			persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(sch.tasksInflight)),
 		)
 		if err != nil {
 			return err
@@ -790,7 +789,7 @@ func (s *storageYDB) getTask(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return TaskState{}, err
@@ -834,7 +833,7 @@ func (s *storageYDB) getTaskByIdempotencyKey(
 		from task_ids
 		where idempotency_key = $idempotency_key
 	`, s.tablesPath),
-		persistence.ValueParam("$idempotency_key", ydb_types.UTF8Value(idempotencyKey)),
+		persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
 	)
 	if err != nil {
 		return TaskState{}, err
@@ -884,7 +883,7 @@ func (s *storageYDB) listTasks(
 			(Len(zone_id) == 0 or zone_id in $zone_ids)
 		limit $limit
 	`, s.tablesPath, tableName),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 		persistence.ValueParam("$typeWhitelist", strListValue(taskTypeWhitelist)),
 		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
 	)
@@ -976,7 +975,7 @@ func (s *storageYDB) listSlowTasks(
 		 order by DateTime::ToMinutes(ended_at - created_at) / DateTime::ToMinutes(estimated_time - created_at) desc
 	`, s.tablesPath),
 		persistence.ValueParam("$since", persistence.TimestampValue(since)),
-		persistence.ValueParam("$estimateMiss", ydb_types.Int64Value(int64(estimateMiss.Minutes()))),
+		persistence.ValueParam("$estimateMiss", persistence.Int64Value(int64(estimateMiss.Minutes()))),
 	)
 	if err != nil {
 		return nil, err
@@ -1041,7 +1040,7 @@ func (s *storageYDB) listTasksStallingWhileExecuting(
 			(Len(zone_id) == 0 or zone_id in $zone_ids)
 		limit $limit
 	`, s.tablesPath, tableName),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(limit)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam("$stalling_time", persistence.TimestampValue(stallingTime)),
 		persistence.ValueParam("$typeWhitelist", strListValue(taskTypeWhitelist)),
 		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
@@ -1080,7 +1079,7 @@ func (s *storageYDB) lockTaskToExecute(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskInfo.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskInfo.ID)),
 	)
 	if err != nil {
 		return TaskState{}, err
@@ -1175,7 +1174,7 @@ func (s *storageYDB) prepareDependenciesToClear(
 			from tasks
 			where id = $id
 		`, s.tablesPath),
-			persistence.ValueParam("$id", ydb_types.UTF8Value(id)),
+			persistence.ValueParam("$id", persistence.UTF8Value(id)),
 		)
 		if err != nil {
 			return []stateTransition{}, err
@@ -1214,9 +1213,9 @@ func (s *storageYDB) prepareDependantsToWakeup(
 	state *TaskState,
 ) ([]stateTransition, error) {
 
-	var ids []ydb_types.Value
+	var ids []persistence.Value
 	for _, id := range state.dependants.List() {
-		ids = append(ids, ydb_types.UTF8Value(id))
+		ids = append(ids, persistence.UTF8Value(id))
 	}
 
 	if len(ids) == 0 {
@@ -1232,7 +1231,7 @@ func (s *storageYDB) prepareDependantsToWakeup(
 		from tasks
 		where id in $ids
 	`, s.tablesPath),
-		persistence.ValueParam("$ids", ydb_types.ListValue(ids...)),
+		persistence.ValueParam("$ids", persistence.ListValue(ids...)),
 	)
 	if err != nil {
 		return []stateTransition{}, err
@@ -1301,7 +1300,7 @@ func (s *storageYDB) markForCancellation(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return false, err
@@ -1395,7 +1394,7 @@ func (s *storageYDB) decrementRegularTasksInflight(
 		from schedules
 		where task_type = $task_type
 	`, s.tablesPath),
-		persistence.ValueParam("$task_type", ydb_types.UTF8Value(taskType)),
+		persistence.ValueParam("$task_type", persistence.UTF8Value(taskType)),
 	)
 	if err != nil {
 		return err
@@ -1461,9 +1460,9 @@ func (s *storageYDB) decrementRegularTasksInflight(
 		upsert into schedules (task_type, scheduled_at, tasks_inflight)
 		values ($task_type, $scheduled_at, $tasks_inflight)
 	`, s.tablesPath),
-		persistence.ValueParam("$task_type", ydb_types.UTF8Value(sch.taskType)),
+		persistence.ValueParam("$task_type", persistence.UTF8Value(sch.taskType)),
 		persistence.ValueParam("$scheduled_at", persistence.TimestampValue(sch.scheduledAt)),
-		persistence.ValueParam("$tasks_inflight", ydb_types.Uint64Value(sch.tasksInflight)),
+		persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(sch.tasksInflight)),
 	)
 	return err
 }
@@ -1498,7 +1497,7 @@ func (s *storageYDB) updateTask(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(state.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(state.ID)),
 	)
 	if err != nil {
 		return TaskState{}, err
@@ -1641,7 +1640,7 @@ func (s *storageYDB) sendEvent(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return err
@@ -1710,7 +1709,7 @@ func (s *storageYDB) clearEndedTasks(
 		limit $limit
 	`, s.tablesPath),
 		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -1755,11 +1754,11 @@ func (s *storageYDB) clearEndedTasks(
 					where ended_at = $ended_at and id = $task_id
 				`, s.tablesPath, deleteFromTaskIds),
 					persistence.ValueParam("$ended_at", persistence.TimestampValue(endedAt)),
-					persistence.ValueParam("$task_id", ydb_types.UTF8Value(taskID)),
-					persistence.ValueParam("$idempotency_key", ydb_types.UTF8Value(idempotencyKey)),
-					persistence.ValueParam("$account_id", ydb_types.UTF8Value(accountID)),
-					persistence.ValueParam("$finished", ydb_types.Int64Value(int64(TaskStatusFinished))),
-					persistence.ValueParam("$cancelled", ydb_types.Int64Value(int64(TaskStatusCancelled))),
+					persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
+					persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
+					persistence.ValueParam("$account_id", persistence.UTF8Value(accountID)),
+					persistence.ValueParam("$finished", persistence.Int64Value(int64(TaskStatusFinished))),
+					persistence.ValueParam("$cancelled", persistence.Int64Value(int64(TaskStatusCancelled))),
 				)
 				return err
 			}
@@ -1809,7 +1808,7 @@ func (s *storageYDB) finishTask(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return err
@@ -1886,7 +1885,7 @@ func (s *storageYDB) pauseTask(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return err
@@ -1974,7 +1973,7 @@ func (s *storageYDB) resumeTask(
 		from tasks
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(taskID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return err

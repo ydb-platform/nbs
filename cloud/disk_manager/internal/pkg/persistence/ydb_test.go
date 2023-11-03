@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,10 +67,10 @@ func scanTableV1s(ctx context.Context, res Result) (results []TableV1, err error
 	return results, nil
 }
 
-func (t *TableV1) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.id)),
-		ydb_types.StructFieldValue("val1", ydb_types.UTF8Value(t.val1)),
+func (t *TableV1) structValue() Value {
+	return StructValue(
+		StructFieldValue("id", UTF8Value(t.id)),
+		StructFieldValue("val1", UTF8Value(t.val1)),
 	)
 }
 
@@ -83,8 +82,8 @@ func tableV1StructTypeString() string {
 
 func tableV1TableDescription() CreateTableDescription {
 	return NewCreateTableDescription(
-		WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		WithColumn("val1", ydb_types.Optional(ydb_types.TypeUTF8)),
+		WithColumn("id", Optional(TypeUTF8)),
+		WithColumn("val1", Optional(TypeUTF8)),
 		WithPrimaryKeyColumn("id"),
 	)
 }
@@ -102,7 +101,7 @@ func insertTableV1(ctx context.Context, db *YDBClient, path string, table string
 				select *
 				from AS_TABLE($values)
 			`, path, tableV1StructTypeString(), table),
-				ValueParam("$values", ydb_types.ListValue(val.structValue())),
+				ValueParam("$values", ListValue(val.structValue())),
 			)
 			return err
 		},
@@ -161,11 +160,11 @@ func scanTableV2s(ctx context.Context, res Result) (results []TableV2, err error
 	return results, nil
 }
 
-func (t *TableV2) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(t.id)),
-		ydb_types.StructFieldValue("val1", ydb_types.UTF8Value(t.val1)),
-		ydb_types.StructFieldValue("val2", ydb_types.UTF8Value(t.val2)),
+func (t *TableV2) structValue() Value {
+	return StructValue(
+		StructFieldValue("id", UTF8Value(t.id)),
+		StructFieldValue("val1", UTF8Value(t.val1)),
+		StructFieldValue("val2", UTF8Value(t.val2)),
 	)
 }
 
@@ -178,9 +177,9 @@ func tableV2StructTypeString() string {
 
 func tableV2TableDescription() CreateTableDescription {
 	return NewCreateTableDescription(
-		WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		WithColumn("val1", ydb_types.Optional(ydb_types.TypeUTF8)),
-		WithColumn("val2", ydb_types.Optional(ydb_types.TypeUTF8)),
+		WithColumn("id", Optional(TypeUTF8)),
+		WithColumn("val1", Optional(TypeUTF8)),
+		WithColumn("val2", Optional(TypeUTF8)),
 		WithPrimaryKeyColumn("id"),
 	)
 }
@@ -198,7 +197,7 @@ func insertTableV2(ctx context.Context, db *YDBClient, path string, table string
 				select *
 				from AS_TABLE($values)
 			`, path, tableV2StructTypeString(), table),
-				ValueParam("$values", ydb_types.ListValue(val.structValue())),
+				ValueParam("$values", ListValue(val.structValue())),
 			)
 			return err
 		},
@@ -457,8 +456,8 @@ func TestYDBFailMigrationChangingType(t *testing.T) {
 		folder,
 		table,
 		NewCreateTableDescription(
-			WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			WithColumn("val1", ydb_types.Optional(ydb_types.TypeUint64)),
+			WithColumn("id", Optional(TypeUTF8)),
+			WithColumn("val1", Optional(TypeUint64)),
 			WithPrimaryKeyColumn("id"),
 		),
 		false, // dropUnusedColumns
@@ -491,8 +490,8 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 		folder,
 		table,
 		NewCreateTableDescription(
-			WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			WithColumn("val1", ydb_types.Optional(ydb_types.TypeUTF8)),
+			WithColumn("id", Optional(TypeUTF8)),
+			WithColumn("val1", Optional(TypeUTF8)),
 			WithPrimaryKeyColumn("id", "val1"),
 		),
 		false, // dropUnusedColumns

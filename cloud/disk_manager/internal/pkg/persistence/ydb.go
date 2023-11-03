@@ -28,6 +28,84 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type Type = ydb_types.Type
+
+const (
+	TypeBool      = ydb_types.TypeBool
+	TypeInt32     = ydb_types.TypeInt32
+	TypeUint32    = ydb_types.TypeUint32
+	TypeInt64     = ydb_types.TypeInt64
+	TypeUint64    = ydb_types.TypeUint64
+	TypeTimestamp = ydb_types.TypeTimestamp
+	TypeString    = ydb_types.TypeString
+	TypeBytes     = ydb_types.TypeBytes
+	TypeUTF8      = ydb_types.TypeText
+)
+
+func Optional(t ydb_types.Type) ydb_types.Type { return ydb_types.Optional(t) }
+
+func List(t Type) ydb_types.Type { return ydb_types.List(t) }
+
+////////////////////////////////////////////////////////////////////////////////
+
+type Value = ydb_types.Value
+
+type RawValue = ydb_types.RawValue
+
+func OptionalValue(v Value) Value { return ydb_types.OptionalValue(v) }
+
+func TupleValue(values ...Value) Value {
+	return ydb_types.TupleValue(values...)
+}
+
+func ZeroValue(t Type) Value { return ydb_types.ZeroValue(t) }
+
+func BoolValue(v bool) Value { return ydb_types.BoolValue(v) }
+
+func Int32Value(v int32) Value { return ydb_types.Int32Value(v) }
+
+func Uint32Value(v uint32) Value { return ydb_types.Uint32Value(v) }
+
+func Int64Value(v int64) Value { return ydb_types.Int64Value(v) }
+
+func Uint64Value(v uint64) Value { return ydb_types.Uint64Value(v) }
+
+func FloatValue(v float32) Value { return ydb_types.FloatValue(v) }
+
+func DoubleValue(v float64) Value { return ydb_types.DoubleValue(v) }
+
+func BytesValue(v []byte) Value { return ydb_types.BytesValue(v) }
+
+func StringValue(v []byte) Value { return ydb_types.StringValue(v) }
+
+func UTF8Value(v string) Value { return ydb_types.UTF8Value(v) }
+
+func ListValue(items ...Value) Value { return ydb_types.ListValue(items...) }
+
+func StructFieldValue(name string, v Value) ydb_types.StructValueOption {
+	return ydb_types.StructFieldValue(name, v)
+}
+
+func StructValue(opts ...ydb_types.StructValueOption) Value {
+	return ydb_types.StructValue(opts...)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func DatetimeValueFromTime(t time.Time) Value {
+	return ydb_types.DatetimeValueFromTime(t)
+}
+
+func TimestampValue(t time.Time) Value {
+	if t.IsZero() {
+		return ydb_types.ZeroValue(ydb_types.TypeTimestamp)
+	}
+
+	return ydb_types.TimestampValueFromTime(t)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Result = ydb_result.Result
 
 type StreamResult = ydb_result.StreamResult
@@ -40,7 +118,7 @@ func OptionalWithDefault(
 	return ydb_named.OptionalWithDefault(columnName, destinationValueReference)
 }
 
-func ValueParam(name string, v ydb_types.Value) ydb_table.ParameterOption {
+func ValueParam(name string, v Value) ydb_table.ParameterOption {
 	return ydb_table.ValueParam(name, v)
 }
 
@@ -57,7 +135,7 @@ type CreateTableDescription struct {
 
 type CreateTableOption func(*CreateTableDescription)
 
-func WithColumn(name string, typ ydb_types.Type) CreateTableOption {
+func WithColumn(name string, typ Type) CreateTableOption {
 	return func(d *CreateTableDescription) {
 		d.Columns = append(d.Columns, ydb_options.Column{
 			Name: name,
@@ -66,7 +144,7 @@ func WithColumn(name string, typ ydb_types.Type) CreateTableOption {
 	}
 }
 
-func WithColumnAndFamily(name string, typ ydb_types.Type, family string) CreateTableOption {
+func WithColumnAndFamily(name string, typ Type, family string) CreateTableOption {
 	return func(d *CreateTableDescription) {
 		d.Columns = append(d.Columns, ydb_options.Column{
 			Name:   name,
@@ -610,16 +688,6 @@ func WithDetails(details trace.Details) option {
 	return func(h *optionsHolder) {
 		h.details = details
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func TimestampValue(t time.Time) ydb_types.Value {
-	if t.IsZero() {
-		return ydb_types.ZeroValue(ydb_types.TypeTimestamp)
-	}
-
-	return ydb_types.TimestampValueFromTime(t)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

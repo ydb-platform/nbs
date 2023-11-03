@@ -23,7 +23,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,9 +76,9 @@ func readChunkBlobsFromYDB(
 
 	var result []chunkBlob
 
-	values := make([]ydb_types.Value, 0)
+	values := make([]persistence.Value, 0)
 	for _, chunkID := range chunkIDs {
-		values = append(values, ydb_types.UTF8Value(chunkID))
+		values = append(values, persistence.UTF8Value(chunkID))
 	}
 
 	err := f.db.Execute(
@@ -94,7 +93,7 @@ func readChunkBlobsFromYDB(
 				from chunk_blobs
 				where chunk_id in $chunk_ids and referer = "";
 			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
-				persistence.ValueParam("$chunk_ids", ydb_types.ListValue(values...)),
+				persistence.ValueParam("$chunk_ids", persistence.ListValue(values...)),
 			)
 			if err != nil {
 				return err
@@ -169,8 +168,8 @@ func readChunkMap(
 				from chunk_map
 				where shard_id = $shard_id and snapshot_id = $snapshot_id
 			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
-				persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(snapshotID))),
-				persistence.ValueParam("$snapshot_id", ydb_types.UTF8Value(snapshotID)),
+				persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(snapshotID))),
+				persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 			)
 			if err != nil {
 				return err
@@ -259,9 +258,9 @@ func updateYDBBlobChecksum(f *fixture, chunkID string, checksum uint32) {
 					set checksum = $checksum
 					where shard_id = $shard_id and chunk_id = $chunk_id
 			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
-				persistence.ValueParam("$shard_id", ydb_types.Uint64Value(makeShardID(chunkID))),
-				persistence.ValueParam("$checksum", ydb_types.Uint32Value(checksum)),
-				persistence.ValueParam("$chunk_id", ydb_types.UTF8Value(chunkID)),
+				persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
+				persistence.ValueParam("$checksum", persistence.Uint32Value(checksum)),
+				persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 			)
 			return err
 		},

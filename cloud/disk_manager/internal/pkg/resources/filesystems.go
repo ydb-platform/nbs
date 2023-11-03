@@ -10,14 +10,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type filesystemStatus uint32
 
-func (s *filesystemStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *filesystemStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = filesystemStatus(res.Int64())
 	return nil
 }
@@ -87,25 +86,25 @@ func (s *filesystemState) toFilesystemMeta() *FilesystemMeta {
 	}
 }
 
-func (s *filesystemState) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(s.id)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(s.zoneID)),
-		ydb_types.StructFieldValue("blocks_count", ydb_types.Uint64Value(s.blocksCount)),
-		ydb_types.StructFieldValue("block_size", ydb_types.Uint32Value(s.blockSize)),
-		ydb_types.StructFieldValue("kind", ydb_types.UTF8Value(s.kind)),
-		ydb_types.StructFieldValue("cloud_id", ydb_types.UTF8Value(s.cloudID)),
-		ydb_types.StructFieldValue("folder_id", ydb_types.UTF8Value(s.folderID)),
-		ydb_types.StructFieldValue("create_request", ydb_types.StringValue(s.createRequest)),
-		ydb_types.StructFieldValue("create_task_id", ydb_types.UTF8Value(s.createTaskID)),
-		ydb_types.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
-		ydb_types.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
-		ydb_types.StructFieldValue("created_by", ydb_types.UTF8Value(s.createdBy)),
-		ydb_types.StructFieldValue("delete_task_id", ydb_types.UTF8Value(s.deleteTaskID)),
-		ydb_types.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
-		ydb_types.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
+func (s *filesystemState) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
+		persistence.StructFieldValue("blocks_count", persistence.Uint64Value(s.blocksCount)),
+		persistence.StructFieldValue("block_size", persistence.Uint32Value(s.blockSize)),
+		persistence.StructFieldValue("kind", persistence.UTF8Value(s.kind)),
+		persistence.StructFieldValue("cloud_id", persistence.UTF8Value(s.cloudID)),
+		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
+		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
+		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(s.createTaskID)),
+		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
+		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.createdBy)),
+		persistence.StructFieldValue("delete_task_id", persistence.UTF8Value(s.deleteTaskID)),
+		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
+		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(s.status))),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
 
@@ -180,23 +179,23 @@ func filesystemStateStructTypeString() string {
 
 func filesystemStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("blocks_count", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("block_size", ydb_types.Optional(ydb_types.TypeUint32)),
-		persistence.WithColumn("kind", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("cloud_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("folder_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("create_request", ydb_types.Optional(ydb_types.TypeString)),
-		persistence.WithColumn("create_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("creating_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_by", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("delete_task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("deleting_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("blocks_count", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("block_size", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("kind", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("cloud_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("delete_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -219,7 +218,7 @@ func (s *storageYDB) getFilesystemMeta(
 		from filesystems
 		where id = $id
 	`, s.filesystemsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(filesystemID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(filesystemID)),
 	)
 	if err != nil {
 		return nil, err
@@ -268,7 +267,7 @@ func (s *storageYDB) createFilesystem(
 		from filesystems
 		where id = $id
 	`, s.filesystemsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(filesystem.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(filesystem.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -338,7 +337,7 @@ func (s *storageYDB) createFilesystem(
 		select *
 		from AS_TABLE($states)
 	`, s.filesystemsPath, filesystemStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -373,7 +372,7 @@ func (s *storageYDB) filesystemCreated(
 		from filesystems
 		where id = $id
 	`, s.filesystemsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(filesystem.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(filesystem.ID)),
 	)
 	if err != nil {
 		return err
@@ -434,7 +433,7 @@ func (s *storageYDB) filesystemCreated(
 		select *
 		from AS_TABLE($states)
 	`, s.filesystemsPath, filesystemStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -466,7 +465,7 @@ func (s *storageYDB) deleteFilesystem(
 		from filesystems
 		where id = $id
 	`, s.filesystemsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(filesystemID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(filesystemID)),
 	)
 	if err != nil {
 		return nil, err
@@ -514,7 +513,7 @@ func (s *storageYDB) deleteFilesystem(
 		select *
 		from AS_TABLE($states)
 	`, s.filesystemsPath, filesystemStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return nil, err
@@ -550,7 +549,7 @@ func (s *storageYDB) filesystemDeleted(
 		from filesystems
 		where id = $id
 	`, s.filesystemsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(filesystemID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(filesystemID)),
 	)
 	if err != nil {
 		return err
@@ -604,7 +603,7 @@ func (s *storageYDB) filesystemDeleted(
 		select *
 		from AS_TABLE($states)
 	`, s.filesystemsPath, filesystemStateStructTypeString()),
-		persistence.ValueParam("$states", ydb_types.ListValue(state.structValue())),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
 		return err
@@ -620,7 +619,7 @@ func (s *storageYDB) filesystemDeleted(
 		values ($deleted_at, $filesystem_id)
 	`, s.filesystemsPath),
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		persistence.ValueParam("$filesystem_id", ydb_types.UTF8Value(filesystemID)),
+		persistence.ValueParam("$filesystem_id", persistence.UTF8Value(filesystemID)),
 	)
 	if err != nil {
 		return err
@@ -648,7 +647,7 @@ func (s *storageYDB) clearDeletedFilesystems(
 		limit $limit
 	`, s.filesystemsPath),
 		persistence.ValueParam("$deleted_before", persistence.TimestampValue(deletedBefore)),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -686,8 +685,8 @@ func (s *storageYDB) clearDeletedFilesystems(
 				where deleted_at = $deleted_at and filesystem_id = $filesystem_id
 			`, s.filesystemsPath),
 				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-				persistence.ValueParam("$filesystem_id", ydb_types.UTF8Value(filesystemID)),
-				persistence.ValueParam("$status", ydb_types.Int64Value(int64(filesystemStatusDeleted))),
+				persistence.ValueParam("$filesystem_id", persistence.UTF8Value(filesystemID)),
+				persistence.ValueParam("$status", persistence.Int64Value(int64(filesystemStatusDeleted))),
 			)
 			if err != nil {
 				return err
@@ -861,8 +860,8 @@ func createFilesystemsYDBTables(
 		folder,
 		"deleted",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("deleted_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("filesystem_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("filesystem_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("deleted_at", "filesystem_id"),
 		),
 		dropUnusedColumns,

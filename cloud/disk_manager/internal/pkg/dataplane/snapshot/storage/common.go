@@ -8,14 +8,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type snapshotStatus uint32
 
-func (s *snapshotStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *snapshotStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = snapshotStatus(res.Int64())
 	return nil
 }
@@ -72,18 +71,18 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 	}
 }
 
-func (s *snapshotState) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(s.id)),
-		ydb_types.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
-		ydb_types.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
-		ydb_types.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
-		ydb_types.StructFieldValue("size", ydb_types.Uint64Value(s.size)),
-		ydb_types.StructFieldValue("storage_size", ydb_types.Uint64Value(s.storageSize)),
-		ydb_types.StructFieldValue("chunk_count", ydb_types.Uint32Value(s.chunkCount)),
-		ydb_types.StructFieldValue("encryption_mode", ydb_types.Uint32Value(s.encryptionMode)),
-		ydb_types.StructFieldValue("encryption_keyhash", ydb_types.StringValue(s.encryptionKeyHash)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(s.status))),
+func (s *snapshotState) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
+		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
+		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
+		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
+		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
+		persistence.StructFieldValue("chunk_count", persistence.Uint32Value(s.chunkCount)),
+		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
+		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
 

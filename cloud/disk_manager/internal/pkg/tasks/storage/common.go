@@ -12,7 +12,6 @@ import (
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	grpc_codes "google.golang.org/grpc/codes"
 )
 
@@ -32,17 +31,17 @@ type schedule struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func strListValue(strings []string) ydb_types.Value {
-	values := make([]ydb_types.Value, 0)
+func strListValue(strings []string) persistence.Value {
+	values := make([]persistence.Value, 0)
 	for _, value := range strings {
-		values = append(values, ydb_types.UTF8Value(value))
+		values = append(values, persistence.UTF8Value(value))
 	}
 
-	var result ydb_types.Value
+	var result persistence.Value
 	if len(values) == 0 {
-		result = ydb_types.ZeroValue(ydb_types.List(ydb_types.TypeUTF8))
+		result = persistence.ZeroValue(persistence.List(persistence.TypeUTF8))
 	} else {
-		result = ydb_types.ListValue(values...)
+		result = persistence.ListValue(values...)
 	}
 
 	return result
@@ -121,38 +120,38 @@ func scanTaskInfos(ctx context.Context, res persistence.Result) (taskInfos []Tas
 ////////////////////////////////////////////////////////////////////////////////
 // TaskState marshal/unmarshal routines.
 
-func (s *TaskState) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(s.ID)),
-		ydb_types.StructFieldValue("idempotency_key", ydb_types.UTF8Value(s.IdempotencyKey)),
-		ydb_types.StructFieldValue("account_id", ydb_types.UTF8Value(s.AccountID)),
-		ydb_types.StructFieldValue("task_type", ydb_types.UTF8Value(s.TaskType)),
-		ydb_types.StructFieldValue("regular", ydb_types.BoolValue(s.Regular)),
-		ydb_types.StructFieldValue("description", ydb_types.UTF8Value(s.Description)),
-		ydb_types.StructFieldValue("created_at", persistence.TimestampValue(s.CreatedAt)),
-		ydb_types.StructFieldValue("created_by", ydb_types.UTF8Value(s.CreatedBy)),
-		ydb_types.StructFieldValue("modified_at", persistence.TimestampValue(s.ModifiedAt)),
-		ydb_types.StructFieldValue("generation_id", ydb_types.Uint64Value(s.GenerationID)),
-		ydb_types.StructFieldValue("status", ydb_types.Int64Value(int64(s.Status))),
-		ydb_types.StructFieldValue("error_code", ydb_types.Int64Value(int64(s.ErrorCode))),
-		ydb_types.StructFieldValue("error_message", ydb_types.UTF8Value(s.ErrorMessage)),
-		ydb_types.StructFieldValue("error_silent", ydb_types.BoolValue(s.ErrorSilent)),
-		ydb_types.StructFieldValue("error_details", ydb_types.BytesValue(marshalErrorDetails(s.ErrorDetails))),
-		ydb_types.StructFieldValue("retriable_error_count", ydb_types.Uint64Value(s.RetriableErrorCount)),
-		ydb_types.StructFieldValue("request", ydb_types.BytesValue(s.Request)),
-		ydb_types.StructFieldValue("state", ydb_types.BytesValue(s.State)),
-		ydb_types.StructFieldValue("metadata", ydb_types.BytesValue(common.MarshalStringMap(s.Metadata.Vals()))),
-		ydb_types.StructFieldValue("dependencies", ydb_types.BytesValue(common.MarshalStrings(s.Dependencies.List()))),
-		ydb_types.StructFieldValue("changed_state_at", persistence.TimestampValue(s.ChangedStateAt)),
-		ydb_types.StructFieldValue("ended_at", persistence.TimestampValue(s.EndedAt)),
-		ydb_types.StructFieldValue("last_host", ydb_types.UTF8Value(s.LastHost)),
-		ydb_types.StructFieldValue("last_runner", ydb_types.UTF8Value(s.LastRunner)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(s.ZoneID)),
-		ydb_types.StructFieldValue("cloud_id", ydb_types.UTF8Value(s.CloudID)),
-		ydb_types.StructFieldValue("folder_id", ydb_types.UTF8Value(s.FolderID)),
-		ydb_types.StructFieldValue("estimated_time", persistence.TimestampValue(s.EstimatedTime)),
-		ydb_types.StructFieldValue("dependants", ydb_types.BytesValue(common.MarshalStrings(s.dependants.List()))),
-		ydb_types.StructFieldValue("panic_count", ydb_types.Uint64Value(s.PanicCount)),
+func (s *TaskState) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(s.ID)),
+		persistence.StructFieldValue("idempotency_key", persistence.UTF8Value(s.IdempotencyKey)),
+		persistence.StructFieldValue("account_id", persistence.UTF8Value(s.AccountID)),
+		persistence.StructFieldValue("task_type", persistence.UTF8Value(s.TaskType)),
+		persistence.StructFieldValue("regular", persistence.BoolValue(s.Regular)),
+		persistence.StructFieldValue("description", persistence.UTF8Value(s.Description)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.CreatedAt)),
+		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.CreatedBy)),
+		persistence.StructFieldValue("modified_at", persistence.TimestampValue(s.ModifiedAt)),
+		persistence.StructFieldValue("generation_id", persistence.Uint64Value(s.GenerationID)),
+		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.Status))),
+		persistence.StructFieldValue("error_code", persistence.Int64Value(int64(s.ErrorCode))),
+		persistence.StructFieldValue("error_message", persistence.UTF8Value(s.ErrorMessage)),
+		persistence.StructFieldValue("error_silent", persistence.BoolValue(s.ErrorSilent)),
+		persistence.StructFieldValue("error_details", persistence.BytesValue(marshalErrorDetails(s.ErrorDetails))),
+		persistence.StructFieldValue("retriable_error_count", persistence.Uint64Value(s.RetriableErrorCount)),
+		persistence.StructFieldValue("request", persistence.BytesValue(s.Request)),
+		persistence.StructFieldValue("state", persistence.BytesValue(s.State)),
+		persistence.StructFieldValue("metadata", persistence.BytesValue(common.MarshalStringMap(s.Metadata.Vals()))),
+		persistence.StructFieldValue("dependencies", persistence.BytesValue(common.MarshalStrings(s.Dependencies.List()))),
+		persistence.StructFieldValue("changed_state_at", persistence.TimestampValue(s.ChangedStateAt)),
+		persistence.StructFieldValue("ended_at", persistence.TimestampValue(s.EndedAt)),
+		persistence.StructFieldValue("last_host", persistence.UTF8Value(s.LastHost)),
+		persistence.StructFieldValue("last_runner", persistence.UTF8Value(s.LastRunner)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.ZoneID)),
+		persistence.StructFieldValue("cloud_id", persistence.UTF8Value(s.CloudID)),
+		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.FolderID)),
+		persistence.StructFieldValue("estimated_time", persistence.TimestampValue(s.EstimatedTime)),
+		persistence.StructFieldValue("dependants", persistence.BytesValue(common.MarshalStrings(s.dependants.List()))),
+		persistence.StructFieldValue("panic_count", persistence.Uint64Value(s.PanicCount)),
 		// Exclude "events" field to avoid updating. Should update events only from sendEvent.
 	)
 }
@@ -193,37 +192,37 @@ func taskStateStructTypeString() string {
 
 func taskStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("idempotency_key", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("account_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("task_type", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("regular", ydb_types.Optional(ydb_types.TypeBool)),
-		persistence.WithColumn("description", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("created_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("created_by", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("modified_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("generation_id", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("status", ydb_types.Optional(ydb_types.TypeInt64)),
-		persistence.WithColumn("error_code", ydb_types.Optional(ydb_types.TypeInt64)),
-		persistence.WithColumn("error_message", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("error_silent", ydb_types.Optional(ydb_types.TypeBool)),
-		persistence.WithColumn("error_details", ydb_types.Optional(ydb_types.TypeBytes)),
-		persistence.WithColumn("retriable_error_count", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("request", ydb_types.Optional(ydb_types.TypeBytes)),
-		persistence.WithColumn("state", ydb_types.Optional(ydb_types.TypeBytes)),
-		persistence.WithColumn("metadata", ydb_types.Optional(ydb_types.TypeBytes)),
-		persistence.WithColumn("dependencies", ydb_types.Optional(ydb_types.TypeBytes)),
-		persistence.WithColumn("changed_state_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("ended_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("last_host", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("last_runner", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("cloud_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("folder_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("estimated_time", ydb_types.Optional(ydb_types.TypeTimestamp)),
-		persistence.WithColumn("dependants", ydb_types.Optional(ydb_types.TypeBytes)),
-		persistence.WithColumn("panic_count", ydb_types.Optional(ydb_types.TypeUint64)),
-		persistence.WithColumn("events", ydb_types.Optional(ydb_types.TypeBytes)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("idempotency_key", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("account_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("regular", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("description", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("error_code", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("error_message", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("error_silent", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("error_details", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("retriable_error_count", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("request", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("state", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("metadata", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("dependencies", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("changed_state_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("ended_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("last_host", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("last_runner", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("cloud_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("estimated_time", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("dependants", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("panic_count", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("events", persistence.Optional(persistence.TypeBytes)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
 }
@@ -387,9 +386,9 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"task_ids",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("task_id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("idempotency_key", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("account_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("task_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("idempotency_key", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("account_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("idempotency_key", "account_id"),
 			persistence.WithSecondaryKeyColumn("task_id"),
 		),
@@ -405,10 +404,10 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"ready_to_run",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("generation_id", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("task_type", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("id"),
 		),
 		dropUnusedColumns,
@@ -423,10 +422,10 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"ready_to_cancel",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("generation_id", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("task_type", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("id"),
 		),
 		dropUnusedColumns,
@@ -441,11 +440,11 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"running",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("generation_id", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("modified_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("task_type", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("id"),
 		),
 		dropUnusedColumns,
@@ -460,11 +459,11 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"cancelling",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("generation_id", ydb_types.Optional(ydb_types.TypeUint64)),
-			persistence.WithColumn("modified_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("task_type", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("id"),
 		),
 		dropUnusedColumns,
@@ -479,10 +478,10 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"ended",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("ended_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("idempotency_key", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("account_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+			persistence.WithColumn("ended_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("idempotency_key", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("account_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("ended_at", "id"),
 		),
 		dropUnusedColumns,
@@ -497,9 +496,9 @@ func CreateYDBTables(
 		config.GetStorageFolder(),
 		"schedules",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("task_type", ydb_types.Optional(ydb_types.TypeUTF8)),
-			persistence.WithColumn("scheduled_at", ydb_types.Optional(ydb_types.TypeTimestamp)),
-			persistence.WithColumn("tasks_inflight", ydb_types.Optional(ydb_types.TypeUint64)),
+			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("scheduled_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithColumn("tasks_inflight", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithPrimaryKeyColumn("task_type"),
 		),
 		dropUnusedColumns,

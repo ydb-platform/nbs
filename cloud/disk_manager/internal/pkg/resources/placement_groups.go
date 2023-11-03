@@ -11,14 +11,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type placementGroupStatus uint32
 
-func (s *placementGroupStatus) UnmarshalYDB(res ydb_types.RawValue) error {
+func (s *placementGroupStatus) UnmarshalYDB(res persistence.RawValue) error {
 	*s = placementGroupStatus(res.Int64())
 	return nil
 }
@@ -82,50 +81,50 @@ func (s *placementGroupState) toPlacementGroupMeta() *PlacementGroupMeta {
 	}
 }
 
-func (s *placementGroupState) structValue() ydb_types.Value {
-	return ydb_types.StructValue(
-		ydb_types.StructFieldValue("id", ydb_types.UTF8Value(s.id)),
-		ydb_types.StructFieldValue("zone_id", ydb_types.UTF8Value(s.zoneID)),
-		ydb_types.StructFieldValue(
+func (s *placementGroupState) structValue() persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
+		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
+		persistence.StructFieldValue(
 			"placement_strategy",
-			ydb_types.Int32Value(int32(s.placementStrategy)),
+			persistence.Int32Value(int32(s.placementStrategy)),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"placement_partition_count",
-			ydb_types.Uint32Value(s.placementPartitionCount),
+			persistence.Uint32Value(s.placementPartitionCount),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"create_request",
-			ydb_types.StringValue(s.createRequest),
+			persistence.StringValue(s.createRequest),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"create_task_id",
-			ydb_types.UTF8Value(s.createTaskID),
+			persistence.UTF8Value(s.createTaskID),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"creating_at",
 			persistence.TimestampValue(s.creatingAt),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"created_at",
 			persistence.TimestampValue(s.createdAt),
 		),
-		ydb_types.StructFieldValue("created_by", ydb_types.UTF8Value(s.createdBy)),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.createdBy)),
+		persistence.StructFieldValue(
 			"delete_task_id",
-			ydb_types.UTF8Value(s.deleteTaskID),
+			persistence.UTF8Value(s.deleteTaskID),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"deleting_at",
 			persistence.TimestampValue(s.deletingAt),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"deleted_at",
 			persistence.TimestampValue(s.deletedAt),
 		),
-		ydb_types.StructFieldValue(
+		persistence.StructFieldValue(
 			"status",
-			ydb_types.Int64Value(int64(s.status)),
+			persistence.Int64Value(int64(s.status)),
 		),
 	)
 }
@@ -197,51 +196,51 @@ func placementGroupStateStructTypeString() string {
 
 func placementGroupStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", ydb_types.Optional(ydb_types.TypeUTF8)),
-		persistence.WithColumn("zone_id", ydb_types.Optional(ydb_types.TypeUTF8)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn(
 			"placement_strategy",
-			ydb_types.Optional(ydb_types.TypeInt32),
+			persistence.Optional(persistence.TypeInt32),
 		),
 		persistence.WithColumn(
 			"placement_partition_count",
-			ydb_types.Optional(ydb_types.TypeUint32),
+			persistence.Optional(persistence.TypeUint32),
 		),
 		persistence.WithColumn(
 			"create_request",
-			ydb_types.Optional(ydb_types.TypeString),
+			persistence.Optional(persistence.TypeString),
 		),
 		persistence.WithColumn(
 			"create_task_id",
-			ydb_types.Optional(ydb_types.TypeUTF8),
+			persistence.Optional(persistence.TypeUTF8),
 		),
 		persistence.WithColumn(
 			"creating_at",
-			ydb_types.Optional(ydb_types.TypeTimestamp),
+			persistence.Optional(persistence.TypeTimestamp),
 		),
 		persistence.WithColumn(
 			"created_at",
-			ydb_types.Optional(ydb_types.TypeTimestamp),
+			persistence.Optional(persistence.TypeTimestamp),
 		),
 		persistence.WithColumn(
 			"created_by",
-			ydb_types.Optional(ydb_types.TypeUTF8),
+			persistence.Optional(persistence.TypeUTF8),
 		),
 		persistence.WithColumn(
 			"delete_task_id",
-			ydb_types.Optional(ydb_types.TypeUTF8),
+			persistence.Optional(persistence.TypeUTF8),
 		),
 		persistence.WithColumn(
 			"deleting_at",
-			ydb_types.Optional(ydb_types.TypeTimestamp),
+			persistence.Optional(persistence.TypeTimestamp),
 		),
 		persistence.WithColumn(
 			"deleted_at",
-			ydb_types.Optional(ydb_types.TypeTimestamp),
+			persistence.Optional(persistence.TypeTimestamp),
 		),
 		persistence.WithColumn(
 			"status",
-			ydb_types.Optional(ydb_types.TypeInt64),
+			persistence.Optional(persistence.TypeInt64),
 		),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -264,7 +263,7 @@ func (s *storageYDB) getPlacementGroupState(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(placementGroupID)),
 	)
 	if err != nil {
 		return nil, err
@@ -360,7 +359,7 @@ func (s *storageYDB) createPlacementGroup(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(placementGroup.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -441,7 +440,7 @@ func (s *storageYDB) createPlacementGroup(
 		placementGroupStateStructTypeString()),
 		persistence.ValueParam(
 			"$states",
-			ydb_types.ListValue(state.structValue()),
+			persistence.ListValue(state.structValue()),
 		),
 	)
 	if err != nil {
@@ -477,7 +476,7 @@ func (s *storageYDB) placementGroupCreated(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroup.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(placementGroup.ID)),
 	)
 	if err != nil {
 		return err
@@ -542,7 +541,7 @@ func (s *storageYDB) placementGroupCreated(
 		placementGroupStateStructTypeString()),
 		persistence.ValueParam(
 			"$states",
-			ydb_types.ListValue(state.structValue()),
+			persistence.ListValue(state.structValue()),
 		),
 	)
 	if err != nil {
@@ -575,7 +574,7 @@ func (s *storageYDB) deletePlacementGroup(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(placementGroupID)),
 	)
 	if err != nil {
 		return nil, err
@@ -627,7 +626,7 @@ func (s *storageYDB) deletePlacementGroup(
 		placementGroupStateStructTypeString()),
 		persistence.ValueParam(
 			"$states",
-			ydb_types.ListValue(state.structValue()),
+			persistence.ListValue(state.structValue()),
 		),
 	)
 	if err != nil {
@@ -664,7 +663,7 @@ func (s *storageYDB) placementGroupDeleted(
 		from placement_groups
 		where id = $id
 	`, s.placementGroupsPath),
-		persistence.ValueParam("$id", ydb_types.UTF8Value(placementGroupID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(placementGroupID)),
 	)
 	if err != nil {
 		return err
@@ -722,7 +721,7 @@ func (s *storageYDB) placementGroupDeleted(
 		placementGroupStateStructTypeString()),
 		persistence.ValueParam(
 			"$states",
-			ydb_types.ListValue(state.structValue()),
+			persistence.ListValue(state.structValue()),
 		),
 	)
 	if err != nil {
@@ -741,7 +740,7 @@ func (s *storageYDB) placementGroupDeleted(
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		persistence.ValueParam(
 			"$placement_group_id",
-			ydb_types.UTF8Value(placementGroupID),
+			persistence.UTF8Value(placementGroupID),
 		),
 	)
 	if err != nil {
@@ -773,7 +772,7 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 			"$deleted_before",
 			persistence.TimestampValue(deletedBefore),
 		),
-		persistence.ValueParam("$limit", ydb_types.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
 		return err
@@ -816,11 +815,11 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 				),
 				persistence.ValueParam(
 					"$placement_group_id",
-					ydb_types.UTF8Value(placementGroupID),
+					persistence.UTF8Value(placementGroupID),
 				),
 				persistence.ValueParam(
 					"$status",
-					ydb_types.Int64Value(int64(placementGroupStatusDeleted)),
+					persistence.Int64Value(int64(placementGroupStatusDeleted)),
 				),
 			)
 			if err != nil {
@@ -1044,10 +1043,10 @@ func createPlacementGroupsYDBTables(
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn(
 				"deleted_at",
-				ydb_types.Optional(ydb_types.TypeTimestamp)),
+				persistence.Optional(persistence.TypeTimestamp)),
 			persistence.WithColumn(
 				"placement_group_id",
-				ydb_types.Optional(ydb_types.TypeUTF8)),
+				persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn(
 				"deleted_at",
 				"placement_group_id",
