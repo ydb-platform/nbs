@@ -183,9 +183,6 @@ TString GetRequestName(const T& request);
 template <typename T>
 TRequestInfo GetRequestInfo(const T& request);
 
-template <typename T>
-consteval bool HasResponseHeaders();
-
 TString DumpMessage(const google::protobuf::Message& message);
 
 }   // namespace NCloud::NFileStore

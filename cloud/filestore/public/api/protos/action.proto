@@ -12,7 +12,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/prot
 
 message TExecuteActionRequest
 {
-    // Optional request headers.
+    // Optional requeest headers.
     THeaders Headers = 1;
 
     // Name of action to execute.

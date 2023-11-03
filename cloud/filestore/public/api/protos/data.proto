@@ -77,9 +77,6 @@ message TCreateHandleResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,9 +104,6 @@ message TDestroyHandleResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,9 +143,6 @@ message TReadDataResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,9 +176,6 @@ message TWriteDataResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -235,9 +223,6 @@ message TAllocateDataResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,7 +253,4 @@ message TTruncateDataResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }

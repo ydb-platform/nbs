@@ -33,9 +33,6 @@ message TCreateCheckpointResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,7 +57,4 @@ message TDestroyCheckpointResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }

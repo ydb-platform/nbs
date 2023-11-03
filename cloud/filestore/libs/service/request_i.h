@@ -40,14 +40,6 @@ concept THasStorageMediaKind = requires (T v)
     {v.SetStorageMediaKind(std::declval<NCloud::NProto::EStorageMediaKind>())} -> std::same_as<void>;
 };
 
-template <typename T>
-concept THasResponseHeaders = requires (T v)
-{
-    {v.GetHeaders()} -> std::convertible_to<NProto::TResponseHeaders>;
-    {v.MutableHeaders()} -> std::convertible_to<NProto::TResponseHeaders*>;
-    {v.ClearHeaders()} -> std::same_as<void>;
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -158,12 +150,6 @@ TRequestInfo GetRequestInfo(const T& request)
         GetSessionId(request),
         GetClientId(request),
     };
-}
-
-template <typename T>
-consteval bool HasResponseHeaders()
-{
-    return NImpl::THasResponseHeaders<T>;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

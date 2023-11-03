@@ -68,9 +68,6 @@ message TAcquireLockResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,9 +110,6 @@ message TReleaseLockResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -179,7 +173,4 @@ message TTestLockResponse
 
     // Incompatible lock origin that is already been held.
     optional ELockOrigin IncompatibleLockOrigin = 8;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }

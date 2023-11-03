@@ -3,8 +3,6 @@ syntax = "proto3";
 package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/request_source.proto";
-import "cloud/storage/core/protos/throttler.proto";
-import "cloud/storage/core/protos/trace.proto";
 import "library/cpp/lwtrace/protos/lwtrace.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
@@ -50,16 +48,4 @@ message THeaders
 
     // Internal header, should not be used outside.
     TInternal Internal = 9;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Common response headers.
-
-message TResponseHeaders
-{
-    // Response traces.
-    NCloud.NProto.TTraceInfo Trace = 1;
-
-    // Response throttler info.
-    NCloud.NProto.TThrottlerInfo Throttler = 2;
 }

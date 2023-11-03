@@ -63,12 +63,16 @@ public:
             postponedCount);
     }
 
+    void LogRequestPostponed(TCallContextBase& callContext) const
+    {
+        callContext.Postpone(GetCycleCount());
+    }
+
     void LogPostponedRequestAdvanced(
         TCallContextBase& callContext,
-        ui32 opType,
-        TDuration delay) const
+        ui32 opType) const
     {
-        Y_UNUSED(callContext);
+        const auto delay = callContext.Advance(GetCycleCount());
         UpdateDelayCounterFunc(opType, delay);
     }
 
@@ -155,12 +159,17 @@ void TVolumeThrottlerLogger::LogRequestPostponedAfterSchedule(
         methodName);
 }
 
+void TVolumeThrottlerLogger::LogRequestPostponed(
+    TCallContextBase& callContext) const
+{
+    Impl->LogRequestPostponed(callContext);
+}
+
 void TVolumeThrottlerLogger::LogPostponedRequestAdvanced(
     TCallContextBase& callContext,
-    ui32 opType,
-    TDuration delay) const
+    ui32 opType) const
 {
-    Impl->LogPostponedRequestAdvanced(callContext, opType, delay);
+    Impl->LogPostponedRequestAdvanced(callContext, opType);
 }
 
 void TVolumeThrottlerLogger::LogRequestAdvanced(

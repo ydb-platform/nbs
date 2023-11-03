@@ -1,6 +1,5 @@
 #include "tablet_actor.h"
 
-#include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/service.h>
@@ -91,8 +90,10 @@ void TIndexTabletActor::CompleteResponse(
         callContext,
         TMethod::Name);
 
-    BuildTraceInfo(TraceSerializer, callContext, response);
-    BuildThrottlerInfo(*callContext, response);
+    BuildTraceInfo(
+        TraceSerializer,
+        callContext,
+        response);
 }
 
 #define FILESTORE_GENERATE_IMPL(name, ns)                                             \

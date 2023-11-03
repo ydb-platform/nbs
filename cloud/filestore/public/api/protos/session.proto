@@ -104,9 +104,6 @@ message TCreateSessionResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,9 +128,6 @@ message TResetSessionResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,9 +149,6 @@ message TDestroySessionResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +213,4 @@ message TGetSessionEventsResponse
 
     // Events occured on the server-side since last polling.
     repeated TSessionEvent Events = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }

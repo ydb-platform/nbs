@@ -24,11 +24,11 @@ struct ITabletThrottlerLogger
         TCallContextBase& callContext,
         ui32 postponedCount,
         const char * methodName) const = 0;
+    virtual void LogRequestPostponed(TCallContextBase& callContext) const = 0;
 
     virtual void LogPostponedRequestAdvanced(
         TCallContextBase& callContext,
-        ui32 opType,
-        TDuration delay) const = 0;
+        ui32 opType) const = 0;
     virtual void LogRequestAdvanced(
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
