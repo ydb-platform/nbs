@@ -127,7 +127,7 @@ void TIndexNode::Chmod(int mode)
     return NLowLevel::Chmod(NodeFd, mode);
 
 }
-void TIndexNode::Chown(int uid, int gid)
+void TIndexNode::Chown(unsigned int uid, unsigned int gid)
 {
     return NLowLevel::Chown(NodeFd, uid, gid);
 }

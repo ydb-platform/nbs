@@ -39,8 +39,7 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProtoPrivate::TGetStorageConfigFieldsResponse response,
-        NProto::TError error);
+        NProtoPrivate::TGetStorageConfigFieldsResponse response);
 
 private:
     STFUNC(StateWork);
@@ -67,20 +66,14 @@ void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
         ReplyAndDie(
             ctx,
-            NProtoPrivate::TGetStorageConfigFieldsResponse(),
-            MakeError(
-                E_ARGUMENT,
-                "Failed to parse input"));
+            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
     if (!request.GetFileSystemId()) {
         ReplyAndDie(
             ctx,
-            NProtoPrivate::TGetStorageConfigFieldsResponse(),
-            MakeError(
-                E_ARGUMENT,
-                "FileSystem id should be supplied"));
+            TErrorResponse(E_ARGUMENT, "FileSystem id should be supplied"));
         return;
     }
 
@@ -101,11 +94,10 @@ void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
 
 void TGetStorageConfigFieldsActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProtoPrivate::TGetStorageConfigFieldsResponse response,
-    NProto::TError error)
+    NProtoPrivate::TGetStorageConfigFieldsResponse response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        std::move(error));
+        response.GetError());
 
     google::protobuf::util::MessageToJsonString(
         std::move(response),
@@ -121,8 +113,7 @@ void TGetStorageConfigFieldsActionActor::HandleGetStorageConfigFieldsResponse(
     const TEvIndexTablet::TEvGetStorageConfigFieldsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto error = ev->Get()->Record.GetError();
-    ReplyAndDie(ctx, std::move(ev->Get()->Record), error);
+    ReplyAndDie(ctx, std::move(ev->Get()->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,7 +121,8 @@ void TGetStorageConfigFieldsActionActor::HandleGetStorageConfigFieldsResponse(
 STFUNC(TGetStorageConfigFieldsActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvIndexTablet::TEvGetStorageConfigFieldsResponse,
+        HFunc(
+            TEvIndexTablet::TEvGetStorageConfigFieldsResponse,
             HandleGetStorageConfigFieldsResponse);
 
         default:

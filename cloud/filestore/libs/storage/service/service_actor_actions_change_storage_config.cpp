@@ -41,8 +41,7 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProtoPrivate::TChangeStorageConfigResponse response,
-        NProto::TError error);
+        NProtoPrivate::TChangeStorageConfigResponse response);
 
 private:
     STFUNC(StateWork);
@@ -71,20 +70,14 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
         ReplyAndDie(
             ctx,
-            NProtoPrivate::TChangeStorageConfigResponse(),
-            MakeError(
-                E_ARGUMENT,
-                "Failed to parse input"));
+            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
     if (!request.GetFileSystemId()) {
         ReplyAndDie(
             ctx,
-            NProtoPrivate::TChangeStorageConfigResponse(),
-            MakeError(
-                E_ARGUMENT,
-                "FileSystem id should be supplied"));
+            TErrorResponse(E_ARGUMENT, "FileSystem id should be supplied"));
         return;
     }
 
@@ -110,11 +103,10 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 
 void TChangeStorageConfigActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProtoPrivate::TChangeStorageConfigResponse response,
-    NProto::TError error)
+    NProtoPrivate::TChangeStorageConfigResponse response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        std::move(error));
+        response.GetError());
 
     google::protobuf::util::MessageToJsonString(
         std::move(response),
@@ -137,8 +129,7 @@ void TChangeStorageConfigActionActor::HandleChangeStorageConfigResponse(
             ev->Sender,
             std::make_unique<TEvents::TEvPoisonPill>());
     }
-    const auto error = msg->Record.GetError();
-    ReplyAndDie(ctx, std::move(msg->Record), std::move(error));
+    ReplyAndDie(ctx, std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,7 +137,8 @@ void TChangeStorageConfigActionActor::HandleChangeStorageConfigResponse(
 STFUNC(TChangeStorageConfigActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvIndexTablet::TEvChangeStorageConfigResponse,
+        HFunc(
+            TEvIndexTablet::TEvChangeStorageConfigResponse,
             HandleChangeStorageConfigResponse);
 
         default:

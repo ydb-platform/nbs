@@ -105,7 +105,7 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TServerConfig::Get##name() const                                          \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
+    const auto& value = ProtoConfig.Get##name();                                \
     return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER

@@ -285,7 +285,7 @@ void Chmod(const TFile& handle, int mode)
     }
 }
 
-void Chown(const TFile& handle, int uid, int gid)
+void Chown(const TFile& handle, unsigned int uid, unsigned int gid)
 {
     char path[64] = {0};
     sprintf(path, "/proc/self/fd/%i", handle.GetHandle());

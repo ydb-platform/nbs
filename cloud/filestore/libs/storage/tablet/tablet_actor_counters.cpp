@@ -168,8 +168,8 @@ void TIndexTabletActor::RegisterCounters(const TActorContext& ctx)
         auto counters = CreateIndexTabletCounters();
 
         // LAME: ownership transferred to executor
-        Counters = counters.get();
-        Executor()->RegisterExternalTabletCounters(counters.release());
+        Counters = counters.release();
+        Executor()->RegisterExternalTabletCounters(Counters);
 
         // only aggregated statistics will be reported by default
         // (you can always turn on per-tablet statistics on monitoring page)

@@ -64,7 +64,7 @@ public:
 
     void Access(int mode);
     void Chmod(int mode);
-    void Chown(int uid, int gid);
+    void Chown(unsigned int uid, unsigned int gid);
     void Utimes(TInstant atime, TInstant mtime);
     void Truncate(size_t size);
 

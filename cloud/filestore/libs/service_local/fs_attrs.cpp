@@ -1,5 +1,7 @@
 #include "fs.h"
 
+#include <optional>
+
 namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,18 +30,18 @@ NProto::TSetNodeAttrResponse TLocalFileSystem::SetNodeAttr(
     // Uid & Gid
     //
 
-    int uid = -1;
+    std::optional<unsigned int> uid = std::nullopt;
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_UID)) {
         uid = request.GetUpdate().GetUid();
     }
 
-    int gid = -1;
+    std::optional<unsigned int> gid = std::nullopt;
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_GID)) {
         gid = request.GetUpdate().GetGid();
     }
 
-    if (uid != -1 || gid != -1) {
-        node->Chown(uid, gid);
+    if (uid.has_value() && gid.has_value()) {
+        node->Chown(*uid, *gid);
     }
 
     //

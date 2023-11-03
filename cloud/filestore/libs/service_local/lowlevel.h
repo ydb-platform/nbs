@@ -44,7 +44,7 @@ TVector<std::pair<TString, TFileStat>> ListDirAt(const TFile& handle, bool ignor
 
 void Access(const TFile& handle, int mode);
 void Chmod(const TFile& handle, int mode);
-void Chown(const TFile& handle, int uid, int gid);
+void Chown(const TFile& handle, unsigned int uid, unsigned int gid);
 void Utimes(const TFile& handle, TInstant atime, TInstant mtime);
 void Truncate(const TFile& handle, size_t size);
 void Allocate(const TFile& handle, int flags, off_t offset, off_t length);
