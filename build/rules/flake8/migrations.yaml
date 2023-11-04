@@ -4184,7 +4184,6 @@ migrations:
     - entity/ugc/tools/bell/replay_requests
     - entity/ugc/tools/nirvana/ugcdb1_process/backup
     - entity/ugc/tools/viewer_server/lib/app
-    - entity/ugc/tools/viewer_server/lib/core
     - entity/ugc/tools/viewer_server/lib/modules
     - ether/push/subscribe/send_sup
     - ether/top/news
@@ -4417,7 +4416,6 @@ migrations:
     - library/python/ssh_client
     - library/python/testing/pyremock/lib/matchers
     - library/python/zipatch
-    - library/recipes/clickhouse/recipe
     - library/recipes/zookeeper/lib
     - load/projects/tankapi_server/tankapi
     - load/projects/tasklets/assessment/py_impl
@@ -5935,8 +5933,6 @@ migrations:
     - infra/yp_drp/lib
     - infra/ytexclusiveservice
     - intranet/compositor/src/api
-    - intranet/plan/src/plan/services/views
-    - intranet/plan/src/plan/services/views/catalog
     - intranet/watcher/tests/unit/tasks
     - intranet/wiki/tools/wikiclient
     - inventori/pylibs/tasks/timeseries
@@ -7230,7 +7226,6 @@ migrations:
     - yweb/antimalware/visual_html_parser/yandex-search-antivirus-sky/tests
     - yweb/antiporno/nirvana/libs/nirvana_user_status/py/lib
     - yweb/antiporno/nirvana/operations/self_updateable
-    - yweb/antispam/clean_web/external_services/deduplicator/lib
     - yweb/antispam/clean_web/lib
     - yweb/antispam/clean_web/lib/tests/lib
     - yweb/antispam/clean_web/lib/tests/lib/pipeline
@@ -8942,8 +8937,6 @@ migrations:
     - entity/ugc/tests/lib
     - entity/ugc/tools/bell/replay_requests
     - entity/ugc/tools/tank/user_poll_ammo
-    - entity/ugc/tools/viewer_server/lib
-    - entity/ugc/tools/viewer_server/lib/core
     - extsearch/audio/yamrec/query_browser
     - extsearch/collections/tools/mmeta2metrics_serp
     - extsearch/collections/tools/nirvana/collections_indexer
@@ -9315,7 +9308,6 @@ migrations:
     - yabs/server/libs/py_markdown_strings
     - yabs/server/test/ft/BSSERVER-2454
     - yabs/server/test/ft/BSSERVER-3895
-    - yabs/server/test/ft/BSSERVER-9233
     - yabs/server/test/ft/checks
     - yabs/server/test/pylibs/qxl
     - yabs/server/test/pylibs/simulator
