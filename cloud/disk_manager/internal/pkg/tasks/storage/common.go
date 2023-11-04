@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	"github.com/ydb-platform/ydb-go-sdk/v3"
 	grpc_codes "google.golang.org/grpc/codes"
 )
 
@@ -79,17 +78,6 @@ func marshalErrorDetails(details *errors.ErrorDetails) []byte {
 	}
 
 	return bytes
-}
-
-func isCancelledError(err error) bool {
-	switch {
-	case
-		errors.Is(err, context.Canceled),
-		ydb.IsTransportError(err, grpc_codes.Canceled):
-		return true
-	default:
-		return false
-	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
