@@ -152,7 +152,6 @@ migrations:
     - quality/relev_tools/choice_screen/vh_operations
     - quality/relev_tools/dsat/fstr
     - quality/relev_tools/org_sintez_pool/nirvana_blocks/test
-    - quality/user_sessions/rt/deploy/deploy_units
     - quasar/infra/tasklets/compare_lunapark_shootings/impl
     - robot/metrics/social_sbr/prepare_to_limbo
     - robot/quality/smelter/backend_django/backend_django
@@ -1610,7 +1609,6 @@ migrations:
     - quality/relev_tools/org_sintez_pool/nirvana_blocks/test
     - quality/relev_tools/org_sintez_pool/preparat_make_lib/yt_local
     - quality/user_sessions/rt/deploy
-    - quality/user_sessions/rt/packages/us-rt-config-generators
     - robot/jupiter/library/python/quality_acceptance
     - robot/mercury/test/comparsion_callisto_test
     - robot/metrics/social_sbr/channels_sbr
