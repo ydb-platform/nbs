@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/blobstorage.h>
 
 #include <library/cpp/actors/core/actorid.h>
 #include <library/cpp/actors/core/scheduler_cookie.h>

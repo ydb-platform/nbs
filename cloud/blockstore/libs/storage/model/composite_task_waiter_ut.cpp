@@ -1,7 +1,7 @@
 #include "composite_task_waiter.h"
 
-#include <ydb/core/testlib/basics/runtime.h>
-#include <ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 

@@ -61,14 +61,14 @@ PEERDIR(
     library/cpp/string_utils/base64
     library/cpp/string_utils/quote
 
-    ydb/core/base
-    ydb/core/control
-    ydb/core/engine/minikql
-    ydb/core/mon
-    ydb/core/protos
-    ydb/core/tablet
-    ydb/core/tablet_flat
-    ydb/library/yql/sql/pg_dummy
+    contrib/ydb/core/base
+    contrib/ydb/core/control
+    contrib/ydb/core/engine/minikql
+    contrib/ydb/core/mon
+    contrib/ydb/core/protos
+    contrib/ydb/core/tablet
+    contrib/ydb/core/tablet_flat
+    contrib/ydb/library/yql/sql/pg_dummy
 )
 
 END()

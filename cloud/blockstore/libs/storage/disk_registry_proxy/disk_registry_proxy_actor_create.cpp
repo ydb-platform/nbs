@@ -13,9 +13,9 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <ydb/core/base/appdata.h>
-#include <ydb/core/mon/mon.h>
-#include <ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/log.h>

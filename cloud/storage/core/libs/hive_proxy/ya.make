@@ -20,12 +20,12 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/hive_proxy/protos
 
-    ydb/core/base
-    ydb/core/mind
-    ydb/core/tablet
-    ydb/core/tablet_flat
-    ydb/core/testlib
-    ydb/core/testlib/basics
+    contrib/ydb/core/base
+    contrib/ydb/core/mind
+    contrib/ydb/core/tablet
+    contrib/ydb/core/tablet_flat
+    contrib/ydb/core/testlib
+    contrib/ydb/core/testlib/basics
 
     library/cpp/actors/core
 )

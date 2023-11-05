@@ -7,7 +7,7 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 import google.protobuf.json_format as protojson
 

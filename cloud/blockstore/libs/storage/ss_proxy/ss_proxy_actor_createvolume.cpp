@@ -6,7 +6,7 @@
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
-#include <ydb/core/base/path.h>
+#include <contrib/ydb/core/base/path.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 

@@ -24,7 +24,7 @@
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
-#include <ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

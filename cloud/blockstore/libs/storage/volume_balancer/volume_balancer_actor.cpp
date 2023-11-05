@@ -16,8 +16,8 @@
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
-#include <ydb/core/base/appdata.h>
-#include <ydb/core/mon/mon.h>
+#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/mon/mon.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>

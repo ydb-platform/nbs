@@ -68,9 +68,9 @@ PEERDIR(
 
     library/cpp/actors/core
 
-    ydb/core/base
-    ydb/core/testlib
-    ydb/core/testlib/basics
+    contrib/ydb/core/base
+    contrib/ydb/core/testlib
+    contrib/ydb/core/testlib/basics
 )
 
 END()

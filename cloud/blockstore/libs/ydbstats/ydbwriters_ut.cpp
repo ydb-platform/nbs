@@ -1,7 +1,7 @@
 #include "ydbwriters.h"
 
-#include <ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

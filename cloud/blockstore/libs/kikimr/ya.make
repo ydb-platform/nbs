@@ -14,8 +14,8 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
     library/cpp/actors/core
     library/cpp/lwtrace
-    ydb/core/base
-    ydb/core/protos
+    contrib/ydb/core/base
+    contrib/ydb/core/protos
 )
 
 END()

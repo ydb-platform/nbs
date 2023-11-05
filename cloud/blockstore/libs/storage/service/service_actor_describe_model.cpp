@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 
-#include <ydb/core/protos/blockstore_config.pb.h>
+#include <contrib/ydb/core/protos/blockstore_config.pb.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 

@@ -12,7 +12,7 @@ PEERDIR(
 
     library/cpp/actors/protos
 
-    ydb/core/protos
+    contrib/ydb/core/protos
 )
 
 END()

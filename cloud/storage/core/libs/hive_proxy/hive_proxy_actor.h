@@ -7,9 +7,9 @@
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <ydb/core/base/hive.h>
-#include <ydb/core/mind/local.h>
-#include <ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <contrib/ydb/core/base/hive.h>
+#include <contrib/ydb/core/mind/local.h>
+#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

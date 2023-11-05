@@ -4,12 +4,12 @@
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 
-#include <ydb/core/base/ticket_parser.h>
+#include <contrib/ydb/core/base/ticket_parser.h>
 
-#include <ydb/core/testlib/basics/runtime.h>
-#include <ydb/core/testlib/basics/appdata.h>
-#include <ydb/core/testlib/basics/helpers.h>
-#include <ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/core/testlib/basics/appdata.h>
+#include <contrib/ydb/core/testlib/basics/helpers.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

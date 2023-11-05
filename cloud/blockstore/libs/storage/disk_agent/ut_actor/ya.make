@@ -13,8 +13,8 @@ PEERDIR(
     library/cpp/actors/core
     library/cpp/testing/gmock_in_unittest
     library/cpp/testing/unittest
-    ydb/core/testlib
-    ydb/core/testlib/basics
+    contrib/ydb/core/testlib
+    contrib/ydb/core/testlib/basics
 )
 
 END()

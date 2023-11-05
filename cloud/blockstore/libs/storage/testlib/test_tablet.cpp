@@ -5,10 +5,10 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
-#include <ydb/core/blockstore/core/blockstore.h>
-#include <ydb/core/base/tablet.h>
-#include <ydb/core/base/tablet_pipe.h>
-#include <ydb/core/tablet_flat/tablet_flat_executed.h>
+#include <contrib/ydb/core/blockstore/core/blockstore.h>
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

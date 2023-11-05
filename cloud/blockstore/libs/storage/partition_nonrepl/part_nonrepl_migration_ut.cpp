@@ -11,8 +11,8 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 
-#include <ydb/core/testlib/basics/runtime.h>
-#include <ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -33,9 +33,9 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
-#include <ydb/core/base/tablet_pipe.h>
-#include <ydb/core/blockstore/core/blockstore.h>
-#include <ydb/core/mind/local.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/blockstore/core/blockstore.h>
+#include <contrib/ydb/core/mind/local.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

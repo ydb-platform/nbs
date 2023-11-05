@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/tablet.pb.h>
 
-#include <ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/tablet.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

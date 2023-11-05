@@ -2,8 +2,8 @@
 
 #include "ydbrow.h"
 
-#include <ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 namespace NCloud::NBlockStore::NYdbStats {
 

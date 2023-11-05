@@ -19,10 +19,10 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
     library/cpp/actors/core
     library/cpp/string_utils/quote
-    ydb/core/base
-    ydb/core/tablet
-    ydb/core/tx/schemeshard
-    ydb/core/tx/tx_proxy
+    contrib/ydb/core/base
+    contrib/ydb/core/tablet
+    contrib/ydb/core/tx/schemeshard
+    contrib/ydb/core/tx/tx_proxy
 )
 
 END()

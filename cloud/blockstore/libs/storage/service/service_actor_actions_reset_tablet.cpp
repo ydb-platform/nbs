@@ -4,9 +4,9 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <ydb/core/base/blobstorage.h>
-#include <ydb/core/base/logoblob.h>
-#include <ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/logoblob.h>
+#include <contrib/ydb/core/base/tablet.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

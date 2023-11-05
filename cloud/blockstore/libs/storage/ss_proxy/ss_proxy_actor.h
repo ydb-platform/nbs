@@ -7,8 +7,8 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
-#include <ydb/core/tablet/tablet_pipe_client_cache.h>
-#include <ydb/core/tx/schemeshard/schemeshard.h>
+#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

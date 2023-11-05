@@ -5,7 +5,7 @@
 #include "components.h"
 #include "events.h"
 
-#include <ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <library/cpp/actors/core/actorid.h>
 

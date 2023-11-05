@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
-#include <ydb/core/base/logoblob.h>
+#include <contrib/ydb/core/base/logoblob.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

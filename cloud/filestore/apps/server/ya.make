@@ -14,7 +14,7 @@ PEERDIR(
     cloud/filestore/libs/daemon/server
     cloud/storage/core/libs/daemon
 
-    ydb/core/security
+    contrib/ydb/core/security
 )
 
 YQL_LAST_ABI_VERSION()

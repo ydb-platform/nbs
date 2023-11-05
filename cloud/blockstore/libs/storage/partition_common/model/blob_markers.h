@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/common/block_data_ref.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 
-#include <ydb/core/base/logoblob.h>
+#include <contrib/ydb/core/base/logoblob.h>
 
 
 namespace NCloud::NBlockStore::NStorage::NBlobMarkers {

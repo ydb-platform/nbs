@@ -24,9 +24,9 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/throttling/public.h>
 
-#include <ydb/core/base/tablet_pipe.h>
-#include <ydb/core/mind/local.h>
-#include <ydb/core/filestore/core/filestore.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/mind/local.h>
+#include <contrib/ydb/core/filestore/core/filestore.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

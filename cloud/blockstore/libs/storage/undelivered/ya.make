@@ -8,8 +8,8 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/api
     library/cpp/actors/core
-    ydb/core/testlib
-    ydb/core/testlib/basics
+    contrib/ydb/core/testlib
+    contrib/ydb/core/testlib/basics
 )
 
 END()

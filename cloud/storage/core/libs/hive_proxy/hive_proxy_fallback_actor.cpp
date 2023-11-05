@@ -2,7 +2,7 @@
 
 #include "tablet_boot_info_backup.h"
 
-#include <ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 

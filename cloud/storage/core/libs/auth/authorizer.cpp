@@ -6,8 +6,8 @@
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/api/authorizer.h>
 
-#include <ydb/core/base/appdata.h>
-#include <ydb/core/base/ticket_parser.h>
+#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/ticket_parser.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

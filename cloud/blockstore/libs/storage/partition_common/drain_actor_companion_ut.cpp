@@ -3,8 +3,8 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
-#include <ydb/core/testlib/basics/runtime.h>
-#include <ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

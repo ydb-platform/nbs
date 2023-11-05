@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/blobstorage.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 

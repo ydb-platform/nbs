@@ -23,12 +23,12 @@ PEERDIR(
     library/cpp/getopt/small
     library/cpp/lwtrace
 
-    ydb/core/base
-    ydb/core/mind
-    ydb/core/protos
-    ydb/core/tx/coordinator
-    ydb/core/tx/mediator
-    ydb/core/tx/schemeshard
+    contrib/ydb/core/base
+    contrib/ydb/core/mind
+    contrib/ydb/core/protos
+    contrib/ydb/core/tx/coordinator
+    contrib/ydb/core/tx/mediator
+    contrib/ydb/core/tx/schemeshard
 )
 
 END()

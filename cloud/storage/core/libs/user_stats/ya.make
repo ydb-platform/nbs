@@ -11,8 +11,8 @@ PEERDIR(
 
     library/cpp/actors/core
 
-    ydb/core/base
-    ydb/core/mon
+    contrib/ydb/core/base
+    contrib/ydb/core/mon
 )
 
 END()

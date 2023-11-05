@@ -5,7 +5,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <ydb/core/protos/base.pb.h>
+#include <contrib/ydb/core/protos/base.pb.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/event.h>

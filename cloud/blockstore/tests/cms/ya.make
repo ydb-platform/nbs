@@ -10,14 +10,14 @@ PEERDIR(
 
     library/python/testing/yatest_common
 
-    ydb/tests/library
+    contrib/ydb/tests/library
 
     contrib/python/requests
 )
 
 DEPENDS(
     cloud/blockstore/apps/server
-    ydb/apps/ydbd
+    contrib/ydb/apps/ydbd
 )
 
 DATA(

@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/common/sglist_test.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
-#include <ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/actors/testlib/test_runtime.h>
 #include <library/cpp/testing/unittest/registar.h>

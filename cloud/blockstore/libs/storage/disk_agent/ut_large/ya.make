@@ -12,8 +12,8 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_agent/testlib
     library/cpp/actors/core
     library/cpp/testing/unittest
-    ydb/core/testlib
-    ydb/core/testlib/basics
+    contrib/ydb/core/testlib
+    contrib/ydb/core/testlib/basics
 )
 
 END()

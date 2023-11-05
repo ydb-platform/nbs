@@ -6,9 +6,9 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <ydb/core/driver_lib/run/config.h>
-#include <ydb/core/driver_lib/run/run.h>
-#include <ydb/core/driver_lib/run/service_initializer.h>
+#include <contrib/ydb/core/driver_lib/run/config.h>
+#include <contrib/ydb/core/driver_lib/run/run.h>
+#include <contrib/ydb/core/driver_lib/run/service_initializer.h>
 
 #include <library/cpp/actors/core/defs.h>
 #include <library/cpp/actors/util/should_continue.h>

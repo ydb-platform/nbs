@@ -8,9 +8,9 @@
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/event.h>
 
-#include <ydb/core/base/tablet_pipe.h>
-#include <ydb/core/protos/base.pb.h>
-#include <ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/protos/base.pb.h>
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <util/generic/string.h>
 

@@ -14,8 +14,8 @@ from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
 
 import yatest.common as yatest_common
 
-from ydb.tests.library.common.yatest_common import PortManager
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
+from contrib.ydb.tests.library.common.yatest_common import PortManager
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
 
 from cloud.blockstore.config.disk_pb2 import TStorageDiscoveryConfig

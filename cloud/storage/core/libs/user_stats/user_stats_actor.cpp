@@ -3,7 +3,7 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/fwd.h>
 

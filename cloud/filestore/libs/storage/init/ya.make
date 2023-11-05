@@ -21,13 +21,13 @@ PEERDIR(
 
     library/cpp/actors/core
 
-    ydb/core/base
-    ydb/core/driver_lib/run
-    ydb/core/mind
-    ydb/core/mon
-    ydb/core/protos
-    ydb/core/tablet
-    ydb/public/lib/deprecated/kicli
+    contrib/ydb/core/base
+    contrib/ydb/core/driver_lib/run
+    contrib/ydb/core/mind
+    contrib/ydb/core/mon
+    contrib/ydb/core/protos
+    contrib/ydb/core/tablet
+    contrib/ydb/public/lib/deprecated/kicli
 )
 
 YQL_LAST_ABI_VERSION()

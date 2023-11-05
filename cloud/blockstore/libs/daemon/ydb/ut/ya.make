@@ -13,7 +13,7 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/version
     library/cpp/protobuf/util
-    ydb/core/protos
+    contrib/ydb/core/protos
 )
 
 SRCS(

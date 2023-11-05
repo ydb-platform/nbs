@@ -8,7 +8,7 @@ import uuid
 import time
 import json
 
-from ydb.tests.library.harness.daemon import Daemon
+from contrib.ydb.tests.library.harness.daemon import Daemon
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)

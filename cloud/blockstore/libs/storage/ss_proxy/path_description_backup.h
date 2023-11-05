@@ -8,7 +8,7 @@
 
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>

@@ -13,7 +13,7 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <ydb/core/tablet/tablet_setup.h>
+#include <contrib/ydb/core/tablet/tablet_setup.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 

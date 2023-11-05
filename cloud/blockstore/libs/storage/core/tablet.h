@@ -6,9 +6,9 @@
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 
-#include <ydb/core/base/tablet.h>
-#include <ydb/core/tablet_flat/flat_database.h>
-#include <ydb/core/tablet_flat/tablet_flat_executed.h>
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/tablet_flat/flat_database.h>
+#include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/log.h>

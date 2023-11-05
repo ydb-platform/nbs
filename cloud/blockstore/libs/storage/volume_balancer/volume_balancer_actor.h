@@ -13,7 +13,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
-#include <ydb/core/tablet/tablet_metrics.h>
+#include <contrib/ydb/core/tablet/tablet_metrics.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/mon.h>

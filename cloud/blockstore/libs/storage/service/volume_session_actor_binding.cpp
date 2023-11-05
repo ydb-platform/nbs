@@ -7,7 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
-#include <ydb/core/tablet/tablet_setup.h>
+#include <contrib/ydb/core/tablet/tablet_setup.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 

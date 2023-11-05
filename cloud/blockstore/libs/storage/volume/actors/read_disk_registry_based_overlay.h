@@ -10,7 +10,7 @@
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
 
-#include <ydb/core/base/services/blobstorage_service_id.h>
+#include <contrib/ydb/core/base/services/blobstorage_service_id.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

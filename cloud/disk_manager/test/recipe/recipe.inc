@@ -17,7 +17,7 @@ DEPENDS(
     contrib/python/moto/bin
     library/recipes/s3mds
 
-    ydb/apps/ydbd
+    contrib/ydb/apps/ydbd
 )
 
 DATA(

@@ -11,7 +11,7 @@
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/blobstorage.h>
 
 #include <library/cpp/actors/core/interconnect.h>
 #include <library/cpp/actors/core/mon.h>

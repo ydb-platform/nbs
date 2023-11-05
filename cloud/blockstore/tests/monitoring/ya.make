@@ -7,7 +7,7 @@ TEST_SRCS(test.py)
 DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
-    ydb/apps/ydbd
+    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -19,8 +19,8 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/public/sdk/python/client
     cloud/blockstore/tests/python/lib
-    ydb/core/protos
-    ydb/tests/library
+    contrib/ydb/core/protos
+    contrib/ydb/tests/library
 )
 
 END()

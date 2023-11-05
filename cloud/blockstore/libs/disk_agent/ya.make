@@ -22,8 +22,8 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/version
 
-    ydb/core/protos
-    ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/core/protos
+    contrib/ydb/library/yql/public/udf/service/exception_policy
 
     library/cpp/lwtrace/mon
 

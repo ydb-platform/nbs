@@ -36,10 +36,10 @@ PEERDIR(
     cloud/blockstore/libs/storage/model
     library/cpp/actors/core
     library/cpp/containers/stack_vector
-    ydb/core/base
-    ydb/core/mind
-    ydb/core/mon
-    ydb/core/tablet
+    contrib/ydb/core/base
+    contrib/ydb/core/mind
+    contrib/ydb/core/mon
+    contrib/ydb/core/tablet
     library/cpp/deprecated/atomic
 )
 

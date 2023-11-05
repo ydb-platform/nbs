@@ -71,14 +71,14 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     library/cpp/actors/core
-    ydb/core/base
-    ydb/core/mind
-    ydb/core/mon
-    ydb/core/node_whiteboard
-    ydb/core/scheme
-    ydb/core/tablet
-    ydb/core/tablet_flat
-    ydb/core/testlib/basics
+    contrib/ydb/core/base
+    contrib/ydb/core/mind
+    contrib/ydb/core/mon
+    contrib/ydb/core/node_whiteboard
+    contrib/ydb/core/scheme
+    contrib/ydb/core/tablet
+    contrib/ydb/core/tablet_flat
+    contrib/ydb/core/testlib/basics
 )
 
 END()

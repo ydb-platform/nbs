@@ -8,8 +8,8 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <ydb/core/tablet/tablet_pipe_client_cache.h>
-#include <ydb/core/tx/schemeshard/schemeshard.h>
+#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/events.h>

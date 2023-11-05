@@ -41,11 +41,11 @@ PEERDIR(
     library/cpp/monlib/service/pages
     library/cpp/string_utils/quote
 
-    ydb/core/base
-    ydb/core/mind
-    ydb/core/mon
-    ydb/core/protos
-    ydb/core/tablet
+    contrib/ydb/core/base
+    contrib/ydb/core/mind
+    contrib/ydb/core/mon
+    contrib/ydb/core/protos
+    contrib/ydb/core/tablet
 )
 
 END()
