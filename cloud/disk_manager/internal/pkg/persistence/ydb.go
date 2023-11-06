@@ -24,6 +24,7 @@ import (
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
+	grpc_codes "google.golang.org/grpc/codes"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +139,12 @@ func ReadLessOrEqual(v Value) ydb_options.ReadTableOption {
 
 func ReadGreaterOrEqual(v Value) ydb_options.ReadTableOption {
 	return ydb_options.ReadGreaterOrEqual(v)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func IsTransportError(err error, codes ...grpc_codes.Code) bool {
+	return ydb.IsTransportError(err, codes...)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

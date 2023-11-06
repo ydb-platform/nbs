@@ -8,10 +8,10 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/library/go/core/log"
 	"github.com/ydb-platform/nbs/library/go/core/log/ctxlog"
-	"github.com/ydb-platform/ydb-go-sdk/v3"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -304,7 +304,7 @@ func isCancelledError(err error) bool {
 	switch {
 	case
 		errors.Is(err, context.Canceled),
-		ydb.IsTransportError(err, grpc_codes.Canceled):
+		persistence.IsTransportError(err, grpc_codes.Canceled):
 		return true
 	default:
 		return false
