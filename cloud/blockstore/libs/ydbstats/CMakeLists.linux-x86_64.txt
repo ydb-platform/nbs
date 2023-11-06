@@ -33,5 +33,4 @@ target_sources(blockstore-libs-ydbstats PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/ydbstats/ydbscheme.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/ydbstats/ydbstats.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/ydbstats/ydbstorage.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/ydbstats/ydbwriters.cpp
 )

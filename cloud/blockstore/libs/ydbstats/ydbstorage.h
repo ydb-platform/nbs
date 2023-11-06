@@ -10,9 +10,7 @@
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -78,8 +76,8 @@ struct IYdbStorage
     virtual NThreading::TFuture<NProto::TError> DropTable(const TString& table) = 0;
 
     virtual NThreading::TFuture<NProto::TError> ExecuteUploadQuery(
-        const TString& query,
-        NYdb::TParams params) = 0;
+        TString tableName,
+        NYdb::TValue data) = 0;
 
     virtual NThreading::TFuture<TDescribeTableResponse> DescribeTable(const TString& table) = 0;
 

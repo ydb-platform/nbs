@@ -34,6 +34,19 @@ TYdbStatsConfigPtr CreateTestConfig()
     return std::make_shared<TYdbStatsConfig>(config);
 }
 
+TYdbStatsConfigPtr CreateAllTablesTestConfig()
+{
+    NProto::TYdbStatsConfig config;
+    config.SetStatsTableName("test");
+    config.SetHistoryTablePrefix("test");
+    config.SetArchiveStatsTableName("archive-test");
+    config.SetHistoryTableLifetimeDays(3);
+    config.SetStatsTableRotationAfterDays(1);
+    config.SetBlobLoadMetricsTableName("metrics");
+
+    return std::make_shared<TYdbStatsConfig>(config);
+}
+
 TStatsTableSchemePtr CreateStatsTestScheme() {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
@@ -185,6 +198,11 @@ public:
     ui32 AlterTableCalls = 0;
     ui32 UpsertCalls = 0;
 
+    using TUploadCheckFunc =
+        std::function<TFuture<NProto::TError>(TString, NYdb::TValue)>;
+
+    TUploadCheckFunc UploadTestFunc;
+
 public:
     TYdbTestStorage(TYdbStatsConfigPtr config)
         : Config(std::move(config))
@@ -307,11 +325,14 @@ public:
         }
     }
 
-    TFuture<NProto::TError> ExecuteUploadQuery(const TString& query, NYdb::TParams params) override
+    TFuture<NProto::TError> ExecuteUploadQuery(
+        TString tableName,
+        NYdb::TValue data) override
     {
-        Y_UNUSED(query);
-        Y_UNUSED(params);
         ++UpsertCalls;
+        if (UploadTestFunc) {
+            return UploadTestFunc(std::move(tableName), std::move(data));
+        }
         return MakeFuture(MakeError(S_OK));
     }
 
@@ -550,6 +571,76 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->DropTableCalls == 1);
+    }
+
+    Y_UNIT_TEST(ShouldUploadData)
+    {
+        auto config = CreateAllTablesTestConfig();
+        auto statsScheme = CreateStatsTestScheme();
+        auto historyScheme = CreateHistoryTestScheme();
+        auto archiveScheme = CreateArchiveStatsTestScheme();
+        auto metricsScheme = CreateMetricsTestScheme();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            statsScheme,
+            historyScheme,
+            archiveScheme,
+            metricsScheme);
+        uploader->Start();
+
+        auto response = uploader->UploadStats(
+             { BuildTestStats() },
+             { BuildTestMetrics() }).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+    }
+
+    Y_UNIT_TEST(ShouldReportNotFoundInCaseOfSchemeErrors)
+    {
+        THashSet<TString> tables;
+
+        auto config = CreateAllTablesTestConfig();
+        auto statsScheme = CreateStatsTestScheme();
+        auto historyScheme = CreateHistoryTestScheme();
+        auto archiveScheme = CreateArchiveStatsTestScheme();
+        auto metricsScheme = CreateMetricsTestScheme();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            statsScheme,
+            historyScheme,
+            archiveScheme,
+            metricsScheme);
+        uploader->Start();
+
+        ydbTestStorage->UploadTestFunc = [&] (TString tableName, NYdb::TValue)
+        {
+            UNIT_ASSERT_C(
+                !tables.contains(tableName),
+                TStringBuilder() << "Table already seen " << tableName);
+            tables.insert(tableName);
+
+            if (ydbTestStorage->UpsertCalls == 1) {
+                return MakeFuture(MakeError(S_OK));
+            }
+            if (ydbTestStorage->UpsertCalls == 2) {
+                return MakeFuture(MakeError(E_NOT_FOUND));
+            }
+            return MakeFuture(MakeError(E_FAIL));
+        };
+
+        auto response = uploader->UploadStats(
+             { BuildTestStats() },
+             { BuildTestMetrics() }).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
     }
 }
 

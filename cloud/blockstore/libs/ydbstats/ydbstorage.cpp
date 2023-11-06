@@ -47,7 +47,11 @@ template <typename TResult>
 TStatus ExtractStatus(const TFuture<TResult>& future)
 {
     try {
-        return future.GetValue();
+        if constexpr (std::is_same<TResult, TStatus>::value) {
+            return future.GetValue();
+        } else {
+            return TStatus{future.GetValue()};
+        }
     } catch (...) {
         return TStatus(EStatus::STATUS_UNDEFINED, {});
     }
@@ -56,7 +60,7 @@ TStatus ExtractStatus(const TFuture<TResult>& future)
 TString ExtractYdbError(const TStatus& status)
 {
     TStringStream out;
-    status.GetIssues().PrintTo(out);
+    status.GetIssues().PrintTo(out, true);
     return out.Str();
 }
 
@@ -68,10 +72,18 @@ TString BuildError(
     return TStringBuilder()
         << errorPrefix << text
         << " error code: " << status.GetStatus()
-        << " with reason:\n" << ExtractYdbError(status);
+        << " with reason:" << ExtractYdbError(status);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+TString BuildError(
+    const TStatus& status,
+    const TString& text)
+{
+    return TStringBuilder()
+        << text
+        << " error code: " << status.GetStatus()
+        << " with reason:" << ExtractYdbError(status);
+}
 
 TDriverConfig BuildDriverConfig(
     const TYdbStatsConfig& config,
@@ -102,7 +114,7 @@ private:
     const IIamTokenClientPtr IamClient;
 
     std::unique_ptr<TDriver> Driver;
-    std::unique_ptr<TTableClient> Client;
+    std::shared_ptr<TTableClient> Client;
     std::unique_ptr<TSchemeClient> SchemeClient;
 
     TLog Log;
@@ -132,14 +144,14 @@ public:
     TFuture<TGetTablesResponse> GetHistoryTables() override;
 
     TFuture<NProto::TError> ExecuteUploadQuery(
-        const TString& query,
-        TParams params) override;
+        TString tableName,
+        NYdb::TValue data) override;
 
     void Start() override
     {
         Driver = std::make_unique<TDriver>(
             BuildDriverConfig(*Config, IamClient));
-        Client = std::make_unique<TTableClient>(*Driver);
+        Client = std::make_shared<TTableClient>(*Driver);
         SchemeClient = std::make_unique<TSchemeClient>(*Driver);
 
         Log = Logging->CreateLog("BLOCKSTORE_YDBSTATS");
@@ -158,11 +170,6 @@ public:
 private:
     TMaybe<TInstant> ExtractTableTime(const TString& name) const;
     TString GetFullTableName(const TString& table) const;
-
-    void ExecutePreparedQuery(
-        TDataQuery query,
-        TParams params,
-        TPromise<NProto::TError> response);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -299,60 +306,34 @@ TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
         });
 }
 
-void TYdbNativeStorage::ExecutePreparedQuery(
-    TDataQuery query,
-    TParams params,
-    TPromise<NProto::TError> response)
-{
-    TString queryText = query.GetText().GetOrElse("");
-    auto future = query.Execute(
-        NYdb::NTable::TTxControl::BeginTx(
-            NYdb::NTable::TTxSettings::SerializableRW()).CommitTx(),
-            std::move(params));
-    future.Subscribe ([=](const auto& future) mutable {
-        auto status = ExtractStatus(future);
-        if (status.IsSuccess()) {
-            response.SetValue(MakeError(S_OK));
-            return;
-        }
-        auto out = BuildError(status, "unable to execute query\n", queryText.Quote());
-        STORAGE_ERROR(out);
-        if (status.GetStatus() == EStatus::SCHEME_ERROR) {
-            response.SetValue(MakeError(E_NOT_FOUND, out));
-        } else {
-            response.SetValue(MakeError(E_FAIL, out));
-        }
-    });
-}
-
 TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
-    const TString& query,
-    TParams params)
+    TString tableName,
+    NYdb::TValue data)
 {
-    auto response = NewPromise<NProto::TError>();
-    auto future = Client->RetryOperation(
-        [=, params=std::move(params)] (TSession session) {
-            return session.PrepareDataQuery(query).Apply([=](const auto& future) mutable {
-                auto status = ExtractStatus(future);
-                if (status.IsSuccess()) {
-                    auto q = future.GetValue().GetQuery();
-                    ExecutePreparedQuery(
-                        future.GetValue().GetQuery(),
-                        std::move(params),
-                        response);
-                }
-                return MakeFuture<NYdb::TStatus>(future.GetValue());
-            });
-        }).Subscribe([=] (const auto& future) mutable {
+    auto func = [tableName = std::move(tableName), data = std::move(data)] (
+        TTableClient& client) mutable
+    {
+        auto convertUpsertResult = [] (const TAsyncBulkUpsertResult& future) {
+            return ExtractStatus(future);
+        };
+        auto f = client.BulkUpsert(tableName, NYdb::TValue{data});
+        return f.Apply(convertUpsertResult);
+    };
+
+    return Client->RetryOperation(func).Apply(
+        [] (const auto& future) {
             auto status = ExtractStatus(future);
-            if (!status.IsSuccess()) {
-                auto out = BuildError(status, "unable to prepare query\n", query.Quote());
-                STORAGE_ERROR(out);
-                response.SetValue(MakeError(E_FAIL, out));
-                return;
+            if (status.IsSuccess()) {
+                return MakeError(S_OK);
             }
+            auto out = BuildError(status, "unable to execute BulkUpsert");
+            // E_NOT_FOUND is returned to indicate to the client that probabily
+            // some of the tables are missing and client needs to create them
+            // or update scheme.
+            return (status.GetStatus() == EStatus::SCHEME_ERROR ?
+                MakeError(E_NOT_FOUND, out) :
+                MakeError(E_FAIL, out));
         });
-    return response;
 }
 
 TMaybe<TInstant> TYdbNativeStorage::ExtractTableTime(const TString& name) const

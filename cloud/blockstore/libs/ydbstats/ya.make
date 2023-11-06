@@ -7,7 +7,6 @@ SRCS(
     ydbscheme.cpp
     ydbstats.cpp
     ydbstorage.cpp
-    ydbwriters.cpp
 )
 
 PEERDIR(

@@ -4,10 +4,10 @@
 #include "ydbrow.h"
 #include "ydbscheme.h"
 #include "ydbstorage.h"
-#include "ydbwriters.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
@@ -146,7 +146,11 @@ private:
             Error = error;
         }
 
-        Y_ABORT_UNLESS(ResponsesToWait);
+        STORAGE_VERIFY_C(
+            ResponsesToWait,
+            TWellKnownEntityTypes::YDB_TABLE,
+            "TWaitSetup",
+            " too many responses while waiting for tables setup");
         if (--ResponsesToWait == 0) {
             Result.SetValue(
                 TSetupTablesResult(
@@ -195,10 +199,90 @@ private:
             Error = error;
         }
 
-        Y_ABORT_UNLESS(ResponsesToWait);
+        STORAGE_VERIFY_C(
+            ResponsesToWait,
+            TWellKnownEntityTypes::YDB_TABLE,
+            "TWaitRemove",
+            " too many responses while waiting for tables drop");
         if (--ResponsesToWait == 0) {
             Result.SetValue(Error);
         }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TUploadData
+{
+    TString TableName;
+    NYdb::TValue UploadData;
+
+    TUploadData(TString tableName, NYdb::TValue uploadData)
+        : TableName(std::move(tableName))
+        , UploadData(std::move(uploadData))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TBulkUpsertExecutor
+    : public std::enable_shared_from_this<TBulkUpsertExecutor>
+{
+    const IYdbStoragePtr Storage;
+    const TString DatabaseName;
+    TVector<TUploadData> DataToUpload;
+    TVector<TFuture<NProto::TError>> Responses;
+
+    TAdaptiveLock ResponseLock;
+    TPromise<NProto::TError> Response = NewPromise<NProto::TError>();
+    ui32 ResponsesToWait = 0;
+
+public:
+    TBulkUpsertExecutor(
+            IYdbStoragePtr storage,
+            TString databaseName,
+            TVector<TUploadData> dataToUpload)
+        : Storage{std::move(storage)}
+        , DatabaseName{std::move(databaseName)}
+        , DataToUpload{std::move(dataToUpload)}
+    {}
+
+    TFuture<NProto::TError> Execute()
+    {
+        Responses.reserve(DataToUpload.size());
+        ResponsesToWait = DataToUpload.size();
+        for (auto& data: DataToUpload) {
+            Responses.emplace_back(Storage->ExecuteUploadQuery(
+                std::move(data.TableName),
+                std::move(data.UploadData)));
+
+            Responses.back().Subscribe(
+                [pThis = shared_from_this()] (const auto& future) mutable {
+                    Y_UNUSED(future);
+                    with_lock (pThis->ResponseLock) {
+                        if (!--pThis->ResponsesToWait) {
+                            pThis->SetResponse();
+                        }
+                    }
+            });
+        }
+        return Response.GetFuture();
+    }
+
+private:
+    void SetResponse()
+    {
+        NProto::TError result;
+
+        for (const auto& f: Responses) {
+            auto error = f.GetValue();
+            if (FAILED(error.GetCode())) {
+                if (SUCCEEDED(result.GetCode()) || error.GetCode() == E_NOT_FOUND) {
+                    result = std::move(error);
+                }
+            }
+        }
+        Response.SetValue(std::move(result));
     }
 };
 
@@ -349,61 +433,51 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         return MakeFuture(setupResult.Error);
     }
 
-    TVector<const IYdbWriter*> dataForUpload;
+    TVector<TUploadData> dataForUpload;
 
-    TYdbRowWriter statsTable(stats, setupResult.StatsTableName);
-    TYdbReplaceWriter historyTable(
-        setupResult.HistoryTableName,
-        TYdbRowWriter::ItemName);
-    TYdbReplaceWriter archiveTable(
-        setupResult.ArchiveStatsTableName,
-        TYdbRowWriter::ItemName);
+    TValueBuilder rows;
+    rows.BeginList();
+    for (const auto& stat: stats) {
+        rows.AddListItem(stat.GetYdbValues());
+    }
+    rows.EndList();
 
-    if (statsTable.IsValid()) {
-        dataForUpload.emplace_back(&statsTable);
-        if (historyTable.IsValid()) {
-            dataForUpload.emplace_back(&historyTable);
+    auto result = rows.Build();
+
+    if (setupResult.StatsTableName) {
+        dataForUpload.emplace_back(setupResult.StatsTableName, result);
+    }
+
+    if (setupResult.HistoryTableName) {
+        dataForUpload.emplace_back(setupResult.HistoryTableName, result);
+    }
+
+    if (setupResult.ArchiveStatsTableName) {
+        dataForUpload.emplace_back(
+            setupResult.ArchiveStatsTableName,
+            std::move(result));
+    }
+
+    if (setupResult.BlobLoadMetricsTableName) {
+        TValueBuilder rows;
+        rows.BeginList();
+        for (const auto& metric : metrics) {
+            rows.AddListItem(metric.GetYdbValues());
         }
-        if (archiveTable.IsValid()) {
-            dataForUpload.emplace_back(&archiveTable);
-        }
+        rows.EndList();
+
+        dataForUpload.emplace_back(
+            setupResult.BlobLoadMetricsTableName,
+            rows.Build());
     }
 
-    TYdbBlobLoadMetricWriter blobTable(
-        metrics,
-        setupResult.BlobLoadMetricsTableName);
+    auto executor = std::make_shared<TBulkUpsertExecutor>(
+        DbStorage,
+        Config->GetDatabaseName(),
+        std::move(dataForUpload));
+    auto future = executor->Execute();
 
-    if (blobTable.IsValid()) {
-        dataForUpload.emplace_back(&blobTable);
-    }
-
-    TStringStream out;
-    out << "--!syntax_v1" << Endl
-        << "PRAGMA TablePathPrefix(\""
-        << Config->GetDatabaseName()
-        << "\");"
-        << Endl;
-
-    for (const auto& element: dataForUpload) {
-        element->Declare(out);
-    }
-
-    for (const auto& element: dataForUpload) {
-        element->Replace(out);
-    }
-
-    TParamsBuilder paramsBuilder;
-    for (const auto& element: dataForUpload) {
-        element->PushData(paramsBuilder);
-    }
-
-    auto params = paramsBuilder.Build();
     auto pThis = shared_from_this();  // will hold reference to this
-
-    STORAGE_DEBUG("Executing upload query:\n" << out.Str());
-
-    auto future = DbStorage->ExecuteUploadQuery(out.Str(), std::move(params));
-
     return future.Apply(
         [pThis] (const auto& future) {
             const auto& result = future.GetValue();

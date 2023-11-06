@@ -1,6 +1,8 @@
 #include "ydbscheme.h"
 #include "ydbrow.h"
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 namespace NCloud::NBlockStore::NYdbStats {
 
 using namespace NYdb;
@@ -46,7 +48,10 @@ TStatsTableSchemeBuilder BuildListOfColumns()
 #undef YDB_PERCENTILE_FIELD
     };
 
-    Y_ABORT_UNLESS(out.AddColumns(columns));
+    STORAGE_VERIFY(
+        out.AddColumns(columns),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "unable to set up table fields");
     return out;
 }
 
@@ -57,21 +62,33 @@ TStatsTableSchemeBuilder BuildListOfColumns()
 TStatsTableSchemePtr CreateStatsTableScheme()
 {
     auto out = BuildListOfColumns();
-    Y_ABORT_UNLESS(out.SetKeyColumns({"DiskId"}));
+    STORAGE_VERIFY_C(
+        out.SetKeyColumns({"DiskId"}),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "stats table",
+        "unable to set key fields");
     return out.Finish();
 }
 
 TStatsTableSchemePtr CreateHistoryTableScheme()
 {
     auto out = BuildListOfColumns();
-    Y_ABORT_UNLESS(out.SetKeyColumns({"DiskId", "Timestamp"}));
+    STORAGE_VERIFY_C(
+        out.SetKeyColumns({"DiskId", "Timestamp"}),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "history table",
+        "unable to setup key fields");
     return out.Finish();
 }
 
 TStatsTableSchemePtr CreateArchiveStatsTableScheme()
 {
     auto out = BuildListOfColumns();
-    Y_ABORT_UNLESS(out.SetKeyColumns({"DiskId"}));
+    STORAGE_VERIFY_C(
+        out.SetKeyColumns({"DiskId"}),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "archive table",
+        "unable to setup key fields");
     return out.Finish();
 }
 
@@ -87,11 +104,19 @@ TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme()
         { TYdbBlobLoadMetricRow::LoadDataName.data(),  EPrimitiveType::Json }
     };
 
-    Y_ABORT_UNLESS(out.AddColumns(columns));
+    STORAGE_VERIFY_C(
+        out.AddColumns(columns),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "blob load metrics table",
+        "unable to setup fields");
 
-    Y_ABORT_UNLESS(out.SetKeyColumns({
-        TYdbBlobLoadMetricRow::HostNameName.data(),
-        TYdbBlobLoadMetricRow::TimestampName.data()}));
+    STORAGE_VERIFY_C(
+        out.SetKeyColumns({
+            TYdbBlobLoadMetricRow::HostNameName.data(),
+            TYdbBlobLoadMetricRow::TimestampName.data()}),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "blob load metrics table",
+        "unable to setup key fields");
 
     out.SetTtl(NTable::TTtlSettings{
         TYdbBlobLoadMetricRow::TimestampName.data(),
