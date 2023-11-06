@@ -1,3 +1,4 @@
+import requests
 import subprocess
 
 from .config import NbsConfigurator
@@ -16,6 +17,28 @@ from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_fact
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
+
+
+class _Counters:
+
+    def __init__(self, data):
+        self.__data = data
+
+    def find(self, sensor: str):
+        for s in self.__data["sensors"]:
+            labels = s.get("labels", {})
+
+            if labels.get("sensor") == sensor:
+                return s
+        return None
+
+
+def _get_counters(mon_port):
+    url = f"http://localhost:{mon_port}/counters/counters=blockstore/json"
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+
+    return _Counters(r.json())
 
 
 class Nbs(Daemon):
@@ -40,6 +63,10 @@ class Nbs(Daemon):
     def mon_port(self):
         return self.__mon_port
 
+    @property
+    def counters(self):
+        return _get_counters(self.mon_port)
+
 
 class DiskAgent(Daemon):
 
@@ -62,6 +89,10 @@ class DiskAgent(Daemon):
     @property
     def mon_port(self):
         return self.__mon_port
+
+    @property
+    def counters(self):
+        return _get_counters(self.mon_port)
 
 
 def start_nbs(config: NbsConfigurator):

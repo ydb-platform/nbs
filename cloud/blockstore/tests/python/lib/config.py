@@ -3,11 +3,13 @@ import socket
 
 from contrib.ydb.tests.library.common.yatest_common import PortManager
 
+from google.protobuf.json_format import ParseDict
 from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig, \
-    TDiskAgentConfig, DISK_AGENT_BACKEND_AIO
+    TDiskAgentConfig, TFileDeviceArgs, TStorageDiscoveryConfig, \
+    DISK_AGENT_BACKEND_AIO
 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, \
@@ -22,10 +24,10 @@ from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
 
 class NbsConfigurator:
 
-    def __init__(self, pm: PortManager, ydb, node_type=None):
+    def __init__(self, ydb, node_type=None, pm=None):
         assert ydb.config
 
-        self.__pm = pm
+        self.__pm = PortManager() if pm is None else pm
         self.__ydb = ydb
         self.__node_type = node_type
 
@@ -272,16 +274,29 @@ def generate_dr_proxy_txt():
     return config
 
 
-def generate_disk_agent_txt():
+def generate_disk_agent_txt(
+        agent_id=None,
+        file_devices=None,
+        storage_discovery_config=None):
+
     config = TDiskAgentConfig()
     config.Enabled = True
     config.DedicatedDiskAgent = True
     config.Backend = DISK_AGENT_BACKEND_AIO
     config.DirectIoFlagDisabled = True
-    config.AgentId = socket.gethostname()
+    config.AgentId = socket.getfqdn() if agent_id is None else agent_id
     config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = 0
+
+    if file_devices is not None:
+        for device in file_devices:
+            config.FileDevices.add().CopyFrom(
+                ParseDict(device, TFileDeviceArgs()))
+
+    if storage_discovery_config is not None:
+        config.StorageDiscoveryConfig.CopyFrom(
+            ParseDict(storage_discovery_config, TStorageDiscoveryConfig()))
 
     return config
