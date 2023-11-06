@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,7 +56,10 @@ func (t *createImageFromSnapshotTask) Run(
 		return err
 	}
 
-	srcIsDataplane := srcSnapshotMeta != nil && srcSnapshotMeta.UseDataplaneTasks
+	var srcSnapshotEncryption *types.EncryptionDesc
+	if srcSnapshotMeta != nil {
+		srcSnapshotEncryption = srcSnapshotMeta.Encryption
+	}
 
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
@@ -65,7 +69,7 @@ func (t *createImageFromSnapshotTask) Run(
 		CreatingAt:        time.Now(),
 		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
 		UseDataplaneTasks: true, // TODO: remove it.
-		Encryption:        srcSnapshotMeta.Encryption,
+		Encryption:        srcSnapshotEncryption,
 	})
 	if err != nil {
 		return err
@@ -77,6 +81,8 @@ func (t *createImageFromSnapshotTask) Run(
 			t.request.DstImageId,
 		)
 	}
+
+	srcIsDataplane := srcSnapshotMeta != nil && srcSnapshotMeta.UseDataplaneTasks
 
 	if srcIsDataplane {
 		taskID, err := t.scheduler.ScheduleTask(

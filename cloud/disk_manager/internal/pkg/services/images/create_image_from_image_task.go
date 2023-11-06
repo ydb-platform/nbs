@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +56,11 @@ func (t *createImageFromImageTask) Run(
 		return err
 	}
 
+	var srcImageEncryption *types.EncryptionDesc
+	if srcImageMeta != nil {
+		srcImageEncryption = srcImageMeta.Encryption
+	}
+
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
@@ -63,7 +69,7 @@ func (t *createImageFromImageTask) Run(
 		CreatingAt:        time.Now(),
 		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
 		UseDataplaneTasks: true, // TODO: remove it.
-		Encryption:        srcImageMeta.Encryption,
+		Encryption:        srcImageEncryption,
 	})
 	if err != nil {
 		return err

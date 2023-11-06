@@ -27,6 +27,11 @@ def start(argv):
     cert_file = os.path.join(certs_dir, "server.crt")
     cert_key_file = os.path.join(certs_dir, "server.key")
     set_env("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE", root_certs_file)
+    set_env("DISK_MANAGER_RECIPE_CERT_FILE", cert_file)
+    set_env("DISK_MANAGER_RECIPE_CERT_KEY_FILE", cert_key_file)
+
+    if 'certs' in argv:
+        return
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
