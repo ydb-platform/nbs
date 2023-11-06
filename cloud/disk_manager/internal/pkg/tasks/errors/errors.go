@@ -2,11 +2,11 @@ package errors
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime/debug"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/library/go/core/log"
@@ -18,51 +18,50 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type RetriableError struct {
-	Err              error
-	IgnoreRetryLimit bool
-}
+type RetriableError = errors.RetriableError
 
 func NewRetriableError(err error) *RetriableError {
-	return &RetriableError{
-		Err: err,
-	}
+	return errors.NewRetriableError(err)
 }
 
 func NewRetriableErrorf(format string, a ...any) *RetriableError {
-	return NewRetriableError(fmt.Errorf(format, a...))
+	return errors.NewRetriableErrorf(format, a...)
 }
 
 func NewRetriableErrorWithIgnoreRetryLimit(err error) *RetriableError {
-	return &RetriableError{
-		Err:              err,
-		IgnoreRetryLimit: true,
-	}
+	return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 }
 
 func NewRetriableErrorWithIgnoreRetryLimitf(format string, a ...any) *RetriableError {
-	return NewRetriableErrorWithIgnoreRetryLimit(fmt.Errorf(format, a...))
+	return errors.NewRetriableErrorWithIgnoreRetryLimitf(format, a...)
 }
 
 func NewEmptyRetriableError() *RetriableError {
-	return &RetriableError{}
+	return errors.NewEmptyRetriableError()
 }
 
-func (e *RetriableError) Error() string {
-	return fmt.Sprintf("Retriable error, IgnoreRetryLimit=%v: %v", e.IgnoreRetryLimit, e.Err)
+////////////////////////////////////////////////////////////////////////////////
+
+type NonRetriableError = errors.NonRetriableError
+
+func NewNonRetriableError(err error) *NonRetriableError {
+	return errors.NewNonRetriableError(err)
 }
 
-func (e *RetriableError) Unwrap() error {
-	return e.Err
+func NewNonRetriableErrorf(format string, a ...any) *NonRetriableError {
+	return errors.NewNonRetriableErrorf(format, a...)
 }
 
-func (e *RetriableError) Is(target error) bool {
-	t, ok := target.(*RetriableError)
-	if !ok {
-		return false
-	}
+func NewSilentNonRetriableError(err error) *NonRetriableError {
+	return errors.NewSilentNonRetriableError(err)
+}
 
-	return t.Err == nil || (e.Err == t.Err)
+func NewSilentNonRetriableErrorf(format string, a ...any) *NonRetriableError {
+	return errors.NewSilentNonRetriableErrorf(format, a...)
+}
+
+func NewEmptyNonRetriableError() *NonRetriableError {
+	return errors.NewEmptyNonRetriableError()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,60 +93,6 @@ func (e *AbortedError) Unwrap() error {
 
 func (e *AbortedError) Is(target error) bool {
 	t, ok := target.(*AbortedError)
-	if !ok {
-		return false
-	}
-
-	return t.Err == nil || (e.Err == t.Err)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type NonRetriableError struct {
-	Err        error
-	Silent     bool
-	stackTrace []byte
-}
-
-func NewNonRetriableError(err error) *NonRetriableError {
-	return newNonRetriableError(err, false)
-}
-
-func NewNonRetriableErrorf(format string, a ...any) *NonRetriableError {
-	return newNonRetriableError(fmt.Errorf(format, a...), false)
-}
-
-func NewSilentNonRetriableError(err error) *NonRetriableError {
-	return newNonRetriableError(err, true)
-}
-
-func NewSilentNonRetriableErrorf(format string, a ...any) *NonRetriableError {
-	return newNonRetriableError(fmt.Errorf(format, a...), true)
-}
-
-func NewEmptyNonRetriableError() *NonRetriableError {
-	return newNonRetriableError(nil, false)
-}
-
-func newNonRetriableError(err error, silent bool) *NonRetriableError {
-	return &NonRetriableError{
-		Err:        err,
-		Silent:     silent,
-		stackTrace: debug.Stack(),
-	}
-}
-
-func (e *NonRetriableError) Error() string {
-	msg := fmt.Sprintf("Non retriable error, Silent=%v: %v", e.Silent, e.Err)
-	return appendStackTrace(msg, e.stackTrace)
-}
-
-func (e *NonRetriableError) Unwrap() error {
-	return e.Err
-}
-
-func (e *NonRetriableError) Is(target error) bool {
-	t, ok := target.(*NonRetriableError)
 	if !ok {
 		return false
 	}
@@ -400,6 +345,8 @@ func As(err error, target interface{}) bool {
 func Is(err, target error) bool {
 	return errors.Is(err, target)
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 func CanRetry(err error) bool {
 	if Is(err, NewWrongGenerationError()) || Is(err, NewInterruptExecutionError()) {

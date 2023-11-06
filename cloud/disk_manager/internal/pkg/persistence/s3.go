@@ -12,8 +12,8 @@ import (
 	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
-	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +41,7 @@ func NewS3Client(
 
 	session, err := session.NewSession(sessionConfig)
 	if err != nil {
-		return nil, task_errors.NewRetriableError(err)
+		return nil, errors.NewRetriableError(err)
 	}
 
 	return &S3Client{
@@ -80,7 +80,7 @@ func (c *S3Client) CreateBucket(
 			}
 		}
 
-		return task_errors.NewRetriableError(err)
+		return errors.NewRetriableError(err)
 	}
 
 	return nil
@@ -102,18 +102,18 @@ func (c *S3Client) GetObject(
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchKey:
-				return S3Object{}, task_errors.NewSilentNonRetriableErrorf("chunk not found")
+				return S3Object{}, errors.NewSilentNonRetriableErrorf("chunk not found")
 			case aws_s3.ErrCodeNoSuchBucket:
-				return S3Object{}, task_errors.NewNonRetriableError(err)
+				return S3Object{}, errors.NewNonRetriableError(err)
 			}
 		}
 
-		return S3Object{}, task_errors.NewRetriableError(err)
+		return S3Object{}, errors.NewRetriableError(err)
 	}
 
 	objData, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return S3Object{}, task_errors.NewRetriableError(err)
+		return S3Object{}, errors.NewRetriableError(err)
 	}
 
 	return S3Object{
@@ -140,11 +140,11 @@ func (c *S3Client) PutObject(
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchBucket:
-				return task_errors.NewNonRetriableError(err)
+				return errors.NewNonRetriableError(err)
 			}
 		}
 
-		return task_errors.NewRetriableError(err)
+		return errors.NewRetriableError(err)
 	}
 
 	return nil
@@ -164,11 +164,11 @@ func (c *S3Client) DeleteObject(
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchBucket:
-				return task_errors.NewNonRetriableError(err)
+				return errors.NewNonRetriableError(err)
 			}
 		}
 
-		return task_errors.NewRetriableError(err)
+		return errors.NewRetriableError(err)
 	}
 
 	return nil
