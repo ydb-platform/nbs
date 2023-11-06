@@ -1050,7 +1050,7 @@ void TPartitionActor::CompleteReadBlocks(
                 args.RequestInfo->Cookie,
                 args.RequestInfo->CallContext);
 
-            auto baseDiskActor = NCloud::Register<TDescribeBaseDiskBlocksActor>(
+            NCloud::Register<TDescribeBaseDiskBlocksActor>(
                 ctx,
                 requestInfo,
                 State->GetBaseDiskId(),
@@ -1059,8 +1059,6 @@ void TPartitionActor::CompleteReadBlocks(
                 *describeBlocksRange,
                 std::move(args.BlockMarks),
                 State->GetBlockSize());
-
-            Actors.Insert(baseDiskActor);
         }
 
         return;
