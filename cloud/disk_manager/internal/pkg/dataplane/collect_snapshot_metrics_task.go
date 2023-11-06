@@ -38,12 +38,18 @@ func (c collectSnapshotMetricsTask) Run(
 	defer ticker.Stop()
 
 	for range ticker.C {
-		count, err := c.storage.GetDeletingSnapshotCount(ctx)
+		deletingSnapshotCount, err := c.storage.GetDeletingSnapshotCount(ctx)
 		if err != nil {
 			return err
 		}
 
-		c.registry.Gauge("snapshots/deletingCount").Set(float64(count))
+		snapshotCount, err := c.storage.GetSnapshotCount(ctx)
+		if err != nil {
+			return err
+		}
+
+		c.registry.Gauge("snapshots/snapshotCount").Set(float64(snapshotCount))
+		c.registry.Gauge("snapshots/deletingCount").Set(float64(deletingSnapshotCount))
 	}
 	return nil
 }

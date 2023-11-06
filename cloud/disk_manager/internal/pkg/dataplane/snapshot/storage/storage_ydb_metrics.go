@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,6 +35,43 @@ func (s *storageYDB) GetDeletingSnapshotCount(ctx context.Context) (count uint64
 	if err != nil {
 		return 0, task_errors.NewNonRetriableErrorf(
 			"GetDeletingSnapshotCount: failed to parse row: %w", err,
+		)
+	}
+	return count, nil
+}
+
+func (s *storageYDB) GetSnapshotCount(ctx context.Context) (count uint64, err error) {
+	defer s.metrics.StatOperation("GetSnapshotCount")(&err)
+
+	res, err := s.db.ExecuteRO(
+		ctx,
+		fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $status as Int64;
+
+		select count(*)
+		from snapshots
+		where status = $status;
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$status",
+			ydb_types.Int64Value(int64(snapshotStatusReady)),
+		),
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, nil
+	}
+
+	err = res.Scan(&count)
+	if err != nil {
+		return 0, task_errors.NewNonRetriableErrorf(
+			"GetSnapshotCount: failed to parse row: %w", err,
 		)
 	}
 	return count, nil

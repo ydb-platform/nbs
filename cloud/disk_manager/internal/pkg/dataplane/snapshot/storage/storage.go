@@ -102,4 +102,6 @@ type Storage interface {
 	GetDataChunkCount(ctx context.Context, snapshotID string) (uint64, error)
 
 	GetDeletingSnapshotCount(ctx context.Context) (uint64, error)
+
+	GetSnapshotCount(ctx context.Context) (count uint64, err error)
 }

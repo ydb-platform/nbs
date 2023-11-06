@@ -207,3 +207,7 @@ func (s *legacyStorage) GetDataChunkCount(
 func (s *legacyStorage) GetDeletingSnapshotCount(ctx context.Context) (uint64, error) {
 	return 0, task_errors.NewNonRetriableErrorf("not implemented")
 }
+
+func (s *legacyStorage) GetSnapshotCount(ctx context.Context) (uint64, error) {
+	return 0, task_errors.NewNonRetriableErrorf("not implemented")
+}

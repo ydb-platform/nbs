@@ -179,6 +179,11 @@ func (s *StorageMock) GetDeletingSnapshotCount(ctx context.Context) (uint64, err
 	return args.Get(0).(uint64), args.Error(1)
 }
 
+func (s *StorageMock) GetSnapshotCount(ctx context.Context) (uint64, error) {
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {
