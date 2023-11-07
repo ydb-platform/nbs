@@ -11,6 +11,6 @@ TAG(ya:fat ya:force_sandbox ya:sandbox_coverage sb:ssd)
 
 REQUIREMENTS(
     cpu:8
-    ram:16
+    ram:24
     disk_usage:200
 )
