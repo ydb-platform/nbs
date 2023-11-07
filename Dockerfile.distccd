@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+FROM ubuntu:22.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+ENV DISTCC_VERBOSE=1
+
+RUN <<EOF
+    apt-get update
+    apt-get install -y --no-install-recommends clang-12 lld-12 llvm-12 clang-14 lld-14 llvm-14 file distcc ccache
+    (V=4.8.1; curl -L https://github.com/ccache/ccache/releases/download/v${V}/ccache-${V}-linux-x86_64.tar.xz | \
+         tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner ccache-${V}-linux-x86_64/ccache)
+    rm -rf /var/lib/apt/lists/*
+    mkdir -p /cache && chown distccd: /cache
+EOF
+
+EXPOSE 3632
+EXPOSE 3633
+ENV CCACHE_DIR /cache
+
+ENTRYPOINT [\
+    "distccd",  "--daemon", "--no-detach", "--user", "distccd", "--port", "3632", "--stats", \
+                "--stats-port", "3633", "--log-level", "debug", "--log-stderr",  "--listen", "::", \
+                "--allow", "2a02:6b8:b081:bab::/64", "--allow", "172.17.0.0/16", \
+                "--allow", "localhost", "--allow", "::ffff:172.17.0.1/16" \
+]
