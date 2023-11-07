@@ -70,6 +70,7 @@ func Compress(
 		// implementation of zstd. See: NBS-3164.
 		"zstd",
 		"zstd_cgo",
+		"lz4_block",
 	}
 
 	for _, codec := range experimentalCodecs {
@@ -122,6 +123,10 @@ func newCompressor(format string) (compressor, error) {
 	switch format {
 	case "lz4":
 		return &lz4Compressor{}, nil
+	case "lz4_block":
+		return &lz4BlockModeCompressor{
+			codec: blockcodecs.FindCodecByName("lz4-hc-safe"),
+		}, nil
 	case "zstd":
 		return &zstdCompressor{
 			codec: blockcodecs.FindCodecByName("zstd_3"),
@@ -271,5 +276,20 @@ func (g *gzipCompressor) decompress(data []byte, result []byte) error {
 	}
 
 	_, err = io.ReadFull(gzipReader, result)
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type lz4BlockModeCompressor struct {
+	codec blockcodecs.Codec
+}
+
+func (l lz4BlockModeCompressor) compress(data []byte) ([]byte, error) {
+	return l.codec.Encode(make([]byte, 0), data)
+}
+
+func (l lz4BlockModeCompressor) decompress(data []byte, result []byte) error {
+	_, err := l.codec.Decode(result, data)
 	return err
 }

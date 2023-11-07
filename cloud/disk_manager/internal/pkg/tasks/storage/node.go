@@ -33,7 +33,7 @@ func (n *Node) structValue() persistence.Value {
 }
 
 // Scans single node from the YDB result set.
-func scanNode(result persistence.StreamResult) (node Node, err error) {
+func scanNode(result persistence.Result) (node Node, err error) {
 	err = result.ScanNamed(
 		persistence.OptionalWithDefault("host", &node.Host),
 		persistence.OptionalWithDefault("last_heartbeat", &node.LastHeartbeat),
@@ -43,7 +43,7 @@ func scanNode(result persistence.StreamResult) (node Node, err error) {
 }
 
 // Scans all nodes from the YDB result set.
-func scanNodes(ctx context.Context, res persistence.StreamResult) ([]Node, error) {
+func scanNodes(ctx context.Context, res persistence.Result) ([]Node, error) {
 	var nodes []Node
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {

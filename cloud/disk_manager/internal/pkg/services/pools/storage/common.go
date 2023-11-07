@@ -245,7 +245,7 @@ func baseDisksTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func scanBaseDisk(res persistence.StreamResult) (baseDisk baseDisk, err error) {
+func scanBaseDisk(res persistence.Result) (baseDisk baseDisk, err error) {
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &baseDisk.id),
 		persistence.OptionalWithDefault("image_id", &baseDisk.imageID),
@@ -279,7 +279,7 @@ func scanBaseDisk(res persistence.StreamResult) (baseDisk baseDisk, err error) {
 
 func scanBaseDisks(
 	ctx context.Context,
-	res persistence.StreamResult,
+	res persistence.Result,
 ) ([]baseDisk, error) {
 
 	var baseDisks []baseDisk
@@ -525,26 +525,6 @@ type poolConfig struct {
 }
 
 func scanPoolConfig(res persistence.Result) (config poolConfig, err error) {
-	err = res.ScanNamed(
-		persistence.OptionalWithDefault("image_id", &config.imageID),
-		persistence.OptionalWithDefault("zone_id", &config.zoneID),
-		persistence.OptionalWithDefault("capacity", &config.capacity),
-		persistence.OptionalWithDefault("image_size", &config.imageSize),
-	)
-	if err != nil {
-		return config, errors.NewNonRetriableErrorf(
-			"scanConfig: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return config, nil
-}
-
-func scanPoolConfigStream(
-	res persistence.StreamResult,
-) (config poolConfig, err error) {
-
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("image_id", &config.imageID),
 		persistence.OptionalWithDefault("zone_id", &config.zoneID),

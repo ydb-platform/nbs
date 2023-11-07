@@ -107,9 +107,11 @@ func TimestampValue(t time.Time) Value {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Result = ydb_result.Result
+type Result struct {
+	ydb_result.BaseResult
+}
 
-type StreamResult = ydb_result.StreamResult
+////////////////////////////////////////////////////////////////////////////////
 
 func OptionalWithDefault(
 	columnName string,
@@ -236,7 +238,8 @@ func (t *Transaction) Execute(
 
 	defer t.metrics.StatCall(ctx, "transaction/Execute", query)(&err)
 
-	res, err = t.transaction.Execute(
+	var ydbRes ydb_result.Result
+	ydbRes, err = t.transaction.Execute(
 		ctx,
 		query,
 		ydb_table.NewQueryParameters(params...),
@@ -250,14 +253,14 @@ func (t *Transaction) Execute(
 		)
 
 		// TODO: some errors should not be retriable.
-		return nil, errors.NewRetriableErrorf(
+		return Result{}, errors.NewRetriableErrorf(
 			"failed: query %v: %w",
 			query,
 			err,
 		)
 	}
 
-	return res, nil
+	return Result{ydbRes}, nil
 }
 
 func (t *Transaction) Commit(ctx context.Context) (err error) {
@@ -343,7 +346,7 @@ func (s *Session) StreamExecuteRO(
 	ctx context.Context,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (StreamResult, error) {
+) (Result, error) {
 
 	res, err := s.session.StreamExecuteScanQuery(
 		ctx,
@@ -352,14 +355,14 @@ func (s *Session) StreamExecuteRO(
 	)
 	if err != nil {
 		// TODO: some errors should not be retriable.
-		return nil, errors.NewRetriableErrorf(
+		return Result{}, errors.NewRetriableErrorf(
 			"StreamExecuteScanQuery failed, query %v: %w",
 			query,
 			err,
 		)
 	}
 
-	return res, nil
+	return Result{res}, nil
 }
 
 func (s *Session) ExecuteRW(
@@ -382,19 +385,19 @@ func (s *Session) StreamReadTable(
 	ctx context.Context,
 	path string,
 	opts ...ydb_options.ReadTableOption,
-) (StreamResult, error) {
+) (Result, error) {
 
 	res, err := s.session.StreamReadTable(ctx, path, opts...)
 	if err != nil {
 		// TODO: some errors should not be retriable.
-		return nil, errors.NewRetriableErrorf(
+		return Result{}, errors.NewRetriableErrorf(
 			"StreamReadTable failed, path %v: %w",
 			path,
 			err,
 		)
 	}
 
-	return res, nil
+	return Result{res}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -404,14 +407,15 @@ func (s *Session) execute(
 	control *ydb_table.TransactionControl,
 	query string,
 	params ...ydb_table.ParameterOption,
-) (transaction ydb_table.Transaction, res Result, err error) {
+) (tx ydb_table.Transaction, res Result, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
 	defer cancel()
 
 	defer s.metrics.StatCall(ctx, "session/Execute", query)(&err)
 
-	transaction, res, err = s.session.Execute(
+	var ydbRes ydb_result.Result
+	tx, ydbRes, err = s.session.Execute(
 		ctx,
 		control,
 		query,
@@ -426,14 +430,14 @@ func (s *Session) execute(
 		)
 
 		// TODO: some errors should not be retriable.
-		return nil, nil, errors.NewRetriableErrorf(
+		return nil, Result{}, errors.NewRetriableErrorf(
 			"session execution failed: query %v: %w",
 			query,
 			err,
 		)
 	}
 
-	return transaction, res, nil
+	return tx, Result{ydbRes}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

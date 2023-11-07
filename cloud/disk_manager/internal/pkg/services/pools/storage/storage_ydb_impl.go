@@ -1784,7 +1784,7 @@ func (s *storageYDB) getPoolConfigs(
 
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
-			config, err := scanPoolConfigStream(res)
+			config, err := scanPoolConfig(res)
 			if err != nil {
 				return nil, err
 			}

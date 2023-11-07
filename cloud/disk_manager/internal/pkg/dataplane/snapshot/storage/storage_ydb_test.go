@@ -1189,9 +1189,10 @@ func TestCompressionMetricsCollection(t *testing.T) {
 				comp := "lz4"
 				f.config.ChunkCompression = &comp
 				f.config.ProbeCompressionPercentage = map[string]uint32{
-					"gzip":     100,
-					"zstd":     100,
-					"zstd_cgo": 100,
+					"gzip":      100,
+					"zstd":      100,
+					"zstd_cgo":  100,
+					"lz4_block": 100,
 				}
 				registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 				histogramName := "chunkCompressionRatio"
@@ -1227,10 +1228,10 @@ func TestCompressionMetricsCollection(t *testing.T) {
 	}
 }
 
-func expectHistogramCalledOnce(registry *mocks.RegistryMock, name string, gzipCompressionTags map[string]string) *mock.Call {
+func expectHistogramCalledOnce(registry *mocks.RegistryMock, name string, compressionTags map[string]string) *mock.Call {
 	return registry.GetHistogram(
 		name,
-		gzipCompressionTags,
+		compressionTags,
 		metrics.NewExponentialBuckets(1, 1.5, 10),
 	).On(
 		"RecordValue",

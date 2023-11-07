@@ -144,7 +144,7 @@ func listResources(
 ) ([]string, error) {
 
 	var (
-		res persistence.StreamResult
+		res persistence.Result
 		err error
 	)
 	if len(folderID) == 0 {
