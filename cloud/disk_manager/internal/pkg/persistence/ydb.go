@@ -122,6 +122,25 @@ func (r *Result) NextRow() bool { return r.res.NextRow() }
 
 func (r *Result) ScanWithDefaults(values ...ydb_indexed.Required) error {
 	err := r.res.ScanWithDefaults(values...)
+	return r.handleError(err)
+}
+
+func (r *Result) Scan(values ...ydb_indexed.RequiredOrOptional) error {
+	err := r.res.Scan(values...)
+	return r.handleError(err)
+}
+
+func (r *Result) ScanNamed(namedValues ...ydb_named.Value) error {
+	return r.res.ScanNamed(namedValues...)
+}
+
+func (r *Result) Err() error { return r.res.Err() }
+
+func (r *Result) Close() error { return r.res.Close() }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (r *Result) handleError(err error) error {
 	if err != nil {
 		if r.tx != nil {
 			commitErr := r.tx.Commit(r.ctx)
@@ -135,18 +154,6 @@ func (r *Result) ScanWithDefaults(values ...ydb_indexed.Required) error {
 
 	return nil
 }
-
-func (r *Result) Scan(values ...ydb_indexed.RequiredOrOptional) error {
-	return r.res.Scan(values...)
-}
-
-func (r *Result) ScanNamed(namedValues ...ydb_named.Value) error {
-	return r.res.ScanNamed(namedValues...)
-}
-
-func (r *Result) Err() error { return r.res.Err() }
-
-func (r *Result) Close() error { return r.res.Close() }
 
 ////////////////////////////////////////////////////////////////////////////////
 
