@@ -743,6 +743,15 @@ TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TPartitionActor::HandleDescribeBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    Actors.Erase(ev->Sender);
+}
+
 void TPartitionActor::HandleReadBlocks(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -1028,7 +1037,7 @@ void TPartitionActor::CompleteReadBlocks(
     }
 
     if (describeBlocksRange.Defined() || requests) {
-        auto selfActor = NCloud::Register<TReadBlocksActor>(
+        const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
             args.RequestInfo,
             BlockDigestGenerator,
@@ -1042,23 +1051,27 @@ void TPartitionActor::CompleteReadBlocks(
             std::move(requests),
             std::move(args.BlockInfos),
             describeBlocksRange.Defined());
-        Actors.Insert(selfActor);
+        Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {
             auto requestInfo = CreateRequestInfo(
-                selfActor,
+                readBlocksActorId,
                 args.RequestInfo->Cookie,
                 args.RequestInfo->CallContext);
 
-            NCloud::Register<TDescribeBaseDiskBlocksActor>(
-                ctx,
-                requestInfo,
-                State->GetBaseDiskId(),
-                State->GetBaseDiskCheckpointId(),
-                ConvertRangeSafe(args.ReadRange),
-                *describeBlocksRange,
-                std::move(args.BlockMarks),
-                State->GetBlockSize());
+            const auto describeBlocksActorId =
+                NCloud::Register<TDescribeBaseDiskBlocksActor>(
+                    ctx,
+                    requestInfo,
+                    State->GetBaseDiskId(),
+                    State->GetBaseDiskCheckpointId(),
+                    ConvertRangeSafe(args.ReadRange),
+                    *describeBlocksRange,
+                    std::move(args.BlockMarks),
+                    State->GetBlockSize(),
+                    SelfId());
+
+            Actors.Insert(describeBlocksActorId);
         }
 
         return;

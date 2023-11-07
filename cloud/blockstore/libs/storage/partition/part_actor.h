@@ -600,6 +600,10 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDescribeBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     NProto::TError DoHandleMetadataRebuildBatch(
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,

@@ -20,13 +20,15 @@ TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
         TBlockRange64 blocksRange,
         TBlockRange64 baseDiskBlocksRange,
         TBlockMarks blockMarks,
-        ui32 blockSize)
+        ui32 blockSize,
+        NActors::TActorId notifyActorId)
     : RequestInfo(std::move(requestInfo))
     , BaseDiskId(std::move(baseDiskId))
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
     , BlocksRange(std::move(blocksRange))
     , BaseDiskBlocksRange(std::move(baseDiskBlocksRange))
     , BlockSize(blockSize)
+    , NotifyActorId(std::move(notifyActorId))
     , BlockMarks(std::move(blockMarks))
 {
     Y_DEBUG_ABORT_UNLESS(BaseDiskBlocksRange.Size());
@@ -56,13 +58,21 @@ void TDescribeBaseDiskBlocksActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
+    using TEvent = TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted;
+
     LWTRACK(
         RequestReceived_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
         "ReadBlocks",
         RequestInfo->CallContext->RequestId);
 
-    using TEvent = TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted;
+    if (NotifyActorId) {
+        NCloud::Send(
+            ctx,
+            NotifyActorId,
+            std::make_unique<TEvent>(error, NBlobMarkers::TBlockMarks{}));
+    }
+
     auto response = std::make_unique<TEvent>(
         std::move(error),
         std::move(BlockMarks));

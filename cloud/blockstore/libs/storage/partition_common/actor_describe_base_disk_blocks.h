@@ -29,6 +29,8 @@ private:
     const TBlockRange64 BaseDiskBlocksRange;
     const ui32 BlockSize;
 
+    const NActors::TActorId NotifyActorId;
+
     NBlobMarkers::TBlockMarks BlockMarks;
 
 public:
@@ -39,7 +41,8 @@ public:
         TBlockRange64 blocksRange,
         TBlockRange64 baseDiskBlocksRange,
         NBlobMarkers::TBlockMarks blockMarks,
-        ui32 blockSize);
+        ui32 blockSize,
+        NActors::TActorId notifyActorId = {});
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

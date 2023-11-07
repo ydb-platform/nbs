@@ -207,6 +207,45 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
     }
+
+    Y_UNIT_TEST_F(ShouldNotify, TSetupEnvironment)
+    {
+        const ui32 blockSize = 512;
+
+        TBlockMarks blockMarks{
+            TEmptyMark{},
+            TFreshMark{},
+            TEmptyMark{},
+            TEmptyMark{},
+            TFreshMark{}};
+
+        auto readActor = ActorSystem.Register(
+            new TDescribeBaseDiskBlocksActor(
+                MakeIntrusive<TRequestInfo>(),
+                "BaseDiskId",
+                "BaseDiskCheckpointId",
+                TBlockRange64::WithLength(0, 5),
+                TBlockRange64::WithLength(0, 4),
+                std::move(blockMarks),
+                blockSize,
+                EdgeActor));
+
+        auto describeRequest = ActorSystem.GrabEdgeEvent<
+            TEvVolume::TEvDescribeBlocksRequest>();
+
+        auto describeResponse = new TEvVolume::TEvDescribeBlocksResponse(
+            MakeError(E_NOT_FOUND));
+
+        ActorSystem.Send(new NActors::IEventHandle(
+            readActor,
+            EdgeActor,
+            describeResponse));
+
+        auto fullResponse = ActorSystem.GrabEdgeEvent<
+            TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
+
+        UNIT_ASSERT(HasError(fullResponse->GetError()));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
