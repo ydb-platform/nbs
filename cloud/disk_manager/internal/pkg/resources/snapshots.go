@@ -277,15 +277,7 @@ func (s *storageYDB) snapshotExists(
 	var count uint64
 	err = res.ScanWithDefaults(&count)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return false, commitErr
-		}
-
-		return false, errors.NewNonRetriableErrorf(
-			"snapshotExists: failed to parse row: %w",
-			err,
-		)
+		return false, err
 	}
 
 	return count != 0, nil

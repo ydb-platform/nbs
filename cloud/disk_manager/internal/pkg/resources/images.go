@@ -235,15 +235,7 @@ func (s *storageYDB) imageExists(
 
 	err = res.ScanWithDefaults(&count)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return false, commitErr
-		}
-
-		return false, errors.NewNonRetriableErrorf(
-			"imageExists: failed to parse row: %w",
-			err,
-		)
+		return false, err
 	}
 
 	return count != 0, nil

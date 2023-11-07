@@ -932,10 +932,7 @@ func (s *storageYDB) isPoolConfiguredTx(
 	var count uint64
 	err = res.ScanWithDefaults(&count)
 	if err != nil {
-		return false, errors.NewNonRetriableErrorf(
-			"isPoolConfiguredTx: failed to parse row: %w",
-			err,
-		)
+		return false, err
 	}
 
 	return count != 0, nil
@@ -973,10 +970,7 @@ func (s *storageYDB) isPoolConfigured(
 	var count uint64
 	err = res.ScanWithDefaults(&count)
 	if err != nil {
-		return false, errors.NewNonRetriableErrorf(
-			"isPoolConfigured: failed to parse row: %w",
-			err,
-		)
+		return false, err
 	}
 
 	return count != 0, nil

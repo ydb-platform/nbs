@@ -528,11 +528,9 @@ func (s *storageYDB) prepareCreateTask(
 		var count uint64
 		err = res.ScanWithDefaults(&count)
 		if err != nil {
-			return nil, errors.NewNonRetriableErrorf(
-				"prepareCreateTask: failed to parse row: %w",
-				err,
-			)
+			return nil, err
 		}
+
 		if count != 0 {
 			logging.Debug(
 				ctx,

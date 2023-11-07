@@ -21,6 +21,7 @@ import (
 	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
+	ydb_indexed "github.com/ydb-platform/ydb-go-sdk/v3/table/result/indexed"
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
@@ -108,8 +109,44 @@ func TimestampValue(t time.Time) Value {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Result struct {
-	ydb_result.BaseResult
+	ctx context.Context
+	tx  *Transaction
+	res ydb_result.BaseResult
 }
+
+func (r *Result) NextResultSet(ctx context.Context, columns ...string) bool {
+	return r.res.NextResultSet(ctx, columns...)
+}
+
+func (r *Result) NextRow() bool { return r.res.NextRow() }
+
+func (r *Result) ScanWithDefaults(values ...ydb_indexed.Required) error {
+	err := r.res.ScanWithDefaults(values...)
+	if err != nil {
+		if r.tx != nil {
+			commitErr := r.tx.Commit(r.ctx)
+			if commitErr != nil {
+				return commitErr
+			}
+		}
+
+		return errors.NewNonRetriableErrorf("failed to parse YDB result: %w", err)
+	}
+
+	return nil
+}
+
+func (r *Result) Scan(values ...ydb_indexed.RequiredOrOptional) error {
+	return r.res.Scan(values...)
+}
+
+func (r *Result) ScanNamed(namedValues ...ydb_named.Value) error {
+	return r.res.ScanNamed(namedValues...)
+}
+
+func (r *Result) Err() error { return r.res.Err() }
+
+func (r *Result) Close() error { return r.res.Close() }
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -222,7 +259,7 @@ func NewCreateTableDescription(opts ...CreateTableOption) CreateTableDescription
 ////////////////////////////////////////////////////////////////////////////////
 
 type Transaction struct {
-	transaction ydb_table.Transaction
+	tx          ydb_table.Transaction
 	callTimeout time.Duration
 	metrics     *ydbMetrics
 }
@@ -239,7 +276,7 @@ func (t *Transaction) Execute(
 	defer t.metrics.StatCall(ctx, "transaction/Execute", query)(&err)
 
 	var ydbRes ydb_result.Result
-	ydbRes, err = t.transaction.Execute(
+	ydbRes, err = t.tx.Execute(
 		ctx,
 		query,
 		ydb_table.NewQueryParameters(params...),
@@ -260,7 +297,7 @@ func (t *Transaction) Execute(
 		)
 	}
 
-	return Result{ydbRes}, nil
+	return Result{ctx: ctx, tx: t, res: ydbRes}, nil
 }
 
 func (t *Transaction) Commit(ctx context.Context) (err error) {
@@ -269,7 +306,7 @@ func (t *Transaction) Commit(ctx context.Context) (err error) {
 
 	defer t.metrics.StatCall(ctx, "transaction/Commit", "")(&err)
 
-	_, err = t.transaction.CommitTx(ctx)
+	_, err = t.tx.CommitTx(ctx)
 	if err != nil {
 		// TODO: some errors should not be retriable.
 		return errors.NewRetriableErrorf(
@@ -285,7 +322,7 @@ func (t *Transaction) Rollback(ctx context.Context) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, t.callTimeout)
 	defer cancel()
 
-	return t.transaction.Rollback(ctx)
+	return t.tx.Rollback(ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -298,7 +335,7 @@ type Session struct {
 
 func (s *Session) BeginRWTransaction(
 	ctx context.Context,
-) (transaction *Transaction, err error) {
+) (tx *Transaction, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
 	defer cancel()
@@ -307,8 +344,8 @@ func (s *Session) BeginRWTransaction(
 
 	settings := ydb_table.TxSettings(ydb_table.WithSerializableReadWrite())
 
-	var tx ydb_table.Transaction
-	tx, err = s.session.BeginTransaction(ctx, settings)
+	var ydbTx ydb_table.Transaction
+	ydbTx, err = s.session.BeginTransaction(ctx, settings)
 	if err != nil {
 		logging.Debug(ctx, "failed to begin transaction: %v", err)
 
@@ -320,7 +357,7 @@ func (s *Session) BeginRWTransaction(
 	}
 
 	return &Transaction{
-		transaction: tx,
+		tx:          ydbTx,
 		callTimeout: s.callTimeout,
 		metrics:     s.metrics,
 	}, nil
@@ -362,7 +399,7 @@ func (s *Session) StreamExecuteRO(
 		)
 	}
 
-	return Result{res}, nil
+	return Result{res: res}, nil
 }
 
 func (s *Session) ExecuteRW(
@@ -397,7 +434,7 @@ func (s *Session) StreamReadTable(
 		)
 	}
 
-	return Result{res}, nil
+	return Result{res: res}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -437,7 +474,7 @@ func (s *Session) execute(
 		)
 	}
 
-	return tx, Result{ydbRes}, nil
+	return tx, Result{res: ydbRes}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
