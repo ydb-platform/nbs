@@ -5,6 +5,7 @@
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_join.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt.h>
+#include <contrib/ydb/library/yql/dq/type_ann/dq_type_ann.h>
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 

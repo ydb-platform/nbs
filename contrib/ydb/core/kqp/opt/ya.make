@@ -22,6 +22,7 @@ PEERDIR(
     contrib/ydb/core/kqp/opt/physical
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/dq/type_ann
     contrib/ydb/library/yql/providers/s3/expr_nodes
     contrib/ydb/core/kqp/provider
 )

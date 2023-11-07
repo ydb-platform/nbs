@@ -30,6 +30,7 @@
 #include <contrib/ydb/library/yql/core/yql_data_provider.h>
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
+#include <contrib/ydb/library/yql/dq/type_ann/dq_type_ann.h>
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 #include <contrib/ydb/library/yql/core/extract_predicate/extract_predicate.h>

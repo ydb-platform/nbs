@@ -64,6 +64,7 @@ PEERDIR(
     contrib/ydb/library/yql/core/url_lister/interface
     contrib/ydb/library/yql/dq/integration
     contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/dq/type_ann
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/providers/common/config

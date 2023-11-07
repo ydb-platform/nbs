@@ -5,6 +5,7 @@ PEERDIR(
     contrib/ydb/library/yql/minikql/comp_nodes/llvm
     contrib/ydb/library/yql/dq/integration
     contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/dq/type_ann
     contrib/ydb/library/yql/dq/tasks
     contrib/ydb/library/yql/providers/common/mkql
     contrib/ydb/library/yql/providers/dq/api/protos

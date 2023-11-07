@@ -14,6 +14,7 @@ PEERDIR(
     contrib/ydb/library/yql/core/arrow_kernels/request
     contrib/ydb/library/yql/dq/integration
     contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/dq/type_ann
     contrib/ydb/library/yql/dq/tasks
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/providers/common/mkql

@@ -6,6 +6,7 @@
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_build.h>
+#include <contrib/ydb/library/yql/dq/type_ann/dq_type_ann.h>
 #include <contrib/ydb/library/yql/core/services/yql_out_transformers.h>
 #include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
