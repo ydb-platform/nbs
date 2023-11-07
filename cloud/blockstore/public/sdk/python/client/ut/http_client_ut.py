@@ -9,8 +9,6 @@ except ImportError:
     # python2
     from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 
-from yatest.common import network
-
 import cloud.blockstore.public.sdk.python.protos as protos
 
 from cloud.blockstore.public.sdk.python.client.http_client import HttpClient
@@ -48,9 +46,6 @@ def _test_every_method(sync, insecure, timeout):
     host = "localhost"
     server_mock = None
     if timeout is not None:
-        with network.PortManager() as pm:
-            port = pm.get_port()
-
         class NoOp(BaseHTTPRequestHandler):
 
             def do_GET(self):
@@ -59,8 +54,8 @@ def _test_every_method(sync, insecure, timeout):
             def do_POST(self):
                 pass
 
-        server_mock = HTTPServer((host, port), NoOp)  # noqa
-
+        server_mock = HTTPServer((host, 0), NoOp)  # noqa
+        port = server_mock.server_port
     addr = "{}://{}:{}".format("http" if insecure else "https", host, port)
 
     http_client = HttpClient(
