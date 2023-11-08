@@ -8,8 +8,6 @@ GO_XTEST_SRCS(
     vmdk_test.go
 )
 
-DATA(arcadia/cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests/data)
-
 SIZE(MEDIUM)
 
 DATA(

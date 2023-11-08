@@ -58,6 +58,8 @@ def start(argv):
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_SIZE", "2361393152")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_CRC32", "2577917554")
+        image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_ubuntu1804_image_map.json")
+        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_MAP_FILE", image_map_file_path)
 
     ubuntu1604_image_file_path = yatest_common.work_path("qcow2_images/ubuntu1604-ci-stable")
     if os.path.exists(ubuntu1604_image_file_path):
@@ -68,6 +70,8 @@ def start(argv):
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_SIZE", "15246295040")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_CRC32", "1189208160")
+        image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_ubuntu1604_image_map.json")
+        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_MAP_FILE", image_map_file_path)
 
     ubuntu2204_vmdk_image_file_path = yatest_common.work_path("vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk")
     if os.path.exists(ubuntu2204_vmdk_image_file_path):
@@ -78,6 +82,8 @@ def start(argv):
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_SIZE", "10737418240")
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_CRC32", "3896929631")
+        image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vmdk_ubuntu2204_image_map.json")
+        set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_MAP_FILE", image_map_file_path)
 
     # reproduces panic issue (NBS-4635)
     qcow2_panic_image_file_path = yatest_common.work_path("qcow2_images/panic.img")
