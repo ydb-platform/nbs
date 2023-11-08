@@ -92,17 +92,14 @@ func scanTaskInfos(ctx context.Context, res persistence.Result) (taskInfos []Tas
 				persistence.OptionalWithDefault("task_type", &info.TaskType),
 			)
 			if err != nil {
-				return taskInfos, errors.NewNonRetriableErrorf(
-					"scanTaskInfos: failed to parse row: %w",
-					err,
-				)
+				return
 			}
 
 			taskInfos = append(taskInfos, info)
 		}
 	}
 
-	return taskInfos, nil
+	return
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -275,60 +272,44 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		persistence.OptionalWithDefault("events", &events),
 	)
 	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"scanTaskStates: failed to parse row: %w",
-			err,
-		)
+		return
 	}
 
 	state.StorageFolder = s.folder
 	state.ErrorCode = grpc_codes.Code(errorCode)
 	state.ErrorDetails, err = unmarshalErrorDetails(errorDetails)
 	if err != nil {
-		return state, err
+		return
 	}
 
 	metadataValues, err := common.UnmarshalStringMap(metadata)
 	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"failed to parse metadata: %w",
-			err,
-		)
+		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
 	state.Metadata = NewMetadata(metadataValues)
 
 	depsValues, err := common.UnmarshalStrings(dependencies)
 	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"failed to parse dependencies: %w",
-			err,
-		)
+		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
 	state.Dependencies = NewStringSet(depsValues...)
 
 	dependantValues, err := common.UnmarshalStrings(dependants)
 	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"failed to parse dependants: %w",
-			err,
-		)
+		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
 	state.dependants = NewStringSet(dependantValues...)
 
 	eventsValues, err := common.UnmarshalInts(events)
 	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"failed to parse events: %w",
-			err,
-		)
+		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
 	state.Events = eventsValues
-
-	return state, nil
+	return
 }
 
 func (s *storageYDB) scanTaskStates(ctx context.Context, res persistence.Result) ([]TaskState, error) {
@@ -339,6 +320,7 @@ func (s *storageYDB) scanTaskStates(ctx context.Context, res persistence.Result)
 			if err != nil {
 				return nil, err
 			}
+
 			states = append(states, state)
 		}
 	}

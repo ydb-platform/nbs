@@ -187,11 +187,7 @@ func listResources(
 				persistence.OptionalWithDefault("id", &id),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"listResources: failed to parse row from %v: %w",
-					tableName,
-					err,
-				)
+				return nil, err
 			}
 
 			ids = append(ids, id)

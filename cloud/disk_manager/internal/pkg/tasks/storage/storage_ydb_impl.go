@@ -62,7 +62,7 @@ func (s *storageYDB) getTaskID(
 			persistence.OptionalWithDefault("task_id", &id),
 		)
 		if err != nil {
-			return "", errors.NewNonRetriableError(err)
+			return "", err
 		}
 
 		logging.Debug(
@@ -478,11 +478,6 @@ func (s *storageYDB) prepareUnfinishedDependencies(
 
 		dependencies, err := s.scanTaskStates(ctx, res)
 		if err != nil {
-			commitErr := tx.Commit(ctx)
-			if commitErr != nil {
-				return []stateTransition{}, commitErr
-			}
-
 			return []stateTransition{}, err
 		}
 
@@ -701,12 +696,7 @@ func (s *storageYDB) createRegularTasks(
 				persistence.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
 			)
 			if err != nil {
-				commitErr := tx.Commit(ctx)
-				if commitErr != nil {
-					return commitErr
-				}
-
-				return errors.NewNonRetriableError(err)
+				return err
 			}
 
 			found = true
@@ -849,10 +839,7 @@ func (s *storageYDB) getTaskByIdempotencyKey(
 		persistence.OptionalWithDefault("task_id", &id),
 	)
 	if err != nil {
-		return TaskState{}, errors.NewNonRetriableErrorf(
-			"getTaskByIdempotencyKey: failed to parse row: %w",
-			err,
-		)
+		return TaskState{}, err
 	}
 
 	return s.getTask(ctx, session, id)
@@ -929,8 +916,7 @@ func (s *storageYDB) listFailedTasks(
 				persistence.OptionalWithDefault("generation_id", &generationID),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"listFailedTasks: failed to parse row from tasks: %w", err)
+				return nil, err
 			}
 
 			result = append(result, TaskInfo{
@@ -991,8 +977,7 @@ func (s *storageYDB) listSlowTasks(
 				persistence.OptionalWithDefault("generation_id", &generationID),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"listSlowTasks: failed to parse row from tasks: %w", err)
+				return nil, err
 			}
 
 			taskInfos = append(taskInfos, TaskInfo{
@@ -1086,11 +1071,6 @@ func (s *storageYDB) lockTaskToExecute(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return TaskState{}, commitErr
-		}
-
 		return TaskState{}, err
 	}
 
@@ -1181,11 +1161,6 @@ func (s *storageYDB) prepareDependenciesToClear(
 
 		dependencies, err := s.scanTaskStates(ctx, res)
 		if err != nil {
-			commitErr := tx.Commit(ctx)
-			if commitErr != nil {
-				return []stateTransition{}, commitErr
-			}
-
 			return []stateTransition{}, err
 		}
 
@@ -1238,11 +1213,6 @@ func (s *storageYDB) prepareDependantsToWakeup(
 
 	dependants, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return []stateTransition{}, commitErr
-		}
-
 		return []stateTransition{}, err
 	}
 
@@ -1307,11 +1277,6 @@ func (s *storageYDB) markForCancellation(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return false, commitErr
-		}
-
 		return false, err
 	}
 
@@ -1410,12 +1375,7 @@ func (s *storageYDB) decrementRegularTasksInflight(
 				persistence.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
 			)
 			if err != nil {
-				commitErr := tx.Commit(ctx)
-				if commitErr != nil {
-					return commitErr
-				}
-
-				return errors.NewNonRetriableError(err)
+				return err
 			}
 
 			found = true
@@ -1504,11 +1464,6 @@ func (s *storageYDB) updateTask(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return TaskState{}, commitErr
-		}
-
 		return TaskState{}, err
 	}
 
@@ -1647,11 +1602,6 @@ func (s *storageYDB) sendEvent(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -1729,7 +1679,7 @@ func (s *storageYDB) clearEndedTasks(
 				persistence.OptionalWithDefault("account_id", &accountID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableError(err)
+				return err
 			}
 
 			execute := func(deleteFromTaskIds string) error {
@@ -1815,11 +1765,6 @@ func (s *storageYDB) finishTask(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -1892,11 +1837,6 @@ func (s *storageYDB) pauseTask(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -1980,11 +1920,6 @@ func (s *storageYDB) resumeTask(
 
 	states, err := s.scanTaskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 

@@ -160,14 +160,7 @@ func scanSnapshotState(res persistence.Result) (state snapshotState, err error) 
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
 		persistence.OptionalWithDefault("status", &state.status),
 	)
-	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"scanSnapshotStates: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return state, nil
+	return
 }
 
 func scanSnapshotStates(
@@ -314,10 +307,7 @@ func (s *storageYDB) getIncremental(
 				persistence.OptionalWithDefault("checkpoint_id", &checkpointID),
 			)
 			if err != nil {
-				return "", "", errors.NewNonRetriableErrorf(
-					"getIncremental: failed to to parse row: %w",
-					err,
-				)
+				return "", "", err
 			}
 		}
 	}
@@ -419,11 +409,6 @@ func (s *storageYDB) createSnapshot(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -558,11 +543,6 @@ func (s *storageYDB) snapshotCreated(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -717,11 +697,6 @@ func (s *storageYDB) deleteSnapshot(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -834,11 +809,6 @@ func (s *storageYDB) snapshotDeleted(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -941,10 +911,7 @@ func (s *storageYDB) clearDeletedSnapshots(
 				persistence.OptionalWithDefault("snapshot_id", &snapshotID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearDeletedSnapshots: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err = session.ExecuteRW(ctx, fmt.Sprintf(`
@@ -1004,11 +971,6 @@ func (s *storageYDB) lockSnapshot(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return false, commitErr
-		}
-
 		return false, err
 	}
 
@@ -1092,11 +1054,6 @@ func (s *storageYDB) unlockSnapshot(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 

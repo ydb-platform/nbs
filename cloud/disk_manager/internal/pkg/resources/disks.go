@@ -172,14 +172,7 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
 	)
-	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"scanDiskState: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return state, nil
+	return
 }
 
 func scanDiskStates(
@@ -345,11 +338,6 @@ func (s *storageYDB) createDisk(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -447,11 +435,6 @@ func (s *storageYDB) diskCreated(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -533,11 +516,6 @@ func (s *storageYDB) deleteDisk(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -607,11 +585,6 @@ func (s *storageYDB) diskDeleted(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -704,10 +677,7 @@ func (s *storageYDB) clearDeletedDisks(
 				persistence.OptionalWithDefault("disk_id", &diskID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearDeletedDisks: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err = session.ExecuteRW(ctx, fmt.Sprintf(`
@@ -783,11 +753,6 @@ func (s *storageYDB) incrementFillGeneration(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return 0, commitErr
-		}
-
 		return 0, err
 	}
 
@@ -852,11 +817,6 @@ func (s *storageYDB) diskScanned(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -955,11 +915,6 @@ func (s *storageYDB) getDiskState(
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return state, commitErr
-		}
-
 		return state, err
 	}
 

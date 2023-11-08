@@ -86,11 +86,6 @@ func (s *storageYDB) findBaseDisksTx(
 
 	baseDisks, err := scanBaseDisks(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -872,10 +867,7 @@ func (s *storageYDB) checkPoolConfigured(
 				persistence.OptionalWithDefault("capacity", &c),
 			)
 			if err != nil {
-				return 0, errors.NewNonRetriableErrorf(
-					"checkPoolConfigured: failed to parse row: %w",
-					err,
-				)
+				return 0, err
 			}
 
 			capacity += c
@@ -1011,11 +1003,6 @@ func (s *storageYDB) acquireBaseDiskSlot(
 	if slots.NextResultSet(ctx) && slots.NextRow() {
 		scannedSlot, err := scanSlot(slots)
 		if err != nil {
-			commitErr := tx.Commit(ctx)
-			if commitErr != nil {
-				return BaseDisk{}, commitErr
-			}
-
 			return BaseDisk{}, err
 		}
 
@@ -1052,10 +1039,7 @@ func (s *storageYDB) acquireBaseDiskSlot(
 				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
 			)
 			if err != nil {
-				return BaseDisk{}, errors.NewNonRetriableErrorf(
-					"acquireBaseDiskSlot: failed to parse row: %w",
-					err,
-				)
+				return BaseDisk{}, err
 			}
 
 			baseDisk, err := s.getBaseDisk(ctx, tx, baseDiskID)
@@ -1184,11 +1168,6 @@ func (s *storageYDB) releaseBaseDiskSlot(
 
 	slot, err := scanSlot(res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return BaseDisk{}, commitErr
-		}
-
 		return BaseDisk{}, err
 	}
 
@@ -1317,11 +1296,6 @@ func (s *storageYDB) overlayDiskRebasing(
 
 	slot, err := scanSlot(res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -1507,11 +1481,6 @@ func (s *storageYDB) overlayDiskRebased(
 
 	slot, err := scanSlot(res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -1687,11 +1656,6 @@ func (s *storageYDB) baseDiskCreationFailed(
 
 	found, err := scanBaseDisk(res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -1835,10 +1799,7 @@ func (s *storageYDB) getBaseDisksScheduling(
 				persistence.OptionalWithDefault("base_disk_id", &id),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"getBaseDisksScheduling: failed to parse row: %w",
-					err,
-				)
+				return nil, err
 			}
 
 			ids = append(ids, id)
@@ -2366,11 +2327,6 @@ func (s *storageYDB) deletePool(
 
 	p, err := scanPool(res)
 	if err != nil {
-		// Nothing to do.
-		if commitErr := tx.Commit(ctx); commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -2530,10 +2486,7 @@ func (s *storageYDB) getBaseDisksToDelete(
 				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"getBaseDisksToDelete: failed to parse row: %w",
-					err,
-				)
+				return nil, err
 			}
 
 			res, err = session.ExecuteRO(ctx, fmt.Sprintf(`
@@ -2606,11 +2559,6 @@ func (s *storageYDB) baseDiskDeleted(
 
 	found, err := scanBaseDisk(res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -2699,10 +2647,7 @@ func (s *storageYDB) clearDeletedBaseDisks(
 				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearDeletedBaseDisks: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
@@ -2768,10 +2713,7 @@ func (s *storageYDB) clearReleasedSlots(
 				persistence.OptionalWithDefault("overlay_disk_id", &overlayDiskID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearReleasedSlots: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
@@ -2830,10 +2772,7 @@ func (s *storageYDB) getAcquiredSlots(
 				persistence.OptionalWithDefault("overlay_disk_id", &id),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"getAcquiredSlots: failed to parse row: %w",
-					err,
-				)
+				return nil, err
 			}
 
 			overlayDiskIDs = append(overlayDiskIDs, persistence.UTF8Value(id))
@@ -2866,11 +2805,6 @@ func (s *storageYDB) getAcquiredSlots(
 		for res.NextRow() {
 			slot, err := scanSlot(res)
 			if err != nil {
-				commitErr := tx.Commit(ctx)
-				if commitErr != nil {
-					return nil, commitErr
-				}
-
 				return nil, err
 			}
 
@@ -2915,10 +2849,7 @@ func (s *storageYDB) getFreeBaseDisks(
 				persistence.OptionalWithDefault("base_disk_id", &id),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
-					"getFreeBaseDisks: failed to parse row: %w",
-					err,
-				)
+				return nil, err
 			}
 
 			ids = append(ids, id)
@@ -3246,10 +3177,6 @@ func (s *storageYDB) lockPool(
 
 	pool, err := scanPool(res)
 	if err != nil {
-		if commitErr := tx.Commit(ctx); commitErr != nil {
-			return false, commitErr
-		}
-
 		return false, err
 	}
 
@@ -3339,10 +3266,6 @@ func (s *storageYDB) unlockPool(
 
 	pool, err := scanPool(res)
 	if err != nil {
-		if commitErr := tx.Commit(ctx); commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 

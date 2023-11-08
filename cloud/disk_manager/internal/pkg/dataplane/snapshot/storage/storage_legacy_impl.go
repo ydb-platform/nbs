@@ -85,10 +85,7 @@ func (s *legacyStorage) readChunkMap(
 					persistence.OptionalWithDefault("chunkid", &chunkID),
 				)
 				if err != nil {
-					errors <- task_errors.NewNonRetriableErrorf(
-						"readChunkMap: failed to parse row: %w",
-						err,
-					)
+					errors <- err
 					return
 				}
 
@@ -269,10 +266,7 @@ func (s *legacyStorage) readSnapshotInfo(
 		persistence.OptionalWithDefault("state", &state),
 	)
 	if err != nil {
-		return snapshotInfo{}, task_errors.NewNonRetriableErrorf(
-			"readSnapshotInfo: failed to parse row: %w",
-			err,
-		)
+		return snapshotInfo{}, err
 	}
 
 	return snapshotInfo{
@@ -338,10 +332,7 @@ func (s *legacyStorage) readChunkInfo(
 		persistence.OptionalWithDefault("zero", &zero),
 	)
 	if err != nil {
-		return chunkInfo{}, task_errors.NewNonRetriableErrorf(
-			"readChunkInfo: failed to parse row: %w",
-			err,
-		)
+		return chunkInfo{}, err
 	}
 
 	return chunkInfo{
@@ -386,10 +377,7 @@ func (s *legacyStorage) readChunkData(
 		persistence.OptionalWithDefault("data", &data),
 	)
 	if err != nil {
-		return nil, task_errors.NewNonRetriableErrorf(
-			"readChunkData: failed to parse row: %w",
-			err,
-		)
+		return nil, err
 	}
 
 	return data, nil

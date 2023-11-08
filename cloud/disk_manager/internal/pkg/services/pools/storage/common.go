@@ -267,14 +267,7 @@ func scanBaseDisk(res persistence.Result) (baseDisk baseDisk, err error) {
 		persistence.OptionalWithDefault("deleted_at", &baseDisk.deletedAt),
 		persistence.OptionalWithDefault("status", &baseDisk.status),
 	)
-	if err != nil {
-		return baseDisk, errors.NewNonRetriableErrorf(
-			"scanBaseDisks: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return baseDisk, nil
+	return
 }
 
 func scanBaseDisks(
@@ -505,14 +498,11 @@ func scanSlot(res persistence.Result) (slot slot, err error) {
 		persistence.OptionalWithDefault("status", &slot.status),
 	)
 	if err != nil {
-		return slot, errors.NewNonRetriableErrorf(
-			"scanSLot: failed to parse row: %w",
-			err,
-		)
+		return
 	}
 
 	slot.overlayDiskKind = types.DiskKind(diskKind)
-	return slot, nil
+	return
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -531,14 +521,7 @@ func scanPoolConfig(res persistence.Result) (config poolConfig, err error) {
 		persistence.OptionalWithDefault("capacity", &config.capacity),
 		persistence.OptionalWithDefault("image_size", &config.imageSize),
 	)
-	if err != nil {
-		return config, errors.NewNonRetriableErrorf(
-			"scanConfig: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return config, nil
+	return
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -634,17 +617,14 @@ func scanPool(res persistence.Result) (pool pool, err error) {
 		persistence.OptionalWithDefault("created_at", &pool.createdAt),
 	)
 	if err != nil {
-		return pool, errors.NewNonRetriableErrorf(
-			"getPoolOrDefault: failed to parse row: %w",
-			err,
-		)
+		return
 	}
 
 	if pool.createdAt.IsZero() {
 		pool.createdAt = time.Now()
 	}
 
-	return pool, nil
+	return
 }
 
 ////////////////////////////////////////////////////////////////////////////////

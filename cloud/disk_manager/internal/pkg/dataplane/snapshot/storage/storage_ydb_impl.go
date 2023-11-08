@@ -68,11 +68,6 @@ func (s *storageYDB) createSnapshot(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -160,11 +155,6 @@ func (s *storageYDB) snapshotCreated(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -269,11 +259,6 @@ func (s *storageYDB) deletingSnapshot(
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -369,10 +354,7 @@ func (s *storageYDB) GetSnapshotsToDelete(
 				persistence.OptionalWithDefault("snapshot_id", &key.SnapshotId),
 			)
 			if err != nil {
-				return nil, task_errors.NewNonRetriableErrorf(
-					"GetSnapshotsToDelete: failed to parse row: %w",
-					err,
-				)
+				return nil, err
 			}
 
 			key.DeletingAt = timestamppb.New(deletingAt)
@@ -765,12 +747,10 @@ func (s *storageYDB) readChunkMap(
 					persistence.OptionalWithDefault("stored_in_s3", &entry.StoredInS3),
 				)
 				if err != nil {
-					errors <- task_errors.NewNonRetriableErrorf(
-						"readChunkMap: failed to parse row: %w",
-						err,
-					)
+					errors <- err
 					return
 				}
+
 				if inflightQueue != nil {
 					_, err := inflightQueue.Add(ctx, entry.ChunkIndex)
 					if err != nil {
@@ -902,10 +882,7 @@ func (s *storageYDB) GetDataChunkCount(
 		persistence.OptionalWithDefault("data_chunk_count", &dataChunkCount),
 	)
 	if err != nil {
-		return 0, task_errors.NewNonRetriableErrorf(
-			"GetDataChunkCount: failed to parse row: %w",
-			err,
-		)
+		return 0, err
 	}
 
 	return dataChunkCount, nil

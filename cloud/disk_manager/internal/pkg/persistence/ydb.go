@@ -131,7 +131,8 @@ func (r *Result) Scan(values ...ydb_indexed.RequiredOrOptional) error {
 }
 
 func (r *Result) ScanNamed(namedValues ...ydb_named.Value) error {
-	return r.res.ScanNamed(namedValues...)
+	err := r.res.ScanNamed(namedValues...)
+	return r.handleError(err)
 }
 
 func (r *Result) Err() error { return r.res.Err() }

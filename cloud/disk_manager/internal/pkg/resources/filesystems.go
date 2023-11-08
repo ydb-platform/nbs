@@ -127,14 +127,7 @@ func scanFilesystemState(res persistence.Result) (state filesystemState, err err
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
 	)
-	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"scanFilesystemStates: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return state, nil
+	return
 }
 
 func scanFilesystemStates(
@@ -276,11 +269,6 @@ func (s *storageYDB) createFilesystem(
 
 	states, err := scanFilesystemStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -381,11 +369,6 @@ func (s *storageYDB) filesystemCreated(
 
 	states, err := scanFilesystemStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -474,11 +457,6 @@ func (s *storageYDB) deleteFilesystem(
 
 	states, err := scanFilesystemStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -558,11 +536,6 @@ func (s *storageYDB) filesystemDeleted(
 
 	states, err := scanFilesystemStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -665,10 +638,7 @@ func (s *storageYDB) clearDeletedFilesystems(
 				persistence.OptionalWithDefault("filesystem_id", &filesystemID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearDeletedFilesystems: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err = session.ExecuteRW(ctx, fmt.Sprintf(`

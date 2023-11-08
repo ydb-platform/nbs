@@ -26,9 +26,8 @@ struct TEnv
     TEnv()
         : Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
         , Visitor(CreateRegistryVisitor(Data))
-    {
-        SetupRegistry();
-    }
+        , Registry(CreateMetricsRegistry({}, Counters))
+    {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {}
@@ -39,6 +38,11 @@ struct TEnv
     void SetupRegistry(TLabels commonLabels = {})
     {
         Registry = CreateMetricsRegistry(std::move(commonLabels), Counters);
+    }
+
+    void DestroyRegistry()
+    {
+        Registry.reset();
     }
 };
 
@@ -99,6 +103,8 @@ Y_UNIT_TEST_SUITE(TMetricRegistryTest)
             "]",
             Data.Str());
         Data.Clear();
+
+        DestroyRegistry();
     }
 
     Y_UNIT_TEST_F(ShouldRegisterAndAggregateAbs, TEnv)
@@ -183,6 +189,8 @@ Y_UNIT_TEST_SUITE(TMetricRegistryTest)
             "]",
             Data.Str());
         Data.Clear();
+
+        DestroyRegistry();
     }
 
     Y_UNIT_TEST_F(ShouldUnregisterAbs, TEnv)
@@ -829,7 +837,7 @@ Y_UNIT_TEST_SUITE(TMetricRegistryTest)
             Data.Str());
         Data.Clear();
 
-        Registry.reset();
+        DestroyRegistry();
 
         Counters->OutputPlainText(Data);
         UNIT_ASSERT_VALUES_EQUAL("", Data.Str());

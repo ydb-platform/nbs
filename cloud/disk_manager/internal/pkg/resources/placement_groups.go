@@ -147,14 +147,11 @@ func scanPlacementGroupState(res persistence.Result) (state placementGroupState,
 		persistence.OptionalWithDefault("status", &state.status),
 	)
 	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"scanPlacementGroupStates: failed to parse row: %w",
-			err,
-		)
+		return
 	}
 
 	state.placementStrategy = types.PlacementStrategy(placementStrategy)
-	return state, nil
+	return
 }
 
 func scanPlacementGroupStates(
@@ -369,11 +366,6 @@ func (s *storageYDB) createPlacementGroup(
 
 	states, err := scanPlacementGroupStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -485,11 +477,6 @@ func (s *storageYDB) placementGroupCreated(
 
 	states, err := scanPlacementGroupStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -583,11 +570,6 @@ func (s *storageYDB) deletePlacementGroup(
 
 	states, err := scanPlacementGroupStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -672,11 +654,6 @@ func (s *storageYDB) placementGroupDeleted(
 
 	states, err := scanPlacementGroupStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -790,10 +767,7 @@ func (s *storageYDB) clearDeletedPlacementGroups(
 				persistence.OptionalWithDefault("placement_group_id", &placementGroupID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearDeletedPlacementGroups: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`

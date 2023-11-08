@@ -132,14 +132,7 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
 	)
-	if err != nil {
-		return state, errors.NewNonRetriableErrorf(
-			"scanImageStates: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return state, nil
+	return
 }
 
 func scanImageStates(
@@ -356,11 +349,6 @@ func (s *storageYDB) createImage(
 
 	states, err := scanImageStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -478,11 +466,6 @@ func (s *storageYDB) imageCreated(
 
 	states, err := scanImageStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -596,11 +579,6 @@ func (s *storageYDB) deleteImage(
 
 	states, err := scanImageStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return nil, commitErr
-		}
-
 		return nil, err
 	}
 
@@ -680,11 +658,6 @@ func (s *storageYDB) imageDeleted(
 
 	states, err := scanImageStates(ctx, res)
 	if err != nil {
-		commitErr := tx.Commit(ctx)
-		if commitErr != nil {
-			return commitErr
-		}
-
 		return err
 	}
 
@@ -787,10 +760,7 @@ func (s *storageYDB) clearDeletedImages(
 				persistence.OptionalWithDefault("image_id", &imageID),
 			)
 			if err != nil {
-				return errors.NewNonRetriableErrorf(
-					"clearDeletedImages: failed to parse row: %w",
-					err,
-				)
+				return err
 			}
 
 			_, err = session.ExecuteRW(ctx, fmt.Sprintf(`

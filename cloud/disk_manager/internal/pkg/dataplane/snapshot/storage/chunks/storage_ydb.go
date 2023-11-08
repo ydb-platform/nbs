@@ -79,10 +79,7 @@ func (s *StorageYDB) ReadChunk(
 		persistence.OptionalWithDefault("compression", &compression),
 	)
 	if err != nil {
-		return errors.NewNonRetriableErrorf(
-			"ReadChunk: failed to parse row: %w",
-			err,
-		)
+		return err
 	}
 
 	logging.Debug(

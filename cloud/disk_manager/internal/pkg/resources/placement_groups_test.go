@@ -19,6 +19,7 @@ func requirePlacementGroupsAreEqual(
 	expected PlacementGroupMeta,
 	actual PlacementGroupMeta,
 ) {
+
 	// TODO: Get rid of boilerplate.
 	require.Equal(t, expected.ID, actual.ID)
 	require.Equal(t, expected.ZoneID, actual.ZoneID)
