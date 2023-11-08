@@ -23,7 +23,7 @@ func getQCOW2ImageFileURLUbuntu1604() string {
 
 func getQCOW2ExpectedMapFileUbuntu1604() string {
 	// Result of 'qemu-img map --output=json ubuntu1604-ci-stable'.
-	return yatest.SourcePath("cloud/disk_manager/internal/pkg/dataplane/url/qcow2/tests/data/qemuimg_map_ubuntu1604.json")
+	return yatest.SourcePath("cloud/disk_manager/test/images/recipe/data/qemuimg_map_ubuntu1604.json")
 }
 
 func getQCOW2ImageFileURLUbuntu1804() string {
@@ -33,7 +33,7 @@ func getQCOW2ImageFileURLUbuntu1804() string {
 
 func getQCOW2ExpectedMapFileUbuntu1804() string {
 	// Result of 'qemu-img map --output=json ubuntu-18.04-minimal-cloudimg-amd64.img'.
-	return yatest.SourcePath("cloud/disk_manager/internal/pkg/dataplane/url/qcow2/tests/data/qemuimg_map_ubuntu1804.json")
+	return yatest.SourcePath("cloud/disk_manager/test/images/recipe/data/qemuimg_map_ubuntu1804.json")
 }
 
 ////////////////////////////////////////////////////////////////////////////////

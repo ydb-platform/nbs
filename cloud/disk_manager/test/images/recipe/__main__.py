@@ -11,15 +11,15 @@ from cloud.disk_manager.test.images.recipe.vmdk_image_generator import VMDKImage
 
 
 def start(argv):
-    raw_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/raw.img")
+    raw_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/raw.img")
     raw_image_file_server = ImageFileServerLauncher(raw_image_file_path)
     raw_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_FILE_SERVER_PORT", str(raw_image_file_server.port))
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_CRC32", "3776401828")
 
-    qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/qcow2.img")
-    other_qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/qcow2_other.img")
+    qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2.img")
+    other_qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_other.img")
     qcow2_image_file_server = ImageFileServerLauncher(qcow2_image_file_path, other_qcow2_image_file_path)
     qcow2_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_QCOW2_IMAGE_FILE_SERVER_PORT", str(qcow2_image_file_server.port))
@@ -29,7 +29,7 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_OTHER_QCOW2_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_OTHER_QCOW2_IMAGE_CRC32", "3837173913")
 
-    vmdk_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/vmdk.img")
+    vmdk_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vmdk.img")
     vmdk_image_file_server = ImageFileServerLauncher(vmdk_image_file_path)
     vmdk_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VMDK_IMAGE_FILE_SERVER_PORT", str(vmdk_image_file_server.port))
@@ -37,7 +37,7 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_VMDK_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_VMDK_IMAGE_CRC32", "1412309815")
 
-    vmdk_stream_optimized_file_path = yatest_common.source_path("cloud/disk_manager/test/images/vmdk_stream_optimized.img")
+    vmdk_stream_optimized_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vmdk_stream_optimized.img")
     vmdk_stream_optimized_image_file_server = ImageFileServerLauncher(vmdk_stream_optimized_file_path)
     vmdk_stream_optimized_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_FILE_SERVER_PORT", str(vmdk_stream_optimized_image_file_server.port))

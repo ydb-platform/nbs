@@ -8,8 +8,6 @@ GO_XTEST_SRCS(
     qcow2_test.go
 )
 
-DATA(arcadia/cloud/disk_manager/internal/pkg/dataplane/url/qcow2/tests/data)
-
 SIZE(MEDIUM)
 
 DATA(

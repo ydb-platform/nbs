@@ -7,11 +7,7 @@ SET(RECIPE_DEPS_LIST
 DEPENDS(${RECIPE_DEPS_LIST})
 
 DATA(
-    arcadia/cloud/disk_manager/test/images/raw.img
-    arcadia/cloud/disk_manager/test/images/qcow2.img
-    arcadia/cloud/disk_manager/test/images/qcow2_other.img
-    arcadia/cloud/disk_manager/test/images/vmdk.img
-    arcadia/cloud/disk_manager/test/images/vmdk_stream_optimized.img
+    arcadia/cloud/disk_manager/test/images/recipe/data
 )
 
 USE_RECIPE(cloud/disk_manager/test/images/recipe/recipe ${RECIPE_ARGS})
