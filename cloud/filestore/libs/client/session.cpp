@@ -165,6 +165,16 @@ TString GetSessionState(const NProto::TCreateSessionResponse& response)
     return response.GetSession().GetSessionState();
 }
 
+std::tuple<TString, ui64, bool> GetSessionParams(
+    const NProto::TCreateSessionResponse& response)
+{
+    return {
+        GetSessionId(response),
+        GetSessionSeqNo(response),
+        GetReadOnly(response)
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSession
@@ -205,6 +215,10 @@ private:
     ESessionState SessionState = Idle;
     TPromise<NProto::TCreateSessionResponse> CreateSessionResponse;
     TPromise<NProto::TDestroySessionResponse> DestroySessionResponse;
+
+    TString SessionId;
+    ui64 SessionSeqNo = 0;
+    bool ReadOnly = 0;
 
     std::atomic_flag PingScheduled = false;
 
@@ -346,23 +360,6 @@ private:
         }
     }
 
-    std::tuple<TString, ui64, bool> GetSessionParams(
-        const TFuture<NProto::TCreateSessionResponse>& response)
-    {
-        Y_ABORT_UNLESS(response.HasValue());
-        const auto& info = response.GetValue();
-        return {
-            GetSessionId(info),
-            GetSessionSeqNo(info),
-            GetReadOnly(info)
-        };
-    }
-
-    std::tuple<TString, ui64, bool> GetSessionParams()
-    {
-        return GetSessionParams(CreateSessionResponse);
-    }
-
     //
     // CreateSession request
     //
@@ -465,6 +462,10 @@ private:
                     << " session established" << GetSessionState(response).size());
 
                 SessionState = SessionEstablished;
+
+                std::tie(SessionId, SessionSeqNo, ReadOnly) =
+                    GetSessionParams(response);
+
                 SchedulePingSession();
             } else if (!state->SessionId) {
                 SessionState = SessionBroken;
@@ -520,11 +521,9 @@ private:
 
             SessionState = SessionDestroying;
 
-            auto [sessionId, seqNo, _] = GetSessionParams();
-
-            STORAGE_INFO(LogTag(sessionId, seqNo) << " destroying session");
-            state->SessionId = std::move(sessionId);
-            state->MountSeqNumber = seqNo;
+            STORAGE_INFO(LogTag(SessionId, SessionSeqNo) << " destroying session");
+            state->SessionId = SessionId;
+            state->MountSeqNumber = SessionSeqNo;
 
             DestroySessionResponse = state->Response;
         }
@@ -595,15 +594,13 @@ private:
                     auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
                     callContext->RequestType = EFileStoreRequest::CreateSession;
 
-                    auto [sessionId, seqNo, readOnly] = GetSessionParams(CreateSessionResponse);
-
                     requestState = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
-                        readOnly,
-                        seqNo,
+                        ReadOnly,
+                        SessionSeqNo,
                         F_RESTORE_SESSION,
                         std::move(callContext));
 
-                    requestState->SessionId = std::move(sessionId);
+                    requestState->SessionId = SessionId;
 
                     CreateSessionResponse = requestState->Response;
                     response = requestState->Response;
@@ -622,11 +619,7 @@ private:
     void ForceRestoreSession()
     {
         with_lock (SessionLock) {
-            if (SessionState == SessionEstablishing) {
-                return;
-            }
-
-            if (SessionState == Idle || SessionState == SessionBroken) {
+            if (SessionState != SessionEstablished) {
                 return;
             }
 
