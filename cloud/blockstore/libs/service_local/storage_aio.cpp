@@ -14,6 +14,7 @@
 
 #include <util/generic/array_ref.h>
 #include <util/generic/noncopyable.h>
+#include <util/random/fast.h>
 #include <util/string/builder.h>
 #include <util/system/align.h>
 #include <util/system/file.h>
@@ -169,6 +170,7 @@ struct TStorageContext
     const ui64 StorageBlockCount;
 
     TFile File;
+    bool DirectIO;
 
     TStorageContext(
             IFileIOServicePtr fileIO,
@@ -176,13 +178,15 @@ struct TStorageContext
             ui32 blockSize,
             ui64 startIndex,
             ui64 blockCount,
-            TFile file)
+            TFile file,
+            bool directIO)
         : FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
         , BlockSize(blockSize)
         , StorageStartIndex(startIndex)
         , StorageBlockCount(blockCount)
         , File(std::move(file))
+        , DirectIO(directIO)
     {}
 };
 
@@ -497,6 +501,9 @@ public:
     void ReportIOError() override;
 
     TFuture<NProto::TError> EraseDevice(NProto::EDeviceEraseMethod method) override;
+
+private:
+    TFuture<NProto::TError> SafeDeallocateDevice();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -637,8 +644,10 @@ TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod meth
         method != NProto::DEVICE_ERASE_METHOD_ZERO_FILL)
     {
         auto isSsdOrError = NvmeManager->IsSsd(File.GetName());
-        if (HasError(isSsdOrError) || !isSsdOrError.GetResult()) {
+        if (HasError(isSsdOrError) || !isSsdOrError.GetResult() || !DirectIO) {
             // fallback to zero erase for mechanical disk
+            // if we don't use DirectIO there is chance that os cache
+            // will return deallocated data so it's not safe to use deallocate
             method = NProto::DEVICE_ERASE_METHOD_ZERO_FILL;
         }
     }
@@ -670,15 +679,155 @@ TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod meth
             NVME_FMT_NVM_SES_CRYPTO_ERASE);
 
     case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
-        return NvmeManager->Deallocate(
-            File.GetName(),
-            StorageStartIndex * BlockSize,
-            StorageBlockCount * BlockSize);
+        return SafeDeallocateDevice();
 
     case NProto::DEVICE_ERASE_METHOD_NONE:
         return {};
     }
 
+}
+
+class TSafeDeallocator
+    : TFileIOCompletion
+{
+private:
+    const ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
+    std::shared_ptr<TStorageContext> StorageContext;
+    TPromise<NProto::TError> Response;
+    ui64 RemainingBlockCount;
+    ui64 ValidatedBlockIndex;
+    TAlignedBuffer Buffer;
+    TAlignedBuffer ZeroBuffer;
+    TAlignedBuffer FFBuffer;
+    TFileHandleRef Handle;
+    TFastRng64 Rand;
+
+public:
+    TSafeDeallocator(
+            std::shared_ptr<TStorageContext> storageContext,
+            TPromise<NProto::TError> response)
+        : TFileIOCompletion{.Func = &TSafeDeallocator::ReadBlockCompleteCb}
+        , StorageContext(std::move(storageContext))
+        , Response(std::move(response))
+        , RemainingBlockCount(
+            StorageContext->StorageBlockCount / ValidatedBlocksRatio)
+        , Buffer(AllocateZero(StorageContext->BlockSize))
+        , ZeroBuffer(AllocateZero(StorageContext->BlockSize))
+        , FFBuffer(AllocateZero(StorageContext->BlockSize))
+        , Handle(StorageContext->File)
+        , Rand(GetCycleCount())
+    {
+        memset(FFBuffer.get(), 0xff, StorageContext->BlockSize);
+    }
+
+    void Deallocate()
+    {
+        auto future = StorageContext->NvmeManager->Deallocate(
+            StorageContext->File.GetName(),
+            StorageContext->StorageStartIndex * StorageContext->BlockSize,
+            StorageContext->StorageBlockCount * StorageContext->BlockSize);
+
+        future.Subscribe([this] (auto& future) {
+            auto error = future.GetValue();
+            if (HasError(error)) {
+                Response.SetValue(error);
+                return;
+            }
+
+            ValidateNextBlock();
+        });
+    }
+
+private:
+    void ValidateNextBlock()
+    {
+        if (RemainingBlockCount == 0) {
+            Response.SetValue(NProto::TError());
+            return;
+        }
+
+        RemainingBlockCount--;
+
+        ValidatedBlockIndex = StorageContext->StorageStartIndex +
+            Rand.Uniform(StorageContext->StorageBlockCount);
+        TArrayRef<char> buffer = {Buffer.get(), StorageContext->BlockSize};
+
+        StorageContext->FileIOService->AsyncRead(
+            Handle,
+            ValidatedBlockIndex * StorageContext->BlockSize,
+            buffer,
+            this);
+    }
+
+    bool IsDeallocatedBlock()
+    {
+        auto res = memcmp(
+            Buffer.get(),
+            ZeroBuffer.get(),
+            StorageContext->BlockSize);
+        if (res == 0) {
+            return true;
+        }
+
+        // some vendors can return FF in deallocated block
+        res = memcmp(
+            Buffer.get(),
+            FFBuffer.get(),
+            StorageContext->BlockSize);
+        if (res == 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    void ReadBlockComplete(const NProto::TError& error, ui32 bytes)
+    {
+        if (HasError(error)) {
+            Response.SetValue(error);
+            return;
+        }
+
+        if (bytes != StorageContext->BlockSize) {
+            Response.SetValue(
+                MakeError(E_IO, TStringBuilder() <<
+                    "dealloc validator read " << bytes << " bytes"));
+            return;
+        }
+
+        if (!IsDeallocatedBlock()) {
+            Response.SetValue(
+                MakeError(E_IO, TStringBuilder() <<
+                    "read non 00/ff block after deallocate at index " <<
+                    ValidatedBlockIndex));
+            return;
+        }
+
+        ValidateNextBlock();
+    }
+
+    static void ReadBlockCompleteCb(
+        TFileIOCompletion* completion,
+        const NProto::TError& error,
+        ui32 bytes)
+    {
+        auto checker = static_cast<TSafeDeallocator*>(completion);
+        checker->ReadBlockComplete(error, bytes);
+    }
+};
+
+TFuture<NProto::TError> TAioStorage::SafeDeallocateDevice()
+{
+    auto response = NewPromise<NProto::TError>();
+
+    auto safeDeallocator = std::make_shared<TSafeDeallocator>(
+        shared_from_this(), response);
+    safeDeallocator->Deallocate();
+
+    response.GetFuture().Subscribe([_ = std::move(safeDeallocator)] (auto&) {
+    });
+
+    return response;
 }
 
 TStorageBuffer TAioStorage::AllocateBuffer(size_t byteCount)
@@ -738,7 +887,8 @@ public:
             blockSize,
             volume.GetStartIndex(),
             volume.GetBlocksCount(),
-            TFile {filePath, flags});
+            TFile {filePath, flags},
+            DirectIO);
 
         return MakeFuture<IStoragePtr>(storage);
     };

@@ -434,6 +434,194 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
             );
         }
     }
+
+    Y_UNIT_TEST(ShouldValidateDeallocatedBlocksInEraseDeviceUsingDeallocate)
+    {
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 32_MB / blockSize;
+        const auto filePath = TryGetRamDrivePath() / "test";
+
+        TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+        fileData.Resize(blockSize * blockCount);
+
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        auto provider = CreateAioStorageProvider(
+            service,
+            CreateNvmeManagerStub(),
+            true   // directIO
+        );
+
+        NProto::TVolume volume;
+        volume.SetDiskId(filePath);
+        volume.SetBlockSize(blockSize);
+        volume.SetBlocksCount(blockCount);
+
+        auto future = provider->CreateStorage(
+            volume,
+            "",
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        auto storage = future.GetValue();
+
+        auto fillWithPattern = [&] (char p) {
+            fileData.Seek(0, sSet);
+            TVector<char> buffer(blockSize, p);
+            for (ui32 i = 0; i != blockCount; ++i) {
+                fileData.Write(buffer.data(), blockSize);
+            }
+
+            fileData.Flush();
+        };
+
+
+        // disk filled with 0x0 validates ok
+        fillWithPattern(0x0);
+        auto response =
+            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        UNIT_ASSERT_SUCCEEDED(response.GetValue());
+
+        // disk filled with 0xff validates ok
+        fillWithPattern(0xff);
+        response =
+            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        UNIT_ASSERT_SUCCEEDED(response.GetValue());
+
+        // disk filled with other pattern fails validation
+        fillWithPattern(0x12);
+        response =
+            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        UNIT_ASSERT_EQUAL(E_IO, response.GetValue().GetCode());
+
+    }
+
+    Y_UNIT_TEST(ShouldZeroFillIfDeviceNonSsdInEraseDeviceUsingDeallocate)
+    {
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 32_MB / blockSize;
+        const auto filePath = TryGetRamDrivePath() / "test";
+
+        TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+        fileData.Resize(blockSize * blockCount);
+
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        auto provider = CreateAioStorageProvider(
+            service,
+            CreateNvmeManagerStub(false /* not ssd */),
+            true   // directIO
+        );
+
+        NProto::TVolume volume;
+        volume.SetDiskId(filePath);
+        volume.SetBlockSize(blockSize);
+        volume.SetBlocksCount(blockCount);
+
+        auto future = provider->CreateStorage(
+            volume,
+            "",
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        auto storage = future.GetValue();
+
+        auto fillWithPattern = [&] (char p) {
+            fileData.Seek(0, sSet);
+            TVector<char> buffer(blockSize, p);
+            for (ui32 i = 0; i != blockCount; ++i) {
+                fileData.Write(buffer.data(), blockSize);
+            }
+
+            fileData.Flush();
+        };
+
+        auto validatePattern = [&] (char p) {
+            fileData.Seek(0, sSet);
+            TVector<char> patternBuffer(blockSize, p);
+            TVector<char> readBuffer(blockSize, 0);
+            for (ui32 i = 0; i != blockCount; ++i) {
+                fileData.Read(readBuffer.data(), blockSize);
+            }
+
+            UNIT_ASSERT_EQUAL(0,
+                memcmp(patternBuffer.data(), readBuffer.data(), blockSize));
+        };
+
+
+        fillWithPattern(0x12);
+        auto response =
+            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        UNIT_ASSERT_SUCCEEDED(response.GetValue());
+
+        validatePattern(0x0);
+    }
+
+    Y_UNIT_TEST(ShouldZeroFillIfNotDirectIoInEraseDeviceUsingDeallocate)
+    {
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 32_MB / blockSize;
+        const auto filePath = TryGetRamDrivePath() / "test";
+
+        TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+        fileData.Resize(blockSize * blockCount);
+
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        auto provider = CreateAioStorageProvider(
+            service,
+            CreateNvmeManagerStub(),
+            false   // directIO
+        );
+
+        NProto::TVolume volume;
+        volume.SetDiskId(filePath);
+        volume.SetBlockSize(blockSize);
+        volume.SetBlocksCount(blockCount);
+
+        auto future = provider->CreateStorage(
+            volume,
+            "",
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        auto storage = future.GetValue();
+
+        auto fillWithPattern = [&] (char p) {
+            fileData.Seek(0, sSet);
+            TVector<char> buffer(blockSize, p);
+            for (ui32 i = 0; i != blockCount; ++i) {
+                fileData.Write(buffer.data(), blockSize);
+            }
+
+            fileData.Flush();
+        };
+
+        auto validatePattern = [&] (char p) {
+            fileData.Seek(0, sSet);
+            TVector<char> patternBuffer(blockSize, p);
+            TVector<char> readBuffer(blockSize, 0);
+            for (ui32 i = 0; i != blockCount; ++i) {
+                fileData.Read(readBuffer.data(), blockSize);
+            }
+
+            UNIT_ASSERT_EQUAL(0,
+                memcmp(patternBuffer.data(), readBuffer.data(), blockSize));
+        };
+
+
+        fillWithPattern(0x12);
+        auto response =
+            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        UNIT_ASSERT_SUCCEEDED(response.GetValue());
+
+        validatePattern(0x0);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

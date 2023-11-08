@@ -11,7 +11,14 @@ namespace {
 class TNvmeManagerStub final
     : public INvmeManager
 {
+private:
+    bool IsDeviceSsd;
+
 public:
+    TNvmeManagerStub(bool isDeviceSsd)
+        : IsDeviceSsd(isDeviceSsd)
+    {}
+
     TFuture<NProto::TError> Format(
         const TString& path,
         nvme_secure_erase_setting ses) override
@@ -45,7 +52,7 @@ public:
     {
         Y_UNUSED(path);
 
-        return true;
+        return IsDeviceSsd;
     }
 };
 
@@ -53,9 +60,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-INvmeManagerPtr CreateNvmeManagerStub()
+INvmeManagerPtr CreateNvmeManagerStub(bool isDeviceSsd)
 {
-    return std::make_shared<TNvmeManagerStub>();
+    return std::make_shared<TNvmeManagerStub>(isDeviceSsd);
 }
 
 }   // namespace NCloud::NBlockStore::NNvme
