@@ -1,0 +1,156 @@
+Vertices {
+    Test {
+        Name: "create_and_fill_base_volume_v1"
+        CreateVolumeRequest {
+            DiskId: "@base-volume"
+            BlocksCount: 1000000
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 0
+                ReadRate: 0
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 20
+                RequestsCount: 1000
+                MinRequestSize: 1000
+                MaxRequestSize: 1000
+            }
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "create_base_volume_checkpoint_v1"
+        CreateCheckpointRequest {
+            DiskId: "@base-volume"
+            CheckpointId: "checkpoint"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "create_and_shoot_overlay_volume_before_checkpoint_v1"
+        CreateVolumeRequest {
+            DiskId: "@overlay-volume"
+            BaseDiskId: "@base-volume"
+            BaseDiskCheckpointId: "checkpoint"
+            BlocksCount: 1000000
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "create_overlay_volume_checkpoint_v1"
+        CreateCheckpointRequest {
+            DiskId: "@overlay-volume"
+            CheckpointId: "checkpoint"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot_overlay_volume_after_checkpoint_v1"
+        VolumeName: "@overlay-volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read_overlay_volume_checkpoint_v1"
+        VolumeName: "@overlay-volume"
+        CheckpointId: "checkpoint"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 1
+                RequestsCount: 0
+                MinRequestSize: 1000
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Dependencies {
+    key: "create_base_volume_checkpoint_v1",
+    value {
+        Names: "create_and_fill_base_volume_v1"
+    }
+}
+
+Dependencies {
+    key: "create_and_shoot_overlay_volume_before_checkpoint_v1",
+    value {
+        Names: "create_base_volume_checkpoint_v1"
+    }
+}
+
+Dependencies {
+    key: "create_overlay_volume_checkpoint_v1",
+    value {
+        Names: "create_and_shoot_overlay_volume_before_checkpoint_v1"
+    }
+}
+
+Dependencies {
+    key: "shoot_overlay_volume_after_checkpoint_v1",
+    value {
+        Names: "create_overlay_volume_checkpoint_v1"
+    }
+}
+
+Dependencies {
+    key: "read_overlay_volume_checkpoint_v1",
+    value {
+        Names: "create_overlay_volume_checkpoint_v1"
+    }
+}

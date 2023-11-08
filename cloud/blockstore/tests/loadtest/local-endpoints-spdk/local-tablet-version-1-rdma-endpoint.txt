@@ -1,0 +1,27 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 1000000
+            BlockSize: 4096
+        }
+        StartEndpointRequest {
+            IpcType: IPC_RDMA
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 5
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 240
+        Verify: true
+        Name: "Test rdma endpoint"
+    }
+}

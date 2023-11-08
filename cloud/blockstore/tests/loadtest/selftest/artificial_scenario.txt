@@ -1,0 +1,22 @@
+Vertices {
+    Test {
+        VolumeName: "$FILE"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 2559
+                WriteRate: 33
+                ReadRate: 33
+                ZeroRate: 33
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 32
+                RequestsCount: 0
+                MinRequestSize: 1
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 60
+        Verify: true
+        Name: "Test for local fs client"
+    }
+}

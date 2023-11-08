@@ -1,0 +1,68 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "create_vol0"
+
+        CreateVolumeRequest {
+            DiskId: "vol0"
+            BlocksCount: 1000000
+            BlockSize: 4096
+            TabletVersion: 2
+        }
+    }
+}
+
+Vertices {
+    Test {
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 80
+                ReadRate: 20
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 100
+                MinRequestSize: 32
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 120
+        Name: "shoot_vol0_iter0"
+        Verify: true
+    }
+}
+
+Vertices {
+    Test {
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 80
+                ReadRate: 20
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 100
+                MinRequestSize: 32
+                MaxRequestSize: 32
+            }
+        }
+        TestDuration: 120
+        Name: "shoot_vol0_iter1"
+        Verify: true
+    }
+}
+
+Dependencies {
+    key: "shoot_vol0_iter0",
+    value {
+        Names: "create_vol0"
+    }
+}
+
+Dependencies {
+    key: "shoot_vol0_iter1",
+    value {
+        Names: "shoot_vol0_iter0"
+    }
+}

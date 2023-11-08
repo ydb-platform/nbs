@@ -1,0 +1,107 @@
+Vertices {
+    Test {
+        Name: "create_and_shoot_volume_before_checkpoint"
+        CreateVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 100000
+            BlockSize: 4096
+            TabletVersion: 2
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 99999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "create_volume_checkpoint"
+
+        CreateCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot_volume_after_checkpoint"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 99999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read_volume_checkpoint"
+        VolumeName: "@volume"
+        CheckpointId: "checkpoint"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 99999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 1
+                RequestsCount: 0
+                MinRequestSize: 1000
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Dependencies {
+    key: "create_volume_checkpoint",
+    value {
+        Names: "create_and_shoot_volume_before_checkpoint"
+    }
+}
+
+Dependencies {
+    key: "shoot_volume_after_checkpoint",
+    value {
+        Names: "create_volume_checkpoint"
+    }
+}
+
+Dependencies {
+    key: "read_volume_checkpoint",
+    value {
+        Names: "shoot_volume_after_checkpoint"
+    }
+}

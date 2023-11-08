@@ -1,0 +1,12 @@
+Vertices {
+    Test {
+        VolumeName: "$FILE"
+        RealLoadSpec {
+            DiskId: "fhmp4pk4rqck47n9hp6t"
+            ProfileLogPath: "$PROFILE_LOG_FILE"
+            MaxRequestsInMemory: 10000
+        }
+        TestDuration: 60
+        Name: "Real profile log loadtest"
+    }
+}

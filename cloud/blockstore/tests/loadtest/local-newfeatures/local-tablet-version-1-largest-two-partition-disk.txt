@@ -1,0 +1,57 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 4294967296
+            StorageMediaKind: STORAGE_MEDIA_SSD
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 4294957296
+                End: 4294967295
+                WriteRate: 50
+                ReadRate: 50
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 32
+                MinRequestSize: 0
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Name: "shoot_last_40MiB"
+        Verify: true
+        ValidationRangeStart: 4294957296
+        ValidationRangeBlockCount: 10000
+    }
+}
+
+Vertices {
+    Test {
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 99999
+                WriteRate: 50
+                ReadRate: 50
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 32
+                MinRequestSize: 0
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Name: "shoot_first_40MiB"
+        Verify: true
+        ValidationRangeStart: 0
+        ValidationRangeBlockCount: 10000
+    }
+}
+
+Dependencies {
+    key: "shoot_first_40MiB",
+    value {
+        Names: "shoot_last_40MiB"
+    }
+}

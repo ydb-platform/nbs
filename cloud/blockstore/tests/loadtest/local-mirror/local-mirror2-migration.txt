@@ -1,0 +1,190 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "create_volume"
+
+        CreateVolumeRequest {
+            DiskId: "vol0"
+            BlocksCount: 262144
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot1"
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 32767
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Verify: true
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot2"
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 32767
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Verify: true
+        VerifyBy: "shoot1"
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "describe_volume1"
+
+        DescribeVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "remove_agent1"
+
+        CmsRemoveHostRequest {
+            AgentRef: "vol0/0"
+            SuccessExpected: true
+            Timeout: 3600
+            RetryTimeout: 30
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "describe_volume2"
+
+        DescribeVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "remove_agent2"
+
+        CmsRemoveHostRequest {
+            AgentRef: "vol0/1"
+            SuccessExpected: true
+            Timeout: 3600
+            RetryTimeout: 30
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot3"
+        VolumeName: "vol0"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 32767
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "describe_volume3"
+
+        DescribeVolumeRequest {
+            DiskId: "vol0"
+        }
+    }
+}
+
+Dependencies {
+    key: "shoot1",
+    value {
+        Names: "create_volume"
+    }
+}
+
+Dependencies {
+    key: "shoot2",
+    value {
+        Names: "shoot1"
+    }
+}
+
+Dependencies {
+    key: "describe_volume1",
+    value {
+        Names: "shoot1"
+    }
+}
+
+Dependencies {
+    key: "remove_agent1",
+    value {
+        Names: "describe_volume1"
+    }
+}
+
+Dependencies {
+    key: "describe_volume2",
+    value {
+        Names: "remove_agent1"
+    }
+}
+
+Dependencies {
+    key: "remove_agent2",
+    value {
+        Names: "shoot2"
+    }
+}
+
+Dependencies {
+    key: "shoot3",
+    value {
+        Names: "shoot2"
+    }
+}
+
+Dependencies {
+    key: "describe_volume3",
+    value {
+        Names: "shoot3"
+    }
+}

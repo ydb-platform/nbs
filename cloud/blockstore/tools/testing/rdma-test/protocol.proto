@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NBlockStore.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+// Blocks read request/response.
+
+message TReadBlocksRequest
+{
+    uint64 RequestId = 1;
+    uint32 BlockSize = 2;
+    uint32 BlockIndex = 3;
+    uint32 BlocksCount = 4;
+}
+
+message TReadBlocksResponse
+{
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Blocks write request/response.
+
+message TWriteBlocksRequest
+{
+    uint64 RequestId = 1;
+    uint32 BlockSize = 2;
+    uint32 BlockIndex = 3;
+    uint32 BlocksCount = 4;
+}
+
+message TWriteBlocksResponse
+{
+    NCloud.NProto.TError Error = 1;
+}

@@ -1,0 +1,23 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 100000
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 99999
+                WriteRate: 75
+                ReadRate: 25
+                ZeroRate: 5
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1024
+            }
+        }
+        TestDuration: 120
+        Name: "Test for localhost tablet version 1 (new compaction)"
+        Verify: true
+    }
+}

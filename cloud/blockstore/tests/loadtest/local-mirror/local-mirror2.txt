@@ -1,0 +1,24 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 262144
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 32767
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 60
+        Verify: true
+        Name: "Test for localhost mirror2 disk"
+    }
+}

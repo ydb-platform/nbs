@@ -1,7 +1,5 @@
 Y_BENCHMARK(cloud-blockstore-libs-storage-perf)
 
-OWNER(g:cloud-nbs)
-
 PEERDIR(
     cloud/blockstore/libs/storage/partition2/model
 

@@ -1,0 +1,144 @@
+Vertices {
+    Test {
+        Name: "shoot1"
+        CreateVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 1000000
+            BlockSize: 4096
+            TabletVersion: 2
+            PartitionsCount: 2
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "checkpoint1"
+
+        CreateCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint1"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot2"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "checkpoint2"
+
+        CreateCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint2"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot3"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    CompareData {
+        Name: "compare1_2"
+
+        Expected {
+            VolumeName: "@volume"
+            CheckpointId: "checkpoint2"
+        }
+        Actual {
+            VolumeName: "@volume"
+            CheckpointId: "checkpoint1"
+            SecondCheckpointId: "checkpoint2"
+        }
+    }
+}
+
+Dependencies {
+    key: "checkpoint1",
+    value {
+        Names: "shoot1"
+    }
+}
+
+Dependencies {
+    key: "shoot2",
+    value {
+        Names: "checkpoint1"
+    }
+}
+
+Dependencies {
+    key: "checkpoint2",
+    value {
+        Names: "shoot2"
+    }
+}
+
+Dependencies {
+    key: "shoot3",
+    value {
+        Names: "checkpoint2"
+    }
+}
+
+Dependencies {
+    key: "compare1_2",
+    value {
+        Names: "checkpoint2"
+    }
+}

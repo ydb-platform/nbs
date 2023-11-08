@@ -1,0 +1,25 @@
+InstanceId: "instance-id"
+
+ThrottlingConfig {
+  SSDThrottlingConfig {
+    ReadBandwidthPerCpuUnit: 100000
+    ReadIopsPerCpuUnit: 1000
+    WriteBandwidthPerCpuUnit: 100000
+    WriteIopsPerCpuUnit: 1000
+    MaxReadBandwidth: 100000
+    MaxReadIops: 1000
+    MaxWriteBandwidth: 100000
+    MaxWriteIops: 1000
+  }
+
+  HDDThrottlingConfig {
+    ReadBandwidthPerCpuUnit: 100000
+    ReadIopsPerCpuUnit: 1000
+    WriteBandwidthPerCpuUnit: 100000
+    WriteIopsPerCpuUnit: 1000
+    MaxReadBandwidth: 100000
+    MaxReadIops: 1000
+    MaxWriteBandwidth: 100000
+    MaxWriteIops: 1000
+  }
+}

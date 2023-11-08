@@ -2,6 +2,7 @@ RECURSE(
     client
     client/bench
     client_rdma
+    client_spdk
     common
     daemon
     diagnostics
@@ -22,6 +23,7 @@ RECURSE(
     notify
     nvme
     rdma
+    rdma_test
     server
     service
     service_kikimr
@@ -30,17 +32,10 @@ RECURSE(
     spdk
     storage
     storage/init
+    storage/perf
     storage/protos
     throttling
     validation
     vhost
     ydbstats
 )
-
-IF (NOT OPENSOURCE)
-    RECURSE(
-        client_spdk
-        rdma_test
-        storage/perf    # TODO(NBS-4409): add to opensource
-    )
-ENDIF()

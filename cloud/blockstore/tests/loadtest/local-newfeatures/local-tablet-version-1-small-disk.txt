@@ -1,0 +1,27 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 10240
+            BlockSize: 4096
+            CloudId: "test_cloud"
+        }
+
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 10239
+                WriteRate: 33
+                ReadRate: 33
+                ZeroRate: 33
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 32
+                MinRequestSize: 0
+                MaxRequestSize: 1
+            }
+        }
+
+        TestDuration: 120
+        Name: "Test for localhost tablet version 1 (small disk)"
+        Verify: true
+    }
+}

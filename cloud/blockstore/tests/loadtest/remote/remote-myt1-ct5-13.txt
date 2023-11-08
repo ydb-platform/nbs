@@ -1,0 +1,133 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 1000000
+            BlockSize: 4096
+            ChannelsCount: 4
+            StorageMediaKind: 1
+        }
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 10
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 600
+        Name: "randrw"
+    }
+}
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 1000000
+            BlockSize: 4096
+            ChannelsCount: 4
+            StorageMediaKind: 1
+        }
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 10
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 600
+        Name: "seqrw"
+    }
+}
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 100
+            BlockSize: 4096
+            ChannelsCount: 4
+            StorageMediaKind: 1
+        }
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 0
+                WriteRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 1
+                RequestsCount: 10000
+                MaxRequestSize: 1
+            }
+        }
+        Name: "NBS-254"
+    }
+}
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 2048
+            BlockSize: 4096
+            ChannelsCount: 4
+            StorageMediaKind: 1
+        }
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 1023
+                WriteRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 10000
+                MaxRequestSize: 20
+            }
+        }
+        Name: "NBS-166"
+    }
+}
+
+Dependencies {
+    key: "seqrw",
+    value {
+        Names: "randrw"
+    }
+}
+Dependencies {
+    key: "NBS-254",
+    value {
+        Names: "seqrw"
+    }
+}
+Dependencies {
+    key: "NBS-166",
+    value {
+        Names: "NBS-254"
+    }
+}

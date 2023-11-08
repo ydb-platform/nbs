@@ -1,0 +1,86 @@
+Vertices {
+    Test {
+        Name: "create_volume"
+
+        CreateVolumeRequest {
+            CloudId: "cloud-id"
+            FolderId: "folder-id"
+            DiskId: "@vol0"
+            BlocksCount: 1000000
+            BlockSize: 4096
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "checkpoint"
+
+        CreateCheckpointRequest {
+            DiskId: "@vol0"
+            CheckpointId: "checkpoint"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read_write_volume"
+        VolumeName: "@vol0"
+        CheckpointId: "checkpoint"
+
+        StartEndpointRequest {
+            ClientProfile {
+                CpuUnitCount: 10
+            }
+
+            ClientPerformanceProfile {
+                SSDProfile {
+                    MaxReadBandwidth: 100000
+                    MaxReadIops: 1000
+                    MaxWriteBandwidth: 100000
+                    MaxWriteIops: 1000
+                }
+                HDDProfile {
+                    MaxReadBandwidth: 100000
+                    MaxReadIops: 1000
+                    MaxWriteBandwidth: 100000
+                    MaxWriteIops: 1000
+                }
+            }
+
+            InstanceId: "instance-id"
+            IpcType: IPC_GRPC
+        }
+
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MinRequestSize: 1
+                MaxRequestSize: 1
+            }
+        }
+        TestDuration: 60
+    }
+}
+
+Dependencies {
+    key: "checkpoint",
+    value {
+        Names: "create_volume"
+    }
+}
+
+Dependencies {
+    key: "read_write_volume",
+    value {
+        Names: "checkpoint"
+    }
+}

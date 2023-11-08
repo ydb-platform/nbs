@@ -1,0 +1,42 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "create_volume"
+
+        CreateVolumeRequest {
+            DiskId: "vol0_reboots"
+            BlocksCount: 1000000
+            BlockSize: 4096
+            TabletVersion: 2
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot"
+        VolumeName: "vol0_reboots"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+        Repetitions: 10
+    }
+}
+
+Dependencies {
+    key: "shoot",
+    value {
+        Names: "create_volume"
+    }
+}

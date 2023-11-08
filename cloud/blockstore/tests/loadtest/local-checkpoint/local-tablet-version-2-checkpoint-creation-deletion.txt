@@ -1,0 +1,475 @@
+Vertices {
+    Test {
+        Name: "shoot1"
+        CreateVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 1000000
+            BlockSize: 4096
+            TabletVersion: 2
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot2"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot3"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot4"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        VerifyBy: "shoot3"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot5"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        VerifyBy: "shoot3"
+        VerifyBy: "shoot4"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot6"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_ZIPF_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        VerifyBy: "shoot3"
+        VerifyBy: "shoot4"
+        VerifyBy: "shoot5"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read1"
+        VolumeName: "@volume"
+        CheckpointId: "checkpoint1"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read2"
+        VolumeName: "@volume"
+        CheckpointId: "checkpoint2"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read2_2"
+        VolumeName: "@volume"
+        CheckpointId: "checkpoint2"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read3"
+        VolumeName: "@volume"
+        CheckpointId: "checkpoint3"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        VerifyBy: "shoot3"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read3_2"
+        VolumeName: "@volume"
+        CheckpointId: "checkpoint3"
+        MountVolumeRequest {
+            VolumeAccessMode: VOLUME_ACCESS_READ_ONLY
+            VolumeMountMode: VOLUME_MOUNT_REMOTE
+            MountFlags: 1
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                ReadRate: 100
+                LoadType: LOAD_TYPE_SEQUENTIAL
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        Verify: true
+        VerifyBy: "shoot1"
+        VerifyBy: "shoot2"
+        VerifyBy: "shoot3"
+        TestDuration: 30
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "checkpoint1"
+
+        CreateCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint1"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "checkpoint2"
+
+        CreateCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint2"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "checkpoint3"
+
+        CreateCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint3"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "del_checkpoint1"
+
+        DeleteCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint1"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "del_checkpoint2"
+
+        DeleteCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint2"
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "del_checkpoint3"
+
+        DeleteCheckpointRequest {
+            DiskId: "@volume"
+            CheckpointId: "checkpoint3"
+        }
+    }
+}
+
+Dependencies {
+    key: "checkpoint1",
+    value {
+        Names: "shoot1"
+    }
+}
+
+Dependencies {
+    key: "shoot2",
+    value {
+        Names: "checkpoint1"
+    }
+}
+
+Dependencies {
+    key: "read1",
+    value {
+        Names: "checkpoint1"
+    }
+}
+
+Dependencies {
+    key: "checkpoint2",
+    value {
+        Names: "shoot2"
+        Names: "read1"
+    }
+}
+
+Dependencies {
+    key: "shoot3",
+    value {
+        Names: "checkpoint2"
+    }
+}
+
+Dependencies {
+    key: "read2",
+    value {
+        Names: "checkpoint2"
+    }
+}
+
+Dependencies {
+    key: "checkpoint3",
+    value {
+        Names: "shoot3"
+        Names: "read2"
+    }
+}
+
+Dependencies {
+    key: "del_checkpoint1",
+    value {
+        Names: "checkpoint3"
+    }
+}
+
+Dependencies {
+    key: "shoot4",
+    value {
+        Names: "checkpoint3"
+    }
+}
+
+Dependencies {
+    key: "read3",
+    value {
+        Names: "checkpoint3"
+    }
+}
+
+Dependencies {
+    key: "read2_2",
+    value {
+        Names: "checkpoint3"
+    }
+}
+
+Dependencies {
+    key: "del_checkpoint2",
+    value {
+        Names: "shoot4"
+        Names: "read3"
+        Names: "read2_2"
+    }
+}
+
+Dependencies {
+    key: "shoot5",
+    value {
+        Names: "del_checkpoint2"
+    }
+}
+
+Dependencies {
+    key: "read3_2",
+    value {
+        Names: "checkpoint3"
+    }
+}
+
+Dependencies {
+    key: "del_checkpoint3",
+    value {
+        Names: "shoot5"
+        Names: "read3_2"
+    }
+}
+
+Dependencies {
+    key: "shoot6",
+    value {
+        Names: "del_checkpoint3"
+    }
+}
