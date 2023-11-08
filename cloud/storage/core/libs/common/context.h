@@ -37,12 +37,10 @@ private:
     TAtomic RequestStartedCycles = 0;
     TAtomic ResponseSentCycles = 0;
     TAtomic PossiblePostponeMicroSeconds = 0;
+    TAtomic PostponeTsCycles = 0;
 
     // Used only in tablet throttler.
-    TAtomic PostponeTs = 0;
-
-protected:
-    TAtomic PostponeTsCycles = 0;
+    TInstant PostponeTs = TInstant::Zero();
 
 public:
     ui64 RequestId;
@@ -56,8 +54,8 @@ public:
     ui64 GetRequestStartedCycles() const;
     void SetRequestStartedCycles(ui64 cycles);
 
-    ui64 GetPostponeCycles() const;
-    void SetPostponeCycles(ui64 cycles);
+    TInstant GetPostponeTs() const;
+    void SetPostponeTs(TInstant ts);
 
     ui64 GetResponseSentCycles() const;
     void SetResponseSentCycles(ui64 cycles);

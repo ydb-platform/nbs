@@ -11,6 +11,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/list.h>
+#include <util/system/datetime.h>
 
 namespace NCloud {
 
@@ -64,8 +65,10 @@ public:
         PostponedQueueFlushScheduled = false;
 
         while (PostponedRequests.size()) {
-            TAutoPtr<NActors::IEventHandle> ev =
-                PostponedRequests.front().Event.release();
+            auto& x = PostponedRequests.front();
+            x.CallContext->Advance(GetCycleCount());
+
+            TAutoPtr<NActors::IEventHandle> ev = x.Event.release();
             Owner.Receive(ev);
 
             Y_ABORT_UNLESS(!PostponedQueueFlushScheduled);
@@ -82,16 +85,13 @@ public:
         while (PostponedRequests.size()) {
             auto& x = PostponedRequests.front();
             Policy.OnPostponedEvent(ctx.Now(), x.Info);
+
             TAutoPtr<NActors::IEventHandle> ev = x.Event.release();
             Owner.Receive(ev);
 
             if (PostponedQueueFlushScheduled) {
                 Y_ABORT_UNLESS(x.Event);
                 break;
-            } else {
-                Logger.LogPostponedRequestAdvanced(
-                    *x.CallContext,
-                    x.Info.OpType);
             }
 
             PostponedRequests.pop_front();
@@ -129,13 +129,13 @@ public:
 
             rejected = true;
         } else {
-            ui64 postponeTs = callContext->GetPostponeCycles();
-            TDuration queueTime;
+            const auto nowTs = ctx.Now();
+            const auto postponeTs = callContext->GetPostponeTs();
+            TDuration queueTime = TDuration::Zero();
             if (postponeTs) {
-                queueTime = ctx.Now() - TInstant::MicroSeconds(postponeTs);
+                queueTime = nowTs - postponeTs;
             }
-            const auto delay =
-                Policy.SuggestDelay(ctx.Now(), queueTime, requestInfo);
+            const auto delay = Policy.SuggestDelay(nowTs, queueTime, requestInfo);
 
             if (delay.Defined()) {
                 if (delay->GetValue()) {
@@ -159,8 +159,6 @@ public:
                         new NActors::TEvents::TEvWakeup());
 
                     return ETabletThrottlerStatus::POSTPONED;
-                } else if (PostponedQueueFlushInProgress) {
-                    Logger.LogRequestAdvanced(ctx, *callContext, methodName);
                 }
             } else {
                 rejected = true;
@@ -171,10 +169,16 @@ public:
             return ETabletThrottlerStatus::REJECTED;
         }
 
-        if (!PostponedQueueFlushInProgress) {
-            // throttling caused no delay for this request
-            Logger.UpdateDelayCounter(requestInfo.OpType, TDuration::Zero());
+        TDuration delay = TDuration::Zero();
+        if (PostponedQueueFlushInProgress) {
+            delay = callContext->Advance(GetCycleCount());
         }
+        Logger.LogRequestAdvanced(
+            ctx,
+            *callContext,
+            methodName,
+            requestInfo.OpType,
+            delay);
 
         return ETabletThrottlerStatus::ADVANCED;
     }
@@ -192,8 +196,8 @@ private:
             pr.Event = std::move(ev);
             pr.Info = requestInfo;
         } else {
-            Logger.LogRequestPostponed(*callContext);
-            callContext->SetPostponeCycles(ctx.Now().MicroSeconds());
+            callContext->Postpone(GetCycleCount());
+            callContext->SetPostponeTs(ctx.Now());
             PostponedRequests.push_back({
                 requestInfo,
                 std::move(callContext),

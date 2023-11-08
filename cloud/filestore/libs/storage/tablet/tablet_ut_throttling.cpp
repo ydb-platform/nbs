@@ -491,6 +491,62 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         AssertReadDataResponse(S_OK);
         AssertWriteDataResponse(E_FS_THROTTLED);
     }
+
+    Y_UNIT_TEST_F(ShouldUpdateThrottlerDelayOnReadRequest, TTablet)
+    {
+        auto config = MakeThrottlerConfig(
+            true,                                    // throttlingEnabled
+            2,                                       // maxReadIops
+            2,                                       // maxWriteIops
+            8_KB,                                    // maxReadBandwidth
+            8_KB,                                    // maxWriteBandwidth
+            TDuration::Minutes(30).MilliSeconds(),   // boostTime
+            TDuration::Hours(12).MilliSeconds(),     // boostRefillTime
+            10,                                      // boostPercentage
+            32_KB,                                   // maxPostponedWeight
+            10,                                      // maxWriteCostMultiplier
+            TDuration::Seconds(1).MilliSeconds(),    // maxPostponedTime
+            64,                                      // maxPostponedCount
+            100,                                     // burstPercentage
+            1_KB                                     // defaultPostponedRequestWeight
+        );
+        UpdateConfig(config);
+
+        // Has delay 2s, but budget is 1s => resulting delay is 1s.
+        ReadData(0, 12_KB);
+        AssertReadDataNoResponse();
+
+        const auto resp = AssertReadDataResponse(S_OK);
+        UNIT_ASSERT(resp->Record.GetHeaders().GetThrottler().GetDelay() > 0);
+    }
+
+    Y_UNIT_TEST_F(ShouldUpdateThrottlerDelayOnWriteRequest, TTablet)
+    {
+        auto config = MakeThrottlerConfig(
+            true,                                    // throttlingEnabled
+            2,                                       // maxReadIops
+            2,                                       // maxWriteIops
+            8_KB,                                    // maxReadBandwidth
+            8_KB,                                    // maxWriteBandwidth
+            TDuration::Minutes(30).MilliSeconds(),   // boostTime
+            TDuration::Hours(12).MilliSeconds(),     // boostRefillTime
+            10,                                      // boostPercentage
+            32_KB,                                   // maxPostponedWeight
+            10,                                      // maxWriteCostMultiplier
+            TDuration::Seconds(1).MilliSeconds(),    // maxPostponedTime
+            64,                                      // maxPostponedCount
+            100,                                     // burstPercentage
+            1_KB                                     // defaultPostponedRequestWeight
+        );
+        UpdateConfig(config);
+
+        // Has delay 2s, but budget is 1s => resulting delay is 1s.
+        WriteData(0, 12_KB, 'a');
+        AssertWriteDataNoResponse();
+
+        const auto resp = AssertWriteDataResponse(S_OK);
+        UNIT_ASSERT(resp->Record.GetHeaders().GetThrottler().GetDelay() > 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

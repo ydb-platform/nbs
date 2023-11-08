@@ -40,9 +40,10 @@ public:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,
-            "%s Postponed %s request by %lu us",
+            "%s Postponed %s request %lu by %lu us",
             LogTag.c_str(),
             methodName,
+            callContext.RequestId,
             delay.MicroSeconds());
     }
 
@@ -57,43 +58,30 @@ public:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,
-            "%s Added %s request to the postponed queue, queue size: %lu",
+            "%s Added %s request %lu to the postponed queue, queue size: %lu",
             LogTag.c_str(),
             methodName,
+            callContext.RequestId,
             postponedCount);
-    }
-
-    void LogRequestPostponed(TCallContextBase& callContext) const
-    {
-        callContext.Postpone(GetCycleCount());
-    }
-
-    void LogPostponedRequestAdvanced(
-        TCallContextBase& callContext,
-        ui32 opType) const
-    {
-        const auto delay = callContext.Advance(GetCycleCount());
-        UpdateDelayCounterFunc(opType, delay);
     }
 
     void LogRequestAdvanced(
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
-        const char* methodName) const
+        const char* methodName,
+        ui32 opType,
+        TDuration delay) const
     {
         TrackAdvancedRequest(callContext, methodName);
+        UpdateDelayCounterFunc(opType, delay);
 
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,
-            "%s Advanced %s request",
+            "%s Advanced %s request %lu",
             LogTag.c_str(),
-            methodName);
-    }
-
-    void UpdateDelayCounter(ui32 opType, TDuration time)
-    {
-        UpdateDelayCounterFunc(opType, time);
+            methodName,
+            callContext.RequestId);
     }
 
 private:
@@ -159,29 +147,14 @@ void TThrottlerLogger::LogRequestPostponedAfterSchedule(
         methodName);
 }
 
-void TThrottlerLogger::LogRequestPostponed(TCallContextBase& callContext) const
-{
-    Impl->LogRequestPostponed(callContext);
-}
-
-void TThrottlerLogger::LogPostponedRequestAdvanced(
-    TCallContextBase& callContext,
-    ui32 opType) const
-{
-    Impl->LogPostponedRequestAdvanced(callContext, opType);
-}
-
 void TThrottlerLogger::LogRequestAdvanced(
     const NActors::TActorContext& ctx,
     TCallContextBase& callContext,
-    const char* methodName) const
+    const char* methodName,
+    ui32 opType,
+    TDuration delay) const
 {
-    Impl->LogRequestAdvanced(ctx, callContext, methodName);
-}
-
-void TThrottlerLogger::UpdateDelayCounter(ui32 opType, TDuration time)
-{
-    Impl->UpdateDelayCounter(opType, time);
+    Impl->LogRequestAdvanced(ctx, callContext, methodName, opType, delay);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

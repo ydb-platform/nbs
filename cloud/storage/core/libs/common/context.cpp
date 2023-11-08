@@ -61,21 +61,23 @@ void TCallContextBase::SetRequestStartedCycles(ui64 cycles)
     AtomicSet(RequestStartedCycles, cycles);
 }
 
-ui64 TCallContextBase::GetPostponeCycles() const
+TInstant TCallContextBase::GetPostponeTs() const
 {
-    return AtomicGet(PostponeTs);
+    return PostponeTs;
 }
 
-void TCallContextBase::SetPostponeCycles(ui64 cycles)
+void TCallContextBase::SetPostponeTs(TInstant ts)
 {
-    AtomicSet(PostponeTs, cycles);
+    PostponeTs = ts;
 }
 
-ui64 TCallContextBase::GetResponseSentCycles() const {
+ui64 TCallContextBase::GetResponseSentCycles() const
+{
     return AtomicGet(ResponseSentCycles);
 }
 
-void TCallContextBase::SetResponseSentCycles(ui64 cycles) {
+void TCallContextBase::SetResponseSentCycles(ui64 cycles)
+{
     AtomicSet(ResponseSentCycles, cycles);
 }
 

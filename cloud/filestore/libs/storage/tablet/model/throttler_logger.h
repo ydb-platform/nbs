@@ -35,18 +35,12 @@ public:
         ui32 postponedCount,
         const char* methodName) const override;
 
-    void LogRequestPostponed(TCallContextBase& callContext) const override;
-
-    void LogPostponedRequestAdvanced(
-        TCallContextBase& callContext,
-        ui32 opType) const override;
-
     void LogRequestAdvanced(
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
-        const char* methodName) const override;
-
-    void UpdateDelayCounter(ui32 opType, TDuration time) override;
+        const char* methodName,
+        ui32 opType,
+        TDuration delay) const override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

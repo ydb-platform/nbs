@@ -45,7 +45,6 @@ Y_UNIT_TEST_SUITE(TCallContext)
                 .TotalTime = CyclesToDurationSafe(15),
                 .ExecutionTime = CyclesToDurationSafe(7)});
 
-        callContext->SetPostponeCycles(5);
         callContext->SetResponseSentCycles(0);
 
         CheckCalcRequestTime(

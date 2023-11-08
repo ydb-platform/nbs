@@ -2,6 +2,7 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
@@ -192,6 +193,7 @@ void TWriteDataActor::ReplyAndDie(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }

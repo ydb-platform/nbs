@@ -26,7 +26,7 @@ type TExecuteActionRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Optional requeest headers.
+	// Optional request headers.
 	Headers *THeaders `protobuf:"bytes,1,opt,name=Headers,proto3" json:"Headers,omitempty"`
 	// Name of action to execute.
 	Action string `protobuf:"bytes,2,opt,name=Action,proto3" json:"Action,omitempty"`
