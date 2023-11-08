@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/remove.h>
 #include <contrib/ydb/core/tx/columnshard/blob_manager.h>
 #include <contrib/ydb/core/tx/columnshard/blob_cache.h>
+#include "gc_info.h"
 
 namespace NKikimr::NOlap::NBlobOperations::NTier {
 
