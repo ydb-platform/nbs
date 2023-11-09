@@ -16,6 +16,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -145,6 +147,47 @@ func (t *replicateDiskTask) saveProgress(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *replicateDiskTask) checkReplicationProgress(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if t.state.Iteration == 0 || t.state.MeasuredSecondsRemaining == 0 {
+		t.state.MeasuredSecondsRemaining = math.MaxInt64
+		return nil
+	}
+
+	var err error
+	if t.state.MeasuredSecondsRemaining < t.state.SecondsRemaining {
+		err = errors.NewDetailedError(
+			errors.New("replication failed"),
+			&errors.ErrorDetails{
+				Code:     codes.Aborted,
+				Message:  "Aborted, because relocation is not expected to finish.",
+				Internal: false,
+			},
+		)
+		t.logInfo(
+			ctx,
+			execCtx,
+			"MeasuredSecondsRemaining=%d < SecondsRemaining=%d (it=%d)",
+			t.state.MeasuredSecondsRemaining,
+			t.state.SecondsRemaining,
+			t.state.Iteration,
+		)
+	}
+
+	if t.config.GetUselessReplicationIterationsBeforeAbort() != 0 &&
+		t.state.Iteration%
+			t.config.GetUselessReplicationIterationsBeforeAbort() == 0 {
+
+		t.state.MeasuredSecondsRemaining = t.state.SecondsRemaining
+		return err
+	}
+
+	return nil
+}
+
 func (t *replicateDiskTask) replicate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -222,6 +265,11 @@ func (t *replicateDiskTask) replicate(
 			return t.saveProgress(ctx, execCtx)
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	err = t.checkReplicationProgress(ctx, execCtx)
 	if err != nil {
 		return err
 	}

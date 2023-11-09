@@ -33,6 +33,10 @@ message ReplicateDiskTaskState {
     double Progress = 6;
     int64 SecondsRemaining = 7;
     google.protobuf.Timestamp UpdatedAt = 8;
+
+    // Store SecondsRemaining each UselessReplicationIterationsBeforeAbort.
+    // If SecondsRemaining degrades, abort replication.
+    int64 MeasuredSecondsRemaining = 9;
 }
 
 message ReplicateDiskTaskMetadata {

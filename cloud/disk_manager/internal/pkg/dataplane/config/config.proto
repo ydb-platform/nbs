@@ -26,4 +26,7 @@ message DataplaneConfig {
 
     optional string CollectSnapshotMetricsTaskScheduleInterval = 12 [default = "10m"];
     optional string SnapshotMetricsCollectionInterval = 13 [default = "1m"];
+
+    // Abort replication if SecondsRemaining degrades in X iterations.
+    optional uint32 UselessReplicationIterationsBeforeAbort = 14 [default = 100];
 }
