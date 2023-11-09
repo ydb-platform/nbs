@@ -14,6 +14,12 @@ get_built_tool_path(
   tools/enum_parser/enum_parser
   enum_parser
 )
+get_built_tool_path(
+  TOOL_enum_parser_bin
+  TOOL_enum_parser_dependency
+  tools/enum_parser/enum_parser
+  enum_parser
+)
 
 add_library(libs-storage-tablet)
 target_link_libraries(libs-storage-tablet PUBLIC
@@ -125,4 +131,9 @@ generate_enum_serilization(libs-storage-tablet
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_private.h
   INCLUDE_HEADERS
   cloud/filestore/libs/storage/tablet/tablet_private.h
+)
+generate_enum_serilization(libs-storage-tablet
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/session.h
+  INCLUDE_HEADERS
+  cloud/filestore/libs/storage/tablet/session.h
 )

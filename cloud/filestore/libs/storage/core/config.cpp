@@ -122,6 +122,8 @@ namespace {
                                                                                \
     xxx(CpuLackThreshold,                          ui32,      70              )\
                                                                                \
+    xxx(SessionHistoryEntryCount,                  ui32,      100             )\
+                                                                               \
     xxx(TenantHiveTabletId,                        ui64,       0              )\
     xxx(FolderId,                                  TString,    {}             )\
     xxx(AuthorizationMode,                                                     \

@@ -115,6 +115,18 @@ message TSession
     bytes SessionState = 5;
     uint64 MaxSeqNo = 6;
     uint64 MaxRwSeqNo = 7;
+    string OriginFqdn = 8;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSessionHistoryEntry {
+    uint64 EntryId = 1;
+    string SessionId = 2;
+    string ClientId = 3;
+    uint64 TimestampUs = 4;
+    uint32 Type = 5; // See EUpdateType in session.h
+    string OriginFqdn = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/ptr.h>
+#include <util/system/hostname.h>
 #include <util/system/mutex.h>
 
 namespace NCloud::NFileStore::NClient {
@@ -689,6 +690,7 @@ private:
         headers->SetClientId(Config->GetClientId());
         headers->SetSessionId(state->SessionId);
         headers->SetRequestId(state->CallContext->RequestId);
+        headers->SetOriginFqdn(GetFQDNHostName());
         headers->SetSessionSeqNo(state->MountSeqNumber);
 
         T::Execute(*Client, state->CallContext, state->Request).Subscribe(

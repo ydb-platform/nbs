@@ -159,6 +159,10 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         ready = false;
     }
 
+    if (!db.ReadSessionHistoryEntries(args.SessionsHistory)) {
+        ready = false;
+    }
+
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet state data "
             << (ready ? "finished" : "restarted"));
@@ -286,7 +290,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.Sessions,
         args.Handles,
         args.Locks,
-        args.DupCache);
+        args.DupCache,
+        args.SessionsHistory);
 
     if (!Config->GetEnableCollectGarbageAtStart()) {
         SetStartupGcExecuted();

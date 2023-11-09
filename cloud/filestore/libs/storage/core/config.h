@@ -166,6 +166,8 @@ public:
 
     ui32 GetCpuLackThreshold() const;
 
+    ui32 GetSessionHistoryEntryCount() const;
+
     ui64 GetTenantHiveTabletId() const;
 
     TString GetFolderId() const;

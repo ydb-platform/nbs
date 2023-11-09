@@ -623,6 +623,46 @@ void DumpThrottlingState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Display last `limit` lines of `sessionHistory`
+ */
+void DumpSessionHistory(
+    IOutputStream& out,
+    const TSessionHistoryList& sessionHistory,
+    size_t limit = 100)
+{
+    HTML(out) {
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "ClientId";}
+                    TABLEH() { out << "FQDN"; }
+                    TABLEH() { out << "FileSystemId"; }
+                    TABLEH() { out << "SessionId"; }
+                    TABLEH() { out << "ActionType"; }
+                }
+            }
+            for (auto it = sessionHistory.rbegin();
+                 it != sessionHistory.rend() && limit;
+                 ++it, --limit)
+            {
+                TABLER() {
+                    TABLED() { out << it->GetClientId(); }
+                    TABLED()
+                    {
+                        out << it->GetOriginFqdn();
+                    }
+                    TABLED() { out << TInstant::MicroSeconds(it->GetTimestampUs()); }
+                    TABLED() { out << it->GetSessionId(); }
+                    TABLED() { out << it->GetEntryTypeString(); }
+                }
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void GenerateActionsJS(IOutputStream& out)
 {
     out << R"___(
@@ -914,6 +954,12 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
         TAG(TH3) { out << "Throttler state"; }
         DumpThrottlingState(Throttler.get(), GetThrottlingPolicy(), out);
+
+        TAG(TH3)
+        {
+            out << "Sessions history";
+        }
+        DumpSessionHistory(out, GetSessionHistoryList());
 
         GenerateActionsJS(out);
     }

@@ -48,6 +48,7 @@ private:
     TString ClientId;
     TString FileSystemId;
     TString CheckpointId;
+    TString OriginFqdn;
     bool RestoreClientSession;
     ui64 SeqNo;
     bool ReadOnly;
@@ -78,6 +79,7 @@ public:
         TString fileSystemId,
         TString sessionId,
         TString checkpointId,
+        TString originFqdn,
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
@@ -168,6 +170,7 @@ TCreateSessionActor::TCreateSessionActor(
         TString fileSystemId,
         TString sessionId,
         TString checkpointId,
+        TString originFqdn,
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
@@ -177,6 +180,7 @@ TCreateSessionActor::TCreateSessionActor(
     , ClientId(std::move(clientId))
     , FileSystemId(std::move(fileSystemId))
     , CheckpointId(std::move(checkpointId))
+    , OriginFqdn(std::move(originFqdn))
     , RestoreClientSession(restoreClientSession)
     , SeqNo(seqNo)
     , ReadOnly(readOnly)
@@ -339,6 +343,7 @@ void TCreateSessionActor::CreateSession(const TActorContext& ctx)
     headers->SetClientId(ClientId);
     headers->SetSessionId(SessionId);
     headers->SetSessionSeqNo(SeqNo);
+    headers->SetOriginFqdn(OriginFqdn);
 
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s do creating session: %s",
@@ -602,6 +607,7 @@ void TStorageServiceActor::HandleCreateSession(
     const auto& clientId = GetClientId(msg->Record);
     const auto& fileSystemId = msg->Record.GetFileSystemId();
     const auto& checkpointId = msg->Record.GetCheckpointId();
+    const auto& originFqdn = GetOriginFqdn(msg->Record);
 
     ui64 cookie;
     TInFlightRequest* inflight;
@@ -690,6 +696,7 @@ void TStorageServiceActor::HandleCreateSession(
         fileSystemId,
         sessionId,
         checkpointId,
+        originFqdn,
         msg->Record.GetMountSeqNumber(),
         msg->Record.GetReadOnly(),
         msg->Record.GetRestoreClientSession(),

@@ -88,6 +88,7 @@ void TIndexTabletState::LoadState(
     LastCollectCounter = 0;
 
     TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
+    SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);

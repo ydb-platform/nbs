@@ -1,6 +1,7 @@
 LIBRARY()
 
 GENERATE_ENUM_SERIALIZATION(tablet_private.h)
+GENERATE_ENUM_SERIALIZATION(session.h)
 
 SRCS(
     checkpoint.cpp

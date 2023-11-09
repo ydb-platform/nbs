@@ -100,6 +100,12 @@ ui64 GetRequestId(const T& request)
 }
 
 template <typename T>
+TString GetOriginFqdn(const T& request)
+{
+    return request.GetHeaders().GetOriginFqdn();
+}
+
+template <typename T>
 TString GetFileSystemId(const T& request)
 {
     if constexpr (NImpl::THasFileSystemId<T>) {

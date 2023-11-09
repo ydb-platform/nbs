@@ -30,6 +30,7 @@ struct TIndexTabletState::TImpl
     TSessionMap SessionById;
     TSessionOwnerMap SessionByOwner;
     TSessionClientMap SessionByClient;
+    TSessionHistoryList SessionHistoryList;
 
     TNodeRefsByHandle NodeRefsByHandle;
 

@@ -50,6 +50,8 @@ message THeaders
 
     // Internal header, should not be used outside.
     TInternal Internal = 9;
+
+    string OriginFqdn = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

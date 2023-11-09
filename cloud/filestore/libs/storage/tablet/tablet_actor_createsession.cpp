@@ -121,6 +121,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     const auto& clientId = GetClientId(args.Request);
     const auto& sessionId = GetSessionId(args.Request);
     const auto& checkpointId = args.Request.GetCheckpointId();
+    const auto& originFqdn = GetOriginFqdn(args.Request);
     const auto seqNo = args.Request.GetMountSeqNumber();
     const auto readOnly = args.Request.GetReadOnly();
 
@@ -213,7 +214,15 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         args.SessionId.c_str(),
         seqNo);
 
-    CreateSession(db, clientId, args.SessionId, checkpointId, seqNo, readOnly, owner);
+    CreateSession(
+        db,
+        clientId,
+        args.SessionId,
+        checkpointId,
+        originFqdn,
+        seqNo,
+        readOnly,
+        owner);
 }
 
 void TIndexTabletActor::CompleteTx_CreateSession(

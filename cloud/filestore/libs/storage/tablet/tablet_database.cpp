@@ -1656,4 +1656,49 @@ void TIndexTabletDatabase::WriteTabletStorageInfo(
         .Update(NIceDb::TUpdate<TTable::Proto>(tabletStorageInfo));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// SessionHandles
+
+void TIndexTabletDatabase::WriteSessionHistoryEntry(
+    const NProto::TSessionHistoryEntry& entry)
+{
+    using TTable = TIndexTabletSchema::SessionsHistory;
+
+    Table<TTable>()
+        .Key(entry.GetEntryId())
+        .Update(NIceDb::TUpdate<TTable::Proto>(entry));
+}
+
+void TIndexTabletDatabase::DeleteSessionHistoryEntry(ui64 entryId) {
+    using TTable = TIndexTabletSchema::SessionsHistory;
+
+    Table<TTable>()
+        .Key(entryId)
+        .Delete();
+}
+
+
+bool TIndexTabletDatabase::ReadSessionHistoryEntries(
+    TVector<NProto::TSessionHistoryEntry>& entries)
+{
+    using TTable = TIndexTabletSchema::SessionsHistory;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        entries.emplace_back(it.template GetValue<TTable::Proto>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

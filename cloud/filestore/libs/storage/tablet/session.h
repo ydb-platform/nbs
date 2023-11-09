@@ -11,6 +11,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_multi_map.h>
 #include <util/generic/intrlist.h>
+#include <util/string/cast.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -199,9 +200,66 @@ public:
     }
 };
 
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TSessionHistoryEntry
+    : public NProto::TSessionHistoryEntry
+{
+    enum EUpdateType
+    {
+        CREATE = 0,
+        RESET = 1,
+        DELETE = 2
+    };
+
+    TSessionHistoryEntry(const NProto::TSessionHistoryEntry& proto)
+        : NProto::TSessionHistoryEntry(proto)
+    {}
+
+    /**
+     * Construct a new TSessionHistoryEntry object. Infers common fields
+     * from a passed `proto` argument. Timestamp of an entry is set from the
+     * current system time. Type of an entry is set from `type`. EntryId (key)
+     * is set as a first unused integer.
+     */
+    TSessionHistoryEntry(const NProto::TSession& proto, EUpdateType type)
+    {
+        SetEntryId(GetMaxEntryId());
+        SetClientId(proto.GetClientId());
+        SetSessionId(proto.GetSessionId());
+        SetOriginFqdn(proto.GetOriginFqdn());
+        SetTimestampUs(Now().MicroSeconds());
+        SetType(type);
+    }
+
+    TString GetEntryTypeString() const
+    {
+        return ToString(static_cast<EUpdateType>(GetType()));
+    }
+
+private:
+    // Incrementing counter for producing unique `EntryId`s
+    inline static ui64 UnusedSessionId = 1;
+
+    static ui64 GetMaxEntryId()
+    {
+        return UnusedSessionId++;
+    }
+
+public:
+    static void UpdateMaxEntryId(ui64 value)
+    {
+        UnusedSessionId = std::max(UnusedSessionId, value + 1);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 using TSessionList = TIntrusiveListWithAutoDelete<TSession, TDelete>;
 using TSessionMap = THashMap<TString, TSession*>;
 using TSessionOwnerMap = THashMap<NActors::TActorId, TSession*>;
 using TSessionClientMap = THashMap<TString, TSession*>;
+using TSessionHistoryList = TDeque<TSessionHistoryEntry>;
 
 }   // namespace NCloud::NFileStore::NStorage

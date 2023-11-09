@@ -465,6 +465,22 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+
+    struct SessionsHistory: TTableSchema<24>
+    {
+        struct Id       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct Proto    : ProtoColumn<2, NProto::TSessionHistoryEntry> {};
+
+        using TKey = TableKey<Id>;
+
+        using TColumns = TableColumns<
+            Id,
+            Proto
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -488,7 +504,8 @@ struct TIndexTabletSchema
         CompactionMap,
         SessionDupCache,
         TabletStorageInfo,
-        TruncateQueue
+        TruncateQueue,
+        SessionsHistory
     >;
 
     using TSettings = SchemaSettings<

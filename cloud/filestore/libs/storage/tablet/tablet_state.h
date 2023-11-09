@@ -63,6 +63,7 @@ private:
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
+    /*const*/ ui32 SessionHistoryEntryCount = 0;
 
     bool StateLoaded = false;
 
@@ -405,13 +406,15 @@ public:
         const TVector<NProto::TSession>& sessions,
         const TVector<NProto::TSessionHandle>& handles,
         const TVector<NProto::TSessionLock>& locks,
-        const TVector<NProto::TDupCacheEntry>& cacheEntries);
+        const TVector<NProto::TDupCacheEntry>& cacheEntries,
+        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory);
 
     TSession* CreateSession(
         TIndexTabletDatabase& db,
         const TString& clientId,
         const TString& sessionId,
         const TString& checkpointId,
+        const TString& originFqdn,
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner);
@@ -437,6 +440,9 @@ public:
 
     TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
+
+    const TSessionHistoryList& GetSessionHistoryList() const;
+    void PushSessionHistoryEntry(TIndexTabletDatabase& db, const TSessionHistoryEntry& entry, size_t maxEntriesCount = 100);
 
 private:
     TSession* CreateSession(

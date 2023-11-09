@@ -286,6 +286,16 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     void DeleteSessionDupCacheEntry(const TString& sessionId, ui64 entryId);
     bool ReadSessionDupCacheEntries(TVector<NProto::TDupCacheEntry>& entries);
 
+
+    //
+    // SessionHistory
+    //
+
+    void WriteSessionHistoryEntry(const NProto::TSessionHistoryEntry& entry);
+    void DeleteSessionHistoryEntry(ui64 entryId);
+    bool ReadSessionHistoryEntries(TVector<NProto::TSessionHistoryEntry>& entries);
+
+
     //
     // FreshBytes
     //
