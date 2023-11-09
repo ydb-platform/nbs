@@ -211,3 +211,11 @@ func (s *legacyStorage) GetDeletingSnapshotCount(ctx context.Context) (uint64, e
 func (s *legacyStorage) GetSnapshotCount(ctx context.Context) (uint64, error) {
 	return 0, task_errors.NewNonRetriableErrorf("not implemented")
 }
+
+func (s *legacyStorage) GetTotalSnapshotSize(ctx context.Context) (size uint64, err error) {
+	return 0, task_errors.NewNonRetriableErrorf("not implemented")
+}
+
+func (s *legacyStorage) GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error) {
+	return 0, task_errors.NewNonRetriableErrorf("not implemented")
+}

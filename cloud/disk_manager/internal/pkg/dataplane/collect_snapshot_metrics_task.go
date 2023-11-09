@@ -42,14 +42,25 @@ func (c collectSnapshotMetricsTask) Run(
 		if err != nil {
 			return err
 		}
+		c.registry.Gauge("snapshots/deletingCount").Set(float64(deletingSnapshotCount))
 
 		snapshotCount, err := c.storage.GetSnapshotCount(ctx)
 		if err != nil {
 			return err
 		}
+		c.registry.Gauge("snapshots/count").Set(float64(snapshotCount))
 
-		c.registry.Gauge("snapshots/snapshotCount").Set(float64(snapshotCount))
-		c.registry.Gauge("snapshots/deletingCount").Set(float64(deletingSnapshotCount))
+		totalSnapshotSize, err := c.storage.GetTotalSnapshotSize(ctx)
+		if err != nil {
+			return err
+		}
+		c.registry.Gauge("snapshots/totalSize").Set(float64(totalSnapshotSize))
+
+		totalSnapshotStorageSize, err := c.storage.GetTotalSnapshotStorageSize(ctx)
+		if err != nil {
+			return err
+		}
+		c.registry.Gauge("snapshots/totalStorageSize").Set(float64(totalSnapshotStorageSize))
 	}
 	return nil
 }

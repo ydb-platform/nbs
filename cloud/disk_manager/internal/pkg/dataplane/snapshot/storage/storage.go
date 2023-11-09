@@ -104,4 +104,8 @@ type Storage interface {
 	GetDeletingSnapshotCount(ctx context.Context) (uint64, error)
 
 	GetSnapshotCount(ctx context.Context) (count uint64, err error)
+
+	GetTotalSnapshotSize(ctx context.Context) (size uint64, err error)
+
+	GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error)
 }

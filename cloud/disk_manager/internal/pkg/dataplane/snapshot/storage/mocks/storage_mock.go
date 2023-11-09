@@ -184,6 +184,16 @@ func (s *StorageMock) GetSnapshotCount(ctx context.Context) (uint64, error) {
 	return args.Get(0).(uint64), args.Error(1)
 }
 
+func (s *StorageMock) GetTotalSnapshotSize(ctx context.Context) (size uint64, err error) {
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
+func (s *StorageMock) GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error) {
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {
