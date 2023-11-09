@@ -192,6 +192,8 @@ def test_metrics():
     read_data_size, read_data_iops, \
         write_data_size, write_data_iops = get_load_data(kikimr_port)
 
+    nbs.stop()
+
     assert read_data_size >= raw_data_size
     assert read_data_iops >= 1
     assert write_data_size >= raw_data_size

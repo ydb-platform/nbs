@@ -252,8 +252,9 @@ public:
         Responses.reserve(DataToUpload.size());
         ResponsesToWait = DataToUpload.size();
         for (auto& data: DataToUpload) {
+            auto fullName = DatabaseName + '/' + data.TableName;
             Responses.emplace_back(Storage->ExecuteUploadQuery(
-                std::move(data.TableName),
+                std::move(fullName),
                 std::move(data.UploadData)));
 
             Responses.back().Subscribe(

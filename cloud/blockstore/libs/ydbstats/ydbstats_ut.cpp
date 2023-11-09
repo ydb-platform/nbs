@@ -43,6 +43,7 @@ TYdbStatsConfigPtr CreateAllTablesTestConfig()
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetDatabaseName("/Root");
 
     return std::make_shared<TYdbStatsConfig>(config);
 }
@@ -575,32 +576,6 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 
     Y_UNIT_TEST(ShouldUploadData)
     {
-        auto config = CreateAllTablesTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
-        auto ydbTestStorage = YdbCreateTestStorage(config);
-        auto uploader = CreateYdbVolumesStatsUploader(
-            config,
-            CreateLoggingService("console"),
-            ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
-        uploader->Start();
-
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
-    }
-
-    Y_UNIT_TEST(ShouldReportNotFoundInCaseOfSchemeErrors)
-    {
         THashSet<TString> tables;
 
         auto config = CreateAllTablesTestConfig();
@@ -626,6 +601,46 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
                 TStringBuilder() << "Table already seen " << tableName);
             tables.insert(tableName);
 
+            return MakeFuture(MakeError(S_OK));
+        };
+
+        auto response = uploader->UploadStats(
+             { BuildTestStats() },
+             { BuildTestMetrics() }).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+
+        for (const auto& t: tables) {
+            UNIT_ASSERT_C(
+                t.Contains(config->GetDatabaseName()),
+                TStringBuilder() <<
+                    "table path " <<
+                    t <<
+                    " does not contain database name");
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportNotFoundInCaseOfSchemeErrors)
+    {
+        auto config = CreateAllTablesTestConfig();
+        auto statsScheme = CreateStatsTestScheme();
+        auto historyScheme = CreateHistoryTestScheme();
+        auto archiveScheme = CreateArchiveStatsTestScheme();
+        auto metricsScheme = CreateMetricsTestScheme();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            statsScheme,
+            historyScheme,
+            archiveScheme,
+            metricsScheme);
+        uploader->Start();
+
+        ydbTestStorage->UploadTestFunc = [&] (TString, NYdb::TValue)
+        {
             if (ydbTestStorage->UpsertCalls == 1) {
                 return MakeFuture(MakeError(S_OK));
             }
