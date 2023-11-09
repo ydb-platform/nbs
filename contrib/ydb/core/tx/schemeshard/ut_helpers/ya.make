@@ -20,6 +20,7 @@ PEERDIR(
     contrib/ydb/core/tx/tx_allocator
     contrib/ydb/core/tx/tx_proxy
     contrib/ydb/public/lib/scheme_types
+    contrib/ydb/library/yql/public/issue
     contrib/ydb/public/sdk/cpp/client/ydb_driver
 )
 
