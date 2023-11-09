@@ -49,6 +49,10 @@ func GetLogger(ctx context.Context) Logger {
 	return logger
 }
 
+func AddCallerSkip(ctx context.Context, skip int) context.Context {
+	return SetLogger(ctx, log.AddCallerSkip(GetLogger(ctx), 1))
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewLogger(config *logging_config.LoggingConfig) Logger {

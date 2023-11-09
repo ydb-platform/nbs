@@ -10,8 +10,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
-	"github.com/ydb-platform/nbs/library/go/core/log"
-	"github.com/ydb-platform/nbs/library/go/core/log/ctxlog"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -324,11 +322,9 @@ func LogError(
 		Is(err, NewInterruptExecutionError()) ||
 		isCancelledError(err) {
 
-		l := log.AddCallerSkip(logging.GetLogger(ctx), 1)
-		ctxlog.Debugf(ctx, l, "%v: %v", description, err)
+		logging.Debug(logging.AddCallerSkip(ctx, 1), "%v: %v", description, err)
 	} else {
-		l := log.AddCallerSkip(logging.GetLogger(ctx), 1)
-		ctxlog.Warnf(ctx, l, "%v: %v", description, err)
+		logging.Warn(logging.AddCallerSkip(ctx, 1), "%v: %v", description, err)
 	}
 }
 
