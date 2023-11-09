@@ -1,13 +1,13 @@
 DATA(
-    arcadia/ydb/tests/supp
+    arcadia/contrib/ydb/tests/supp
 )
 
-ENV(YDB_UBSAN_OPTIONS=ydb/tests/supp/ubsan_default.txt)
+ENV(YDB_UBSAN_OPTIONS=contrib/ydb/tests/supp/ubsan_default.txt)
 
 DEPENDS(
-    ydb/tests/supp
+    contrib/ydb/tests/supp
 )
 
 USE_RECIPE(
-    ydb/tests/supp/ydb_supp
+    contrib/ydb/tests/supp/ydb_supp
 )
