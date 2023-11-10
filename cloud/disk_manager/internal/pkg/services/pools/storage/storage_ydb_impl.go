@@ -1687,7 +1687,7 @@ func (s *storageYDB) overlayDiskRebasedTx(
 	slot.targetAllottedSlots = 0
 	slot.targetAllottedUnits = 0
 
-	err = s.updateBaseDiskAndSlot(
+	return s.updateBaseDiskAndSlot(
 		ctx,
 		tx,
 		baseDiskTransition{
@@ -1699,11 +1699,6 @@ func (s *storageYDB) overlayDiskRebasedTx(
 			state:    &slot,
 		},
 	)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (s *storageYDB) overlayDiskRebasing(
