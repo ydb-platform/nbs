@@ -174,6 +174,8 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
         config.SetRemoteMountOnly(true);
         config.SetInactiveClientsTimeout(Max<ui32>());
         config.SetRejectMountOnAddClientTimeout(true);
+        config.SetTabletBootInfoBackupFilePath({});
+        config.SetPathDescriptionBackupFilePath({});
     }
 
     config.SetServiceVersionInfo(GetFullVersionString());
