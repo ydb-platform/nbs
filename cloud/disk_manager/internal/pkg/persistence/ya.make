@@ -3,9 +3,9 @@ OWNER(g:cloud-nbs)
 GO_LIBRARY()
 
 SRCS(
-    logger.go
     s3.go
     ydb.go
+    ydb_logger.go
     ydb_metrics.go
 )
 

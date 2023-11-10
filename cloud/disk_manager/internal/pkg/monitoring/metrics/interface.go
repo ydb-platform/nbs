@@ -32,6 +32,10 @@ type Histogram interface {
 	metrics.Histogram
 }
 
+type HistogramVec interface {
+	metrics.HistogramVec
+}
+
 type Timer interface {
 	metrics.Timer
 }

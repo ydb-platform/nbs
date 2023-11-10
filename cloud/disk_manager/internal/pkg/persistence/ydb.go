@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
-	ydb_metrics "github.com/ydb-platform/nbs/library/go/yandex/ydb/metrics/v2"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_credentials "github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
@@ -683,10 +682,7 @@ func NewYDBClient(
 	if h.registry != nil {
 		options = append(
 			options,
-			ydb_metrics.WithTraces(
-				h.registry,
-				ydb_metrics.WithDetails(h.details),
-			),
+			WithTraces(h.registry, WithTraceDetails(h.details)),
 		)
 	}
 

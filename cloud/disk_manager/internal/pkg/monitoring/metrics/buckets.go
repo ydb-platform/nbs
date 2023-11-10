@@ -19,3 +19,12 @@ func NewExponentialBuckets(start float64, factor float64, n int) Buckets {
 func NewDurationBuckets(args ...time.Duration) DurationBuckets {
 	return metrics.NewDurationBuckets(args...)
 }
+
+func NewExponentialDurationBuckets(
+	start time.Duration,
+	factor float64,
+	n int,
+) DurationBuckets {
+
+	return metrics.MakeExponentialDurationBuckets(start, factor, n)
+}
