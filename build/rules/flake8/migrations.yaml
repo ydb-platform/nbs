@@ -36,7 +36,6 @@ migrations:
     - billing/dwh/src/dwh/core
     - billing/dwh/src/dwh/core/migrations
     - cloud/ai/speechkit/stt/bin/experiments/libri_speech_mer_pipeline/fetch_texts
-    - cloud/blockstore/tests/loadtest/local-emergency
     - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_buckets_usage
     - cloud/support/tools/qcalc/app/quota/services
     - cloud/support/tools/quotactl-l2/quota/services
@@ -258,7 +257,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-2214
     - yabs/server/test/ft/BSSERVER-22647
     - yabs/server/test/ft/BSSERVER-2306
-    - yabs/server/test/ft/BSSERVER-23162
     - yabs/server/test/ft/BSSERVER-3143
     - yabs/server/test/ft/BSSERVER-8275
     - yabs/server/test/ft/BSSERVER-9277
@@ -945,8 +943,6 @@ migrations:
     - yabs/server/infra/grafana/lib
     - yabs/server/infra/lib
     - yabs/server/test/ft/BSDEV-62813
-    - yabs/server/test/ft/BSDEV-77691
-    - yabs/server/test/ft/BSSERVER-10994
     - yabs/server/test/ft/BSSERVER-11994
     - yabs/server/test/ft/BSSERVER-12495
     - yabs/server/test/ft/BSSERVER-13562
@@ -964,7 +960,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-9961
     - yabs/server/test/ft/DSP-85
     - yabs/server/test/ft/RMP-3301
-    - yabs/server/test/ft/ads_adfox/metadsp_request
     - yabs/server/test/ft/ads_adfox/request_context
     - yabs/server/test/qabs_bsserver_pytest
     - yabs/server/tools/simulate_timeouts/aggregate
@@ -1604,7 +1599,6 @@ migrations:
     - quality/neural_net/bert/bert/row_processors/mlm
     - quality/neural_net/bert/tests/basic
     - quality/neural_net/bert/tools/autobert/builders/subgraph_builders
-    - quality/personalization/big_rt/backup/lib
     - quality/relev_tools/ftmoon/table_archive/tests
     - quality/relev_tools/org_sintez_pool/nirvana_blocks/test
     - quality/relev_tools/org_sintez_pool/preparat_make_lib/yt_local
@@ -1769,7 +1763,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-20427
     - yabs/server/test/ft/BSSERVER-21779
     - yabs/server/test/ft/BSSERVER-22647
-    - yabs/server/test/ft/ads_adfox/metadsp_request
     - yabs/server/test/qabs_bsserver_pytest/bs_objects
     - yabs/vh/cms-pgaas/lb/max_unix_time_tool
     - yabs/vh/cms-pgaas/ugc_admin_api/lib/api
@@ -1872,7 +1865,6 @@ migrations:
     ignore:
     - E275
     prefixes:
-    - yabs/server/test/ft/BSSERVER-22596
     - quasar/manufacturing/utils/tests/pcba_id_parsing
     - robot/melter/configs/sharding/generator
     - wmconsole/version3/processors/analytics/consumption_yt/table_stats
@@ -2572,7 +2564,6 @@ migrations:
     - maps/automotive/tools/statistics_auto/pylib/import_metrics
     - maps/b2bgeo/tools/release_notes
     - maps/bizdir/sps/yang
-    - maps/goods/tools/config_generator
     - maps/goods/tools/duplicates_deleter
     - maps/goods/tools/tycoon_importer
     - maps/libs/config/py/tests
@@ -2789,7 +2780,6 @@ migrations:
     - quality/nirvana_tools/conveyor_operations/yt_proto_pool_remap_boost/standalone_demo
     - quality/nirvana_tools/conveyor_operations/yt_tools/yt_append
     - quality/pers/py/common/utils
-    - quality/personalization/big_rt/backup/lib
     - quality/query_expansions/proc/serp_similarity/test
     - quality/relev_tools/choice_screen/create_stove
     - quality/relev_tools/choice_screen/formula_graph
@@ -3098,7 +3088,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-3381
     - yabs/server/test/ft/BSSERVER-4068
     - yabs/server/test/ft/BSSERVER-4764
-    - yabs/server/test/ft/ads_adfox/metadsp_request
     - yabs/server/test/qabs_bsserver_pytest
     - yabs/server/tools/critical_path/render
     - yabs/server/tools/filter_reason_disable
@@ -3494,7 +3483,6 @@ migrations:
     - market/svn-data/raise_fee_data
     - market/yamarec/performance/nirvana/actions/crypta
     - mds/mastermind/drooz/src/cocaine-app
-    - mds/mastermind/monolith/bin
     - mds/mastermind/state_builder/bin
     - mediapers/nirvana_operations/taiga/build_dataset
     - mediapers/nirvana_operations/taiga/convert_model
@@ -6838,7 +6826,6 @@ migrations:
     - yabs/server/infra/transport
     - yabs/server/libs/internal_ver/py_parser/lib
     - yabs/server/test/ft/BSSERVER-10571
-    - yabs/server/test/ft/BSSERVER-2454
     - yabs/server/test/ft/BSSERVER-4506
     - yabs/server/test/ft/BSSERVER-4669
     - yabs/server/test/ft/BSSERVER-587
@@ -7494,7 +7481,6 @@ migrations:
     - alice/boltalka/generative/training/data/nn/movies
     - alice/boltalka/generative/training/data/nn/util
     - alice/boltalka/generative/training/data/nn/util/experimental
-    - cloud/blockstore/tests/loadtest/local-endpoints-spdk
     - dict/bert/make/lib
     - dict/bert/make/tools/form_rsg_submission
     - dict/mt/analytics/make/modules/logs/utils
@@ -8098,7 +8084,6 @@ migrations:
     - maps/poi/notification/lib/sup
     - sandbox/projects/clickhouse/ClickhouseCommitTrigger
     - sandbox/projects/hardware/CalculateSandboxQuotas
-    - vcs/svn/s3_backuper
   PLE1306:
     ignore:
     - PLE1306
@@ -9304,7 +9289,6 @@ migrations:
     - yabs/server/infra/bstrbufbuf/plugin
     - yabs/server/infra/trivial_cron
     - yabs/server/libs/py_markdown_strings
-    - yabs/server/test/ft/BSSERVER-2454
     - yabs/server/test/ft/BSSERVER-3895
     - yabs/server/test/ft/checks
     - yabs/server/test/pylibs/qxl
