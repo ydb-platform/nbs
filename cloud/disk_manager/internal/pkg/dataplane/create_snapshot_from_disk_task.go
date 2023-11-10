@@ -157,6 +157,7 @@ func (t *createSnapshotFromDiskTask) run(
 		diskParams.EncryptionDesc,
 		chunkSize,
 		incremental, // duplicateChunkIndices
+		false,       // ignoreBaseDisk
 	)
 	if err != nil {
 		return err

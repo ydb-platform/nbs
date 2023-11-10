@@ -24,6 +24,7 @@ func (c *multiZoneClient) Clone(
 	dstPlacementGroupID string,
 	dstPlacementPartitionIndex uint32,
 	fillGeneration uint64,
+	baseDiskID string,
 ) (err error) {
 
 	defer c.metrics.StatRequest("Clone")(&err)
@@ -36,6 +37,7 @@ func (c *multiZoneClient) Clone(
 			dstPlacementGroupID,
 			dstPlacementPartitionIndex,
 			fillGeneration,
+			baseDiskID,
 		)
 		if err != nil {
 			if !isAbortedError(err) {
@@ -85,6 +87,7 @@ func (c *multiZoneClient) clone(
 	dstPlacementGroupID string,
 	dstPlacementPartitionIndex uint32,
 	fillGeneration uint64,
+	baseDiskID string,
 ) (err error) {
 
 	volume, err := c.srcZoneClient.nbs.DescribeVolume(ctx, diskID)
@@ -97,9 +100,8 @@ func (c *multiZoneClient) clone(
 		volume.DiskId,
 		volume.BlocksCount,
 		&nbs_client.CreateVolumeOpts{
-			// TODO: Now we make every disk non-overlay after migration. Will be optimized in NBS-4222
-			BaseDiskId:              "",
-			BaseDiskCheckpointId:    "",
+			BaseDiskId:              baseDiskID,
+			BaseDiskCheckpointId:    volume.BaseDiskCheckpointId,
 			BlockSize:               volume.BlockSize,
 			StorageMediaKind:        volume.StorageMediaKind,
 			CloudId:                 volume.CloudId,

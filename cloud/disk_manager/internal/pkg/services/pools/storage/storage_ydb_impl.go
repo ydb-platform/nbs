@@ -984,120 +984,76 @@ func (s *storageYDB) acquireBaseDiskSlot(
 	}
 	defer tx.Rollback(ctx)
 
-	slots, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $overlay_disk_id as Utf8;
-
-		select *
-		from slots
-		where overlay_disk_id = $overlay_disk_id
-	`, s.tablesPath),
-		persistence.ValueParam("$overlay_disk_id", persistence.UTF8Value(overlayDiskID)),
-	)
+	acquiredSlot, err := s.getAcquiredSlot(ctx, tx, overlayDiskID)
 	if err != nil {
 		return BaseDisk{}, err
 	}
-	defer slots.Close()
 
-	if slots.NextResultSet(ctx) && slots.NextRow() {
-		scannedSlot, err := scanSlot(slots)
-		if err != nil {
-			return BaseDisk{}, err
-		}
-
-		return s.acquireBaseDiskSlotIdempotent(ctx, tx, scannedSlot)
+	if acquiredSlot != nil {
+		return s.acquireBaseDiskSlotIdempotent(ctx, tx, *acquiredSlot)
 	}
 
-	free, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $image_id as Utf8;
-		declare $zone_id as Utf8;
-
-		select *
-		from free
-		where image_id = $image_id and zone_id = $zone_id
-	`, s.tablesPath),
-		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-	)
+	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, zoneID)
 	if err != nil {
 		return BaseDisk{}, err
 	}
-	defer free.Close()
 
 	capacity, err := s.checkPoolConfigured(ctx, tx, imageID, zoneID)
 	if err != nil {
 		return BaseDisk{}, err
 	}
 
-	for free.NextResultSet(ctx) {
-		for free.NextRow() {
-			var baseDiskID string
-			err = free.ScanNamed(
-				persistence.OptionalWithDefault("base_disk_id", &baseDiskID),
-			)
-			if err != nil {
-				return BaseDisk{}, err
-			}
-
-			baseDisk, err := s.getBaseDisk(ctx, tx, baseDiskID)
-			if err != nil {
-				return BaseDisk{}, err
-			}
-
-			if baseDisk.status != baseDiskStatusCreating &&
-				baseDisk.status != baseDiskStatusReady {
-				// Disk is not suitable for acquiring.
-				continue
-			}
-
-			slot := &slot{
-				overlayDiskID:   overlayDiskID,
-				overlayDiskKind: st.OverlayDiskKind,
-				overlayDiskSize: st.OverlayDiskSize,
-				baseDiskID:      baseDisk.id,
-				imageID:         baseDisk.imageID,
-				zoneID:          st.OverlayDisk.ZoneId,
-				status:          slotStatusAcquired,
-			}
-
-			baseDiskOldState := baseDisk
-			err = acquireUnitsAndSlots(ctx, tx, &baseDisk, slot)
-			if err != nil {
-				return BaseDisk{}, err
-			}
-
-			err = s.updateBaseDiskAndSlot(
-				ctx,
-				tx,
-				baseDiskTransition{
-					oldState: &baseDiskOldState,
-					state:    &baseDisk,
-				},
-				slotTransition{
-					oldState: nil,
-					state:    slot,
-				},
-			)
-			if err != nil {
-				return BaseDisk{}, err
-			}
-
-			err = tx.Commit(ctx)
-			if err != nil {
-				return BaseDisk{}, err
-			}
-
-			logging.Debug(
-				ctx,
-				"acquired slot %+v on baseDisk %+v",
-				slot,
-				baseDisk,
-			)
-			return baseDisk.toBaseDisk(), nil
+	for _, baseDisk := range freeBaseDisks {
+		if baseDisk.status != baseDiskStatusCreating &&
+			baseDisk.status != baseDiskStatusReady {
+			// Disk is not suitable for acquiring.
+			continue
 		}
+
+		slot := &slot{
+			overlayDiskID:   overlayDiskID,
+			overlayDiskKind: st.OverlayDiskKind,
+			overlayDiskSize: st.OverlayDiskSize,
+			baseDiskID:      baseDisk.id,
+			imageID:         baseDisk.imageID,
+			zoneID:          zoneID,
+			status:          slotStatusAcquired,
+		}
+
+		baseDiskOldState := baseDisk
+		err = acquireUnitsAndSlots(ctx, tx, &baseDisk, slot)
+		if err != nil {
+			return BaseDisk{}, err
+		}
+
+		err = s.updateBaseDiskAndSlot(
+			ctx,
+			tx,
+			baseDiskTransition{
+				oldState: &baseDiskOldState,
+				state:    &baseDisk,
+			},
+			slotTransition{
+				oldState: nil,
+				state:    slot,
+			},
+		)
+		if err != nil {
+			return BaseDisk{}, err
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil {
+			return BaseDisk{}, err
+		}
+
+		logging.Debug(
+			ctx,
+			"acquired slot %+v on baseDisk %+v",
+			slot,
+			baseDisk,
+		)
+		return baseDisk.toBaseDisk(), nil
 	}
 
 	if capacity == 0 {
@@ -1128,6 +1084,7 @@ func (s *storageYDB) acquireBaseDiskSlot(
 		return BaseDisk{}, err
 	}
 
+	// Should wait until target base disk is ready.
 	return BaseDisk{}, errors.NewInterruptExecutionError()
 }
 
@@ -1251,17 +1208,198 @@ func (s *storageYDB) releaseBaseDiskSlot(
 	return baseDisk.toBaseDisk(), nil
 }
 
-func (s *storageYDB) overlayDiskRebasing(
+func (s *storageYDB) getAcquiredSlot(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	overlayDiskID string,
+) (*slot, error) {
+
+	slots, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $overlay_disk_id as Utf8;
+
+		select *
+		from slots
+		where overlay_disk_id = $overlay_disk_id
+	`, s.tablesPath),
+		persistence.ValueParam("$overlay_disk_id", persistence.UTF8Value(overlayDiskID)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer slots.Close()
+
+	if slots.NextResultSet(ctx) && slots.NextRow() {
+		scannedSlot, err := scanSlot(slots)
+		if err != nil {
+			return nil, err
+		}
+
+		return &scannedSlot, err
+	}
+
+	return nil, nil
+}
+
+func (s *storageYDB) overlayDiskRelocatingIdempotent(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	overlayDisk *types.Disk,
+	acquiredSlot slot,
+	targetZoneID string,
+) (RebaseInfo, error) {
+
+	if acquiredSlot.targetZoneID != targetZoneID {
+		err := tx.Commit(ctx)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		return RebaseInfo{}, errors.NewNonRetriableErrorf(
+			"another relocate is in progress for slot %+v",
+			acquiredSlot,
+		)
+	}
+
+	rebaseInfo := RebaseInfo{
+		OverlayDisk:      overlayDisk,
+		BaseDiskID:       acquiredSlot.baseDiskID,
+		TargetZoneID:     acquiredSlot.targetZoneID,
+		TargetBaseDiskID: acquiredSlot.targetBaseDiskID,
+		SlotGeneration:   acquiredSlot.generation,
+	}
+
+	err := s.overlayDiskRebasingTx(ctx, tx, rebaseInfo)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+
+	return rebaseInfo, nil
+}
+
+func (s *storageYDB) overlayDiskRelocating(
+	ctx context.Context,
+	session *persistence.Session,
+	overlayDisk *types.Disk,
+	targetZoneID string,
+) (RebaseInfo, error) {
+
+	overlayDiskID := overlayDisk.DiskId
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	acquiredSlot, err := s.getAcquiredSlot(ctx, tx, overlayDiskID)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+
+	if acquiredSlot == nil {
+		return RebaseInfo{}, tx.Commit(ctx)
+	}
+
+	if len(acquiredSlot.targetBaseDiskID) != 0 {
+		if len(acquiredSlot.targetZoneID) == 0 {
+			err := tx.Commit(ctx)
+			if err != nil {
+				return RebaseInfo{}, err
+			}
+
+			// Should wait until end of rebase within current zone.
+			return RebaseInfo{}, errors.NewInterruptExecutionError()
+		} else {
+			rebaseInfo, err := s.overlayDiskRelocatingIdempotent(
+				ctx,
+				tx,
+				overlayDisk,
+				*acquiredSlot,
+				targetZoneID,
+			)
+			if err != nil {
+				return RebaseInfo{}, err
+			}
+
+			err = tx.Commit(ctx)
+			if err != nil {
+				return RebaseInfo{}, err
+			}
+
+			logging.Info(ctx, "Overlay disk relocating for RebaseInfo %+v", rebaseInfo)
+			return rebaseInfo, nil
+		}
+	}
+
+	imageID := acquiredSlot.imageID
+	isPoolConfigured, err := s.isPoolConfiguredTx(ctx, tx, imageID, targetZoneID)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+
+	if !isPoolConfigured {
+		return RebaseInfo{}, tx.Commit(ctx)
+	}
+
+	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+
+	for _, baseDisk := range freeBaseDisks {
+		if baseDisk.status != baseDiskStatusCreating &&
+			baseDisk.status != baseDiskStatusReady {
+			// Disk is not suitable for acquiring.
+			continue
+		}
+
+		rebaseInfo := RebaseInfo{
+			OverlayDisk:      overlayDisk,
+			BaseDiskID:       acquiredSlot.baseDiskID,
+			TargetZoneID:     targetZoneID,
+			TargetBaseDiskID: baseDisk.id,
+			SlotGeneration:   acquiredSlot.generation,
+		}
+
+		err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		logging.Info(ctx, "Overlay disk relocating for RebaseInfo %+v", rebaseInfo)
+		return rebaseInfo, nil
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+
+	// Should wait until target base disk is ready.
+	return RebaseInfo{}, errors.NewInterruptExecutionError()
+}
+
+func (s *storageYDB) overlayDiskRelocated(
 	ctx context.Context,
 	session *persistence.Session,
 	info RebaseInfo,
 ) error {
 
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	return s.overlayDiskRebased(ctx, session, info)
+}
+
+func (s *storageYDB) overlayDiskRebasingTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	info RebaseInfo,
+) error {
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1376,18 +1514,18 @@ func (s *storageYDB) overlayDiskRebasing(
 
 	if slot.baseDiskID == info.TargetBaseDiskID {
 		// Nothing to do.
-		return tx.Commit(ctx)
+		return nil
 	}
 
 	if slot.targetBaseDiskID == info.TargetBaseDiskID {
 		// Target units are already acquired.
 
-		err = tx.Commit(ctx)
-		if err != nil {
-			return err
-		}
-
 		if baseDisk.status != baseDiskStatusReady {
+			err = tx.Commit(ctx)
+			if err != nil {
+				return err
+			}
+
 			// Should wait until target base disk is ready.
 			return errors.NewInterruptExecutionError()
 		}
@@ -1401,6 +1539,10 @@ func (s *storageYDB) overlayDiskRebasing(
 	err = acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, &slot)
 	if err != nil {
 		return err
+	}
+
+	if len(info.TargetZoneID) != 0 {
+		slot.targetZoneID = info.TargetZoneID
 	}
 
 	slot.targetBaseDiskID = info.TargetBaseDiskID
@@ -1421,14 +1563,12 @@ func (s *storageYDB) overlayDiskRebasing(
 		return err
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
-	}
-
-	logging.Info(ctx, "rebasing slot %+v to %+v", slot, baseDisk)
-
 	if baseDisk.status != baseDiskStatusReady {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
 		// Should wait until target base disk is ready.
 		return errors.NewInterruptExecutionError()
 	}
@@ -1436,17 +1576,11 @@ func (s *storageYDB) overlayDiskRebasing(
 	return nil
 }
 
-func (s *storageYDB) overlayDiskRebased(
+func (s *storageYDB) overlayDiskRebasedTx(
 	ctx context.Context,
-	session *persistence.Session,
+	tx *persistence.Transaction,
 	info RebaseInfo,
 ) error {
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1511,7 +1645,7 @@ func (s *storageYDB) overlayDiskRebased(
 
 	if slot.baseDiskID == info.TargetBaseDiskID {
 		// Nothing to do.
-		return tx.Commit(ctx)
+		return nil
 	}
 
 	if slot.targetBaseDiskID != info.TargetBaseDiskID {
@@ -1539,11 +1673,16 @@ func (s *storageYDB) overlayDiskRebased(
 
 	slotOldState := slot
 
+	if len(slot.targetZoneID) != 0 {
+		slot.zoneID = slot.targetZoneID
+	}
+
 	slot.baseDiskID = slot.targetBaseDiskID
 	slot.allottedSlots = slot.targetAllottedSlots
 	slot.allottedUnits = slot.targetAllottedUnits
 
 	// Finish rebasing.
+	slot.targetZoneID = ""
 	slot.targetBaseDiskID = ""
 	slot.targetAllottedSlots = 0
 	slot.targetAllottedUnits = 0
@@ -1564,12 +1703,58 @@ func (s *storageYDB) overlayDiskRebased(
 		return err
 	}
 
+	return nil
+}
+
+func (s *storageYDB) overlayDiskRebasing(
+	ctx context.Context,
+	session *persistence.Session,
+	info RebaseInfo,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	err = s.overlayDiskRebasingTx(ctx, tx, info)
+	if err != nil {
+		return err
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		return err
 	}
 
-	logging.Info(ctx, "rebased slot %+v from %+v", slot, baseDisk)
+	logging.Info(ctx, "Overlay disk rebasing for RebaseInfo %+v", info)
+	return nil
+}
+
+func (s *storageYDB) overlayDiskRebased(
+	ctx context.Context,
+	session *persistence.Session,
+	info RebaseInfo,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	err = s.overlayDiskRebasedTx(ctx, tx, info)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "Overlay disk rebased for RebaseInfo %+v", info)
 	return nil
 }
 

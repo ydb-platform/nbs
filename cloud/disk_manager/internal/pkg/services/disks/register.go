@@ -9,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 )
 
@@ -18,7 +19,8 @@ func RegisterForExecution(
 	ctx context.Context,
 	config *disks_config.DisksConfig,
 	performanceConfig *performance_config.PerformanceConfig,
-	storage resources.Storage,
+	resourceStorage resources.Storage,
+	poolStorage storage.Storage,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	poolService pools.Service,
@@ -41,7 +43,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateEmptyDisk", func() tasks.Task {
 		return &createEmptyDiskTask{
-			storage:    storage,
+			storage:    resourceStorage,
 			scheduler:  taskScheduler,
 			nbsFactory: nbsFactory,
 		}
@@ -52,7 +54,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateOverlayDisk", func() tasks.Task {
 		return &createOverlayDiskTask{
-			storage:     storage,
+			storage:     resourceStorage,
 			scheduler:   taskScheduler,
 			poolService: poolService,
 			nbsFactory:  nbsFactory,
@@ -65,7 +67,7 @@ func RegisterForExecution(
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromImage", func() tasks.Task {
 		return &createDiskFromImageTask{
 			performanceConfig: performanceConfig,
-			storage:           storage,
+			storage:           resourceStorage,
 			scheduler:         taskScheduler,
 			nbsFactory:        nbsFactory,
 		}
@@ -77,7 +79,7 @@ func RegisterForExecution(
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromSnapshot", func() tasks.Task {
 		return &createDiskFromSnapshotTask{
 			performanceConfig: performanceConfig,
-			storage:           storage,
+			storage:           resourceStorage,
 			scheduler:         taskScheduler,
 			nbsFactory:        nbsFactory,
 		}
@@ -88,7 +90,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.DeleteDisk", func() tasks.Task {
 		return &deleteDiskTask{
-			storage:     storage,
+			storage:     resourceStorage,
 			scheduler:   taskScheduler,
 			poolService: poolService,
 			nbsFactory:  nbsFactory,
@@ -136,7 +138,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.ClearDeletedDisks", func() tasks.Task {
 		return &clearDeletedDisksTask{
-			storage:           storage,
+			storage:           resourceStorage,
 			expirationTimeout: deletedDiskExpirationTimeout,
 			limit:             int(config.GetClearDeletedDisksLimit()),
 		}
@@ -150,7 +152,8 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			poolService:       poolService,
-			storage:           storage,
+			resourceStorage:   resourceStorage,
+			poolStorage:       poolStorage,
 			nbsFactory:        nbsFactory,
 		}
 	})

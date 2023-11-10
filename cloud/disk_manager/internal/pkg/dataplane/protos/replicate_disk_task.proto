@@ -20,6 +20,8 @@ message ReplicateDiskTaskRequest {
 
     uint64 FillGeneration = 3;
     bool UseLightCheckpoint = 4; // Use light or withoutData checkpoint.
+
+    bool IgnoreBaseDisk = 5;
 }
 
 message ReplicateDiskTaskState {

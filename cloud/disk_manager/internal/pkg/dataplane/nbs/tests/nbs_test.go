@@ -179,6 +179,7 @@ func TestChunkIndices(t *testing.T) {
 			nil, // encryption
 			chunkSize,
 			false, // duplicateChunkIndices
+			false, // ignoreBaseDisk
 		)
 		require.NoError(t, err)
 		defer source.Close(ctx)
@@ -282,6 +283,7 @@ func TestReadWrite(t *testing.T) {
 		nil, // encryption
 		chunkSize,
 		false, // duplicateChunkIndices
+		false, // ignoreBaseDisk
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)

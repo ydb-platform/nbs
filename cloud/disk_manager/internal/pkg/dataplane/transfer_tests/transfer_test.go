@@ -93,6 +93,7 @@ func newDiskSourceFull(
 	baseCheckpointID string,
 	checkpointID string,
 	duplicateChunkIndices bool,
+	ignoreBaseDisk bool,
 ) dataplane_common.Source {
 
 	client, err := factory.GetClient(ctx, disk.ZoneId)
@@ -117,6 +118,7 @@ func newDiskSourceFull(
 		nil, // encryption
 		chunkSize,
 		duplicateChunkIndices,
+		ignoreBaseDisk,
 	)
 	require.NoError(t, err)
 
@@ -138,6 +140,7 @@ func newDiskSource(
 		"",
 		"checkpoint",
 		false, // duplicateChunkIndices
+		false, // ignoreBaseDisk
 	)
 }
 
@@ -182,6 +185,7 @@ func fillDiskRange(
 				"",
 				checkpointID,
 				false, // duplicateChunkIndices
+				false, // ignoreBaseDisk
 			)
 		},
 		newTarget: func() dataplane_common.Target {
@@ -856,7 +860,8 @@ func TestTransferFromDiskToIncrementalSnapshot(t *testing.T) {
 					disk,
 					"base",
 					"incremental",
-					true, // duplicateChunkIndices
+					true,  // duplicateChunkIndices
+					false, // ignoreBaseDisk
 				)
 			}
 
@@ -932,7 +937,8 @@ func TestTransferFromDiskToIncrementalSnapshotWhenBaseSnapshotIsSmall(t *testing
 			disk,
 			"base",
 			"incremental",
-			true, // duplicateChunkIndices
+			true,  // duplicateChunkIndices
+			false, // ignoreBaseDisk
 		)
 	}
 

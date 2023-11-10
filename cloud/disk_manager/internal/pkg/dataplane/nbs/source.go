@@ -35,6 +35,8 @@ type diskSource struct {
 
 	chunkIndices           common.ChannelWithInflightQueue
 	duplicatedChunkIndices common.ChannelWithCancellation
+
+	ignoreBaseDisk bool
 }
 
 func (s *diskSource) sendChunkIndex(
@@ -91,7 +93,7 @@ func (s *diskSource) generateChunkIndices(
 			blockCount,
 			s.baseCheckpointID,
 			s.checkpointID,
-			false, // ignoreBaseDisk
+			s.ignoreBaseDisk,
 		)
 		if err != nil {
 			return err
@@ -231,6 +233,7 @@ func NewDiskSource(
 	encryption *types.EncryptionDesc,
 	chunkSize uint32,
 	duplicateChunkIndices bool,
+	ignoreBaseDisk bool,
 ) (dataplane_common.Source, error) {
 
 	if len(proxyDiskID) == 0 {
@@ -292,5 +295,7 @@ func NewDiskSource(
 		useGetChangedBlocks:              useGetChangedBlocks,
 		maxChangedBlockCountPerIteration: maxChangedBlockCountPerIteration,
 		duplicateChunkIndices:            duplicateChunkIndices,
+
+		ignoreBaseDisk: ignoreBaseDisk,
 	}, nil
 }

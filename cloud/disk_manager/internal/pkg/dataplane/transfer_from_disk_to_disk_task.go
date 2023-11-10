@@ -62,6 +62,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		diskParams.EncryptionDesc,
 		chunkSize,
 		false, // duplicateChunkIndices
+		false, // ignoreBaseDisk
 	)
 	if err != nil {
 		return err

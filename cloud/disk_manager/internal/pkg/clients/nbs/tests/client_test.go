@@ -1044,6 +1044,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1063,6 +1064,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.NoError(t, err)
 
@@ -1077,6 +1079,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.NoError(t, err)
 
@@ -1086,6 +1089,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.NoError(t, err)
 
@@ -1095,6 +1099,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "config mismatch")
@@ -1124,6 +1129,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		3,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1157,6 +1163,7 @@ func TestFinishFillDisk(t *testing.T) {
 		"", // dstPlacementGroupID
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
+		"", // baseDiskID
 	)
 	require.NoError(t, err)
 

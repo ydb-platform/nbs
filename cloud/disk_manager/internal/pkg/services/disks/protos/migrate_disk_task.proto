@@ -29,6 +29,12 @@ enum MigrationStatus {
     Finished = 5;
 }
 
+message RelocateInfo {
+    string BaseDiskID = 1;
+    string TargetBaseDiskID = 2;
+    uint64 SlotGeneration = 3;
+}
+
 message MigrateDiskTaskState {
     reserved 1 to 5;
 
@@ -37,4 +43,6 @@ message MigrateDiskTaskState {
     uint64 FillGeneration = 8;
     string ReplicateTaskID = 9;
     MigrationStatus Status = 10;
+
+    RelocateInfo RelocateInfo = 11;
 }

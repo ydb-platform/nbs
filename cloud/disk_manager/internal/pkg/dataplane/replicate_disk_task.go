@@ -218,6 +218,7 @@ func (t *replicateDiskTask) replicate(
 		diskParams.EncryptionDesc,
 		chunkSize,
 		false, // duplicateChunkIndices
+		t.request.IgnoreBaseDisk,
 	)
 	if err != nil {
 		return err

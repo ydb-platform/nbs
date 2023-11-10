@@ -415,6 +415,7 @@ type slot struct {
 	allottedSlots       uint64
 	allottedUnits       uint64
 	releasedAt          time.Time
+	targetZoneID        string
 	targetBaseDiskID    string
 	targetAllottedSlots uint64
 	targetAllottedUnits uint64
@@ -433,6 +434,7 @@ func (s *slot) structValue() persistence.Value {
 		persistence.StructFieldValue("allotted_slots", persistence.Uint64Value(s.allottedSlots)),
 		persistence.StructFieldValue("allotted_units", persistence.Uint64Value(s.allottedUnits)),
 		persistence.StructFieldValue("released_at", persistence.TimestampValue(s.releasedAt)),
+		persistence.StructFieldValue("target_zone_id", persistence.UTF8Value(s.targetZoneID)),
 		persistence.StructFieldValue("target_base_disk_id", persistence.UTF8Value(s.targetBaseDiskID)),
 		persistence.StructFieldValue("target_allotted_slots", persistence.Uint64Value(s.targetAllottedSlots)),
 		persistence.StructFieldValue("target_allotted_units", persistence.Uint64Value(s.targetAllottedUnits)),
@@ -452,6 +454,7 @@ func slotStructTypeString() string {
 		allotted_slots: Uint64,
 		allotted_units: Uint64,
 		released_at: Timestamp,
+		target_zone_id: Utf8,
 		target_base_disk_id: Utf8,
 		target_allotted_slots: Uint64,
 		target_allotted_units: Uint64,
@@ -471,6 +474,7 @@ func slotsTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("allotted_slots", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("allotted_units", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("released_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("target_zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("target_base_disk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("target_allotted_slots", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("target_allotted_units", persistence.Optional(persistence.TypeUint64)),
@@ -491,6 +495,7 @@ func scanSlot(res persistence.Result) (slot slot, err error) {
 		persistence.OptionalWithDefault("allotted_slots", &slot.allottedSlots),
 		persistence.OptionalWithDefault("allotted_units", &slot.allottedUnits),
 		persistence.OptionalWithDefault("released_at", &slot.releasedAt),
+		persistence.OptionalWithDefault("target_zone_id", &slot.targetZoneID),
 		persistence.OptionalWithDefault("target_base_disk_id", &slot.targetBaseDiskID),
 		persistence.OptionalWithDefault("target_allotted_slots", &slot.targetAllottedSlots),
 		persistence.OptionalWithDefault("target_allotted_units", &slot.targetAllottedUnits),

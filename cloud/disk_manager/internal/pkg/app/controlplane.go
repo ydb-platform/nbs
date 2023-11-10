@@ -270,6 +270,7 @@ func registerControlplaneTasks(
 		config.GetDisksConfig(),
 		performanceConfig,
 		resourceStorage,
+		poolStorage,
 		taskRegistry,
 		taskScheduler,
 		poolService,

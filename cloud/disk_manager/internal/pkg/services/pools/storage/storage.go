@@ -33,6 +33,7 @@ type Slot struct {
 type RebaseInfo struct {
 	OverlayDisk      *types.Disk
 	BaseDiskID       string
+	TargetZoneID     string
 	TargetBaseDiskID string
 	SlotGeneration   uint64
 }
@@ -62,6 +63,14 @@ type Storage interface {
 		ctx context.Context,
 		overlayDisk *types.Disk,
 	) (baseDisk BaseDisk, err error)
+
+	OverlayDiskRelocating(
+		ctx context.Context,
+		overlayDisk *types.Disk,
+		targetZoneID string,
+	) (RebaseInfo, error)
+
+	OverlayDiskRelocated(ctx context.Context, info RebaseInfo) error
 
 	OverlayDiskRebasing(ctx context.Context, info RebaseInfo) error
 

@@ -19,6 +19,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -34,7 +35,8 @@ type migrateDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
-	storage           resources.Storage
+	resourceStorage   resources.Storage
+	poolStorage       storage.Storage
 	nbsFactory        nbs.Factory
 	request           *protos.MigrateDiskRequest
 	state             *protos.MigrateDiskTaskState
@@ -213,6 +215,21 @@ func (t *migrateDiskTask) start(
 	}
 
 	if !t.state.IsDiskCloned {
+		relocateInfo, err := t.poolStorage.OverlayDiskRelocating(
+			ctx,
+			t.request.Disk,
+			t.request.DstZoneId,
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.RelocateInfo = &protos.RelocateInfo{
+			BaseDiskID:       relocateInfo.BaseDiskID,
+			TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+			SlotGeneration:   relocateInfo.SlotGeneration,
+		}
+
 		multiZoneClient, err := t.nbsFactory.GetMultiZoneClient(
 			t.request.Disk.ZoneId,
 			t.request.DstZoneId,
@@ -227,6 +244,7 @@ func (t *migrateDiskTask) start(
 			t.request.DstPlacementGroupId,
 			t.request.DstPlacementPartitionIndex,
 			t.state.FillGeneration,
+			t.state.RelocateInfo.TargetBaseDiskID,
 		)
 		if err != nil {
 			return err
@@ -281,7 +299,7 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	diskMeta, err := t.storage.GetDiskMeta(ctx, t.request.Disk.DiskId)
+	diskMeta, err := t.resourceStorage.GetDiskMeta(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
@@ -305,6 +323,8 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 			},
 			FillGeneration:     t.state.FillGeneration,
 			UseLightCheckpoint: useLightCheckpoint,
+			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
+			IgnoreBaseDisk: len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
 		},
 		"",
 		"",
@@ -353,7 +373,7 @@ func (t *migrateDiskTask) incrementFillGeneration(
 
 	t.logInfo(ctx, execCtx, "incrementing fillGeneration")
 
-	fillGeneration, err := t.storage.IncrementFillGeneration(
+	fillGeneration, err := t.resourceStorage.IncrementFillGeneration(
 		ctx,
 		t.request.Disk.DiskId,
 	)
@@ -476,12 +496,27 @@ func (t *migrateDiskTask) finishMigration(
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
 
-	err = t.releaseBaseDisk(ctx, execCtx)
-	if err != nil {
-		return err
+	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
+		err = t.poolStorage.OverlayDiskRelocated(
+			ctx,
+			storage.RebaseInfo{
+				OverlayDisk:      t.request.Disk,
+				BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+				TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+				SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+			},
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = t.releaseBaseDisk(ctx, execCtx)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = t.storage.DiskRelocated(
+	err = t.resourceStorage.DiskRelocated(
 		ctx,
 		t.request.Disk.DiskId,
 		t.request.DstZoneId,

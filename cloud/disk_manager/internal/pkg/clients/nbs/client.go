@@ -1164,6 +1164,26 @@ func (c *client) GetChangedBlocks(
 		checkpointID,     // highCheckpointID
 		ignoreBaseDisk,
 	)
+
+	logging.Debug(
+		ctx,
+		"GetChangedBlocks for "+
+			"diskID %v, "+
+			"startIndex %v, "+
+			"blockCount %v, "+
+			"baseCheckpointID %v, "+
+			"checkpointID %v, "+
+			"ignoreBaseDisk %v, "+
+			"blockMask %v",
+		diskID,
+		startIndex,
+		blockCount,
+		baseCheckpointID,
+		checkpointID,
+		ignoreBaseDisk,
+		blockMask,
+	)
+
 	return blockMask, wrapError(err)
 }
 

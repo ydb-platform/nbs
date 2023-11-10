@@ -15,6 +15,7 @@ import (
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
+	pools_storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage/mocks"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,7 +28,8 @@ func TestMigrateDiskTaskProgress(t *testing.T) {
 
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
-	storage := storage_mocks.NewStorageMock()
+	resourceStorage := storage_mocks.NewStorageMock()
+	poolStorage := pools_storage_mocks.NewStorageMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
 
 	request := &protos.MigrateDiskRequest{
@@ -42,7 +44,8 @@ func TestMigrateDiskTaskProgress(t *testing.T) {
 		performanceConfig: &performance_config.PerformanceConfig{},
 		scheduler:         scheduler,
 		poolService:       poolService,
-		storage:           storage,
+		resourceStorage:   resourceStorage,
+		poolStorage:       poolStorage,
 		nbsFactory:        nbsFactory,
 		request:           request,
 		state:             &protos.MigrateDiskTaskState{},

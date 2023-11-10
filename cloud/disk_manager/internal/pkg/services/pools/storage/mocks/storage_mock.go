@@ -34,6 +34,25 @@ func (s *StorageMock) ReleaseBaseDiskSlot(
 	return args.Get(0).(storage.BaseDisk), args.Error(1)
 }
 
+func (s *StorageMock) OverlayDiskRelocating(
+	ctx context.Context,
+	overlayDisk *types.Disk,
+	targetZoneID string,
+) (storage.RebaseInfo, error) {
+
+	args := s.Called(ctx, overlayDisk, targetZoneID)
+	return args.Get(0).(storage.RebaseInfo), args.Error(1)
+}
+
+func (s *StorageMock) OverlayDiskRelocated(
+	ctx context.Context,
+	info storage.RebaseInfo,
+) error {
+
+	args := s.Called(ctx, info)
+	return args.Error(0)
+}
+
 func (s *StorageMock) OverlayDiskRebasing(
 	ctx context.Context,
 	info storage.RebaseInfo,
