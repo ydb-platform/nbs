@@ -18,10 +18,16 @@ namespace NCloud::NFileStore {
 
 struct TIncompleteRequest
 {
-    NCloud::NProto::EStorageMediaKind MediaKind =
-        NCloud::NProto::STORAGE_MEDIA_DEFAULT;
-    EFileStoreRequest RequestType;
-    TDuration RequestTime;
+    const NCloud::NProto::EStorageMediaKind MediaKind;
+    const EFileStoreRequest RequestType;
+    const TDuration ExecutionTime;
+    const TDuration TotalTime;
+
+    TIncompleteRequest(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        EFileStoreRequest requestType,
+        TDuration executionTime,
+        TDuration totalTime);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

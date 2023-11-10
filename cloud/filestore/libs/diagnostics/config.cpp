@@ -29,6 +29,13 @@ namespace {
     xxx(CpuWaitServiceName,         TString,    ""                            )\
                                                                                \
     xxx(MetricsUpdateInterval,      TDuration,  TDuration::Seconds(5)         )\
+                                                                               \
+    xxx(SlowExecutionTimeRequestThreshold, TDuration, TDuration::Seconds(10)  )\
+    xxx(SlowTotalTimeRequestThreshold,     TDuration, TDuration::Seconds(30)  )\
+                                                                               \
+    xxx(PostponeTimePredictorInterval,   TDuration, TDuration::Seconds(15)    )\
+    xxx(PostponeTimePredictorMaxTime,    TDuration, TDuration::Minutes(1)     )\
+    xxx(PostponeTimePredictorPercentage, double,    0.0                       )\
 // FILESTORE_DIAGNOSTICS_CONFIG
 
 #define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \

@@ -42,6 +42,13 @@ public:
 
     TDuration GetMetricsUpdateInterval() const;
 
+    TDuration GetSlowExecutionTimeRequestThreshold() const;
+    TDuration GetSlowTotalTimeRequestThreshold() const;
+
+    TDuration GetPostponeTimePredictorInterval() const;
+    TDuration GetPostponeTimePredictorMaxTime() const;
+    double GetPostponeTimePredictorPercentage() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

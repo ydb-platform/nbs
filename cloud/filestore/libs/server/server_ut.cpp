@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/config.h>
+#include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -221,7 +222,7 @@ public:
     {
         auto registry = CreateRequestStatsRegistry(
             "server_ut",
-            {},
+            std::make_shared<TDiagnosticsConfig>(),
             Counters,
             CreateWallClockTimer(),
             NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());

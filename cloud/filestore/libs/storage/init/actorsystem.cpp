@@ -1,5 +1,6 @@
 #include "actorsystem.h"
 
+#include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/metrics/service.h>
@@ -348,7 +349,7 @@ void TActorSystem::Init()
 
     auto statsRegistry = CreateRequestStatsRegistry(
         "service",
-        {},
+        Args.DiagnosticsConfig,
         FILESTORE_COUNTERS_ROOT(AppData->Counters),
         CreateWallClockTimer(),
         NUserStats::CreateUserCounterSupplierStub());

@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -38,10 +39,8 @@ void TStorageServiceActor::CompleteRequest(
         FormatError(msg->Record.GetError()).c_str());
 
     FinalizeProfileLogRequestInfo(request->ProfileLogRequest, msg->Record);
-    HandleTraceInfo(
-        TraceSerializer,
-        request->CallContext,
-        msg->Record);
+    HandleTraceInfo(TraceSerializer, request->CallContext, msg->Record);
+    HandleThrottlerInfo(*request->CallContext, msg->Record);
 
     STORAGE_VERIFY_C(
         ev->HasEvent(),

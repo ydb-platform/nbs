@@ -6,11 +6,14 @@
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
 #include <cloud/filestore/libs/service/context.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
 #include <cloud/storage/core/libs/diagnostics/request_counters.h>
 #include <cloud/storage/core/libs/version/version.h>
 
@@ -28,7 +31,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRequestCountersPtr MakeRequestCounters(ITimerPtr timer, TDynamicCounters& counters)
+bool IsReadWriteRequest(EFileStoreRequest rt)
+{
+    return rt == EFileStoreRequest::WriteData
+        || rt == EFileStoreRequest::ReadData;
+}
+
+TRequestCountersPtr MakeRequestCounters(
+    ITimerPtr timer,
+    TDynamicCounters& counters)
 {
     auto requestCounters = std::make_shared<TRequestCounters>(
         std::move(timer),
@@ -37,9 +48,7 @@ TRequestCountersPtr MakeRequestCounters(ITimerPtr timer, TDynamicCounters& count
             return GetFileStoreRequestName(static_cast<EFileStoreRequest>(t));
         },
         [] (TRequestCounters::TRequestType t) {
-            auto rt = static_cast<EFileStoreRequest>(t);
-            return rt == EFileStoreRequest::WriteData
-                || rt == EFileStoreRequest::ReadData;
+            return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
         TRequestCounters::EOption::ReportDataPlaneHistogram |
         TRequestCounters::EOption::ReportControlPlaneHistogram
@@ -48,11 +57,29 @@ TRequestCountersPtr MakeRequestCounters(ITimerPtr timer, TDynamicCounters& count
     return requestCounters;
 }
 
+template <typename T>
+requires requires { T::RequestType; }
+TRequestCounters::TRequestType GetRequestType(const T& obj)
+{
+    return static_cast<TRequestCounters::TRequestType>(obj.RequestType);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestLogger
 {
+private:
+    const TDuration ExecutionTimeThreshold;
+    const TDuration TotalTimeThreshold;
+
 public:
+    TRequestLogger(
+            TDuration executionTimeThreshold,
+            TDuration totalTimeThreshold)
+        : ExecutionTimeThreshold(executionTimeThreshold)
+        , TotalTimeThreshold(totalTimeThreshold)
+    {}
+
     void LogStarted(TLog& Log, TCallContext& callContext) const
     {
         STORAGE_LOG(TLOG_RESOURCES, callContext.LogString() << " REQUEST");
@@ -61,14 +88,20 @@ public:
     void LogCompleted(
         TLog& Log,
         TCallContext& callContext,
-        TDuration requestTime,
+        TDuration totalTime,
         EDiagnosticsErrorKind errorKind) const
     {
         ELogPriority logPriority;
         TStringBuf message;
 
-        // TODO pass slow req threshold via diagnostic config
-        if (requestTime >= TDuration::Seconds(10)) {
+        const auto predictedTime = callContext.GetPossiblePostponeDuration();
+        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
+        const auto executionTime = totalTime - postponedTime - backoffTime;
+
+        if (executionTime >= ExecutionTimeThreshold
+                || totalTime >= TotalTimeThreshold)
+        {
             logPriority = TLOG_WARNING;
             message = "request too slow";
         } else if (errorKind == EDiagnosticsErrorKind::ErrorFatal) {
@@ -81,7 +114,11 @@ public:
 
         STORAGE_LOG(logPriority, LogHeader(callContext)
             << " RESPONSE " << message
-            << " (time: " << FormatDuration(requestTime)
+            << "(total_time: " << FormatDuration(totalTime)
+            << ", execution_time: " << FormatDuration(executionTime)
+            << ", predicted_postponed_time: " << FormatDuration(predictedTime)
+            << ", postponed_time: " << FormatDuration(postponedTime)
+            << ", backoff_time: " << FormatDuration(backoffTime)
             << ", size: " << FormatByteSize(callContext.RequestSize)
             << ", error: " << FormatError(callContext.Error)
             << ")");
@@ -112,17 +149,24 @@ class TRequestStats final
 public:
     TRequestStats(
             TDynamicCountersPtr counters,
-            ITimerPtr timer)
-        : RootCounters(std::move(counters))
+            ITimerPtr timer,
+            TDuration executionTimeThreshold,
+            TDuration totalTimeThreshold)
+        : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
+        , RootCounters(std::move(counters))
         , TotalCounters(MakeRequestCounters(timer, *RootCounters))
-        , SsdCounters(MakeRequestCounters(timer, *RootCounters->GetSubgroup("type", "ssd")))
-        , HddCounters(MakeRequestCounters(timer, *RootCounters->GetSubgroup("type", "hdd")))
+        , SsdCounters(MakeRequestCounters(
+            timer,
+            *RootCounters->GetSubgroup("type", "ssd")))
+        , HddCounters(MakeRequestCounters(
+            timer,
+            *RootCounters->GetSubgroup("type", "hdd")))
     {
-        auto revisionGroup = RootCounters->GetSubgroup("revision", GetFullVersionString());
+        auto revisionGroup =
+            RootCounters->GetSubgroup("revision", GetFullVersionString());
 
-        auto versionCounter = revisionGroup->GetCounter(
-            "version",
-            false);
+        auto versionCounter =
+            revisionGroup->GetCounter("version", false);
         *versionCounter = 1;
 
         InitCriticalEventsCounter(RootCounters);
@@ -130,12 +174,16 @@ public:
 
     void RequestStarted(TCallContext& callContext) override
     {
-        const auto requestType = static_cast<TRequestCounters::TRequestType>(callContext.RequestType);
-        if (const auto media = GetMediaKind(callContext); media != NProto::STORAGE_MEDIA_DEFAULT) {
-            GetCounters(media)->RequestStarted(requestType, callContext.RequestSize);
+        const auto requestType = GetRequestType(callContext);
+        const auto media = GetMediaKind(callContext);
+        if (media != NProto::STORAGE_MEDIA_DEFAULT) {
+            GetCounters(media)->RequestStarted(
+                requestType,
+                callContext.RequestSize);
         }
 
-        auto cycles = TotalCounters->RequestStarted(requestType, callContext.RequestSize);
+        const auto cycles =
+            TotalCounters->RequestStarted(requestType, callContext.RequestSize);
         callContext.SetRequestStartedCycles(cycles);
     }
 
@@ -175,7 +223,8 @@ public:
         HddCounters->UpdateStats(updatePercentiles);
     }
 
-    void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) override
+    void RegisterIncompleteRequestProvider(
+        IIncompleteRequestProviderPtr provider) override
     {
         TGuard g(ProvidersLock);
         IncompleteRequestProviders.push_back(std::move(provider));
@@ -190,19 +239,16 @@ public:
 
     void Collect(const TIncompleteRequest& req) override
     {
-        const auto& executionTime = req.RequestTime;
-        const auto& totalTime = req.RequestTime;
-
         TotalCounters->AddIncompleteStats(
-            static_cast<TRequestCounters::TRequestType>(req.RequestType),
-            executionTime,
-            totalTime,
+            GetRequestType(req),
+            req.ExecutionTime,
+            req.TotalTime,
             ECalcMaxTime::ENABLE);
         if (req.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) {
             GetCounters(req.MediaKind)->AddIncompleteStats(
-                static_cast<TRequestCounters::TRequestType>(req.RequestType),
-                executionTime,
-                totalTime,
+                GetRequestType(req),
+                req.ExecutionTime,
+                req.TotalTime,
                 ECalcMaxTime::ENABLE);
         }
     }
@@ -220,18 +266,23 @@ public:
         }
     }
 
-    void SetFileSystemMediaKind(const TString& fileSystemId, NProto::EStorageMediaKind media)
+    void SetFileSystemMediaKind(
+        const TString& fileSystemId,
+        NProto::EStorageMediaKind media)
     {
         TWriteGuard g(FsLock);
         FileSystems[fileSystemId] = media;
     }
 
 private:
-    NProto::EStorageMediaKind GetMediaKind(const TCallContext& callContext) const
+    NProto::EStorageMediaKind GetMediaKind(const TCallContext& ctx) const
     {
         NProto::EStorageMediaKind media = NProto::STORAGE_MEDIA_DEFAULT;
+
         TReadGuard g(FsLock);
-        if (const auto it = FileSystems.find(callContext.FileSystemId); it != FileSystems.end()) {
+        if (const auto it = FileSystems.find(ctx.FileSystemId);
+                it != FileSystems.end())
+        {
             media = it->second;
         }
 
@@ -242,12 +293,17 @@ private:
         const TCallContext& callContext,
         EDiagnosticsErrorKind errorKind) const
     {
-        const auto requestType = static_cast<TRequestCounters::TRequestType>(callContext.RequestType);
-        if (const auto media = GetMediaKind(callContext); media != NProto::STORAGE_MEDIA_DEFAULT) {
+        const auto type = GetRequestType(callContext);
+        const auto media = GetMediaKind(callContext);
+        const auto startedCycles = callContext.GetRequestStartedCycles();
+        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
+        const auto waitTime = postponedTime + backoffTime;
+        if (media != NProto::STORAGE_MEDIA_DEFAULT) {
             GetCounters(media)->RequestCompleted(
-                requestType,
-                callContext.GetRequestStartedCycles(),
-                {}, // postponedTime
+                type,
+                startedCycles,
+                waitTime,
                 callContext.RequestSize,
                 errorKind,
                 NCloud::NProto::EF_NONE,
@@ -257,9 +313,9 @@ private:
         }
 
         return TotalCounters->RequestCompleted(
-            requestType,
-            callContext.GetRequestStartedCycles(),
-            {}, // postponedTime
+            type,
+            startedCycles,
+            waitTime,
             callContext.RequestSize,
             errorKind,
             NCloud::NProto::EF_NONE,
@@ -275,6 +331,40 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class TPostponeTimePredictorStats
+{
+    static constexpr TStringBuf COUNTER_LABEL = "MaxPredictedPostponeTime";
+
+    TDynamicCountersPtr RootCounters;
+
+    TDynamicCounters::TCounterPtr Counter;
+    TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxCalc;
+
+public:
+    TPostponeTimePredictorStats(
+            TDynamicCountersPtr rootCounters,
+            ITimerPtr timer)
+        : RootCounters(std::move(rootCounters))
+        , Counter(RootCounters->GetCounter(COUNTER_LABEL.data()))
+        , MaxCalc(std::move(timer))
+    {}
+
+    ~TPostponeTimePredictorStats()
+    {
+        RootCounters->RemoveCounter(COUNTER_LABEL.data());
+    }
+
+    void SetupStats(TDuration predictedDelay)
+    {
+        MaxCalc.Add(predictedDelay.MicroSeconds());
+    }
+
+    void UpdateStats()
+    {
+        *Counter = MaxCalc.NextValue();
+    }
+};
 
 struct TUserMetadata
 {
@@ -292,6 +382,9 @@ private:
     const TString ClientId;
 
     TRequestCountersPtr Counters;
+    IPostponeTimePredictorPtr Predictor;
+    TPostponeTimePredictorStats PredictorStats;
+
     TMutex Lock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
 
@@ -302,12 +395,17 @@ public:
             TString fileSystemId,
             TString clientId,
             ITimerPtr timer,
-            TDynamicCountersPtr counters)
-        : FileSystemId{std::move(fileSystemId)}
+            TDynamicCountersPtr counters,
+            IPostponeTimePredictorPtr predictor,
+            TDuration executionTimeThreshold,
+            TDuration totalTimeThreshold)
+        : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
+        , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
-        , Counters{MakeRequestCounters(std::move(timer), *counters)}
-    {
-    }
+        , Counters{MakeRequestCounters(timer, *counters)}
+        , Predictor{std::move(predictor)}
+        , PredictorStats{counters, std::move(timer)}
+    {}
 
     void SetUserMetadata(TUserMetadata userMetadata)
     {
@@ -327,19 +425,25 @@ public:
     void RequestStarted(TCallContext& callContext) override
     {
         callContext.SetRequestStartedCycles(Counters->RequestStarted(
-            static_cast<TRequestCounters::TRequestType>(callContext.RequestType),
+            GetRequestType(callContext),
             callContext.RequestSize));
+
+        PredictionStarted(callContext);
     }
 
     void RequestCompleted(TCallContext& callContext) override
     {
         RequestCompleted(callContext, GetDiagnosticsErrorKind(callContext.Error));
+
+        PredictionCompleted(callContext);
     }
 
     void RequestStarted(TLog& log, TCallContext& callContext) override
     {
         RequestStarted(callContext);
         LogStarted(log, callContext);
+
+        PredictionStarted(callContext);
     }
 
     void RequestCompleted(TLog& log, TCallContext& callContext) override
@@ -347,6 +451,8 @@ public:
         const auto errorKind = GetDiagnosticsErrorKind(callContext.Error);
         const auto requestTime = RequestCompleted(callContext, errorKind);
         LogCompleted(log, callContext, requestTime, errorKind);
+
+        PredictionCompleted(callContext);
     }
 
     void ResponseSent(TCallContext& callContext) override
@@ -363,9 +469,11 @@ public:
         }
 
         Counters->UpdateStats(updatePercentiles);
+        PredictorStats.UpdateStats();
     }
 
-    void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) override
+    void RegisterIncompleteRequestProvider(
+        IIncompleteRequestProviderPtr provider) override
     {
         TGuard g(Lock);
         IncompleteRequestProviders.push_back(std::move(provider));
@@ -374,9 +482,9 @@ public:
     void Collect(const TIncompleteRequest& req) override
     {
         Counters->AddIncompleteStats(
-            static_cast<ui32>(req.RequestType),
-            req.RequestTime,
-            req.RequestTime,
+            GetRequestType(req),
+            req.ExecutionTime,
+            req.TotalTime,
             ECalcMaxTime::ENABLE);
     }
 
@@ -392,16 +500,42 @@ private:
         const TCallContext& callContext,
         EDiagnosticsErrorKind errorKind) const
     {
+        const auto type = GetRequestType(callContext);
+        const auto startedCycles = callContext.GetRequestStartedCycles();
+        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
+        const auto waitTime = postponedTime + backoffTime;
         return Counters->RequestCompleted(
-            static_cast<TRequestCounters::TRequestType>(callContext.RequestType),
-            callContext.GetRequestStartedCycles(),
-            {}, // postponedTime
+            type,
+            startedCycles,
+            waitTime,
             callContext.RequestSize,
             errorKind,
             NCloud::NProto::EF_NONE,
             callContext.Unaligned,
             ECalcMaxTime::ENABLE,
             0);
+    }
+
+    void PredictionStarted(TCallContext& callContext)
+    {
+        if (IsReadWriteRequest(callContext.RequestType)) {
+            const auto possibleDelay = Predictor->GetPossiblePostponeDuration();
+            // TODO: Remove if condition after split RequestStats to Server and Service parts.
+            if (possibleDelay > callContext.GetPossiblePostponeDuration()) {
+                callContext.SetPossiblePostponeDuration(possibleDelay);
+            }
+            PredictorStats.SetupStats(possibleDelay);
+        }
+    }
+
+    void PredictionCompleted(TCallContext& callContext)
+    {
+        if (IsReadWriteRequest(callContext.RequestType)) {
+            const auto delay = callContext.Time(EProcessingStage::Postponed);
+            Predictor->Register(delay);
+            callContext.SetPossiblePostponeDuration(TDuration::Zero());
+        }
     }
 
     TString LogHeader(const TCallContext& callContext) const override
@@ -450,7 +584,8 @@ public:
         Y_UNUSED(updatePercentiles);
     }
 
-    void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) override
+    void RegisterIncompleteRequestProvider(
+        IIncompleteRequestProviderPtr provider) override
     {
         Y_UNUSED(provider);
     }
@@ -513,7 +648,12 @@ public:
     {
         auto totalCounters = RootCounters
             ->GetSubgroup("component", component);
-        RequestStats = std::make_shared<TRequestStats>(std::move(totalCounters), Timer);
+
+        RequestStats = std::make_shared<TRequestStats>(
+            std::move(totalCounters),
+            Timer,
+            DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
+            DiagnosticsConfig->GetSlowTotalTimeRequestThreshold());
 
         FsCounters = RootCounters
             ->GetSubgroup("component", component + "_fs")
@@ -538,7 +678,12 @@ public:
                 fileSystemId,
                 clientId,
                 std::move(counters),
-                Timer);
+                Timer,
+                DiagnosticsConfig->GetPostponeTimePredictorInterval(),
+                DiagnosticsConfig->GetPostponeTimePredictorPercentage(),
+                DiagnosticsConfig->GetPostponeTimePredictorMaxTime(),
+                DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
+                DiagnosticsConfig->GetSlowTotalTimeRequestThreshold());
             it = StatsMap.emplace(key, stats).first;
             stats->Subscribe(RequestStats->GetTotalCounters());
         }
@@ -641,13 +786,27 @@ private:
         TString fileSystemId,
         TString clientId,
         TDynamicCountersPtr counters,
-        ITimerPtr timer) const
+        ITimerPtr timer,
+        TDuration delayWindowInterval,
+        double delayWindowPercentage,
+        TMaybe<TDuration> delayMaxTime,
+        TDuration executionTimeThreshold,
+        TDuration totalTimeThreshold) const
     {
+        auto predictor = CreatePostponeTimePredictor(
+            timer,
+            delayWindowInterval,
+            delayWindowPercentage,
+            delayMaxTime);
+
         return std::make_shared<TFileSystemStats>(
             std::move(fileSystemId),
             std::move(clientId),
             std::move(timer),
-            std::move(counters));
+            std::move(counters),
+            std::move(predictor),
+            executionTimeThreshold,
+            totalTimeThreshold);
     }
 };
 

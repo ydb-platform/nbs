@@ -222,17 +222,17 @@ public:
             return Nothing();
         }
 
-        ui64 startedCycles = CallContext->GetRequestStartedCycles();
-        if (startedCycles > nowCycles) {
+        const auto time = CallContext->CalcRequestTime(nowCycles);
+        if (!time) {
             return Nothing();
         }
 
-        return TIncompleteRequest{
+        return TIncompleteRequest(
             // TODO cache media kind on prepare
             NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
             CallContext->RequestType,
-            CyclesToDurationSafe(nowCycles - startedCycles)
-        };
+            time.ExecutionTime,
+            time.TotalTime);
     }
 };
 

@@ -13,6 +13,8 @@
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/core/utils.h>
 
+#include <cloud/storage/core/libs/diagnostics/public.h>
+
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
 #include <library/cpp/actors/core/hfunc.h>

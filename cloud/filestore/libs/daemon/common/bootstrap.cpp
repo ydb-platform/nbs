@@ -307,6 +307,7 @@ void TBootstrapCommon::InitActorSystem()
     args.StorageConfig = Configs->StorageConfig;
     args.ProfileLog = ProfileLog;
     args.TraceSerializer = TraceSerializer;
+    args.DiagnosticsConfig = Configs->DiagnosticsConfig;
     args.Metrics = Metrics;
     args.UserCounters = UserCounters;
     args.CgroupStatsFetcher = CgroupStatsFetcher;

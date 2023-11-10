@@ -29,6 +29,7 @@ struct TActorSystemArgs
     IAsyncLoggerPtr AsyncLogger;
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
     NMetrics::IMetricsServicePtr Metrics;
 
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;

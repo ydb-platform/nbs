@@ -48,11 +48,12 @@ bool TInFlightRequest::IsCompleted() const
 
 TIncompleteRequest TInFlightRequest::ToIncompleteRequest(ui64 nowCycles) const
 {
-    return {
+    const auto time = CallContext->CalcRequestTime(nowCycles);
+    return TIncompleteRequest(
         MediaKind,
         CallContext->RequestType,
-        CyclesToDuration(nowCycles - CallContext->GetRequestStartedCycles())
-    };
+        time.ExecutionTime,
+        time.TotalTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,6 @@
 #include "user_counter.h"
 
+#include "config.h"
 #include "request_stats.h"
 
 #include <cloud/storage/core/libs/common/timer.h>
@@ -93,7 +94,7 @@ struct TEnv
         , Supplier(CreateUserCounterSupplier())
         , Registry(CreateRequestStatsRegistry(
             METRIC_COMPONENT,
-            nullptr,
+            std::make_shared<TDiagnosticsConfig>(),
             Counters,
             Timer,
             Supplier))

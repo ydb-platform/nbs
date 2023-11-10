@@ -58,4 +58,19 @@ message TDiagnosticsConfig
     // Aggregate and write metrics values in Metrics service to monlib counters
     // every MetricsUpdateInterval ms.
     optional uint32 MetricsUpdateInterval = 16;
+
+    // Slow requests threshold for execution time in ms.
+    optional uint32 SlowExecutionTimeRequestThreshold = 17;
+
+    // Slow requests threshold for total time in ms.
+    optional uint32 SlowTotalTimeRequestThreshold = 18;
+
+    // Predictor's interval window (ms).
+    optional uint32 PostponeTimePredictorInterval = 19;
+
+    // Max possible predicted time (ms).
+    optional uint32 PostponeTimePredictorMaxTime = 20;
+
+    // Requests percentage in predictor to calculate possible delay [0.0, 1.0].
+    optional double PostponeTimePredictorPercentage = 21;
 }

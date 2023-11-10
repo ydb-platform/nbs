@@ -1,5 +1,6 @@
 #include "test_env.h"
 
+#include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
@@ -130,7 +131,7 @@ TTestEnv::TTestEnv(
 
     StatsRegistry = CreateRequestStatsRegistry(
         "service",
-        {},
+        std::make_shared<TDiagnosticsConfig>(),
         Counters,
         CreateWallClockTimer(),
         NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
