@@ -36,7 +36,7 @@ migrations:
     - billing/dwh/src/dwh/core
     - billing/dwh/src/dwh/core/migrations
     - cloud/ai/speechkit/stt/bin/experiments/libri_speech_mer_pipeline/fetch_texts
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_buckets_usage
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/update_buckets_usage
     - cloud/support/tools/qcalc/app/quota/services
     - cloud/support/tools/quotactl-l2/quota/services
     - cloud/support/tools/websaint/app/saint
@@ -428,8 +428,8 @@ migrations:
     - cloud/marketplace/api/yc_marketplace/private_api
     - cloud/marketplace/api/yc_marketplace/public_api/manage
     - cloud/marketplace/functests/tests
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/update_chunks_counters
-    - cloud/mdb/pg/pgproxy/s3db/scripts/util
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/update_chunks_counters
+    - mds/s3/db/pgproxy/s3db/scripts/util
     - cloud/support/tools/quotactl-l2/quota/utils
     - cloud/support/tools/websaint/app/saint
     - comdep_analytics/client_clustering/lib
@@ -2271,7 +2271,7 @@ migrations:
     - cloud/extservicesintegration/auth
     - cloud/extservicesintegration/billing/client
     - cloud/kms/client/python/example
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3_closer
+    - mds/s3/db/pgproxy/s3db/scripts/s3_closer
     - comdep_analytics/comdep_recsys/etl/logic/dashboards/categories
     - crm/infra/pymonitor
     - crypta/lib/python/swagger
@@ -3314,25 +3314,25 @@ migrations:
     - cloud/extservicesintegration/pq/reader
     - cloud/extservicesintegration/pq/writer
     - cloud/gauthling/gauthling_daemon_tornado/lib
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3_closer
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/check_chunks_counters
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/chunk_splitter
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/copy_delete_queue
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/merge_chunks
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/purge_objects
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3db/update_chunks_counters
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/check_chunks_bounds
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/chunk_creator
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/chunk_mover
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/chunk_purger
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/fill_buckets_size
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/finish_prepared_xacts
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/smart_mover
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_bucket_stat
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_buckets_size
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_buckets_usage
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_chunks_counters
-    - cloud/mdb/pg/pgproxy/s3db/scripts/s3meta/update_shard_stat
+    - mds/s3/db/pgproxy/s3db/scripts/s3_closer
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/check_chunks_counters
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/chunk_splitter
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/copy_delete_queue
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/merge_chunks
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/purge_objects
+    - mds/s3/db/pgproxy/s3db/scripts/s3db/update_chunks_counters
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/check_chunks_bounds
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/chunk_creator
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/chunk_mover
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/chunk_purger
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/fill_buckets_size
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/finish_prepared_xacts
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/smart_mover
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/update_bucket_stat
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/update_buckets_size
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/update_buckets_usage
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/update_chunks_counters
+    - mds/s3/db/pgproxy/s3db/scripts/s3meta/update_shard_stat
     - cloud/netinfra/vlantoggler/app
     - cloud/support/tools/qcalc
     - cloud/support/tools/qcalc/app
