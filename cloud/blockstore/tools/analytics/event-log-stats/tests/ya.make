@@ -1,6 +1,6 @@
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 TEST_SRCS(
     test.py

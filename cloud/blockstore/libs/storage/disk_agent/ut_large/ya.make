@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_agent)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/large.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
 
 SRCS(
     disk_agent_ut_large.cpp

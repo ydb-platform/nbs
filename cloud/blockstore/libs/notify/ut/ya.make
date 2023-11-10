@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/notify)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     notify_ut.cpp

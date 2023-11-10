@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     disk_registry_ut_lifecycle.cpp

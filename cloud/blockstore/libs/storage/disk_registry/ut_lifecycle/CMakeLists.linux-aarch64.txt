@@ -42,7 +42,7 @@ set_property(
   libs-storage-disk_registry-ut_lifecycle
   PROPERTY
   SPLIT_FACTOR
-  10
+  1
 )
 add_yunittest(
   NAME

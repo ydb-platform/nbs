@@ -1,9 +1,9 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/volume_balancer)
 
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 ENDIF()
 
 SRCS(

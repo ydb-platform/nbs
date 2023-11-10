@@ -1,9 +1,9 @@
 G_BENCHMARK()
 
 IF (SANITIZER_TYPE)
-    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/large.inc)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
 ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 ENDIF()
 
 SRCS(

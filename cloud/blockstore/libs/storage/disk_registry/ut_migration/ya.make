@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     disk_registry_ut_migration.cpp

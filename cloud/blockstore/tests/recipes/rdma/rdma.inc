@@ -1,4 +1,4 @@
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 SPLIT_FACTOR(1)
 
 SET(VIRTIOFS_SERVER_COUNT 2)

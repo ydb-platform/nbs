@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry/actors)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     restore_validator_actor_ut.cpp

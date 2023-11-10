@@ -1,4 +1,4 @@
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/large.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
 
 REQUIREMENTS(
     container:2185033214  # container with tcp_tw_reuse = 1

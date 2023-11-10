@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/partition_common)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     actor_read_blob_ut.cpp

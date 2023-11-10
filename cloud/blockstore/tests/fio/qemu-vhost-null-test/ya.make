@@ -1,6 +1,6 @@
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/medium.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin

@@ -42,7 +42,7 @@ set_property(
   ut_mirrored_disk_migration
   PROPERTY
   SPLIT_FACTOR
-  15
+  1
 )
 add_yunittest(
   NAME

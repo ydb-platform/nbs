@@ -29,7 +29,7 @@ set_property(
   cloud-blockstore-libs-rdma-iface-ut
   PROPERTY
   SPLIT_FACTOR
-  15
+  1
 )
 add_yunittest(
   NAME

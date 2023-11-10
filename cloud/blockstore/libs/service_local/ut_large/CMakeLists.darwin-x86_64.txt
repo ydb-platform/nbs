@@ -34,7 +34,7 @@ set_property(
   cloud-blockstore-libs-service_local-ut_large
   PROPERTY
   SPLIT_FACTOR
-  8
+  1
 )
 add_yunittest(
   NAME

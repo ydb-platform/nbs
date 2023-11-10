@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/undelivered)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     undelivered_ut.cpp

@@ -39,7 +39,7 @@ set_property(
   libs-storage-disk_registry-ut_notify
   PROPERTY
   SPLIT_FACTOR
-  15
+  1
 )
 add_yunittest(
   NAME

@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/core)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     block_handler_ut.cpp
