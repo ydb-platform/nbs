@@ -142,7 +142,7 @@ void TVolumeActor::CompleteLoadState(
             // info doesn't have to be always present
             // see NBS-1668#603e955e319cc33b747904fb
             if (auto* info = State->GetPartitionStatInfoById(partStats.Id)) {
-                CopyCachedStatsToPartCounters(stats, info->CachedCounters);
+                CopyCachedStatsToPartCounters(stats, *info);
             }
         }
 

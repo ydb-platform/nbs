@@ -496,7 +496,7 @@ private:
 
     void CopyCachedStatsToPartCounters(
         const NProto::TCachedPartStats& src,
-        TPartitionDiskCounters& dst);
+        TPartitionStatInfo& dst);
 
     void CopyPartCountersToCachedStats(
         const TPartitionDiskCounters& src,

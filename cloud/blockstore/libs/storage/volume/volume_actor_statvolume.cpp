@@ -299,6 +299,15 @@ void TVolumeActor::HandleStatVolume(
     TVector<TString> checkpoints =
         State->GetCheckpointStore().GetCheckpointsWithData();
 
+    TStringBuilder debugString;
+    for (const auto& statInfo: State->GetPartitionStatInfos()) {
+        if (debugString) {
+            debugString << "\t";
+        }
+        debugString << statInfo.CachedCountersProto.DebugString();
+    }
+    record.SetDebugString(std::move(debugString));
+
     if (!noPartition && State->GetPartitions()) {
         TVector<TActorId> partActorIds;
         for (const auto& partition: State->GetPartitions()) {

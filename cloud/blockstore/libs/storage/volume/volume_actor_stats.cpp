@@ -37,14 +37,16 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TVolumeActor::CopyCachedStatsToPartCounters(
     const NProto::TCachedPartStats& src,
-    TPartitionDiskCounters& dst)
+    TPartitionStatInfo& dst)
 {
 #define POPULATE_COUNTERS(name, ...)                                           \
-    dst.Simple.name.Set(src.Get##name());                                      \
+    dst.CachedCounters.Simple.name.Set(src.Get##name());                       \
 // POPULATE_COUNTERS
 
     BLOCKSTORE_CACHED_COUNTERS(POPULATE_COUNTERS)
 #undef POPULATE_COUNTERS
+
+    dst.CachedCountersProto = src;
 }
 
 void TVolumeActor::CopyPartCountersToCachedStats(
@@ -135,13 +137,13 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     info.LastCounters->Add(*msg->DiskCounters);
 
     UpdateCachedStats(*msg->DiskCounters, info.CachedCounters);
+    CopyPartCountersToCachedStats(*msg->DiskCounters, info.CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
+    partStats.Stats = info.CachedCountersProto;
 
     auto kind = State->GetConfig().GetStorageMediaKind();
     Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(kind));
-
-    CopyPartCountersToCachedStats(*msg->DiskCounters, partStats.Stats);
 
     ExecuteTx<TSavePartStats>(
         ctx,
@@ -184,14 +186,14 @@ void TVolumeActor::HandlePartCounters(
     info.LastCounters->Add(*msg->DiskCounters);
 
     UpdateCachedStats(*msg->DiskCounters, info.CachedCounters);
+    CopyPartCountersToCachedStats(*msg->DiskCounters, info.CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
 
     auto kind = State->GetConfig().GetStorageMediaKind();
     Y_DEBUG_ABORT_UNLESS(!IsDiskRegistryMediaKind(kind));
     partStats.Id = State->GetPartitions()[index].TabletId;
-
-    CopyPartCountersToCachedStats(*msg->DiskCounters, partStats.Stats);
+    partStats.Stats = info.CachedCountersProto;
 
     ExecuteTx<TSavePartStats>(
         ctx,

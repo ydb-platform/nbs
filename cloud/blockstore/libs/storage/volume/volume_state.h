@@ -82,6 +82,7 @@ struct TPartitionStatInfo
     NActors::TActorId Owner = {};
     TPartitionDiskCountersPtr LastCounters = {};
     TPartitionDiskCounters CachedCounters;
+    NProto::TCachedPartStats CachedCountersProto;
     ui64 LastSystemCpu = 0;
     ui64 LastUserCpu = 0;
     NBlobMetrics::TBlobLoadMetrics LastMetrics;
