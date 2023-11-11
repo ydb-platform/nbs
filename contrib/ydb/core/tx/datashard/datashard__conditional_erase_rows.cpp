@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_state.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>

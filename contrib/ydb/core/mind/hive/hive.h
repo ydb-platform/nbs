@@ -29,6 +29,8 @@
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
 
+#include <util/stream/format.h>
+
 namespace NKikimr {
 namespace NHive {
 

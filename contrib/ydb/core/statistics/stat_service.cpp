@@ -2,10 +2,12 @@
 #include "events.h"
 
 #include <contrib/ydb/library/services/services.pb.h>
-#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/hfunc.h>

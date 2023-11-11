@@ -1,6 +1,7 @@
 #include "datashard_txs.h"
 #include "datashard_locks_db.h"
 
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/tx_processing.h>
 #include <contrib/ydb/core/tablet/tablet_exception.h>
 #include <contrib/ydb/core/util/pb.h>

@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <contrib/ydb/core/scheme/scheme_pathid.h>
 
 #include <util/generic/hash.h>
 

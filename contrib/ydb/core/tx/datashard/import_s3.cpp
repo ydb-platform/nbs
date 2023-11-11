@@ -7,6 +7,7 @@
 #include "import_s3.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>

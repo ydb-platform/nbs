@@ -1,6 +1,5 @@
 #pragma once
 
-#include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/core/base/tx_processing.h>
@@ -18,6 +17,9 @@
 #include <util/generic/ptr.h>
 
 namespace NKikimr {
+
+struct TAppData;
+
 namespace NSchemeCache {
 
 struct TSchemeCacheConfig : public TThrRefBase {

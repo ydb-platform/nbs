@@ -1,5 +1,6 @@
 #include <util/generic/string.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 #include <contrib/ydb/core/base/path.h>
 #include "login_shared_func.h"
 #include "ldap_auth_provider.h"

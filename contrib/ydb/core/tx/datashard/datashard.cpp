@@ -8,7 +8,9 @@
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/events.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
 
+#include <library/cpp/actors/core/monotonic_provider.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/api.h>

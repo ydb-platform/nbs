@@ -1,5 +1,7 @@
 #include "scheme_cache.h"
 
+#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/path.h>
 
 #include <util/string/builder.h>
