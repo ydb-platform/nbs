@@ -93,7 +93,6 @@ migrations:
     - load/projects/tank_finder/tests
     - load/projects/tankapi_server/tankapi
     - load/projects/tankapi_server/tankapi/tests
-    - logos/projects/ads/tasks/ads_map_and_join_simulator_log_raw
     - logos/projects/money_dwh/tasks/pages/v1
     - logos/projects/statkey_py3/tasks/cubes/domains/metrika/utils
     - logos/projects/statkey_py3/tasks/marketplace_clusterdomain_parsed
@@ -429,7 +428,6 @@ migrations:
     - cloud/marketplace/api/yc_marketplace/public_api/manage
     - cloud/marketplace/functests/tests
     - mds/s3/db/pgproxy/s3db/scripts/s3db/update_chunks_counters
-    - mds/s3/db/pgproxy/s3db/scripts/util
     - cloud/support/tools/quotactl-l2/quota/utils
     - cloud/support/tools/websaint/app/saint
     - comdep_analytics/client_clustering/lib
@@ -588,7 +586,6 @@ migrations:
     - logfeller/python/logfeller/infra/yt/commands
     - logfeller/python/logfeller/infra/yt/tests/yt_tests
     - logfeller/python/logfeller/infra/yt/util
-    - logos/projects/ads/tasks/ads_map_and_join_simulator_log_raw
     - mail/library/python/json_value/tests
     - mail/python/theatre/stages/db_stats/roles
     - mail/sheltie/tests/unit/python
