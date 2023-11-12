@@ -187,6 +187,9 @@ func startAndCancelMigration(
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
+	// Need to add some variance for better testing.
+	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+
 	_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 		OperationId: operation.Id,
 	})
