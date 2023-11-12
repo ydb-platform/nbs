@@ -10433,7 +10433,6 @@ migrations:
     - yt/hermes/contrib/gitdb2
     - yt/hermes/contrib/gitpython
     - yt/hermes/contrib/smmap2
-    - yt/odin/bin/cleanup
     - yt/python/contrib/prettytable
     - yt/python/contrib/python-chardet
     - yt/python/contrib/python-dill
