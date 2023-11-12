@@ -336,27 +336,27 @@ IVerbsPtr CreateVerbs()
 const char* GetOpcodeName(ibv_wc_opcode opcode)
 {
     static const char* names[] = {
-        "IBV_WC_SEND",
-        "IBV_WC_RDMA_WRITE",
-        "IBV_WC_RDMA_READ",
-        "IBV_WC_COMP_SWAP",
-        "IBV_WC_FETCH_ADD",
-        "IBV_WC_BIND_MW",
-        "IBV_WC_LOCAL_INV",
-        "IBV_WC_TSO",
+        "SEND",
+        "RDMA_WRITE",
+        "RDMA_READ",
+        "COMP_SWAP",
+        "FETCH_ADD",
+        "BIND_MW",
+        "LOCAL_INV",
+        "TSO",
     };
 
     static const char* names2[] = {
-        "IBV_WC_RECV",
-        "IBV_WC_RECV_RDMA_WITH_IMM",
-        "IBV_WC_TM_ADD",
-        "IBV_WC_TM_DEL",
-        "IBV_WC_TM_SYNC",
-        "IBV_WC_TM_RECV",
-        "IBV_WC_TM_NO_TAG",
-        "IBV_WC_DRIVER1",
-        "IBV_WC_DRIVER2",
-        "IBV_WC_DRIVER3",
+        "RECV",
+        "RECV_RDMA_WITH_IMM",
+        "TM_ADD",
+        "TM_DEL",
+        "TM_SYNC",
+        "TM_RECV",
+        "TM_NO_TAG",
+        "DRIVER1",
+        "DRIVER2",
+        "DRIVER3",
     };
 
     if ((size_t)opcode < Y_ARRAY_SIZE(names)) {
@@ -367,7 +367,7 @@ const char* GetOpcodeName(ibv_wc_opcode opcode)
         return names2[(size_t)opcode - IBV_WC_RECV];
     }
 
-    return "IBV_WC_UNKNOWN";
+    return "UNKNOWN";
 }
 
 const char* GetStatusString(ibv_wc_status status)
@@ -457,7 +457,7 @@ TString PrintConnectionParams(const rdma_conn_param* conn)
 TString PrintCompletion(ibv_wc* wc)
 {
     return TStringBuilder()
-        << "[id=" << wc->wr_id
+        << "[id=" << Hex(wc->wr_id)
         << " opcode=" << GetOpcodeName(wc->opcode)
         << " status=" << GetStatusString(wc->status)
         << "]";

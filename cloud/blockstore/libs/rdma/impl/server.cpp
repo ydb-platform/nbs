@@ -28,6 +28,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
+#include <util/stream/format.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
@@ -134,6 +135,8 @@ struct TEndpointCounters
     TDynamicCounters::TCounterPtr ReadErrors;
     TDynamicCounters::TCounterPtr WriteErrors;
 
+    TDynamicCounters::TCounterPtr UnexpectedCompletions;
+
     void Register(TDynamicCounters& counters)
     {
         QueuedRequests = counters.GetCounter("QueuedRequests");
@@ -150,6 +153,8 @@ struct TEndpointCounters
         RecvErrors = counters.GetCounter("RecvErrors");
         ReadErrors = counters.GetCounter("ReadErrors");
         WriteErrors = counters.GetCounter("WriteErrors");
+
+        UnexpectedCompletions = counters.GetCounter("UnexpectedCompletions");
     }
 
     void RequestEnqueued()
@@ -238,6 +243,11 @@ struct TEndpointCounters
         ActiveRequests->Dec();
         ThrottledRequests->Inc();
     }
+
+    void UnexpectedCompletion()
+    {
+        UnexpectedCompletions->Inc();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -260,7 +270,10 @@ private:
     TLog Log;
     size_t MaxInflightBytes;
 
-    TLogThrottler LogThrottler = TLogThrottler(LOG_THROTTLER_PERIOD);
+    struct {
+        TLogThrottler Unexpected = TLogThrottler(LOG_THROTTLER_PERIOD);
+        TLogThrottler Inflight = TLogThrottler(LOG_THROTTLER_PERIOD);
+    } LogThrottler;
 
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
     NVerbs::TCompletionQueuePtr CompletionQueue = NVerbs::NullPtr;
@@ -276,6 +289,9 @@ private:
 
     TWorkQueue<TSendWr> SendQueue;
     TWorkQueue<TRecvWr> RecvQueue;
+
+    ui32 SendMagic;
+    ui32 RecvMagic;
 
     TLockFreeList<TRequest> InputRequests;
     TSimpleList<TRequest> QueuedRequests;
@@ -396,11 +412,18 @@ TServerSession::TServerSession(
     SendWrs.resize(Config->QueueSize);
     RecvWrs.resize(Config->QueueSize);
 
+    SendMagic = RandomNumber(Max<ui32>());
+    RecvMagic = RandomNumber(Max<ui32>());
+
+    STORAGE_INFO("SEND magic is " << Hex(SendMagic));
+    STORAGE_INFO("RECV magic is " << Hex(RecvMagic));
+
+    ui32 i = 0;
     ui64 responseMsg = SendBuffer.Address;
     for (auto& wr: SendWrs) {
         wr.wr.opcode = IBV_WR_SEND;
 
-        wr.wr.wr_id = reinterpret_cast<uintptr_t>(&wr);
+        wr.wr.wr_id = TWorkRequestId(i++, SendMagic).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -412,9 +435,10 @@ TServerSession::TServerSession(
         responseMsg += sizeof(TResponseMessage);
     }
 
+    ui32 j = 0;
     ui64 requestMsg = RecvBuffer.Address;
     for (auto& wr: RecvWrs) {
-        wr.wr.wr_id = reinterpret_cast<uintptr_t>(&wr);
+        wr.wr.wr_id = TWorkRequestId(j++, RecvMagic).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -547,42 +571,46 @@ bool TServerSession::HandleCompletionEvents()
 
 void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 {
-    STORAGE_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " #" << wc->wr_id
-        << " completed");
+    STORAGE_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << Hex(wc->wr_id)
+        << " completed with " << NVerbs::GetStatusString(wc->status));
 
-    // flush means we are either closing or already closed this session
+    auto id = TWorkRequestId(wc->wr_id);
+
+    if (id.Magic != SendMagic && id.Magic != RecvMagic) {
+        STORAGE_ERROR_T(LogThrottler.Unexpected, "unexpected completion "
+            << NVerbs::PrintCompletion(wc));
+
+        Counters->UnexpectedCompletion();
+        return;
+    }
+
+    // session is closing
     if (wc->status == IBV_WC_WR_FLUSH_ERR) {
         return;
     }
 
     switch (wc->opcode) {
         case IBV_WC_RECV:
-            RecvRequestCompleted(
-                reinterpret_cast<TRecvWr*>(wc->wr_id),
-                wc->status);
+            RecvRequestCompleted(&RecvWrs[id.Index], wc->status);
             break;
 
         case IBV_WC_RDMA_READ:
-            ReadRequestDataCompleted(
-                reinterpret_cast<TSendWr*>(wc->wr_id),
-                wc->status);
+            ReadRequestDataCompleted(&SendWrs[id.Index], wc->status);
             break;
 
         case IBV_WC_RDMA_WRITE:
-            WriteResponseDataCompleted(
-                reinterpret_cast<TSendWr*>(wc->wr_id),
-                wc->status);
+            WriteResponseDataCompleted(&SendWrs[id.Index], wc->status);
             break;
 
         case IBV_WC_SEND:
-            SendResponseCompleted(
-                reinterpret_cast<TSendWr*>(wc->wr_id),
-                wc->status);
+            SendResponseCompleted(&SendWrs[id.Index], wc->status);
             break;
 
         default:
-            STORAGE_ERROR("unexpected completion: "
+            STORAGE_ERROR_T(LogThrottler.Unexpected, "unexpected completion "
                 << NVerbs::PrintCompletion(wc));
+
+            Counters->UnexpectedCompletion();
     }
 }
 
@@ -591,7 +619,7 @@ void TServerSession::RecvRequest(TRecvWr* recv)
     auto* requestMsg = recv->Message<TRequestMessage>();
     Zero(*requestMsg);
 
-    STORAGE_TRACE("RECV #" << recv->wr.wr_id);
+    STORAGE_TRACE("RECV " << Hex(recv->wr.wr_id));
     Verbs->PostRecv(Connection->qp, &recv->wr);
     Counters->RecvRequestStarted();
 }
@@ -613,7 +641,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     }
 
     if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id << ": "
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id) << ": "
             << NVerbs::GetStatusString(status));
 
         Counters->RecvRequestError();
@@ -626,7 +654,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     const int version = ParseMessageHeader(msg);
 
     if (version != RDMA_PROTO_VERSION) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
             << ": incompatible protocol version "
             << version << " != "<< int(RDMA_PROTO_VERSION));
 
@@ -648,7 +676,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     RecvRequest(recv);  // should always be posted
 
     if (req->In.Length > Config->MaxBufferSize) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
             << ": request exceeds maximum supported size "
             << req->In.Length << " > " << Config->MaxBufferSize);
 
@@ -657,7 +685,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     }
 
     if (req->Out.Length > Config->MaxBufferSize) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
             << ": request exceeds maximum supported size "
             << req->Out.Length << " > " << Config->MaxBufferSize);
 
@@ -671,7 +699,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
         req->CallContext->RequestId);
 
     if (MaxInflightBytes < req->In.Length + req->Out.Length) {
-        STORAGE_INFO_T(LogThrottler, "reached inflight limit, "
+        STORAGE_INFO_T(LogThrottler.Inflight, "reached inflight limit, "
             << MaxInflightBytes << "/" << Config->MaxInflightBytes
             << " bytes available");
 
@@ -737,7 +765,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send)
     };
 
     ibv_send_wr wr = {
-        .wr_id = reinterpret_cast<uintptr_t>(send),
+        .wr_id = send->wr.wr_id,
         .sg_list = &sg_list,
         .num_sge = 1,
         .opcode = IBV_WR_RDMA_READ,
@@ -746,7 +774,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send)
     wr.wr.rdma.rkey = req->In.Key;
     wr.wr.rdma.remote_addr = req->In.Address;
 
-    STORAGE_TRACE("READ #" << wr.wr_id);
+    STORAGE_TRACE("READ " << Hex(wr.wr_id));
     Verbs->PostSend(Connection->qp, &wr);
     Counters->ReadRequestStarted();
 
@@ -765,12 +793,12 @@ void TServerSession::ReadRequestDataCompleted(
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        STORAGE_WARN("READ #" << send->wr.wr_id << ": request is empty");
+        STORAGE_WARN("READ " << Hex(send->wr.wr_id) << ": request is empty");
         return;
     }
 
     if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("READ #" << send->wr.wr_id << ": "
+        STORAGE_ERROR("READ " << Hex(send->wr.wr_id) << ": "
             << NVerbs::GetStatusString(status));
 
         Counters->ReadRequestError();
@@ -827,7 +855,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
     };
 
     ibv_send_wr wr = {
-        .wr_id = reinterpret_cast<uintptr_t>(send),
+        .wr_id = send->wr.wr_id,
         .sg_list = &sg_list,
         .num_sge = 1,
         .opcode = IBV_WR_RDMA_WRITE,
@@ -836,7 +864,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
     wr.wr.rdma.rkey = req->Out.Key;
     wr.wr.rdma.remote_addr = req->Out.Address;
 
-    STORAGE_TRACE("WRITE #" << wr.wr_id);
+    STORAGE_TRACE("WRITE " << Hex(wr.wr_id));
     Verbs->PostSend(Connection->qp, &wr);
 
     LWTRACK(
@@ -854,13 +882,13 @@ void TServerSession::WriteResponseDataCompleted(
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        STORAGE_WARN("WRITE #" << send->wr.wr_id << ": request is empty");
+        STORAGE_WARN("WRITE " << Hex(send->wr.wr_id) << ": request is empty");
         return;
     }
 
     if (status != IBV_WC_SUCCESS) {
         if (status != IBV_WC_SUCCESS) {
-            STORAGE_ERROR("WRITE #" << send->wr.wr_id << ": "
+            STORAGE_ERROR("WRITE " << Hex(send->wr.wr_id) << ": "
                 << NVerbs::GetStatusString(status));
         }
 
@@ -895,7 +923,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send)
     responseMsg->Status = req->Status;
     responseMsg->ResponseBytes = req->ResponseBytes;
 
-    STORAGE_TRACE("SEND #" << send->wr.wr_id);
+    STORAGE_TRACE("SEND " << Hex(send->wr.wr_id));
     Verbs->PostSend(Connection->qp, &send->wr);
     Counters->SendResponseStarted();
 
@@ -917,12 +945,12 @@ void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        STORAGE_WARN("SEND #" << send->wr.wr_id << ": request is empty");
+        STORAGE_WARN("SEND " << Hex(send->wr.wr_id) << ": request is empty");
         return;
     }
 
     if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("SEND #" << send->wr.wr_id << ": "
+        STORAGE_ERROR("SEND " << Hex(send->wr.wr_id) << ": "
             << NVerbs::GetStatusString(status));
 
         Counters->SendResponseError();

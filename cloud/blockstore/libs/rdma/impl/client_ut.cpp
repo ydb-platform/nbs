@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/printf.h>
@@ -351,6 +352,78 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         ev.WaitT(TDuration::Seconds(5));
         UNIT_ASSERT(response.Received);
         UNIT_ASSERT_VALUES_EQUAL(0, response.Status);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreMalformedCompletions)
+    {
+        auto context = MakeIntrusive<NVerbs::TTestContext>();
+        context->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(context);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(
+            verbs,
+            logging,
+            monitoring,
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020)
+            .GetValue(TDuration::Seconds(5));
+
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "rdma_client");
+
+        auto unexpected = counters->GetCounter("UnexpectedCompletions");
+        auto active = counters->GetCounter("ActiveRecv");
+        auto unexpectedOld = unexpected->Val();
+        auto activeOld = active->Val();
+
+        ibv_recv_wr wr;
+        auto completion = TVector<ibv_wc>();
+
+        with_lock(context->CompletionLock) {
+            // bad id, good opcode
+            completion.push_back({
+                .wr_id = Max<ui64>(),
+                .opcode = IBV_WC_RECV,
+            });
+            // good id, bad opcode
+            completion.push_back({
+                .wr_id = context->RecvEvents.back()->wr_id,
+                .opcode = IBV_WC_RECV_RDMA_WITH_IMM,
+            });
+            context->HandleCompletionEvent = [&](ibv_wc* wc) {
+                static int i = 0;
+                *wc = completion[i++];
+            };
+            // actual wr doesn't matter, only it's address
+            context->ProcessedRecvEvents.push_back(&wr);
+            context->ProcessedRecvEvents.push_back(&wr);
+            context->CompletionHandle.Set();
+        }
+
+        auto start = GetCycleCount();
+        while (unexpected->Val() != unexpectedOld + 2) {
+            auto now = GetCycleCount();
+            if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
+                UNIT_FAIL("should increment counter");
+            }
+            SpinLockPause();
+        }
+        UNIT_ASSERT_EQUAL(active->Val(), activeOld);
     }
 };
 

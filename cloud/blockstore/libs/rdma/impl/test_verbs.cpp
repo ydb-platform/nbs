@@ -213,8 +213,6 @@ struct TTestVerbs
         TVector<ibv_send_wr*> sends;
         TVector<ibv_recv_wr*> recvs;
 
-        bool flush;
-
         with_lock (TestContext->CompletionLock) {
             sends = {
                 TestContext->SendEvents.begin(),
@@ -227,16 +225,17 @@ struct TTestVerbs
                 TestContext->ProcessedRecvEvents.end()
             };
             TestContext->ProcessedRecvEvents.clear();
-
-            flush = TestContext->QueuePair.state == IBV_QPS_ERR;
         }
 
         auto handleEvent = [&] (ui64 wrId, ibv_wc_opcode opcode) {
-            ibv_wc wc;
-            wc.wr_id = wrId;
-            wc.status = flush ? IBV_WC_WR_FLUSH_ERR : IBV_WC_SUCCESS;
-            wc.opcode = flush ? static_cast<ibv_wc_opcode>(0) : opcode;
-
+            ibv_wc wc = {
+                .wr_id = wrId,
+                .status = IBV_WC_SUCCESS,
+                .opcode = opcode,
+            };
+            if (TestContext->HandleCompletionEvent) {
+                TestContext->HandleCompletionEvent(&wc);
+            }
             handler->HandleCompletionEvent(&wc);
         };
 
@@ -488,7 +487,7 @@ struct TTestVerbs
         Y_UNUSED(qp_attrs);
 
         auto g = Guard(TestContext->CompletionLock);
-        TestContext->QueuePair.state = IBV_QPS_RTS;
+        TestContext->HandleCompletionEvent = nullptr;
     }
 
     void DestroyQP(rdma_cm_id* id) override
@@ -518,8 +517,12 @@ void Disconnect(TTestContextPtr context)
         RDMA_CM_EVENT_DISCONNECTED,
         static_cast<rdma_cm_id*>(context->Connection));
 
-    // prepare to flush CQ
     with_lock (context->CompletionLock) {
+        context->HandleCompletionEvent = [] (ibv_wc* wc) {
+            wc->status = IBV_WC_WR_FLUSH_ERR;
+            wc->opcode = static_cast<ibv_wc_opcode>(0);
+        };
+
         std::move(
             context->RecvEvents.begin(),
             context->RecvEvents.end(),
@@ -527,16 +530,6 @@ void Disconnect(TTestContextPtr context)
 
         context->RecvEvents.clear();
         context->ReqIds.clear();
-        context->QueuePair.state = IBV_QPS_ERR;
-    }
-
-    // wait for CQ poller to handle requests
-    while (true) {
-        SpinLockPause();
-        auto g = Guard(context->CompletionLock);
-        if (context->QueuePair.state == IBV_QPS_ERR) {
-            break;
-        }
     }
 
     context->CompletionHandle.Set();

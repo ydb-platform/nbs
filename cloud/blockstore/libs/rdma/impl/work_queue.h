@@ -15,6 +15,27 @@ constexpr size_t RDMA_MAX_RECV_SGE = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+union TWorkRequestId
+{
+    ui64 Id;
+
+    struct {
+        ui32 Index;
+        ui32 Magic;
+    };
+
+    TWorkRequestId(ui64 id)
+        : Id(id)
+    {}
+
+    TWorkRequestId(ui32 index, ui32 magic)
+        : Index(index)
+        , Magic(magic)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TSendWr
 {
     ibv_send_wr wr;

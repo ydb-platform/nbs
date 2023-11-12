@@ -16,7 +16,6 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 struct TTestContext: TAtomicRefCount<TTestContext>
 {
     rdma_cm_id* Connection = nullptr;
-    ibv_qp QueuePair;
     TEventHandle ConnectionHandle;
     TDeque<NVerbs::TConnectionEventPtr> ConnectionEvents;
     bool AllowConnect = false;
@@ -31,6 +30,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     TAtomic PostRecv = 0;
 
     std::function<void(rdma_cm_id* id, int backlog)> Listen;
+    std::function<void(ibv_wc* wc)> HandleCompletionEvent;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;

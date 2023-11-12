@@ -29,6 +29,7 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
+#include <util/stream/format.h>
 #include <util/system/datetime.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
@@ -213,6 +214,7 @@ struct TEndpointCounters
     TDynamicCounters::TCounterPtr ActiveRequests;
     TDynamicCounters::TCounterPtr AbortedRequests;
     TDynamicCounters::TCounterPtr CompletedRequests;
+    TDynamicCounters::TCounterPtr UnknownRequests;
 
     TDynamicCounters::TCounterPtr ActiveSend;
     TDynamicCounters::TCounterPtr ActiveRecv;
@@ -220,18 +222,23 @@ struct TEndpointCounters
     TDynamicCounters::TCounterPtr SendErrors;
     TDynamicCounters::TCounterPtr RecvErrors;
 
+    TDynamicCounters::TCounterPtr UnexpectedCompletions;
+
     void Register(TDynamicCounters& counters)
     {
         QueuedRequests = counters.GetCounter("QueuedRequests");
         ActiveRequests = counters.GetCounter("ActiveRequests");
         CompletedRequests = counters.GetCounter("CompletedRequests", true);
         AbortedRequests = counters.GetCounter("AbortedRequests");
+        UnknownRequests = counters.GetCounter("UnknownRequests");
 
         ActiveSend = counters.GetCounter("ActiveSend");
         ActiveRecv = counters.GetCounter("ActiveRecv");
 
         SendErrors = counters.GetCounter("SendErrors");
         RecvErrors = counters.GetCounter("RecvErrors");
+
+        UnexpectedCompletions = counters.GetCounter("UnexpectedCompletions");
     }
 
     void RequestEnqueued()
@@ -262,7 +269,6 @@ struct TEndpointCounters
 
     void SendRequestError()
     {
-        ActiveSend->Dec();
         ActiveRequests->Dec();
         SendErrors->Inc();
     }
@@ -285,6 +291,16 @@ struct TEndpointCounters
     {
         ActiveRequests->Dec();
         AbortedRequests->Inc();
+    }
+
+    void UnknownRequest()
+    {
+        UnknownRequests->Inc();
+    }
+
+    void UnexpectedCompletion()
+    {
+        UnexpectedCompletions->Inc();
     }
 };
 
@@ -347,8 +363,11 @@ private:
     IClientHandlerPtr Handler;
     TEndpointCountersPtr Counters;
     TLog Log;
-    TLogThrottler LogThrottler = TLogThrottler(LOG_THROTTLER_PERIOD);
     TReconnect Reconnect;
+
+    struct {
+        TLogThrottler Unexpected = TLogThrottler(LOG_THROTTLER_PERIOD);
+    } LogThrottler;
 
     // config might be adjusted during initial handshake
     TClientConfigPtr OriginalConfig;
@@ -379,6 +398,9 @@ private:
 
     TWorkQueue<TSendWr> SendQueue;
     TWorkQueue<TRecvWr> RecvQueue;
+
+    ui32 SendMagic;
+    ui32 RecvMagic;
 
     TLockFreeList<TRequest> InputRequests;
     TEventHandle RequestEvent;
@@ -446,8 +468,6 @@ private:
 
     void RecvResponse(TRecvWr* recv);
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
-
-    ibv_wc_opcode DeduceOpcode(ui64 wr_id) const;
 
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
@@ -585,11 +605,18 @@ void TClientEndpoint::CreateQP()
     SendWrs.resize(Config.QueueSize);
     RecvWrs.resize(Config.QueueSize);
 
+    SendMagic = RandomNumber(Max<ui32>());
+    RecvMagic = RandomNumber(Max<ui32>());
+
+    STORAGE_INFO("SEND magic is " << Hex(SendMagic));
+    STORAGE_INFO("RECV magic is " << Hex(RecvMagic));
+
+    ui32 i = 0;
     ui64 requestMsg = SendBuffer.Address;
     for (auto& wr: SendWrs) {
         wr.wr.opcode = IBV_WR_SEND;
 
-        wr.wr.wr_id = reinterpret_cast<uintptr_t>(&wr);
+        wr.wr.wr_id = TWorkRequestId(i++, SendMagic).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -601,9 +628,10 @@ void TClientEndpoint::CreateQP()
         requestMsg += sizeof(TRequestMessage);
     }
 
+    ui32 j = 0;
     ui64 responseMsg = RecvBuffer.Address;
     for (auto& wr: RecvWrs) {
-        wr.wr.wr_id = reinterpret_cast<uintptr_t>(&wr);
+        wr.wr.wr_id = TWorkRequestId(j++, RecvMagic).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -813,44 +841,46 @@ bool TClientEndpoint::HandleCompletionEvents()
     return false;
 }
 
-// deduce opcode to ensure it's actually what we expect to receive.
-// for instance completions with status=IBV_WC_WR_FLUSH_ERR have
-// opcode=IBV_WC_SEND regardless of what was actually posted
-ibv_wc_opcode TClientEndpoint::DeduceOpcode(ui64 wr_id) const
-{
-    if (OwnedBy(wr_id, SendWrs)) {
-        return IBV_WC_SEND;
-    }
-    if (OwnedBy(wr_id, RecvWrs)) {
-        return IBV_WC_RECV;
-    }
-    return IBV_WC_DRIVER1;
-}
-
 void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
-    auto opcode = DeduceOpcode(wc->wr_id);
+    STORAGE_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << Hex(wc->wr_id)
+        << " completed with " << NVerbs::GetStatusString(wc->status));
 
-    STORAGE_TRACE(NVerbs::GetOpcodeName(opcode) << " #" << wc->wr_id
-        << " completed with status " << NVerbs::GetStatusString(wc->status));
+    auto id = TWorkRequestId(wc->wr_id);
 
-    switch (opcode) {
+    if (id.Magic != SendMagic && id.Magic != RecvMagic) {
+        STORAGE_ERROR_T(LogThrottler.Unexpected, "unexpected completion "
+            << NVerbs::PrintCompletion(wc));
+
+        Counters->UnexpectedCompletion();
+        return;
+    }
+
+    // flushed WRs have opcode=0
+    if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+        if (id.Magic == SendMagic) {
+            SendQueue.Push(&SendWrs[id.Index]);
+
+        } else if (id.Magic == RecvMagic) {
+            RecvQueue.Push(&RecvWrs[id.Index]);
+        }
+        return;
+    }
+
+    switch (wc->opcode) {
         case IBV_WC_SEND:
-            SendRequestCompleted(
-                reinterpret_cast<TSendWr*>(wc->wr_id),
-                wc->status);
+            SendRequestCompleted(&SendWrs[id.Index], wc->status);
             break;
 
         case IBV_WC_RECV:
-            RecvResponseCompleted(
-                reinterpret_cast<TRecvWr*>(wc->wr_id),
-                wc->status);
+            RecvResponseCompleted(&RecvWrs[id.Index], wc->status);
             break;
 
         default:
-            STORAGE_ERROR_T(LogThrottler, "unexpected completion "
+            STORAGE_ERROR_T(LogThrottler.Unexpected, "unexpected completion "
                 << NVerbs::PrintCompletion(wc));
-            ReportRdmaError();
+
+            Counters->UnexpectedCompletion();
     }
 }
 
@@ -867,7 +897,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    STORAGE_TRACE("SEND #" << send->wr.wr_id);
+    STORAGE_TRACE("SEND " << Hex(send->wr.wr_id));
     Verbs->PostSend(Connection->qp, &send->wr);
 
     LWTRACK(
@@ -885,32 +915,28 @@ void TClientEndpoint::SendRequestCompleted(
     TSendWr* send,
     ibv_wc_status status) noexcept
 {
-    if (status == IBV_WC_WR_FLUSH_ERR) {
+    Y_DEFER {
+        Counters->SendRequestCompleted();
         SendQueue.Push(send);
-        return;
-    }
+    };
 
     if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("SEND #" << send->wr.wr_id << ": "
+        STORAGE_ERROR("SEND " << Hex(send->wr.wr_id) << ": "
             << NVerbs::GetStatusString(status));
 
+        Counters->SendRequestError();
         ReportRdmaError();
         SetError();
-        Counters->SendRequestError();
-        SendQueue.Push(send);
         return;
     }
 
     auto* req = static_cast<TRequest*>(send->context);
 
     if (!ActiveRequests.Contains(req)) {
-        STORAGE_WARN("SEND #" << send->wr.wr_id << ": request "
+        STORAGE_WARN("SEND " << Hex(send->wr.wr_id) << ": request "
             << reinterpret_cast<void*>(req) << " not found")
 
-        // reclaim an actual send
-        if (OwnedBy(send, SendWrs)) {
-            SendQueue.Push(send);
-        }
+        Counters->UnknownRequest();
         return;
     }
 
@@ -918,9 +944,6 @@ void TClientEndpoint::SendRequestCompleted(
         SendRequestCompleted,
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
-
-    Counters->SendRequestCompleted();
-    SendQueue.Push(send);
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv)
@@ -928,7 +951,7 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     auto* responseMsg = recv->Message<TResponseMessage>();
     Zero(*responseMsg);
 
-    STORAGE_TRACE("RECV #" << recv->wr.wr_id);
+    STORAGE_TRACE("RECV " << Hex(recv->wr.wr_id));
     Verbs->PostRecv(Connection->qp, &recv->wr);
 
     Counters->RecvResponseStarted();
@@ -938,55 +961,43 @@ void TClientEndpoint::RecvResponseCompleted(
     TRecvWr* recv,
     ibv_wc_status wc_status)
 {
-    if (wc_status == IBV_WC_WR_FLUSH_ERR) {
-        RecvQueue.Push(recv);
-        return;
-    }
-
     if (wc_status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id << ": "
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id) << ": "
             << NVerbs::GetStatusString(wc_status));
 
+        Counters->RecvResponseError();
+        RecvResponse(recv);
         ReportRdmaError();
         SetError();
-        Counters->RecvResponseError();
-        RecvQueue.Push(recv);
-
         return;
     }
 
-    const auto* msg = recv->Message<TResponseMessage>();
-    const int version = ParseMessageHeader(msg);
-
+    auto* msg = recv->Message<TResponseMessage>();
+    int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
             << ": incompatible protocol version "
             << version << " != " << int(RDMA_PROTO_VERSION));
 
-        // should always be posted
-        RecvResponse(recv);
-
         Counters->RecvResponseError();
+        RecvResponse(recv);
         return;
     }
-
     const ui32 reqId = msg->ReqId;
     const ui32 status = msg->Status;
     const ui32 responseBytes = msg->ResponseBytes;
 
-    // should always be posted
+    Counters->RecvResponseCompleted();
     RecvResponse(recv);
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        STORAGE_ERROR("RECV #" << recv->wr.wr_id
+        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
             << ": request " << reqId << " not found");
 
-        Counters->RecvResponseError();
+        Counters->UnknownRequest();
         return;
     }
-
-    Counters->RecvResponseCompleted();
 
     LWTRACK(
         RecvResponseCompleted,
