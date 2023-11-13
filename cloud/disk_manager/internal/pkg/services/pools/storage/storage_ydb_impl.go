@@ -1469,7 +1469,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		}
 
 		return errors.NewNonRetriableErrorf(
-			"another rebase is in progress for slot %+v",
+			"another rebase or relocate is in progress for slot %+v",
 			slot,
 		)
 	}
@@ -1655,7 +1655,7 @@ func (s *storageYDB) overlayDiskRebasedTx(
 		}
 
 		return errors.NewNonRetriableErrorf(
-			"another rebase is in progress for slot %+v",
+			"another rebase or relocate is in progress for slot %+v",
 			slot,
 		)
 	}

@@ -264,12 +264,14 @@ func checkFreezeAndUnfreezeDuringMigration(
 }
 */
 
-func successfullyMigrateEmptyOverlayDisk(
+// Returns size in bytes that was transferred during replication.
+func setupMigrateEmptyOverlayDiskTest(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
+	params migrationTestParams,
 	withAliveSrcImage bool,
-) {
+) uint64 {
 
 	imageID := t.Name()
 	diskSize := migrationTestsDiskSize
@@ -282,15 +284,6 @@ func successfullyMigrateEmptyOverlayDisk(
 		"folder",
 		true, // pooled
 	)
-
-	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
-		DiskID:    t.Name(),
-		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
-		DiskSize:  migrationTestsDiskSize,
-		FillDisk:  false,
-	}
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -333,6 +326,22 @@ func successfullyMigrateEmptyOverlayDisk(
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), changedBytes)
 
+	if withAliveSrcImage {
+		// storageSize is 0 because we should not copy base disk data.
+		return 0
+	}
+
+	return storageSize
+}
+
+func successfullyMigrateEmptyOverlayDisk(
+	t *testing.T,
+	ctx context.Context,
+	client sdk_client.Client,
+	params migrationTestParams,
+	expectedStorageSize uint64,
+) {
+
 	successfullyMigrateEmptyDisk(
 		t,
 		ctx,
@@ -341,7 +350,7 @@ func successfullyMigrateEmptyOverlayDisk(
 	)
 
 	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
-	changedBytes, err = dstZoneNBSClient.GetChangedBytes(
+	changedBytes, err := dstZoneNBSClient.GetChangedBytes(
 		ctx,
 		params.DiskID,
 		"",
@@ -350,11 +359,7 @@ func successfullyMigrateEmptyOverlayDisk(
 	)
 	require.NoError(t, err)
 
-	if withAliveSrcImage {
-		require.Equal(t, uint64(0), changedBytes)
-	} else {
-		require.Equal(t, storageSize, changedBytes)
-	}
+	require.Equal(t, expectedStorageSize, changedBytes)
 }
 
 func successfullyMigrateEmptyDisk(
@@ -1772,11 +1777,29 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithAliveSrcImage(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
+	params := migrationTestParams{
+		SrcZoneID: "zone",
+		DstZoneID: "other",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  false,
+	}
+
+	expectedStorageSize := setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
+		true, // withAliveSrcImage
+	)
+
 	successfullyMigrateEmptyOverlayDisk(
 		t,
 		ctx,
 		client,
-		true, // withAliveSrcImage
+		params,
+		expectedStorageSize,
 	)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -1789,11 +1812,127 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithoutAliveSrcImage(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
+	params := migrationTestParams{
+		SrcZoneID: "zone",
+		DstZoneID: "other",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  false,
+	}
+
+	expectedStorageSize := setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
+		false, // withAliveSrcImage
+	)
+
 	successfullyMigrateEmptyOverlayDisk(
 		t,
 		ctx,
 		client,
+		params,
+		expectedStorageSize,
+	)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceMigrateEmptyOverlayDiskWithAliveSrcImageAfterCancel(
+	t *testing.T,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	params := migrationTestParams{
+		SrcZoneID: "zone",
+		DstZoneID: "other",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  false,
+	}
+
+	expectedStorageSize := setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
+		true, // withAliveSrcImage
+	)
+
+	for i := 0; i < 30; i++ {
+		startAndCancelMigration(
+			t,
+			ctx,
+			client,
+			params.DiskID,
+			params.SrcZoneID,
+			params.DstZoneID,
+		)
+	}
+
+	successfullyMigrateEmptyOverlayDisk(
+		t,
+		ctx,
+		client,
+		params,
+		expectedStorageSize,
+	)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceMigrateEmptyOverlayDiskWithoutAliveSrcImageAfterCancel(
+	t *testing.T,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	params := migrationTestParams{
+		SrcZoneID: "zone",
+		DstZoneID: "other",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  false,
+	}
+
+	expectedStorageSize := setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
 		false, // withAliveSrcImage
+	)
+
+	for i := 0; i < 30; i++ {
+		startAndCancelMigration(
+			t,
+			ctx,
+			client,
+			params.DiskID,
+			params.SrcZoneID,
+			params.DstZoneID,
+		)
+	}
+
+	successfullyMigrateEmptyOverlayDisk(
+		t,
+		ctx,
+		client,
+		params,
+		expectedStorageSize,
 	)
 
 	testcommon.CheckConsistency(t, ctx)
