@@ -4956,6 +4956,107 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         checkMountVolume(service2, 713, S_OK);
         checkMountVolume(service1, 0, S_OK);
     }
+
+    Y_UNIT_TEST(ShouldFailQueuedRequestsIfVolumeDestroyed)
+    {
+        TTestEnv env(1, 1);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            TString(),
+            TString()
+        );
+
+        auto response1 = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+
+        auto sessionId = response1->Record.GetSessionId();
+
+        bool tabletDeadSeen = false;
+        env.GetRuntime().SetObserverFunc(
+            [&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTablet::EvTabletDead: {
+                        tabletDeadSeen = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.DestroyVolume();
+
+        if (!tabletDeadSeen) {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvTablet::EvTabletDead);
+            env.GetRuntime().DispatchEvents(options);
+        }
+        service.CreateVolume(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            TString(),
+            TString()
+        );
+
+        service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
+
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+
+        service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
+
+        {
+            auto unmountResponse = service.RecvUnmountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_ALREADY,
+                unmountResponse->GetStatus(),
+                unmountResponse->GetErrorReason()
+            );
+        }
+
+        {
+            auto mountResponse = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk tablet is changed. Retrying",
+                mountResponse->GetErrorReason());
+        }
+
+        {
+            auto unmountResponse = service.RecvUnmountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, unmountResponse->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Volume is already unmounted",
+                unmountResponse->GetErrorReason());
+        }
+
+        service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

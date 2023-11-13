@@ -67,7 +67,7 @@ private:
     EVolumeRequest CurrentRequest = NONE;
 
     bool ShuttingDown = false;
-    NProto::TError Error;
+    NProto::TError ShuttingDownError;
 
 public:
     TVolumeSessionActor(
@@ -118,11 +118,6 @@ private:
         const TEvServicePrivate::TEvInternalMountVolumeRequest::TPtr& ev,
         ui64 tick);
 
-    void SendInternalMountVolumeResponse(
-        const NActors::TActorContext& ctx,
-        const TRequestInfoPtr& requestInfo,
-        const NProto::TError& error = {});
-
     void SendUnmountVolumeResponse(
         const NActors::TActorContext& ctx,
         const TEvService::TEvUnmountVolumeRequest::TPtr& ev,
@@ -130,9 +125,12 @@ private:
 
     void NotifyAndDie(const NActors::TActorContext& ctx);
 
+    // This function should be called only when we need to fail pending
+    // requests and terminate actor. Error codes like S_OK or S_ALREADY are
+    // not allowed
     void FailPendingRequestsAndDie(
         const NActors::TActorContext& ctx,
-        const NProto::TError& error);
+        NProto::TError error);
 
 private:
     STFUNC(StateDescribe);

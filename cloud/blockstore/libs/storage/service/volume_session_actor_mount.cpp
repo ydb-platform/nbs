@@ -36,7 +36,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static constexpr ui32 InitialAddClientMultiplier = 5;
+constexpr ui32 InitialAddClientMultiplier = 5;
+
+constexpr TDuration RemountDelayWarn = TDuration::MilliSeconds(300);
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TEvInternalMountVolumeResponsePtr =
+    std::unique_ptr<TEvServicePrivate::TEvInternalMountVolumeResponse>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -90,7 +97,44 @@ bool NeedToSetEncryptionKeyHash(const TVolume& volume, const TString& keyHash)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration RemountDelayWarn = TDuration::MilliSeconds(300);
+TEvInternalMountVolumeResponsePtr CreateInternalMountResponse(
+    const NProto::TError& error,
+    const TVolumeInfo& volumeInfo,
+    const TStorageConfig& Config)
+{
+    const auto& result =
+        error.GetCode() == E_NOT_FOUND ? MakeErrorSilent(error) : error;
+
+    auto response =
+        std::make_unique<TEvServicePrivate::TEvInternalMountVolumeResponse>(
+            result);
+
+    if (!HasError(error)) {
+        Y_ABORT_UNLESS(volumeInfo.VolumeInfo.Defined());
+
+        response->Record.SetSessionId(volumeInfo.SessionId);
+        response->Record.MutableVolume()->CopyFrom(*volumeInfo.VolumeInfo);
+        response->Record.SetInactiveClientsTimeout(
+            static_cast<ui32>(Config.GetClientRemountPeriod().MilliSeconds()));
+        response->Record.SetServiceVersionInfo(Config.GetServiceVersionInfo());
+    }
+
+    return response;
+}
+
+template <typename TSource>
+void SendInternalMountVolumeResponse(
+    const NActors::TActorContext& ctx,
+    const TSource& source,
+    const NProto::TError& error,
+    const TVolumeInfo& volumeInfo,
+    const TStorageConfig& config)
+{
+    NCloud::Reply(
+        ctx,
+        *source,
+        CreateInternalMountResponse(error, volumeInfo, config));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -598,6 +642,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
             MountMode == NProto::VOLUME_MOUNT_REMOTE &&
             !Params.IsLocalMounter;
 
+        // NBS-3481
         // we should acquire lock for tablet in hive if it is not already running
         // at host and local mount cannot be satisfied because of remote binding.
         // if we don't do this, tablet will stay at previous local mount host.
@@ -660,6 +705,8 @@ void TMountRequestActor::HandleLockTabletResponse(
         "[%lu] Successfully acquired tablet lock",
         VolumeTabletId);
 
+    // NBS-3481 - unlock volume to release it to hive to be sure
+    // that during migration volume will not stuck at source node
     UnlockVolume(ctx);
 }
 
@@ -912,35 +959,20 @@ void TVolumeSessionActor::AddClientToVolume(
     clientInfo->MountSeqNumber = mountRequest.GetMountSeqNumber();
 }
 
-void TVolumeSessionActor::SendInternalMountVolumeResponse(
-    const TActorContext& ctx,
-    const TRequestInfoPtr& requestInfo,
-    const NProto::TError& error)
-{
-    const auto& result =
-        error.GetCode() == E_NOT_FOUND ? MakeErrorSilent(error) : error;
-
-    auto response =
-        std::make_unique<TEvServicePrivate::TEvInternalMountVolumeResponse>(
-            result);
-
-    if (!HasError(error)) {
-        Y_ABORT_UNLESS(VolumeInfo->VolumeInfo.Defined());
-
-        response->Record.SetSessionId(VolumeInfo->SessionId);
-        response->Record.MutableVolume()->CopyFrom(*VolumeInfo->VolumeInfo);
-        response->Record.SetInactiveClientsTimeout(
-            static_cast<ui32>(Config->GetClientRemountPeriod().MilliSeconds()));
-        response->Record.SetServiceVersionInfo(Config->GetServiceVersionInfo());
-    }
-
-    NCloud::Reply(ctx, *requestInfo, std::move(response));
-}
-
 void TVolumeSessionActor::HandleInternalMountVolume(
     const TEvServicePrivate::TEvInternalMountVolumeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ShuttingDown) {
+        SendInternalMountVolumeResponse(
+            ctx,
+            ev,
+            ShuttingDownError,
+            *VolumeInfo,
+            *Config);
+        return;
+    }
+
     auto* msg = ev->Get();
     const auto& diskId = msg->Record.GetDiskId();
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
@@ -993,7 +1025,8 @@ void TVolumeSessionActor::HandleInternalMountVolume(
             shouldReply =
                 (bindingType == VolumeInfo->BindingType) &&
                 clientInfo &&
-                !procResult.MountOptionsChanged;
+                !procResult.MountOptionsChanged &&
+                error.Defined();
             if (shouldReply) {
                 VolumeInfo->OnMountCancelled(
                     *SharedCounters,
@@ -1009,11 +1042,13 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         }
     }
 
-    if (shouldReply && error.Defined()) {
+    if (shouldReply) {
         SendInternalMountVolumeResponse(
             ctx,
             requestInfo,
-            *error);
+            *error,
+            *VolumeInfo,
+            *Config);
         ReceiveNextMountOrUnmountRequest(ctx);
         return;
     }
@@ -1058,8 +1093,9 @@ void TVolumeSessionActor::PostponeMountVolume(
         SendInternalMountVolumeResponse(
             ctx,
             requestInfo,
-            Error);
-        ReceiveNextMountOrUnmountRequest(ctx);
+            ShuttingDownError,
+            *VolumeInfo,
+            *Config);
         return;
     }
 
@@ -1112,7 +1148,9 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
         SendInternalMountVolumeResponse(
             ctx,
             msg->RequestInfo,
-            msg->GetError());
+            msg->GetError(),
+            *VolumeInfo,
+            *Config);
 
         MountRequestActor = {};
         if (!MountUnmountRequests.empty()) {
@@ -1156,7 +1194,9 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
     SendInternalMountVolumeResponse(
         ctx,
         msg->RequestInfo,
-        msg->GetError());
+        msg->GetError(),
+        *VolumeInfo,
+        *Config);
 
     ScheduleInactiveClientsRemoval(ctx);
 

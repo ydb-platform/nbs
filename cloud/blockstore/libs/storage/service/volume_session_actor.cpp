@@ -213,11 +213,16 @@ void TVolumeSessionActor::NotifyAndDie(const TActorContext& ctx)
 
 void TVolumeSessionActor::FailPendingRequestsAndDie(
     const NActors::TActorContext& ctx,
-    const NProto::TError& error)
+    NProto::TError error)
 {
     ShuttingDown = true;
-    Error = error;
-    if (!MountUnmountRequests.empty()) {
+
+    Y_DEBUG_ABORT_UNLESS(
+        FAILED(error.GetCode()),
+        "Shutdown requested with success code: %u", error.GetCode());
+    ShuttingDownError = std::move(error);
+
+    while (!MountUnmountRequests.empty()) {
         ReceiveNextMountOrUnmountRequest(ctx);
     }
     NotifyAndDie(ctx);

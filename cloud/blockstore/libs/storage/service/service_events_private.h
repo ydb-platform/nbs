@@ -158,16 +158,19 @@ struct TEvServicePrivate
         const TString ClientId;
         const NActors::TActorId RequestSender;
         const NProto::EControlRequestSource Source;
+        const bool DiskRecreated;
 
         TUnmountRequestProcessed(
                 TString diskId,
                 TString clientId,
                 const NActors::TActorId& requestSender,
-                NProto::EControlRequestSource source)
+                NProto::EControlRequestSource source,
+                bool diskRecreated)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , RequestSender(requestSender)
             , Source(source)
+            , DiskRecreated(diskRecreated)
         {}
     };
 

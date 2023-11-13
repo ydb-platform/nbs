@@ -233,6 +233,9 @@ void TVolumeClientActor::HandleResetPipeClient(
         "Got request to close pipe for tablet %lu",
         TabletId);
 
+    auto msg = std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(GetCycleCount());
+    NCloud::Send(ctx, SessionActorId, std::move(msg));
+
     CancelActiveRequests();
     NTabletPipe::CloseClient(ctx, PipeClient);
     PipeClient = {};

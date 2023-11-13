@@ -38,6 +38,9 @@ private:
     TActorId SessionActorId;
     TActorId VolumeProxy;
 
+    ui64 TabletId = 0;
+    bool DiskRecreated = false;
+
 public:
     TUnmountRequestActor(
         TStorageConfigPtr config,
@@ -47,7 +50,8 @@ public:
         NProto::EVolumeMountMode mountMode,
         NProto::EControlRequestSource source,
         TActorId SessionActorId,
-        TActorId volumeProxy);
+        TActorId volumeProxy,
+        ui64 tabletId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -86,7 +90,8 @@ TUnmountRequestActor::TUnmountRequestActor(
         NProto::EVolumeMountMode mountMode,
         NProto::EControlRequestSource source,
         TActorId sessionActorId,
-        TActorId volumeProxy)
+        TActorId volumeProxy,
+        ui64 tabletId)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
@@ -95,6 +100,7 @@ TUnmountRequestActor::TUnmountRequestActor(
     , Source(source)
     , SessionActorId(sessionActorId)
     , VolumeProxy(volumeProxy)
+    , TabletId(tabletId)
 {
     ActivityType = TBlockStoreActivities::SERVICE;
 }
@@ -153,7 +159,8 @@ void TUnmountRequestActor::ReplyAndDie(const TActorContext& ctx)
         DiskId,
         ClientId,
         RequestInfo->Sender,
-        Source);
+        Source,
+        DiskRecreated);
 
     NCloud::Send(ctx, SessionActorId, std::move(notify));
 
@@ -207,6 +214,16 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
             ClientId.Quote().data());
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
+    } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
+        auto volumeTabletId = msg->
+            PathDescription.
+            GetBlockStoreVolumeDescription().
+            GetVolumeTabletId();
+
+        if (volumeTabletId != TabletId) {
+            DiskRecreated = true;
+            Error = MakeError(S_ALREADY, "Volume is already destroyed");
+        }
     }
 
     // let client retry Unmount request
@@ -260,6 +277,14 @@ void TVolumeSessionActor::HandleUnmountVolume(
     const TEvService::TEvUnmountVolumeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ShuttingDown) {
+        SendUnmountVolumeResponse(
+            ctx,
+            ev,
+            MakeError(S_ALREADY, "Volume is already unmounted"));
+        return;
+    }
+
     const auto* msg = ev->Get();
     const auto& diskId = GetDiskId(*msg);
     const auto& clientId = GetClientId(*msg);
@@ -299,7 +324,8 @@ void TVolumeSessionActor::HandleUnmountVolume(
         mountMode,
         msg->Record.GetHeaders().GetInternal().GetControlSource(),
         SelfId(),
-        VolumeClient);
+        VolumeClient,
+        TabletId);
 }
 
 void TVolumeSessionActor::HandleUnmountRequestProcessed(
@@ -349,7 +375,8 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
                 mountMode,
                 msg->Source,
                 SelfId(),
-                VolumeClient);
+                VolumeClient,
+                TabletId);
 
             return;
         }
@@ -380,6 +407,15 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
                 ));
             VolumeInfo->VolumeClientActor = VolumeClient;
         }
+
+        if (msg->DiskRecreated) {
+            // fail outstanding mount and unmount requests
+            // so that the next mount/unmount request triggers a describe request
+            FailPendingRequestsAndDie(
+                ctx,
+                MakeError(E_REJECTED, "Disk tablet is changed. Retrying"));
+            return;
+        }
     }
 
     if (!MountUnmountRequests.empty()) {
@@ -397,8 +433,7 @@ void TVolumeSessionActor::PostponeUnmountVolume(
         SendUnmountVolumeResponse(
             ctx,
             ev,
-            MakeError(S_ALREADY, "Volume is already destroyed"));
-        ReceiveNextMountOrUnmountRequest(ctx);
+            MakeError(S_ALREADY, "Volume is already unmounted"));
         return;
     }
 
