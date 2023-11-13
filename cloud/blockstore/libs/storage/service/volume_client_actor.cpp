@@ -202,6 +202,11 @@ void TVolumeClientActor::HandleConnect(
         CancelActiveRequests();
         return;
     }
+
+    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
+        "Connection to tablet: " <<
+        msg->TabletId <<
+        " has been established");
 }
 
 void TVolumeClientActor::HandleDisconnect(

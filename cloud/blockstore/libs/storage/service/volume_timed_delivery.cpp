@@ -93,7 +93,7 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::SendRequest(const TActorContext& c
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record = Request->Record;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Sending %s %s to volume %s",
         TMethod::Name,
         Request->Record.GetHeaders().GetClientId().Quote().c_str(),
@@ -114,6 +114,12 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleResponse(
     auto* msg = ev->Get();
 
     if (msg->Record.GetError().GetCode() == E_REJECTED) {
+        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+            "%s %s request sent to volume %s is rejected",
+            TMethod::Name,
+            Request->Record.GetHeaders().GetClientId().Quote().c_str(),
+            Request->Record.GetDiskId().Quote().c_str());
+
         LastError = msg->Record.GetError();
         CurrentBackoff += BackoffIncrement;
         ctx.Schedule(CurrentBackoff, new TEvents::TEvWakeup(true));
@@ -151,7 +157,12 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
 
     ReplyErrorAndDie(
         ctx,
-        MakeError(E_REJECTED, "Failed to deliver add client request to volume"));
+        MakeError(
+            E_REJECTED,
+            TStringBuilder() <<
+                "Failed to deliver " <<
+                TMethod::Name <<
+                " request to volume"));
 }
 
 template <typename TMethod>
