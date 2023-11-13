@@ -11,7 +11,7 @@ void TTruncateQueue::EnqueueOperation(ui64 nodeId, TByteRange range)
 
 TTruncateQueue::TEntry TTruncateQueue::DequeueOperation()
 {
-    auto entry = PendingOps.back();
+    auto entry = std::move(PendingOps.back());
     PendingOps.pop_back();
 
     ActiveOps.insert(entry.NodeId);

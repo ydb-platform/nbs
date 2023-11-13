@@ -1165,25 +1165,6 @@ func (c *client) GetChangedBlocks(
 		ignoreBaseDisk,
 	)
 
-	logging.Debug(
-		ctx,
-		"GetChangedBlocks for "+
-			"diskID %v, "+
-			"startIndex %v, "+
-			"blockCount %v, "+
-			"baseCheckpointID %v, "+
-			"checkpointID %v, "+
-			"ignoreBaseDisk %v, "+
-			"blockMask %v",
-		diskID,
-		startIndex,
-		blockCount,
-		baseCheckpointID,
-		checkpointID,
-		ignoreBaseDisk,
-		blockMask,
-	)
-
 	return blockMask, wrapError(err)
 }
 
@@ -1297,6 +1278,25 @@ func (c *client) GetChangedBytes(
 		for _, mask := range blockMask {
 			diff += uint64(bits.OnesCount8(mask))
 		}
+
+		logging.Debug(
+			ctx,
+			"GetChangedBlocks diff for "+
+				"diskID %v, "+
+				"startIndex %v, "+
+				"blockCount %v, "+
+				"baseCheckpointID %v, "+
+				"checkpointID %v, "+
+				"ignoreBaseDisk %v, "+
+				"diff %v",
+			diskID,
+			blockIndex,
+			blockCount,
+			baseCheckpointID,
+			checkpointID,
+			ignoreBaseDisk,
+			diff,
+		)
 	}
 
 	return diff * uint64(volume.BlockSize), nil
