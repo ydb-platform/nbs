@@ -7,6 +7,7 @@
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/library/yql/providers/common/schema/expr/yql_expr_schema.h>
 #include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
+#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 
 #include <contrib/ydb/core/external_sources/external_source_factory.h>
 #include <contrib/ydb/core/fq/libs/result_formatter/result_formatter.h>

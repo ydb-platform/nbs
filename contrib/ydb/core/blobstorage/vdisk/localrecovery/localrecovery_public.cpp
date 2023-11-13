@@ -1,5 +1,6 @@
 #include "localrecovery_public.h"
 #include "localrecovery_logreplay.h"
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_lsnmngr.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/recovery/hulldb_recovery.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/generic/hulldb_bulksstloaded.h>

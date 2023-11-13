@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
+#include <contrib/ydb/library/services/services.pb.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 

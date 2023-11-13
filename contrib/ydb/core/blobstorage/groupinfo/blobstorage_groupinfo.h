@@ -3,6 +3,7 @@
 #include "defs.h"
 #include <contrib/ydb/core/blobstorage/base/blobstorage_vdiskid.h>
 #include <contrib/ydb/core/blobstorage/crypto/crypto.h>
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/blobstorage.h>

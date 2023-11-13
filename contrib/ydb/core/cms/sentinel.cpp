@@ -5,6 +5,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>

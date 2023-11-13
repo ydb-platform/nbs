@@ -1,6 +1,7 @@
 #include "query_stats.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/sys_view/common/common.h>
 #include <contrib/ydb/core/sys_view/common/events.h>
 #include <contrib/ydb/core/sys_view/common/keys.h>

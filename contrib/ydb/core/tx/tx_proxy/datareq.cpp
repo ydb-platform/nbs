@@ -13,6 +13,7 @@
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/base/tx_processing.h>
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/protos/stream.pb.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/base/tx_processing.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>

@@ -3,6 +3,7 @@
 #include "tenant_slot_broker.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/core/base/tabletid.h>
@@ -10,6 +11,7 @@
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/mon/mon.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>

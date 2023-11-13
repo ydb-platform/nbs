@@ -14,6 +14,7 @@
 #include <contrib/ydb/core/base/config_units.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/event_filter.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/base/location.h>
 #include <contrib/ydb/core/base/pool_stats_collector.h>
@@ -73,6 +74,7 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/proxy_service/kqp_proxy_service.h>
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
+#include <contrib/ydb/core/kqp/finalize_script_service/kqp_finalize_script_service.h>
 
 #include <contrib/ydb/core/load_test/service_actor.h>
 
@@ -118,6 +120,7 @@
 #include <contrib/ydb/core/sys_view/processor/processor.h>
 #include <contrib/ydb/core/sys_view/service/sysview_service.h>
 #include <contrib/ydb/core/statistics/stat_service.h>
+#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
 
 #include <contrib/ydb/core/tablet/bootstrapper.h>
 #include <contrib/ydb/core/tablet/node_tablet_monitor.h>
@@ -1074,6 +1077,7 @@ void TLocalServiceInitializer::InitializeServices(
     addToLocalConfig(TTabletTypes::SequenceShard, &NSequenceShard::CreateSequenceShard, TMailboxType::ReadAsFilled, appData->UserPoolId);
     addToLocalConfig(TTabletTypes::ReplicationController, &NReplication::CreateController, TMailboxType::ReadAsFilled, appData->UserPoolId);
     addToLocalConfig(TTabletTypes::BlobDepot, &NBlobDepot::CreateBlobDepot, TMailboxType::ReadAsFilled, appData->UserPoolId);
+    addToLocalConfig(TTabletTypes::StatisticsAggregator, &NStat::CreateStatisticsAggregator, TMailboxType::ReadAsFilled, appData->UserPoolId);
 
 
     TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(Config.GetTenantPoolConfig(), localConfig);
@@ -2109,13 +2113,21 @@ void TKqpServiceInitializer::InitializeServices(NActors::TActorSystemSetup* setu
         GlobalObjects.AddGlobalObject(std::make_shared<NYql::NLog::YqlLoggerScope>(
             new NYql::NLog::TTlsLogBackend(new TNullLogBackend())));
 
+        auto federatedQuerySetupFactory = NKqp::MakeKqpFederatedQuerySetupFactory(setup, appData, Config);
+
         auto proxy = NKqp::CreateKqpProxyService(Config.GetLogConfig(), Config.GetTableServiceConfig(),
             Config.GetQueryServiceConfig(),  Config.GetMetadataProviderConfig(), std::move(settings), Factories->QueryReplayBackendFactory, std::move(kqpProxySharedResources),
-            NKqp::MakeKqpFederatedQuerySetupFactory(setup, appData, Config)
+            federatedQuerySetupFactory
         );
         setup->LocalServices.push_back(std::make_pair(
             NKqp::MakeKqpProxyID(NodeId),
             TActorSetupCmd(proxy, TMailboxType::HTSwap, appData->UserPoolId)));
+
+        // Create finalize script service
+        auto finalize = NKqp::CreateKqpFinalizeScriptService(Config.GetQueryServiceConfig().GetFinalizeScriptServiceConfig(), Config.GetMetadataProviderConfig(), federatedQuerySetupFactory);
+        setup->LocalServices.push_back(std::make_pair(
+            NKqp::MakeKqpFinalizeScriptServiceId(NodeId),
+            TActorSetupCmd(finalize, TMailboxType::HTSwap, appData->UserPoolId)));
     }
 }
 

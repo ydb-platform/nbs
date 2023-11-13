@@ -6,6 +6,7 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/location.h>
 #include <contrib/ydb/core/base/statestorage.h>
 

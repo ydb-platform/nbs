@@ -11,6 +11,7 @@
 #include <contrib/ydb/library/persqueue/topic_parser/counters.h>
 #include <contrib/ydb/core/persqueue/pq_database.h>
 #include <contrib/ydb/core/persqueue/write_meta.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>

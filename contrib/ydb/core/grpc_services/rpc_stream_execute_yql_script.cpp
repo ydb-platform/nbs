@@ -6,6 +6,7 @@
 
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/kqp/executer_actor/kqp_executer.h>
 
@@ -487,7 +488,7 @@ private:
 } // namespace
 
 void DoStreamExecuteYqlScript(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
-    ui64 rpcBufferSize = f.GetAppConfig()->GetTableServiceConfig().GetResourceManager().GetChannelBufferSize();
+    ui64 rpcBufferSize = f.GetChannelBufferSize();
     f.RegisterActor(new TStreamExecuteYqlScriptRPC(p.release(), rpcBufferSize));
 }
 

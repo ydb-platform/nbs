@@ -2,7 +2,9 @@
 #include "lwtrace_probes.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <library/cpp/actors/core/log.h>
+#include <library/cpp/actors/core/actor.h>
 #include <util/string/builder.h>
 
 #define TXLOG_LOG(priority, stream) \

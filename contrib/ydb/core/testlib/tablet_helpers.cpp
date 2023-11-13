@@ -43,6 +43,7 @@
 #include <contrib/ydb/core/keyvalue/keyvalue.h>
 #include <contrib/ydb/core/persqueue/pq.h>
 #include <contrib/ydb/core/sys_view/processor/processor.h>
+#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
 
 #include <contrib/ydb/core/testlib/basics/storage.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
@@ -1218,6 +1219,8 @@ namespace NKikimr {
                     bootstrapperActorId = Boot(ctx, type, &NReplication::CreateController, DataGroupErasure);
                 } else if (type == TTabletTypes::PersQueue) {
                     bootstrapperActorId = Boot(ctx, type, &CreatePersQueue, DataGroupErasure);
+                } else if (type == TTabletTypes::StatisticsAggregator) {
+                    bootstrapperActorId = Boot(ctx, type, &NStat::CreateStatisticsAggregator, DataGroupErasure);
                 } else {
                     status = NKikimrProto::ERROR;
                 }

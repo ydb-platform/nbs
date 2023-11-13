@@ -4,6 +4,7 @@
 #include "partition.h"
 #include "read.h"
 #include <contrib/ydb/core/base/tx_processing.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/persqueue/config/config.h>
 #include <contrib/ydb/core/persqueue/partition_key_range/partition_key_range.h>
 #include <contrib/ydb/core/persqueue/writer/source_id_encoding.h>

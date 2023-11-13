@@ -57,6 +57,7 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
 #include <contrib/ydb/core/kqp/proxy_service/kqp_proxy_service.h>
+#include <contrib/ydb/core/kqp/finalize_script_service/kqp_finalize_script_service.h>
 #include <contrib/ydb/core/metering/metering.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
@@ -94,6 +95,7 @@
 #include <contrib/ydb/core/kesus/proxy/proxy.h>
 #include <contrib/ydb/core/kesus/tablet/tablet.h>
 #include <contrib/ydb/core/sys_view/processor/processor.h>
+#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
 #include <contrib/ydb/core/keyvalue/keyvalue.h>
 #include <contrib/ydb/core/persqueue/pq.h>
 #include <contrib/ydb/core/persqueue/cluster_tracker.h>
@@ -722,6 +724,10 @@ namespace Tests {
             TLocalConfig::TTabletClassInfo(new TTabletSetupInfo(
                 &NReplication::CreateController, TMailboxType::Revolving, appData.UserPoolId,
                 TMailboxType::Revolving, appData.SystemPoolId));
+        localConfig.TabletClassInfo[TTabletTypes::StatisticsAggregator] =
+            TLocalConfig::TTabletClassInfo(new TTabletSetupInfo(
+                &NStat::CreateStatisticsAggregator, TMailboxType::Revolving, appData.UserPoolId,
+                TMailboxType::Revolving, appData.SystemPoolId));
     }
 
     void TServer::SetupLocalService(ui32 nodeIdx, const TString &domainName) {
@@ -889,6 +895,10 @@ namespace Tests {
                                                                   federatedQuerySetupFactory);
             TActorId kqpProxyServiceId = Runtime->Register(kqpProxyService, nodeIdx);
             Runtime->RegisterService(NKqp::MakeKqpProxyID(Runtime->GetNodeId(nodeIdx)), kqpProxyServiceId, nodeIdx);
+
+            IActor* scriptFinalizeService = NKqp::CreateKqpFinalizeScriptService(Settings->AppConfig.GetQueryServiceConfig().GetFinalizeScriptServiceConfig(), Settings->AppConfig.GetMetadataProviderConfig(), federatedQuerySetupFactory);
+            TActorId scriptFinalizeServiceId = Runtime->Register(scriptFinalizeService, nodeIdx);
+            Runtime->RegisterService(NKqp::MakeKqpFinalizeScriptServiceId(Runtime->GetNodeId(nodeIdx)), scriptFinalizeServiceId, nodeIdx);
         }
 
         {

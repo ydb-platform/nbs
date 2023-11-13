@@ -11,6 +11,7 @@
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/grpc_services/counters/proxy_counters.h>
@@ -227,8 +228,8 @@ public:
         TBase::PassAway();
     }
 
-    TIntrusiveConstPtr<TAppConfig> GetAppConfig() const override {
-        return FacilityProvider_->GetAppConfig();
+    ui64 GetChannelBufferSize() const override {
+        return FacilityProvider_->GetChannelBufferSize();
     }
 
     TActorId RegisterActor(IActor* actor) const override {

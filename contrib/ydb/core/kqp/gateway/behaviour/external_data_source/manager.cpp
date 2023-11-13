@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/kqp/gateway/actors/scheme.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
 
 #include <util/string/type.h>

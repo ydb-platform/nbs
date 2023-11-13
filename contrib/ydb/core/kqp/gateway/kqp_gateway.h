@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/lock_handle.h>
 #include <contrib/ydb/core/ydb_convert/table_profiles.h>
 #include <contrib/ydb/library/accessor/accessor.h>

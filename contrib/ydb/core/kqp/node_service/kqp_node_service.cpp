@@ -2,6 +2,7 @@
 #include "kqp_node_state.h"
 
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>

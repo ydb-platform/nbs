@@ -5,6 +5,8 @@
 #include <contrib/ydb/services/metadata/abstract/decoder.h>
 #include <contrib/ydb/services/metadata/manager/object.h>
 #include <contrib/ydb/services/metadata/manager/preparation_controller.h>
+#include <library/cpp/time_provider/time_provider.h>
+
 
 namespace NKikimr::NMetadata::NInitializer {
 

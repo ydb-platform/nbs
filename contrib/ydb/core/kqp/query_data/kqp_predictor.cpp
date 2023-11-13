@@ -1,12 +1,18 @@
 #include "kqp_predictor.h"
+#include "kqp_request_predictor.h"
+
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <util/system/info.h>
+#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/core/kqp/expr_nodes/kqp_expr_nodes.h>
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
+#include <contrib/ydb/library/services/services.pb.h>
 
 namespace NKikimr::NKqp {
+
+using namespace NActors;
 
 void TStagePredictor::Prepare() {
     InputDataPrediction = 1;

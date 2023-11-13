@@ -1,4 +1,5 @@
 #include "processor_impl.h"
+#include <contrib/ydb/core/base/feature_flags.h>
 
 namespace NKikimr {
 namespace NSysView {

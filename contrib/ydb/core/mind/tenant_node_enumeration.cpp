@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/hfunc.h>
 #include <util/generic/algorithm.h>

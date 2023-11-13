@@ -1,6 +1,7 @@
 #include "kqp_tasks_graph.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
 #include <contrib/ydb/core/tx/datashard/range_ops.h>
 

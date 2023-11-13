@@ -1,5 +1,6 @@
 #include "auth_factory.h"
 #include "http_req.h"
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/http_proxy/http_service.h>
 #include <contrib/ydb/core/http_proxy/http_req.h>
 #include <contrib/ydb/core/http_proxy/metrics_actor.h>

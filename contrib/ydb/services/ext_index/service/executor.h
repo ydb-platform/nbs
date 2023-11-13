@@ -6,6 +6,7 @@
 #include <contrib/ydb/services/metadata/service.h>
 #include <contrib/ydb/services/ext_index/metadata/snapshot.h>
 #include <contrib/ydb/services/ext_index/common/service.h>
+#include <util/generic/guid.h>
 
 namespace NKikimr::NCSIndex {
 

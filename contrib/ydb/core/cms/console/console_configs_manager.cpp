@@ -6,6 +6,7 @@
 #include "http.h"
 
 #include <contrib/ydb/core/cms/console/validators/registry.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 
 #include <contrib/ydb/library/yql/public/issue/protos/issue_severity.pb.h>
 

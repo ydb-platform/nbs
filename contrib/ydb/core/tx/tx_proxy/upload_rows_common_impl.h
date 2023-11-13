@@ -11,6 +11,7 @@
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/core/scheme/scheme_type_info.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>

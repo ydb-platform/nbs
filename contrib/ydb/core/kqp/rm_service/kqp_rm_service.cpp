@@ -1,6 +1,8 @@
 #include "kqp_rm_service.h"
 
 #include <contrib/ydb/core/base/location.h>
+#include <contrib/ydb/core/base/localdb.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>

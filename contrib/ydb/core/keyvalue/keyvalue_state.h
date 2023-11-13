@@ -19,6 +19,7 @@
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
 #include <contrib/ydb/core/keyvalue/protos/events.pb.h>
+#include <library/cpp/time_provider/time_provider.h>
 #include <bitset>
 
 namespace NActors {

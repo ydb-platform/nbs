@@ -1,6 +1,8 @@
 #include "dynamic_nameserver_impl.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
+#include <contrib/ydb/core/base/nameservice.h>
 #include <contrib/ydb/core/base/location.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>

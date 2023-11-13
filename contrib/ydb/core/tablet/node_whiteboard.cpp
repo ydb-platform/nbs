@@ -8,6 +8,7 @@
 #include <library/cpp/actors/core/hfunc.h>
 #include <library/cpp/actors/core/process_stats.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <contrib/ydb/core/base/nameservice.h>
 #include "tablet_counters.h"
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/util/tuples.h>

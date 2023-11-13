@@ -2,6 +2,8 @@
 
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/cms/console/config_helpers.h>
+#include <contrib/ydb/core/base/domain.h>
+#include <contrib/ydb/core/base/nameservice.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

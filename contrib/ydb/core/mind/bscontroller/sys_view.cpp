@@ -2,6 +2,7 @@
 #include "group_geometry_info.h"
 #include "storage_stats_calculator.h"
 
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 
 namespace NKikimr::NBsController {

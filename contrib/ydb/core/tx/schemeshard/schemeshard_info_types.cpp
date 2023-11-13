@@ -6,12 +6,14 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/compile_time_flags.h>
 #include <contrib/ydb/core/base/tx_processing.h>
+#include <contrib/ydb/core/base/channel_profiles.h>
 #include <contrib/ydb/core/engine/minikql/flat_local_tx_factory.h>
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
 #include <contrib/ydb/core/util/pb.h>
+#include <contrib/ydb/core/protos/config.pb.h>
 
 #include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
 

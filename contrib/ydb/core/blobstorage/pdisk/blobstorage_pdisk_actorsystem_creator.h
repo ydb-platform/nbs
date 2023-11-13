@@ -10,6 +10,14 @@
 #include <library/cpp/actors/core/executor_pool_basic.h>
 #include <library/cpp/actors/core/mon.h>
 #include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/grpc_services/grpc_helper.h>
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/base/feature_flags.h>
+#include <contrib/ydb/core/base/nameservice.h>
+#include <contrib/ydb/core/base/channel_profiles.h>
+#include <contrib/ydb/core/base/domain.h>
+
 
 namespace NKikimr {
 

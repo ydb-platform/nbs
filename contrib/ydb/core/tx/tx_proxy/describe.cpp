@@ -6,6 +6,7 @@
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/sys_view/common/schema.h>
 
 #include <contrib/ydb/library/aclib/aclib.h>

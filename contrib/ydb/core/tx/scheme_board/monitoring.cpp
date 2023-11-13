@@ -4,6 +4,8 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/core/base/statestorage_impl.h>
+#include <contrib/ydb/core/base/tabletid.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/library/services/services.pb.h>
 

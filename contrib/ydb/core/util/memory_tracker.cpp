@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/library/services/services.pb.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/util/memory_tracker.h>

@@ -5,6 +5,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
 

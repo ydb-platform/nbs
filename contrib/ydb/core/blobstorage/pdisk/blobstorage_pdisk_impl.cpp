@@ -6,6 +6,7 @@
 #include "blobstorage_pdisk_request_id.h"
 
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/blobstorage/crypto/secured_block.h>
 #include <contrib/ydb/library/schlab/schine/job_kind.h>

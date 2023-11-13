@@ -1,4 +1,6 @@
 #include "config.h"
+#include <contrib/ydb/core/base/nameservice.h>
+
 
 namespace NKikimr::NBsController {
 

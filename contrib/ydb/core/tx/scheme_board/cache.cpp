@@ -11,6 +11,7 @@
 #include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/tabletid.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>

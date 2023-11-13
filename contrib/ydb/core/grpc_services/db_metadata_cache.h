@@ -4,6 +4,8 @@
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/hfunc.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/feature_flags.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/health_check/health_check.h>
 #include <contrib/ydb/core/protos/db_metadata_cache.pb.h>

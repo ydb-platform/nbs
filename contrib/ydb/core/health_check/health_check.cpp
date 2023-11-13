@@ -16,6 +16,7 @@
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/core/base/nameservice.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/mind/tenant_slot_broker.h>

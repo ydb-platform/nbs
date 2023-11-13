@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_syncneighbors.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <library/cpp/random_provider/random_provider.h>
 
 namespace NKikimr {
 

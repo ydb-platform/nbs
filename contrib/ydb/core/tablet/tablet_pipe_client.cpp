@@ -7,8 +7,11 @@
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/base/tablet_resolver.h>
 #include <contrib/ydb/core/base/hive.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <library/cpp/actors/util/queue_oneone_inplace.h>
+#include <library/cpp/random_provider/random_provider.h>
+
 
 #if defined BLOG_D || defined BLOG_I || defined BLOG_ERROR
     #error log macro definition clash

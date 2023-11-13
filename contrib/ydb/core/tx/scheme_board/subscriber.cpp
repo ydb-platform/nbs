@@ -4,6 +4,7 @@
 #include "subscriber.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/statestorage_impl.h>
 #include <contrib/ydb/core/base/tabletid.h>
 #include <contrib/ydb/core/protos/scheme_board.pb.h>

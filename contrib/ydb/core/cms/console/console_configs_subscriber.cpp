@@ -3,6 +3,7 @@
 #include "util.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/cms/console/util/config_index.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>

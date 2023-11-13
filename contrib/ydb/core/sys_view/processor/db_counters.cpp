@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/grpc_services/counters/counters.h>
 #include <contrib/ydb/core/grpc_services/counters/proxy_counters.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>

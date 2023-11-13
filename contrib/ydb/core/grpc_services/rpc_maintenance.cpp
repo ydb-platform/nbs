@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/cms/cms.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/grpc_services/rpc_request_base.h>
 #include <contrib/ydb/public/api/protos/draft/ydb_maintenance.pb.h>
 

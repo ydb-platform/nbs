@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_vdisk_config.pb.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
 namespace NKikimr {
 

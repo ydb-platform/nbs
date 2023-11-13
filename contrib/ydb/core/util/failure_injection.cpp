@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>

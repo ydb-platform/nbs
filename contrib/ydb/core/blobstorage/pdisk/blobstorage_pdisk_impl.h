@@ -19,6 +19,8 @@
 #include "blobstorage_pdisk_util_countedqueuemanyone.h"
 #include "blobstorage_pdisk_writer.h"
 
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/base/resource_profile.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/control/immediate_control_board_wrapper.h>

@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/hive.h>
+#include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/library/services/services.pb.h>
