@@ -2,7 +2,6 @@ syntax = "proto3";
 
 import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/storage/core/protos/error.proto";
-import "cloud/storage/core/protos/trace.proto";
 
 package NCloud.NFileStore.NProto;
 
@@ -66,9 +65,6 @@ message TAcquireLockResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -110,9 +106,6 @@ message TReleaseLockResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -168,17 +161,14 @@ message TTestLockResponse
     // Number of bytes of the conflicting lock if any.
     uint64 Length = 4;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 5;
-
     // Lock type of the conflicting lock if any.
-    optional ELockType LockType = 6;
+    optional ELockType LockType = 5;
 
     // Process of the conflicting lock if any.
-    optional int32 Pid = 7;
+    optional int32 Pid = 6;
 
     // Incompatible lock origin that is already been held.
-    optional ELockOrigin IncompatibleLockOrigin = 8;
+    optional ELockOrigin IncompatibleLockOrigin = 7;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

@@ -2168,14 +2168,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.SendRequest(std::move(request));
         auto response = tablet.AssertWriteDataResponse(S_OK);
-        CheckForkJoin(response->Record.GetTrace().GetLWTrace().GetTrace(), false);
+        CheckForkJoin(response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(), false);
 
         request = tablet.CreateWriteDataRequest(handle, 0, 1_MB, 'b');
         request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
 
         tablet.SendRequest(std::move(request));
         response = tablet.AssertWriteDataResponse(S_OK);
-        CheckForkJoin(response->Record.GetTrace().GetLWTrace().GetTrace(), true);
+        CheckForkJoin(response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(), true);
     }
 
     Y_UNIT_TEST(ShouldDoForcedCompaction)

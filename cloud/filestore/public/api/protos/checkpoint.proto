@@ -2,7 +2,6 @@ syntax = "proto3";
 
 import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/storage/core/protos/error.proto";
-import "cloud/storage/core/protos/trace.proto";
 
 package NCloud.NFileStore.NProto;
 
@@ -31,9 +30,6 @@ message TCreateCheckpointResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -57,9 +53,6 @@ message TDestroyCheckpointResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

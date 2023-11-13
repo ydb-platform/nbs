@@ -2,7 +2,6 @@ syntax = "proto3";
 
 import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/storage/core/protos/error.proto";
-import "cloud/storage/core/protos/trace.proto";
 
 package NCloud.NFileStore.NProto;
 
@@ -85,9 +84,6 @@ message TResolvePathResponse
     // Node attributes.
     TNodeAttr Attr = 3;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 4;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -157,9 +153,6 @@ message TCreateNodeResponse
     // Node attributes.
     TNodeAttr Node = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -189,9 +182,6 @@ message TUnlinkNodeResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -236,9 +226,6 @@ message TRenameNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -265,9 +252,6 @@ message TAccessNodeResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -308,9 +292,6 @@ message TListNodesResponse
     // Cookie will be set for partial answer due to limitations.
     bytes Cookie = 4;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 5;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -337,9 +318,6 @@ message TReadLinkResponse
 
     // Symlink contents.
     bytes SymLink = 2;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -400,9 +378,6 @@ message TSetNodeAttrResponse
     // Node attributes.
     TNodeAttr Node = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -444,9 +419,6 @@ message TGetNodeAttrResponse
     // Node attributes.
     TNodeAttr Node = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -479,9 +451,6 @@ message TGetNodeXAttrResponse
 
     // Version of set value.
     uint64 Version = 3;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 4;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -526,9 +495,6 @@ message TSetNodeXAttrResponse
     // Version of set value.
     uint64 Version = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 4;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -556,9 +522,6 @@ message TListNodeXAttrResponse
     // Attribute names.
     repeated bytes Names = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -585,9 +548,6 @@ message TRemoveNodeXAttrResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

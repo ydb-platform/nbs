@@ -2,62 +2,49 @@
 
 #include "public.h"
 
-#include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/request.h>
 
+#include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 namespace NCloud::NFileStore {
-
-namespace NImpl {
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-concept TTraceable = requires(T v)
-{
-    {v.GetTrace()};
-    {v.MutableTrace()};
-    {v.ClearTrace()};
-};
-
-}   // namespace NImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
 void HandleTraceInfo(
     const ITraceSerializerPtr& traceSerializer,
-    const TCallContextPtr& ctx,
+    const TCallContextBasePtr& ctx,
     T& record)
 {
-    if constexpr (NImpl::TTraceable<T>) {
+    if constexpr (HasResponseHeaders<T>()) {
         if (!ctx->LWOrbit.HasShuttles()) {
             return;
         }
 
         traceSerializer->HandleTraceInfo(
-            record.GetTrace(),
+            record.GetHeaders().GetTrace(),
             ctx->LWOrbit,
             ctx->GetRequestStartedCycles(),
             GetCycleCount());
 
-        record.ClearTrace();
+        record.MutableHeaders()->ClearTrace();
     }
 }
 
 template <typename T>
 void BuildTraceInfo(
     const ITraceSerializerPtr& traceSerializer,
-    const TCallContextPtr& ctx,
+    const TCallContextBasePtr& ctx,
     T& record)
 {
-    if constexpr (NImpl::TTraceable<T>) {
+    if constexpr (HasResponseHeaders<T>()) {
         if (!traceSerializer->IsTraced(ctx->LWOrbit)) {
             return;
         }
 
         traceSerializer->BuildTraceInfo(
-            *record.MutableTrace(),
+            *record.MutableHeaders()->MutableTrace(),
             ctx->LWOrbit,
             ctx->GetRequestStartedCycles(),
             GetCycleCount());
