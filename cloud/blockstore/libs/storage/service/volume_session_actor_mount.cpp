@@ -705,8 +705,8 @@ void TMountRequestActor::HandleLockTabletResponse(
         "[%lu] Successfully acquired tablet lock",
         VolumeTabletId);
 
-    // NBS-3481 - unlock volume to release it to hive to be sure
-    // that during migration volume will not stuck at source node
+    // NBS-3481 - unlock this volume to release it to hive to be sure
+    // that during migration this volume will not get stuck at the source node
     UnlockVolume(ctx);
 }
 

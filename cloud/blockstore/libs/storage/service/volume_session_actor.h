@@ -126,7 +126,7 @@ private:
     void NotifyAndDie(const NActors::TActorContext& ctx);
 
     // This function should be called only when we need to fail pending
-    // requests and terminate actor. Error codes like S_OK or S_ALREADY are
+    // requests and terminate this actor. Error codes like S_OK or S_ALREADY are
     // not allowed
     void FailPendingRequestsAndDie(
         const NActors::TActorContext& ctx,

@@ -219,7 +219,7 @@ void TVolumeSessionActor::FailPendingRequestsAndDie(
 
     Y_DEBUG_ABORT_UNLESS(
         FAILED(error.GetCode()),
-        "Shutdown requested with success code: %u", error.GetCode());
+        "Shutdown requested with a successful code: %u", error.GetCode());
     ShuttingDownError = std::move(error);
 
     while (!MountUnmountRequests.empty()) {

@@ -57,7 +57,8 @@ void TCheckpointLight::DeleteCheckpoint(const TString& checkpointId)
     }
 }
 
-bool TCheckpointLight::CheckpointExists(const TString& checkpointId) const {
+bool TCheckpointLight::CheckpointExists(const TString& checkpointId) const
+{
     if (checkpointId == EmptyCheckpointId ||
         (checkpointId == PreviousCheckpointId && PreviousCheckpointId != EmptyCheckpointId) ||
         (checkpointId == CheckpointId && CheckpointId != EmptyCheckpointId)) {
