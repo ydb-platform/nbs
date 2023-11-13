@@ -382,8 +382,10 @@ public:
     TDuration GetNonReplicatedInfraTimeout() const;
     TDuration GetNonReplicatedInfraUnavailableAgentTimeout() const;
 
-    TDuration GetNonReplicatedMinRequestTimeout() const;
-    TDuration GetNonReplicatedMaxRequestTimeout() const;
+    TDuration GetNonReplicatedMinRequestTimeoutSSD() const;
+    TDuration GetNonReplicatedMaxRequestTimeoutSSD() const;
+    TDuration GetNonReplicatedMinRequestTimeoutHDD() const;
+    TDuration GetNonReplicatedMaxRequestTimeoutHDD() const;
     TDuration GetExpectedClientBackoffIncrement() const;
 
     TDuration GetDeletedCheckpointHistoryLifetime() const;

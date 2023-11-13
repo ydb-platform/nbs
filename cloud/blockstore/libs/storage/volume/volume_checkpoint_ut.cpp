@@ -936,7 +936,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
     {
         NProto::TStorageServiceConfig config;
         // Need timeout longer than timeout in runtime->DispatchEvents().
-        config.SetNonReplicatedMinRequestTimeout(5'000);
+        config.SetNonReplicatedMinRequestTimeoutSSD(5'000);
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);

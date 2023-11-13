@@ -164,7 +164,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         State->GetDiskId(),
         State->GetMeta().GetConfig().GetBlockSize(),
         TNonreplicatedPartitionConfig::TVolumeInfo{
-            TInstant::MicroSeconds(volumeConfig.GetCreationTs())},
+            TInstant::MicroSeconds(volumeConfig.GetCreationTs()),
+            mediaKind},
         SelfId(),
         State->GetMeta().GetMuteIOErrors(),
         State->GetTrackUsedBlocks(),

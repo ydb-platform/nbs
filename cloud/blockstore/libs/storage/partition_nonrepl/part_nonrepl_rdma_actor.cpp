@@ -66,7 +66,7 @@ void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
     ScheduleCountersUpdate(ctx);
     ctx.Schedule(
-        Config->GetNonReplicatedMinRequestTimeout(),
+        Config->GetNonReplicatedMinRequestTimeoutSSD(),
         new TEvents::TEvWakeup());
 }
 
@@ -417,7 +417,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWakeup(
     // TODO timeout logic?
 
     ctx.Schedule(
-        Config->GetNonReplicatedMinRequestTimeout(),
+        Config->GetNonReplicatedMinRequestTimeoutSSD(),
         new TEvents::TEvWakeup());
 }
 

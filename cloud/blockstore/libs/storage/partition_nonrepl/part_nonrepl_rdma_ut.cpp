@@ -94,8 +94,8 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig;
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
-        storageConfig.SetNonReplicatedMinRequestTimeout(1'000);
-        storageConfig.SetNonReplicatedMaxRequestTimeout(5'000);
+        storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
+        storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
 
         auto config = std::make_shared<TStorageConfig>(
@@ -119,7 +119,10 @@ struct TTestEnv
             ioMode,
             "test",
             DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
+            TNonreplicatedPartitionConfig::TVolumeInfo{
+                Now(),
+                // only SSD/HDD distinction matters
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
             VolumeActorId,
             false, // muteIOErrors
             false, // markBlocksUsed

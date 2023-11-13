@@ -37,11 +37,31 @@ TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor()
 {
 }
 
+TDuration TNonreplicatedPartitionActor::GetMinRequestTimeout() const
+{
+    const auto hddKind = NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+    if (PartConfig->GetVolumeInfo().MediaKind == hddKind) {
+        return Config->GetNonReplicatedMinRequestTimeoutHDD();
+    }
+
+    return Config->GetNonReplicatedMinRequestTimeoutSSD();
+}
+
+TDuration TNonreplicatedPartitionActor::GetMaxRequestTimeout() const
+{
+    const auto hddKind = NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+    if (PartConfig->GetVolumeInfo().MediaKind == hddKind) {
+        return Config->GetNonReplicatedMaxRequestTimeoutHDD();
+    }
+
+    return Config->GetNonReplicatedMaxRequestTimeoutSSD();
+}
+
 void TNonreplicatedPartitionActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
     ScheduleCountersUpdate(ctx);
-    ctx.Schedule(Config->GetNonReplicatedMinRequestTimeout(), new TEvents::TEvWakeup());
+    ctx.Schedule(GetMinRequestTimeout(), new TEvents::TEvWakeup());
 }
 
 bool TNonreplicatedPartitionActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
@@ -151,7 +171,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
     }
 
     request->Ts = ctx.Now();
-    request->Timeout = Config->GetNonReplicatedMinRequestTimeout();
+    request->Timeout = GetMinRequestTimeout();
     for (const auto& dr: *deviceRequests) {
         const auto& deviceStat = DeviceStats[dr.DeviceIdx];
         auto maxTimedOutDeviceStateDuration =
@@ -290,11 +310,10 @@ void TNonreplicatedPartitionActor::HandleWakeup(
                 now - deviceStat.LastTimeoutTs
             );
             if (!deviceStat.CurrentTimeout.GetValue()) {
-                deviceStat.CurrentTimeout =
-                    Config->GetNonReplicatedMinRequestTimeout();
+                deviceStat.CurrentTimeout = GetMinRequestTimeout();
             }
             deviceStat.CurrentTimeout = Min(
-                Config->GetNonReplicatedMaxRequestTimeout(),
+                GetMaxRequestTimeout(),
                 deviceStat.CurrentTimeout + Min(
                     request.Timeout,
                     now - deviceStat.LastTimeoutTs
@@ -311,7 +330,7 @@ void TNonreplicatedPartitionActor::HandleWakeup(
         }
     }
 
-    ctx.Schedule(Config->GetNonReplicatedMinRequestTimeout(), new TEvents::TEvWakeup());
+    ctx.Schedule(GetMinRequestTimeout(), new TEvents::TEvWakeup());
 }
 
 void TNonreplicatedPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)

@@ -225,8 +225,8 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig;
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
-        storageConfig.SetNonReplicatedMinRequestTimeout(1'000);
-        storageConfig.SetNonReplicatedMaxRequestTimeout(5'000);
+        storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
+        storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -259,7 +259,10 @@ struct TTestEnv
             NProto::VOLUME_IO_OK,
             "test",
             BlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
+            TNonreplicatedPartitionConfig::TVolumeInfo{
+                Now(),
+                // only SSD/HDD distinction matters
+                NProto::STORAGE_MEDIA_SSD_MIRROR3},
             VolumeActorId,
             false, // muteIOErrors
             markBlocksUsed,

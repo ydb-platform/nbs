@@ -26,7 +26,7 @@ struct TEnv
     TMigrations Migrations;
     TNonreplicatedPartitionConfigPtr Config;
 
-    void Init(TNonreplicatedPartitionConfig::TVolumeInfo volumeInfo = {Now()})
+    void Init(TNonreplicatedPartitionConfig::TVolumeInfo volumeInfo)
     {
         {
             auto* device = Devices.Add();
@@ -90,6 +90,12 @@ struct TEnv
             auto* device = ReplicaDevices.Add();
             device->SetBlocksCount(1024);
         }
+    }
+
+    void Init()
+    {
+        // only SSD/HDD distinction matters
+        Init({Now(), NProto::STORAGE_MEDIA_SSD_MIRROR3});
     }
 };
 
@@ -566,7 +572,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         TEnv env;
         env.FreshDeviceIds = {"nonexistent_device", "2_1", "3_1"};
         const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
-        env.Init({oldDate});
+        // only SSD/HDD distinction matters
+        env.Init({oldDate, NProto::STORAGE_MEDIA_SSD_MIRROR3});
 
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);

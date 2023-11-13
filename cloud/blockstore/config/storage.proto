@@ -462,11 +462,11 @@ message TStorageServiceConfig
     // Enables fresh channel write requests.
     optional bool FreshChannelWriteRequestsEnabled = 180;
 
-    // Min timeout for nonrepl partition -> DA requests.
-    optional uint32 NonReplicatedMinRequestTimeout = 181;
+    // Min timeout for nonrepl partition -> DA SSD requests.
+    optional uint32 NonReplicatedMinRequestTimeoutSSD = 181;
 
-    // Max timeout for nonrepl partition -> DA requests.
-    optional uint32 NonReplicatedMaxRequestTimeout = 182;
+    // Max timeout for nonrepl partition -> DA SSD requests.
+    optional uint32 NonReplicatedMaxRequestTimeoutSSD = 182;
 
     // Max timed out state duration after which nr device is considered unavailable.
     optional uint32 MaxTimedOutDeviceStateDuration = 183;
@@ -873,4 +873,10 @@ message TStorageServiceConfig
     // Timeout in seconds before switching all disks associated
     // with the disconnected agent to read only mode
     optional uint32 NonReplicatedDiskSwitchToReadOnlyTimeout = 337;
+
+    // Min timeout for nonrepl partition -> DA HDD requests.
+    optional uint32 NonReplicatedMinRequestTimeoutHDD = 338;
+
+    // Max timeout for nonrepl partition -> DA HDD requests.
+    optional uint32 NonReplicatedMaxRequestTimeoutHDD = 339;
 }

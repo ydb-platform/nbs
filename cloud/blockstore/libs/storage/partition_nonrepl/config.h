@@ -46,10 +46,10 @@ struct TDeviceRequest
 class TNonreplicatedPartitionConfig
 {
 public:
-    // volume info that doesn't directly affect I/O processing
     struct TVolumeInfo
     {
         TInstant CreationTs;
+        NProto::EStorageMediaKind MediaKind;
     };
 
 private:

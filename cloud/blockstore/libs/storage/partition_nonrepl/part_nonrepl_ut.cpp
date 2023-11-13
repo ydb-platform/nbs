@@ -69,14 +69,24 @@ struct TTestEnv
     explicit TTestEnv(
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode)
-        : TTestEnv(runtime, ioMode, false, DefaultDevices(runtime.GetNodeId(0)))
+        : TTestEnv(
+            runtime,
+            ioMode,
+            false,
+            DefaultDevices(runtime.GetNodeId(0)),
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
     {}
 
     explicit TTestEnv(
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode,
             TDevices devices)
-        : TTestEnv(runtime, ioMode, false, std::move(devices))
+        : TTestEnv(
+            runtime,
+            ioMode,
+            false,
+            std::move(devices),
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
     {}
 
     explicit TTestEnv(
@@ -87,8 +97,8 @@ struct TTestEnv
             runtime,
             ioMode,
             markBlocksUsed,
-            DefaultDevices(runtime.GetNodeId(0))
-        )
+            DefaultDevices(runtime.GetNodeId(0)),
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
     {}
 
     explicit TTestEnv(
@@ -96,6 +106,20 @@ struct TTestEnv
             NProto::EVolumeIOMode ioMode,
             bool markBlocksUsed,
             TDevices devices)
+        : TTestEnv(
+            runtime,
+            ioMode,
+            markBlocksUsed,
+            std::move(devices),
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
+    {}
+
+    explicit TTestEnv(
+            TTestActorRuntime& runtime,
+            NProto::EVolumeIOMode ioMode,
+            bool markBlocksUsed,
+            TDevices devices,
+            NProto::EStorageMediaKind mediaKind)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -106,8 +130,17 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig;
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
-        storageConfig.SetNonReplicatedMinRequestTimeout(1'000);
-        storageConfig.SetNonReplicatedMaxRequestTimeout(5'000);
+        if (mediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
+            storageConfig.SetNonReplicatedMinRequestTimeoutSSD(60'000);
+            storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(60'000);
+            storageConfig.SetNonReplicatedMinRequestTimeoutHDD(1'000);
+            storageConfig.SetNonReplicatedMaxRequestTimeoutHDD(5'000);
+        } else {
+            storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
+            storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+            storageConfig.SetNonReplicatedMinRequestTimeoutHDD(60'000);
+            storageConfig.SetNonReplicatedMaxRequestTimeoutHDD(60'000);
+        }
         storageConfig.SetExpectedClientBackoffIncrement(500);
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
 
@@ -132,7 +165,7 @@ struct TTestEnv
             ioMode,
             "test",
             DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{Now()}, // volumeInfo
+            TNonreplicatedPartitionConfig::TVolumeInfo{Now(), mediaKind},
             VolumeActorId,
             false, // muteIOErrors
             markBlocksUsed,
@@ -654,7 +687,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleTimedoutIO)
+    void DoTestShouldHandleTimedoutIO(NProto::EStorageMediaKind mediaKind)
     {
         TTestBasicRuntime runtime;
 
@@ -665,7 +698,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.EnableScheduleForActor(actorId);
         });
 
-        TTestEnv env(runtime);
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            false,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            mediaKind);
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
         auto& counters = env.StorageStatsServiceState->Counters.Simple;
@@ -812,6 +850,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDevice.Value);
         UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
+    }
+
+    Y_UNIT_TEST(ShouldHandleTimedoutIOSSD)
+    {
+        DoTestShouldHandleTimedoutIO(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldHandleTimedoutIOHDD)
+    {
+        DoTestShouldHandleTimedoutIO(NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
     }
 
     Y_UNIT_TEST(ShouldNotReturnIOErrorUponTimeoutForBackgroundRequests)

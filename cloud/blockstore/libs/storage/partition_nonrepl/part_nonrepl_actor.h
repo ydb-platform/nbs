@@ -84,6 +84,9 @@ private:
     STFUNC(StateWork);
     STFUNC(StateZombie);
 
+    TDuration GetMinRequestTimeout() const;
+    TDuration GetMaxRequestTimeout() const;
+
     template <typename TMethod>
     bool InitRequests(
         const typename TMethod::TRequest& msg,
