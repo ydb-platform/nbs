@@ -1,5 +1,7 @@
 Y_BENCHMARK(blockstore-nbd-bench)
 
+TAG(ya:not_autocheck)
+
 ALLOCATOR(TCMALLOC_TC)
 
 SRCS(
