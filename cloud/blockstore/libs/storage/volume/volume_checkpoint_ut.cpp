@@ -2923,7 +2923,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+            UNIT_ASSERT_VALUES_EQUAL(0b00000011, ui8(mask[0]));
         }
         {
             auto response = volume.GetChangedBlocks(
@@ -2970,7 +2970,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+            UNIT_ASSERT_VALUES_EQUAL(0b00000110, ui8(mask[0]));
         }
         {
             auto response = volume.GetChangedBlocks(
@@ -2984,6 +2984,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.CreateCheckpoint("c3", true);
+        volume.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1), clientInfo.GetClientId(), 1);
+
         {
             auto response = volume.GetChangedBlocks(
                 TBlockRange64::MakeClosedInterval(0, 1023),
@@ -3005,7 +3007,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
             const auto& mask = response->Record.GetMask();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
+            UNIT_ASSERT_VALUES_EQUAL(0b00000011, ui8(mask[0]));
         }
 
         {

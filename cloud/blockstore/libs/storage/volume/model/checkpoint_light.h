@@ -29,15 +29,17 @@ private:
     TCompressedBitmap CurrentDirtyBlocks;
     TCompressedBitmap FutureDirtyBlocks;
 
+    bool CheckpointExists(const TString& checkpointId) const;
+
 public:
     TCheckpointLight(ui64 blocksCount);
 
     const TString& GetCheckpointId() const;
     const TString& GetPreviousCheckpointId() const;
 
-    void CreateCheckpoint(TString checkpointId);
+    void CreateCheckpoint(const TString& checkpointId);
 
-    void DeleteCheckpoint(TString checkpointId);
+    void DeleteCheckpoint(const TString& checkpointId);
 
     /**
      * Returns S_OK if and only if input block range is valid.
@@ -45,10 +47,10 @@ public:
      * Returns mask of all '1' if either lowCheckpointId or highCheckpointId is irrelevant.
      */
     NProto::TError FindDirtyBlocksBetweenCheckpoints(
-        TString lowCheckpointId,
-        TString highCheckpointId,
+        const TString& lowCheckpointId,
+        const TString& highCheckpointId,
         const TBlockRange64& blockRange,
-        TString* mask) const;
+        TString& mask) const;
 
     /**
      * @brief Mark blocks as modified

@@ -2,6 +2,16 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TString EmptyCheckpointId = "";
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,7 +35,7 @@ const TString& TCheckpointLight::GetPreviousCheckpointId() const
     return PreviousCheckpointId;
 }
 
-void TCheckpointLight::CreateCheckpoint(TString checkpointId)
+void TCheckpointLight::CreateCheckpoint(const TString& checkpointId)
 {
     if (checkpointId == CheckpointId) {
         return;
@@ -37,34 +47,51 @@ void TCheckpointLight::CreateCheckpoint(TString checkpointId)
     FutureDirtyBlocks.Clear();
 }
 
-void TCheckpointLight::DeleteCheckpoint(TString checkpointId)
+void TCheckpointLight::DeleteCheckpoint(const TString& checkpointId)
 {
     if (checkpointId == CheckpointId) {
-        CheckpointId = "";
+        CheckpointId = EmptyCheckpointId;
     }
     if (checkpointId == PreviousCheckpointId) {
-        PreviousCheckpointId = "";
+        PreviousCheckpointId = EmptyCheckpointId;
     }
 }
 
+bool TCheckpointLight::CheckpointExists(const TString& checkpointId) const {
+    if (checkpointId == EmptyCheckpointId ||
+        (checkpointId == PreviousCheckpointId && PreviousCheckpointId != EmptyCheckpointId) ||
+        (checkpointId == CheckpointId && CheckpointId != EmptyCheckpointId)) {
+        return true;
+    }
+
+    return false;
+}
+
 NProto::TError TCheckpointLight::FindDirtyBlocksBetweenCheckpoints(
-    TString lowCheckpointId,
-    TString highCheckpointId,
+    const TString& lowCheckpointId,
+    const TString& highCheckpointId,
     const TBlockRange64& blockRange,
-    TString* mask) const
+    TString& mask) const
 {
     if (blockRange.End >= BlocksCount) {
         return MakeError(E_ARGUMENT, "Block range is out of bounds");
     }
 
-    // Pessimize diff if we don't know the correct diff.
-    bool allOnes = false;
-    if (highCheckpointId != "") {
-       allOnes = lowCheckpointId == "" ||
-            lowCheckpointId != PreviousCheckpointId ||
-            highCheckpointId != CheckpointId;
-    } else if (lowCheckpointId != "") {
-        allOnes = lowCheckpointId != PreviousCheckpointId;
+    bool allOnes = !CheckpointExists(lowCheckpointId) ||
+        !CheckpointExists(highCheckpointId) ||
+        lowCheckpointId == EmptyCheckpointId;
+
+    bool useCurrentDirtyBlocks = false;
+    bool useFutureDirtyBlocks = false;
+    if (lowCheckpointId == CheckpointId && highCheckpointId == EmptyCheckpointId) {
+        useFutureDirtyBlocks = true;
+    } else if (lowCheckpointId == PreviousCheckpointId &&
+        highCheckpointId == CheckpointId) {
+        useCurrentDirtyBlocks = true;
+    } else if (lowCheckpointId == PreviousCheckpointId &&
+        highCheckpointId == EmptyCheckpointId) {
+        useCurrentDirtyBlocks = true;
+        useFutureDirtyBlocks = true;
     } else {
         allOnes = true;
     }
@@ -73,22 +100,33 @@ NProto::TError TCheckpointLight::FindDirtyBlocksBetweenCheckpoints(
         if (allOnes) {
             return true;
         }
-        if (highCheckpointId != "") {
+
+        if (useCurrentDirtyBlocks && useFutureDirtyBlocks) {
+            return CurrentDirtyBlocks.Test(i) || FutureDirtyBlocks.Test(i);
+        }
+
+        if (useFutureDirtyBlocks) {
+            return FutureDirtyBlocks.Test(i);
+        }
+
+        if (useCurrentDirtyBlocks) {
             return CurrentDirtyBlocks.Test(i);
         }
-        return CurrentDirtyBlocks.Test(i) || FutureDirtyBlocks.Test(i);
+
+        return true;
     };
 
-    mask->clear();
-    mask->reserve(blockRange.Size());
+    mask.clear();
+    mask.assign((blockRange.Size() + 8 - 1) / 8, 0);
 
-    for (auto i = blockRange.Start; i <= blockRange.End;) {
+    auto blockIndex = blockRange.Start;
+    for (size_t i = 0; i < mask.size(); ++i) {
         ui8 bitData = 0;
-        for (auto j = 0; j < 8 && i <= blockRange.End; ++j) {
-            bitData |= test(i) << j;
-            ++i;
+        for (auto j = 0; j < 8 && blockIndex <= blockRange.End; ++j, ++blockIndex) {
+            bitData |= test(blockIndex) << j;
         }
-        mask->push_back(bitData);
+
+        mask[i] = bitData;
     }
 
     return {};

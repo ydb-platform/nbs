@@ -866,7 +866,7 @@ NProto::TError TVolumeState::FindDirtyBlocksBetweenLightCheckpoints(
     TString lowCheckpointId,
     TString highCheckpointId,
     const TBlockRange64& blockRange,
-    TString* mask) const
+    TString& mask) const
 {
     if (!CheckpointLight) {
         return MakeError(E_PRECONDITION_FAILED, "Light checkpoint is disabled");
