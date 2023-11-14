@@ -460,6 +460,8 @@ public:
 
 private:
     void HandleQueuedRequests();
+    bool IsWorkRequestValid(const TWorkRequestId& id) const;
+    void HandleFlush(const TWorkRequestId& id) noexcept;
     void HandleCompletionEvent(ibv_wc* wc) override;
 
     void SendRequest(TRequestPtr req, TSendWr* send);
@@ -608,15 +610,15 @@ void TClientEndpoint::CreateQP()
     SendMagic = RandomNumber(Max<ui32>());
     RecvMagic = RandomNumber(Max<ui32>());
 
-    STORAGE_INFO("SEND magic is " << Hex(SendMagic));
-    STORAGE_INFO("RECV magic is " << Hex(RecvMagic));
+    STORAGE_INFO("SEND magic is " << TWorkRequestId(SendMagic, 0));
+    STORAGE_INFO("RECV magic is " << TWorkRequestId(RecvMagic, 0));
 
     ui32 i = 0;
     ui64 requestMsg = SendBuffer.Address;
     for (auto& wr: SendWrs) {
         wr.wr.opcode = IBV_WR_SEND;
 
-        wr.wr.wr_id = TWorkRequestId(i++, SendMagic).Id;
+        wr.wr.wr_id = TWorkRequestId(SendMagic, i++).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -631,7 +633,7 @@ void TClientEndpoint::CreateQP()
     ui32 j = 0;
     ui64 responseMsg = RecvBuffer.Address;
     for (auto& wr: RecvWrs) {
-        wr.wr.wr_id = TWorkRequestId(j++, RecvMagic).Id;
+        wr.wr.wr_id = TWorkRequestId(RecvMagic, j++).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -841,14 +843,38 @@ bool TClientEndpoint::HandleCompletionEvents()
     return false;
 }
 
+bool TClientEndpoint::IsWorkRequestValid(const TWorkRequestId& id) const
+{
+    if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
+        return true;
+    }
+    if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
+        return true;
+    }
+    return false;
+}
+
+void TClientEndpoint::HandleFlush(const TWorkRequestId& id) noexcept
+{
+    // flush WRs have opcode=0
+    if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
+        SendQueue.Push(&SendWrs[id.Index]);
+        return;
+    }
+    if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
+        RecvQueue.Push(&RecvWrs[id.Index]);
+        return;
+    }
+}
+
 void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
-    STORAGE_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << Hex(wc->wr_id)
-        << " completed with " << NVerbs::GetStatusString(wc->status));
-
     auto id = TWorkRequestId(wc->wr_id);
 
-    if (id.Magic != SendMagic && id.Magic != RecvMagic) {
+    STORAGE_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
+        << " completed with " << NVerbs::GetStatusString(wc->status));
+
+    if (!IsWorkRequestValid(id)) {
         STORAGE_ERROR_T(LogThrottler.Unexpected, "unexpected completion "
             << NVerbs::PrintCompletion(wc));
 
@@ -856,14 +882,8 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
         return;
     }
 
-    // flushed WRs have opcode=0
     if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-        if (id.Magic == SendMagic) {
-            SendQueue.Push(&SendWrs[id.Index]);
-
-        } else if (id.Magic == RecvMagic) {
-            RecvQueue.Push(&RecvWrs[id.Index]);
-        }
+        HandleFlush(id);
         return;
     }
 
@@ -897,7 +917,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    STORAGE_TRACE("SEND " << Hex(send->wr.wr_id));
+    STORAGE_TRACE("SEND " << TWorkRequestId(send->wr.wr_id));
     Verbs->PostSend(Connection->qp, &send->wr);
 
     LWTRACK(
@@ -921,7 +941,7 @@ void TClientEndpoint::SendRequestCompleted(
     };
 
     if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("SEND " << Hex(send->wr.wr_id) << ": "
+        STORAGE_ERROR("SEND " << TWorkRequestId(send->wr.wr_id) << ": "
             << NVerbs::GetStatusString(status));
 
         Counters->SendRequestError();
@@ -933,7 +953,7 @@ void TClientEndpoint::SendRequestCompleted(
     auto* req = static_cast<TRequest*>(send->context);
 
     if (!ActiveRequests.Contains(req)) {
-        STORAGE_WARN("SEND " << Hex(send->wr.wr_id) << ": request "
+        STORAGE_WARN("SEND " << TWorkRequestId(send->wr.wr_id) << ": request "
             << reinterpret_cast<void*>(req) << " not found")
 
         Counters->UnknownRequest();
@@ -951,7 +971,7 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     auto* responseMsg = recv->Message<TResponseMessage>();
     Zero(*responseMsg);
 
-    STORAGE_TRACE("RECV " << Hex(recv->wr.wr_id));
+    STORAGE_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id));
     Verbs->PostRecv(Connection->qp, &recv->wr);
 
     Counters->RecvResponseStarted();
@@ -962,8 +982,8 @@ void TClientEndpoint::RecvResponseCompleted(
     ibv_wc_status wc_status)
 {
     if (wc_status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id) << ": "
-            << NVerbs::GetStatusString(wc_status));
+        STORAGE_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
+            << ": " << NVerbs::GetStatusString(wc_status));
 
         Counters->RecvResponseError();
         RecvResponse(recv);
@@ -975,7 +995,7 @@ void TClientEndpoint::RecvResponseCompleted(
     auto* msg = recv->Message<TResponseMessage>();
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
-        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
+        STORAGE_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
             << ": incompatible protocol version "
             << version << " != " << int(RDMA_PROTO_VERSION));
 
@@ -992,7 +1012,7 @@ void TClientEndpoint::RecvResponseCompleted(
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        STORAGE_ERROR("RECV " << Hex(recv->wr.wr_id)
+        STORAGE_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
             << ": request " << reqId << " not found");
 
         Counters->UnknownRequest();

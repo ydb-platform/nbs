@@ -5,6 +5,8 @@
 #include <rdma/rdma_verbs.h>
 
 #include <util/generic/utility.h>
+#include <util/stream/output.h>
+#include <util/stream/printf.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -20,19 +22,27 @@ union TWorkRequestId
     ui64 Id;
 
     struct {
-        ui32 Index;
         ui32 Magic;
+        ui32 Index;
     };
 
     TWorkRequestId(ui64 id)
         : Id(id)
     {}
 
-    TWorkRequestId(ui32 index, ui32 magic)
-        : Index(index)
-        , Magic(magic)
+    TWorkRequestId(ui32 magic, ui32 index)
+        : Magic(magic)
+        , Index(index)
     {}
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline IOutputStream& operator<<(IOutputStream& out, const TWorkRequestId& id)
+{
+    Printf(out, "%08x:%08x", id.Magic, id.Index);
+    return out;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

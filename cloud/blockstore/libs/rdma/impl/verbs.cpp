@@ -1,4 +1,5 @@
 #include "verbs.h"
+#include "work_queue.h"
 
 #include <cloud/blockstore/libs/rdma/iface/utils.h>
 
@@ -457,7 +458,7 @@ TString PrintConnectionParams(const rdma_conn_param* conn)
 TString PrintCompletion(ibv_wc* wc)
 {
     return TStringBuilder()
-        << "[id=" << Hex(wc->wr_id)
+        << "[id=" << TWorkRequestId(wc->wr_id)
         << " opcode=" << GetOpcodeName(wc->opcode)
         << " status=" << GetStatusString(wc->status)
         << "]";
