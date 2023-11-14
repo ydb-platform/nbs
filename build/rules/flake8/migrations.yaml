@@ -1572,7 +1572,6 @@ migrations:
     - oebs/bi/lib/lb
     - oebs/lib/bi_utils/bi_utils/utils
     - offline_data/call_center/nirvana/send_sms
-    - quality/antifraud/scripts/dev/fury_local
     - quality/antifraud/scripts/dev/pxhf
     - quality/antifraud/xurma/tools/prebilling_stat_copier/lib
     - quality/functionality/chats/floyd/src/tests/api/plain/views
@@ -6105,7 +6104,6 @@ migrations:
     - search/mon/uchenki/app/controllers/api
     - search/mon/uchenki/lib/clients
     - search/mon/uchenki/lib/utils
-    - search/mon/warden/src/services
     - search/morty/src/common/clients
     - search/morty/src/rviewer/clients
     - search/rpslimiter/rpslimiter_agent/lib
@@ -7784,7 +7782,6 @@ migrations:
     - sandbox/sandboxsdk
     - search/mon/tickenator/src/libs/tickenator
     - search/mon/tickenator/src/workers
-    - search/mon/warden/src/workers
     - statbox/nile/tests/cluster
     - tools/mkdocs_builder/mkdocs_yandex/mkdocs_yandex/ext/markdown/pymdownx
     - travel/avia/shared_flights/tasks/flying_time
