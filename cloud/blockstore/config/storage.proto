@@ -879,4 +879,8 @@ message TStorageServiceConfig
 
     // Max timeout for nonrepl partition -> DA HDD requests.
     optional uint32 NonReplicatedMaxRequestTimeoutHDD = 339;
+
+    // Placeholders for legacy params that are still used in configs.
+    optional uint32 NonReplicatedMinRequestTimeout = 340;
+    optional uint32 NonReplicatedMaxRequestTimeout = 341;
 }

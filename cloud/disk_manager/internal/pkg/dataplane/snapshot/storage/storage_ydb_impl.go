@@ -15,7 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	"github.com/ydb-platform/nbs/rtc/mediator/cityhash"
+	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

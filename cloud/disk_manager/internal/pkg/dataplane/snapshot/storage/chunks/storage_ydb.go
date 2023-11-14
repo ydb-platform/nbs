@@ -10,7 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	"github.com/ydb-platform/nbs/rtc/mediator/cityhash"
+	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
