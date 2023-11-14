@@ -57,21 +57,21 @@ set_yunittest_property(
   blockstore-libs-storage-partition_nonrepl-ut
   PROPERTY
   LABELS
-  SMALL
+  MEDIUM
 )
 set_yunittest_property(
   TEST
   blockstore-libs-storage-partition_nonrepl-ut
   PROPERTY
   PROCESSORS
-  2
+  4
 )
 set_yunittest_property(
   TEST
   blockstore-libs-storage-partition_nonrepl-ut
   PROPERTY
   TIMEOUT
-  60
+  600
 )
 target_allocator(blockstore-libs-storage-partition_nonrepl-ut
   system_allocator

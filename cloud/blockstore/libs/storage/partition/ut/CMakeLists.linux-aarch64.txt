@@ -61,21 +61,21 @@ set_yunittest_property(
   cloud-blockstore-libs-storage-partition-ut
   PROPERTY
   LABELS
-  SMALL
+  MEDIUM
 )
 set_yunittest_property(
   TEST
   cloud-blockstore-libs-storage-partition-ut
   PROPERTY
   PROCESSORS
-  2
+  4
 )
 set_yunittest_property(
   TEST
   cloud-blockstore-libs-storage-partition-ut
   PROPERTY
   TIMEOUT
-  60
+  600
 )
 target_allocator(cloud-blockstore-libs-storage-partition-ut
   cpp-malloc-jemalloc
