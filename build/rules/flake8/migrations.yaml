@@ -9170,7 +9170,6 @@ migrations:
     - sandbox/projects/bsyeti
     - sandbox/projects/canvas
     - sandbox/projects/canvas/video_constructor_utils
-    - sandbox/projects/cloud/yfm
     - sandbox/projects/common/compare_upper_results
     - sandbox/projects/common/fusion
     - sandbox/projects/common/gencfg
@@ -10433,7 +10432,6 @@ migrations:
     - yt/python/contrib/prettytable
     - yt/python/contrib/python-chardet
     - yt/python/contrib/python-dill
-    - yt/python/yt/flask_helpers
     - yt/python/yt/tools
     - yt/python/yt/transfer_manager
     - yt/yt/experiments/dyntables_stress_test
