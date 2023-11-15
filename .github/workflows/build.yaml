@@ -2,14 +2,60 @@ name: Build NBS Binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      image:
+        type: string
+        required: false
+        default: arlng9uhmtlat6q5pqlv
+      zone-id:
+        type: string
+        required: true
+        default: eu-north1-c
+      disk-size:
+        type: string
+        required: true
+        default: '1023GB'
+      cores:
+        type: number
+        required: true
+        default: 32
+      memory:
+        type: string
+        required: true
+        default: '128GB'
   push:
     branches: [ $default-branch ]
   pull_request:
     branches: [ $default-branch ]
 
 jobs:
-  build:
+  provide-runner:
+    name: Start self-hosted YC runner
+    timeout-minutes: 5
     runs-on: ubuntu-latest
+    outputs:
+      label: ${{steps.start-yc-runner.outputs.label}}
+      instance-id: ${{steps.start-yc-runner.outputs.instance-id}}
+    steps:
+      - name: Start Nebius runner
+        id: start-yc-runner
+        uses: librarian/yc-github-runner@0.0.1
+        with:
+          mode: start
+          yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          folder-id: ${{secrets.NEBIUS_FOLDER}}
+          image-id: ${{inputs.image}}
+          disk-size: ${{inputs.disk-size}}
+          disk-type: network-ssd-nonreplicated
+          cores: ${{inputs.cores}}
+          memory: ${{inputs.memory}}
+          core-fraction: 100
+          zone-id: ${{inputs.zone-id}}
+          subnet-id: ${{secrets.NEBIUS_SUBNET}}
+  build:
+    runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
+    needs: provide-runner
     steps:
     - name: checkout
       uses: actions/checkout@v3
