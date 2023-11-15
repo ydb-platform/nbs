@@ -39,7 +39,7 @@ jobs:
     steps:
       - name: Start Nebius runner
         id: start-yc-runner
-        uses: librarian/yc-github-runner@0.0.1
+        uses: librarian/yc-github-runner@0.0.2
         with:
           mode: start
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
