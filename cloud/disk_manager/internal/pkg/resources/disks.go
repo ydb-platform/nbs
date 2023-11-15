@@ -546,6 +546,11 @@ func (s *storageYDB) deleteDisk(
 		return nil, err
 	}
 
+	err = s.deleteDiskFromIncremental(ctx, tx, state.id, state.zoneID)
+	if err != nil {
+		return nil, err
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		return nil, err
@@ -877,15 +882,28 @@ func (s *storageYDB) diskRelocated(
 		return err
 	}
 
-	if fillGeneration == state.fillGeneration {
-		state.zoneID = newZoneID
-	} else {
-		return tx.Commit(ctx)
+	if fillGeneration > state.fillGeneration {
+		return errors.NewNonRetriableErrorf(
+			"fillGeneration=%d > state.fillGeneration=%d for disk %v",
+			fillGeneration,
+			state.fillGeneration,
+			diskID,
+		)
 	}
 
-	err = s.updateDiskState(ctx, tx, state)
-	if err != nil {
-		return err
+	if fillGeneration == state.fillGeneration {
+		oldZoneID := state.zoneID
+		state.zoneID = newZoneID
+
+		err = s.updateDiskState(ctx, tx, state)
+		if err != nil {
+			return err
+		}
+
+		err = s.deleteDiskFromIncremental(ctx, tx, diskID, oldZoneID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit(ctx)

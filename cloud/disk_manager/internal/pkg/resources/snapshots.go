@@ -315,6 +315,28 @@ func (s *storageYDB) getIncremental(
 	return
 }
 
+func (s *storageYDB) deleteDiskFromIncremental(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	zoneID string,
+) error {
+
+	_, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $zone_id as Utf8;
+		declare $disk_id as Utf8;
+
+		delete from incremental
+		where zone_id = $zone_id and disk_id = $disk_id
+	`, s.snapshotsPath),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
+	)
+	return err
+}
+
 func (s *storageYDB) getSnapshotMeta(
 	ctx context.Context,
 	session *persistence.Session,
