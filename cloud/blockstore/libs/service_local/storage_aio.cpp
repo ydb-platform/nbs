@@ -695,7 +695,7 @@ private:
     std::shared_ptr<TStorageContext> StorageContext;
     TPromise<NProto::TError> Response;
     ui64 RemainingBlockCount;
-    ui64 ValidatedBlockIndex;
+    ui64 ValidatedBlockIndex = 0;
     TAlignedBuffer Buffer;
     TAlignedBuffer ZeroBuffer;
     TAlignedBuffer FFBuffer;
