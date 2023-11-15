@@ -4432,12 +4432,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         const auto agent1a = AgentConfig(1, "host-1.cloud.yandex.net", {
             Device("dev-1", "uuid-1.1", "rack-1", DefaultBlockSize, 10_GB),
             Device("dev-2", "uuid-1.2", "rack-1", DefaultBlockSize, 10_GB, "#1"),
-            Device("dev-3", "uuid-1.3", "rack-1", DefaultBlockSize, 10_GB)
+            Device("dev-3", "uuid-1.3", "rack-1", DefaultBlockSize, 10_GB),
+            Device("dev-4", "uuid-1.4", "rack-1", DefaultBlockSize, 10_GB)
         });
 
         const auto agent1b = AgentConfig(1, "host-1.cloud.yandex.net", {
+            // dev-1 - lost
+            // dev-2 has new transport id
             Device("dev-2", "uuid-1.2", "rack-1", DefaultBlockSize, 10_GB, "#2"),
-            Device("dev-3", "uuid-1.3", "rack-1", DefaultBlockSize, 20_GB)
+            // dev-3 has new size (bigger)
+            Device("dev-3", "uuid-1.3", "rack-1", DefaultBlockSize, 20_GB),
+            // dev-4 has new size (smaller)
+            Device("dev-4", "uuid-1.4", "rack-1", DefaultBlockSize, 9_GB)
         });
 
         TTestExecutor executor;
@@ -4449,6 +4455,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .WithKnownAgents({ agent1a })
             .Build();
 
+        // check initial configuration
         {
             const auto dev1 = state.GetDevice("uuid-1.1");
             UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev1.GetBlocksCount());
@@ -4462,6 +4469,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             const auto dev3 = state.GetDevice("uuid-1.3");
             UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev3.GetBlocksCount());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, dev3.GetState());
+
+            const auto dev4 = state.GetDevice("uuid-1.4");
+            UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev4.GetBlocksCount());
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, dev4.GetState());
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -4482,6 +4493,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             const auto dev1 = state.GetDevice("uuid-1.1");
             UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev1.GetBlocksCount());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, dev1.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("lost", dev1.GetStateMessage());
 
             const auto dev2 = state.GetDevice("uuid-1.2");
             UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev2.GetBlocksCount());
@@ -4490,7 +4502,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             const auto dev3 = state.GetDevice("uuid-1.3");
             UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev3.GetBlocksCount());
-            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, dev3.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(20_GB / DefaultBlockSize, dev3.GetUnadjustedBlockCount());
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, dev3.GetState());
+
+            const auto dev4 = state.GetDevice("uuid-1.4");
+            UNIT_ASSERT_VALUES_EQUAL(9_GB / DefaultBlockSize, dev4.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(9_GB / DefaultBlockSize, dev4.GetUnadjustedBlockCount());
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, dev4.GetState());
         }
     }
 
@@ -7645,29 +7663,60 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 config.SetAllocationUnitNonReplicatedSSD(93);
                 return config;
             }())
+            .WithDisks({
+                [] {
+                    NProto::TDiskConfig disk;
+
+                    disk.SetDiskId("vol0");
+                    disk.SetBlockSize(4_KB);
+                    disk.AddDeviceUUIDs("uuid-4");
+
+                    return disk;
+                } ()
+            })
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agentB));
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
+                db,
+                agentB,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate
+            ));
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", affectedDisks[0]);
+            Y_UNUSED(disksToReallocate);
         });
 
         UNIT_ASSERT(state.FindAgent(1) == nullptr);
         UNIT_ASSERT(state.FindAgent(42) != nullptr);
 
         for (size_t i = 1; i != agentB.DevicesSize() + 1; ++i) {
-            const auto device = state.GetDevice(Sprintf("uuid-%lu", i));
+            const TString uuid = Sprintf("uuid-%lu", i);
+            const auto device = state.GetDevice(uuid);
             UNIT_ASSERT_VALUES_EQUAL(Sprintf("dev-%lu", i), device.GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, device.GetBlockSize());
-            UNIT_ASSERT_VALUES_EQUAL(93_GB / DefaultBlockSize, device.GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(42, device.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL("rack-2", device.GetRack());
             UNIT_ASSERT_VALUES_EQUAL(agentB.GetAgentId(), device.GetAgentId());
 
-            if (i == 3) {
-                UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, device.GetState());
-            } else {
-                UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, device.GetState());
-            }
+            const auto expectedState = i == 4
+                ? NProto::DEVICE_STATE_ERROR
+                : NProto::DEVICE_STATE_ONLINE;
+
+            const auto expectedSize = i == 4
+                ? 94_GB
+                : 93_GB;
+
+            UNIT_ASSERT_EQUAL_C(expectedState, device.GetState(), uuid);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedSize / DefaultBlockSize,
+                device.GetBlocksCount(),
+                uuid);
         }
     }
 

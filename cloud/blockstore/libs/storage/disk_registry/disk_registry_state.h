@@ -1025,6 +1025,10 @@ private:
         bool dryRun,
         TDiskId& affectedDisk,
         TDuration& timeout);
+
+    NProto::TError CheckDestructiveConfigurationChange(
+        const NProto::TDeviceConfig& device,
+        const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -351,6 +351,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
                     foo.SetAgentId("foo");
                     foo.SetNodeId(1000);
                     *foo.AddDevices() = CreateDevice("x");
+                    // y - lost
                     *foo.AddDevices() = CreateDevice("z");
 
                     return foo;
@@ -369,18 +370,18 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             auto& x = *foo.MutableDevices(0);
             UNIT_ASSERT_VALUES_EQUAL("x", x.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, x.GetState());
-            UNIT_ASSERT(x.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("", x.GetStateMessage());
             x.SetState(NProto::DEVICE_STATE_WARNING);
 
             auto& y = foo.GetDevices(1);
             UNIT_ASSERT_VALUES_EQUAL("y", y.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, y.GetState());
-            UNIT_ASSERT(!y.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("lost", y.GetStateMessage());
 
             auto& z = foo.GetDevices(2);
             UNIT_ASSERT_VALUES_EQUAL("z", z.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, z.GetState());
-            UNIT_ASSERT(z.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("", z.GetStateMessage());
         }
 
         {
@@ -408,18 +409,18 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             auto& x = foo.GetDevices(0);
             UNIT_ASSERT_VALUES_EQUAL("x", x.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_WARNING, x.GetState());
-            UNIT_ASSERT(x.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("", x.GetStateMessage());
 
             auto& y = foo.GetDevices(1);
             UNIT_ASSERT_VALUES_EQUAL("y", y.GetDeviceUUID());
             // can't change state to online automatically
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, y.GetState());
-            UNIT_ASSERT(!y.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("lost", y.GetStateMessage());
 
             auto& z = foo.GetDevices(2);
             UNIT_ASSERT_VALUES_EQUAL("z", z.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, z.GetState());
-            UNIT_ASSERT(z.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("", z.GetStateMessage());
         }
 
         {
@@ -447,17 +448,21 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             auto& x = foo.GetDevices(0);
             UNIT_ASSERT_VALUES_EQUAL("x", x.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, x.GetState());
-            UNIT_ASSERT(!x.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("lost", x.GetStateMessage());
 
             auto& y = foo.GetDevices(1);
             UNIT_ASSERT_VALUES_EQUAL("y", y.GetDeviceUUID());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, y.GetState());
-            UNIT_ASSERT(!y.GetStateMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL("lost", x.GetStateMessage());
 
             auto& z = foo.GetDevices(2);
             UNIT_ASSERT_VALUES_EQUAL("z", z.GetDeviceUUID());
-            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, z.GetState());
-            UNIT_ASSERT(!z.GetStateMessage().empty());
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, z.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", z.GetStateMessage());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.OldConfigs.size());
+            auto& d = r.OldConfigs.begin()->second;
+            UNIT_ASSERT_VALUES_EQUAL("z", d.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, d.GetBlockSize());
         }
     }
 

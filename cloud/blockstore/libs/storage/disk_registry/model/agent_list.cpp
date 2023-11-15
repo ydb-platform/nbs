@@ -33,18 +33,6 @@ double UpdateRejectTimeoutMultiplier(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SetInvalidSerialNumberError(
-    NProto::TDeviceConfig& device,
-    TInstant timestamp)
-{
-    device.SetState(NProto::DEVICE_STATE_ERROR);
-    device.SetStateTs(timestamp.MicroSeconds());
-    device.SetStateMessage(TStringBuilder()
-        << "invalid serial number: " << device.GetSerialNumber());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TByUUID
 {
     template <typename T, typename U>
@@ -140,13 +128,11 @@ NProto::TAgentConfig& TAgentList::AddAgent(NProto::TAgentConfig config)
     return agent;
 }
 
-NProto::TAgentConfig& TAgentList::AddNewAgent(
+auto TAgentList::AddNewAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
-    const TKnownAgent& knownAgent,
-    THashSet<TDeviceId>* newDevices)
+    const TKnownAgent& knownAgent) -> TAgentRegistrationResult
 {
-    Y_ABORT_UNLESS(newDevices);
     Y_DEBUG_ABORT_UNLESS(
         agentConfig.GetState() == NProto::AGENT_STATE_ONLINE,
         "Trying to add a new agent which is not in online state");
@@ -156,20 +142,17 @@ NProto::TAgentConfig& TAgentList::AddNewAgent(
     agentConfig.SetStateTs(timestamp.MicroSeconds());
     agentConfig.SetStateMessage("New agent");
 
+    THashSet<TDeviceId> newDevices;
+
     for (auto& device: *agentConfig.MutableDevices()) {
+        UpdateDevice(device, agentConfig, knownAgent, timestamp, {});
+
         device.SetStateTs(timestamp.MicroSeconds());
-        device.SetUnadjustedBlockCount(device.GetBlocksCount());
 
-        if (device.GetState() != NProto::DEVICE_STATE_ERROR
-                && !ValidateSerialNumber(knownAgent, device))
-        {
-            SetInvalidSerialNumberError(device, timestamp);
-        }
-
-        newDevices->insert(device.GetDeviceUUID());
+        newDevices.insert(device.GetDeviceUUID());
     }
 
-    return AddAgent(std::move(agentConfig));
+    return { AddAgent(std::move(agentConfig)), std::move(newDevices), 0, {} };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -242,52 +225,36 @@ bool TAgentList::ValidateSerialNumber(
 }
 
 void TAgentList::UpdateDevice(
-    NProto::TDeviceConfig& oldDevice,
+    NProto::TDeviceConfig& device,
     const NProto::TAgentConfig& agent,
     const TKnownAgent& knownAgent,
     TInstant timestamp,
-    const NProto::TDeviceConfig& newDevice)
+    const NProto::TDeviceConfig& oldConfig)
 {
-    if (oldDevice.GetUnadjustedBlockCount() == 0) {
-        oldDevice.SetUnadjustedBlockCount(oldDevice.GetBlocksCount());
-    }
+    device.SetState(oldConfig.GetState());
+    device.SetStateTs(oldConfig.GetStateTs());
+    device.SetStateMessage(oldConfig.GetStateMessage());
+    device.SetCmsTs(oldConfig.GetCmsTs());
+    device.SetNodeId(agent.GetNodeId());
+    device.SetAgentId(agent.GetAgentId());
+    device.SetUnadjustedBlockCount(device.GetBlocksCount());
 
-    // update volatile fields
-    oldDevice.SetBaseName(newDevice.GetBaseName());
-    oldDevice.SetTransportId(newDevice.GetTransportId());
-    oldDevice.SetNodeId(agent.GetNodeId());
-    oldDevice.SetAgentId(agent.GetAgentId());
-    oldDevice.SetRack(newDevice.GetRack());
-    oldDevice.MutableRdmaEndpoint()->CopyFrom(newDevice.GetRdmaEndpoint());
-    oldDevice.SetPoolName(newDevice.GetPoolName());
-
-    if (newDevice.GetState() == NProto::DEVICE_STATE_ERROR) {
-        oldDevice.SetState(newDevice.GetState());
-        oldDevice.SetStateTs(newDevice.GetStateTs());
-        oldDevice.SetStateMessage(newDevice.GetStateMessage());
-
-        return;
-    }
-
-    if (!ValidateSerialNumber(knownAgent, newDevice)) {
-        SetInvalidSerialNumberError(oldDevice, timestamp);
-
-        return;
-    }
-
-    oldDevice.SetSerialNumber(newDevice.GetSerialNumber());
-
-    if (oldDevice.GetBlockSize() != newDevice.GetBlockSize()
-        || oldDevice.GetUnadjustedBlockCount() != newDevice.GetBlocksCount())
+    if (device.GetBlockSize() == oldConfig.GetBlockSize() &&
+        device.GetUnadjustedBlockCount() == oldConfig.GetUnadjustedBlockCount())
     {
-        oldDevice.SetState(NProto::DEVICE_STATE_ERROR);
-        oldDevice.SetStateTs(timestamp.MicroSeconds());
-        oldDevice.SetStateMessage(TStringBuilder() <<
-            "configuration changed: "
-                << oldDevice.GetBlockSize() << "x" << oldDevice.GetUnadjustedBlockCount()
-                << " -> "
-                << newDevice.GetBlockSize() << "x" << newDevice.GetBlocksCount()
-        );
+        // if the device hasn't changed, we can adjust BlocksCount
+        device.SetBlocksCount(oldConfig.GetBlocksCount());
+    }
+
+    if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+        return;
+    }
+
+    if (!ValidateSerialNumber(knownAgent, device)) {
+        device.SetState(NProto::DEVICE_STATE_ERROR);
+        device.SetStateTs(timestamp.MicroSeconds());
+        device.SetStateMessage(TStringBuilder()
+            << "invalid serial number: " << device.GetSerialNumber());
 
         return;
     }
@@ -297,12 +264,12 @@ void TAgentList::AddUpdatedDevice(
     NProto::TAgentConfig& agent,
     const TKnownAgent& knownAgent,
     TInstant timestamp,
-    NProto::TDeviceConfig oldDevice,
-    const NProto::TDeviceConfig& newDevice)
+    const NProto::TDeviceConfig& oldDevice,
+    NProto::TDeviceConfig newDevice)
 {
-    UpdateDevice(oldDevice, agent, knownAgent, timestamp, newDevice);
+    UpdateDevice(newDevice, agent, knownAgent, timestamp, oldDevice);
 
-    agent.MutableDevices()->Add(std::move(oldDevice));
+    agent.MutableDevices()->Add(std::move(newDevice));
 }
 
 void TAgentList::AddLostDevice(
@@ -328,17 +295,9 @@ void TAgentList::AddNewDevice(
     TInstant timestamp,
     NProto::TDeviceConfig device)
 {
+    UpdateDevice(device, agent, knownAgent, timestamp, {});
+
     device.SetStateTs(timestamp.MicroSeconds());
-    device.SetUnadjustedBlockCount(device.GetBlocksCount());
-
-    device.SetNodeId(agent.GetNodeId());
-    device.SetAgentId(agent.GetAgentId());
-
-    if (device.GetState() != NProto::DEVICE_STATE_ERROR
-            && !ValidateSerialNumber(knownAgent, device))
-    {
-        SetInvalidSerialNumberError(device, timestamp);
-    }
 
     agent.MutableDevices()->Add(std::move(device));
 }
@@ -348,8 +307,6 @@ auto TAgentList::RegisterAgent(
     TInstant timestamp,
     const TKnownAgent& knownAgent) -> TAgentRegistrationResult
 {
-    THashSet<TDeviceId> newDeviceIds;
-
     PrepareConfig(agentConfig, knownAgent);
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
@@ -359,13 +316,10 @@ auto TAgentList::RegisterAgent(
             agentConfig.GetAgentId().c_str(),
             agentConfig.GetNodeId());
 
-        auto& agent = AddNewAgent(
+        return AddNewAgent(
             std::move(agentConfig),
             timestamp,
-            knownAgent,
-            &newDeviceIds);
-
-        return { agent, std::move(newDeviceIds) };
+            knownAgent);
     }
 
     const TNodeId prevNodeId = agent->GetNodeId();
@@ -392,6 +346,9 @@ auto TAgentList::RegisterAgent(
 
     agent->MutableDevices()->Clear();
 
+    THashSet<TDeviceId> newDeviceIds;
+    THashMap<TDeviceId, NProto::TDeviceConfig> oldConfigs;
+
     int i = 0;
     int j = 0;
 
@@ -407,8 +364,10 @@ auto TAgentList::RegisterAgent(
                 *agent,
                 knownAgent,
                 timestamp,
-                std::move(oldDevice),
-                newDevice);
+                oldDevice,
+                std::move(newDevice));
+
+            oldConfigs[oldDevice.GetDeviceUUID()] = std::move(oldDevice);
 
             ++i;
             ++j;
@@ -456,7 +415,7 @@ auto TAgentList::RegisterAgent(
         }
     }
 
-    return { *agent, std::move(newDeviceIds), prevNodeId };
+    return { *agent, std::move(newDeviceIds), prevNodeId, std::move(oldConfigs) };
 }
 
 ////////////////////////////////////////////////////////////////////////////////

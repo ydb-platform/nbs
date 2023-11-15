@@ -87,6 +87,7 @@ public:
         std::reference_wrapper<NProto::TAgentConfig> Agent;
         THashSet<TDeviceId> NewDevices;
         TNodeId PrevNodeId = 0;
+        THashMap<TDeviceId, NProto::TDeviceConfig> OldConfigs;
     };
 
     TAgentRegistrationResult RegisterAgent(
@@ -121,11 +122,10 @@ public:
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);
 
-    NProto::TAgentConfig& AddNewAgent(
+    TAgentRegistrationResult AddNewAgent(
         NProto::TAgentConfig config,
         TInstant timestamp,
-        const TKnownAgent& knownAgent,
-        THashSet<TDeviceId>* newDevices);
+        const TKnownAgent& knownAgent);
 
     void TransferAgent(
         NProto::TAgentConfig& agent,
@@ -142,14 +142,14 @@ private:
         const NProto::TAgentConfig& agent,
         const TKnownAgent& knownAgent,
         TInstant timestamp,
-        const NProto::TDeviceConfig& newConfig);
+        const NProto::TDeviceConfig& oldConfig);
 
     void AddUpdatedDevice(
         NProto::TAgentConfig& agent,
         const TKnownAgent& knownAgent,
         TInstant timestamp,
-        NProto::TDeviceConfig device,
-        const NProto::TDeviceConfig& newConfig);
+        const NProto::TDeviceConfig& oldDevice,
+        NProto::TDeviceConfig newConfig);
 
     void AddLostDevice(
         NProto::TAgentConfig& agent,

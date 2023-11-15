@@ -229,6 +229,16 @@ TString GetPoolNameForCounters(
     return poolName;
 }
 
+void SetDeviceErrorState(
+    NProto::TDeviceConfig& device,
+    TInstant timestamp,
+    TString message)
+{
+    device.SetState(NProto::DEVICE_STATE_ERROR);
+    device.SetStateTs(timestamp.MicroSeconds());
+    device.SetStateMessage(std::move(message));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -672,10 +682,8 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
 
     const auto* poolConfig = DevicePoolConfigs.FindPtr(device.GetPoolName());
     if (!poolConfig) {
-        device.SetState(NProto::DEVICE_STATE_ERROR);
-        device.SetStateTs(timestamp.MicroSeconds());
-        device.SetStateMessage(
-            Sprintf("unknown pool: %s", device.GetPoolName().c_str()));
+        SetDeviceErrorState(device, timestamp, TStringBuilder()
+            << "unknown pool: " << device.GetPoolName());
 
         return;
     }
@@ -694,18 +702,14 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
     const auto deviceSize = device.GetBlockSize() * device.GetBlocksCount();
 
     if (deviceSize < unit) {
-        device.SetState(NProto::DEVICE_STATE_ERROR);
-        device.SetStateTs(timestamp.MicroSeconds());
-        device.SetStateMessage(TStringBuilder()
+        SetDeviceErrorState(device, timestamp, TStringBuilder()
             << "device is too small: " << deviceSize);
 
         return;
     }
 
     if (device.GetBlockSize() == 0 || unit % device.GetBlockSize() != 0) {
-        device.SetState(NProto::DEVICE_STATE_ERROR);
-        device.SetStateTs(timestamp.MicroSeconds());
-        device.SetStateMessage(TStringBuilder()
+        SetDeviceErrorState(device, timestamp, TStringBuilder()
             << "bad block size: " << device.GetBlockSize());
 
         return;
@@ -803,9 +807,19 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         NProto::TAgentConfig& agent = r.Agent;
 
         for (auto& d: *agent.MutableDevices()) {
-            AdjustDeviceIfNeeded(d, timestamp);
-
             const auto& uuid = d.GetDeviceUUID();
+
+            if (auto error = CheckDestructiveConfigurationChange(d, r.OldConfigs);
+                    HasError(error))
+            {
+                STORAGE_ERROR(error.GetMessage());
+
+                SetDeviceErrorState(d, timestamp, error.GetMessage());
+
+                continue;
+            }
+
+            AdjustDeviceIfNeeded(d, timestamp);
 
             if (!StorageConfig->GetNonReplicatedDontSuspendDevices()
                     && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
@@ -878,6 +892,45 @@ NProto::TError TDiskRegistryState::RegisterAgent(
     }
 
     return {};
+}
+
+NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
+    const NProto::TDeviceConfig& device,
+    const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const
+{
+    auto* oldConfig = oldConfigs.FindPtr(device.GetDeviceUUID());
+    if (!oldConfig) {
+        return {};
+    }
+
+    const auto diskId = FindDisk(device.GetDeviceUUID());
+
+    if (diskId.empty()) {
+        return {};
+    }
+
+    auto key = [] (const NProto::TDeviceConfig& d) {
+        return std::make_tuple(
+            d.GetBlockSize(),
+            d.GetBlocksCount(),
+            d.GetUnadjustedBlockCount(),
+            d.GetPhysicalOffset(),
+            TStringBuf {d.GetDeviceName()}
+        );
+    };
+
+    const auto oldKey = key(*oldConfig);
+    const auto newKey = key(device);
+
+    if (oldKey == newKey && (oldConfig->GetSerialNumber().empty()
+            || oldConfig->GetSerialNumber() == device.GetSerialNumber()))
+    {
+        return {};
+    }
+
+    return MakeError(E_ARGUMENT, TStringBuilder()
+        << "Device configuration has changed: "
+        << *oldConfig << " -> " << device << ". Affected disk: " << diskId);
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(
@@ -6100,9 +6153,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
         diskId,
         TStringBuilder()
             << "target device " << targetDeviceId.Quote() << " not found");
-    targetDevice->SetState(NProto::DEVICE_STATE_ERROR);
-    targetDevice->SetStateMessage("replaced by private api");
-    targetDevice->SetStateTs(now.MicroSeconds());
+    SetDeviceErrorState(*targetDevice, now, "replaced by private api");
     DeviceList.UpdateDevices(*targetAgent);
     UpdateAgent(db, *targetAgent);
 
@@ -6113,9 +6164,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
         diskId,
         TStringBuilder()
             << "source device " << sourceDeviceId.Quote() << " not found");
-    sourceDevice->SetState(NProto::DEVICE_STATE_ERROR);
-    sourceDevice->SetStateMessage("replaced by private api");
-    sourceDevice->SetStateTs(now.MicroSeconds());
+    SetDeviceErrorState(*sourceDevice, now, "replaced by private api");
     DeviceList.UpdateDevices(*sourceAgent);
     UpdateAgent(db, *sourceAgent);
 
