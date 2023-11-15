@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/tx/columnshard/engines/column_engine.h>
 #include <contrib/ydb/core/tx/columnshard/normalizer/abstract/abstract.h>
 #include <contrib/ydb/core/tx/columnshard/engines/writer/write_controller.h>
-#include <contrib/ydb/core/tx/ev_write/write_data.h>
+#include <contrib/ydb/core/tx/data_events/write_data.h>
 #include <contrib/ydb/core/formats/arrow/special_keys.h>
 
 namespace NKikimr::NColumnShard {

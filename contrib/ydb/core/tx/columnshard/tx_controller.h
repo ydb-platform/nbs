@@ -3,7 +3,7 @@
 #include "columnshard_schema.h"
 
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-#include <contrib/ydb/core/tx/ev_write/events.h>
+#include <contrib/ydb/core/tx/data_events/events.h>
 
 
 namespace NKikimr::NColumnShard {

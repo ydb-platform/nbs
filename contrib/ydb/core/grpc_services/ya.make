@@ -114,7 +114,7 @@ PEERDIR(
     contrib/ydb/core/tx/datashard
     contrib/ydb/core/tx/sharding
     contrib/ydb/core/tx/long_tx_service/public
-    contrib/ydb/core/tx/ev_write
+    contrib/ydb/core/tx/data_events
     contrib/ydb/core/ydb_convert
     contrib/ydb/core/security
     contrib/ydb/library/aclib

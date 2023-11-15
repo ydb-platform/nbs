@@ -2,7 +2,7 @@
 
 #include "write_data.h"
 
-#include <contrib/ydb/core/protos/ev_write.pb.h>
+#include <contrib/ydb/core/protos/data_events.pb.h>
 #include <contrib/ydb/core/base/events.h>
 
 #include <library/cpp/actors/core/event_pb.h>
@@ -10,15 +10,6 @@
 
 
 namespace NKikimr::NEvents {
-
-
-class IDataConstructor {
-public:
-    using TPtr = std::shared_ptr<IDataConstructor>;
-    virtual ~IDataConstructor() {}
-    virtual void Serialize(NKikimrDataEvents::TOperationData& proto) const = 0;
-    virtual ui64 GetSchemaVersion() const = 0;
-};
 
 struct TDataEvents {
 
@@ -51,11 +42,21 @@ struct TDataEvents {
             Record.SetTxId(txId);
         }
 
-        void AddReplaceOp(const ui64 tableId, const IDataConstructor::TPtr& data) {
-            Record.MutableTableId()->SetTableId(tableId);
-            Y_ABORT_UNLESS(data);
-            Record.MutableTableId()->SetSchemaVersion(data->GetSchemaVersion());
-            data->Serialize(*Record.MutableReplace());
+        void AddOperation(NKikimrDataEvents::TEvWrite_TOperation::EOperationType operationType, ui64 tableId, 
+            ui64 schemaVersion, const std::vector<std::pair<TString, NScheme::TTypeInfo>>& ydbSchema,
+            ui64 payloadIndex, NKikimrDataEvents::EDataFormat payloadFormat) {
+            Y_ABORT_UNLESS(operationType != NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UNSPECIFIED);
+            Y_ABORT_UNLESS(payloadFormat != NKikimrDataEvents::FORMAT_UNSPECIFIED);
+
+            auto operation = Record.AddOperations();
+            operation->SetType(operationType);
+            operation->SetPayloadFormat(payloadFormat);
+            operation->SetPayloadIndex(payloadIndex);
+            operation->MutableTableId()->SetTableId(tableId);
+            operation->MutableTableId()->SetSchemaVersion(schemaVersion);
+            for (ui32 i = 0; i < ydbSchema.size(); ++i) {
+                operation->AddColumnIds(i + 1);
+            }
         }
 
         ui64 GetTxId() const {
@@ -68,27 +69,27 @@ struct TDataEvents {
 
         TEvWriteResult() = default;
 
-        static std::unique_ptr<TEvWriteResult> BuildError(const ui64 txId, const NKikimrDataEvents::TEvWriteResult::EOperationStatus& status, const TString& errorMsg) {
+        static std::unique_ptr<TEvWriteResult> BuildError(const ui64 txId, const NKikimrDataEvents::TEvWriteResult::EStatus& status, const TString& errorMsg) {
             auto result = std::make_unique<TEvWriteResult>();
-            AFL_ERROR(NKikimrServices::TX_COLUMNSHARD)("event", "ev_write_error")("status", NKikimrDataEvents::TEvWriteResult::EOperationStatus_Name(status))
-                ("details", errorMsg)("tx_id", txId);
+            ACFL_ERROR("event", "ev_write_error")("status", NKikimrDataEvents::TEvWriteResult::EStatus_Name(status))("details", errorMsg)("tx_id", txId);
             result->Record.SetTxId(txId);
             result->Record.SetStatus(status);
-            result->Record.MutableIssueMessage()->set_message(errorMsg);
+            auto issue = result->Record.AddIssues();
+            issue->set_message(errorMsg);
             return result;
         }
 
         static std::unique_ptr<TEvWriteResult> BuildCommited(const ui64 txId) {
             auto result = std::make_unique<TEvWriteResult>();
             result->Record.SetTxId(txId);
-            result->Record.SetStatus(NKikimrDataEvents::TEvWriteResult::COMPLETED);
+            result->Record.SetStatus(NKikimrDataEvents::TEvWriteResult::STATUS_COMPLETED);
             return result;
         }
 
         static std::unique_ptr<TEvWriteResult> BuildPrepared(const ui64 txId, const TCoordinatorInfo& transactionInfo) {
             auto result = std::make_unique<TEvWriteResult>();
             result->Record.SetTxId(txId);
-            result->Record.SetStatus(NKikimrDataEvents::TEvWriteResult::PREPARED);
+            result->Record.SetStatus(NKikimrDataEvents::TEvWriteResult::STATUS_PREPARED);
 
             result->Record.SetMinStep(transactionInfo.GetMinStep());
             result->Record.SetMaxStep(transactionInfo.GetMaxStep());

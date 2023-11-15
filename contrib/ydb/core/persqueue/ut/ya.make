@@ -20,6 +20,9 @@ PEERDIR(
     contrib/ydb/core/persqueue/ut/common
     contrib/ydb/core/testlib/default
     contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/client/ydb_topic/ut/ut_utils
+
+    contrib/ydb/core/tx/schemeshard/ut_helpers
 )
 
 YQL_LAST_ABI_VERSION()
@@ -33,9 +36,11 @@ SRCS(
     mirrorer_ut.cpp
     pq_ut.cpp
     partition_ut.cpp
+    partitiongraph_ut.cpp
     pqtablet_ut.cpp
     quota_tracker_ut.cpp
     sourceid_ut.cpp
+    splitmerge_ut.cpp
     type_codecs_ut.cpp
     user_info_ut.cpp
     pqrb_describes_ut.cpp

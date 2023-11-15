@@ -3,7 +3,7 @@
 #include "blob_constructor.h"
 #include "write_controller.h"
 
-#include <contrib/ydb/core/tx/ev_write/write_data.h>
+#include <contrib/ydb/core/tx/data_events/write_data.h>
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/write.h>
 #include <contrib/ydb/core/tx/columnshard/counters/common/object_counter.h>
 #include <contrib/ydb/core/tx/columnshard/engines/portion_info.h>

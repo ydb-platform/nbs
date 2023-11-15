@@ -13,7 +13,7 @@
 #include <contrib/ydb/core/tx/sharding/sharding.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/tx/ev_write/shard_writer.h>
+#include <contrib/ydb/core/tx/data_events/shard_writer.h>
 #include <contrib/ydb/core/tx/columnshard/columnshard.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/events.h>
 #include <contrib/ydb/services/ext_index/common/service.h>

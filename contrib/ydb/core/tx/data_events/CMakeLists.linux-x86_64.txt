@@ -7,8 +7,9 @@
 
 
 
-add_library(core-tx-ev_write)
-target_link_libraries(core-tx-ev_write PUBLIC
+add_library(core-tx-data_events)
+target_link_libraries(core-tx-data_events PUBLIC
+  contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   ydb-core-tablet
@@ -29,8 +30,8 @@ target_link_libraries(core-tx-ev_write PUBLIC
   ydb-core-tablet_flat
   blobstorage-vdisk-protos
 )
-target_sources(core-tx-ev_write PRIVATE
-  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tx/ev_write/shard_writer.cpp
-  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tx/ev_write/shards_splitter.cpp
-  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tx/ev_write/write_data.cpp
+target_sources(core-tx-data_events PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tx/data_events/shard_writer.cpp
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tx/data_events/shards_splitter.cpp
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tx/data_events/write_data.cpp
 )

@@ -24,6 +24,7 @@ PEERDIR(
 
     contrib/ydb/public/sdk/cpp/client/ydb_topic
     contrib/ydb/public/sdk/cpp/client/ydb_topic/impl
+    contrib/ydb/public/sdk/cpp/client/ydb_topic/ut/ut_utils
 )
 
 YQL_LAST_ABI_VERSION()
@@ -33,8 +34,6 @@ SRCS(
     describe_topic_ut.cpp
     local_partition_ut.cpp
     topic_to_table_ut.cpp
-    ut_utils/managed_executor.cpp
-    ut_utils/topic_sdk_test_setup.cpp
 )
 
 END()
