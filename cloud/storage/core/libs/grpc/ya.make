@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     auth_metadata.cpp
+    channel_arguments.cpp
     completion.cpp
     credentials.cpp
     initializer.cpp

@@ -42,6 +42,8 @@ public:
     TString GetAuthToken() const;
     bool GetSkipCertVerification() const;
 
+    TString GetUnixSocketPath() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

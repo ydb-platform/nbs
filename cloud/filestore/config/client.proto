@@ -44,6 +44,9 @@ message TClientConfig
 
     // Skip server certificate verification
     optional bool SkipCertVerification = 17;
+
+    // Unix-socket path.
+    optional string UnixSocketPath = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

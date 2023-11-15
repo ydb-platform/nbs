@@ -13,6 +13,7 @@ RECURSE(
     kikimr
     tablet
     throttling
+    uds
     user_stats
     version
 )

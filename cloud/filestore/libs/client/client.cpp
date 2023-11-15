@@ -15,7 +15,10 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/completion.h>
 #include <cloud/storage/core/libs/grpc/executor.h>
+#include <cloud/storage/core/libs/grpc/channel_arguments.h>
+#include <cloud/storage/core/libs/grpc/credentials.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/uds/uds_socket_client.h>
 
 #include <library/cpp/actors/prof/tag.h>
 
@@ -23,6 +26,7 @@
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
+#include <contrib/libs/grpc/include/grpcpp/create_channel_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
 
@@ -36,6 +40,7 @@
 
 namespace NCloud::NFileStore::NClient {
 
+using namespace NCloud::NStorage::NClient;
 using namespace NThreading;
 
 LWTRACE_USING(FILESTORE_CLIENT_PROVIDER);
@@ -57,12 +62,6 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
         error.SetMessage(TString(status.error_message()));
     }
     return error;
-}
-
-TString ReadFile(const TString& fileName)
-{
-    TFileInput in(fileName);
-    return in.ReadAll();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -557,6 +556,37 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TClient>
+class TUdsClient
+    : public TUdsSocketClient<TClient, TCallContextPtr>
+{
+public:
+    using TBase = TUdsSocketClient<TClient, TCallContextPtr>;
+    using TBase::TBase;
+
+protected:
+    template <typename TMethod>
+    void ExecuteStreamRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request,
+        IResponseHandlerPtr<typename TMethod::TResponse> responseHandler)
+    {
+        if (!TBase::IncInflightCounter()) {
+            TBase::Connect();
+            responseHandler->HandleResponse(
+                TErrorResponse(E_GRPC_UNAVAILABLE, "Broken pipe"));
+            return;
+        }
+
+        TBase::template ExecuteStreamRequest<TMethod>(
+            std::move(callContext),
+            std::move(request),
+            std::move(responseHandler));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TAppContext, typename TClient>
 class TClientBase
     : public TClient
@@ -581,7 +611,6 @@ public:
     void Start() override
     {
         AppCtx.Log = Logging->CreateLog("NFS_CLIENT");
-
         StartClient();
     }
 
@@ -603,7 +632,7 @@ public:
     }
 
     template <typename TMethod>
-    TFuture<typename TMethod::TResponse> StartRequest(
+    TFuture<typename TMethod::TResponse> ExecuteRequest(
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
@@ -620,7 +649,7 @@ public:
     }
 
     template <typename TMethod>
-    void StartStreamRequest(
+    void ExecuteStreamRequest(
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request,
         IResponseHandlerPtr<typename TMethod::TResponse> responseHandler)
@@ -636,55 +665,42 @@ public:
 protected:
     virtual void InitService(std::shared_ptr<::grpc::Channel> channel) = 0;
 
-    void StartClient()
+    bool StartWithUds(const TString& unixSocketPath)
     {
-        auto& Log = AppCtx.Log;
-        auto& config = AppCtx.Config;
-
-        if (config->GetSecurePort() == 0 && config->GetPort() == 0) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "gRPC client ports are not set";
-        }
-
-        bool secureEndpoint = config->GetSecurePort() != 0;
-        auto address = Join(":", config->GetHost(),
-            secureEndpoint ? config->GetSecurePort() : config->GetPort());
-
-        std::shared_ptr<grpc::ChannelCredentials> credentials;
-        if (!secureEndpoint) {
-            credentials = grpc::InsecureChannelCredentials();
-        } else if (config->GetSkipCertVerification()) {
-            grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
-            tlsOptions.set_verify_server_certs(false);
-            credentials = grpc::experimental::TlsCredentials(tlsOptions);
-        } else {
-            grpc::SslCredentialsOptions sslOptions;
-
-            if (const auto& rootCertsFile = config->GetRootCertsFile()) {
-                sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-            }
-
-            if (const auto& certFile = config->GetCertFile()) {
-                sslOptions.pem_cert_chain = ReadFile(certFile);
-                sslOptions.pem_private_key = ReadFile(config->GetCertPrivateKeyFile());
-            }
-
-            credentials = grpc::SslCredentials(sslOptions);
-        }
-
-        STORAGE_INFO("Connect to " << address);
-
-        auto channel = CreateCustomChannel(
-            std::move(address),
-            std::move(credentials),
-            CreateChannelArguments());
+        auto channel = ConfigureUnixSocketChannel(unixSocketPath);
 
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
+            return false;
         }
 
         InitService(std::move(channel));
+        return true;
+    }
+
+    bool StartWithTcpSocket()
+    {
+        auto channel = ConfigureTcpSocketChannel();
+
+        if (!channel) {
+            return false;
+        }
+
+        InitService(std::move(channel));
+        return true;
+    }
+
+    void StartClient()
+    {
+        auto& config = AppCtx.Config;
+
+        bool res = config->GetUnixSocketPath() ?
+            StartWithUds(config->GetUnixSocketPath()) :
+            StartWithTcpSocket();
+
+        if (!res) {
+            ythrow TServiceError(E_FAIL)
+                << "could not start gRPC client";
+        }
 
         ui32 threadsCount = AppCtx.Config->GetThreadsCount();
         for (size_t i = 1; i <= threadsCount; ++i) {
@@ -710,44 +726,77 @@ protected:
 
     grpc::ChannelArguments CreateChannelArguments()
     {
-        grpc::ChannelArguments args;
+        return NStorage::NGrpc::CreateChannelArguments(*AppCtx.Config);
+    }
 
-        const auto& config = AppCtx.Config;
-        ui32 maxMessageSize = config->GetMaxMessageSize();
-        if (maxMessageSize) {
-            args.SetMaxSendMessageSize(maxMessageSize);
-            args.SetMaxReceiveMessageSize(maxMessageSize);
+    std::shared_ptr<grpc::Channel> ConfigureTcpSocketChannel()
+    {
+        auto& Log = AppCtx.Log;
+        auto& config = AppCtx.Config;
+
+        if (config->GetSecurePort() == 0 && config->GetPort() == 0) {
+            ythrow TServiceError(E_ARGUMENT)
+                << "gRPC client ports are not set";
         }
 
-        ui32 memoryQuotaBytes = config->GetMemoryQuotaBytes();
-        if (memoryQuotaBytes) {
-            grpc::ResourceQuota quota("memory_bound");
-            quota.Resize(memoryQuotaBytes);
+        bool secureEndpoint = config->GetSecurePort() != 0;
+        auto address = Join(":", config->GetHost(),
+            secureEndpoint ? config->GetSecurePort() : config->GetPort());
 
-            args.SetResourceQuota(quota);
+        auto credentials = CreateTcpClientChannelCredentials(
+            secureEndpoint,
+            *config);
+
+        STORAGE_INFO("Connect to " << address);
+
+        return CreateCustomChannel(
+            std::move(address),
+            std::move(credentials),
+            CreateChannelArguments());
+    }
+
+    std::shared_ptr<grpc::Channel> ConfigureUnixSocketChannel(
+        const TString& unixSocketPath)
+    {
+        auto& Log = AppCtx.Log;
+
+        STORAGE_INFO("Connect to " << unixSocketPath.Quote() << " socket");
+
+        TSockAddrLocal addr(unixSocketPath.c_str());
+
+        TLocalStreamSocket socket;
+        if (socket.Connect(&addr) < 0) {
+            return nullptr;
         }
 
-        if (auto backoff = config->GetGrpcReconnectBackoff()) {
-            args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-            args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-            args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-        }
+        auto channel = grpc::CreateCustomInsecureChannelFromFd(
+            "localhost",
+            socket,
+            CreateChannelArguments());
 
-        return args;
+        socket.Release();   // ownership transferred to Channel
+        return channel;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TUdsFileStoreClientBase = TUdsClient<
+    TClientBase<TFileStoreContext, IFileStoreService>
+    >;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TBase>
 class TFileStoreClient final
-    : public TClientBase<TFileStoreContext, IFileStoreService>
+    : public TBase
 {
 public:
-    using TClientBase::TClientBase;
+    using TBase::TBase;
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
+        TBase::AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -755,7 +804,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return StartRequest<T##name##Fs##Method>(                              \
+        return TBase::template ExecuteRequest<T##name##Fs##Method>(           \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -770,24 +819,34 @@ public:
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
     {
-        StartStreamRequest<TGetSessionEventsStreamMethod>(
+        TBase::template ExecuteStreamRequest<TGetSessionEventsStreamMethod>(
             std::move(callContext),
             std::move(request),
             std::move(responseHandler));
     }
 };
 
+using TUdsFileStoreClient = TFileStoreClient<TUdsFileStoreClientBase>;
+using TTcpFileStoreClient = TFileStoreClient<TClientBase<TFileStoreContext, IFileStoreService>>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
+using TUdsEndpointManagerClientBase = TUdsClient<
+    TClientBase<TEndpointManagerContext, IEndpointManager>
+    >;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TBase>
 class TEndpointManagerClient final
-    : public TClientBase<TEndpointManagerContext, IEndpointManager>
+    : public TBase
 {
 public:
-    using TClientBase::TClientBase;
+    using TBase::TBase;
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        AppCtx.Service = NProto::TEndpointManagerService::NewStub(std::move(channel));
+        TBase::AppCtx.Service = NProto::TEndpointManagerService::NewStub(std::move(channel));
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -795,7 +854,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return StartRequest<T##name##Vhost##Method>(                           \
+        return TBase::template ExecuteRequest<T##name##Vhost##Method>(         \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -806,6 +865,9 @@ public:
 #undef FILESTORE_IMPLEMENT_METHOD
 };
 
+using TUdsEndpointManagerClient= TEndpointManagerClient<TUdsEndpointManagerClientBase>;
+using TTcpEndpointManagerClient = TEndpointManagerClient<TClientBase<TEndpointManagerContext, IEndpointManager>>;
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -814,18 +876,36 @@ IFileStoreServicePtr CreateFileStoreClient(
     TClientConfigPtr config,
     ILoggingServicePtr logging)
 {
-    return std::make_shared<TFileStoreClient>(
-        std::move(config),
-        std::move(logging));
+    if (config->GetUnixSocketPath()) {
+        auto client = std::make_shared<TUdsFileStoreClient>(
+            config->GetUnixSocketPath(),
+            std::move(config),
+            std::move(logging));
+        client->Connect();
+        return client;
+    } else {
+        return std::make_shared<TTcpFileStoreClient>(
+            std::move(config),
+            std::move(logging));
+    }
 }
 
 IEndpointManagerPtr CreateEndpointManagerClient(
     TClientConfigPtr config,
     ILoggingServicePtr logging)
 {
-    return std::make_shared<TEndpointManagerClient>(
-        std::move(config),
-        std::move(logging));
+    if (config->GetUnixSocketPath()) {
+        auto client = std::make_shared<TUdsEndpointManagerClient>(
+            config->GetUnixSocketPath(),
+            std::move(config),
+            std::move(logging));
+        client->Connect();
+        return client;
+    } else {
+        return std::make_shared<TTcpEndpointManagerClient>(
+            std::move(config),
+            std::move(logging));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NClient

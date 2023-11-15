@@ -23,18 +23,21 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <cloud/storage/core/libs/grpc/completion.h>
+#include <cloud/storage/core/libs/grpc/channel_arguments.h>
+#include <cloud/storage/core/libs/grpc/credentials.h>
 #include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/uds/uds_socket_client.h>
 
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
+#include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel_posix.h>
-#include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
 #include <contrib/libs/grpc/include/grpcpp/security/tls_credentials_options.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
@@ -56,6 +59,7 @@ namespace NCloud::NBlockStore::NClient {
 
 using namespace NMonitoring;
 using namespace NThreading;
+using namespace NStorage::NClient;
 
 namespace {
 
@@ -63,14 +67,6 @@ namespace {
 
 const char AUTH_HEADER[] = "authorization";
 const char AUTH_METHOD[] = "Bearer";
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ReadFile(const TString& fileName)
-{
-    TFileInput in(fileName);
-    return in.ReadAll();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -596,8 +592,7 @@ public:
 
     std::shared_ptr<grpc::Channel> CreateTcpSocketChannel(
         const TString& address,
-        bool secureEndpoint,
-        const grpc::ChannelArguments& args);
+        bool secureEndpoint);
 
     std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
         const TString& unixSocketPath,
@@ -680,64 +675,23 @@ void TClient::Stop()
 
 grpc::ChannelArguments TClient::CreateChannelArguments()
 {
-    grpc::ChannelArguments args;
-
-    ui32 maxMessageSize = Config->GetMaxMessageSize();
-    if (maxMessageSize) {
-        args.SetMaxSendMessageSize(maxMessageSize);
-        args.SetMaxReceiveMessageSize(maxMessageSize);
-    }
-
-    ui32 memoryQuotaBytes = Config->GetMemoryQuotaBytes();
-    if (memoryQuotaBytes) {
-        grpc::ResourceQuota quota("memory_bound");
-        quota.Resize(memoryQuotaBytes);
-
-        args.SetResourceQuota(quota);
-    }
-
-    if (auto backoff = Config->GetGrpcReconnectBackoff()) {
-        args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-        args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-        args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-    }
-
-    return args;
+    return NStorage::NGrpc::CreateChannelArguments(*Config);
 }
 
 std::shared_ptr<grpc::Channel> TClient::CreateTcpSocketChannel(
     const TString& address,
-    bool secureEndpoint,
-    const grpc::ChannelArguments& args)
+    bool secureEndpoint)
 {
-    std::shared_ptr<grpc::ChannelCredentials> credentials;
-    if (!secureEndpoint) {
-        credentials = grpc::InsecureChannelCredentials();
-    } else if (Config->GetSkipCertVerification()) {
-        grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
-        tlsOptions.set_verify_server_certs(false);
-        credentials = grpc::experimental::TlsCredentials(tlsOptions);
-    } else {
-        grpc::SslCredentialsOptions sslOptions;
-
-        if (const auto& rootCertsFile = Config->GetRootCertsFile()) {
-            sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-        }
-
-        if (const auto& certFile = Config->GetCertFile()) {
-            sslOptions.pem_cert_chain = ReadFile(certFile);
-            sslOptions.pem_private_key = ReadFile(Config->GetCertPrivateKeyFile());
-        }
-
-        credentials = grpc::SslCredentials(sslOptions);
-    }
+    auto credentials = CreateTcpClientChannelCredentials(
+        secureEndpoint,
+        *Config);
 
     STORAGE_INFO("Connect to " << address);
 
     return CreateCustomChannel(
         address,
         credentials,
-        args);
+        CreateChannelArguments());
 }
 
 std::shared_ptr<grpc::Channel> TClient::CreateUnixSocketChannel(
@@ -822,12 +776,12 @@ class TEndpointBase
 {
 protected:
     std::shared_ptr<TClient> Client;
-    std::shared_ptr<TService> Service;
+    std::shared_ptr<typename TService::Stub> Service;
 
 public:
     TEndpointBase(
             std::shared_ptr<TClient> client,
-            std::shared_ptr<TService> service)
+            std::shared_ptr<typename TService::Stub> service)
         : Client(std::move(client))
         , Service(std::move(service))
     {}
@@ -923,12 +877,38 @@ protected:
             return NProto::TReadBlocksLocalResponse(std::move(response));
         });
     }
+
+    grpc::ChannelArguments CreateChannelArguments()
+    {
+        return Client->CreateChannelArguments();
+    }
+
+    std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
+        const TString& unixSocketPath,
+        const grpc::ChannelArguments& args)
+    {
+        return Client->CreateUnixSocketChannel(unixSocketPath, args);
+    }
+
+    bool StartWithUds(const TString& unixSocketPath)
+    {
+        auto channel = CreateUnixSocketChannel(
+            unixSocketPath,
+            CreateChannelArguments());
+
+        if (!channel) {
+            return false;
+        }
+
+        Service = TService::NewStub(std::move(channel));
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEndpoint final
-    : public TEndpointBase<NProto::TBlockStoreService::Stub>
+    : public TEndpointBase<NProto::TBlockStoreService>
 {
 public:
     using TEndpointBase::TEndpointBase;
@@ -952,7 +932,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDataEndpoint final
-    : public TEndpointBase<NProto::TBlockStoreDataService::Stub>
+    : public TEndpointBase<NProto::TBlockStoreDataService>
 {
 public:
     using TEndpointBase::TEndpointBase;
@@ -975,166 +955,24 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TService>
-class TSocketEndpointBase
-    : public TEndpointBase<typename TService::Stub>
-    , public std::enable_shared_from_this<TSocketEndpointBase<TService>>
-{
-    using TBase = TEndpointBase<typename TService::Stub>;
-
-    enum {
-        Disconnected = 0,
-        Connecting = 1,
-        Connected = 2,
-    };
-
-    union TState
-    {
-        TState(ui64 value)
-            : Raw(value)
-        {}
-
-        struct
-        {
-            ui32 InflightCounter;
-            ui32 ConnectionState;
-        };
-
-        ui64 Raw;
-    };
-
-private:
-    const TString SocketPath;
-
-    TAtomic State = 0;
-
-public:
-    TSocketEndpointBase(
-            std::shared_ptr<TClient> client,
-            TString socketPath)
-        : TBase(std::move(client), nullptr)
-        , SocketPath(std::move(socketPath))
-    {}
-
-    void Connect()
-    {
-        TState currentState = AtomicGet(State);
-        if (currentState.InflightCounter != 0) {
-            return;
-        }
-
-        if (!SetConnectionState(Connecting, Disconnected)) {
-            return;
-        }
-
-        auto args = TBase::Client->CreateChannelArguments();
-        auto channel = TBase::Client->CreateUnixSocketChannel(SocketPath, args);
-
-        if (channel) {
-            TBase::Service = TService::NewStub(channel);
-        }
-
-        bool res = SetConnectionState(
-            channel ? Connected : Disconnected,
-            Connecting);
-        STORAGE_VERIFY(res, "Socket", SocketPath);
-    }
-
-protected:
-    template <typename TMethod>
-    TFuture<typename TMethod::TResponse> TryToExecuteRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<typename TMethod::TRequest> request)
-    {
-        if (!IncInflightCounter()) {
-            Connect();
-            return MakeFuture<typename TMethod::TResponse>(
-                TErrorResponse(E_GRPC_UNAVAILABLE, "Broken pipe"));
-        }
-
-        auto future = TBase::template ExecuteRequest<TMethod>(
-            std::move(callContext),
-            std::move(request));
-
-        auto weakPtr = TSocketEndpointBase<TService>::weak_from_this();
-        return future.Apply([weakPtr = std::move(weakPtr)] (const auto& f) {
-            if (auto p = weakPtr.lock()) {
-                p->HandleResponse(f.GetValue());
-            }
-            return f;
-        });
-    }
-
-private:
-    template <typename TResponse>
-    void HandleResponse(const TResponse& response)
-    {
-        if (response.HasError()
-            && response.GetError().GetCode() == E_GRPC_UNAVAILABLE)
-        {
-            SetConnectionState(Disconnected, Connected);
-        }
-
-        DecInflightCounter();
-    }
-
-    bool SetConnectionState(ui32 next, ui32 prev)
-    {
-        while (true) {
-            TState currentState = AtomicGet(State);
-            if (currentState.ConnectionState != prev) {
-                return false;
-            }
-
-            TState nextState = currentState;
-            nextState.ConnectionState = next;
-
-            if (AtomicCas(&State, nextState.Raw, currentState.Raw)) {
-                return true;
-            }
-        }
-    }
-
-    bool IncInflightCounter()
-    {
-        while (true) {
-            TState currentState = AtomicGet(State);
-            if (currentState.ConnectionState != Connected) {
-                return false;
-            }
-
-            TState nextState = currentState;
-            ++nextState.InflightCounter;
-
-            if (AtomicCas(&State, nextState.Raw, currentState.Raw)) {
-                return true;
-            }
-        }
-    }
-
-    void DecInflightCounter()
-    {
-        // reduce InflightCounter, don't change ConnectionState
-        TState oldState = AtomicGetAndDecrement(State);
-
-        STORAGE_VERIFY(oldState.InflightCounter > 0, "Socket", SocketPath);
-    }
-};
+template <typename TBase>
+using TNbsUdsSocketClient = TUdsSocketClient<TBase, TCallContextPtr>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSocketEndpoint final
-    : public TSocketEndpointBase<NProto::TBlockStoreService>
+    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreService>>
 {
 public:
-    using TSocketEndpointBase::TSocketEndpointBase;
+    using TBase = TEndpointBase<typename NProto::TBlockStoreService>;
+    using TNbsUdsSocketClient<TBase>::TNbsUdsSocketClient;
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TryToExecuteRequest<T##name##Method>(                           \
+        return ExecuteRequest<T##name##Method>(                                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -1148,17 +986,18 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSocketDataEndpoint final
-    : public TSocketEndpointBase<NProto::TBlockStoreDataService>
+    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreDataService>>
 {
 public:
-    using TSocketEndpointBase::TSocketEndpointBase;
+    using TBase = TEndpointBase<typename NProto::TBlockStoreDataService>;
+    using TNbsUdsSocketClient<TBase>::TNbsUdsSocketClient;
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TryToExecuteRequest<T##name##Method>(                           \
+        return ExecuteRequest<T##name##Method>(                                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -1197,22 +1036,20 @@ bool TClient::InitControlEndpoint()
 
     if (Config->GetUnixSocketPath()) {
         auto endpoint = std::make_shared<TSocketEndpoint>(
+            Config->GetUnixSocketPath(),
             shared_from_this(),
-            Config->GetUnixSocketPath());
-
+            nullptr);
         endpoint->Connect();
         ControlEndpoint = std::move(endpoint);
         return true;
     }
 
     if (Config->GetSecurePort() != 0 || Config->GetInsecurePort() != 0) {
-        auto args = CreateChannelArguments();
-
         bool secureEndpoint = Config->GetSecurePort() != 0;
         auto address = Join(":", Config->GetHost(),
             secureEndpoint ? Config->GetSecurePort() : Config->GetInsecurePort());
 
-        auto channel = CreateTcpSocketChannel(address, secureEndpoint, args);
+        auto channel = CreateTcpSocketChannel(address, secureEndpoint);
         if (!channel) {
             ythrow TServiceError(E_FAIL)
                 << "could not start gRPC client";
@@ -1234,12 +1071,10 @@ bool TClient::InitDataEndpoint()
     }
 
     if (Config->GetPort() != 0) {
-        auto args = CreateChannelArguments();
-
         auto address = Join(":", Config->GetHost(), Config->GetPort());
         auto secureEndpoint = false;    // auth not supported
 
-        auto channel = CreateTcpSocketChannel(address, secureEndpoint, args);
+        auto channel = CreateTcpSocketChannel(address, secureEndpoint);
 
         if (!channel) {
             ythrow TServiceError(E_FAIL)
@@ -1274,8 +1109,9 @@ IBlockStorePtr TClient::CreateDataEndpoint()
 IBlockStorePtr TClient::CreateDataEndpoint(const TString& socketPath)
 {
     auto endpoint = std::make_shared<TSocketDataEndpoint>(
+        socketPath,
         shared_from_this(),
-        socketPath);
+        nullptr);
 
     endpoint->Connect();
     return endpoint;

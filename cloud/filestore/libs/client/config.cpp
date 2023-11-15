@@ -47,6 +47,7 @@ TDuration MSeconds(ui64 x)
     xxx(CertPrivateKeyFile,     TString,          {}                          )\
     xxx(AuthToken,              TString,          {}                          )\
     xxx(SkipCertVerification,   bool,             false                       )\
+    xxx(UnixSocketPath,         TString,          {}                          )\
 // FILESTORE_CLIENT_CONFIG
 
 #define FILESTORE_CLIENT_DECLARE_CONFIG(name, type, value)                     \
