@@ -28,7 +28,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
-	disk := &types.Disk{ZoneId: "zone", DiskId: "disk"}
+	disk := &types.Disk{DiskId: "disk"}
 	request := &protos.DeleteDiskRequest{Disk: disk, Sync: sync}
 
 	task := &deleteDiskTask{
@@ -47,6 +47,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -99,6 +100,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ZoneID:       "zone",
 		SrcImageID:   "image",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
@@ -148,6 +150,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ZoneID:       "zone",
 		SrcImageID:   "image",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)

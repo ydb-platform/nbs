@@ -145,7 +145,6 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
 				DiskId: diskID,
 			},
 		})
@@ -232,7 +231,6 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
 			DiskId: diskID,
 		},
 	})
@@ -497,7 +495,6 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
 			DiskId: diskID1,
 		},
 	})
@@ -509,7 +506,6 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
 			DiskId: diskID2,
 		},
 	})

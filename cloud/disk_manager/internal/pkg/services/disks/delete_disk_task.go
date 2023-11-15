@@ -74,6 +74,9 @@ func (t *deleteDiskTask) deleteDisk(
 	if len(zoneID) == 0 {
 		zoneID = t.request.Disk.ZoneId
 	}
+	if len(zoneID) == 0 {
+		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	}
 
 	client, err := t.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {

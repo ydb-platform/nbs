@@ -719,7 +719,6 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
 			DiskId: diskID,
 		},
 	})
@@ -814,7 +813,6 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
 				DiskId: diskID,
 			},
 		})
@@ -1601,7 +1599,6 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "any_string", // deprecated field
 			DiskId: diskID,
 		},
 	})

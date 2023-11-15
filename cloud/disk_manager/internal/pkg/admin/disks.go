@@ -369,10 +369,7 @@ func newDeleteDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&c.zoneID, "zone-id", "", "zone ID where disk is located; required")
-	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
-		log.Fatalf("Error setting flag zone-id as required: %v", err)
-	}
+	cmd.Flags().StringVar(&c.zoneID, "zone-id", "", "zone ID where disk is located;")
 
 	cmd.Flags().StringVar(&c.diskID, "id", "", "disk ID; required")
 	if err := cmd.MarkFlagRequired("id"); err != nil {
