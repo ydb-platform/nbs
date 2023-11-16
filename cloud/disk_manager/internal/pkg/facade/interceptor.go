@@ -69,6 +69,8 @@ var (
 		{name: "PrivateService.ListFilesystems", permission: "disk-manager.filesystems.list"},
 		// TODO: Maybe we should have separate permissions for placement groups?
 		{name: "PrivateService.ListPlacementGroups", permission: "disk-manager.disks.list"},
+		// TODO: Find more suitable permission for this.
+		{name: "PrivateService.GetAliveNodes", permission: "disk-manager.operations.list"},
 
 		{name: "FilesystemService.Create", permission: "disk-manager.filesystems.create"},
 		{name: "FilesystemService.Delete", permission: "disk-manager.filesystems.delete"},
