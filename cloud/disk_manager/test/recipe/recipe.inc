@@ -4,8 +4,8 @@ DEPENDS(
 
     cloud/filestore/server
 
-    cloud/disk_manager/cmd/yc-disk-manager
-    cloud/disk_manager/cmd/yc-disk-manager-init-db
+    cloud/disk_manager/cmd/disk-manager
+    cloud/disk_manager/cmd/disk-manager-init-db
     cloud/disk_manager/test/images/recipe
     cloud/disk_manager/test/mocks/accessservice
     cloud/disk_manager/test/mocks/compute

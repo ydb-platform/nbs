@@ -274,7 +274,7 @@ class DiskManagerServer(Daemon):
 
     def __init__(self, config_file, working_dir, with_nemesis):
         disk_manager_path = yatest_common.binary_path(
-            "cloud/disk_manager/cmd/yc-disk-manager/yc-disk-manager"
+            "cloud/disk_manager/cmd/disk-manager/disk-manager"
         )
         nemesis_path = yatest_common.binary_path(
             "cloud/disk_manager/test/nemesis/nemesis"
@@ -373,7 +373,7 @@ class DiskManagerLauncher:
 
         init_database_command = [
             yatest_common.binary_path(
-                "cloud/disk_manager/cmd/yc-disk-manager-init-db/yc-disk-manager-init-db"
+                "cloud/disk_manager/cmd/disk-manager-init-db/disk-manager-init-db"
             ),
             "--config",
             config_file,

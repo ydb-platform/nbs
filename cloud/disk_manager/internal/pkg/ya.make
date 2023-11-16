@@ -2,8 +2,6 @@ OWNER(g:cloud-nbs)
 
 RECURSE(
     accounting
-    admin
-    app
     auth
     client
     clients
@@ -17,7 +15,6 @@ RECURSE(
     performance
     persistence
     resources
-    schema
     services
     tasks
     types
