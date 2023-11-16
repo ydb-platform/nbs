@@ -128,11 +128,11 @@ target_proto_messages(cloud-filestore-config PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/client.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/diagnostics.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/filesystem.proto
-  ${CMAKE_SOURCE_DIR}/cloud/filestore/config/fuse.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/http_proxy.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/nfs_gateway.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/server.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/storage.proto
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/config/vfs.proto
   ${CMAKE_SOURCE_DIR}/cloud/filestore/config/vhost.proto
 )
 target_proto_addincls(cloud-filestore-config

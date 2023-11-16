@@ -7,11 +7,11 @@ SRCS(
     client.proto
     diagnostics.proto
     filesystem.proto
-    fuse.proto
     http_proxy.proto
     nfs_gateway.proto
     server.proto
     storage.proto
+    vfs.proto
     vhost.proto
 )
 

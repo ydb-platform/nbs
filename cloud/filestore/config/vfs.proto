@@ -6,7 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TFuseConfig
+message TVFSConfig
 {
     // FileSystem identifier.
     optional string FileSystemId = 1;
@@ -29,12 +29,12 @@ message TFuseConfig
     optional uint32 VhostQueuesCount = 9;
 
     // Limits max single request length.
-    optional uint32 FuseMaxWritePages = 10;
+    optional uint32 MaxWritePages = 10;
 
     // Keep attempts to acquire lock.
     optional uint32 LockRetryTimeout = 11;
 
     // Limits max requests allowed at a time.
-    optional uint32 FuseMaxBackground = 12;
+    optional uint32 MaxBackground = 12;
 
 }
