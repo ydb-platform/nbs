@@ -224,8 +224,15 @@ type s3Metadata struct {
 }
 
 func newS3Metadata(metadataMap map[string]*string) (s3Metadata, error) {
+	checksumStr := metadataMap[s3MetadataKeyChecksum]
+	if checksumStr == nil {
+		return s3Metadata{}, task_errors.NewNonRetriableErrorf(
+			"s3 object metadata is missing",
+		)
+	}
+
 	checksumUint64, err := strconv.ParseUint(
-		*metadataMap[s3MetadataKeyChecksum],
+		*checksumStr,
 		10,
 		32,
 	)

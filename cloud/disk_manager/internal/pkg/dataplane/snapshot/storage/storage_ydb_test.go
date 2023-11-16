@@ -244,6 +244,20 @@ func updateS3BlobChecksum(f *fixture, chunkID string, checksum uint32) {
 	require.NoError(f.t, err)
 }
 
+func clearS3BlobMetadata(f *fixture, chunkID string) {
+	obj := getS3Object(f, chunkID)
+
+	obj.Metadata = nil
+
+	err := f.s3.PutObject(
+		f.ctx,
+		f.config.GetS3Bucket(),
+		test.NewS3Key(f.config, chunkID),
+		obj,
+	)
+	require.NoError(f.t, err)
+}
+
 func updateYDBBlobChecksum(f *fixture, chunkID string, checksum uint32) {
 	err := f.db.Execute(
 		f.ctx,
@@ -1096,6 +1110,26 @@ func TestChunkChecksumMismatch(t *testing.T) {
 			require.Contains(t, err.Error(), "chunk checksum mismatch")
 		})
 	}
+}
+
+func TestS3BlobMetadataMissing(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunk := makeChunk(0, "abc")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "test", chunk, true /* useS3 */)
+	require.NoError(t, err)
+
+	clearS3BlobMetadata(f, chunkID)
+
+	readChunk := common.Chunk{
+		ID:         chunkID,
+		Data:       make([]byte, len(chunk.Data)),
+		StoredInS3: true,
+	}
+	err = f.storage.ReadChunk(f.ctx, &readChunk)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "s3 object metadata is missing")
 }
 
 func TestChunkCompression(t *testing.T) {
