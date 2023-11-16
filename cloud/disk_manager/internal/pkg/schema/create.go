@@ -2,48 +2,76 @@ package schema
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"log"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func ParseServerConfig(
-	configFilePath string,
-	config *server_config.ServerConfig,
-) error {
+func Create(
+	toolName string,
+	defaultConfigFilePath string,
+) {
 
-	configBytes, err := os.ReadFile(configFilePath)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to read config file %v: %w",
-			configFilePath,
-			err,
-		)
+	var configFilePath string
+	var verbose bool
+	var dropUnusedColumns bool
+	config := &server_config.ServerConfig{}
+
+	var rootCmd = &cobra.Command{
+		Use:   toolName,
+		Short: "DB schema management tool for Disk Manager Service",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return util.ParseProto(configFilePath, config)
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			level := logging.InfoLevel
+			if verbose {
+				level = logging.DebugLevel
+			}
+
+			ctx := context.Background()
+			ctx = logging.SetLogger(ctx, logging.NewStderrLogger(level))
+			return create(ctx, config, dropUnusedColumns)
+		},
 	}
 
-	err = proto.UnmarshalText(string(configBytes), config)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to parse config file %v as protobuf: %w",
-			configFilePath,
-			err,
-		)
-	}
+	rootCmd.Flags().StringVar(
+		&configFilePath,
+		"config",
+		defaultConfigFilePath,
+		"Path to the config file",
+	)
+	rootCmd.Flags().BoolVarP(
+		&verbose,
+		"verbose",
+		"v",
+		false,
+		"Enable verbose logging",
+	)
+	rootCmd.Flags().BoolVarP(
+		&dropUnusedColumns,
+		"drop-unused-columns",
+		"d",
+		false,
+		"Drops unused columns. DANGEROUS flag, use it carefully!",
+	)
 
-	return nil
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatalf("Error: %v", err)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func Init(
+func create(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	dropUnusedColumns bool,

@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -18,11 +20,40 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func Run(config *server_config.ServerConfig) error {
+func Run(appName string, defaultConfigFilePath string) {
+	var configFilePath string
+	config := &server_config.ServerConfig{}
+
+	var rootCmd = &cobra.Command{
+		Use:   appName,
+		Short: "Disk Manager Server",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return util.ParseProto(configFilePath, config)
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return run(config)
+		},
+	}
+	rootCmd.Flags().StringVar(
+		&configFilePath,
+		"config",
+		defaultConfigFilePath,
+		"Path to the config file",
+	)
+
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatalf("Error: %v", err)
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func run(config *server_config.ServerConfig) error {
 	var err error
 
 	ignoreSigpipe()
