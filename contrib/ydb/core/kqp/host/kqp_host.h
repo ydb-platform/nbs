@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider.h>
+#include <contrib/ydb/core/kqp/host/kqp_translate.h>
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 
