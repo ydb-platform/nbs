@@ -44,7 +44,7 @@ jobs:
           mode: start
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          folder-id: ${{ secrets.NEBIUS_FOLDER }}
+          folder-id: bjeuq5o166dq4ukv3eec
           image-id: arlng9uhmtlat6q5pqlv
           disk-size: 1023GB
           disk-type: network-ssd-nonreplicated
@@ -53,7 +53,7 @@ jobs:
           memory: 128GB
           core-fraction: 100
           zone-id: eu-north1-c
-          subnet-id: ${{ secrets.NEBIUS_SUBNET }}
+          subnet-id: f8uh0ml4rhb45nde9p75
   build:
     runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
     needs: provide-runner
@@ -82,7 +82,7 @@ jobs:
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           label: ${{ needs.provide-runner.outputs.label }}
           instance-id: ${{ needs.provide-runner.outputs.instance-id }}
-          folder-id: ${{ secrets.NEBIUS_FOLDER }}
-          subnet-id: ${{ secrets.NEBIUS_SUBNET }}
+          folder-id: bjeuq5o166dq4ukv3eec
+          subnet-id: f8uh0ml4rhb45nde9p75
 
 
