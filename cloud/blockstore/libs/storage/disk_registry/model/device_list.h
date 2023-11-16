@@ -21,10 +21,16 @@ class TDeviceList
     using TDiskId = TString;
     using TNodeId = ui32;
 
+    struct TNodeInfo
+    {
+        TNodeId NodeId = 0;
+        ui64 FreeSpace = 0;
+    };
+
     struct TRack
     {
         TString Id;
-        TVector<TNodeId> Nodes;
+        TVector<TNodeInfo> Nodes;
         ui64 FreeSpace = 0;
         bool Preferred = false;
     };

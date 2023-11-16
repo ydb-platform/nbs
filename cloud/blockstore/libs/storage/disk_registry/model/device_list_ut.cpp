@@ -40,6 +40,7 @@ auto CreateAgentConfig(
         device->SetNodeId(agent.GetNodeId());
         device->SetDeviceUUID(id + "-" + ToString(i + 1));
         device->SetDeviceName(deviceNames[i % deviceNames.size()]);
+        device->SetAgentId(id);
         if (poolName) {
             device->SetPoolKind(NProto::DEVICE_POOL_KIND_GLOBAL);
             device->SetPoolName(poolName);
@@ -392,11 +393,10 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         TDeviceList deviceList({}, {});
 
-        auto allocate = [&] (ui32 n, THashSet<TString> racks) {
+        auto allocate = [&] (ui32 n) {
             return deviceList.AllocateDevices(
                 "disk",
                 {
-                    .ForbiddenRacks = std::move(racks),
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount
                 }
@@ -412,17 +412,86 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         UNIT_ASSERT_VALUES_EQUAL(45, deviceList.Size());
 
-        auto devices1 = allocate(10, {});
+        auto devices1 = allocate(10);
         UNIT_ASSERT_VALUES_EQUAL(10, devices1.size());
         UNIT_ASSERT_VALUES_EQUAL("rack2", devices1[0].GetRack());
 
-        auto devices2 = allocate(10, {});
+        auto devices2 = allocate(10);
         UNIT_ASSERT_VALUES_EQUAL(10, devices2.size());
         UNIT_ASSERT_VALUES_EQUAL("rack2", devices2[0].GetRack());
 
-        auto devices3 = allocate(1, {});
+        auto devices3 = allocate(1);
         UNIT_ASSERT_VALUES_EQUAL(1, devices3.size());
         UNIT_ASSERT_VALUES_EQUAL("rack1", devices3[0].GetRack());
+    }
+
+    Y_UNIT_TEST(ShouldSelectPhysicalDeviceWithTheMostSpaceUponDeviceAllocation)
+    {
+        TDeviceList deviceList({}, {});
+
+        auto allocate = [&] (ui32 n) {
+            return deviceList.AllocateDevices(
+                "disk",
+                {
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = n * DefaultBlockCount
+                }
+            );
+        };
+
+        NProto::TAgentConfig agent1 = CreateAgentConfig(
+            "agent1",
+            1,
+            "rack1",
+            "",
+            {"/dev1", "/dev2"},
+            100);
+        NProto::TAgentConfig agent2 = CreateAgentConfig(
+            "agent2",
+            2,
+            "rack2",
+            "",
+            {"/dev1", "/dev2"},
+            100);
+        deviceList.UpdateDevices(agent1);
+        deviceList.UpdateDevices(agent2);
+
+        UNIT_ASSERT_VALUES_EQUAL(200, deviceList.Size());
+
+        auto devices1 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices1.size());
+        for (auto& d: devices1) {
+            UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        auto devices2 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices2.size());
+        for (auto& d: devices2) {
+            UNIT_ASSERT_VALUES_EQUAL("agent2", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        auto devices3 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices3.size());
+        for (auto& d: devices3) {
+            UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev2", d.GetDeviceName());
+        }
+
+        auto devices4 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices4.size());
+        for (auto& d: devices4) {
+            UNIT_ASSERT_VALUES_EQUAL("agent2", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev2", d.GetDeviceName());
+        }
+
+        auto devices5 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices5.size());
+        for (auto& d: devices5) {
+            UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
     }
 
     Y_UNIT_TEST(ShouldSelectRackAccordingToRestrictions)
