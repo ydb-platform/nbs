@@ -95,7 +95,6 @@ migrations:
     - load/projects/tankapi_server/tankapi/tests
     - logos/projects/money_dwh/tasks/pages/v1
     - logos/projects/statkey_py3/tasks/cubes/domains/metrika/utils
-    - logos/projects/statkey_py3/tasks/marketplace_clusterdomain_parsed
     - maps/analytics/legacy/nile/statadhoc-10453-geosearch-type-source-geography-report
     - maps/analytics/legacy/nile/statadhoc-13040-ctr-blocks-report
     - maps/b2bgeo/tools/domain_check/bin
@@ -1209,7 +1208,6 @@ migrations:
     - quality/neural_net/bert/tools/valhalla/pretraining
     - quality/nirvana_tools/conveyor_operations/online_stove/get_experiment_data_from_yt/external_tests
     - quality/nirvana_tools/conveyor_operations/online_stove/update_arms/external_tests
-    - quality/relev_tools/ftmoon/table_archive/tests
     - robot/quality/crawl_quality_metrics/push_to_solomon_main_metric
     - robot/quality/segmentator
     - saas/library/python/lunapark
@@ -1595,7 +1593,6 @@ migrations:
     - quality/neural_net/bert/bert/row_processors/mlm
     - quality/neural_net/bert/tests/basic
     - quality/neural_net/bert/tools/autobert/builders/subgraph_builders
-    - quality/relev_tools/ftmoon/table_archive/tests
     - quality/relev_tools/org_sintez_pool/nirvana_blocks/test
     - quality/relev_tools/org_sintez_pool/preparat_make_lib/yt_local
     - quality/user_sessions/rt/deploy
@@ -9249,7 +9246,6 @@ migrations:
     - travel/rasp/bus/admin/utils
     - travel/rasp/bus/admin/utils/points
     - travel/rasp/library/python/common/tests
-    - travel/rasp/library/python/common/tests/data_api/billing
     - travel/rasp/library/python/common/tests/data_api/dzv
     - travel/rasp/library/python/geosearch
     - travel/rasp/library/python/geosearch/views
