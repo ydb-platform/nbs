@@ -1,5 +1,4 @@
 #pragma once
-#include "mark.h"
 #include "settings.h"
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/action.h>
 #include <contrib/ydb/core/tx/columnshard/counters/indexation.h>
