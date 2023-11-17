@@ -7,8 +7,11 @@
 
 
 add_subdirectory(block-data-dump)
+add_subdirectory(compaction-sim)
 add_subdirectory(dump-event-log)
 add_subdirectory(event-log-disk-usage)
 add_subdirectory(event-log-stats)
+add_subdirectory(event-log-suffer)
+add_subdirectory(find-block-accesses)
 add_subdirectory(libs)
 add_subdirectory(visualize-event-log)

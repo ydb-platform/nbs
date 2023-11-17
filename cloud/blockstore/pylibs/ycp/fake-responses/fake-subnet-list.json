@@ -1,0 +1,18 @@
+[
+  {
+    "id": "fake-id",
+    "name": "testnets-ru-central1-a"
+  },
+  {
+    "id": "fake-id2",
+    "name": "testnets-ru-central1-c"
+  },
+  {
+    "id": "fake-id3",
+    "name": "testnets-ru-central1-b"
+  },
+  {
+    "id": "fake-id",
+    "name": "fake-name1"
+  }
+]

@@ -1,0 +1,11 @@
+SchemeShardDir: "/dev_global/NBS"
+CompactionGarbageThreshold: 20
+AllocateSeparateMixedChannels: true
+WriteRequestBatchingEnabled: true
+SSDCompactionType: CT_LOAD
+HDDCompactionType: CT_LOAD
+V1GarbageCompactionEnabled: true
+VolumePreemptionType: PREEMPTION_MOVE_MOST_HEAVY
+PreemptionPushPercentage: 80
+PreemptionPullPercentage: 40
+

@@ -1,0 +1,9 @@
+
+GetConfigItemsResponse {
+  Status {
+    Code: SUCCESS
+  }
+}
+Status {
+  Code: SUCCESS
+}

@@ -1,0 +1,30 @@
+
+GetConfigItemsResponse {
+  Status {
+    Code: SUCCESS
+  }
+  ConfigItems {
+    Id {
+      Id: 21
+      Generation: 1
+    }
+    Kind: 100
+    Config {
+      NamedConfigs {
+        Name: "Cloud.NBS.DiskRegistryProxyConfig"
+        Config: "Owner: 16045690984503103501 OwnerIdx: 1"
+      }
+    }
+    UsageScope {
+      HostFilter {
+        Hosts: "dca1-ct5-24.cloud.net"
+      }
+    }
+    Order: 10
+    MergeStrategy: 2
+    Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher"
+  }
+}
+Status {
+  Code: SUCCESS
+}

@@ -1,0 +1,6 @@
+AccessServiceEndpoint: "local-lb.cloud-lab.net:14286"
+UseBlackBox: false
+UseAccessService: true
+UseStaff: false
+UseUserAccountService: false
+

@@ -1,0 +1,16 @@
+[
+{
+    "id": "cga1gnwngkwrajnji12",
+    "folder_id": "yc.dogfood.serviceFolder",
+    "created_at": "2021-08-24T18:01:40Z",
+    "name": "test",
+    "type_id": "network-ssd",
+    "zone_id": "ru-central1-a",
+    "size": "10737418240",
+    "block_size": "4096",
+    "status": "READY",
+    "instance_ids": [
+        "cgatrmglemrglghkn9"
+    ]
+}
+]

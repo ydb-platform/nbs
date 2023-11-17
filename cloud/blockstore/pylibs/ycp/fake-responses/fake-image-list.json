@@ -1,0 +1,22 @@
+[
+  {
+    "id": "fake-id1",
+    "name": "ubuntu1604-stable"
+  },
+  {
+    "id": "fake-id2",
+    "name": "ubuntu2004"
+  },
+  {
+    "id": "fake-id3",
+    "name": "ubuntu-2004-eternal"
+  },
+  {
+    "id": "fake-id4",
+    "name": "ubuntu-2204-eternal"
+  },
+  {
+    "id": "fake-id3",
+    "name": "fake-name1"
+  }
+]

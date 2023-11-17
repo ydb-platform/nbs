@@ -1,0 +1,8 @@
+{
+  "iam_token": "token",
+  "subject": {
+    "service_account": {
+      "id": "fake-id"
+    }
+  }
+}

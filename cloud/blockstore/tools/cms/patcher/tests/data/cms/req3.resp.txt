@@ -1,0 +1,30 @@
+
+GetConfigItemsResponse {
+  Status {
+    Code: SUCCESS
+  }
+  ConfigItems {
+    Id {
+      Id: 103
+      Generation: 1
+    }
+    Kind: 100
+    Config {
+      NamedConfigs {
+        Name: "Cloud.NBS.StorageServiceConfig"
+        Config: "SchemeShardDir: \"/dev_global/NBS\"  SSDMaxBlobsPerRange: 70 CompactionGarbageThreshold: 20 AllocateSeparateMixedChannels: true WriteRequestBatchingEnabled: true SSDCompactionType: CT_LOAD HDDCompactionType: CT_LOAD V1GarbageCompactionEnabled: true VolumePreemptionType: PREEMPTION_MOVE_MOST_HEAVY PreemptionPushPercentage: 80 PreemptionPullPercentage: 40"
+      }
+    }
+    UsageScope {
+      HostFilter {
+        Hosts: "dca1-ct5-18.cloud.net"
+      }
+    }
+    Order: 10
+    MergeStrategy: 2
+    Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher;test patch"
+  }
+}
+Status {
+  Code: SUCCESS
+}

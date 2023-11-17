@@ -1,0 +1,16 @@
+ServerConfig {
+  Host: "*"
+  Port: 9766
+  DataHost: "localhost"
+  DataPort: 9767
+  SecurePort: 9768
+  CertFile: "/etc/yc/ssl/certs/host.crt"
+  CertPrivateKeyFile: "/etc/yc/ssl/private/host.key"
+  StrictContractValidation: true
+  VhostEnabled: true
+  VhostThreadsCount: 4
+  NodeType: "nbs"
+}
+KikimrServiceConfig {
+}
+

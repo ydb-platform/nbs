@@ -2,6 +2,8 @@ RECURSE(
     selftest
 
     local
+    local-auth
+    local-change-device
     local-checkpoint
     local-discovery
     local-edgecase
@@ -21,10 +23,3 @@ RECURSE(
     local-user-metrics
     local-v2
 )
-
-IF (NOT OPENSOURCE)
-    RECURSE(
-        local-auth              # TODO(NBS-4409): add to opensource
-        local-change-device     # TODO(NBS-4409): add to opensource
-    )
-ENDIF()

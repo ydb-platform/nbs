@@ -1,0 +1,159 @@
+GetConfigItemsRequest {
+  TenantAndNodeTypeFilter {
+    TenantAndNodeTypes {
+      Tenant: "/dev_global/NBS"
+      NodeType: "nbs"
+    }
+  }
+}
+
+[97mCollecting... 0/8 0.00 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-17.cloud.net"
+  }
+}
+
+[97mCollecting... 1/8 12.50 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-13.cloud.net"
+  }
+}
+
+[97mCollecting... 2/8 25.00 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-18.cloud.net"
+  }
+}
+
+[97mCollecting... 3/8 37.50 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-14.cloud.net"
+  }
+}
+
+[97mCollecting... 4/8 50.00 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-24.cloud.net"
+  }
+}
+
+[97mCollecting... 5/8 62.50 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-15.cloud.net"
+  }
+}
+
+[97mCollecting... 6/8 75.00 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-25.cloud.net"
+  }
+}
+
+[97mCollecting... 7/8 87.50 %[0m
+GetConfigItemsRequest {
+  HostFilter {
+    Hosts: "dca1-ct5-16.cloud.net"
+  }
+}
+
+
+dca1-ct5-17.cloud.net	{'StorageServiceConfig': {'SSDCompactionType': 'CT_DEFAULT', 'MaxCompactionDelay': 5000}}
+dca1-ct5-13.cloud.net	{'ActorSystemConfig': {'Executor': {0: {'Threads': 4}, 1: {'Threads': 4}, 2: {'Threads': 1}, 4: {'Threads': 4}}}, 'StorageServiceConfig': {'SSDCompactionType': 'CT_DEFAULT', 'SSDMaxBlobsPerRange': 100, 'MaxCleanupDelay': 5000}}
+dca1-ct5-18.cloud.net	{'StorageServiceConfig': {'SSDCompactionType': 'CT_DEFAULT', 'MaxCompactionDelay': 5000, delete: ['SSDMaxBlobsPerRange']}}
+applying changes
+[97mApplying... 0/8 0.00 %[0m
+ConfigureRequest {
+  Actions {
+    AddConfigItem {
+      ConfigItem {
+        Config {
+          NamedConfigs {
+            Name: "Cloud.NBS.StorageServiceConfig"
+            Config: "SchemeShardDir: \"/dev_global/NBS\" CompactionGarbageThreshold: 20 AllocateSeparateMixedChannels: true WriteRequestBatchingEnabled: true SSDCompactionType: CT_DEFAULT HDDCompactionType: CT_LOAD V1GarbageCompactionEnabled: true MaxCompactionDelay: 5000 VolumePreemptionType: PREEMPTION_MOVE_MOST_HEAVY PreemptionPushPercentage: 80 PreemptionPullPercentage: 40"
+          }
+        }
+        UsageScope {
+          HostFilter {
+            Hosts: "dca1-ct5-17.cloud.net"
+          }
+        }
+        MergeStrategy: 2
+        Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher;test"
+      }
+    }
+  }
+}
+
+[97mApplying... 1/8 12.50 %[0m
+ConfigureRequest {
+  Actions {
+    AddConfigItem {
+      ConfigItem {
+        Config {
+          NamedConfigs {
+            Name: "Cloud.NBS.ActorSystemConfig"
+            Config: "Executor { Type: BASIC Threads: 4 SpinThreshold: 10 Name: \"System\" } Executor { Type: BASIC Threads: 4 SpinThreshold: 10 Name: \"User\" } Executor { Type: BASIC Threads: 1 SpinThreshold: 1 Name: \"Batch\" } Executor { Type: IO Threads: 1 Name: \"IO\" } Executor { Type: BASIC Threads: 4 SpinThreshold: 10 Name: \"IC\" TimePerMailboxMicroSecs: 100 } Scheduler { Resolution: 256 SpinThreshold: 0 ProgressThreshold: 10000 } SysExecutor: 0 UserExecutor: 1 IoExecutor: 3 BatchExecutor: 2 ServiceExecutor { ServiceName: \"Interconnect\" ExecutorId: 4 }"
+          }
+          NamedConfigs {
+            Name: "Cloud.NBS.StorageServiceConfig"
+            Config: "SchemeShardDir: \"/dev_global/NBS\" CompactionGarbageThreshold: 20 AllocateSeparateMixedChannels: true WriteRequestBatchingEnabled: true SSDCompactionType: CT_DEFAULT HDDCompactionType: CT_LOAD V1GarbageCompactionEnabled: true VolumePreemptionType: PREEMPTION_MOVE_MOST_HEAVY PreemptionPushPercentage: 80 PreemptionPullPercentage: 40 MaxCleanupDelay: 5000 SSDMaxBlobsPerRange: 100"
+          }
+        }
+        UsageScope {
+          HostFilter {
+            Hosts: "dca1-ct5-13.cloud.net"
+          }
+        }
+        MergeStrategy: 2
+        Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher;test"
+      }
+    }
+  }
+}
+
+[97mApplying... 2/8 25.00 %[0m
+ConfigureRequest {
+  Actions {
+    RemoveConfigItem {
+      ConfigItemId {
+        Id: 103
+        Generation: 1
+      }
+    }
+  }
+}
+
+ConfigureRequest {
+  Actions {
+    AddConfigItem {
+      ConfigItem {
+        Config {
+          NamedConfigs {
+            Name: "Cloud.NBS.StorageServiceConfig"
+            Config: "SchemeShardDir: \"/dev_global/NBS\" CompactionGarbageThreshold: 20 AllocateSeparateMixedChannels: true WriteRequestBatchingEnabled: true SSDCompactionType: CT_DEFAULT HDDCompactionType: CT_LOAD V1GarbageCompactionEnabled: true MaxCompactionDelay: 5000 VolumePreemptionType: PREEMPTION_MOVE_MOST_HEAVY PreemptionPushPercentage: 80 PreemptionPullPercentage: 40"
+          }
+        }
+        UsageScope {
+          HostFilter {
+            Hosts: "dca1-ct5-18.cloud.net"
+          }
+        }
+        MergeStrategy: 2
+        Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher;test"
+      }
+    }
+  }
+}
+
+[97mApplying... 3/8 37.50 %[0m
+[97mApplying... 4/8 50.00 %[0m
+[97mApplying... 5/8 62.50 %[0m
+[97mApplying... 6/8 75.00 %[0m
+[97mApplying... 7/8 87.50 %[0m

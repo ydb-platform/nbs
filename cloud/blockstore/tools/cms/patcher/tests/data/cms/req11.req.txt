@@ -1,0 +1,1 @@
+ConfigureRequest { Actions { RemoveConfigItem { ConfigItemId { Id: 103 Generation: 1 } } } }

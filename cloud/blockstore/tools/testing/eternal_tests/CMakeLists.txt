@@ -6,4 +6,6 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(checkpoint-validator)
 add_subdirectory(eternal-load)
+add_subdirectory(range-validator)

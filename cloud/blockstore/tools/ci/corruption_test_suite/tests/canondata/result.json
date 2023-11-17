@@ -1,0 +1,32 @@
+{
+    "test.test_corruption_test_suite[nbs-cluster1-512bytes-bs]": {
+        "checksum": "c31afdf28c313f92dd1b1f1a815d97be",
+        "size": 2759,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1937027/d23df55c6eac1de24a612cdb8253c09e465c7e54/resource.tar.gz#test.test_corruption_test_suite_nbs-cluster1-512bytes-bs_/512bytes-bs_results.txt"
+    },
+    "test.test_corruption_test_suite[nbs-cluster1-64MB-bs]": {
+        "checksum": "0beab5ec1a6eccd8b8f78ba44992e4a3",
+        "size": 2787,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1937027/d23df55c6eac1de24a612cdb8253c09e465c7e54/resource.tar.gz#test.test_corruption_test_suite_nbs-cluster1-64MB-bs_/64MB-bs_results.txt"
+    },
+    "test.test_corruption_test_suite[nbs-cluster1-ranges-intersection]": {
+        "checksum": "eaf82479856f10a684582a74db711d8a",
+        "size": 2885,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1937027/d23df55c6eac1de24a612cdb8253c09e465c7e54/resource.tar.gz#test.test_corruption_test_suite_nbs-cluster1-ranges-intersection_/ranges-intersection_results.txt"
+    },
+    "test.test_corruption_test_suite[nfs-cluster1-512bytes-bs]": {
+        "checksum": "055c9660fb48de4a5313bd194edefe19",
+        "size": 1270,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1937027/d23df55c6eac1de24a612cdb8253c09e465c7e54/resource.tar.gz#test.test_corruption_test_suite_nfs-cluster1-512bytes-bs_/512bytes-bs_results.txt"
+    },
+    "test.test_corruption_test_suite[nfs-cluster1-64MB-bs]": {
+        "checksum": "a0d8a3cd169836a97b4f25978a81a9af",
+        "size": 1277,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1937027/d23df55c6eac1de24a612cdb8253c09e465c7e54/resource.tar.gz#test.test_corruption_test_suite_nfs-cluster1-64MB-bs_/64MB-bs_results.txt"
+    },
+    "test.test_corruption_test_suite[nfs-cluster1-ranges-intersection]": {
+        "checksum": "177aff250d2554a764cabc98d13c955b",
+        "size": 1302,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1937027/d23df55c6eac1de24a612cdb8253c09e465c7e54/resource.tar.gz#test.test_corruption_test_suite_nfs-cluster1-ranges-intersection_/ranges-intersection_results.txt"
+    }
+}

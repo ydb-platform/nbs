@@ -1,0 +1,5 @@
+syntax = "proto2";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/tools/common/go/cms/proto;kikimr";
+
+package NKikimrConsole;

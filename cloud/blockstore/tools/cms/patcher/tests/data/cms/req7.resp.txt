@@ -1,0 +1,51 @@
+
+GetConfigItemsResponse {
+  Status {
+    Code: SUCCESS
+  }
+  ConfigItems {
+    Id {
+      Id: 20
+      Generation: 1
+    }
+    Kind: 100
+    Config {
+      NamedConfigs {
+        Name: "Cloud.NBS.DiskRegistryProxyConfig"
+        Config: "Owner: 16045690984503103501 OwnerIdx: 1"
+      }
+    }
+    UsageScope {
+      HostFilter {
+        Hosts: "dca1-ct5-25.cloud.net"
+      }
+    }
+    Order: 10
+    MergeStrategy: 2
+    Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher"
+  }
+  ConfigItems {
+    Id {
+      Id: 101
+      Generation: 1
+    }
+    Kind: 100
+    Config {
+      NamedConfigs {
+        Name: "Cloud.NBS.DiskAgentConfig"
+        Config: "Enabled: true NvmeDevices { BaseName: \"nvme\" TransportId: \"trtype:PCIe traddr:0000:b0:00.0\" DeviceIds: \"fc984204-4c25-a075-cbdf6e14376b\" DeviceIds: \"6d059f03-4a9f-9409-7ca96e04dd5c\" DeviceIds: \"4fc48912-4f3d-9443-e6eb5c159e36\" DeviceIds: \"f7093410-4fe7-88ec-44b3b61a248e\" DeviceIds: \"ee139da5-4e43-b4a1-4060ed42bfa6\" DeviceIds: \"76d5df08-431c-a727-c7404956b933\" DeviceIds: \"ff63d488-48b3-84e0-a74f0c60b2e7\" DeviceIds: \"1592bac9-4c28-90d6-e26ac82e1669\" DeviceIds: \"9a145d72-463b-926d-ac498850eb17\" DeviceIds: \"c3afc2f4-44bc-a746-411af9f1f635\" DeviceIds: \"36896ec5-4b23-821d-8f5597f6af52\" DeviceIds: \"664f48be-47dd-b010-d37487cbf54c\" DeviceIds: \"2e5d5de7-4435-9ac0-2245bbc2af8d\" DeviceIds: \"7c67467f-4006-ae65-eddbba579ae5\" DeviceIds: \"0a07c189-48b5-9fc3-2c329e03dc6b\" } NvmeTarget { Nqn: \"nqn.2018-09.io.spdk:cnode1\" TransportIds: \"trtype:TCP adrfam:IPv6 traddr:1a23:4b5:bf00:6789:0a12:3bff:feae:c456 trsvcid:10010 subnqn:nqn.2018-09.io.spdk:cnode1\" } AgentId: \"disk-agent-0002\""
+      }
+    }
+    UsageScope {
+      HostFilter {
+        Hosts: "dca1-ct5-25.cloud.net"
+      }
+    }
+    Order: 230
+    MergeStrategy: 2
+    Cookie: "USERNAME;HOSTNAME;TIMESTAMP;blockstore-patcher"
+  }
+}
+Status {
+  Code: SUCCESS
+}

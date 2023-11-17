@@ -1,0 +1,1 @@
+GetConfigItemsRequest { HostFilter { Hosts: "dca1-ct5-15.cloud.net" } }

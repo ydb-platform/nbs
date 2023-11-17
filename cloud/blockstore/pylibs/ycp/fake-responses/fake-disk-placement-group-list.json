@@ -1,0 +1,8 @@
+[{
+  "id": "fake-disk-placement-group-id",
+  "name": "placement-group"
+},
+{
+  "id": "fake-disk-placement-group-id-2",
+  "name": "placement-group-2"
+}]

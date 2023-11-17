@@ -1,0 +1,35 @@
+[{
+  "id": "fake-instance-id1",
+  "folder_id": "fake-folder",
+  "created_at": "2021-06-18T10:59:05Z",
+  "name": "fake-name",
+  "boot_disk": {
+    "disk_id": "fake-boot-disk-id"
+  },
+  "network_interfaces": [
+    {
+      "primary_v6_address": {
+        "address": "1:1:1:1:1:1:1:1"
+      }
+    }
+  ],
+  "compute_node": "fake"
+},
+{
+  "id": "fake-instance-id2",
+  "folder_id": "fake-folder",
+  "created_at": "2021-06-18T10:59:05Z",
+  "name": "fake-name",
+  "boot_disk": {
+    "disk_id": "fake-boot-disk-id"
+  },
+  "network_interfaces": [
+    {
+      "primary_v6_address": {
+        "address": "1:1:1:1:1:1:1:1"
+      }
+    }
+  ],
+  "compute_node": "fake"
+}
+]

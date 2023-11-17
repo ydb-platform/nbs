@@ -8,5 +8,6 @@
 
 add_subdirectory(analytics)
 add_subdirectory(debug)
+add_subdirectory(fs)
 add_subdirectory(nbd)
 add_subdirectory(testing)

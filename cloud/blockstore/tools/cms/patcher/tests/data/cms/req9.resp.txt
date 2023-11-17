@@ -1,0 +1,10 @@
+
+ConfigureResponse {
+  Status {
+    Code: SUCCESS
+  }
+  AddedItemIds: 104
+}
+Status {
+  Code: SUCCESS
+}

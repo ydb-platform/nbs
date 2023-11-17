@@ -1,0 +1,17 @@
+RECURSE(
+    build-fresh-blob
+    chaos-monkey
+    eternal_tests
+    fake-conductor
+    fake-nbs
+    generate-agents
+    infra-client
+    loadtest
+    nbd-test
+    notify-mock
+    pd-metadata-bench
+    plugintest
+    rdma-test
+    stable-plugin
+    verify-test
+)

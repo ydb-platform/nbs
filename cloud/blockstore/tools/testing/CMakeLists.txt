@@ -6,5 +6,13 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(build-fresh-blob)
 add_subdirectory(eternal_tests)
+add_subdirectory(fake-conductor)
+add_subdirectory(fake-nbs)
 add_subdirectory(loadtest)
+add_subdirectory(nbd-test)
+add_subdirectory(pd-metadata-bench)
+add_subdirectory(plugintest)
+add_subdirectory(rdma-test)
+add_subdirectory(verify-test)

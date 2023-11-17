@@ -1,0 +1,7 @@
+SSDProfile {
+    MaxReadBandwidth: {{ maxReadBandwidth }}
+    MaxReadIops: 9999999
+    MaxWriteBandwidth: 1500
+    MaxWriteIops: 40000
+}
+BurstTime: 100

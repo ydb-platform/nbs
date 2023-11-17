@@ -1,0 +1,10 @@
+Port: 9770
+SecurePort: 9769
+Certs {
+  CertFile: "/etc/yc/ssl/certs/host.crt"
+  CertPrivateKeyFile: "/etc/yc/ssl/private/host.key"
+}
+NbsServerHost: "localhost-expanded"
+NbsServerPort: 9768
+NbsServerInsecure: false
+

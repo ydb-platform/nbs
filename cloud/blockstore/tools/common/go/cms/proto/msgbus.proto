@@ -1,0 +1,34 @@
+syntax = "proto2";
+
+import "cloud/blockstore/tools/common/go/cms/proto/console_base.proto";
+import "cloud/blockstore/tools/common/go/cms/proto/console_config.proto";
+import "cloud/blockstore/tools/common/go/cms/proto/console.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/tools/common/go/cms/proto;kikimr";
+
+package NKikimrClient;
+
+message TConsoleRequest {
+    oneof Request {
+        NKikimrConsole.TGetConfigRequest GetConfigRequest = 5;
+        NKikimrConsole.TSetConfigRequest SetConfigRequest = 6;
+        NKikimrConsole.TConfigureRequest ConfigureRequest = 7;
+        NKikimrConsole.TGetConfigItemsRequest GetConfigItemsRequest = 8;
+        NKikimrConsole.TGetNodeConfigItemsRequest GetNodeConfigItemsRequest = 9;
+        NKikimrConsole.TGetNodeConfigRequest GetNodeConfigRequest = 10;
+    }
+    optional string DomainName = 100;
+    optional string SecurityToken = 101;
+}
+
+message TConsoleResponse {
+    oneof Response {
+        NKikimrConsole.TGetConfigResponse GetConfigResponse = 5;
+        NKikimrConsole.TSetConfigResponse SetConfigResponse = 6;
+        NKikimrConsole.TConfigureResponse ConfigureResponse = 7;
+        NKikimrConsole.TGetConfigItemsResponse GetConfigItemsResponse = 8;
+        NKikimrConsole.TGetNodeConfigItemsResponse GetNodeConfigItemsResponse = 9;
+        NKikimrConsole.TGetNodeConfigResponse GetNodeConfigResponse = 10;
+    }
+    optional NKikimrConsole.TStatus Status = 100;
+}

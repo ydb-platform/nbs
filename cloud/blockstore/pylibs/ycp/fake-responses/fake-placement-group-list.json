@@ -1,0 +1,10 @@
+[
+  {
+    "id": "fake-id1",
+    "name": "placement-group1"
+  },
+  {
+    "id": "fake-id2",
+    "name": "placement-group2"
+  }
+]

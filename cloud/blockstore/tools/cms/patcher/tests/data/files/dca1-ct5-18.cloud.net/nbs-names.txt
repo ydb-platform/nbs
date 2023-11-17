@@ -1,0 +1,100 @@
+Node {
+  NodeId: 1
+  Address: "2a02:6b8:bf00:2260:ba59:9fff:fe09:7a7"
+  Port: 19001
+  Host: "dca1-ct5-13.cloud.net"
+  InterconnectHost: "dca1-ct5-13.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-1:1"
+    Body: 103058410
+  }
+}
+Node {
+  NodeId: 2
+  Address: "2a02:6b8:bf00:2260:ba59:9fff:fe09:8a7"
+  Port: 19001
+  Host: "dca1-ct5-14.cloud.net"
+  InterconnectHost: "dca1-ct5-14.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-2:1"
+    Body: 103058412
+  }
+}
+Node {
+  NodeId: 3
+  Address: "2a02:6b8:bf00:2260:ba59:9fff:fe09:9125"
+  Port: 19001
+  Host: "dca1-ct5-15.cloud.net"
+  InterconnectHost: "dca1-ct5-15.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-3:1"
+    Body: 103058411
+  }
+}
+Node {
+  NodeId: 4
+  Address: "2a02:6b8:bf00:2260:ba59:9fff:fe09:917d"
+  Port: 19001
+  Host: "dca1-ct5-16.cloud.net"
+  InterconnectHost: "dca1-ct5-16.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-4:1"
+    Body: 103058413
+  }
+}
+Node {
+  NodeId: 5
+  Address: "2a02:6b8:bf00:2260:9a03:9bff:feaa:b40d"
+  Port: 19001
+  Host: "dca1-ct5-17.cloud.net"
+  InterconnectHost: "dca1-ct5-17.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-5:1"
+    Body: 103058409
+  }
+}
+Node {
+  NodeId: 6
+  Address: "2a02:6b8:bf00:2260:ba59:9fff:fe09:85b"
+  Port: 19001
+  Host: "dca1-ct5-18.cloud.net"
+  InterconnectHost: "dca1-ct5-18.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-6:1"
+    Body: 103058405
+  }
+}
+Node {
+  NodeId: 7
+  Address: "2a02:6b8:bf00:2260:ba59:9fff:fe09:8925"
+  Port: 19001
+  Host: "dca1-ct5-24.cloud.net"
+  InterconnectHost: "dca1-ct5-24.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-7:1"
+    Body: 103057958
+  }
+}
+Node {
+  NodeId: 8
+  Address: "2a02:6b8:bf00:2260:9a03:9bff:feae:c099"
+  Port: 19001
+  Host: "dca1-ct5-25.cloud.net"
+  InterconnectHost: "dca1-ct5-25.cloud.net"
+  WalleLocation {
+    DataCenter: "dca"
+    Rack: "dca-8:1"
+    Body: 103058207
+  }
+}
+ClusterUUID: "2452520"
+AcceptUUID: "2452520"
+SuppressVersionCheck: true
+

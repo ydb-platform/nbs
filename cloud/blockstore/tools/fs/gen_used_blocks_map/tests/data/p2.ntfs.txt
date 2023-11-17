@@ -1,0 +1,36 @@
+ntfswipe is about to wipe:
+        unused disk space
+
+ntfswipe will overwrite these areas with: 0x00 
+
+
+ntfswipe will begin in 5 seconds, press CTRL-C to abort.
+
+wipe_unused
+=== [unused] pos: 2945929216 count: 4096
+=== [unused] pos: 2945933312 count: 4096
+=== [unused] pos: 2945937408 count: 4096
+=== [unused] pos: 2945941504 count: 4096
+=== [unused] pos: 2945945600 count: 4096
+=== [unused] pos: 2945949696 count: 4096
+...
+=== [unused] pos: 2946072576 count: 4096
+=== [unused] pos: 2946076672 count: 4096
+=== [unused] pos: 2946080768 count: 4096
+=== [unused] pos: 2946084864 count: 4096
+=== [unused] pos: 2946088960 count: 4096
+=== [unused] pos: 2946093056 count: 4096
+=== [unused] pos: 2946097152 count: 4096
+=== [unused] pos: 2946101248 count: 4096
+=== [unused] pos: 2946105344 count: 4096
+=== [unused] pos: 2946109440 count: 4096
+=== [unused] pos: 2946113536 count: 4096
+...
+=== [unused] pos: 52428771328 count: 4096
+=== [unused] pos: 52428775424 count: 4096
+=== [unused] pos: 52428779520 count: 4096
+=== [unused] pos: 52428783616 count: 4096
+=== [unused] pos: 52428787712 count: 4096
+=== [unused] pos: 52428791808 count: 4096
+wipe_unused 0x00, 15257051136 bytes
+15257051136 bytes were wiped (excluding undelete data)

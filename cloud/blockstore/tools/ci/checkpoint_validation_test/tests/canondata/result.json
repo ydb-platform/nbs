@@ -1,0 +1,7 @@
+{
+    "test.test_checkpoint_validation_test[cluster1]": {
+        "checksum": "82d3d501e81588981cc54c02ad999037",
+        "size": 1440,
+        "uri": "https://storage.yandex-team.ru/get-devtools/1942415/7e12ec3998901b080a78ed97456926ff1ea1ca8a/resource.tar.gz#test.test_checkpoint_validation_test_cluster1_/testing_out_stuff_results.txt"
+    }
+}

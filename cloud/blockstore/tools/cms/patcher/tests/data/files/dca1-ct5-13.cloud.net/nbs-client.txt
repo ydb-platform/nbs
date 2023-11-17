@@ -1,0 +1,10 @@
+ClientConfig {
+  Host: "localhost"
+  Port: 9767
+  RetryTimeout: 86400000
+}
+LogConfig {
+  SysLogService: "NBS_CLIENT"
+  LogLevel: 6
+}
+

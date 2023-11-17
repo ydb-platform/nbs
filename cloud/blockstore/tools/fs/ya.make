@@ -1,0 +1,10 @@
+RECURSE(
+    cleanup-ext4-meta
+    cleanup-fs
+    cleanup-xfs
+    copy_dev
+    detect-raid
+    dump_disk_info
+    gen_used_blocks_map
+    setup_fs_mask
+)

@@ -1,0 +1,9 @@
+{
+    "Volume": {
+        "DiskId": "fmalfamflakdmflad"
+    },
+    "Stats": {
+        "MixedBlobsCount": 100500
+    },
+    "Checkpoints": ["tmp-checkpoint-1", "tmp-checkpoint-2"]
+}

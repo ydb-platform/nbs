@@ -1,0 +1,5 @@
+HostNameScheme: HOSTNAME_YDBVIEWER
+ViewerHostName: "ydb.bastion.cloud.ru"
+SolomonClusterName: "cloud_hw-nbs-dev-lab"
+UseAsyncLogger: true
+

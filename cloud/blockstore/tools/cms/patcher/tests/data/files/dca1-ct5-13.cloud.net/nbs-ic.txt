@@ -1,0 +1,7 @@
+StartTcp: true
+MaxInflightAmountOfDataInKB: 10240
+MergePerPeerCounters: true
+HandshakeTimeoutDuration {
+  Seconds: 1
+}
+

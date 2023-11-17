@@ -1,0 +1,5 @@
+RECURSE(
+    config
+    lib
+    patcher
+)
