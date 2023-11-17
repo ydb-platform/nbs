@@ -14,7 +14,7 @@ inputs:
     default: 'localhost/32 dp7329odurnhplpf5ff0.auto.internal/64'
 
 runs:
-
+  using: "composite"
   steps:
     - name: Configure
       shell: bash
