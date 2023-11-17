@@ -6,6 +6,9 @@ on:
       type: string
       required: false
       description: 'CCache htpasswd webdav PUT password'
+    REMOTE_CACHE_URL:
+      type: string
+      required: true
 
 runs:
   using: "composite"
@@ -32,7 +35,7 @@ runs:
       secrets:
         CCACHE_PASSWD:
       env:
-        CCACHE_REMOTE_STORAGE: ${{ vars.REMOTE_CACHE_URL && format('http://{0}{1}', inputs.CCACHE_PASSWORD, vars.REMOTE_CACHE_URL) || ''}}
+        CCACHE_REMOTE_STORAGE: ${{ inputs.REMOTE_CACHE_URL && format('http://{0}{1}', inputs.CCACHE_PASSWORD, inputs.REMOTE_CACHE_URL) || ''}}
 
     - name: report Build failed
       if: ${{ failure() }}

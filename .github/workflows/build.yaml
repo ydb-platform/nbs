@@ -46,6 +46,7 @@ jobs:
       uses: ./.github/actions/build
       with:
         CCACHE_PASSWD: ${{ secrets.CCACHE_PASSWORD }}
+        REMOTE_CACHE_URL: ${{ vars.REMOTE_CACHE_URL }}
   release-runner:
     name: Release self-hosted Nebius runner if provided on-demand
     needs:
