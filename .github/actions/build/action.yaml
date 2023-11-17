@@ -9,35 +9,39 @@ on:
     REMOTE_CACHE_URL:
       type: string
       required: true
+    DISTCC_HOSTS:
+      type: string
+      required: true
+      default: 'localhost/32 dp7329odurnhplpf5ff0.auto.internal/64'
 
 runs:
-  using: "composite"
+
   steps:
-    - name: Build
+    - name: Configure
       shell: bash
       run: |
         export CONAN_USER_HOME=`realpath ..`
-        export DISTCC_HOSTS="localhost/32 dp7329odurnhplpf5ff0.auto.internal/64"
+        export DISTCC_HOSTS="${{ inputs.DISTCC_HOSTS }}"
         export DISTCC_FALLBACK=0
         export DISTCC_VERBOSE=0
         export HOME=/tmp
+        export CCACHE_BASEDIR=`realpath ..`
+        export CCACHE_SLOPPINESS=locale
+        export CCACHE_REMOTE_STORAGE="${CCACHE_REMOTE_STORAGE}"
 
         ip addr
 
         distcc --show-hosts
 
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
-          -DCCACHE_PATH=/usr/local/bin/ccache \
           -DCMAKE_TOOLCHAIN_FILE=clang.toolchain \
-          -DCCACHE_BASEDIR=`realpath ..` \
-          -DCCACHE_SLOPPINESS=locale \
           -DCMAKE_C_COMPILER_LAUNCHER="ccache;distcc" \
           -DCMAKE_CXX_COMPILER_LAUNCHER="ccache;distcc" \
-          -DCCACHE_REMOTE_STORAGE="${CCACHE_REMOTE_STORAGE}" \
           .
 
         ninja ./cloud/blockstore/apps/client/blockstore-client
         df -h
+        ccache -s
       env:
         CCACHE_REMOTE_STORAGE: ${{ inputs.REMOTE_CACHE_URL && format('http://{0}{1}', inputs.CCACHE_PASSWORD, inputs.REMOTE_CACHE_URL) || ''}}
 
