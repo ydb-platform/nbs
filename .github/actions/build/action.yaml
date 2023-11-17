@@ -1,8 +1,11 @@
 name: Build NBS
 description: Build NBS
 on:
-  secrets:
-    CCACHE_PASSWORD: ${{ secrets.CCACHE_PASSWORD }}
+  inputs:
+    CCACHE_PASSWORD:
+      type: string
+      required: false
+      description: 'CCache htpasswd webdav PUT password'
 
 runs:
   using: "composite"
@@ -29,7 +32,7 @@ runs:
       secrets:
         CCACHE_PASSWD:
       env:
-        CCACHE_REMOTE_STORAGE: ${{ vars.REMOTE_CACHE_URL && format('http://{0}{1}', secrets.CCACHE_PASSWORD, vars.REMOTE_CACHE_URL) || ''}}
+        CCACHE_REMOTE_STORAGE: ${{ vars.REMOTE_CACHE_URL && format('http://{0}{1}', inputs.CCACHE_PASSWORD, vars.REMOTE_CACHE_URL) || ''}}
 
     - name: report Build failed
       if: ${{ failure() }}

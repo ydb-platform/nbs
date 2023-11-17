@@ -44,6 +44,8 @@ jobs:
       uses: ./.github/actions/prepare
     - name: Build
       uses: ./.github/actions/build
+      with:
+        CCACHE_PASSWD: ${{ secrets.CCACHE_PASSWORD }}
   release-runner:
     name: Release self-hosted Nebius runner if provided on-demand
     needs:
