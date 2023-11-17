@@ -93,8 +93,11 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
         StartCompletionTimestamp = ctx.Now();
 
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Volume started, time: %lu",
+            "[%lu] Volume started. MountSeqNumber: %lu, generation: %lu, "
+            "time: %lu",
             TabletID(),
+            State->GetMountSeqNumber(),
+            Executor()->Generation(),
             GetStartTime().MicroSeconds());
     }
 

@@ -244,8 +244,10 @@ bool TDiskAgentActor::CheckIntersection(
         return true;
     }
 
+    TString overlapDetails;
     auto result = OverlapStatusToResult(
-        recentBlocksTracker.CheckRecorded(volumeRequestId, range),
+        recentBlocksTracker
+            .CheckRecorded(volumeRequestId, range, &overlapDetails),
         msg->Record.GetMultideviceRequest());
     if (result != S_OK) {
         if (result == E_REJECTED) {
@@ -270,9 +272,7 @@ bool TDiskAgentActor::CheckIntersection(
             *TActivationContext::ActorSystem(),
             ctx.SelfID,
             *requestInfo,
-            MakeError(
-                result,
-                "range of the old request overlaps the newer request"),
+            MakeError(result, overlapDetails),
             {},
             volumeRequestId,
             std::move(deviceUUID),

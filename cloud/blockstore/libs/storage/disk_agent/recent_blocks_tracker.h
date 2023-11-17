@@ -59,7 +59,8 @@ public:
     // Checks overlapping among the recently written blocks.
     [[nodiscard]] EOverlapStatus CheckRecorded(
         ui64 requestId,
-        const TBlockRange64& range) const;
+        const TBlockRange64& range,
+        TString* overlapDetails) const;
 
     // Store the request block range to recently written blocks.
     void AddRecorded(ui64 requestId, const TBlockRange64& range);

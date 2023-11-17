@@ -126,18 +126,16 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
         ForkedCallContexts.push_back(request->CallContext);
         request->Record = Request;
 
-        TAutoPtr<NActors::IEventHandle> event(
-            new NActors::IEventHandle(
-                actorId,
-                ctx.SelfID,
-                request.release(),
-                NActors::IEventHandle::FlagForwardOnNondelivery,
-                0,  // cookie
-                &ctx.SelfID    // forwardOnNondelivery
-            )
+        auto event = std::make_unique<NActors::IEventHandle>(
+            actorId,
+            ctx.SelfID,
+            request.release(),
+            NActors::IEventHandle::FlagForwardOnNondelivery,
+            RequestInfo->Cookie,   // cookie
+            &ctx.SelfID            // forwardOnNondelivery
         );
 
-        ctx.Send(event);
+        ctx.Send(std::move(event));
     }
 }
 

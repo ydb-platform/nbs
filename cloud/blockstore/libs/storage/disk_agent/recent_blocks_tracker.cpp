@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/actors/core/actor.h>
@@ -45,7 +46,8 @@ TRecentBlocksTracker::TRecentBlocksTracker(
 
 EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     ui64 requestId,
-    const TBlockRange64& range) const
+    const TBlockRange64& range,
+    TString* overlapDetails) const
 {
     if (requestId == 0) {
         // Some unit tests do not set the request ID.
@@ -55,6 +57,11 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     if (OrderedById.size() == TrackDepth) {
         const ui64 oldestRequestId = OrderedById.begin()->first;
         if (requestId < oldestRequestId) {
+            *overlapDetails =
+                TStringBuilder()
+                << "The request is too old. Oldest tracked id="
+                << TCompositeId::FromRaw(oldestRequestId).Print()
+                << ", requestId=" << TCompositeId::FromRaw(requestId).Print();
             return EOverlapStatus::Unknown;
         }
     }
@@ -67,6 +74,10 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     if (it->first == requestId) {
         ReportRepeatedRequestId(requestId, range);
         // Got same requestId. Reject it.
+        *overlapDetails = TStringBuilder()
+                         << "The request with id="
+                         << TCompositeId::FromRaw(requestId).Print()
+                         << " repeated";
         return EOverlapStatus::Unknown;
     }
 
@@ -75,19 +86,33 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     const ui64 rangeSize = range.Size();
     bitmap.Reserve(rangeSize);
     bitmap.Set(0, rangeSize);
+    auto lastOverlaped = OrderedById.end();
     for (; it != OrderedById.end(); ++it) {
         if (!range.Overlaps(it->second)) {
             continue;
         }
         foundIntersections = true;
+        lastOverlaped = it;
         TBlockRange64 other = range.Intersect(it->second);
         bitmap.Reset(other.Start - range.Start, other.End - range.Start + 1);
     }
     if (bitmap.FirstNonZeroBit() >= rangeSize) {
+        *overlapDetails = TStringBuilder()
+                         << "Complete overlapping "
+                         << TCompositeId::FromRaw(requestId).Print() << " "
+                         << DescribeRange(range) << " with "
+                         << TCompositeId::FromRaw(lastOverlaped->first).Print()
+                         << " " << DescribeRange(lastOverlaped->second);
         return EOverlapStatus::Complete;
     }
 
     if (foundIntersections) {
+        *overlapDetails = TStringBuilder()
+                         << "Partial overlapping "
+                         << TCompositeId::FromRaw(requestId).Print() << " "
+                         << DescribeRange(range) << " with "
+                         << TCompositeId::FromRaw(lastOverlaped->first).Print()
+                         << " " << DescribeRange(lastOverlaped->second);
         return EOverlapStatus::Partial;
     }
     return EOverlapStatus::NotOverlapped;
@@ -176,7 +201,7 @@ void TRecentBlocksTracker::ReportRepeatedRequestId(
             TBlockStoreComponents::DISK_AGENT,
             "[%s] Duplicate saved requestId: %ld block range [%ld, %ld]",
             DeviceUUID.c_str(),
-            requestId,
+            TCompositeId::FromRaw(requestId).Print().c_str(),
             range.Start,
             range.End);
     }

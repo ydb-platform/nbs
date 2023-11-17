@@ -328,7 +328,8 @@ private:
 
     ECheckRange CheckRangeIntersection(
         const TRequestDetails& requestDetails,
-        TSynchronizedData& synchronizedData) const
+        TSynchronizedData& synchronizedData,
+        TString* overlapDetails) const
     {
         const bool overlapsWithInflightRequests =
             synchronizedData.RecentBlocksTracker.CheckInflight(
@@ -346,7 +347,8 @@ private:
         auto result = OverlapStatusToResult(
             synchronizedData.RecentBlocksTracker.CheckRecorded(
                 requestDetails.VolumeRequestId,
-                requestDetails.Range),
+                requestDetails.Range,
+                overlapDetails),
             requestDetails.IsMultideviceRequest);
         if (result != S_OK) {
             if (result == E_REJECTED) {
@@ -383,18 +385,27 @@ private:
     {
         TList<T> readyToExecute;
         auto executeNotOverlappedRequests = [&](T& postponedRequest) {
-            const ECheckRange checkResult =
-                CheckRangeIntersection(postponedRequest.RequestDetails, *token);
+            TString overlapDetails;
+            const ECheckRange checkResult = CheckRangeIntersection(
+                postponedRequest.RequestDetails,
+                *token,
+                &overlapDetails);
 
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     readyToExecute.push_back(std::move(postponedRequest));
                     return true;
                 case ECheckRange::ResponseAlready:
-                    FinishHandleRequest(postponedRequest, S_ALREADY);
+                    FinishHandleRequest(
+                        postponedRequest,
+                        S_ALREADY,
+                        overlapDetails);
                     return true;
                 case ECheckRange::ResponseRejected:
-                    FinishHandleRequest(postponedRequest, E_REJECTED);
+                    FinishHandleRequest(
+                        postponedRequest,
+                        E_REJECTED,
+                        overlapDetails);
                     return true;
                 case ECheckRange::DelayRequest: {
                     return false;
@@ -558,16 +569,19 @@ private:
         if (continuationData.RequestDetails.VolumeRequestId) {
             auto token =
                 GetAccessToken(continuationData.RequestDetails.DeviceUUID);
-            const ECheckRange checkResult =
-                CheckRangeIntersection(continuationData.RequestDetails, *token);
+            TString overlapDetails;
+            const ECheckRange checkResult = CheckRangeIntersection(
+                continuationData.RequestDetails,
+                *token,
+                &overlapDetails);
 
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
                 case ECheckRange::ResponseAlready:
-                    return TErrorResponse(S_ALREADY);
+                    return TErrorResponse(S_ALREADY, overlapDetails);
                 case ECheckRange::ResponseRejected:
-                    return TErrorResponse(E_REJECTED);
+                    return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
                     token->PostponedWriteRequests.push_back(
                         std::move(continuationData));
@@ -597,12 +611,13 @@ private:
 
     void FinishHandleRequest(
         const TWriteRequestContinuationData& continuationData,
-        EWellKnownResultCodes resultCode) const
+        EWellKnownResultCodes resultCode,
+        const TString& overlapDetails) const
     {
         HandleWriteBlocksResponse(
             continuationData.RequestDetails,
             MakeFuture<NProto::TWriteBlocksResponse>(
-                TErrorResponse(resultCode)));
+                TErrorResponse(resultCode, overlapDetails)));
     }
 
     void HandleWriteBlocksResponse(
@@ -674,16 +689,19 @@ private:
         if (continuationData.RequestDetails.VolumeRequestId) {
             auto token =
                 GetAccessToken(continuationData.RequestDetails.DeviceUUID);
-            const ECheckRange checkResult =
-                CheckRangeIntersection(continuationData.RequestDetails, *token);
+            TString overlapDetails;
+            const ECheckRange checkResult = CheckRangeIntersection(
+                continuationData.RequestDetails,
+                *token,
+                &overlapDetails);
 
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
                 case ECheckRange::ResponseAlready:
-                    return TErrorResponse(S_ALREADY);
+                    return TErrorResponse(S_ALREADY, overlapDetails);
                 case ECheckRange::ResponseRejected:
-                    return TErrorResponse(E_REJECTED);
+                    return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
                     token->PostponedZeroRequests.push_back(
                         std::move(continuationData));
@@ -713,12 +731,13 @@ private:
 
     void FinishHandleRequest(
         const TZeroRequestContinuationData& continuationData,
-        EWellKnownResultCodes resultCode) const
+        EWellKnownResultCodes resultCode,
+        const TString& overlapDetails) const
     {
         HandleZeroBlocksResponse(
             continuationData.RequestDetails,
             MakeFuture<NProto::TZeroBlocksResponse>(
-                TErrorResponse(resultCode)));
+                TErrorResponse(resultCode, overlapDetails)));
     }
 
     void HandleZeroBlocksResponse(

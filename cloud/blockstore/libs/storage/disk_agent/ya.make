@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(recent_blocks_tracker.h)
+
 SRCS(
     disk_agent_actor_acquire.cpp
     disk_agent_actor_disable.cpp

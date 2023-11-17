@@ -1,5 +1,6 @@
 #pragma once
 
+#include <util/string/builder.h>
 #include <util/system/types.h>
 #include <util/system/yassert.h>
 
@@ -60,6 +61,11 @@ public:
     [[nodiscard]] ui64 GetValue() const
     {
         return std::bit_cast<ui64>(Values);
+    }
+
+    [[nodiscard]] TString Print() const
+    {
+        return TStringBuilder() << GetGeneration() << ":" << GetRequestId();
     }
 
 private:
