@@ -23,7 +23,7 @@ runs:
         ninja ./cloud/blockstore/apps/client/blockstore-client
         df -h
       env:
-        CCACHE_REMOTE_STORAGE: "http://ccache:${{ secrets.CCACHE_PASSWORD }}@195.242.17.155|layout=bazel"
+        CCACHE_REMOTE_STORAGE: ${{ vars.REMOTE_CACHE_URL && format('http://{0}{1}', secrets.CCACHE_PASSWORD, vars.REMOTE_CACHE_URL) || ''}}
 
     - name: report Build failed
       if: ${{ failure() }}
