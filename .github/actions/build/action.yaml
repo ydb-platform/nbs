@@ -7,17 +7,24 @@ runs:
       shell: bash
       run: |
         export CONAN_USER_HOME=`realpath ..`
-        export CCACHE_BASEDIR=`realpath ..`
-        export CCACHE_SLOPPINESS=locale
-        export CCACHE_REMOTE_STORAGE="http://cachesrv.ydb.tech:8080|read-only|layout=bazel"
+        export DISTCC_HOSTS="195.242.17.155"
+        export DISTCC_VERBOSE=1
 
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
           -DCCACHE_PATH=/usr/local/bin/ccache \
           -DCMAKE_TOOLCHAIN_FILE=clang.toolchain \
+          -DCCACHE_BASEDIR=`realpath ..` \
+          -DCCACHE_SLOPPINESS=locale \
+          -DCMAKE_C_COMPILER_LAUNCHER="ccache;distcc" \
+          -DCMAKE_CXX_COMPILER_LAUNCHER="ccache;distcc" \
+          -DCCACHE_REMOTE_STORAGE="${CCACHE_REMOTE_STORAGE}" \
           .
-        ninja
-        ccache -s
+
+        ninja ./cloud/blockstore/apps/client/blockstore-client
         df -h
+      env:
+        CCACHE_REMOTE_STORAGE: "http://ccache:${{ secrets.CCACHE_PASSWORD }}@195.242.17.155|layout=bazel"
+
     - name: report Build failed
       if: ${{ failure() }}
       shell: bash

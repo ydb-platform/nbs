@@ -2,27 +2,6 @@ name: Build NBS Binaries
 
 on:
   workflow_dispatch:
-    inputs:
-      image:
-        type: string
-        required: false
-        default: arlng9uhmtlat6q5pqlv
-      zone-id:
-        type: string
-        required: true
-        default: eu-north1-c
-      disk-size:
-        type: string
-        required: true
-        default: '1023GB'
-      cores:
-        type: number
-        required: true
-        default: 32
-      memory:
-        type: string
-        required: true
-        default: '128GB'
   push:
     branches: [ $default-branch ]
   pull_request:
@@ -34,11 +13,11 @@ jobs:
     timeout-minutes: 5
     runs-on: ubuntu-latest
     outputs:
-      label: ${{steps.start-nb-runner.outputs.label}}
-      instance-id: ${{steps.start-nb-runner.outputs.instance-id}}
+      label: ${{steps.start-runner.outputs.label}}
+      instance-id: ${{steps.start-runner.outputs.instance-id}}
     steps:
-      - name: Start Nebius runner
-        id: start-nb-runner
+      - name: Start runner
+        id: start-runner
         uses: librarian/yc-github-runner@0.0.11
         with:
           mode: start
@@ -46,7 +25,7 @@ jobs:
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           folder-id: bjeuq5o166dq4ukv3eec
           image-id: arlng9uhmtlat6q5pqlv
-          disk-size: 1023GB
+          disk-size: '1023GB'
           disk-type: network-ssd-nonreplicated
           platform-id: standard-v2
           cores: 32
@@ -55,14 +34,15 @@ jobs:
           zone-id: eu-north1-c
           subnet-id: f8uh0ml4rhb45nde9p75
   build:
+    name: Build NBS
     runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
     needs: provide-runner
     steps:
-    - name: checkout
+    - name: Checkout
       uses: actions/checkout@v3
-    - name: prepare
+    - name: Prepare VM
       uses: ./.github/actions/prepare
-    - name: build
+    - name: Build
       uses: ./.github/actions/build
 
   release-runner:
@@ -73,8 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Stop Nebius runner
-        id: stop-nb-runner
+      - name: Stop  runner
+        id: stop-runner
         uses: librarian/yc-github-runner@0.0.11
         with:
           mode: stop
