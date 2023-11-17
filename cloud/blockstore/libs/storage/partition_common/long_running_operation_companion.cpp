@@ -62,10 +62,12 @@ TRunningActors::TTimeoutsStat TRunningActors::ExtractLongRunningStat()
 TLongRunningOperationCompanion::TLongRunningOperationCompanion(
         NActors::TActorId parentActor,
         TDuration longRunningThreshold,
-        TLongRunningOperationCompanion::EOperation operation)
+        TLongRunningOperationCompanion::EOperation operation,
+        ui32 groupId)
     : ParentActor(parentActor)
     , LongRunningThreshold(longRunningThreshold)
     , Operation(operation)
+    , GroupId(groupId)
 {}
 
 void TLongRunningOperationCompanion::RequestStarted(const TActorContext& ctx)
@@ -87,6 +89,7 @@ void TLongRunningOperationCompanion::RequestFinished(const TActorContext& ctx)
         std::make_unique<TEvPartitionCommonPrivate::TEvLongRunningOperation>(
             Operation,
             LongRunningThreshold,
+            GroupId,
             true));
 }
 
@@ -102,6 +105,7 @@ void TLongRunningOperationCompanion::HandleTimeout(
         std::make_unique<TEvPartitionCommonPrivate::TEvLongRunningOperation>(
             Operation,
             LongRunningThreshold,
+            GroupId,
             false));
 }
 

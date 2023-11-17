@@ -159,15 +159,18 @@ struct TEvPartitionCommonPrivate
         const EOperation Operation;
         const EReason Reason;
         const TDuration Duration;
+        const ui32 GroupId;
 
         TLongRunningOperation(
-            EOperation operation,
-            TDuration duration,
-            bool finished)
+                EOperation operation,
+                TDuration duration,
+                ui32 groupId,
+                bool finished)
             : Operation(operation)
             , Reason(
                   finished ? EReason::Finished : EReason::LongRunningDetected)
             , Duration(duration)
+            , GroupId(groupId)
         {}
     };
 

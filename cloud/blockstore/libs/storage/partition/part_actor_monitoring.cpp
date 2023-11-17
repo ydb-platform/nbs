@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -27,6 +28,49 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void DumpDownGroups(
+    IOutputStream& out,
+    TInstant now,
+    const TPartitionState& state)
+{
+    HTML(out)
+    {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLEH() { out << "Group"; }
+                    TABLEH() { out << "Downtime"; }
+
+                }
+            }
+
+            auto addGroupRow = [&](
+                const ui32 groupId,
+                const TDowntimeHistory& history)
+            {
+                TABLER() {
+                    TABLEH() { out << groupId; }
+                    TABLEH() {
+                        TSvgWithDownGraph svg(out);
+                        for (const auto& [time, state]: history) {
+                            svg.AddEvent(
+                                time,
+                                state == EDowntimeStateChange::DOWN);
+                        }
+                    }
+                }
+            };
+
+            for (const auto& [groupId, history]: state.GetGroupId2Downtimes()) {
+                addGroupRow(groupId, history.RecentEvents(now));
+            }
+        }
+    }
+}
 
 void DumpChannels(
     IOutputStream& out,
@@ -597,6 +641,8 @@ void TPartitionActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID("tab-pane", "Channels") {
+                    DumpDownGroups(out, ctx.Now(), *State);
+
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");
                         out << "Channels";

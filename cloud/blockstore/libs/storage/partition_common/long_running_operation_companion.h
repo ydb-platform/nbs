@@ -46,6 +46,7 @@ private:
     const NActors::TActorId ParentActor;
     const TDuration LongRunningThreshold;
     const EOperation Operation;
+    const ui32 GroupId;
 
     bool LongRunningDetected = false;
 
@@ -53,7 +54,8 @@ public:
     TLongRunningOperationCompanion(
         NActors::TActorId parentActor,
         TDuration longRunningThreshold,
-        EOperation operation);
+        EOperation operation,
+        ui32 groupId);
 
     void RequestStarted(const NActors::TActorContext& ctx);
     void RequestFinished(const NActors::TActorContext& ctx);

@@ -2,12 +2,12 @@
 
 #include "public.h"
 
+#include "downtime_history.h"
+
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/storage/core/libs/common/error.h>
-
-#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -28,16 +28,6 @@ enum class EVolumeStatsType
     EServerStats,
     EClientStats
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-enum EDowntimeStateChange
-{
-    DOWN = 0,
-    UP = 1
-};
-using TDowntimeChange = std::pair<TInstant, EDowntimeStateChange>;
-using TDowntimeHistory = TVector<TDowntimeChange>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

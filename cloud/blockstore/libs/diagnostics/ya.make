@@ -5,6 +5,7 @@ SRCS(
     config.cpp
     critical_events.cpp
     diag_down_graph.cpp
+    downtime_history.cpp
     dumpable.cpp
     fault_injection.cpp
     incomplete_request_processor.cpp

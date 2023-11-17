@@ -232,66 +232,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDowntimeHistoryHolder
-{
-public:
-    using TDowntimeEvents = TSimpleRingBuffer<TDowntimeChange>;
-
-private:
-    // Max change frequency is 5 sec, here we hold info at least for one hour
-    static constexpr size_t MAX_HISTORY_DEPTH = 12 * 60;
-    static constexpr TDuration MAX_HISTORY_DURATION = TDuration::Hours(1);
-    TDowntimeEvents DownEvents;
-    ITimerPtr Timer;
-
-public:
-    TDowntimeHistoryHolder(ITimerPtr timer)
-        : DownEvents(MAX_HISTORY_DEPTH)
-        , Timer(std::move(timer))
-    {
-    }
-
-    bool Empty() const
-    {
-        return DownEvents.TotalSize() == 0;
-    }
-
-    void PushBack(EDowntimeStateChange state)
-    {
-        const auto now = Timer->Now();
-        if (DownEvents.TotalSize() == 0
-            || (DownEvents[ DownEvents.TotalSize() - 1 ].second != state))
-        {
-            DownEvents.PushBack(std::make_pair(now, state));
-        }
-    }
-
-    TDowntimeHistory RecentEvents() const
-    {
-        if (DownEvents.TotalSize() == 0) {
-            return {};
-        }
-
-        const auto now = Timer->Now();
-        size_t i = DownEvents.FirstIndex();
-        for (; i + 1 < DownEvents.TotalSize(); ++i) {
-            if ((now - DownEvents[ i + 1 ].first) < MAX_HISTORY_DURATION) {
-                break;
-            }
-        }
-        TDowntimeHistory result;
-        result.reserve(DownEvents.TotalSize() - i);
-        for (; i < DownEvents.TotalSize(); ++i) {
-            result.push_back(DownEvents[i]);
-        }
-        return result;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TVolumeInfoBase
 {
+    const ITimerPtr Timer;
     const NProto::TVolume Volume;
     TBusyIdleTimeCalculator BusyIdleCalc;
     TVolumePerformanceCalculator PerfCalc;
@@ -309,12 +252,12 @@ struct TVolumeInfoBase
             IPostponeTimePredictorPtr postponeTimePredictor,
             TDynamicCountersPtr volumeGroup,
             ITimerPtr timer)
-        : Volume(std::move(volume))
+        : Timer(timer)
+        , Volume(std::move(volume))
         , PerfCalc(Volume, diagnosticsConfig)
         , PostponeTimePredictor(std::move(postponeTimePredictor))
         , PostponeTimePredictorStats(volumeGroup, timer)
         , DowntimeCalculator(diagnosticsConfig, Volume, timer)
-        , DowntimeHistory(timer)
         , ThrottlerRejects(timer)
         , CheckpointRejects(timer)
         , HasStorageConfigPatchCounter(
@@ -834,6 +777,7 @@ public:
 
             if (updateIntervalFinished) {
                 volumeBase.DowntimeHistory.PushBack(
+                    Timer->Now(),
                     hasDowntime
                     ? EDowntimeStateChange::DOWN
                     : EDowntimeStateChange::UP);
@@ -926,7 +870,8 @@ public:
             return {};
         }
 
-        return volumeIt->second.VolumeBase->DowntimeHistory.RecentEvents();
+        return volumeIt->second.VolumeBase->DowntimeHistory.RecentEvents(
+            Timer->Now());
     }
 
     bool HasStorageConfigPatch(const TString& diskId) const override

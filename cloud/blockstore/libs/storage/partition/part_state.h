@@ -6,6 +6,7 @@
 #include "part_schema.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
@@ -1349,8 +1350,17 @@ public:
 
 private:
     NProto::TPartitionStats& Stats;
+    THashMap<ui32, TDowntimeHistoryHolder> GroupId2Downtimes;
 
 public:
+    const auto& GetGroupId2Downtimes() const
+    {
+        return GroupId2Downtimes;
+    }
+
+    void RegisterDowntime(TInstant now, ui32 groupId);
+    void RegisterSuccess(TInstant now, ui32 groupId);
+
     const NProto::TPartitionStats& GetStats() const
     {
         return Stats;

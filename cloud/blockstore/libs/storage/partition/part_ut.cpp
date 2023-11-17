@@ -1463,13 +1463,19 @@ TString GetBlocksContent(
     return result;
 }
 
-TString BuildRemoteHttpQuery(ui64 tabletId, const TVector<std::pair<TString, TString>>& keyValues)
+TString BuildRemoteHttpQuery(
+    ui64 tabletId,
+    const TVector<std::pair<TString, TString>>& keyValues,
+    const TString& fragment = "")
 {
     auto res = TStringBuilder()
         << "/app?TabletID="
         << tabletId;
-    for (const auto& p : keyValues) {
+    for (const auto& p: keyValues) {
         res << "&" << p.first << "=" << p.second;
+    }
+    if (fragment) {
+        res << "#" << fragment;
     }
     return res;
 }
@@ -10327,6 +10333,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 expectedLongRunngingWrites,
                 writeCounter.Value);
         }
+
+        // smoke test for monpage
+        auto channelsTab = partition.RemoteHttpInfo(
+            BuildRemoteHttpQuery(TestTabletId, {}, "Channels"),
+            HTTP_METHOD::HTTP_METHOD_GET);
+
+        UNIT_ASSERT_C(channelsTab->Html.Contains("svg"), channelsTab->Html);
     }
 
     Y_UNIT_TEST(ShouldReportLongRunningReadBlobOperations)

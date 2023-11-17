@@ -48,7 +48,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold);
+        TDuration longRunningThreshold,
+        ui32 groupId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -85,11 +86,13 @@ TWriteBlobActor::TWriteBlobActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold)
+        TDuration longRunningThreshold,
+        ui32 groupId)
     : TLongRunningOperationCompanion(
           tabletActorId,
           longRunningThreshold,
-          TLongRunningOperationCompanion::EOperation::WriteBlob)
+          TLongRunningOperationCompanion::EOperation::WriteBlob,
+          groupId)
     , TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -328,6 +331,7 @@ void TPartitionActor::HandleWriteBlob(
 
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
+    ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
     State->EnqueueIORequest(
         channel,
@@ -339,7 +343,8 @@ void TPartitionActor::HandleWriteBlob(
                 msg.Release()),
             GetDowntimeThreshold(
                 *DiagnosticsConfig,
-                PartitionConfig.GetStorageMediaKind())));
+                PartitionConfig.GetStorageMediaKind()),
+            groupId));
 
     ProcessIOQueue(ctx, channel);
 }
@@ -353,7 +358,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
     Actors.Erase(ev->Sender);
 
     ui32 channel = msg->BlobId.Channel();
-    ui32 group = Info()->GroupFor(channel, msg->BlobId.Generation());
+    ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
     const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     const auto yellowMoveFlag =
@@ -374,7 +379,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
                 "[%lu] Yellow stop flag received for channel %u and group %u",
                 TabletID(),
                 channel,
-                group);
+                groupId);
 
             ScheduleYellowStateUpdate(ctx);
             ReassignChannelsIfNeeded(ctx);
@@ -383,7 +388,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
                 "[%lu] Yellow move flag received for channel %u and group %u",
                 TabletID(),
                 channel,
-                group);
+                groupId);
 
             State->RegisterReassignRequestFromBlobStorage(channel);
             ReassignChannelsIfNeeded(ctx);
@@ -401,10 +406,17 @@ void TPartitionActor::HandleWriteBlobCompleted(
         return;
     }
 
-    if (group == Max<ui32>()) {
-        Y_DEBUG_ABORT_UNLESS(0, "HandleWriteBlobCompleted: invalid blob id received");
+    if (groupId == Max<ui32>()) {
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandleWriteBlobCompleted: invalid blob id received");
     } else {
-        UpdateWriteThroughput(ctx.Now(), channel, group, msg->BlobId.BlobSize());
+        UpdateWriteThroughput(
+            ctx.Now(),
+            channel,
+            groupId,
+            msg->BlobId.BlobSize());
+        State->RegisterSuccess(ctx.Now(), groupId);
     }
     UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
     UpdateExecutorStats(ctx);
@@ -427,21 +439,24 @@ void TPartitionActor::HandleLongRunningBlobOperation(
     using TEvLongRunningOperation =
         TEvPartitionCommonPrivate::TEvLongRunningOperation;
 
-    if (ev->Get()->Reason !=
-        TEvLongRunningOperation::EReason::LongRunningDetected)
-    {
+    const auto& msg = *ev->Get();
+
+    if (msg.Reason != TEvLongRunningOperation::EReason::LongRunningDetected) {
         return;
     }
 
-    Actors.MarkLongRunning(ev->Sender, ev->Get()->Operation);
+    State->RegisterDowntime(ctx.Now(), msg.GroupId);
+
+    Actors.MarkLongRunning(ev->Sender, msg.Operation);
 
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%lu] %s long running for %s",
+        "[%lu] %s (group %u) long running for %s",
         TabletID(),
-        ToString(ev->Get()->Operation).c_str(),
-        ev->Get()->Duration.ToString().c_str());
+        ToString(msg.Operation).c_str(),
+        msg.GroupId,
+        msg.Duration.ToString().c_str());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

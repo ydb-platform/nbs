@@ -24,7 +24,8 @@ TReadBlobActor::TReadBlobActor(
     : TLongRunningOperationCompanion(
           tablet,
           longRunningThreshold,
-          TLongRunningOperationCompanion::EOperation::ReadBlob)
+          TLongRunningOperationCompanion::EOperation::ReadBlob,
+          request->GroupId)
     , RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)

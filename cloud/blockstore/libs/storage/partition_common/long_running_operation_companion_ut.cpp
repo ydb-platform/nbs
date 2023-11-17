@@ -70,7 +70,8 @@ public:
         , TLongRunningOperationCompanion(
               parentActor,
               TDuration::MilliSeconds(500),
-              TLongRunningOperationCompanion::EOperation::DontCare)
+              TLongRunningOperationCompanion::EOperation::DontCare,
+              0)
     {}
 
     void Main(TAutoPtr<IEventHandle>& ev)

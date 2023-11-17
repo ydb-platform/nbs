@@ -117,13 +117,23 @@ void TPartitionActor::HandleReadBlobCompleted(
     }
 
     const ui32 channel = msg->BlobId.Channel();
-    const ui32 group = msg->GroupId;
+    const ui32 groupId = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID();
-    Y_ABORT_UNLESS(group != Max<ui32>());
-
     UpdateNetworkStat(ctx.Now(), msg->BytesCount);
     UpdateExecutorStats(ctx);
-    UpdateReadThroughput(ctx.Now(), channel, group, msg->BytesCount, isOverlayDisk);
+    if (groupId == Max<ui32>()) {
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandleReadBlobCompleted: invalid blob id received");
+    } else {
+        UpdateReadThroughput(
+            ctx.Now(),
+            channel,
+            groupId,
+            msg->BytesCount,
+            isOverlayDisk);
+        State->RegisterSuccess(ctx.Now(), groupId);
+    }
 
     if (isOverlayDisk) {
         // Treat this situation as we were reading from base disk.
