@@ -17,9 +17,9 @@ runs:
       shell: bash
       run: |
         export CONAN_USER_HOME=`realpath ..`
-        export DISTCC_HOSTS="localhost/32 dp7329odurnhplpf5ff0.auto.internal/32"
+        export DISTCC_HOSTS="localhost/32 dp7329odurnhplpf5ff0.auto.internal/64"
         export DISTCC_FALLBACK=0
-        export DISTCC_VERBOSE=1
+        export DISTCC_VERBOSE=0
         export HOME=/tmp
 
         ip addr
