@@ -152,6 +152,8 @@ struct TMountRequestParams
 
     bool IsLocalMounter = false;
     bool RejectOnAddClientTimeout = false;
+
+    ui64 KnownTabletId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,6 +180,7 @@ private:
     const bool MountOptionsChanged;
 
     bool IsTabletAcquired = false;
+    bool VolumeSessionRestartRequired = false;
 
 public:
     TMountRequestActor(
@@ -385,6 +388,14 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
 
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
     VolumeTabletId = volumeDescription.GetVolumeTabletId();
+
+    if (VolumeTabletId != Params.KnownTabletId) {
+        HandleDescribeVolumeError(
+            ctx,
+            MakeError(E_REJECTED, "Tablet id changed. Retry"));
+        return;
+    }
+
     const auto& requestEncryption = Request.GetEncryptionSpec();
     const auto& volumeEncryption = volumeConfig.GetEncryptionDesc();
 
@@ -607,7 +618,8 @@ void TMountRequestActor::NotifyAndDie(const TActorContext& ctx)
         VolumeTabletId,
         VolumeStarted,
         Params.BindingType,
-        Params.PreemptionSource);
+        Params.PreemptionSource,
+        VolumeSessionRestartRequired);
 
     NCloud::Send(ctx, Params.SessionActorId, std::move(notification));
 
@@ -748,6 +760,7 @@ void TMountRequestActor::HandleStartVolumeResponse(
         }
     } else {
         if (mountMode == NProto::VOLUME_MOUNT_LOCAL) {
+            VolumeSessionRestartRequired = true;
             NotifyAndDie(ctx);
             return;
         }
@@ -1068,7 +1081,8 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         .PreemptionSource = msg->PreemptionSource,
         .IsLocalMounter = clientInfo &&
             clientInfo->VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL,
-        .RejectOnAddClientTimeout = Config->GetRejectMountOnAddClientTimeout()};
+        .RejectOnAddClientTimeout = Config->GetRejectMountOnAddClientTimeout(),
+        .KnownTabletId = TabletId};
 
     MountRequestActor = NCloud::Register<TMountRequestActor>(
         ctx,
@@ -1153,6 +1167,14 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
             *Config);
 
         MountRequestActor = {};
+
+        if (msg->VolumeSessionRestartRequired) {
+            FailPendingRequestsAndDie(
+                ctx,
+                MakeError(E_REJECTED, "Disk tablet possibly changed. Retry"));
+            return;
+        }
+
         if (!MountUnmountRequests.empty()) {
             ReceiveNextMountOrUnmountRequest(ctx);
         } else if (!VolumeInfo->IsMounted()) {

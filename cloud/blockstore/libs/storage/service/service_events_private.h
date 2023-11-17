@@ -127,6 +127,7 @@ struct TEvServicePrivate
         const bool HadLocalStart;
         const NProto::EVolumeBinding BindingType;
         const NProto::EPreemptionSource PreemptionSource;
+        const bool VolumeSessionRestartRequired;
 
         TMountRequestProcessed(
                 NProto::TVolume volume,
@@ -136,7 +137,8 @@ struct TEvServicePrivate
                 ui64 volumeTabletId,
                 bool hadLocalStart,
                 NProto::EVolumeBinding bindingType,
-                NProto::EPreemptionSource preemptionSource)
+                NProto::EPreemptionSource preemptionSource,
+                bool volumeSessionRestartRequired)
             : Volume(std::move(volume))
             , MountStartTick(mountStartTick)
             , Request(std::move(request))
@@ -145,6 +147,7 @@ struct TEvServicePrivate
             , HadLocalStart(hadLocalStart)
             , BindingType(bindingType)
             , PreemptionSource(preemptionSource)
+            , VolumeSessionRestartRequired(volumeSessionRestartRequired)
         {}
     };
 
@@ -158,19 +161,19 @@ struct TEvServicePrivate
         const TString ClientId;
         const NActors::TActorId RequestSender;
         const NProto::EControlRequestSource Source;
-        const bool DiskRecreated;
+        const bool VolumeSessionRestartRequired;
 
         TUnmountRequestProcessed(
                 TString diskId,
                 TString clientId,
                 const NActors::TActorId& requestSender,
                 NProto::EControlRequestSource source,
-                bool diskRecreated)
+                bool volumeSessionRestartRequired)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , RequestSender(requestSender)
             , Source(source)
-            , DiskRecreated(diskRecreated)
+            , VolumeSessionRestartRequired(volumeSessionRestartRequired)
         {}
     };
 

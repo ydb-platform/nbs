@@ -408,7 +408,7 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
             VolumeInfo->VolumeClientActor = VolumeClient;
         }
 
-        if (msg->DiskRecreated) {
+        if (msg->VolumeSessionRestartRequired) {
             // fail outstanding mount and unmount requests
             // so that the next mount/unmount request triggers a describe request
             FailPendingRequestsAndDie(

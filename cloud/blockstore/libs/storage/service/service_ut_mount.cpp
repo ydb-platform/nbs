@@ -5057,6 +5057,168 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL
         );
     }
+
+    Y_UNIT_TEST(ShouldKillMountActorIfTabletIsChangedDuringTabletStart)
+    {
+        TTestEnv env(1, 1);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            TString(),
+            TString()
+        );
+
+        ui64 volumeTabletId = 0;
+        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto response1 = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+
+        auto sessionId = response1->Record.GetSessionId();
+
+        if (!volumeTabletId) {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvSSProxy::EvDescribeVolumeResponse);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        UNIT_ASSERT(volumeTabletId);
+
+        RebootTablet(env.GetRuntime(), volumeTabletId, service.GetSender(), nodeIdx);
+
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+
+        ui32 sessionActorDeathCnt = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLockTabletResponse: {
+                        auto* msg = event->Get<TEvHiveProxy::TEvLockTabletResponse>();
+                        const_cast<NProto::TError&>(msg->Error) = MakeKikimrError(
+                            NKikimrProto::ERROR,
+                            "Could not connect");
+                        break;
+                    }
+                    case TEvServicePrivate::EvSessionActorDied: {
+                        ++sessionActorDeathCnt;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            auto mountResponse = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_KIKIMR_ERROR(NKikimrProto::ERROR),
+                mountResponse->GetStatus() );
+        }
+
+        if (!sessionActorDeathCnt) {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvServicePrivate::EvSessionActorDied);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionActorDeathCnt);
+    }
+
+    Y_UNIT_TEST(ShouldKillMountActorIfMountDetectsTabletIdChange)
+    {
+        TTestEnv env(1, 1);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            TString(),
+            TString()
+        );
+
+        auto response1 = service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL
+        );
+
+        ui32 sessionActorDeathCnt = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto& pathDescription =
+                            const_cast<NKikimrSchemeOp::TPathDescription&>(msg->PathDescription);
+                        pathDescription.
+                        MutableBlockStoreVolumeDescription()->
+                        SetVolumeTabletId(111);
+                        break;
+                    }
+                    case TEvServicePrivate::EvSessionActorDied: {
+                        ++sessionActorDeathCnt;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            auto mountResponse = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus() );
+        }
+
+        if (!sessionActorDeathCnt) {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvServicePrivate::EvSessionActorDied);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionActorDeathCnt);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
