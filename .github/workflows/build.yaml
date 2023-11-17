@@ -2,6 +2,11 @@ name: Build NBS Binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      DISTCC_HOSTS:
+        type: string
+        required: true
+        default: 'localhost/32 dp7329odurnhplpf5ff0.auto.internal/64'
   push:
     branches: [ $default-branch ]
   pull_request:
@@ -47,6 +52,7 @@ jobs:
       with:
         CCACHE_PASSWD: ${{ secrets.CCACHE_PASSWORD }}
         REMOTE_CACHE_URL: ${{ vars.REMOTE_CACHE_URL }}
+        DISTCC_HOSTS: ${{ inputs.DISTCC_HOSTS }}
   release-runner:
     name: Release self-hosted Nebius runner if provided on-demand
     needs:
