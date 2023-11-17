@@ -895,7 +895,6 @@ migrations:
     - travel/rasp/suggests_tasks/tests/generate
     - vcs/arcanum
     - vcs/changeset
-    - vcs/task_service
     - vh/recommender/nirvana/operations/resources/get_yt_resource
     - voicetech/asr/cloud_engine/vh/bin/vision_train_pipeline
     - voicetech/common/voicetable/bin/daily_append
@@ -10650,7 +10649,6 @@ migrations:
     - mssngr/tools/pytests/setup/local
     - nirvana/valhalla/tests
     - ofd/notifier/tests/test_unit/test_sender/test_event_types
-    - ofd/notifier/tests/test_unit/test_sender/test_notification_types
     - passport/backend/logbroker_client/oauth/tests
     - passport/backend/logbroker_client/xiva/tests
     - passport/backend/tools/metrics/ut
