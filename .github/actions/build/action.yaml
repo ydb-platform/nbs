@@ -32,8 +32,6 @@ runs:
 
         ninja ./cloud/blockstore/apps/client/blockstore-client
         df -h
-      secrets:
-        CCACHE_PASSWD:
       env:
         CCACHE_REMOTE_STORAGE: ${{ inputs.REMOTE_CACHE_URL && format('http://{0}{1}', inputs.CCACHE_PASSWORD, inputs.REMOTE_CACHE_URL) || ''}}
 
