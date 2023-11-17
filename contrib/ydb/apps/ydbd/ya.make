@@ -47,6 +47,7 @@ PEERDIR(
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/sql/pg
     contrib/ydb/library/yql/udfs/common/clickhouse/client
+    contrib/ydb/library/yql/udfs/common/compress_base
     contrib/ydb/library/yql/udfs/common/datetime
     contrib/ydb/library/yql/udfs/common/datetime2
     contrib/ydb/library/yql/udfs/common/digest
