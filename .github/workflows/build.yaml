@@ -50,7 +50,7 @@ jobs:
     - name: Build
       uses: ./.github/actions/build
       with:
-        CCACHE_PASSWD: ${{ secrets.CCACHE_PASSWORD }}
+        CCACHE_PASSWORD: ${{ secrets.CCACHE_PASSWORD }}
         REMOTE_CACHE_URL: ${{ vars.REMOTE_CACHE_URL }}
         DISTCC_HOSTS: ${{ inputs.DISTCC_HOSTS }}
   release-runner:
