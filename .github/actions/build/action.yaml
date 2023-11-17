@@ -17,7 +17,7 @@ runs:
       shell: bash
       run: |
         export CONAN_USER_HOME=`realpath ..`
-        export DISTCC_HOSTS="195.242.17.155"
+        export DISTCC_HOSTS="dp7329odurnhplpf5ff0.auto.internal"
         export DISTCC_VERBOSE=1
 
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
