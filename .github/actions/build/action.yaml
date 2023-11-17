@@ -18,7 +18,13 @@ runs:
       run: |
         export CONAN_USER_HOME=`realpath ..`
         export DISTCC_HOSTS="dp7329odurnhplpf5ff0.auto.internal"
+        export DISTCC_FALLBACK=0
         export DISTCC_VERBOSE=1
+        export HOME=/tmp
+
+        ip addr
+
+        distcc --show-hosts
 
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
           -DCCACHE_PATH=/usr/local/bin/ccache \
