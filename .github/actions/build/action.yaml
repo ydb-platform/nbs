@@ -1,18 +1,17 @@
 name: Build NBS
 description: Build NBS
-on:
-  inputs:
-    CCACHE_PASSWORD:
-      type: string
-      required: false
-      description: 'CCache htpasswd webdav PUT password'
-    REMOTE_CACHE_URL:
-      type: string
-      required: true
-    DISTCC_HOSTS:
-      type: string
-      required: true
-      default: 'localhost/32 dp7329odurnhplpf5ff0.auto.internal/64'
+inputs:
+  CCACHE_PASSWORD:
+    type: string
+    required: false
+    description: 'CCache htpasswd webdav PUT password'
+  REMOTE_CACHE_URL:
+    type: string
+    required: true
+  DISTCC_HOSTS:
+    type: string
+    required: true
+    default: 'localhost/32 dp7329odurnhplpf5ff0.auto.internal/64'
 
 runs:
 
