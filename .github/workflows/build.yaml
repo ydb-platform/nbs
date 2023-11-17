@@ -44,7 +44,6 @@ jobs:
       uses: ./.github/actions/prepare
     - name: Build
       uses: ./.github/actions/build
-
   release-runner:
     name: Release self-hosted Nebius runner if provided on-demand
     needs:

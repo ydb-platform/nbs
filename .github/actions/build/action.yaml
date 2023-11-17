@@ -1,5 +1,9 @@
 name: Build NBS
 description: Build NBS
+on:
+  secrets:
+    CCACHE_PASSWORD: ${{ secrets.CCACHE_PASSWORD }}
+
 runs:
   using: "composite"
   steps:
@@ -22,6 +26,8 @@ runs:
 
         ninja ./cloud/blockstore/apps/client/blockstore-client
         df -h
+      secrets:
+        CCACHE_PASSWD:
       env:
         CCACHE_REMOTE_STORAGE: ${{ vars.REMOTE_CACHE_URL && format('http://{0}{1}', secrets.CCACHE_PASSWORD, vars.REMOTE_CACHE_URL) || ''}}
 
