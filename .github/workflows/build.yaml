@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Start runner
         id: start-runner
-        uses: librarian/yc-github-runner@0.0.11
+        uses: librarian/yc-github-runner@0.0.12
         with:
           mode: start
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
@@ -38,6 +38,8 @@ jobs:
           core-fraction: 100
           zone-id: eu-north1-c
           subnet-id: f8uh0ml4rhb45nde9p75
+          filesystem-id: dp753obk26e8ldmptot1
+          filesystem-name: ccache
   build:
     name: Build NBS
     runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
@@ -63,7 +65,7 @@ jobs:
     steps:
       - name: Stop  runner
         id: stop-runner
-        uses: librarian/yc-github-runner@0.0.11
+        uses: librarian/yc-github-runner@0.0.12
         with:
           mode: stop
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
