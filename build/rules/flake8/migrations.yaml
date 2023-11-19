@@ -364,7 +364,6 @@ migrations:
     - ads/quality/simulate_auction_py/lib/simulator_wrapper
     - ads/quality/simulate_auction_py/lib/trafaret_monitoring/yql
     - ads/quality/simulate_auction_py/lib/utils
-    - ads/quality/simulate_auction_py/scripts/estimate
     - ads/sandbox_scripts/factors_stats/lib/processors
     - ads/watchman/contrib/apispec-patched/apispec
     - ads/watchman/contrib/apispec-patched/apispec/ext/marshmallow
@@ -1884,7 +1883,6 @@ migrations:
     - billing/dwh/src/dwh/grocery
     - captcha/tools/ocr_blacklist_filter
     - cloud/blockstore/public/sdk/python/client/ut
-    - cloud/blockstore/tools/cms/config
     - comdep_analytics/comdep_recsys/etl_core/etl/yt
     - crypta/lib/python/yt/dyntables/ut
     - crypta/lib/python/yt/local_tests
@@ -2043,7 +2041,6 @@ migrations:
     - yabs/server/libs/py_markdown_strings
     - yabs/server/test/ft/BSDEV-62813
     - yabs/server/test/ft/BSDEV-85352
-    - yabs/server/test/ft/BSDEV-88372
     - yabs/server/test/ft/BSSERVER-10003
     - yabs/server/test/ft/BSSERVER-104
     - yabs/server/test/ft/BSSERVER-10993
@@ -5053,8 +5050,6 @@ migrations:
     - sandbox/services/modules
     - sandbox/taskbox/dispatcher
     - sandbox/taskbox/worker
-    - sandbox/tasklet/sidecars/resource_manager/handlers
-    - sandbox/tasklet/sidecars/resource_manager/tests
     - sandbox/yasandbox/database/upgrade
     - sandbox/yasandbox/proxy
     - sdg/internal_auth/admin/lib/health/services
@@ -6078,7 +6073,6 @@ migrations:
     - sandbox/projects/yabs/SysConstLifetime/sys_const
     - sandbox/projects/yabs/auto_supbs_2/lib/order_processor_lib
     - sandbox/projects/yabs/base_differ
-    - sandbox/projects/yabs/release/performance
     - sandbox/projects/yabs/sandbox_task_tracing/impl/test
     - sandbox/projects/yabs/sandbox_task_tracing/test
     - sandbox/projects/yane/CalcQuality
@@ -6296,7 +6290,6 @@ migrations:
     - balancer/test/configs/lib/locations_test
     - balancer/test/functional/openssl
     - balancer/test/util/dnsfake
-    - cloud/blockstore/tools/cms/lib
     - cloud/kms/client/python
     - cloud/mdb/salt/salt/_states
     - cloud/mdb/salt/salt/components/mysql/conf
