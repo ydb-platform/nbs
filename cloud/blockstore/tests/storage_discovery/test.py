@@ -45,7 +45,7 @@ def nbs(ydb):
 
 @pytest.fixture
 def agent_id():
-    return socket.getfqdn()
+    return socket.gethostname()
 
 
 @pytest.fixture(autouse=True)
