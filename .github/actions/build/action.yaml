@@ -40,8 +40,21 @@ runs:
           -DCMAKE_CXX_COMPILER_LAUNCHER="ccache" \
           .
         echo ::endgroup::
-        echo ::group::build
+
+        echo ::group::build blockstore-client
         ninja ./cloud/blockstore/apps/client/blockstore-client
+        echo ::endgroup::
+
+        echo ::group::build nbsd
+        ninja ./cloud/blockstore/apps/server/nbsd
+        echo ::endgroup::
+
+        echo ::group::build blockstore-nbd
+        ninja ./cloud/blockstore/tools/nbd/blockstore-nbd
+        echo ::endgroup::
+
+        echo ::group::build diskagentd
+        ninja ./cloud/blockstore/apps/disk_agent/diskagentd
         echo ::endgroup::
 
         df -h
