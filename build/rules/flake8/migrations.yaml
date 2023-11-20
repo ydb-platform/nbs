@@ -9223,7 +9223,6 @@ migrations:
     - statbox/qb2/qb2_extensions/api/v1/extractors
     - statbox/qb2/qb2_extensions/api/v1/extractors/pool
     - strm/generate/lib/generate
-    - sup/stat/find_pushes
     - tools/mkdocs_builder/lib
     - tools/releaser/src
     - tools/ygetparam
@@ -9565,10 +9564,6 @@ migrations:
     - extsearch/images/tools/nirvana/rim/serps_compare
     - extsearch/images/tools/nirvana/sr_formula/get_pool_id
     - extsearch/images/tools/nirvana/sr_formula/learn_sr
-    - extsearch/video/quality/recommender/1492/america/ckmeans
-    - extsearch/video/quality/recommender/1492/america/scripts/cluster
-    - extsearch/video/quality/recommender/1492/america/scripts/gen_config
-    - extsearch/video/quality/recommender/1492/america/train
     - extsearch/video/quality/recommender/1492/cuba/scripts/gen_config
     - extsearch/video/quality/recommender/1492/cuba/scripts/gen_indexattr
     - extsearch/video/quality/recommender/1492/cuba/scripts/get_path_ns
@@ -9576,9 +9571,6 @@ migrations:
     - extsearch/video/quality/recommender/1492/cuba/scripts/upload_index_files
     - extsearch/video/quality/recommender/1492/cuba/test/tools/cm_runner
     - extsearch/video/quality/recommender/1492/cuba/train
-    - extsearch/video/quality/recommender/1492/scripts/delete_prev
-    - extsearch/video/quality/recommender/1492/scripts/get_ext_data
-    - extsearch/video/quality/recommender/1492/scripts/upload_ns
     - extsearch/video/quality/recommender/train_dssm
     - extsearch/video/recommender/viewer/viewer
     - extsearch/video/robot/avatars/delete
