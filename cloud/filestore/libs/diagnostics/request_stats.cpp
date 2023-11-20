@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -140,6 +141,8 @@ class TRequestStats final
     TRequestCountersPtr SsdCounters;
     TRequestCountersPtr HddCounters;
 
+    TBusyIdleTimeCalculatorDynamicCounters BusyIdleCalc;
+
     TMutex ProvidersLock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
 
@@ -170,6 +173,8 @@ public:
         *versionCounter = 1;
 
         InitCriticalEventsCounter(RootCounters);
+
+        BusyIdleCalc.Register(RootCounters);
     }
 
     void RequestStarted(TCallContext& callContext) override
@@ -181,6 +186,8 @@ public:
                 requestType,
                 callContext.RequestSize);
         }
+
+        BusyIdleCalc.OnRequestStarted();
 
         const auto cycles =
             TotalCounters->RequestStarted(requestType, callContext.RequestSize);
@@ -221,6 +228,8 @@ public:
         TotalCounters->UpdateStats(updatePercentiles);
         SsdCounters->UpdateStats(updatePercentiles);
         HddCounters->UpdateStats(updatePercentiles);
+
+        BusyIdleCalc.OnUpdateStats();
     }
 
     void RegisterIncompleteRequestProvider(
@@ -291,7 +300,7 @@ private:
 
     TDuration RequestCompleted(
         const TCallContext& callContext,
-        EDiagnosticsErrorKind errorKind) const
+        EDiagnosticsErrorKind errorKind)
     {
         const auto type = GetRequestType(callContext);
         const auto media = GetMediaKind(callContext);
@@ -311,6 +320,7 @@ private:
                 ECalcMaxTime::ENABLE,
                 0);
         }
+        BusyIdleCalc.OnRequestCompleted();
 
         return TotalCounters->RequestCompleted(
             type,

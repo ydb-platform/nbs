@@ -9,6 +9,7 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
@@ -28,89 +29,6 @@ using namespace NMonitoring;
 using namespace NCloud::NStorage::NUserStats;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TBusyIdleTimeCalculator
-{
-    enum EState
-    {
-        IDLE,
-        BUSY,
-        MAX
-    };
-
-    struct TStateInfo
-    {
-        TAtomic StartTime = 0;
-        TIntrusivePtr<TCounterForPtr> Counter;
-    };
-
-    std::array<TStateInfo, EState::MAX> State;
-    TAtomic InflightCount = 0;
-
-public:
-    TBusyIdleTimeCalculator()
-    {
-        StartState(IDLE);
-    }
-
-    void Register(TDynamicCounters& counters)
-    {
-        State[IDLE].Counter = counters.GetCounter("IdleTime", true);
-        State[BUSY].Counter = counters.GetCounter("BusyTime", true);
-    }
-
-    void OnRequestStarted()
-    {
-        if (AtomicIncrement(InflightCount) == 1) {
-            FinishState(IDLE);
-            StartState(BUSY);
-        }
-    }
-
-    void OnRequestCompleted()
-    {
-        if (AtomicDecrement(InflightCount) == 0) {
-            FinishState(BUSY);
-            StartState(IDLE);
-        }
-    }
-
-    void OnUpdateStats()
-    {
-        UpdateProgress(IDLE);
-        UpdateProgress(BUSY);
-    }
-
-private:
-    void FinishState(EState state)
-    {
-        ui64 val = MicroSeconds() - AtomicSwap(&State[state].StartTime, 0);
-        *State[state].Counter += val;
-    }
-
-    void StartState(EState state)
-    {
-        AtomicSet(State[state].StartTime, MicroSeconds());
-    }
-
-    void UpdateProgress(EState state)
-    {
-        for (;;) {
-            ui64 started = AtomicGet(State[state].StartTime);
-            if (!started) {
-                return;
-            }
-
-            auto now = MicroSeconds();
-            if (AtomicCas(&State[state].StartTime, now, started)) {
-                *State[state].Counter += now - started;
-                return;
-            }
-        }
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -236,7 +154,7 @@ struct TVolumeInfoBase
 {
     const ITimerPtr Timer;
     const NProto::TVolume Volume;
-    TBusyIdleTimeCalculator BusyIdleCalc;
+    TBusyIdleTimeCalculatorDynamicCounters BusyIdleCalc;
     TVolumePerformanceCalculator PerfCalc;
     IPostponeTimePredictorPtr PostponeTimePredictor;
     TPostponeTimePredictorStats PostponeTimePredictorStats;
@@ -263,7 +181,7 @@ struct TVolumeInfoBase
         , HasStorageConfigPatchCounter(
             volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
-        BusyIdleCalc.Register(*volumeGroup);
+        BusyIdleCalc.Register(volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
     }
 };

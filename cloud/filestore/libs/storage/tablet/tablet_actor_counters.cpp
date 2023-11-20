@@ -100,6 +100,9 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(GarbageQueueSize, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
+
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
 
@@ -125,6 +128,8 @@ void TIndexTabletActor::TMetrics::Register(
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER
+
+    BusyIdleCalc.Register(&BusyTime, &IdleTime);
 
     Initialized = true;
 }
@@ -158,6 +163,8 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(AllocatedCompactionRangesCount, compactionStats.AllocatedRangesCount);
     Store(UsedCompactionRangesCount, compactionStats.UsedRangesCount);
+
+    BusyIdleCalc.OnUpdateStats();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

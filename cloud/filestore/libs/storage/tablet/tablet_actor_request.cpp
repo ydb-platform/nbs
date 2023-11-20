@@ -30,6 +30,8 @@ TSession* TIndexTabletActor::AcceptRequest(
             msg->CallContext->LWOrbit);
     }
 
+    Metrics.BusyIdleCalc.OnRequestStarted();
+
     LWTRACK(
         RequestReceived_Tablet,
         msg->CallContext->LWOrbit,
@@ -93,6 +95,8 @@ void TIndexTabletActor::CompleteResponse(
 
     BuildTraceInfo(TraceSerializer, callContext, response);
     BuildThrottlerInfo(*callContext, response);
+
+    Metrics.BusyIdleCalc.OnRequestCompleted();
 }
 
 #define FILESTORE_GENERATE_IMPL(name, ns)                                             \

@@ -22,6 +22,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/throttling/public.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
@@ -95,6 +96,11 @@ private:
         std::atomic<i64> RejectedRequests{0};
         std::atomic<i64> PostponedRequests{0};
         std::atomic<i64> UsedQuota{0};
+
+        // Tablet busy/idle time
+        std::atomic<i64> BusyTime{0};
+        std::atomic<i64> IdleTime{0};
+        TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
 
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS> ReadDataPostponed;
