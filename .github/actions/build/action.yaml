@@ -26,7 +26,8 @@ runs:
         export HOME=/tmp
         export CCACHE_BASEDIR=`realpath ..`
         export CCACHE_SLOPPINESS=locale
-        export CCACHE_REMOTE_STORAGE="${CCACHE_REMOTE_STORAGE}"
+        export CCACHE_DIR=/mnt/ccache
+        export CCACHE_MAXSIZE=50G
 
         ip addr
 
@@ -40,7 +41,7 @@ runs:
 
         ninja ./cloud/blockstore/apps/client/blockstore-client
         df -h
-        ccache -s
+        ccache -sx
       env:
         CCACHE_REMOTE_STORAGE: ${{ inputs.REMOTE_CACHE_URL && format('http://{0}{1}', inputs.CCACHE_PASSWORD, inputs.REMOTE_CACHE_URL) || ''}}
         DISTCC_HOSTS: ${{ inputs.DISTCC_HOSTS }}
