@@ -11,6 +11,6 @@ PEERDIR(
     library/cpp/regex/pcre
 )
 
-DATA(sbr://2519701276) # empty-ext4.txt
+DATA(ext:empty-ext4.txt)
 
 END()
