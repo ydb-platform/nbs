@@ -2,8 +2,6 @@ PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
-SPLIT_FACTOR(1)
-
 PEERDIR(
     cloud/blockstore/tests/python/lib
 )
