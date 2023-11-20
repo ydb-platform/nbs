@@ -4942,8 +4942,6 @@ migrations:
     - sandbox/projects/clickhouse/ClickhousePullRequestTrigger
     - sandbox/projects/clickhouse/util
     - sandbox/projects/close_tickets/close_after_release
-    - sandbox/projects/cmnt/DbBackup
-    - sandbox/projects/cmnt/DbCleanup
     - sandbox/projects/crypta/common
     - sandbox/projects/crypta/ya_make_yt
     - sandbox/projects/direct/BuildPortoLayer2
@@ -7324,7 +7322,6 @@ migrations:
     - sandbox/projects/avia/import_marker
     - sandbox/projects/avia/trigger_revise
     - sandbox/projects/cloud/billing/build_analytics_cube/source
-    - sandbox/projects/cmnt/PumpkinSettings
     - sandbox/projects/dj/AutoDeploy
     - sandbox/projects/marty
     - sandbox/projects/mssngr/runtime/MssngrRouterLoadTest
