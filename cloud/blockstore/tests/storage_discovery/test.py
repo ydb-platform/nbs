@@ -45,7 +45,14 @@ def nbs(ydb):
 
 @pytest.fixture
 def agent_id():
-    return socket.gethostname()
+    name = socket.gethostname()
+    r = socket.getaddrinfo(name, None, flags=socket.AI_CANONNAME)
+
+    assert len(r) > 0
+
+    _, _, _, canonname, _ = r[0]
+
+    return canonname.lower()
 
 
 @pytest.fixture(autouse=True)
