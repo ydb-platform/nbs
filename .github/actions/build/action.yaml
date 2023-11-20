@@ -33,13 +33,17 @@ runs:
 
         distcc --show-hosts
 
+        echo ::group::configure
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_TOOLCHAIN_FILE=clang.toolchain \
-          -DCMAKE_C_COMPILER_LAUNCHER="ccache;distcc" \
-          -DCMAKE_CXX_COMPILER_LAUNCHER="ccache;distcc" \
+          -DCMAKE_C_COMPILER_LAUNCHER="ccache" \
+          -DCMAKE_CXX_COMPILER_LAUNCHER="ccache" \
           .
-
+        echo ::endgroup::
+        echo ::group::build
         ninja ./cloud/blockstore/apps/client/blockstore-client
+        echo ::endgroup::
+
         df -h
         ccache -sx
       env:
