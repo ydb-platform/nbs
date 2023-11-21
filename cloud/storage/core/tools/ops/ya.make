@@ -1,0 +1,3 @@
+RECURSE(
+    config_generator
+)

@@ -1,0 +1,5 @@
+RECURSE(
+    bin
+    build
+    lib
+)

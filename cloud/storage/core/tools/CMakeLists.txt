@@ -6,7 +6,5 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(config)
-add_subdirectory(libs)
-add_subdirectory(protos)
-add_subdirectory(tools)
+add_subdirectory(analytics)
+add_subdirectory(testing)
