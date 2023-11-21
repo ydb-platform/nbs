@@ -7,6 +7,7 @@ PEERDIR(
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/dq/actors
+    contrib/ydb/library/yql/dq/proto
 )
 
 GENERATE_ENUM_SERIALIZATION(yql_dq_settings.h)

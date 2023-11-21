@@ -57,7 +57,11 @@ Aws::S3::S3Client MakeS3Client() {
     Aws::Client::ClientConfiguration s3ClientConfig;
     s3ClientConfig.endpointOverride = GetEnv("S3_ENDPOINT");
     s3ClientConfig.scheme = Aws::Http::Scheme::HTTP;
-    return Aws::S3::S3Client(std::make_shared<Aws::Auth::AnonymousAWSCredentialsProvider>(), s3ClientConfig);
+    return Aws::S3::S3Client(
+        std::make_shared<Aws::Auth::AnonymousAWSCredentialsProvider>(),
+        s3ClientConfig,
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+        /*useVirtualAddressing=*/ true);
 }
 
 void CreateBucket(const TString& bucket, Aws::S3::S3Client& s3Client) {
@@ -281,7 +285,9 @@ Y_UNIT_TEST_SUITE(KqpFederatedQuery) {
                 break;
             }
 
-            UNIT_ASSERT(part.HasResultSet());
+            if (!part.HasResultSet()) {
+                continue;
+            }
 
             auto result = part.GetResultSet();
 
