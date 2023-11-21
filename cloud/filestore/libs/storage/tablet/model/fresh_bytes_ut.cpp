@@ -5,6 +5,8 @@
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -159,6 +161,25 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             expected[7] = '4';
 
             UNIT_ASSERT_VALUES_EQUAL(expected, visitor.Data);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotOverflowInTBytesLength)
+    {
+        constexpr ui32 dataSize = 64_KB;
+
+        TFreshBytes freshBytes(TDefaultAllocator::Instance());
+
+        ui32 commitId = 1;
+        TString data = GenerateData(dataSize);
+
+        freshBytes.AddBytes(465, 0, TStringBuf(data.data(), dataSize), commitId);
+
+        TVector<TBytes> entries;
+        freshBytes.StartCleanup(commitId, &entries);
+
+        for (auto& entry: entries) {
+            UNIT_ASSERT_VALUES_EQUAL(entry.Length, dataSize);
         }
     }
 

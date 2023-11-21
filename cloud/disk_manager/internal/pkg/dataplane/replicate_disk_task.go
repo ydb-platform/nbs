@@ -65,9 +65,6 @@ func (t *replicateDiskTask) Run(
 				}
 			}
 		} else if t.state.Iteration > t.state.FinalIteration {
-			// TODO: remove this code after NBS-4563.
-			t.state.SecondsRemaining = 0
-			t.state.UpdatedAt = timestamppb.Now()
 			return nil
 		}
 
@@ -358,27 +355,14 @@ func (t *replicateDiskTask) getBytesToReplicate(
 		return 0, err
 	}
 
-	_, currentCheckpointID, nextCheckpointID := t.getCheckpointIDs(execCtx)
-	var bytesToReplicate uint64
-
-	if t.request.UseLightCheckpoint {
-		// TODO: remove this code after NBS-4563.
-		bytesToReplicate, err = client.GetChangedBytes(
-			ctx,
-			t.request.SrcDisk.DiskId,
-			currentCheckpointID,
-			nextCheckpointID,
-			false, // ignoreBaseDisk
-		)
-	} else {
-		bytesToReplicate, err = client.GetChangedBytes(
-			ctx,
-			t.request.SrcDisk.DiskId,
-			currentCheckpointID,
-			"",
-			false, // ignoreBaseDisk
-		)
-	}
+	_, currentCheckpointID, _ := t.getCheckpointIDs(execCtx)
+	bytesToReplicate, err := client.GetChangedBytes(
+		ctx,
+		t.request.SrcDisk.DiskId,
+		currentCheckpointID,
+		"",
+		false, // ignoreBaseDisk
+	)
 	if err != nil {
 		return 0, err
 	}

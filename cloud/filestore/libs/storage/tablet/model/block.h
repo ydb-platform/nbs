@@ -75,7 +75,7 @@ struct TBytes
 {
     ui64 NodeId = 0;
     ui64 Offset = 0;
-    ui16 Length = 0;
+    ui64 Length = 0;
     ui64 MinCommitId = 0;
     ui64 MaxCommitId = 0;
 
@@ -97,7 +97,7 @@ struct TBytes
     TString Describe() const
     {
         return Sprintf(
-            "{%lu, %lu, %u, %lu, %lu}",
+            "{%lu, %lu, %lu, %lu, %lu}",
             NodeId,
             Offset,
             Length,
