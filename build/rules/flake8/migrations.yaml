@@ -5479,10 +5479,10 @@ migrations:
     - ydo/tools/ugc/publish_call_center_reviews
     - ydo/tools/util/yt_table_to_rtmr
     - ydo/tools/workers_quality/passport_additional_check/common/lib
-    - yp/idm_role_provider/src
     - yp/scheduler_simulator/convert_gencfg_to_yp
     - yp/scheduler_simulator/lib/experiments
     - yp/scripts/stress_load_master
+    - yp/server/idm_role_provider/src
     - yql/library/cloud
     - yql/library/test_framework
     - yt/admin/snapshot_processing/helpers
