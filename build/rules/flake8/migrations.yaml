@@ -1992,7 +1992,6 @@ migrations:
     - quality/neural_net/bert/bert/utils/distributed
     - quality/neural_net/bert/tests/basic
     - quasar/metrics/pylibs/func_test
-    - quasar/metrics/tests/functional/flash_top
     - release_machine/release_machine/src/services
     - rt-research/broadmatching/scripts/pylib/bmyt
     - saas/library/python/logbroker/cluster_api
@@ -5044,8 +5043,6 @@ migrations:
     - sandbox/proxy/mules
     - sandbox/proxy/tests
     - sandbox/sandboxsdk
-    - sandbox/services/base
-    - sandbox/services/modules
     - sandbox/taskbox/dispatcher
     - sandbox/taskbox/worker
     - sandbox/yasandbox/database/upgrade
@@ -6692,7 +6689,6 @@ migrations:
     - sandbox/projects/yabs/sbyt/adfox_rich_log_event_table_cleanup
     - sandbox/projects/yabs/ssp/YabsServerSspAnsible
     - sandbox/projects/yane/TotalLearn
-    - sandbox/services/modules/update_robot_owners
     - sandbox/yasandbox/proxy
     - sdg/labeling/common
     - search/geo/tools/afisha/toponym_snippet_builder
@@ -10275,7 +10271,6 @@ migrations:
     - transfer_manager/copy_yt_to_clickhouse/python/configs
     - transfer_manager/copy_yt_to_clickhouse/python/copy_table
     - transfer_manager/copy_yt_to_clickhouse/python/job_executors
-    - transfer_manager/copy_yt_to_clickhouse/python/parsers
     - transfer_manager/copy_yt_to_clickhouse/python/support
     - transfer_manager/copy_yt_to_clickhouse/python/task_state
     - transfer_manager/copy_yt_to_clickhouse/python/tm_tracker
