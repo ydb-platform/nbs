@@ -869,7 +869,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
-	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	_, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -888,12 +888,31 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	_, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	require.NoError(t, err)
+
+	snapshotID2 := t.Name() + "2"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: diskID1,
+		},
+		SnapshotId: snapshotID2,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
 	diskID2 := t.Name() + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
-			SrcSnapshotId: snapshotID1,
+			SrcSnapshotId: snapshotID2,
 		},
 		Size: int64(diskSize),
 		Kind: diskKind,
@@ -907,7 +926,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID1, diskSize, crc32)
+	crc32, err := nbsClient.CalculateCrc32(diskID1, diskSize)
 	require.NoError(t, err)
 
 	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32)
