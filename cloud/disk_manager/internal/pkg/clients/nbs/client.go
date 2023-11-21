@@ -1126,8 +1126,6 @@ func (c *client) MountRW(
 		return nil, err
 	}
 
-	mountFlags = setProtoFlag(mountFlags, protos.EMountFlag_MF_FILL)
-
 	return NewRWSession(
 		ctx,
 		c.nbs,
