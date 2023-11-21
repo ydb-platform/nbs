@@ -44,27 +44,9 @@ func (c *multiZoneClient) Clone(
 				return err
 			}
 
-			if fillGeneration > 1 {
-				volume, err := c.dstZoneClient.nbs.DescribeVolume(ctx, diskID)
-				if err != nil {
-					return wrapError(err)
-				}
-
-				if volume.IsFillFinished {
-					return errors.NewNonRetriableErrorf(
-						"can't replace disk %v because filling is finished",
-						diskID,
-					)
-				}
-
-				err = c.dstZoneClient.DeleteWithFillGeneration(
-					ctx,
-					diskID,
-					fillGeneration-1,
-				)
-				if err != nil {
-					return err
-				}
+			err = c.deleteOutdatedDstDisk(ctx, diskID, fillGeneration)
+			if err != nil {
+				return err
 			}
 
 			if retries == maxConsecutiveRetries {
@@ -80,6 +62,39 @@ func (c *multiZoneClient) Clone(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (c *multiZoneClient) deleteOutdatedDstDisk(
+	ctx context.Context,
+	diskID string,
+	fillGeneration uint64,
+) error {
+
+	if fillGeneration > 1 {
+		volume, err := c.dstZoneClient.nbs.DescribeVolume(ctx, diskID)
+		if IsNotFoundError(err) {
+			return nil
+		}
+
+		if err != nil {
+			return wrapError(err)
+		}
+
+		if volume.IsFillFinished {
+			return errors.NewNonRetriableErrorf(
+				"can't delete disk %v because filling is finished",
+				diskID,
+			)
+		}
+
+		return c.dstZoneClient.DeleteWithFillGeneration(
+			ctx,
+			diskID,
+			fillGeneration-1,
+		)
+	}
+
+	return nil
+}
 
 func (c *multiZoneClient) clone(
 	ctx context.Context,
