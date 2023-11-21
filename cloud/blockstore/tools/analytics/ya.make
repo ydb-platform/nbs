@@ -9,13 +9,8 @@ RECURSE(
     event-log-stats
     event-log-suffer
     find-block-accesses
+    find-perf-bottlenecks
     visualize-event-log
+    visualize-trace
 )
-
-IF (NOT OPENSOURCE)
-    RECURSE(
-        find-perf-bottlenecks   # TODO(NBS-4409): add to opensource
-        visualize-trace         # TODO(NBS-4409): add to opensource
-    )
-ENDIF()
 
