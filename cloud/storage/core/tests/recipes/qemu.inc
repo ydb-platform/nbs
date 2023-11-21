@@ -24,11 +24,11 @@ DEPENDS(
     cloud/storage/core/tests/recipes/qemu
 )
 
-IF (NOT OPENSOURCE)
+IF (OPENSOURCE)
+    SET(QEMU_ENABLE_KVM False)
+ELSE()
     INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
     SET(QEMU_USE_VIRTIOFS_SERVER True)
-
-    SET(QEMU_ENABLE_KVM False)
 ENDIF()
 
 TAG(ya:dirty)
