@@ -517,6 +517,7 @@ func lockAndExecuteTask(
 	}
 
 	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
 	runCtx = headers.Append(runCtx, taskState.Metadata.Vals())
 	// All derived tasks should be pinned to the same storage folder.
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)

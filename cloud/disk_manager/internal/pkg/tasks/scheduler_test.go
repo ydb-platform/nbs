@@ -78,7 +78,9 @@ func newExecutionContextMock() *executionContextMock {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestSchedulerScheduleTask(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -129,7 +131,9 @@ func TestSchedulerScheduleTask(t *testing.T) {
 }
 
 func TestSchedulerScheduleZonalTask(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -181,7 +185,9 @@ func TestSchedulerScheduleZonalTask(t *testing.T) {
 }
 
 func TestSchedulerScheduleTaskFailOnCreateTask(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -212,7 +218,9 @@ func TestSchedulerScheduleTaskFailOnCreateTask(t *testing.T) {
 }
 
 func TestSchedulerCancelTask(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -232,7 +240,9 @@ func TestSchedulerCancelTask(t *testing.T) {
 }
 
 func TestSchedulerGetTaskMetadata(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -263,7 +273,9 @@ func TestSchedulerGetTaskMetadata(t *testing.T) {
 }
 
 func TestSchedulerGetOperationProtoReadyToRun(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -316,7 +328,9 @@ func TestSchedulerGetOperationProtoReadyToRun(t *testing.T) {
 }
 
 func TestSchedulerGetOperationProtoRunning(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -369,7 +383,9 @@ func TestSchedulerGetOperationProtoRunning(t *testing.T) {
 }
 
 func TestSchedulerGetOperationProtoFinished(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -427,7 +443,9 @@ func TestSchedulerGetOperationProtoFinished(t *testing.T) {
 }
 
 func TestSchedulerGetOperationProtoReadyToCancel(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -486,7 +504,9 @@ func TestSchedulerGetOperationProtoReadyToCancel(t *testing.T) {
 }
 
 func TestSchedulerGetOperationProtoCancelling(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
@@ -545,7 +565,9 @@ func TestSchedulerGetOperationProtoCancelling(t *testing.T) {
 }
 
 func TestSchedulerGetOperationProtoCancelled(t *testing.T) {
-	ctx := newContext()
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
 	storage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	scheduler, err := NewScheduler(
