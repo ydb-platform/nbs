@@ -1,0 +1,82 @@
+name: Build NBS Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      CCACHE_READONLY:
+        type: boolean
+        required: false
+        default: true
+        description: 'Do not update ccache cache'
+  workflow_call:
+    inputs:
+      CCACHE_READONLY:
+        type: boolean
+        required: false
+        default: true
+        description: 'Do not update ccache cache'
+
+jobs:
+  provide-runner:
+    name: Start self-hosted YC runner
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{steps.start-runner.outputs.label}}
+      instance-id: ${{steps.start-runner.outputs.instance-id}}
+    steps:
+      - name: Start runner
+        id: start-runner
+        uses: librarian/yc-github-runner@0.0.12
+        with:
+          mode: start
+          yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          folder-id: bjeuq5o166dq4ukv3eec
+          image-id: arlng9uhmtlat6q5pqlv
+          disk-size: '1023GB'
+          disk-type: network-ssd-nonreplicated
+          platform-id: standard-v2
+          cores: 32
+          memory: 128GB
+          core-fraction: 100
+          zone-id: eu-north1-c
+          subnet-id: f8uh0ml4rhb45nde9p75
+          filesystem-id: dp753obk26e8ldmptot1
+          filesystem-name: ccache
+  build:
+    name: Build NBS
+    runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
+    needs: provide-runner
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Prepare VM
+      uses: ./.github/actions/prepare
+    - name: Build
+      uses: ./.github/actions/build
+      with:
+        CCACHE_READONLY: ${{ inputs.CCACHE_READONLY }}
+    - name: Run tests
+      uses: ./.github/actions/test
+  release-runner:
+    name: Release self-hosted Nebius runner if provided on-demand
+    needs:
+      - provide-runner # required to get output from the start-runner job
+      - build # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Stop  runner
+        id: stop-runner
+        uses: librarian/yc-github-runner@0.0.12
+        with:
+          mode: stop
+          yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.provide-runner.outputs.label }}
+          instance-id: ${{ needs.provide-runner.outputs.instance-id }}
+          folder-id: bjeuq5o166dq4ukv3eec
+          subnet-id: f8uh0ml4rhb45nde9p75
+
+
