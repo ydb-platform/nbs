@@ -1017,6 +1017,13 @@ private:
         bool dryRun,
         TDuration& timeout);
 
+    NProto::TError AddNewDevices(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        TInstant now,
+        bool dryRun);
+
     NProto::TError CmsRemoveDevice(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,

@@ -12,6 +12,7 @@ SRCS(
     disk_registry_state_ut_pools.cpp
     disk_registry_state_ut_suspend.cpp
     disk_registry_state_ut_updates.cpp
+    disk_registry_state_ut_cms.cpp
     disk_registry_state_ut_config.cpp
 )
 

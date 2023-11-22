@@ -2,7 +2,11 @@ import hashlib
 import os
 import pytest
 import socket
-import time
+
+from copy import deepcopy
+
+from cloud.blockstore.public.sdk.python.client import CreateClient
+from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, TAction
 
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -16,12 +20,52 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
     ensure_path_exists
 
 
+KNOWN_DEVICE_POOLS = {
+    "KnownDevicePools": [
+        {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": 1024**2},
+        {"Name": "rot", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": 1024**2},
+    ]}
+
+
 def _md5(s):
     return hashlib.md5(s.encode("utf-8")).hexdigest()
 
 
-@pytest.fixture
-def ydb():
+def _add_devices(client, agent_id, paths):
+    request = TCmsActionRequest()
+    for path in paths:
+        action = request.Actions.add()
+        action.Type = TAction.ADD_DEVICE
+        action.Host = agent_id
+        action.Device = path
+    return client.cms_action(request)
+
+
+def _remove_devices(client, agent_id, paths):
+    request = TCmsActionRequest()
+    for path in paths:
+        action = request.Actions.add()
+        action.Type = TAction.REMOVE_DEVICE
+        action.Host = agent_id
+        action.Device = path
+    return client.cms_action(request)
+
+
+def _setup_disk_registry_config(nbs, agent_id):
+
+    client = NbsClient(nbs.port)
+    client.update_disk_registry_config({
+        "KnownAgents": [{
+            "AgentId": agent_id,
+            "KnownDevices":
+                [{"DeviceUUID": _md5(f"{agent_id}-{i + 1:02}")} for i in range(6)] +
+                [{"DeviceUUID": _md5(f"{agent_id}-01-{i + 1:03}-rot")} for i in range(8)]
+            }],
+        } | KNOWN_DEVICE_POOLS)
+
+
+@pytest.fixture(name='ydb')
+def start_ydb_cluster():
 
     ydb_cluster = start_ydb()
 
@@ -30,8 +74,8 @@ def ydb():
     ydb_cluster.stop()
 
 
-@pytest.fixture
-def nbs(ydb):
+@pytest.fixture(name='nbs')
+def start_nbs_daemon(ydb):
 
     nbs_configurator = NbsConfigurator(ydb)
     nbs_configurator.generate_default_nbs_configs()
@@ -56,25 +100,14 @@ def agent_id():
 
 
 @pytest.fixture(autouse=True)
-def setup_disk_registry(nbs, agent_id):
+def disk_registry_set_writable_state(nbs):
 
     client = NbsClient(nbs.port)
     client.disk_registry_set_writable_state()
-    client.update_disk_registry_config({
-        "KnownAgents": [{
-            "AgentId": agent_id,
-            "KnownDevices":
-                [{"DeviceUUID": _md5(f"{agent_id}-{i + 1:02}")} for i in range(6)] +
-                [{"DeviceUUID": _md5(f"{agent_id}-01-{i + 1:03}-rot")} for i in range(8)]
-            }],
-        "KnownDevicePools": [
-            {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": 1024**2},
-            {"Name": "rot", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": 1024**2},
-        ]})
 
 
-@pytest.fixture
-def data_path():
+@pytest.fixture(name='data_path')
+def create_data_path():
 
     p = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
@@ -101,8 +134,8 @@ def create_device_files(data_path):
     create_file("ROTNBS01", 1024**2 * 10)
 
 
-@pytest.fixture
-def disk_agent_configurator(ydb):
+@pytest.fixture(name='disk_agent_configurator')
+def create_disk_agent_configurator(ydb):
 
     configurator = NbsConfigurator(ydb, 'disk-agent')
     configurator.generate_default_nbs_configs()
@@ -110,8 +143,8 @@ def disk_agent_configurator(ydb):
     return configurator
 
 
-@pytest.fixture
-def disk_agent_static_config(data_path, agent_id):
+@pytest.fixture(name='disk_agent_static_config')
+def create_disk_agent_static_config(data_path, agent_id):
 
     def create_nvme_device(i):
         return {
@@ -137,8 +170,8 @@ def disk_agent_static_config(data_path, agent_id):
     return generate_disk_agent_txt(file_devices=devices)
 
 
-@pytest.fixture
-def disk_agent_dynamic_config(data_path):
+@pytest.fixture(name='disk_agent_dynamic_config')
+def create_disk_agent_dynamic_config(data_path):
     return generate_disk_agent_txt(agent_id='', storage_discovery_config={
         "PathConfigs": [{
             "PathRegExp": f"{data_path}/ROTNBS([0-9]+)",
@@ -167,12 +200,7 @@ def disk_agent_dynamic_config(data_path):
 def _check_disk_agent_config(nbs, agent_id, data_path):
     client = NbsClient(nbs.port)
 
-    while True:
-        bkp = client.backup_disk_registry_state()["Backup"]
-        if bkp.get("Agents") is not None:
-            break
-        time.sleep(1)
-
+    bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp["Agents"][0]["AgentId"] == agent_id
 
     devices = bkp["Agents"][0].get("Devices")
@@ -220,6 +248,8 @@ def test_storage_discovery(
         disk_agent_dynamic_config,
         source):
 
+    _setup_disk_registry_config(nbs, agent_id)
+
     if source == "cms":
         disk_agent_configurator.cms["DiskAgentConfig"] = disk_agent_dynamic_config
 
@@ -230,6 +260,7 @@ def test_storage_discovery(
         disk_agent_configurator.cms["DiskAgentConfig"] = generate_disk_agent_txt()
 
     disk_agent = start_disk_agent(disk_agent_configurator)
+    disk_agent.wait_for_registration()
 
     _check_disk_agent_config(nbs, agent_id, data_path)
 
@@ -254,15 +285,236 @@ def test_config_comparison(
             f.write(b'\0')
             f.flush()
 
+    _setup_disk_registry_config(nbs, agent_id)
+
     disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
     disk_agent_configurator.cms["DiskAgentConfig"] = disk_agent_static_config
 
     disk_agent = start_disk_agent(disk_agent_configurator)
+    disk_agent.wait_for_registration()
 
     _check_disk_agent_config(nbs, agent_id, data_path)
 
     crit = disk_agent.counters.find(sensor='AppCriticalEvents/DiskAgentConfigMismatch')
     assert crit is not None
     assert crit['value'] == (1 if cmp == 'mismatch' else 0)
+
+    disk_agent.kill()
+
+
+def test_add_devices(
+        nbs,
+        agent_id,
+        data_path,
+        disk_agent_configurator,
+        disk_agent_dynamic_config):
+
+    disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
+
+    disk_agent = start_disk_agent(disk_agent_configurator)
+    disk_agent.wait_for_registration()
+
+    client = NbsClient(nbs.port)
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert bkp["Agents"][0].get("Devices") is None
+
+    grpc_client = CreateClient(f"localhost:{nbs.port}")
+
+    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+
+    assert len(bkp["Agents"][0]["Devices"]) == 1
+
+    _add_devices(grpc_client, agent_id, [
+        os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
+    ])
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+    assert len(bkp["Agents"][0]["Devices"]) == 6
+
+    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+
+    disk_agent.kill()
+
+
+@pytest.mark.parametrize("backup_from", ['local_db', 'state'])
+def test_remove_devices(
+        nbs,
+        agent_id,
+        data_path,
+        disk_agent_configurator,
+        disk_agent_dynamic_config,
+        backup_from):
+
+    _setup_disk_registry_config(nbs, agent_id)
+
+    def get_bkp():
+        r = client.backup_disk_registry_state(
+            backup_local_db=backup_from == 'local_db')
+        return r["Backup"]
+
+    client = NbsClient(nbs.port)
+    bkp = get_bkp()
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert bkp.get("Agents") is None
+
+    disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
+
+    disk_agent = start_disk_agent(disk_agent_configurator)
+    disk_agent.wait_for_registration()
+
+    bkp = get_bkp()
+
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+
+    grpc_client = CreateClient(f"localhost:{nbs.port}")
+
+    r = _remove_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
+    assert r.ActionResults[0].Result.Code == 0  # S_OK
+    assert r.ActionResults[0].Timeout == 0
+
+    bkp = get_bkp()
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+
+    r = _remove_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
+    assert r.ActionResults[0].Result.Code == 0  # E_NOT_FOUND
+    assert r.ActionResults[0].Timeout == 0
+
+    bkp = get_bkp()
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+
+    _remove_devices(grpc_client, agent_id, [
+        os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
+    ])
+
+    bkp = get_bkp()
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+
+    _remove_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+
+    bkp = get_bkp()
+
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+
+    _add_devices(grpc_client, agent_id, [
+        os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
+    ] + [os.path.join(data_path, 'ROTNBS01')])
+
+    bkp = get_bkp()
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+
+    assert len(bkp["Agents"][0]["Devices"]) == 14
+
+    disk_agent.kill()
+
+
+def test_change_layout(
+        nbs,
+        agent_id,
+        data_path,
+        disk_agent_configurator,
+        disk_agent_dynamic_config):
+
+    client = NbsClient(nbs.port)
+    client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
+
+    disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
+
+    disk_agent = start_disk_agent(disk_agent_configurator)
+    disk_agent.wait_for_registration()
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    grpc_client = CreateClient(f"localhost:{nbs.port}")
+
+    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 8
+
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert len(bkp["Agents"][0]["Devices"]) == 8
+    for d in bkp["Agents"][0]["Devices"]:
+        assert d.get('State') is None
+
+    new_disk_agent_config = deepcopy(disk_agent_dynamic_config)
+    new_disk_agent_config.StorageDiscoveryConfig.PathConfigs[0].MaxDeviceCount = 9
+
+    disk_agent_configurator.files["disk-agent"] = new_disk_agent_config
+
+    # restart DA to apply new configs
+    disk_agent.kill()
+    disk_agent = start_disk_agent(disk_agent_configurator)
+    disk_agent.wait_for_registration()
+
+    # nothing has changed
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 8
+
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert len(bkp["Agents"][0]["Devices"]) == 8
+
+    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+
+    # and again nothing has changed
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 8
+
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert len(bkp["Agents"][0]["Devices"]) == 8
+
+    # remove all devices from config
+    client.update_disk_registry_config({"Version": 2} | KNOWN_DEVICE_POOLS)
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    assert bkp["Config"].get("KnownAgents") is None
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert bkp["Agents"][0].get("Devices") is None
+
+    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+
+    # now we have new device
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    assert len(bkp["Config"]["KnownAgents"]) == 1
+    assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 9
+
+    assert bkp["Agents"][0]["AgentId"] == agent_id
+    assert len(bkp["Agents"][0]["Devices"]) == 9
+    assert len(bkp["DirtyDevices"]) == 9
 
     disk_agent.kill()

@@ -72,6 +72,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryDeviceDoesNotBelongToDisk)                                 \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
     xxx(MonitoringSvgTemplatesNotFound)                                        \
+    xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

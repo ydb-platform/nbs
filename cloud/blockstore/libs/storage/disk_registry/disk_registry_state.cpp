@@ -4667,6 +4667,73 @@ auto TDiskRegistryState::ResolveDevices(
     return { agent, std::move(devices) };
 }
 
+NProto::TError TDiskRegistryState::AddNewDevices(
+    TDiskRegistryDatabase& db,
+    NProto::TAgentConfig& agent,
+    const TString& path,
+    TInstant now,
+    bool dryRun)
+{
+    TVector<NProto::TDeviceConfig*> devices;
+    for (auto& device: *agent.MutableUnknownDevices()) {
+        if (device.GetDeviceName() == path) {
+            devices.push_back(&device);
+        }
+    }
+
+    if (devices.empty()) {
+        return MakeError(E_NOT_FOUND, TStringBuilder()
+            << "Device not found (" << agent.GetAgentId() << "," << path << ')');
+    }
+
+    if (dryRun) {
+        return {};
+    }
+
+    TVector<TString> ids;
+    for (auto* device: devices) {
+        ids.push_back(device->GetDeviceUUID());
+
+        device->SetState(NProto::DEVICE_STATE_ONLINE);
+        device->SetStateMessage("cms add device action");
+        device->SetStateTs(now.MicroSeconds());
+    }
+
+    STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
+        << " Devices=" << JoinSeq(", ", ids));
+
+    auto newConfig = GetConfig();
+    NProto::TAgentConfig* knownAgent = FindIfPtr(
+        *newConfig.MutableKnownAgents(),
+        [&] (const auto& x) {
+            return x.GetAgentId() == agent.GetAgentId();
+        });
+    if (!knownAgent) {
+        knownAgent = newConfig.AddKnownAgents();
+        knownAgent->SetAgentId(agent.GetAgentId());
+    }
+
+    for (auto& id: ids) {
+        knownAgent->AddDevices()->SetDeviceUUID(id);
+    }
+
+    TVector<TString> affectedDisks;
+    auto error = UpdateConfig(
+        db,
+        std::move(newConfig),
+        false,  // ignoreVersion
+        affectedDisks);
+
+    if (!affectedDisks.empty()) {
+        ReportDiskRegistryUnexpectedAffectedDisks(TStringBuilder()
+            << "AddNewDevices: " << JoinSeq(" ", affectedDisks));
+    }
+
+    ResumeDevices(now, db, ids);
+
+    return error;
+}
+
 NProto::TError TDiskRegistryState::CmsAddDevice(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
@@ -4799,10 +4866,15 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
     if (newState != NProto::DEVICE_STATE_ONLINE &&
         newState != NProto::DEVICE_STATE_WARNING)
     {
-        return MakeError(E_NOT_FOUND, "Unexpected state");
+        return MakeError(E_ARGUMENT, "Unexpected state");
     }
 
     auto [agent, devices] = ResolveDevices(agentId, path);
+
+    if (agent && devices.empty() && newState == NProto::DEVICE_STATE_ONLINE) {
+        return AddNewDevices(db, *agent, path, now, dryRun);
+    }
+
     if (!agent || devices.empty()) {
         return MakeError(E_NOT_FOUND, TStringBuilder()
             << "Device not found (" << agentId << "," << path << ')');
@@ -4833,9 +4905,10 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
         if (HasError(error)) {
             STORAGE_WARN(
                 "UpdateCmsDeviceState stopped after processing %u devices"
-                ", current deviceId: %s",
+                ", current deviceId: %s, error: %s",
                 processed,
-                device->GetDeviceUUID().c_str());
+                device->GetDeviceUUID().c_str(),
+                FormatError(error).c_str());
 
             break;
         }

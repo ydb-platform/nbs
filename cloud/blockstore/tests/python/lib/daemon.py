@@ -1,5 +1,6 @@
 import requests
 import subprocess
+import time
 
 from .config import NbsConfigurator
 
@@ -93,6 +94,22 @@ class DiskAgent(Daemon):
     @property
     def counters(self):
         return _get_counters(self.mon_port)
+
+    def wait_for_registration(self, delay_sec=1, max_retry_number=None):
+        url = f"http://localhost:{self.mon_port}/blockstore/disk_agent"
+
+        i = 0
+        while True:
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            if r.text.find('Registered') != -1:
+                return True
+            i += 1
+            if max_retry_number is not None and i >= max_retry_number:
+                break
+            time.sleep(delay_sec)
+
+        return False
 
 
 def start_nbs(config: NbsConfigurator):

@@ -458,7 +458,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto [error, timeout] = RemoveDevice(diskRegistry, "agent-1", "dev-1");
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 

@@ -7064,6 +7064,109 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldReturnOkForDeviceCmsRequestIfNoUserDisksAfterDeallocation)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const auto agent1 = AgentConfig(1, {
+            Device("dev-1", "uuid-1", "rack-1"),
+            Device("dev-2", "uuid-2", "rack-1")
+        });
+
+        ui64 lastSeqNo = 0;
+        auto storageConfig = CreateStorageConfig();
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(storageConfig)
+            .WithKnownAgents({ agent1 })
+            .With(lastSeqNo)
+            .Build();
+
+        auto updateDevice = [&] (auto db, auto desiredState) {
+            TVector<TString> affectedDisks;
+            TDuration timeout;
+            auto error = state.UpdateCmsDeviceState(
+                db,
+                agent1.GetAgentId(),
+                "dev-2",
+                desiredState,
+                Now(),
+                false,   // dryRun
+                affectedDisks,
+                timeout);
+            return std::make_tuple(error, timeout, affectedDisks);
+        };
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TDiskRegistryState::TAllocateDiskResult result;
+
+            UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                Now(),
+                db,
+                {
+                    .DiskId = "disk-1",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount = 20_GB / DefaultLogicalBlockSize
+                },
+                &result));
+
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto [error, timeout, affectedDisks] = updateDevice(
+                db,
+                NProto::DEVICE_STATE_WARNING);
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(TDuration{}, timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, affectedDisks);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto [error, timeout, affectedDisks] = updateDevice(
+                db,
+                NProto::DEVICE_STATE_WARNING);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto [error, timeout, affectedDisks] = updateDevice(
+                db,
+                NProto::DEVICE_STATE_WARNING);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto [error, timeout, affectedDisks] = updateDevice(
+                db,
+                NProto::DEVICE_STATE_ONLINE);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+        });
+    }
+
     Y_UNIT_TEST(ShouldReturnOkForAgentCmsRequestIfNoUserDisks)
     {
         TTestExecutor executor;

@@ -83,7 +83,7 @@ class NbsConfigurator:
 
         self.__install_cms_configs()
 
-        self.__params += [
+        self.__params = [
             "--domain", self.domain,
             "--ic-port", str(self.ic_port),
             "--mon-port", str(self.mon_port),
@@ -107,8 +107,6 @@ class NbsConfigurator:
                 f.write(MessageToString(config))
 
             self.__params += [f"--{name}-file", path]
-
-        return self.__params
 
     def __install_cms_configs(self):
 
