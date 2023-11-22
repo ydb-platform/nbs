@@ -1954,6 +1954,72 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithoutAliveSrcImageAfterCancel(
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
+	t *testing.T,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	require.NoError(t, err)
+	defer privateClient.Close()
+
+	params := migrationTestParams{
+		SrcZoneID: "zone",
+		DstZoneID: "other",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  false,
+	}
+
+	expectedStorageSize := setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
+		true, // withAliveSrcImage
+	)
+
+	// Need to schedule RetireBaseDisks task after migration was started.
+	retireErr := make(chan error)
+	retireOperation := make(chan *operation_proto.Operation)
+	go func() {
+		// Need to add some variance for better testing.
+		testcommon.WaitForRandomDuration(1*time.Second, 2*time.Second)
+
+		reqCtx := testcommon.GetRequestContext(t, ctx)
+		operation, err := privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
+			ImageId: t.Name(),
+			ZoneId:  "zone",
+		})
+
+		retireErr <- err
+		retireOperation <- operation
+	}()
+
+	successfullyMigrateEmptyOverlayDisk(
+		t,
+		ctx,
+		client,
+		params,
+		expectedStorageSize,
+	)
+
+	err = <-retireErr
+	operation := <-retireOperation
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestDiskServiceMigrateEmptyDisk(t *testing.T) {
 	params := migrationTestParams{
 		SrcZoneID: "zone",

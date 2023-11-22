@@ -502,6 +502,7 @@ func (t *migrateDiskTask) finishMigration(
 			storage.RebaseInfo{
 				OverlayDisk:      t.request.Disk,
 				BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+				TargetZoneID:     t.request.DstZoneId,
 				TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
 				SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
 			},

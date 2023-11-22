@@ -1250,18 +1250,6 @@ func (s *storageYDB) overlayDiskRelocatingIdempotent(
 	targetZoneID string,
 ) (RebaseInfo, error) {
 
-	if acquiredSlot.targetZoneID != targetZoneID {
-		err := tx.Commit(ctx)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
-
-		return RebaseInfo{}, errors.NewNonRetriableErrorf(
-			"another relocate is in progress for slot %+v",
-			acquiredSlot,
-		)
-	}
-
 	rebaseInfo := RebaseInfo{
 		OverlayDisk:      overlayDisk,
 		BaseDiskID:       acquiredSlot.baseDiskID,
@@ -3132,6 +3120,11 @@ func (s *storageYDB) retireBaseDisk(
 
 	for slotIndex < len(slotTransitions) {
 		slot := slotTransitions[slotIndex].state
+		if len(slot.targetZoneID) != 0 {
+			// Skip because relocate is in progress for this slot.
+			slotIndex++
+			continue
+		}
 
 		if len(slot.targetBaseDiskID) != 0 {
 			// Should be idempotent.
@@ -3141,6 +3134,7 @@ func (s *storageYDB) retireBaseDisk(
 					DiskId: slot.overlayDiskID,
 				},
 				BaseDiskID:       slot.baseDiskID,
+				TargetZoneID:     slot.targetZoneID,
 				TargetBaseDiskID: slot.targetBaseDiskID,
 				SlotGeneration:   slot.generation,
 			})
