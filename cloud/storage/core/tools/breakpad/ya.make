@@ -1,9 +1,14 @@
 PY2_LIBRARY()
 
 PEERDIR(
-    contrib/python/requests
     library/python/retry
 )
+
+IF (NOT OPENSOURCE)
+    PEERDIR(
+        contrib/python/requests     # TODO: NBS-4453
+    )
+ENDIF()
 
 PY_SRCS(
     command.py

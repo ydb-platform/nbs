@@ -12,10 +12,15 @@ PY_SRCS(
 )
 
 PEERDIR(
-    contrib/python/paramiko
     contrib/python/urllib3
 
     cloud/blockstore/pylibs/clusters/test_config
 )
+
+IF (NOT OPENSOURCE)
+    PEERDIR(
+        contrib/python/paramiko     # TODO: NBS-4453
+    )
+ENDIF()
 
 END()

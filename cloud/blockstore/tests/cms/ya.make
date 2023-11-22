@@ -11,9 +11,13 @@ PEERDIR(
     library/python/testing/yatest_common
 
     contrib/ydb/tests/library
-
-    contrib/python/requests
 )
+
+IF (NOT OPENSOURCE)
+    PEERDIR(
+        contrib/python/requests     # TODO: NBS-4453
+    )
+ENDIF()
 
 DEPENDS(
     cloud/blockstore/apps/server

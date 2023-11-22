@@ -14,9 +14,14 @@ PY_SRCS(
 PEERDIR(
     cloud/blockstore/config
     contrib/python/jsondiff
-    contrib/python/requests
     contrib/ydb/core/protos
     contrib/ydb/public/api/protos
 )
+
+IF (NOT OPENSOURCE)
+    PEERDIR(
+        contrib/python/requests     # TODO: NBS-4453
+    )
+ENDIF()
 
 END()

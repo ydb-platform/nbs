@@ -21,9 +21,14 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/public/sdk/python/client
     cloud/blockstore/tests/python/lib
-    contrib/python/requests
     contrib/ydb/core/protos
     contrib/ydb/tests/library
 )
+
+IF (NOT OPENSOURCE)
+    PEERDIR(
+        contrib/python/requests     # TODO: NBS-4453
+    )
+ENDIF()
 
 END()

@@ -13,9 +13,14 @@ PEERDIR(
     contrib/ydb/public/api/protos
     contrib/ydb/tests/library
 
-    contrib/python/requests
     contrib/python/retrying
 )
+
+IF (NOT OPENSOURCE)
+    PEERDIR(
+        contrib/python/requests     # TODO: NBS-4453
+    )
+ENDIF()
 
 PY_SRCS(
     __init__.py
