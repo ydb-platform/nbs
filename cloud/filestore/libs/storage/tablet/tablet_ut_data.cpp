@@ -21,7 +21,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     using namespace NCloud::NStorage;
 
-    Y_UNIT_TEST(ShouldStoreFreshBytes)
+#define TABLET_TEST(name)                                                      \
+    void TestImpl##name(const TFileSystemConfig& tabletConfig);                \
+    Y_UNIT_TEST(name)                                                          \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
+    }                                                                          \
+    Y_UNIT_TEST(name##128K)                                                    \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 128_KB});                \
+    }                                                                          \
+    void TestImpl##name(const TFileSystemConfig& tabletConfig)                 \
+// TABLET_TEST
+
+    TABLET_TEST(ShouldStoreFreshBytes)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -29,7 +42,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
