@@ -110,13 +110,16 @@ ILoggingServicePtr CreateUnifiedAgentLoggingService(
 
 #define STORAGE_LOG_S(priority, stream)                                        \
     if (Log.IsOpen() && priority <= Log.FiltrationLevel()) {                   \
-        Log << priority << __LOCATION__ << ": " << stream;                     \
+        Log << static_cast<ELogPriority>(priority)                             \
+            << __LOCATION__ << ": " << stream;                                 \
     }                                                                          \
 // STORAGE_LOG_S
 
 #define STORAGE_LOG_F(priority, ...)                                           \
     if (Log.IsOpen() && priority <= Log.FiltrationLevel()) {                   \
-        Printf(Log << priority << __LOCATION__ << ": ", __VA_ARGS__);          \
+        Printf(Log                                                             \
+            << static_cast<ELogPriority>(priority)                             \
+            << __LOCATION__ << ": ", __VA_ARGS__);                             \
     }                                                                          \
 // STORAGE_LOG_F
 
