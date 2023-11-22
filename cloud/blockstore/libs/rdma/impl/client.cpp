@@ -1476,7 +1476,9 @@ private:
                 if (!endpoint->FlushHanging()) {
                     continue;
                 }
-                STORAGE_ERROR("flush timeout");
+                STORAGE_ERROR("flush timeout (send_queue.size="
+                    << endpoint->SendQueue.Size() << " recv_queue.size="
+                    << endpoint->RecvQueue.Size() << ")");
             }
 
             endpoint->ChangeState(
