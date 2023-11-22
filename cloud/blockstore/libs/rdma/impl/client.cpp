@@ -399,8 +399,8 @@ private:
     TWorkQueue<TSendWr> SendQueue;
     TWorkQueue<TRecvWr> RecvQueue;
 
-    ui32 SendMagic;
-    ui32 RecvMagic;
+    ui32 SendMagic = 0;
+    ui32 RecvMagic = 0;
 
     TLockFreeList<TRequest> InputRequests;
     TEventHandle RequestEvent;
