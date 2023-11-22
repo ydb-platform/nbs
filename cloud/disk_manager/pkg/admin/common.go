@@ -48,7 +48,7 @@ func newContext(config *client_config.ClientConfig) context.Context {
 func generateID() string {
 	return fmt.Sprintf(
 		"%v_%v",
-		"yc-disk-manager-admin",
+		"disk-manager-admin",
 		uuid.Must(uuid.NewV4()).String(),
 	)
 }
