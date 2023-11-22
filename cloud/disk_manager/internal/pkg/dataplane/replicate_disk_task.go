@@ -216,6 +216,7 @@ func (t *replicateDiskTask) replicate(
 		chunkSize,
 		false, // duplicateChunkIndices
 		t.request.IgnoreBaseDisk,
+		true, // useGetChangedBlocksForDiskRegistryBased
 	)
 	if err != nil {
 		return err

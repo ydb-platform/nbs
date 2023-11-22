@@ -1081,6 +1081,18 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		2,  // fillGeneration
 		"", // baseDiskID
 	)
+	require.Error(t, err)
+	require.True(t, errors.CanRetry(err))
+
+	// Next attempt should succeed.
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		2,  // fillGeneration
+		"", // baseDiskID
+	)
 	require.NoError(t, err)
 
 	err = multiZoneClient.Clone(
@@ -1129,6 +1141,20 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	params, err = otherZoneClient.Describe(ctx, diskID)
 	require.NoError(t, err)
 	require.Equal(t, uniqueNumber, params.BlocksCount)
+
+	// Delete disk-source, cloning should fail with fatal error.
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		2,  // fillGeneration
+		"", // baseDiskID
+	)
+	require.Error(t, err)
+	require.True(t, !errors.CanRetry(err))
 }
 
 func TestFinishFillDisk(t *testing.T) {
@@ -1177,4 +1203,157 @@ func TestFinishFillDisk(t *testing.T) {
 	params, err := otherZoneClient.Describe(ctx, diskID)
 	require.NoError(t, err)
 	require.True(t, params.IsFillFinished)
+}
+
+func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+
+	blockSize := uint32(4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   blockSize,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+	})
+	require.NoError(t, err)
+
+	writeRandomBlocks(
+		t,
+		ctx,
+		client,
+		diskID,
+		0, // startIndex
+		1, // blockCount
+	)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "checkpoint_1",
+		CheckpointType: nbs.CheckpointTypeLight,
+	})
+	require.NoError(t, err)
+
+	var blockMask []byte
+
+	blockMask, err = client.GetChangedBlocks(
+		ctx,
+		diskID,
+		0,
+		8,
+		"",
+		"checkpoint_1",
+		false, // ignoreBaseDisk
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(blockMask))
+	require.Equal(t, uint8(0b11111111), blockMask[0])
+
+	writeRandomBlocks(
+		t,
+		ctx,
+		client,
+		diskID,
+		1, // startIndex
+		1, // blockCount
+	)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "checkpoint_2",
+		CheckpointType: nbs.CheckpointTypeLight,
+	})
+	require.NoError(t, err)
+
+	blockMask, err = client.GetChangedBlocks(
+		ctx,
+		diskID,
+		0,
+		8,
+		"checkpoint_1",
+		"checkpoint_2",
+		false, // ignoreBaseDisk
+	)
+	require.NoError(t, err)
+	// May be blockMask of all '1' in case of volume tablet reboot.
+	require.True(t, blockMask[0] == uint8(0b00000010) || blockMask[0] == uint8(0b11111111))
+
+	writeRandomBlocks(
+		t,
+		ctx,
+		client,
+		diskID,
+		2, // startIndex
+		1, // blockCount
+	)
+
+	// Checkpoint creation should be idempotent.
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "checkpoint_1",
+		CheckpointType: nbs.CheckpointTypeLight,
+	})
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "checkpoint_3",
+		CheckpointType: nbs.CheckpointTypeLight,
+	})
+	require.NoError(t, err)
+
+	blockMask, err = client.GetChangedBlocks(
+		ctx,
+		diskID,
+		0,
+		8,
+		"checkpoint_2",
+		"checkpoint_3",
+		false, // ignoreBaseDisk
+	)
+	require.NoError(t, err)
+	require.True(t, blockMask[0] == uint8(0b00000100) || blockMask[0] == uint8(0b11111111))
+
+	// Checkpoint creation should be idempotent.
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "checkpoint_3",
+		CheckpointType: nbs.CheckpointTypeLight,
+	})
+	require.NoError(t, err)
+
+	blockMask, err = client.GetChangedBlocks(
+		ctx,
+		diskID,
+		0,
+		8,
+		"checkpoint_2",
+		"checkpoint_3",
+		false, // ignoreBaseDisk
+	)
+	require.NoError(t, err)
+	require.True(t, blockMask[0] == uint8(0b00000100) || blockMask[0] == uint8(0b11111111))
+
+	// Should pessimize diff for old light checkpoints.
+	blockMask, err = client.GetChangedBlocks(
+		ctx,
+		diskID,
+		0,
+		8,
+		"checkpoint_1",
+		"checkpoint_3",
+		false, // ignoreBaseDisk
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint8(0b11111111), blockMask[0])
+
+	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_1")
+	require.NoError(t, err)
+	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_2")
+	require.NoError(t, err)
+	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_3")
+	require.NoError(t, err)
 }

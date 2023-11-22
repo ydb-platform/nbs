@@ -1599,6 +1599,24 @@ func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
+	param := migrationTestParams{
+		SrcZoneID: "zone",
+		DstZoneID: "other",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
+		DiskSize:  1073741824,
+		FillDisk:  false,
+	}
+
+	ctx, client := setupMigrationTest(t, param)
+	defer client.Close()
+
+	successfullyMigrateDisk(t, ctx, client, param)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestDiskServiceMigrateDisk(t *testing.T) {
 	diskID := t.Name()
 	params := migrationTestParams{

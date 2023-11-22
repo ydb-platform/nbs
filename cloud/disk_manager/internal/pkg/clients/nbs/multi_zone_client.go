@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 )
 
@@ -29,36 +30,36 @@ func (c *multiZoneClient) Clone(
 
 	defer c.metrics.StatRequest("Clone")(&err)
 
-	retries := 0
-	for {
-		err = c.clone(
-			ctx,
-			diskID,
-			dstPlacementGroupID,
-			dstPlacementPartitionIndex,
-			fillGeneration,
-			baseDiskID,
-		)
-		if err != nil {
-			if !isAbortedError(err) {
-				return err
-			}
+	err = c.clone(
+		ctx,
+		diskID,
+		dstPlacementGroupID,
+		dstPlacementPartitionIndex,
+		fillGeneration,
+		baseDiskID,
+	)
+	if err != nil {
+		if isAbortedError(err) {
+			logging.Error(
+				ctx,
+				"src disk cloning failed because there exists dst disk with outdated fill generation: %v",
+				err,
+			)
 
 			err = c.deleteOutdatedDstDisk(ctx, diskID, fillGeneration)
 			if err != nil {
 				return err
 			}
 
-			if retries == maxConsecutiveRetries {
-				return errors.NewRetriableError(err)
-			}
-
-			retries++
-			continue
+			return errors.NewRetriableErrorf(
+				"retry src disk cloning after deleting dst disk with outdated fill generation",
+			)
 		}
 
-		return nil
+		return err
 	}
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,7 +82,7 @@ func (c *multiZoneClient) deleteOutdatedDstDisk(
 
 		if volume.IsFillFinished {
 			return errors.NewNonRetriableErrorf(
-				"can't delete disk %v because filling is finished",
+				"can't delete dst disk %v because filling is finished",
 				diskID,
 			)
 		}
@@ -140,5 +141,11 @@ func (c *multiZoneClient) clone(
 			FillGeneration:  fillGeneration,
 		},
 	)
+	if IsNotFoundError(err) {
+		return errors.NewRetriableErrorf(
+			"retry src disk cloning because dst disk is not found, it might be deleted because its fill generation is outdated",
+		)
+	}
+
 	return wrapError(err)
 }

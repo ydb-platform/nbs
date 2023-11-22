@@ -180,6 +180,7 @@ func TestChunkIndices(t *testing.T) {
 			chunkSize,
 			false, // duplicateChunkIndices
 			false, // ignoreBaseDisk
+			false, // useGetChangedBlocksForDiskRegistryBased
 		)
 		require.NoError(t, err)
 		defer source.Close(ctx)
@@ -284,6 +285,7 @@ func TestReadWrite(t *testing.T) {
 		chunkSize,
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
+		false, // useGetChangedBlocksForDiskRegistryBased
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)

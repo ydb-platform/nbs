@@ -234,6 +234,7 @@ func NewDiskSource(
 	chunkSize uint32,
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
+	useGetChangedBlocksForDiskRegistryBased bool,
 ) (dataplane_common.Source, error) {
 
 	if len(proxyDiskID) == 0 {
@@ -278,8 +279,14 @@ func NewDiskSource(
 	}
 
 	chunkCount := uint32(blockCount / blocksInChunk)
-	// NBS-3228 make GetChangedBlocks() support for disk registry based disks
-	useGetChangedBlocks := !session.IsDiskRegistryBasedDisk()
+
+	// TODO: NBS-3228 make GetChangedBlocks() support for Disk Registry based disks.
+	// This flag is still needed for snapshots from mirrored disks because we can not use
+	// GetChangedBlocks between non-light checkpoints for Disk Registry based disks.
+	// But we can use GetChangedBlocks in disk relocation because we use
+	// light checkpoints for relocation of Disk Registry based disks.
+	useGetChangedBlocks :=
+		!session.IsDiskRegistryBasedDisk() || useGetChangedBlocksForDiskRegistryBased
 
 	return &diskSource{
 		client:           client,
