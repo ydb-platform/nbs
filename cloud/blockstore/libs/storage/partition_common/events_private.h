@@ -150,23 +150,26 @@ struct TEvPartitionCommonPrivate
             WriteBlob,
             Count,
         };
-        enum EReason
+        enum class EReason
         {
             LongRunningDetected,
             Finished,
         };
 
         const EOperation Operation;
+        const bool FirstNotify;
         const EReason Reason;
         const TDuration Duration;
         const ui32 GroupId;
 
         TLongRunningOperation(
                 EOperation operation,
+                bool firstNotify,
                 TDuration duration,
                 ui32 groupId,
                 bool finished)
             : Operation(operation)
+            , FirstNotify(firstNotify)
             , Reason(
                   finished ? EReason::Finished : EReason::LongRunningDetected)
             , Duration(duration)

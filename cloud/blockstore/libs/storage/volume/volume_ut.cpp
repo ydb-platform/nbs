@@ -7921,19 +7921,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
-        // Make handler for taking counters from EvVolumePartCounters message.
+        // Make handler for taking counters from TEvVolumeSelfCounters message.
         int longRunningReads = 0;
         TSimpleCounter writeCounter;
         auto takeCounters = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->Recipient == MakeStorageStatsServiceId() &&
                 event->GetTypeRewrite() ==
-                    TEvStatsService::EvVolumePartCounters)
+                    TEvStatsService::EvVolumeSelfCounters)
             {
                 auto* msg =
-                    event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    event->Get<TEvStatsService::TEvVolumeSelfCounters>();
                 longRunningReads +=
-                    msg->DiskCounters->Simple.LongRunningReadBlob.Value;
+                    msg->VolumeSelfCounters->Simple.LongRunningReadBlob.Value;
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);

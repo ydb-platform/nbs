@@ -2,6 +2,8 @@
 
 #include "events_private.h"
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,10 +46,12 @@ public:
 
 private:
     const NActors::TActorId ParentActor;
-    const TDuration LongRunningThreshold;
     const EOperation Operation;
     const ui32 GroupId;
 
+    TBackoffDelayProvider PingDelayProvider;
+    TInstant StartAt = {};
+    ui32 PingCount = 0;
     bool LongRunningDetected = false;
 
 public:

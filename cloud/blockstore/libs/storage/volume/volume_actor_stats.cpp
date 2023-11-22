@@ -103,18 +103,6 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 {
     auto* msg = ev->Get();
 
-    {
-        using EOperation =
-            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation;
-
-        auto blobOperationTimeouts = LongRunningActors.ExtractLongRunningStat();
-
-        msg->DiskCounters->Simple.LongRunningReadBlob.Set(
-            blobOperationTimeouts[EOperation::ReadBlob]);
-        msg->DiskCounters->Simple.LongRunningWriteBlob.Set(
-            blobOperationTimeouts[EOperation::WriteBlob]);
-    }
-
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -320,6 +308,18 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.MaxReadIops.Set(pp.GetMaxReadIops());
     simple.MaxWriteIops.Set(pp.GetMaxWriteIops());
 
+    {
+        using EOperation =
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation;
+
+        auto blobOperationTimeouts = LongRunningActors.ExtractLongRunningStat();
+
+        simple.LongRunningReadBlob.Set(
+            blobOperationTimeouts[EOperation::ReadBlob]);
+        simple.LongRunningWriteBlob.Set(
+            blobOperationTimeouts[EOperation::WriteBlob]);
+    }
+
     const auto& tp = State->GetThrottlingPolicy();
     simple.RealMaxWriteBandwidth.Set(
         tp.GetWriteCostMultiplier()
@@ -390,21 +390,42 @@ void TVolumeActor::HandleLongRunningBlobOperation(
     using TEvLongRunningOperation =
         TEvPartitionCommonPrivate::TEvLongRunningOperation;
 
+    const auto& msg = *ev->Get();
+
     if (ev->Get()->Reason ==
         TEvLongRunningOperation::EReason::LongRunningDetected)
     {
-        LongRunningActors.Insert(ev->Sender);
-        LongRunningActors.MarkLongRunning(ev->Sender, ev->Get()->Operation);
+        if (msg.FirstNotify) {
+            LongRunningActors.Insert(ev->Sender);
+            LongRunningActors.MarkLongRunning(ev->Sender, msg.Operation);
+        }
+
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] For volume %s detected %s long running for %s",
+            "[%lu] For volume %s detected %s (actor %s, group %u) %s running "
+            "for %s",
             TabletID(),
             State->GetDiskId().Quote().c_str(),
-            ToString(ev->Get()->Operation).c_str(),
-            ev->Get()->Duration.ToString().c_str());
+            ToString(msg.Operation).c_str(),
+            ev->Sender.ToString().c_str(),
+            msg.GroupId,
+            msg.FirstNotify ? "long" : "still",
+            msg.Duration.ToString().c_str());
     } else {
         LongRunningActors.Erase(ev->Sender);
+
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] For volume %s completion %s (actor %s, group %u) "
+            "detected after %s",
+            TabletID(),
+            State->GetDiskId().Quote().c_str(),
+            ToString(msg.Operation).c_str(),
+            ev->Sender.ToString().c_str(),
+            msg.GroupId,
+            msg.Duration.ToString().c_str());
     }
 }
 

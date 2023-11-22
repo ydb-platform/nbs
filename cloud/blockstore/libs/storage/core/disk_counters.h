@@ -45,8 +45,6 @@ enum class EPublishingPolicy
     xxx(CompactionGarbageScore, Max,     Permanent,                __VA_ARGS__)\
     xxx(ChannelHistorySize,     Max,     Permanent,                __VA_ARGS__)\
     xxx(CompactionRangeCountPerRun, Max, Permanent,                __VA_ARGS__)\
-    xxx(LongRunningReadBlob,    Generic, Expiring,                 __VA_ARGS__)\
-    xxx(LongRunningWriteBlob,   Generic, Expiring,                 __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,6 +120,9 @@ enum class EPublishingPolicy
     xxx(LastVolumeLoadTime,         Max,     Permanent,            __VA_ARGS__)\
     xxx(LastVolumeStartTime,        Max,     Permanent,            __VA_ARGS__)\
     xxx(HasStorageConfigPatch,      Generic, Permanent,            __VA_ARGS__)\
+    xxx(LongRunningReadBlob,        Generic, Expiring,             __VA_ARGS__)\
+    xxx(LongRunningWriteBlob,       Generic, Expiring,             __VA_ARGS__)\
+
 
 #define BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(xxx, ...)            \
     xxx(ThrottlerRejectedRequests,  Generic, Expiring,             __VA_ARGS__)\

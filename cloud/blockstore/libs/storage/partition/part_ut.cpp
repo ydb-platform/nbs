@@ -10221,10 +10221,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     void DoShouldReportLongRunningBlobOperations(
         FSend sendRequest,
         FReceive receiveResponse,
-        size_t expectedLongRunngingReads,
-        size_t expectedLongRunngingWrites)
+        TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation
+            expectedOperation)
     {
         auto config = DefaultConfig();
+
         TTestPartitionInfo testPartitionInfo;
         testPartitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
         auto runtime = PrepareTestActorRuntime(
@@ -10263,18 +10264,35 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
-        // Make handler for taking counters from EvVolumePartCounters message.
-        TSimpleCounter readCounter;
-        TSimpleCounter writeCounter;
+        // Make handler for intercepting EvLongRunningOperation message.
+        // Attention! counters will be doubled, because we will intercept the
+        // initial request, and forwarded to TVolumeActor.
+        ui32 longRunningBeginCount = 0;
+        ui32 longRunningFinishCount = 0;
+        ui32 longRunningPingCount = 0;
+
         auto takeCounters = [&](TAutoPtr<IEventHandle>& event)
         {
+            using TEvLongRunningOperation =
+                TEvPartitionCommonPrivate::TEvLongRunningOperation;
             switch (event->GetTypeRewrite()) {
-                case TEvStatsService::EvVolumePartCounters: {
-                    auto* msg =
-                        event->Get<TEvStatsService::TEvVolumePartCounters>();
-                    readCounter = msg->DiskCounters->Simple.LongRunningReadBlob;
-                    writeCounter =
-                        msg->DiskCounters->Simple.LongRunningWriteBlob;
+                case TEvPartitionCommonPrivate::EvLongRunningOperation: {
+                    auto* msg = event->Get<TEvLongRunningOperation>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expectedOperation,
+                        msg->Operation);
+
+                    if (msg->Reason ==
+                        TEvLongRunningOperation::EReason::LongRunningDetected)
+                    {
+                        if (msg->FirstNotify) {
+                            longRunningBeginCount++;
+                        } else {
+                            longRunningPingCount++;
+                        }
+                    } else {
+                        longRunningFinishCount++;
+                    }
                     break;
                 }
             }
@@ -10290,6 +10308,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->DispatchEvents({}, TDuration());
         UNIT_ASSERT_VALUES_UNEQUAL(0, stolenRequests.size());
 
+        // Ready to check counters.
+        runtime->SetObserverFunc(takeCounters);
+
         // Wait for EvLongRunningOperation arrived.
         {
             TDispatchOptions options;
@@ -10299,8 +10320,23 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options, TDuration::Seconds(1));
         }
 
-        // Ready to check counters.
-        runtime->SetObserverFunc(takeCounters);
+        // Wait #1 for EvLongRunningOperation ping arrived.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionCommonPrivate::EvLongRunningOperation);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        // Wait #2 for EvLongRunningOperation ping arrived.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionCommonPrivate::EvLongRunningOperation);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        }
 
         // Returning stolen requests to complete the execution of the request.
         for (auto& request: stolenRequests) {
@@ -10327,11 +10363,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                expectedLongRunngingReads,
-                readCounter.Value);
+                2,
+                longRunningBeginCount);
             UNIT_ASSERT_VALUES_EQUAL(
-                expectedLongRunngingWrites,
-                writeCounter.Value);
+                2,
+                longRunningFinishCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                longRunningPingCount);
         }
 
         // smoke test for monpage
@@ -10356,8 +10395,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldReportLongRunningBlobOperations(
             sendRequest,
             receiveResponse,
-            1,
-            0);
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation::
+                ReadBlob);
     }
 
     Y_UNIT_TEST(ShouldReportLongRunningWriteBlobOperations)
@@ -10375,8 +10414,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldReportLongRunningBlobOperations(
             sendRequest,
             receiveResponse,
-            0,
-            1);
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation::
+                WriteBlob);
     }
 }
 

@@ -441,22 +441,15 @@ void TPartitionActor::HandleLongRunningBlobOperation(
 
     const auto& msg = *ev->Get();
 
-    if (msg.Reason != TEvLongRunningOperation::EReason::LongRunningDetected) {
-        return;
+    if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected &&
+        msg.FirstNotify)
+    {
+        State->RegisterDowntime(ctx.Now(), msg.GroupId);
+        Actors.MarkLongRunning(ev->Sender, msg.Operation);
     }
 
-    State->RegisterDowntime(ctx.Now(), msg.GroupId);
-
-    Actors.MarkLongRunning(ev->Sender, msg.Operation);
-
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "[%lu] %s (group %u) long running for %s",
-        TabletID(),
-        ToString(msg.Operation).c_str(),
-        msg.GroupId,
-        msg.Duration.ToString().c_str());
+    // Forward request to TVolumeActor
+    ctx.Send(ev->Forward(VolumeActorId));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

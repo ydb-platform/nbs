@@ -8,7 +8,15 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr auto LongRunningPingMaxDelay = TDuration::Minutes(5);
+
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace
 
 void TRunningActors::Insert(const TActorId& actorId)
 {
@@ -65,15 +73,20 @@ TLongRunningOperationCompanion::TLongRunningOperationCompanion(
         TLongRunningOperationCompanion::EOperation operation,
         ui32 groupId)
     : ParentActor(parentActor)
-    , LongRunningThreshold(longRunningThreshold)
     , Operation(operation)
     , GroupId(groupId)
+    , PingDelayProvider(
+          longRunningThreshold,
+          Max(longRunningThreshold, LongRunningPingMaxDelay))
 {}
 
 void TLongRunningOperationCompanion::RequestStarted(const TActorContext& ctx)
 {
-    if (LongRunningThreshold && LongRunningThreshold != TDuration::Max()) {
-        ctx.Schedule(LongRunningThreshold, new TEvents::TEvWakeup());
+    StartAt = ctx.Now();
+
+    auto longRunningThreshold = PingDelayProvider.GetDelay();
+    if (longRunningThreshold && longRunningThreshold != TDuration::Max()) {
+        ctx.Schedule(longRunningThreshold, new TEvents::TEvWakeup());
     }
 }
 
@@ -88,7 +101,8 @@ void TLongRunningOperationCompanion::RequestFinished(const TActorContext& ctx)
         ParentActor,
         std::make_unique<TEvPartitionCommonPrivate::TEvLongRunningOperation>(
             Operation,
-            LongRunningThreshold,
+            true,
+            ctx.Now() - StartAt,
             GroupId,
             true));
 }
@@ -99,14 +113,21 @@ void TLongRunningOperationCompanion::HandleTimeout(
 {
     Y_UNUSED(ev);
 
+    LongRunningDetected = true;
+    PingCount++;
+
     NCloud::Send(
         ctx,
         ParentActor,
         std::make_unique<TEvPartitionCommonPrivate::TEvLongRunningOperation>(
             Operation,
-            LongRunningThreshold,
+            PingCount == 1,
+            ctx.Now() - StartAt,
             GroupId,
             false));
+
+    PingDelayProvider.IncreaseDelay();
+    ctx.Schedule(PingDelayProvider.GetDelay(), new TEvents::TEvWakeup());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

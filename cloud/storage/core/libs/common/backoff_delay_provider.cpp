@@ -2,18 +2,23 @@
 
 namespace NCloud {
 
+namespace {
+
 ///////////////////////////////////////////////////////////////////////////////
 
+constexpr auto DefaultInitialDelay = TDuration::Seconds(1);
+
+///////////////////////////////////////////////////////////////////////////////
+
+}   // namespace
+
 TBackoffDelayProvider::TBackoffDelayProvider(
-    TDuration initialDelay,
-    TDuration maxDelay)
+        TDuration initialDelay,
+        TDuration maxDelay)
     : InitialDelay(initialDelay)
-    , MaxDelay(maxDelay)
+    , MaxDelay(Max(maxDelay, initialDelay))
     , CurrentDelay(initialDelay)
-{
-    Y_DEBUG_ABORT_UNLESS(InitialDelay > TDuration());
-    Y_DEBUG_ABORT_UNLESS(InitialDelay <= MaxDelay);
-}
+{}
 
 TDuration TBackoffDelayProvider::GetDelay() const
 {
@@ -22,7 +27,8 @@ TDuration TBackoffDelayProvider::GetDelay() const
 
 void TBackoffDelayProvider::IncreaseDelay()
 {
-    CurrentDelay = Min(CurrentDelay * 2, MaxDelay);
+    CurrentDelay =
+        CurrentDelay ? Min(CurrentDelay * 2, MaxDelay) : DefaultInitialDelay;
 }
 
 void TBackoffDelayProvider::Reset()
@@ -30,4 +36,4 @@ void TBackoffDelayProvider::Reset()
     CurrentDelay = InitialDelay;
 }
 
-} // namespace NCloud
+}   // namespace NCloud
