@@ -273,9 +273,12 @@ class FioTestsRunner:
             raise Error('failed to execute all the test cases; watch log for more info')
 
     @staticmethod
-    def _get_fio_cmd_to_fill_device(target_path: str) -> str:
+    def _get_fio_cmd_to_fill_device(target_path: str, disk_type: str) -> str:
+        iodepth = 128
+        if disk_type.find('hdd') >= 0:
+            iodepth = 8
         return (f'fio --name=fill-secondary-disk --filename={target_path}'
-                f' --rw=write --bs=4M --iodepth=128 --direct=1 --sync=1'
+                f' --rw=write --bs=4M --iodepth={iodepth} --direct=1 --sync=1'
                 f' --ioengine=libaio --size={IO_SIZE}')
 
     def _execute_fio_commands(
@@ -300,7 +303,7 @@ class FioTestsRunner:
                 self._logger.info(f'Filling device with random data on instance'
                                   f' <id={instance.id}>')
                 _, _, stderr = ssh.exec_command(
-                    self._get_fio_cmd_to_fill_device(test_case.target_path))
+                    self._get_fio_cmd_to_fill_device(test_case.target_path, test_case.type))
                 if stderr.channel.recv_exit_status():
                     stderr_str = ''.join(stderr.readlines())
                     self._teardown(ycp)
@@ -490,7 +493,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                     self._logger.info(f'Filling disk <name={test_case.target_path}> with'
                                       f' random data on instance <id={instance.id}>')
                     _, stdout, stderr = ssh.exec_command(
-                        self._get_fio_cmd_to_fill_device(test_case.target_path))
+                        self._get_fio_cmd_to_fill_device(test_case.target_path, test_case.type))
                     stdouts.append(stdout)
                     stderrs.append(stderr)
                 except (paramiko.SSHException, socket.error) as e:
