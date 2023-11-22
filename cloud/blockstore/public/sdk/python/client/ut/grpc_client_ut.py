@@ -127,4 +127,4 @@ def test_deadline_exceeded():
     except ClientError as e:
         error = e.code
 
-    assert(error == make_grpc_error(grpc.StatusCode.DEADLINE_EXCEEDED.value[0]))
+    assert error == make_grpc_error(grpc.StatusCode.DEADLINE_EXCEEDED.value[0])
