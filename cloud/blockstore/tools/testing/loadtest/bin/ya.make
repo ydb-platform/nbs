@@ -39,7 +39,7 @@ PEERDIR(
 
 IF(NBS_INTERNAL_BUILD)
     PEERDIR(
-        cloud/blockstore/libs/spdk/impl
+        cloud/nbs_internal/blockstore/libs/spdk/impl
     )
 ENDIF()
 

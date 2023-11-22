@@ -22,12 +22,13 @@
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
-#if NBS_INTERNAL_BUILD
-#include <cloud/blockstore/libs/spdk/impl/env.h>
-#endif
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/validation/validation.h>
+
+#if NBS_INTERNAL_BUILD
+#include <cloud/nbs_internal/blockstore/libs/spdk/impl/env.h>
+#endif
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
