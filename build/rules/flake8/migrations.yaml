@@ -581,9 +581,7 @@ migrations:
     - logbroker/tools/manual/topic_quotas_migration
     - logbroker/unified_agent/tools/ua_recipe
     - logfeller/python/logfeller/infra/tornado_requests
-    - logfeller/python/logfeller/infra/yt/commands
     - logfeller/python/logfeller/infra/yt/tests/yt_tests
-    - logfeller/python/logfeller/infra/yt/util
     - mail/library/python/json_value/tests
     - mail/python/theatre/stages/db_stats/roles
     - mail/sheltie/tests/unit/python
@@ -2016,7 +2014,6 @@ migrations:
     - statbox/qb2/qb2_extensions/resources
     - statbox/statkey/agency_rewards/marketplace_clusterdomain/clusterificator
     - statbox/statkey/jam/jobs/hypercubes/user_history/desktop/source/dayuse/v2
-    - statbox/statkey/jam/jobs/hypercubes/user_history/mobile/v5
     - statbox/statkey/reactor/tools/anomaly_detector/api
     - statbox/utils/opinfo
     - strm/strm_trns_manager/lib/pult
@@ -6997,8 +6994,6 @@ migrations:
     - logos/libs/md/watcher/lib/api/solomon
     - logos/libs/monitoring
     - logos/libs/monitoring_tools
-    - logos/libs/monitoring_tools/delay/base
-    - logos/libs/monitoring_tools/delay/computed
     - logos/libs/monitoring_tools/delay/realtime
     - logos/libs/monitoring_tools/reactor_traversal
     - logos/libs/monitoring_tools/runner
