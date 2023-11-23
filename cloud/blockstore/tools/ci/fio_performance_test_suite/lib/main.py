@@ -421,13 +421,13 @@ class FioTestsRunnerNbs(FioTestsRunner):
     ) -> None:
         for test_case in test_cases:
             self._logger.info(f'Executing test case <{test_case.name}>')
-            try:
-                with ycp.create_disk(
-                        size=test_case.size,
-                        type_id=translate_disk_type(self._args.cluster, test_case.type),
-                        bs=test_case.device_bs,
-                        image_name=self._args.image_name,
-                        description=f'fio performance test: {test_case.name}') as disk:
+            with ycp.create_disk(
+                    size=test_case.size,
+                    type_id=translate_disk_type(self._args.cluster, test_case.type),
+                    bs=test_case.device_bs,
+                    image_name=self._args.image_name,
+                    description=f'fio performance test: {test_case.name}') as disk:
+                try:
                     with ycp.attach_disk(
                             instance=instance,
                             disk=disk):
@@ -442,14 +442,14 @@ class FioTestsRunnerNbs(FioTestsRunner):
                             test_case,
                             ycp,
                             instance)
-            except Exception as e:
-                self._results_processor.publish_test_report(
-                    instance.compute_node,
-                    disk.id,
-                    test_case,
-                    {},
-                    e)
-                continue
+                except Exception as e:
+                    self._results_processor.publish_test_report(
+                        instance.compute_node,
+                        disk.id,
+                        test_case,
+                        {},
+                        e)
+                    continue
 
             self._results_processor.publish_test_report(
                 instance.compute_node,
@@ -606,15 +606,14 @@ class FioTestsRunnerNfs(FioTestsRunner):
         instance: Ycp.Instance,
     ) -> None:
         for test_case in test_cases:
-            try:
-                test_case.target_path = self._NFS_TEST_FILE
-
-                self._logger.info(f'Executing test case <{test_case.name}>')
-                with ycp.create_fs(
-                        size=test_case.size,
-                        type_id=test_case.type,
-                        bs=test_case.device_bs,
-                        description=f'fio performance test: {test_case.name}') as fs:
+            test_case.target_path = self._NFS_TEST_FILE
+            self._logger.info(f'Executing test case <{test_case.name}>')
+            with ycp.create_fs(
+                    size=test_case.size,
+                    type_id=test_case.type,
+                    bs=test_case.device_bs,
+                    description=f'fio performance test: {test_case.name}') as fs:
+                try:
                     with ycp.attach_fs(
                             instance=instance,
                             fs=fs,
@@ -627,14 +626,14 @@ class FioTestsRunnerNfs(FioTestsRunner):
                             instance)
 
                         self._unmount_fs(ycp, instance.ip)
-            except Exception as e:
-                self._results_processor.publish_test_report(
-                    instance.compute_node,
-                    fs.id,
-                    test_case,
-                    e
-                )
-                continue
+                except Exception as e:
+                    self._results_processor.publish_test_report(
+                        instance.compute_node,
+                        fs.id,
+                        test_case,
+                        e
+                    )
+                    continue
             self._results_processor.publish_test_report(
                 instance.compute_node,
                 fs.id,
