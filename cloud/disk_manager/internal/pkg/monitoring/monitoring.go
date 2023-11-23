@@ -20,19 +20,24 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type newRegistryFunc = func(mux *http.ServeMux, path string) metrics.Registry
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Monitoring struct {
+	cfg          *config.MonitoringConfig
+	newRegistry  newRegistryFunc
 	mux          *http.ServeMux
 	profilingMux *http.ServeMux
-	cfg          *config.MonitoringConfig
 }
 
 func (m *Monitoring) Start(ctx context.Context) {
-	metaMetricsRegistry := m.NewSolomonRegistry("meta")
+	metaMetricsRegistry := m.NewRegistry("meta")
 
 	m.reportServerVersion(ctx, metaMetricsRegistry)
 	m.reportRestartsCount(ctx, metaMetricsRegistry)
 
-	procMetricsRegistry := m.NewSolomonRegistry("proc")
+	procMetricsRegistry := m.NewRegistry("proc")
 	go m.reportProcStats(ctx, procMetricsRegistry)
 
 	go func() {
@@ -68,11 +73,8 @@ func (m *Monitoring) Start(ctx context.Context) {
 	}()
 }
 
-func (m *Monitoring) NewSolomonRegistry(path string) metrics.Registry {
-	return metrics.NewSolomonRegistry(
-		m.mux,
-		path,
-	)
+func (m *Monitoring) NewRegistry(path string) metrics.Registry {
+	return m.newRegistry(m.mux, path)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,14 +299,16 @@ func parseAndIncrementRestartsCount(
 
 func NewMonitoring(
 	cfg *config.MonitoringConfig,
+	newRegistry newRegistryFunc,
 ) *Monitoring {
 
 	mux := http.NewServeMux()
 	profilingMux := http.NewServeMux()
 
 	return &Monitoring{
+		cfg,
+		newRegistry,
 		mux,
 		profilingMux,
-		cfg,
 	}
 }

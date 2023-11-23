@@ -10,13 +10,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewSolomonRegistry(
-	mux *http.ServeMux,
-	path string,
-) Registry {
-
+func NewSolomonRegistry(mux *http.ServeMux, path string) Registry {
 	registry := solomon.NewRegistry(solomon.NewRegistryOpts().SetRated(true))
 	mux.Handle(fmt.Sprintf("/solomon/%v", path), httppuller.NewHandler(registry))
-
 	return registry
 }

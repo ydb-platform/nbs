@@ -27,7 +27,7 @@ func initDataplane(
 
 	snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
 
-	snapshotMetricsRegistry := mon.NewSolomonRegistry("snapshot_storage")
+	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
 
 	snapshotStorage, err := snapshot_storage.NewStorage(
 		snapshotConfig,

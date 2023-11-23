@@ -157,7 +157,7 @@ func newGRPCServer(
 		return nil, err
 	}
 
-	facadeMetricsRegistry := mon.NewSolomonRegistry("grpc_facade")
+	facadeMetricsRegistry := mon.NewRegistry("grpc_facade")
 
 	keepAliveTime, err := time.ParseDuration(config.GetGrpcConfig().GetKeepAlive().GetTime())
 	if err != nil {
@@ -365,7 +365,7 @@ func initControlplane(
 		return nil, err
 	}
 
-	nfsClientMetricsRegistry := mon.NewSolomonRegistry("nfs_client")
+	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsFactory := nfs.NewFactoryWithCreds(
 		config.GetNfsConfig(),
 		creds,

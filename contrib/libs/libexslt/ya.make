@@ -3,7 +3,6 @@
 LIBRARY()
 
 LICENSE(
-    LicenseRef-scancode-unknown-license-reference AND
     X11 AND
     X11-XConsortium-Veillard
 )

@@ -16,6 +16,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
@@ -80,20 +81,23 @@ func run(config *server_config.ServerConfig) error {
 	}
 
 	logging.Info(ctx, "Starting monitoring")
-	mon := monitoring.NewMonitoring(config.MonitoringConfig)
+	mon := monitoring.NewMonitoring(
+		config.MonitoringConfig,
+		metrics.NewSolomonRegistry,
+	)
 	mon.Start(ctx)
 
-	accounting.Init(mon.NewSolomonRegistry("accounting"))
+	accounting.Init(mon.NewRegistry("accounting"))
 
 	creds := auth.NewCredentials(ctx, config.AuthConfig)
 
 	logging.Info(ctx, "Initializing YDB client")
-	ydbClientRegistry := mon.NewSolomonRegistry("ydb_client")
+	ydbClientRegistry := mon.NewRegistry("ydb_client")
 	db, err := persistence.NewYDBClient(
 		ctx,
 		config.PersistenceConfig,
 		ydbClientRegistry,
-		persistence.WithRegistry(mon.NewSolomonRegistry("ydb")),
+		persistence.WithRegistry(mon.NewRegistry("ydb")),
 		persistence.WithCredentials(creds),
 	)
 	if err != nil {
@@ -103,7 +107,7 @@ func run(config *server_config.ServerConfig) error {
 	defer db.Close(ctx)
 	logging.Info(ctx, "Initialized YDB client")
 
-	taskMetricsRegistry := mon.NewSolomonRegistry("tasks")
+	taskMetricsRegistry := mon.NewRegistry("tasks")
 	taskStorage, err := tasks_storage.NewStorage(
 		config.TasksConfig,
 		taskMetricsRegistry,
@@ -127,8 +131,8 @@ func run(config *server_config.ServerConfig) error {
 		return err
 	}
 
-	nbsClientMetricsRegistry := mon.NewSolomonRegistry("nbs_client")
-	nbsSessionMetricsRegistry := mon.NewSolomonRegistry("nbs_session")
+	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
+	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
 	nbsFactory, err := nbs.NewFactoryWithCreds(
 		ctx,
 		config.NbsConfig,
@@ -214,7 +218,7 @@ func run(config *server_config.ServerConfig) error {
 		}
 	}
 
-	runnerMetricsRegistry := mon.NewSolomonRegistry("runners")
+	runnerMetricsRegistry := mon.NewRegistry("runners")
 
 	controller := tasks.NewController(
 		ctx,
@@ -233,7 +237,7 @@ func run(config *server_config.ServerConfig) error {
 
 	health.MonitorHealth(
 		ctx,
-		mon.NewSolomonRegistry("health"),
+		mon.NewRegistry("health"),
 		db,
 		nbsFactory,
 		s3,
