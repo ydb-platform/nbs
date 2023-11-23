@@ -416,7 +416,6 @@ migrations:
     - billing/log_tariffication/py/tests/integration/partner_tariff
     - captcha/metrics/leftover_images
     - cloud/analytics/scripts/sb_timeout_analyze
-    - cloud/blockstore/public/sdk/python/client/ut
     - cloud/iam/resource_reaper_tools/autodelete
     - cloud/iam/ydb_tools/backup/lib
     - cloud/iam/ydb_tools/reindex
@@ -859,8 +858,6 @@ migrations:
     - search/pumpkin/yalite_service/libyalite/actions
     - search/pumpkin/yalite_service/libyalite/core
     - search/scraper_over_yt/nirvana/scripts/formatter
-    - search/tools/woland
-    - search/tools/woland/lib
     - serp/genisync/bin
     - smarttv/droideka/tests
     - solomon/agent/tests
@@ -1880,7 +1877,6 @@ migrations:
     - autocheck/tests/check_config_content
     - billing/dwh/src/dwh/grocery
     - captcha/tools/ocr_blacklist_filter
-    - cloud/blockstore/public/sdk/python/client/ut
     - comdep_analytics/comdep_recsys/etl_core/etl/yt
     - crypta/lib/python/yt/dyntables/ut
     - crypta/lib/python/yt/local_tests
@@ -2007,8 +2003,6 @@ migrations:
     - search/scraper_over_yt/daemons/signals_mover
     - search/scraper_over_yt/scripts
     - search/tools/devops/l7heavy
-    - search/tools/woland/lib
-    - search/tools/woland/tests
     - skynet/api/gencfg
     - sprav/mining/facebook/extractor/add_test_case
     - statbox/qb2/qb2_extensions/resources
@@ -2941,7 +2935,6 @@ migrations:
     - search/tools/sepe/apphost_pie
     - search/tools/serp_tester
     - search/tools/serp_tester_test
-    - search/tools/woland/lib
     - search/wizard/data/wizard/conf
     - search/wizard/data/wizard/conf/service_configs
     - skynet/api/cms
@@ -4621,7 +4614,6 @@ migrations:
     - noc/traffic/monitoring/wireguard/bin
     - oebs/bi/ariba/lib
     - ofd/common/monitoring
-    - ofd/tasks/tasks
     - orgvisits/heuristics/wifi/matching/lib
     - orgvisits/library/python/misc
     - ott/drm/columbia/src/cmfv
@@ -5122,8 +5114,6 @@ migrations:
     - search/tools/setrace/src/setrace/models/unified_agent
     - search/tools/setrace/src/setrace/web/controllers/api
     - search/tools/setrace/tools/evlogdump_for_ua/lib
-    - search/tools/woland
-    - search/tools/woland/lib
     - search/wizard/data/wizard/conf
     - search/wizard/entitysearch/tools/es_hook_notifier/lib
     - search/wizard/entitysearch/tools/shooter_for_zeliboba
@@ -5793,7 +5783,6 @@ migrations:
     - captcha/generation/image_generator
     - captcha/tools/ocr_blacklist_filter
     - cloud/ai/speechkit/stt/bin/data_scripts/tags/add_missing_client_tags
-    - cloud/blockstore/public/sdk/python/client/ut
     - cloud/mdb/dataproc-infra-tests/tests/helpers
     - cloud/support/tools/quotactl-l2
     - comdep_analytics/comdep_recsys/etl/logic/crm
@@ -6710,7 +6699,6 @@ migrations:
     - search/tools/sepe/apphost_pie
     - search/tools/setrace/src/setrace/lib
     - search/tools/setrace/src/setrace/web/controllers/ui
-    - search/tools/woland/lib
     - serp/renderer/tasklets/arc_commit_renderer_backends/impl
     - sport/backend/sport/projects/cybersport
     - sport/backend/sport/projects/football
@@ -8036,7 +8024,6 @@ migrations:
     - sandbox/projects/metrics/parser_release_arcadia
     - sandbox/projects/music/deployment/MusicRevertCommit
     - sandbox/projects/src_setup/UpdateSrcSetupTestData
-    - search/tools/woland/lib
     - sup/emulators/yp_android/register
     - tools/mstand/experiment_pool
     - tools/mstand/mstand_utils
@@ -8177,7 +8164,6 @@ migrations:
     - ml/libs/ml_data_reader/tests/seq2seq
     - payplatform/balance_support_dev/tools/email_sender/smtp_sender/lib/tests
     - sandbox/projects/Statbox/StatboxDebuilder
-    - search/tools/woland/lib
     - tracker/scripts/jira_to_tracker
     - ydo/libs/apphost_source/test
     - yp/scripts/account_estimation
