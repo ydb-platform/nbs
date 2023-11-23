@@ -4,7 +4,6 @@ SRCS(
     kqp_proxy_service.cpp
     kqp_proxy_peer_stats_calculator.cpp
     kqp_script_executions.cpp
-    kqp_table_creator.cpp
 )
 
 PEERDIR(
@@ -26,6 +25,7 @@ PEERDIR(
     contrib/ydb/core/tx/schemeshard
     contrib/ydb/core/mon
     contrib/ydb/library/query_actor
+    contrib/ydb/library/table_creator
     contrib/ydb/library/yql/providers/common/http_gateway
     contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/public/issue

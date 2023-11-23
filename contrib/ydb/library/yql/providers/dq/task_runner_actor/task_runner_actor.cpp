@@ -259,14 +259,14 @@ private:
 
         YQL_ENSURE(!batch.IsWide());
 
-        auto source = TaskRunner->GetSource(index);
+        auto* source = TaskRunner->GetSource(index);
         TDqDataSerializer dataSerializer(TaskRunner->GetTypeEnv(), TaskRunner->GetHolderFactory(), DataTransportVersion);
         TDqSerializedBatch serialized = dataSerializer.Serialize(batch, source->GetInputType());
 
-        Invoker->Invoke([serialized=std::move(serialized),taskRunner=TaskRunner, actorSystem, selfId, cookie, parentId=ParentId, space, finish, index, settings=Settings, stageId=StageId]() mutable {
+        Invoker->Invoke([serialized=std::move(serialized), taskRunner=TaskRunner, actorSystem, selfId, cookie, parentId=ParentId, space, finish, index, settings=Settings, stageId=StageId]() mutable {
             try {
                 // auto guard = taskRunner->BindAllocator(); // only for local mode
-                auto source = taskRunner->GetSource(index);
+                auto* source = taskRunner->GetSource(index);
                 source->Push(std::move(serialized), space);
                 if (finish) {
                     source->Finish();
@@ -463,7 +463,7 @@ private:
             TaskRunner = Factory->GetOld(settings, TraceId);
         } catch (...) {
             TString message = "Could not create TaskRunner for " + ToString(taskId) + " on node " + ToString(replyTo.NodeId()) + ", error: " + CurrentExceptionMessage();
-            Send(replyTo, MakeHolder<TEvDqFailure>(NYql::NDqProto::StatusIds::INTERNAL_ERROR, message), 0, cookie);
+            Send(replyTo, TEvDq::TEvAbortExecution::InternalError(message), 0, cookie);
             return;
         }
 

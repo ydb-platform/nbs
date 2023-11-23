@@ -14,7 +14,7 @@ PEERDIR(
     contrib/ydb/public/sdk/cpp/client/ydb_table
 )
 
-INCLUDE(${ARCADIA_ROOT}/kikimr/public/tools/ydb_recipe/recipe_stable.inc)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
 
 YQL_LAST_ABI_VERSION()
 
