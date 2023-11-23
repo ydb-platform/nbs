@@ -281,7 +281,7 @@ func NewDiskSource(
 	chunkCount := uint32(blockCount / blocksInChunk)
 
 	// TODO: NBS-3228 make GetChangedBlocks() support for Disk Registry based disks.
-	// This flag is still needed for snapshots from mirrored disks because we can not use
+	// This flag is still needed for snapshots from nrd disks because we can not use
 	// GetChangedBlocks between non-light checkpoints for Disk Registry based disks.
 	// But we can use GetChangedBlocks in disk relocation because we use
 	// light checkpoints for relocation of Disk Registry based disks.

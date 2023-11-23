@@ -1599,6 +1599,8 @@ func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+/*
+TODO: NBS-4747: Fix creation of mirrored disks in large tests on Disk Manager.
 func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
 	param := migrationTestParams{
 		SrcZoneID: "zone",
@@ -1616,6 +1618,7 @@ func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
 
 	testcommon.CheckConsistency(t, ctx)
 }
+*/
 
 func TestDiskServiceMigrateDisk(t *testing.T) {
 	diskID := t.Name()
