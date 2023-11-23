@@ -45,29 +45,14 @@ sudo pip3 install conan==1.59 grpcio-tools==1.57.0
 
 ```bash
 mkdir ~/nbswork && cd ~/nbswork
-mkdir build
 ```
 
 ## Clone the nbs repository.
 
 ```bash
 git clone https://github.com/ydb-platform/nbs.git
+cd nbs
 ```
-
-## Configure
-
-1. Change Conan's home folder to the build folder for better remote cache hit
-    ```bash
-    export CONAN_USER_HOME=~/nbswork/build
-    ```
-
-2. Generate build configuration
-    ```bash
-    cd build
-    cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=../nbs/clang.toolchain \
-    ../nbs
-    ```
 
 ## Build
 
@@ -75,7 +60,7 @@ git clone https://github.com/ydb-platform/nbs.git
 
 To build nbsd run:
 ```bash
-ninja cloud/blockstore/apps/server/all
+./ya make cloud/blockstore/apps/server
 ```
 
 A nbsd binary can be found at:
@@ -87,7 +72,7 @@ cloud/blockstore/apps/server/nbsd
 
 To build diskagentd run:
 ```bash
-ninja cloud/blockstore/apps/disk_agent/all
+./ya make cloud/blockstore/apps/disk_agent
 ```
 
 A diskagentd binary can be found at:
@@ -99,7 +84,7 @@ cloud/blockstore/apps/disk_agent/diskagentd
 
 To build blockstore-client run:
 ```bash
-ninja cloud/blockstore/apps/client/all
+./ya make cloud/blockstore/apps/client
 ```
 
 A blockstore-client binary can be found at:
@@ -111,7 +96,7 @@ cloud/blockstore/apps/client/blockstore-client
 
 To build blockstore-nbd run:
 ```bash
-ninja cloud/blockstore/tools/nbd/all
+./ya make cloud/blockstore/tools/nbd
 ```
 
 A blockstore-nbd binary can be found at:
@@ -123,14 +108,13 @@ cloud/blockstore/tools/nbd/blockstore-nbd
 
 ### Build all executable artifacts
 
-To run tests, first of all you should build all binary artifacts (tools, test executables, server, etc.), running `ninja` without parameters:
 ```bash
-ninja
+./ya make cloud/blockstore
 ```
 
 ### Run unit tests
 
 To run tests execute:
 ```bash
-ctest
+./ya make -t cloud/blockstore
 ```
