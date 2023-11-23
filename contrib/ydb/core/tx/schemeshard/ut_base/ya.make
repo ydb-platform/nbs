@@ -15,7 +15,7 @@ PEERDIR(
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/kqp/ut/common
-    contrib/ydb/core/testlib/default
+    contrib/ydb/core/testlib/pg
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/library/yql/public/udf/service/exception_policy
@@ -27,6 +27,7 @@ SRCS(
     ut_base.cpp
     ut_info_types.cpp
     ut_allocate_pq.cpp
+    ut_table_pg_types.cpp
 )
 
 END()
