@@ -19,3 +19,4 @@ $YDBD server \
     --sys-file          static/sys.txt \
     --ic-file           static/ic.txt \
     --vdisk-file        static/vdisks.txt \
+    --suppress-version-check \
