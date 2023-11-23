@@ -110,7 +110,7 @@ func TestLogTrace(t *testing.T) {
 			log.String("IDEMPOTENCY_KEY", "idempID"),
 			log.String("REQUEST_ID", "reqID"),
 			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "yc-disk-manager"),
+			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
 		},
 	)
 
@@ -128,7 +128,7 @@ func TestLogDebug(t *testing.T) {
 			log.String("IDEMPOTENCY_KEY", "idempID"),
 			log.String("REQUEST_ID", "reqID"),
 			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "yc-disk-manager"),
+			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
 		},
 	)
 
@@ -146,7 +146,7 @@ func TestLogInfo(t *testing.T) {
 			log.String("IDEMPOTENCY_KEY", "idempID"),
 			log.String("REQUEST_ID", "reqID"),
 			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "yc-disk-manager"),
+			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
 		},
 	)
 
@@ -164,7 +164,7 @@ func TestLogWarn(t *testing.T) {
 			log.String("IDEMPOTENCY_KEY", "idempID"),
 			log.String("REQUEST_ID", "reqID"),
 			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "yc-disk-manager"),
+			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
 		},
 	)
 
@@ -182,7 +182,7 @@ func TestLogError(t *testing.T) {
 			log.String("IDEMPOTENCY_KEY", "idempID"),
 			log.String("REQUEST_ID", "reqID"),
 			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "yc-disk-manager"),
+			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
 		},
 	)
 
@@ -200,7 +200,7 @@ func TestLogFatal(t *testing.T) {
 			log.String("IDEMPOTENCY_KEY", "idempID"),
 			log.String("REQUEST_ID", "reqID"),
 			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "yc-disk-manager"),
+			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
 		},
 	)
 
