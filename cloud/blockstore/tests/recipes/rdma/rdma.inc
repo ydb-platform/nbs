@@ -1,4 +1,6 @@
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+
+FORK_SUBTESTS()
 SPLIT_FACTOR(1)
 
 SET(VIRTIOFS_SERVER_COUNT 2)
