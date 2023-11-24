@@ -20,13 +20,9 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type newRegistryFunc = func(mux *http.ServeMux, path string) metrics.Registry
-
-////////////////////////////////////////////////////////////////////////////////
-
 type Monitoring struct {
 	cfg          *config.MonitoringConfig
-	newRegistry  newRegistryFunc
+	newRegistry  metrics.NewRegistryFunc
 	mux          *http.ServeMux
 	profilingMux *http.ServeMux
 }
@@ -299,7 +295,7 @@ func parseAndIncrementRestartsCount(
 
 func NewMonitoring(
 	cfg *config.MonitoringConfig,
-	newRegistry newRegistryFunc,
+	newRegistry metrics.NewRegistryFunc,
 ) *Monitoring {
 
 	mux := http.NewServeMux()

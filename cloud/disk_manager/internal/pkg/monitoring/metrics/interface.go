@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/ydb-platform/nbs/library/go/core/metrics"
@@ -8,49 +9,31 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Registry interface {
-	metrics.Registry
-}
+type NewRegistryFunc = func(mux *http.ServeMux, path string) Registry
 
-type Counter interface {
-	metrics.Counter
-}
+////////////////////////////////////////////////////////////////////////////////
 
-type CounterVec interface {
-	metrics.CounterVec
-}
+type Registry = metrics.Registry
 
-type Gauge interface {
-	metrics.Gauge
-}
+type Counter = metrics.Counter
 
-type GaugeVec interface {
-	metrics.GaugeVec
-}
+type CounterVec = metrics.CounterVec
 
-type Histogram interface {
-	metrics.Histogram
-}
+type Gauge = metrics.Gauge
 
-type HistogramVec interface {
-	metrics.HistogramVec
-}
+type GaugeVec = metrics.GaugeVec
 
-type Timer interface {
-	metrics.Timer
-}
+type Histogram = metrics.Histogram
 
-type TimerVec interface {
-	metrics.TimerVec
-}
+type HistogramVec = metrics.HistogramVec
 
-type Buckets interface {
-	metrics.Buckets
-}
+type Timer = metrics.Timer
 
-type DurationBuckets interface {
-	metrics.DurationBuckets
-}
+type TimerVec = metrics.TimerVec
+
+type Buckets = metrics.Buckets
+
+type DurationBuckets = metrics.DurationBuckets
 
 type DelayedTimer struct {
 	startTime time.Time

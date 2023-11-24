@@ -26,7 +26,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func Run(appName string, defaultConfigFilePath string) {
+func Run(
+	appName string,
+	defaultConfigFilePath string,
+	newMetricsRegistry metrics.NewRegistryFunc,
+) {
+
 	var configFilePath string
 	config := &server_config.ServerConfig{}
 
@@ -37,7 +42,7 @@ func Run(appName string, defaultConfigFilePath string) {
 			return util.ParseProto(configFilePath, config)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(config)
+			return run(config, newMetricsRegistry)
 		},
 	}
 	rootCmd.Flags().StringVar(
@@ -54,7 +59,11 @@ func Run(appName string, defaultConfigFilePath string) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func run(config *server_config.ServerConfig) error {
+func run(
+	config *server_config.ServerConfig,
+	newMetricsRegistry metrics.NewRegistryFunc,
+) error {
+
 	var err error
 
 	ignoreSigpipe()
@@ -81,15 +90,12 @@ func run(config *server_config.ServerConfig) error {
 	}
 
 	logging.Info(ctx, "Starting monitoring")
-	mon := monitoring.NewMonitoring(
-		config.MonitoringConfig,
-		metrics.NewSolomonRegistry,
-	)
+	mon := monitoring.NewMonitoring(config.MonitoringConfig, newMetricsRegistry)
 	mon.Start(ctx)
 
 	accounting.Init(mon.NewRegistry("accounting"))
 
-	creds := auth.NewCredentials(ctx, config.AuthConfig)
+	creds := auth.NewCredentials(ctx, config.GetAuthConfig())
 
 	logging.Info(ctx, "Initializing YDB client")
 	ydbClientRegistry := mon.NewRegistry("ydb_client")
