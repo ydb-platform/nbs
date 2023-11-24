@@ -345,7 +345,14 @@ type Storage interface {
 	// Returns false if it has successfully finished.
 	MarkForCancellation(ctx context.Context, taskID string, at time.Time) (bool, error)
 
-	UpdateTaskTx(ctx context.Context, tx *persistence.Transaction, state TaskState) (TaskState, error)
+	// This fails with WrongGenerationError, if generationID does not match.
+	// In callback you could perform custom transaction and it will be coupled
+	// with current task's updating.
+	UpdateTaskWithCallback(
+		ctx context.Context,
+		state TaskState,
+		callback func(context.Context, *persistence.Transaction) error,
+	) (TaskState, error)
 
 	// This fails with WrongGenerationError, if generationID does not match.
 	UpdateTask(ctx context.Context, state TaskState) (TaskState, error)

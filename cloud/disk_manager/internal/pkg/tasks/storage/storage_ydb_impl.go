@@ -1564,10 +1564,11 @@ func (s *storageYDB) updateTaskTx(
 	return state, nil
 }
 
-func (s *storageYDB) updateTask(
+func (s *storageYDB) updateTaskWithCallback(
 	ctx context.Context,
 	session *persistence.Session,
 	state TaskState,
+	callback func(context.Context, *persistence.Transaction) error,
 ) (TaskState, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1581,6 +1582,11 @@ func (s *storageYDB) updateTask(
 		return TaskState{}, err
 	}
 
+	err = callback(ctx, tx)
+	if err != nil {
+		return TaskState{}, err
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		return TaskState{}, err
@@ -1588,6 +1594,22 @@ func (s *storageYDB) updateTask(
 
 	s.metrics.OnTaskUpdated(ctx, state)
 	return state, nil
+}
+
+func (s *storageYDB) updateTask(
+	ctx context.Context,
+	session *persistence.Session,
+	state TaskState,
+) (TaskState, error) {
+
+	return s.updateTaskWithCallback(
+		ctx,
+		session,
+		state,
+		func(context.Context, *persistence.Transaction) error {
+			return nil
+		},
+	)
 }
 
 func (s *storageYDB) sendEvent(

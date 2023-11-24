@@ -175,13 +175,13 @@ func (s *StorageMock) MarkForCancellation(
 	return args.Bool(0), args.Error(1)
 }
 
-func (s *StorageMock) UpdateTaskTx(
+func (s *StorageMock) UpdateTaskWithCallback(
 	ctx context.Context,
-	tx *persistence.Transaction,
 	state tasks_storage.TaskState,
+	callback func(context.Context, *persistence.Transaction) error,
 ) (tasks_storage.TaskState, error) {
 
-	args := s.Called(ctx, tx, state)
+	args := s.Called(ctx, state, callback)
 	return args.Get(0).(tasks_storage.TaskState), args.Error(1)
 }
 
