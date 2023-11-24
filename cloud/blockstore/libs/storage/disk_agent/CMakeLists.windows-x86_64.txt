@@ -8,6 +8,7 @@
 
 add_subdirectory(benchmark)
 add_subdirectory(model)
+add_subdirectory(testlib)
 add_subdirectory(ut)
 add_subdirectory(ut_actor)
 add_subdirectory(ut_large)

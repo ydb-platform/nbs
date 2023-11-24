@@ -14,6 +14,21 @@ target_compile_options(cloud-blockstore-libs-storage-partition2-ut PRIVATE
 target_include_directories(cloud-blockstore-libs-storage-partition2-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition2
 )
+target_link_libraries(cloud-blockstore-libs-storage-partition2-ut PUBLIC
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  libs-storage-partition2
+  libs-storage-testlib
+  core-libs-tablet
+)
+target_sources(cloud-blockstore-libs-storage-partition2-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition2/garbage_queue_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition2/part2_database_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition2/part2_state_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition2/part2_ut.cpp
+)
 set_property(
   TARGET
   cloud-blockstore-libs-storage-partition2-ut
@@ -46,5 +61,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   4
+)
+set_yunittest_property(
+  TEST
+  cloud-blockstore-libs-storage-partition2-ut
+  PROPERTY
+  TIMEOUT
+  600
+)
+target_allocator(cloud-blockstore-libs-storage-partition2-ut
+  system_allocator
 )
 vcs_info(cloud-blockstore-libs-storage-partition2-ut)

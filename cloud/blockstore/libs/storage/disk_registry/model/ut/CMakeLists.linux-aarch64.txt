@@ -11,6 +11,13 @@ add_executable(blockstore-libs-storage-disk_registry-model-ut)
 target_include_directories(blockstore-libs-storage-disk_registry-model-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/model
 )
+target_link_libraries(blockstore-libs-storage-disk_registry-model-ut PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  cpp-testing-unittest_main
+  storage-disk_registry-model
+)
 target_link_options(blockstore-libs-storage-disk_registry-model-ut PRIVATE
   -ldl
   -lrt
@@ -20,6 +27,13 @@ target_link_options(blockstore-libs-storage-disk_registry-model-ut PRIVATE
   -lpthread
   -lrt
   -ldl
+)
+target_sources(blockstore-libs-storage-disk_registry-model-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/model/agent_counters_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/model/agent_list_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/model/device_list_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/model/pending_cleanup_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/model/replica_table_ut.cpp
 )
 set_property(
   TARGET
@@ -53,5 +67,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  blockstore-libs-storage-disk_registry-model-ut
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(blockstore-libs-storage-disk_registry-model-ut
+  cpp-malloc-jemalloc
 )
 vcs_info(blockstore-libs-storage-disk_registry-model-ut)

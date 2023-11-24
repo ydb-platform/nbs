@@ -11,6 +11,19 @@ add_executable(ut_mirrored_disk_migration)
 target_include_directories(ut_mirrored_disk_migration PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry
 )
+target_link_libraries(ut_mirrored_disk_migration PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  cpp-testing-unittest_main
+  libs-storage-disk_registry
+  cloud-blockstore-config
+  libs-storage-api
+  storage-disk_registry-testlib
+  libs-storage-testlib
+  cpp-testing-unittest
+  core-testlib-basics
+)
 target_link_options(ut_mirrored_disk_migration PRIVATE
   -ldl
   -lrt
@@ -20,6 +33,9 @@ target_link_options(ut_mirrored_disk_migration PRIVATE
   -lpthread
   -lrt
   -ldl
+)
+target_sources(ut_mirrored_disk_migration PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_ut_mirrored_disk_migration.cpp
 )
 set_property(
   TARGET
@@ -53,5 +69,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  ut_mirrored_disk_migration
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(ut_mirrored_disk_migration
+  cpp-malloc-jemalloc
 )
 vcs_info(ut_mirrored_disk_migration)

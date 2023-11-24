@@ -11,6 +11,14 @@ add_executable(cloud-blockstore-libs-encryption-ut)
 target_include_directories(cloud-blockstore-libs-encryption-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption
 )
+target_link_libraries(cloud-blockstore-libs-encryption-ut PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  blockstore-libs-encryption
+)
 target_link_options(cloud-blockstore-libs-encryption-ut PRIVATE
   -ldl
   -lrt
@@ -20,6 +28,12 @@ target_link_options(cloud-blockstore-libs-encryption-ut PRIVATE
   -lpthread
   -lrt
   -ldl
+)
+target_sources(cloud-blockstore-libs-encryption-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryption_client_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryption_key_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryption_service_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryptor_ut.cpp
 )
 set_property(
   TARGET
@@ -53,5 +67,16 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  cloud-blockstore-libs-encryption-ut
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(cloud-blockstore-libs-encryption-ut
+  cpp-malloc-tcmalloc
+  libs-tcmalloc-no_percpu_cache
 )
 vcs_info(cloud-blockstore-libs-encryption-ut)

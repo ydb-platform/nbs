@@ -11,6 +11,16 @@ add_executable(cloud-blockstore-tools-testing-loadtest-lib-ut)
 target_include_directories(cloud-blockstore-tools-testing-loadtest-lib-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/loadtest/lib
 )
+target_link_libraries(cloud-blockstore-tools-testing-loadtest-lib-ut PUBLIC
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  testing-loadtest-lib
+)
+target_sources(cloud-blockstore-tools-testing-loadtest-lib-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/loadtest/lib/range_map_ut.cpp
+)
 set_property(
   TARGET
   cloud-blockstore-tools-testing-loadtest-lib-ut
@@ -43,5 +53,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  cloud-blockstore-tools-testing-loadtest-lib-ut
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(cloud-blockstore-tools-testing-loadtest-lib-ut
+  system_allocator
 )
 vcs_info(cloud-blockstore-tools-testing-loadtest-lib-ut)

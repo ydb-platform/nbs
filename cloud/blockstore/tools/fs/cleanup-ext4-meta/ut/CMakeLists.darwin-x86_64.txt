@@ -11,12 +11,24 @@ add_executable(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut)
 target_include_directories(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-ext4-meta
 )
+target_link_libraries(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut PUBLIC
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  core-libs-common
+  cpp-regex-pcre
+)
 target_link_options(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0
   -fPIC
   -fPIC
   -framework
   CoreFoundation
+)
+target_sources(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-ext4-meta/ext4-meta-reader_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-ext4-meta/ext4-meta-reader.cpp
 )
 set_property(
   TARGET
@@ -50,5 +62,8 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   1
+)
+target_allocator(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut
+  system_allocator
 )
 vcs_info(cloud-blockstore-tools-fs-cleanup-ext4-meta-ut)

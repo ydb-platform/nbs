@@ -11,6 +11,21 @@ add_executable(cloud-blockstore-libs-storage-disk_agent-ut)
 target_include_directories(cloud-blockstore-libs-storage-disk_agent-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent
 )
+target_link_libraries(cloud-blockstore-libs-storage-disk_agent-ut PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  cpp-testing-unittest_main
+  libs-storage-disk_agent
+  blockstore-libs-rdma_test
+  libs-storage-api
+  libs-storage-core
+  storage-disk_agent-testlib
+  cpp-actors-core
+  cpp-testing-unittest
+  ydb-core-testlib
+  core-testlib-basics
+)
 target_link_options(cloud-blockstore-libs-storage-disk_agent-ut PRIVATE
   -ldl
   -lrt
@@ -20,6 +35,13 @@ target_link_options(cloud-blockstore-libs-storage-disk_agent-ut PRIVATE
   -lpthread
   -lrt
   -ldl
+)
+target_sources(cloud-blockstore-libs-storage-disk_agent-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_state_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/rdma_target_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/spdk_initializer_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/storage_with_stats_ut.cpp
 )
 set_property(
   TARGET
@@ -53,5 +75,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  cloud-blockstore-libs-storage-disk_agent-ut
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(cloud-blockstore-libs-storage-disk_agent-ut
+  cpp-malloc-jemalloc
 )
 vcs_info(cloud-blockstore-libs-storage-disk_agent-ut)

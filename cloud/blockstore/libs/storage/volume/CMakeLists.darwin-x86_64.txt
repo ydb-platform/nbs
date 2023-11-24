@@ -8,6 +8,7 @@
 
 add_subdirectory(actors)
 add_subdirectory(model)
+add_subdirectory(testlib)
 add_subdirectory(ut)
 
 add_library(libs-storage-volume)

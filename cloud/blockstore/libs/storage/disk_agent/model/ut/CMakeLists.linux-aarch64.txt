@@ -11,6 +11,13 @@ add_executable(cloud-blockstore-libs-storage-disk_agent-model-ut)
 target_include_directories(cloud-blockstore-libs-storage-disk_agent-model-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/model
 )
+target_link_libraries(cloud-blockstore-libs-storage-disk_agent-model-ut PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  cpp-testing-unittest_main
+  storage-disk_agent-model
+)
 target_link_options(cloud-blockstore-libs-storage-disk_agent-model-ut PRIVATE
   -ldl
   -lrt
@@ -20,6 +27,12 @@ target_link_options(cloud-blockstore-libs-storage-disk_agent-model-ut PRIVATE
   -lpthread
   -lrt
   -ldl
+)
+target_sources(cloud-blockstore-libs-storage-disk_agent-model-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/model/device_client_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/model/device_guard_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/model/device_generator_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/model/device_scanner_ut.cpp
 )
 set_property(
   TARGET
@@ -53,5 +66,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  cloud-blockstore-libs-storage-disk_agent-model-ut
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(cloud-blockstore-libs-storage-disk_agent-model-ut
+  cpp-malloc-jemalloc
 )
 vcs_info(cloud-blockstore-libs-storage-disk_agent-model-ut)

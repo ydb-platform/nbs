@@ -11,12 +11,25 @@ add_executable(cloud-blockstore-tools-fs-cleanup-xfs-ut)
 target_include_directories(cloud-blockstore-tools-fs-cleanup-xfs-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-xfs
 )
+target_link_libraries(cloud-blockstore-tools-fs-cleanup-xfs-ut PUBLIC
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  core-libs-common
+)
 target_link_options(cloud-blockstore-tools-fs-cleanup-xfs-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0
   -fPIC
   -fPIC
   -framework
   CoreFoundation
+)
+target_sources(cloud-blockstore-tools-fs-cleanup-xfs-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-xfs/cleanup_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-xfs/cleanup.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-xfs/parser_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/fs/cleanup-xfs/parser.cpp
 )
 set_property(
   TARGET
@@ -50,5 +63,8 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   1
+)
+target_allocator(cloud-blockstore-tools-fs-cleanup-xfs-ut
+  system_allocator
 )
 vcs_info(cloud-blockstore-tools-fs-cleanup-xfs-ut)

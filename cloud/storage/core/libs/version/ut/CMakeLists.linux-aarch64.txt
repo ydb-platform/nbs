@@ -11,6 +11,13 @@ add_executable(cloud-storage-core-libs-version-ut)
 target_include_directories(cloud-storage-core-libs-version-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/version
 )
+target_link_libraries(cloud-storage-core-libs-version-ut PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  cpp-testing-unittest_main
+  core-libs-version
+)
 target_link_options(cloud-storage-core-libs-version-ut PRIVATE
   -ldl
   -lrt
@@ -20,6 +27,9 @@ target_link_options(cloud-storage-core-libs-version-ut PRIVATE
   -lpthread
   -lrt
   -ldl
+)
+target_sources(cloud-storage-core-libs-version-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/version/version_ut.cpp
 )
 set_property(
   TARGET
@@ -53,5 +63,8 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   1
+)
+target_allocator(cloud-storage-core-libs-version-ut
+  cpp-malloc-jemalloc
 )
 vcs_info(cloud-storage-core-libs-version-ut)

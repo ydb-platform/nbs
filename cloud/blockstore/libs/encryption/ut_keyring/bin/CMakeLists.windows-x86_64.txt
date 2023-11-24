@@ -11,6 +11,13 @@ add_executable(cloud-blockstore-libs-encryption-ut_keyring-bin)
 target_include_directories(cloud-blockstore-libs-encryption-ut_keyring-bin PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption
 )
+target_link_libraries(cloud-blockstore-libs-encryption-ut_keyring-bin PUBLIC
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  blockstore-libs-encryption
+)
 set_property(
   TARGET
   cloud-blockstore-libs-encryption-ut_keyring-bin
@@ -43,5 +50,15 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
+)
+set_yunittest_property(
+  TEST
+  cloud-blockstore-libs-encryption-ut_keyring-bin
+  PROPERTY
+  TIMEOUT
+  60
+)
+target_allocator(cloud-blockstore-libs-encryption-ut_keyring-bin
+  system_allocator
 )
 vcs_info(cloud-blockstore-libs-encryption-ut_keyring-bin)
