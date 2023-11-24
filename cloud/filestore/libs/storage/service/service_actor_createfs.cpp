@@ -38,13 +38,17 @@ NProto::TError ValidateCreateFileSystemRequest(
     }
 
     ui32 blockSize = request.GetBlockSize();
-    if (!blockSize || !IsAligned(blockSize, 4_KB)) {
+    if (!blockSize
+            || !IsAligned(blockSize, 4_KB)
+            || blockSize < 4_KB
+            || blockSize > 128_KB)
+    {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid block size: " << blockSize);
     }
 
     ui64 blocksCount = request.GetBlocksCount();
-    if (!blocksCount || blockSize*blocksCount < 1_MB) {
+    if (!blocksCount || blockSize * blocksCount < 1_MB) {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid blocks count: " << blocksCount);
     }

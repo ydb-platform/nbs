@@ -1340,6 +1340,48 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             },
             service);
     }
+
+    Y_UNIT_TEST(ShouldValidateBlockSize)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const ui32 blocks = 1024 * 1024;
+        service.SendCreateFileStoreRequest("fs", blocks, 2_KB);
+
+        auto response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        service.SendCreateFileStoreRequest("fs", blocks, 256_KB);
+
+        response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        service.SendCreateFileStoreRequest("fs", blocks, 132_KB);
+
+        response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        service.SendCreateFileStoreRequest("fs", blocks, 128_KB);
+
+        response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
