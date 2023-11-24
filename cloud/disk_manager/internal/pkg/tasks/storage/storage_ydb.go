@@ -373,6 +373,15 @@ func (s *storageYDB) MarkForCancellation(
 	return cancelling, err
 }
 
+func (s *storageYDB) UpdateTaskTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	state TaskState,
+) (TaskState, error) {
+
+	return s.updateTaskTx(ctx, tx, state)
+}
+
 func (s *storageYDB) UpdateTask(
 	ctx context.Context,
 	state TaskState,

@@ -345,6 +345,8 @@ type Storage interface {
 	// Returns false if it has successfully finished.
 	MarkForCancellation(ctx context.Context, taskID string, at time.Time) (bool, error)
 
+	UpdateTaskTx(ctx context.Context, tx *persistence.Transaction, state TaskState) (TaskState, error)
+
 	// This fails with WrongGenerationError, if generationID does not match.
 	UpdateTask(ctx context.Context, state TaskState) (TaskState, error)
 

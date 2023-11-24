@@ -237,7 +237,7 @@ func (r *runnerForRun) executeTask(
 	retriableError := errors.NewEmptyRetriableError()
 	if errors.As(err, &retriableError) {
 		if !retriableError.IgnoreRetryLimit &&
-			execCtx.GetRetriableErrorCount() >= r.maxRetriableErrorCount {
+			execCtx.getRetriableErrorCount() >= r.maxRetriableErrorCount {
 
 			errors.LogError(
 				ctx,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 )
 
@@ -172,6 +173,16 @@ func (s *StorageMock) MarkForCancellation(
 
 	args := s.Called(ctx, taskID, at)
 	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) UpdateTaskTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	state tasks_storage.TaskState,
+) (tasks_storage.TaskState, error) {
+
+	args := s.Called(ctx, tx, state)
+	return args.Get(0).(tasks_storage.TaskState), args.Error(1)
 }
 
 func (s *StorageMock) UpdateTask(

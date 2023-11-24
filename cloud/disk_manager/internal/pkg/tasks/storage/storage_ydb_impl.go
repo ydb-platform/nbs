@@ -1425,9 +1425,9 @@ func (s *storageYDB) decrementRegularTasksInflight(
 	return err
 }
 
-func (s *storageYDB) updateTask(
+func (s *storageYDB) updateTaskTx(
 	ctx context.Context,
-	session *persistence.Session,
+	tx *persistence.Transaction,
 	state TaskState,
 ) (TaskState, error) {
 
@@ -1439,12 +1439,6 @@ func (s *storageYDB) updateTask(
 	defer func() {
 		logging.Debug(ctx, "finished updating task with id %v", state.ID)
 	}()
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return TaskState{}, err
-	}
-	defer tx.Rollback(ctx)
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1552,12 +1546,12 @@ func (s *storageYDB) updateTask(
 		return TaskState{}, err
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		return TaskState{}, err
-	}
-
 	if shouldInterruptTaskExecution {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return TaskState{}, err
+		}
+
 		// State has been updated but execution is not possible within current
 		// generation.
 		return TaskState{}, errors.NewInterruptExecutionError()
@@ -1566,6 +1560,31 @@ func (s *storageYDB) updateTask(
 	// Returned state should have old generation id, this is needed to protect
 	// task from further updating within current execution.
 	state.GenerationID = lastState.GenerationID
+
+	return state, nil
+}
+
+func (s *storageYDB) updateTask(
+	ctx context.Context,
+	session *persistence.Session,
+	state TaskState,
+) (TaskState, error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return TaskState{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	state, err = s.updateTaskTx(ctx, tx, state)
+	if err != nil {
+		return TaskState{}, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return TaskState{}, err
+	}
 
 	s.metrics.OnTaskUpdated(ctx, state)
 	return state, nil

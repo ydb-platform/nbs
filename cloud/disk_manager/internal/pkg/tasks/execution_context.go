@@ -55,12 +55,6 @@ func (c *executionContext) GetTaskID() string {
 	return c.taskState.ID
 }
 
-func (c *executionContext) GetRetriableErrorCount() uint64 {
-	c.taskStateMutex.Lock()
-	defer c.taskStateMutex.Unlock()
-	return c.taskState.RetriableErrorCount
-}
-
 func (c *executionContext) AddTaskDependency(
 	ctx context.Context,
 	taskID string,
@@ -108,6 +102,12 @@ func (c *executionContext) HasEvent(ctx context.Context, event int64) bool {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (c *executionContext) getRetriableErrorCount() uint64 {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+	return c.taskState.RetriableErrorCount
+}
 
 func (c *executionContext) updateState(
 	ctx context.Context,
