@@ -191,6 +191,7 @@ class Ycp:
             self.name = info['name']
             self.created_at = dateparser.parse(info['created_at'])
             self.folder_id = info.get('folder_id', '')
+            self.zone_id = info.get('zone_id', '')
             self.boot_disk = info.get('boot_disk', {}).get("disk_id", '')
             self.secondary_disks = [
                 item.get('disk_id', '') for item in info.get('secondary_disks', [])]
@@ -228,6 +229,16 @@ class Ycp:
             self.name = info['name']
             self.created_at = dateparser.parse(info['created_at'])
             self.instance_ids = info.get('instance_ids', [])
+
+    class Subnet:
+
+        def __init__(self, info):
+            self.id = info['id']
+            self.name = info['name']
+            self.folder_id = info.get('folder_id', '')
+            self.network_id = info.get('network_id', '')
+            self.zone_id = info.get('zone_id', '')
+            self.created_at = dateparser.parse(info['created_at'])
 
     class IamToken:
 
@@ -637,6 +648,19 @@ class Ycp:
                 continue
         return res
 
+    def list_subnets(self, folder_id: str = None) -> [Subnet]:
+        with tempfile.TemporaryFile() as stderr:
+            cmd = self._ycp.vpc.subnet.list(folder_id=folder_id)
+            response = self._execute(cmd, stderr)
+
+        res = []
+        for subnet in response:
+            try:
+                res.append(Ycp.Subnet(subnet))
+            except KeyError:
+                continue
+        return res
+
     def stop_instance(self, instance: Instance):
         with tempfile.TemporaryFile() as stderr:
             cmd = self._ycp.compute.instance.stop(id=instance.id)
@@ -683,3 +707,14 @@ class Ycp:
             response = self._execute(cmd, stderr)
 
         return response.get("cloud_id")
+
+    def relocate_instance(self, instance: Instance, subnet: Subnet) -> None:
+        request = self._render_template(
+            'relocate-instance.yaml',
+            instance_id=instance.id,
+            zone_id=subnet.zone_id,
+            subnet_id=subnet.id)
+
+        with tempfile.TemporaryFile() as stderr:
+            cmd = self._ycp.compute.instance.relocate(request='-')
+            self._execute(cmd, stderr, request)

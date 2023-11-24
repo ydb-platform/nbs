@@ -341,6 +341,14 @@ class YcpWrapper:
             raise self.Error(
                 f'failed to list all filesystems: {e}')
 
+    def list_subnets(self) -> [Ycp.Subnet]:
+        self._logger.info(f'Listing all subnets {self.folder_id}')
+        try:
+            return self._ycp.list_subnets(folder_id=self.folder_id)
+        except Ycp.Error as e:
+            raise self.Error(
+                f'failed to list all subnets: {e}')
+
     def find_instance(self, name: str) -> Optional[Ycp.Instance]:
         instances = self.list_instances()
         for instance in instances:
@@ -371,3 +379,11 @@ class YcpWrapper:
             if instance.name.startswith(self.TMP_INSTANCE_PREFIX) and time_delta.days > ttl_days:
                 self._logger.info(f'Delete old instance with <id={instance.id}>, created at "{instance.created_at}"')
                 self.delete_instance(instance)
+
+    def relocate_instance(self, instance: Ycp.Instance, subnet: Ycp.Subnet):
+        self._logger.info(f'Relocating instance <id={instance.id}> to zone {subnet.zone_id}, subnet {subnet.id}')
+        try:
+            self._ycp.relocate_instance(instance, subnet)
+        except Ycp.Error as e:
+            raise self.Error(f'failed to relocate instance <id={instance.id}>: {e}')
+        self._logger.info(f'Relocated instance <id={instance.id}>')
