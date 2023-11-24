@@ -6451,6 +6451,7 @@
   "contrib/ydb/services/ydb/CMakeLists.linux-x86_64.txt":"",
   "contrib/ydb/services/ydb/CMakeLists.txt":"",
   "contrib/ydb/services/ydb/CMakeLists.windows-x86_64.txt":"",
+  "doc/diagnostics/performance.md":"cloud/blockstore/github_toplevel/doc/diagnostics/performance.md",
   "example/0-setup.sh":"cloud/blockstore/github_toplevel/example/0-setup.sh",
   "example/1-start_storage.sh":"cloud/blockstore/github_toplevel/example/1-start_storage.sh",
   "example/2-init_storage.sh":"cloud/blockstore/github_toplevel/example/2-init_storage.sh",
