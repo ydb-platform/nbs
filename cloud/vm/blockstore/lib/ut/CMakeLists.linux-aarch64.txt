@@ -11,13 +11,6 @@ add_executable(cloud-vm-blockstore-lib-ut)
 target_include_directories(cloud-vm-blockstore-lib-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/vm/blockstore/lib
 )
-target_link_libraries(cloud-vm-blockstore-lib-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  vm-blockstore-lib
-)
 target_link_options(cloud-vm-blockstore-lib-ut PRIVATE
   -ldl
   -lrt
@@ -27,10 +20,6 @@ target_link_options(cloud-vm-blockstore-lib-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-vm-blockstore-lib-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/vm/blockstore/lib/plugin_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/vm/blockstore/lib/helper_ut.cpp
 )
 set_property(
   TARGET
@@ -64,8 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   1
-)
-target_allocator(cloud-vm-blockstore-lib-ut
-  cpp-malloc-jemalloc
 )
 vcs_info(cloud-vm-blockstore-lib-ut)

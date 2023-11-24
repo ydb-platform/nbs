@@ -14,23 +14,12 @@ target_compile_options(blockstore-libs-storage-disk_registry_proxy-ut PRIVATE
 target_include_directories(blockstore-libs-storage-disk_registry_proxy-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry_proxy
 )
-target_link_libraries(blockstore-libs-storage-disk_registry_proxy-ut PUBLIC
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  libs-storage-disk_registry_proxy
-  libs-storage-testlib
-)
 target_link_options(blockstore-libs-storage-disk_registry_proxy-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0
   -fPIC
   -fPIC
   -framework
   CoreFoundation
-)
-target_sources(blockstore-libs-storage-disk_registry_proxy-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry_proxy/disk_registry_proxy_ut.cpp
 )
 set_property(
   TARGET
@@ -64,15 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  blockstore-libs-storage-disk_registry_proxy-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(blockstore-libs-storage-disk_registry_proxy-ut
-  system_allocator
 )
 vcs_info(blockstore-libs-storage-disk_registry_proxy-ut)

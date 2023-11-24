@@ -14,17 +14,6 @@ target_compile_options(cloud-blockstore-libs-storage-stats_service-ut PRIVATE
 target_include_directories(cloud-blockstore-libs-storage-stats_service-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service
 )
-target_link_libraries(cloud-blockstore-libs-storage-stats_service-ut PUBLIC
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  libs-storage-stats_service
-  libs-storage-testlib
-)
-target_sources(cloud-blockstore-libs-storage-stats_service-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_ut.cpp
-)
 set_property(
   TARGET
   cloud-blockstore-libs-storage-stats_service-ut
@@ -57,15 +46,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-storage-stats_service-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-storage-stats_service-ut
-  system_allocator
 )
 vcs_info(cloud-blockstore-libs-storage-stats_service-ut)

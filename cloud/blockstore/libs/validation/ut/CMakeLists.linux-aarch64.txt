@@ -11,13 +11,6 @@ add_executable(cloud-blockstore-libs-validation-ut)
 target_include_directories(cloud-blockstore-libs-validation-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/validation
 )
-target_link_libraries(cloud-blockstore-libs-validation-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  blockstore-libs-validation
-)
 target_link_options(cloud-blockstore-libs-validation-ut PRIVATE
   -ldl
   -lrt
@@ -27,10 +20,6 @@ target_link_options(cloud-blockstore-libs-validation-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-blockstore-libs-validation-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/validation/validation_client_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/validation/validation_service_ut.cpp
 )
 set_property(
   TARGET
@@ -64,15 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-validation-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-validation-ut
-  cpp-malloc-jemalloc
 )
 vcs_info(cloud-blockstore-libs-validation-ut)

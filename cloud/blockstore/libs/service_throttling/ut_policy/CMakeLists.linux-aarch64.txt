@@ -11,13 +11,6 @@ add_executable(blockstore-libs-service_throttling-ut_policy)
 target_include_directories(blockstore-libs-service_throttling-ut_policy PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_throttling
 )
-target_link_libraries(blockstore-libs-service_throttling-ut_policy PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  blockstore-libs-service_throttling
-)
 target_link_options(blockstore-libs-service_throttling-ut_policy PRIVATE
   -ldl
   -lrt
@@ -27,9 +20,6 @@ target_link_options(blockstore-libs-service_throttling-ut_policy PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(blockstore-libs-service_throttling-ut_policy PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_throttling/throttler_policy_ut.cpp
 )
 set_property(
   TARGET
@@ -63,15 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  blockstore-libs-service_throttling-ut_policy
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(blockstore-libs-service_throttling-ut_policy
-  cpp-malloc-jemalloc
 )
 vcs_info(blockstore-libs-service_throttling-ut_policy)

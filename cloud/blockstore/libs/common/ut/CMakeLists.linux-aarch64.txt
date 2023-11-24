@@ -11,13 +11,6 @@ add_executable(cloud-blockstore-libs-common-ut)
 target_include_directories(cloud-blockstore-libs-common-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common
 )
-target_link_libraries(cloud-blockstore-libs-common-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  blockstore-libs-common
-)
 target_link_options(cloud-blockstore-libs-common-ut PRIVATE
   -ldl
   -lrt
@@ -27,16 +20,6 @@ target_link_options(cloud-blockstore-libs-common-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-blockstore-libs-common-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/caching_allocator_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_buffer_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_checksum_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_data_ref_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_range_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/guarded_sglist_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/iovector_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/sglist_ut.cpp
 )
 set_property(
   TARGET
@@ -70,15 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-common-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-common-ut
-  cpp-malloc-jemalloc
 )
 vcs_info(cloud-blockstore-libs-common-ut)

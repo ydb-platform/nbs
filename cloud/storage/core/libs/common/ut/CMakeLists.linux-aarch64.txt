@@ -8,13 +8,6 @@
 
 
 add_executable(cloud-storage-core-libs-common-ut)
-target_link_libraries(cloud-storage-core-libs-common-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  core-libs-common
-)
 target_link_options(cloud-storage-core-libs-common-ut PRIVATE
   -ldl
   -lrt
@@ -24,18 +17,6 @@ target_link_options(cloud-storage-core-libs-common-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-storage-core-libs-common-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/compressed_bitmap_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/backoff_delay_provider_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/concurrent_queue_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/context_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/error_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/file_io_service_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/ring_buffer_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/scheduler_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/scoped_handle_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/thread_pool_ut.cpp
 )
 set_property(
   TARGET
@@ -69,8 +50,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   1
-)
-target_allocator(cloud-storage-core-libs-common-ut
-  cpp-malloc-jemalloc
 )
 vcs_info(cloud-storage-core-libs-common-ut)

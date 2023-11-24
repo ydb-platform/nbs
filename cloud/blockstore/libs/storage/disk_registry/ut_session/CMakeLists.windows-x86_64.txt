@@ -11,22 +11,6 @@ add_executable(libs-storage-disk_registry-ut_session)
 target_include_directories(libs-storage-disk_registry-ut_session PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry
 )
-target_link_libraries(libs-storage-disk_registry-ut_session PUBLIC
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  libs-storage-disk_registry
-  cloud-blockstore-config
-  libs-storage-api
-  storage-disk_registry-testlib
-  libs-storage-testlib
-  cpp-testing-unittest
-  core-testlib-basics
-)
-target_sources(libs-storage-disk_registry-ut_session PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_ut_session.cpp
-)
 set_property(
   TARGET
   libs-storage-disk_registry-ut_session
@@ -59,15 +43,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  libs-storage-disk_registry-ut_session
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(libs-storage-disk_registry-ut_session
-  system_allocator
 )
 vcs_info(libs-storage-disk_registry-ut_session)

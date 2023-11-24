@@ -11,15 +11,6 @@ add_executable(cloud-blockstore-libs-storage-bootstrapper-ut)
 target_include_directories(cloud-blockstore-libs-storage-bootstrapper-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/bootstrapper
 )
-target_link_libraries(cloud-blockstore-libs-storage-bootstrapper-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  libs-storage-bootstrapper
-  libs-storage-testlib
-)
 target_link_options(cloud-blockstore-libs-storage-bootstrapper-ut PRIVATE
   -ldl
   -lrt
@@ -29,9 +20,6 @@ target_link_options(cloud-blockstore-libs-storage-bootstrapper-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-blockstore-libs-storage-bootstrapper-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/bootstrapper/bootstrapper_ut.cpp
 )
 set_property(
   TARGET
@@ -65,16 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-storage-bootstrapper-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-storage-bootstrapper-ut
-  cpp-malloc-tcmalloc
-  libs-tcmalloc-no_percpu_cache
 )
 vcs_info(cloud-blockstore-libs-storage-bootstrapper-ut)

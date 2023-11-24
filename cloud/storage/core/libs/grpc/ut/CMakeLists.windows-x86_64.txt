@@ -11,17 +11,6 @@ add_executable(cloud-storage-core-libs-grpc-ut)
 target_include_directories(cloud-storage-core-libs-grpc-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc
 )
-target_link_libraries(cloud-storage-core-libs-grpc-ut PUBLIC
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  core-libs-grpc
-  cpp-testing-gmock_in_unittest
-)
-target_sources(cloud-storage-core-libs-grpc-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/executor_ut.cpp
-)
 set_property(
   TARGET
   cloud-storage-core-libs-grpc-ut
@@ -54,8 +43,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   1
-)
-target_allocator(cloud-storage-core-libs-grpc-ut
-  system_allocator
 )
 vcs_info(cloud-storage-core-libs-grpc-ut)

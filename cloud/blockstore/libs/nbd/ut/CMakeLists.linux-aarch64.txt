@@ -11,13 +11,6 @@ add_executable(cloud-blockstore-libs-nbd-ut)
 target_include_directories(cloud-blockstore-libs-nbd-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd
 )
-target_link_libraries(cloud-blockstore-libs-nbd-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  blockstore-libs-nbd
-)
 target_link_options(cloud-blockstore-libs-nbd-ut PRIVATE
   -ldl
   -lrt
@@ -27,11 +20,6 @@ target_link_options(cloud-blockstore-libs-nbd-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-blockstore-libs-nbd-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/client_handler_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/server_handler_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/server_ut.cpp
 )
 set_property(
   TARGET
@@ -65,15 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-nbd-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-nbd-ut
-  cpp-malloc-jemalloc
 )
 vcs_info(cloud-blockstore-libs-nbd-ut)

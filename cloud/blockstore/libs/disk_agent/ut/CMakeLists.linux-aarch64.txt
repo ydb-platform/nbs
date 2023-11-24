@@ -11,13 +11,6 @@ add_executable(cloud-blockstore-libs-disk_agent-ut)
 target_include_directories(cloud-blockstore-libs-disk_agent-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/disk_agent
 )
-target_link_libraries(cloud-blockstore-libs-disk_agent-ut PUBLIC
-  contrib-libs-linux-headers
-  contrib-libs-cxxsupp
-  yutil
-  cpp-testing-unittest_main
-  blockstore-libs-disk_agent
-)
 target_link_options(cloud-blockstore-libs-disk_agent-ut PRIVATE
   -ldl
   -lrt
@@ -27,9 +20,6 @@ target_link_options(cloud-blockstore-libs-disk_agent-ut PRIVATE
   -lpthread
   -lrt
   -ldl
-)
-target_sources(cloud-blockstore-libs-disk_agent-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/disk_agent/config_initializer_ut.cpp
 )
 set_property(
   TARGET
@@ -63,15 +53,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-disk_agent-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-disk_agent-ut
-  cpp-malloc-jemalloc
 )
 vcs_info(cloud-blockstore-libs-disk_agent-ut)

@@ -11,17 +11,6 @@ add_executable(cloud-blockstore-libs-notify-ut)
 target_include_directories(cloud-blockstore-libs-notify-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/notify
 )
-target_link_libraries(cloud-blockstore-libs-notify-ut PUBLIC
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  blockstore-libs-notify
-  cpp-testing-unittest
-)
-target_sources(cloud-blockstore-libs-notify-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/notify/notify_ut.cpp
-)
 set_property(
   TARGET
   cloud-blockstore-libs-notify-ut
@@ -54,15 +43,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-notify-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-notify-ut
-  system_allocator
 )
 vcs_info(cloud-blockstore-libs-notify-ut)

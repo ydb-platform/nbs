@@ -11,33 +11,12 @@ add_executable(cloud-blockstore-libs-diagnostics-ut)
 target_include_directories(cloud-blockstore-libs-diagnostics-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics
 )
-target_link_libraries(cloud-blockstore-libs-diagnostics-ut PUBLIC
-  contrib-libs-cxxsupp
-  yutil
-  library-cpp-cpuid_check
-  cpp-testing-unittest_main
-  blockstore-libs-diagnostics
-  core-libs-common
-  cpp-eventlog-dumper
-)
 target_link_options(cloud-blockstore-libs-diagnostics-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0
   -fPIC
   -fPIC
   -framework
   CoreFoundation
-)
-target_sources(cloud-blockstore-libs-diagnostics-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/block_digest_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/fault_injection_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/profile_log_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/quota_metrics_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/request_stats_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/server_stats_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/stats_aggregator_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/user_counter_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/volume_perf_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/volume_stats_ut.cpp
 )
 set_property(
   TARGET
@@ -71,15 +50,5 @@ set_yunittest_property(
   PROPERTY
   PROCESSORS
   2
-)
-set_yunittest_property(
-  TEST
-  cloud-blockstore-libs-diagnostics-ut
-  PROPERTY
-  TIMEOUT
-  60
-)
-target_allocator(cloud-blockstore-libs-diagnostics-ut
-  system_allocator
 )
 vcs_info(cloud-blockstore-libs-diagnostics-ut)
