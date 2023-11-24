@@ -2046,7 +2046,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-2124
     - yabs/server/test/ft/BSSERVER-22055
     - yabs/server/test/ft/BSSERVER-22647
-    - yabs/server/test/ft/BSSERVER-2293
     - yabs/server/test/ft/BSSERVER-23353
     - yabs/server/test/ft/BSSERVER-23412
     - yabs/server/test/ft/BSSERVER-23760
@@ -3008,7 +3007,6 @@ migrations:
     - voicetech/infra/lingwarefactory/create-next-version
     - voicetech/infra/lingwarefactory/tarfile-common-prefix
     - voicetech/infra/log_parsers/ttsproxy
-    - voicetech/infra/qa/uniproxy-clear-private-data/tools/requests_to_yt
     - weather/ml/quality/stand/utils_for_2018q4_2019q1_test_pools/valhalla_artifact_creation/METEO_1239_apply_graph_generation
     - weather/ml/quality/stand/utils_for_2018q4_2019q1_test_pools/valhalla_artifact_creation/METEO_1239_calc_metrics
     - weather/ml/quality/stand/utils_for_2018q4_2019q1_test_pools/valhalla_artifact_creation/METEO_1260_test_add_features
@@ -3688,7 +3686,6 @@ migrations:
     - yweb/rca/server
     - yweb/scripts/datascripts/common
     - yweb/scripts/datascripts/runnerLib
-    - yweb/sitelinks/astrolabe/build_bna/candidates
     - yweb/sitelinks/scripts/sitelinks
     - yweb/webdaemons/clickdaemon/tools/update_wizard_alerts/libs
     - yweb/webdaemons/clickdaemon/tools/update_wizard_alerts/main
