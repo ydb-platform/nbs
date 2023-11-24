@@ -133,7 +133,7 @@ func (r *runnerForRun) executeTask(
 
 	if err == nil {
 		// If there was no error, task has completed successfully.
-		err = execCtx.setFinished(ctx)
+		err = execCtx.finish(ctx)
 		if err != nil {
 			errors.LogError(
 				ctx,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 )
@@ -18,6 +19,7 @@ type executionContext struct {
 	storage        storage.Storage
 	taskState      storage.TaskState
 	taskStateMutex sync.Mutex
+	finished       bool
 }
 
 // HACK from https://github.com/stretchr/testify/pull/694/files to avoid fake race detection
@@ -101,6 +103,37 @@ func (c *executionContext) HasEvent(ctx context.Context, event int64) bool {
 	return false
 }
 
+func (c *executionContext) FinishWithCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	if c.finished {
+		return nil
+	}
+
+	state, err := c.task.Save()
+	if err != nil {
+		return err
+	}
+
+	err = c.updateStateWithCallback(
+		ctx,
+		func(taskState storage.TaskState) storage.TaskState {
+			taskState.State = state
+			taskState.Status = storage.TaskStatusFinished
+			return taskState
+		},
+		callback,
+	)
+	if err != nil {
+		return err
+	}
+
+	c.finished = true
+	return nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (c *executionContext) getRetriableErrorCount() uint64 {
@@ -109,26 +142,42 @@ func (c *executionContext) getRetriableErrorCount() uint64 {
 	return c.taskState.RetriableErrorCount
 }
 
-func (c *executionContext) updateState(
+func (c *executionContext) updateStateWithCallback(
 	ctx context.Context,
-	f func(storage.TaskState) storage.TaskState,
+	transition func(storage.TaskState) storage.TaskState,
+	callback func(context.Context, *persistence.Transaction) error,
 ) error {
 
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	taskState := f(c.taskState)
+	taskState := transition(c.taskState)
 	taskState = taskState.DeepCopy()
 
 	taskState.ModifiedAt = time.Now()
 
-	newTaskState, err := c.storage.UpdateTask(ctx, taskState)
+	var newTaskState storage.TaskState
+	var err error
+
+	if callback != nil {
+		newTaskState, err = c.storage.UpdateTaskWithCallback(ctx, taskState, callback)
+	} else {
+		newTaskState, err = c.storage.UpdateTask(ctx, taskState)
+	}
 	if err != nil {
 		return err
 	}
 
 	c.taskState = newTaskState
 	return nil
+}
+
+func (c *executionContext) updateState(
+	ctx context.Context,
+	transition func(storage.TaskState) storage.TaskState,
+) error {
+
+	return c.updateStateWithCallback(ctx, transition, nil /* callback */)
 }
 
 func (c *executionContext) clearState(ctx context.Context) error {
@@ -223,17 +272,8 @@ func (c *executionContext) setNonCancellableError(
 	})
 }
 
-func (c *executionContext) setFinished(ctx context.Context) error {
-	state, err := c.task.Save()
-	if err != nil {
-		return err
-	}
-
-	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		taskState.State = state
-		taskState.Status = storage.TaskStatusFinished
-		return taskState
-	})
+func (c *executionContext) finish(ctx context.Context) error {
+	return c.FinishWithCallback(ctx, nil /* callback */)
 }
 
 func (c *executionContext) setCancelled(ctx context.Context) error {
