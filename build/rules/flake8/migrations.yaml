@@ -3687,8 +3687,6 @@ migrations:
     - yweb/scripts/datascripts/common
     - yweb/scripts/datascripts/runnerLib
     - yweb/sitelinks/scripts/sitelinks
-    - yweb/webdaemons/clickdaemon/tools/update_wizard_alerts/libs
-    - yweb/webdaemons/clickdaemon/tools/update_wizard_alerts/main
     - yweb/yasap/answers/answers/utils
     - yweb/yasap/answers_nirvana/answers_update_passport
     - yweb/yasap/answers_nirvana/daily_promoblock_push
@@ -5600,7 +5598,6 @@ migrations:
     - yweb/video/faas/lib/drm/mk2
     - yweb/video/transcoder/cm/transcoder/cmpy/full_vh_vh
     - yweb/video/transcoder/tools/per_title/presets/nsga/evaluate/utils
-    - yweb/webdaemons/clickdaemon/tools/clickdaemon_coder/frontend
     - yweb/webscripts/video/comparefactors/viewer
     - yweb/webscripts/video/metarobot/parsepage/python
     - yweb/yasap/answers/admin/admin/resources
@@ -6511,7 +6508,6 @@ migrations:
     - noc/rtapi
     - noc/snmpd-plug
     - ofd/api/manage/backend_data
-    - opensource/sync/bin/pr_ch/tasklet
     - passport/backend/logbroker_client/mail_unsubscriptions/tests
     - passport/backend/utils
     - payplatform/nirvana/send_juggler_raw_events
@@ -7249,8 +7245,6 @@ migrations:
     - modadvert/nirvana/m1_update_media_objects/it
     - modadvert/programs/multik/libs
     - modadvert/programs/supermoderation_admin/libs/services
-    - opensource/sync/bin/docs_sync/tasklet
-    - opensource/sync/bin/sync_ch/tasklet
     - orgvisits/user/features/run/tests
     - plus/oneyear/oneyear_by
     - quality/functionality/chats/common/bunker_client
@@ -8981,8 +8975,6 @@ migrations:
     - modadvert/programs/abuse/bs_abuse_log_processor
     - modadvert/programs/saas_indexer/libs
     - modadvert/programs/transfer_manager/libs
-    - opensource/sync/bin/arc2git
-    - opensource/sync/bin/git2git
     - orgvisits/library/python/text_tools
     - orgvisits/library/python/yt_jobs/tests
     - orgvisits/metrics/ugc_feedback/ctr
@@ -9305,7 +9297,6 @@ migrations:
     - yweb/structhtml/richsnippets/scripts/build_foto_recipes/prepare_to_deploy
     - yweb/verticals/scripts/sport_chats
     - yweb/verticals/scripts/sport_zen_updater/add_parsed_zen_urls
-    - yweb/webdaemons/clickdaemon/tools/create_ammo_from_tcpdump
     - yweb/yasap/answers_nirvana/make_ammos
     - yweb/yasap/answers_quality/plagiarism/prepare_scraper_queries
     - yweb/yasap/pdb/backend/offline_views/history_calculator
