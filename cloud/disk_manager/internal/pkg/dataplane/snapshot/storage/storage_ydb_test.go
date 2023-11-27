@@ -1013,7 +1013,7 @@ func TestReadNonExistentChunk(t *testing.T) {
 			}
 			err := f.storage.ReadChunk(f.ctx, &readChunk)
 			require.Error(t, err)
-			require.ErrorContains(t, err, "chunk not found")
+			require.ErrorContains(t, err, "not found")
 		})
 	}
 }

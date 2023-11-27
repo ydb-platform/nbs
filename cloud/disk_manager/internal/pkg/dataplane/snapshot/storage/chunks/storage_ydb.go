@@ -65,7 +65,7 @@ func (s *StorageYDB) ReadChunk(
 	defer res.Close()
 
 	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return errors.NewNonRetriableErrorf("chunk not found")
+		return errors.NewNonRetriableErrorf("chunk not found: %v", chunk.ID)
 	}
 
 	var (

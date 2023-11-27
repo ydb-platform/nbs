@@ -163,7 +163,7 @@ func chunkDataExistsInS3(
 		return true
 	}
 
-	require.ErrorContains(t, err, "chunk not found")
+	require.ErrorContains(t, err, "s3 object not found")
 	return false
 }
 
