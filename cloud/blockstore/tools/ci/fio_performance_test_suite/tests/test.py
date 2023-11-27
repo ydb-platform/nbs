@@ -63,6 +63,6 @@ def test_fio_performance_test_suite(test_suite, cluster_and_platform, service, i
         else:
             assert result == 0
 
-    ret = common.canonical_file(results_path)
+    ret = common.canonical_file(results_path, local=True)
 
     return ret

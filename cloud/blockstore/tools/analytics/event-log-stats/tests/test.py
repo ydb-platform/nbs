@@ -15,5 +15,6 @@ def test_load():
         [
             "--evlog-dumper-params", log,
             "--disk-id", "ssd_v1"
-        ]
+        ],
+        save_locally=True,
     )

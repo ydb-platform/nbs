@@ -1,0 +1,103 @@
+##teamcity[message text='|[ main     |] Run test #0 in zone1 for network-ssd-nonreplicated' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Run test #1 in zone1 for network-ssd-io-m2' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Waiting for 2 tests...' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Listing all instances fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Creating instance' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance create --request -' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Created instance <id=fake-instance-id, host=fake, ip=1:1:1:1:1:1:1:1>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Creating disk' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute disk create --request -' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Created disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Waiting until instance <id=fake-instance-id> becomes available via ssh' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Attaching disk <id=fake-disk-id> to instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance attach-disk --request -' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Copying verify-test to instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Waiting until secondary disk <id=fake-disk-id> appears as block device "/dev/disk/by-id/virtio-fake-disk-id" on instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Scanning disk with <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Detaching disk <id=fake-disk-id> from instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance detach-disk --request -' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Detached disk <id=fake-disk-id> from instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Deleting disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute disk delete --request -' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Deleted disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Deleting instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance delete --request -' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] Deleted instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Successfully finished in zone <id=zone1>.
+instance <id=fake-instance-id>, disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Listing all instances fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Creating instance' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance create --request -' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Created instance <id=fake-instance-id, host=fake, ip=1:1:1:1:1:1:1:1>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Creating disk' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute disk create --request -' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Created disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Waiting until instance <id=fake-instance-id> becomes available via ssh' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Attaching disk <id=fake-disk-id> to instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance attach-disk --request -' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Copying verify-test to instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Waiting until secondary disk <id=fake-disk-id> appears as block device "/dev/disk/by-id/virtio-fake-disk-id" on instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Scanning disk with <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Detaching disk <id=fake-disk-id> from instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance detach-disk --request -' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Detached disk <id=fake-disk-id> from instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Deleting disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute disk delete --request -' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Deleted disk <id=fake-disk-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Deleting instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance delete --request -' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] Deleted instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Successfully finished in zone <id=zone1>.
+instance <id=fake-instance-id>, disk <id=fake-disk-id>' status='NORMAL' ]
+Command=ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk create --request -
+Input=
+Waiting for instance 1:1:1:1:1:1:1:1
+Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
+Input=
+SFTP PUT 1:1:1:1:1:1:1:1/verify/path -> /usr/bin/verify-test
+SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/verify-test f=493
+Waiting for bdev 1:1:1:1:1:1:1:1//dev/disk/by-id/virtio-fake-disk-id
+SSH 1:1:1:1:1:1:1:1: /usr/bin/verify-test --filesize 1098437885952 --file /dev/disk/by-id/virtio-fake-disk-id --iodepth 128 --zero-check --blocksize 4194304 2>&1
+Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk create --request -
+Input=
+Waiting for instance 1:1:1:1:1:1:1:1
+Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
+Input=
+SFTP PUT 1:1:1:1:1:1:1:1/verify/path -> /usr/bin/verify-test
+SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/verify-test f=493
+Waiting for bdev 1:1:1:1:1:1:1:1//dev/disk/by-id/virtio-fake-disk-id
+SSH 1:1:1:1:1:1:1:1: /usr/bin/verify-test --filesize 1098437885952 --file /dev/disk/by-id/virtio-fake-disk-id --iodepth 128 --zero-check --blocksize 4194304 2>&1
+Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance delete --request -
+Input=

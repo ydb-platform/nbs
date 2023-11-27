@@ -33,6 +33,6 @@ def test_check_emptiness_test(cluster):
 
         assert result == 0
 
-    ret = common.canonical_file(results_path)
+    ret = common.canonical_file(results_path, local=True)
 
     return ret

@@ -35,6 +35,6 @@ def test_corruption_test_suite(test_suite, cluster, service):
 
         assert result == 0
 
-    ret = common.canonical_file(results_path)
+    ret = common.canonical_file(results_path, local=True)
 
     return ret

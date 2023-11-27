@@ -33,7 +33,7 @@ def run_test(cluster, test_case, command, expected_result):
         result = subprocess.call(options, stdout=out)
         assert result == expected_result
 
-    ret = common.canonical_file(results_path)
+    ret = common.canonical_file(results_path, local=True)
 
     return ret
 

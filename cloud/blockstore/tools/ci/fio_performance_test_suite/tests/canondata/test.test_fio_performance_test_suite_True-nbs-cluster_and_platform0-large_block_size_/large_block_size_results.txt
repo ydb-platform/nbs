@@ -1,0 +1,55 @@
+Command=ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance create --request -
+Input=
+Waiting for instance 1:1:1:1:1:1:1:1
+Command=ycp --format json --profile fake-cluster1 compute disk create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
+Input=
+Waiting for bdev 1:1:1:1:1:1:1:1//dev/vdb
+Command=ycp --format json --profile fake-cluster1 compute disk create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
+Input=
+Waiting for bdev 1:1:1:1:1:1:1:1//dev/vdc
+Command=ycp --format json --profile fake-cluster1 compute disk create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
+Input=
+Waiting for bdev 1:1:1:1:1:1:1:1//dev/vdd
+Command=ycp --format json --profile fake-cluster1 compute disk create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
+Input=
+Waiting for bdev 1:1:1:1:1:1:1:1//dev/vde
+SSH 1:1:1:1:1:1:1:1: fio --name=fill-secondary-disk --filename=/dev/vdb --rw=write --bs=4M --iodepth=128 --direct=1 --sync=1 --ioengine=libaio --size=171798691840
+SSH 1:1:1:1:1:1:1:1: fio --name=fill-secondary-disk --filename=/dev/vdc --rw=write --bs=4M --iodepth=128 --direct=1 --sync=1 --ioengine=libaio --size=171798691840
+SSH 1:1:1:1:1:1:1:1: fio --name=fill-secondary-disk --filename=/dev/vdd --rw=write --bs=4M --iodepth=128 --direct=1 --sync=1 --ioengine=libaio --size=171798691840
+SSH 1:1:1:1:1:1:1:1: fio --name=fill-secondary-disk --filename=/dev/vde --rw=write --bs=4M --iodepth=128 --direct=1 --sync=1 --ioengine=libaio --size=171798691840
+SSH 1:1:1:1:1:1:1:1: fio --name=test --filename=/dev/vdb --rw=randrw --bs=4096 --iodepth=32 --direct=1 --sync=1 --ioengine=libaio --rwmixwrite=50 --rwmixread=50 --runtime=120 --time_based=1 --size=171798691840 --output-format=json
+SSH 1:1:1:1:1:1:1:1: fio --name=test --filename=/dev/vdc --rw=randrw --bs=131072 --iodepth=32 --direct=1 --sync=1 --ioengine=libaio --rwmixwrite=50 --rwmixread=50 --runtime=120 --time_based=1 --size=171798691840 --output-format=json
+SSH 1:1:1:1:1:1:1:1: fio --name=test --filename=/dev/vdd --rw=randrw --bs=4096 --iodepth=32 --direct=1 --sync=1 --ioengine=libaio --rwmixwrite=50 --rwmixread=50 --runtime=120 --time_based=1 --size=171798691840 --output-format=json
+SSH 1:1:1:1:1:1:1:1: fio --name=test --filename=/dev/vde --rw=randrw --bs=131072 --iodepth=32 --direct=1 --sync=1 --ioengine=libaio --rwmixwrite=50 --rwmixread=50 --runtime=120 --time_based=1 --size=171798691840 --output-format=json
+Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance delete --request -
+Input=

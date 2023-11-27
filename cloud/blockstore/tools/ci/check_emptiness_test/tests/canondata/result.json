@@ -1,7 +1,5 @@
 {
     "test.test_check_emptiness_test[cluster1]": {
-        "checksum": "6df7514856f5dc61a57c23d8d8f333fc",
-        "size": 9452,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1777230/195ad7f1a302f7d683d42661c50a0010f241d8fc/resource.tar.gz#test.test_check_emptiness_test_cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_check_emptiness_test_cluster1_/testing_out_stuff_results.txt"
     }
 }

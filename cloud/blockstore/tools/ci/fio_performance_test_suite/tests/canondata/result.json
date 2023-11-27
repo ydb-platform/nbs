@@ -1,402 +1,242 @@
 {
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-default]": {
-        "checksum": "77d239a33d67d291583a332070ffc0bd",
-        "size": 7007,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-large_block_size]": {
-        "checksum": "4c60daac949ccb95b85de52b1810b96d",
-        "size": 3767,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-max_bandwidth]": {
-        "checksum": "5020b402bd2d9db65baef8a38cbd682f",
-        "size": 5411,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-max_iops]": {
-        "checksum": "d56cc8aaa54ca2ec9467ca3c0c8f6412",
-        "size": 5399,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-mirrored_iops]": {
-        "checksum": "2f4868f9ae24b46073c7503375f10883",
-        "size": 8107,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-mirrored_throughput]": {
-        "checksum": "ed8cbb4a0f5d93319587df682053d5b2",
-        "size": 3895,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-nrd]": {
-        "checksum": "77eb6a82591cd28f3a704fb299210b7f",
-        "size": 11076,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-nrd_iops]": {
-        "checksum": "7f668210ff2ab36adcc9de9ec0afd3e8",
-        "size": 7828,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-nrd_throughput]": {
-        "checksum": "9b66cd612697088f3ee82b224b9ebd47",
-        "size": 3771,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform0-overlay_disk_max_count]": {
-        "checksum": "86cf0290e092384cc3530648270c78b3",
-        "size": 2149,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-default]": {
-        "checksum": "77d239a33d67d291583a332070ffc0bd",
-        "size": 7007,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-large_block_size]": {
-        "checksum": "4c60daac949ccb95b85de52b1810b96d",
-        "size": 3767,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-max_bandwidth]": {
-        "checksum": "5020b402bd2d9db65baef8a38cbd682f",
-        "size": 5411,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-max_iops]": {
-        "checksum": "d56cc8aaa54ca2ec9467ca3c0c8f6412",
-        "size": 5399,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-mirrored_iops]": {
-        "checksum": "2f4868f9ae24b46073c7503375f10883",
-        "size": 8107,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-mirrored_throughput]": {
-        "checksum": "ed8cbb4a0f5d93319587df682053d5b2",
-        "size": 3895,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-nrd]": {
-        "checksum": "77eb6a82591cd28f3a704fb299210b7f",
-        "size": 11076,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-nrd_iops]": {
-        "checksum": "7f668210ff2ab36adcc9de9ec0afd3e8",
-        "size": 7828,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-nrd_throughput]": {
-        "checksum": "9b66cd612697088f3ee82b224b9ebd47",
-        "size": 3771,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nbs-cluster_and_platform1-overlay_disk_max_count]": {
-        "checksum": "86cf0290e092384cc3530648270c78b3",
-        "size": 2149,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nbs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-default]": {
-        "checksum": "bdc09540607168f771cd24352cdc235e",
-        "size": 4717,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-large_block_size]": {
-        "checksum": "984cb5adbd642496a5a4de2d7be569bf",
-        "size": 2621,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-max_bandwidth]": {
-        "checksum": "40ab37c9a34c1b6e508429f1066998f4",
-        "size": 3681,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-max_iops]": {
-        "checksum": "d52e364d81c98a4c90ef7bbfe87e473e",
-        "size": 3675,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-mirrored_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-mirrored_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-nrd]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-nrd_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-nrd_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform0-overlay_disk_max_count]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-default]": {
-        "checksum": "bdc09540607168f771cd24352cdc235e",
-        "size": 4717,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-large_block_size]": {
-        "checksum": "984cb5adbd642496a5a4de2d7be569bf",
-        "size": 2621,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-max_bandwidth]": {
-        "checksum": "40ab37c9a34c1b6e508429f1066998f4",
-        "size": 3681,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-max_iops]": {
-        "checksum": "d52e364d81c98a4c90ef7bbfe87e473e",
-        "size": 3675,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-mirrored_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-mirrored_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-nrd]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-nrd_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-nrd_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[False-nfs-cluster_and_platform1-overlay_disk_max_count]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_False-nfs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-default]": {
-        "checksum": "b59108faf168b3718512e8f6f105e887",
-        "size": 7007,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-large_block_size]": {
-        "checksum": "a9d76dde005e227a98c19c8a5326f3f9",
-        "size": 3767,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-max_bandwidth]": {
-        "checksum": "296201386ddc8e8159cb052bc23d63b8",
-        "size": 5411,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-max_iops]": {
-        "checksum": "d1cea6cfbd0d8c043a619e09a5cdc5d8",
-        "size": 5399,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-mirrored_iops]": {
-        "checksum": "1360870e443589b589c8f3a32155566c",
-        "size": 7828,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-mirrored_throughput]": {
-        "checksum": "0f51bdc0937c900dee9e7b1cf9bce213",
-        "size": 3771,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-nrd]": {
-        "checksum": "6020962c6dab7dc76089e14b8c05b1ce",
-        "size": 11076,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-nrd_iops]": {
-        "checksum": "1360870e443589b589c8f3a32155566c",
-        "size": 7828,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-nrd_throughput]": {
-        "checksum": "0f51bdc0937c900dee9e7b1cf9bce213",
-        "size": 3771,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform0-overlay_disk_max_count]": {
-        "checksum": "e98d2cf5ebcf13d8603032d816f87183",
-        "size": 2149,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-default]": {
-        "checksum": "b59108faf168b3718512e8f6f105e887",
-        "size": 7007,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-large_block_size]": {
-        "checksum": "a9d76dde005e227a98c19c8a5326f3f9",
-        "size": 3767,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-max_bandwidth]": {
-        "checksum": "296201386ddc8e8159cb052bc23d63b8",
-        "size": 5411,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-max_iops]": {
-        "checksum": "d1cea6cfbd0d8c043a619e09a5cdc5d8",
-        "size": 5399,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-mirrored_iops]": {
-        "checksum": "1360870e443589b589c8f3a32155566c",
-        "size": 7828,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-mirrored_throughput]": {
-        "checksum": "0f51bdc0937c900dee9e7b1cf9bce213",
-        "size": 3771,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-nrd]": {
-        "checksum": "6020962c6dab7dc76089e14b8c05b1ce",
-        "size": 11076,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-nrd_iops]": {
-        "checksum": "1360870e443589b589c8f3a32155566c",
-        "size": 7828,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-nrd_throughput]": {
-        "checksum": "0f51bdc0937c900dee9e7b1cf9bce213",
-        "size": 3771,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nbs-cluster_and_platform1-overlay_disk_max_count]": {
-        "checksum": "e98d2cf5ebcf13d8603032d816f87183",
-        "size": 2149,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nbs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-default]": {
-        "checksum": "bdc09540607168f771cd24352cdc235e",
-        "size": 4717,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-large_block_size]": {
-        "checksum": "984cb5adbd642496a5a4de2d7be569bf",
-        "size": 2621,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-max_bandwidth]": {
-        "checksum": "40ab37c9a34c1b6e508429f1066998f4",
-        "size": 3681,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-max_iops]": {
-        "checksum": "d52e364d81c98a4c90ef7bbfe87e473e",
-        "size": 3675,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-mirrored_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-mirrored_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-nrd]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-nrd_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-nrd_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform0-overlay_disk_max_count]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform0-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-default]": {
-        "checksum": "bdc09540607168f771cd24352cdc235e",
-        "size": 4717,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-default_/default_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-default_/default_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-large_block_size]": {
-        "checksum": "984cb5adbd642496a5a4de2d7be569bf",
-        "size": 2621,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-large_block_size_/large_block_size_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-max_bandwidth]": {
-        "checksum": "40ab37c9a34c1b6e508429f1066998f4",
-        "size": 3681,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-max_bandwidth_/max_bandwidth_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-max_iops]": {
-        "checksum": "d52e364d81c98a4c90ef7bbfe87e473e",
-        "size": 3675,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-max_iops_/max_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-max_iops_/max_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-mirrored_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-mirrored_iops_/mirrored_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-mirrored_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-mirrored_throughput_/mirrored_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-nrd]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-nrd_/nrd_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-nrd_/nrd_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-nrd_iops]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-nrd_iops_/nrd_iops_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-nrd_throughput]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-nrd_throughput_/nrd_throughput_results.txt"
     },
     "test.test_fio_performance_test_suite[True-nfs-cluster_and_platform1-overlay_disk_max_count]": {
-        "checksum": "0e4d5daac6f8fde9de09747be181c0d9",
-        "size": 486,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937424/531c3fc56d73a7678e869a0bd29ef5785c570ea9/resource.tar.gz#test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
+        "uri": "file://test.test_fio_performance_test_suite_True-nfs-cluster_and_platform1-overlay_disk_max_count_/overlay_disk_max_count_results.txt"
     }
 }

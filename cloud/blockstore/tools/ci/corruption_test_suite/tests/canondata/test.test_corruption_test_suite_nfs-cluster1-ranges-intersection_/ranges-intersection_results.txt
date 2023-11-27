@@ -1,0 +1,24 @@
+Command=ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance create --request -
+Input=
+Waiting for instance 1:1:1:1:1:1:1:1
+SFTP PUT 1:1:1:1:1:1:1:1/verify/test/path -> /usr/bin/verify-test
+SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/verify-test f=493
+Command=ycp --format json --profile fake-cluster1 compute filesystem create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-filesystem --request -
+Input=
+SFTP MKDIR 1:1:1:1:1:1:1:1 dir=/test
+SSH 1:1:1:1:1:1:1:1: mount -t virtiofs nfs /test && touch /test/test.txt
+SSH 1:1:1:1:1:1:1:1: /usr/bin/verify-test --blocksize=1048576 --iodepth=64 --offset=17408 --step=1024 --filesize=1073741824 --file /test/test.txt 2>&1
+Command=ycp --format json --profile fake-cluster1 compute instance detach-filesystem --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute filesystem delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance delete --request -
+Input=

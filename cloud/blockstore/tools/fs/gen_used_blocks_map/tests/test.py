@@ -26,7 +26,7 @@ def gen_used_blocks_map(meta):
             "-vvv"
         ], check=True, text=True, stdout=f)
 
-    return [yatest_common.canonical_file(results_path)]
+    return [yatest_common.canonical_file(results_path, local=True)]
 
 
 def test_parts():

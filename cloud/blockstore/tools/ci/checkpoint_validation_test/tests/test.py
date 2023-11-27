@@ -29,6 +29,6 @@ def test_checkpoint_validation_test(cluster):
 
         assert result == 0
 
-    ret = common.canonical_file(results_path)
+    ret = common.canonical_file(results_path, local=True)
 
     return ret

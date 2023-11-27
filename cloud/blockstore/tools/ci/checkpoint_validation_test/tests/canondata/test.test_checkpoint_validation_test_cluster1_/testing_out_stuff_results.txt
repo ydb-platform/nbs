@@ -1,0 +1,23 @@
+Command=ycp --format json --profile cluster1 compute instance list
+Input=
+Command=ycp --format json --profile cluster1 compute disk list
+Input=
+SFTP FILE 1:1:1:1:1:1:1:1//tmp/load-config.json f=r
+SFTP READ FILE 1:1:1:1:1:1:1:1Command=ycp --format json --profile cluster1 iam iam-token create-for-service-account --request -
+Input=
+STAT VOLUME REQUEST endpoint=fake:1234 disk_id=fake-disk-id
+STAT VOLUME RESPONSE: {'Volume': {'DiskId': 'fmalfamflakdmflad'}, 'Stats': {'MixedBlobsCount': 100500}, 'Checkpoints': ['tmp-checkpoint-1', 'tmp-checkpoint-2']}
+DELETE CHECKPOINT endpoint=fake:1234 disk_id=fake-disk-id checkpoint_id=tmp-checkpoint-1
+DELETE CHECKPOINT endpoint=fake:1234 disk_id=fake-disk-id checkpoint_id=tmp-checkpoint-2
+Create tmp file with name=<2.tmp>
+Write to tmp file with name=<2.tmp>
+Flush tmp file with name=<2.tmp>
+Create tmp file with name=<3.tmp>
+Write to tmp file with name=<3.tmp>
+Flush tmp file with name=<3.tmp>
+Create tmp file with name=<4.tmp>
+Write to tmp file with name=<4.tmp>
+Flush tmp file with name=<4.tmp>
+CREATE CHECKPOINT endpoint=fake:1234 disk_id=fake-disk-id checkpoint_id=tmp-checkpoint-1
+Execute subprocess.run command=<IAM_TOKEN=token validator/path 2.tmp --disk-id=fake-disk-id --checkpoint-id=tmp-checkpoint-1 --read-all --io-depth=32 --config 3.tmp --throttling-disabled --client-performance-profile 4.tmp>
+DELETE CHECKPOINT endpoint=fake:1234 disk_id=fake-disk-id checkpoint_id=tmp-checkpoint-1

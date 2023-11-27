@@ -1,0 +1,22 @@
+Command=ycp --format json --profile cluster1 vpc subnet list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile cluster1 compute placement-group list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile cluster1 compute placement-group create --request -
+Input=
+Command=ycp --format json --profile cluster1 compute image list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile cluster1 compute instance create --request -
+Input=
+Waiting for instance 1:1:1:1:1:1:1:1
+Command=ycp --format json --profile cluster1 compute disk-placement-group list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile cluster1 compute disk-placement-group create --request -
+Input=
+Command=ycp --format json --profile cluster1 compute disk create --request -
+Input=
+Command=ycp --format json --profile cluster1 compute instance attach-disk --request -
+Input=
+SFTP PUT 1:1:1:1:1:1:1:1/../eternal-load/bin/eternal-load -> /usr/bin/eternal-load
+SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/eternal-load f=493
+Execute command /usr/bin/eternal-load --config-type generated --blocksize 4096 --file /dev/vdb --filesize 1023 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1

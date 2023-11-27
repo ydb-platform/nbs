@@ -1,167 +1,101 @@
 {
     "test.test_eternal_load_test[add-auto-run-eternal-1023gb-nonrepl-cluster1]": {
-        "checksum": "c39bdfe3db5aa00067a1209c575e191f",
-        "size": 383,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_add-auto-run-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[add-auto-run-eternal-4tb-cluster1]": {
-        "checksum": "a92b5669ab131ae54cd6b5a348f67c15",
-        "size": 383,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_add-auto-run-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[add-auto-run-eternal-640gb-verify-checkpoint-cluster1]": {
-        "checksum": "a1c69753f479e590d2dfe240659bc7a2",
-        "size": 382,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_add-auto-run-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[add-auto-run-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
-        "checksum": "e8b652a7caa90a2f83334f0afde1a699",
-        "size": 339,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_add-auto-run-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[continue-load-eternal-1023gb-nonrepl-cluster1]": {
-        "checksum": "b7c8d39f99a819e7ec9aa50e03c13d75",
-        "size": 418,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_continue-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_continue-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[continue-load-eternal-4tb-cluster1]": {
-        "checksum": "b7c8d39f99a819e7ec9aa50e03c13d75",
-        "size": 418,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_continue-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_continue-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[continue-load-eternal-640gb-verify-checkpoint-cluster1]": {
-        "checksum": "b7c8d39f99a819e7ec9aa50e03c13d75",
-        "size": 418,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_continue-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_continue-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[continue-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
-        "checksum": "b7c8d39f99a819e7ec9aa50e03c13d75",
-        "size": 418,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_continue-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_continue-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[delete-test-eternal-1023gb-nonrepl-cluster1]": {
-        "checksum": "953eeb1359f85ff93c4cc848ad1ddf4d",
-        "size": 186,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_delete-test-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_delete-test-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[delete-test-eternal-4tb-cluster1]": {
-        "checksum": "953eeb1359f85ff93c4cc848ad1ddf4d",
-        "size": 186,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_delete-test-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_delete-test-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[delete-test-eternal-640gb-verify-checkpoint-cluster1]": {
-        "checksum": "953eeb1359f85ff93c4cc848ad1ddf4d",
-        "size": 186,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_delete-test-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_delete-test-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[delete-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
-        "checksum": "953eeb1359f85ff93c4cc848ad1ddf4d",
-        "size": 186,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_delete-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_delete-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[rerun-load-eternal-1023gb-nonrepl-cluster1]": {
-        "checksum": "18b2dad53fc7ceed3e5828b0a68be985",
-        "size": 404,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_rerun-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_rerun-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[rerun-load-eternal-4tb-cluster1]": {
-        "checksum": "6707496e0adc12e89af5a315233c0e8a",
-        "size": 404,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_rerun-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_rerun-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[rerun-load-eternal-640gb-verify-checkpoint-cluster1]": {
-        "checksum": "3afc5bf06203c676d9131dbd8ceac053",
-        "size": 403,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_rerun-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_rerun-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[rerun-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
-        "checksum": "406351f33f8a5d61c1049e2d9e5ed94e",
-        "size": 474,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_rerun-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_rerun-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[setup-test-eternal-1023gb-nonrepl-cluster1]": {
-        "checksum": "e577dd6ea88b78f91cdb3f70f04060fe",
-        "size": 1263,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_setup-test-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_setup-test-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[setup-test-eternal-4tb-cluster1]": {
-        "checksum": "b3d0fe0a8015934dbec708ce8577a8b5",
-        "size": 1221,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_setup-test-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_setup-test-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[setup-test-eternal-640gb-verify-checkpoint-cluster1]": {
-        "checksum": "675a5d92e36779361bf620e935db6547",
-        "size": 1220,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_setup-test-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_setup-test-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[setup-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
-        "checksum": "2054c60faacf1b7e172a2648ddb3caba",
-        "size": 1333,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_setup-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_setup-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[stop-load-eternal-1023gb-nonrepl-cluster1]": {
-        "checksum": "1658132512b740641b3f765bda86fc9a",
-        "size": 178,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_stop-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_stop-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[stop-load-eternal-4tb-cluster1]": {
-        "checksum": "1658132512b740641b3f765bda86fc9a",
-        "size": 178,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_stop-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_stop-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[stop-load-eternal-640gb-verify-checkpoint-cluster1]": {
-        "checksum": "1658132512b740641b3f765bda86fc9a",
-        "size": 178,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_stop-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_stop-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[stop-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
-        "checksum": "1658132512b740641b3f765bda86fc9a",
-        "size": 178,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_eternal_load_test_stop-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_stop-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_fail[add-auto-run-all-cluster1]": {
-        "checksum": "d41d8cd98f00b204e9800998ecf8427e",
-        "size": 0,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1925842/9e4f3d088ed47984b99474a29bda75ca81f04066/resource.tar.gz#test.test_eternal_load_test_case_all_fail_add-auto-run-all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_case_all_fail_add-auto-run-all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_fail[continue-load-all-cluster1]": {
-        "checksum": "d41d8cd98f00b204e9800998ecf8427e",
-        "size": 0,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1925842/9e4f3d088ed47984b99474a29bda75ca81f04066/resource.tar.gz#test.test_eternal_load_test_case_all_fail_continue-load-all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_case_all_fail_continue-load-all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_fail[delete-test-all-cluster1]": {
-        "checksum": "d41d8cd98f00b204e9800998ecf8427e",
-        "size": 0,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1925842/9e4f3d088ed47984b99474a29bda75ca81f04066/resource.tar.gz#test.test_eternal_load_test_case_all_fail_delete-test-all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_case_all_fail_delete-test-all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_fail[setup-test-all-cluster1]": {
-        "checksum": "d41d8cd98f00b204e9800998ecf8427e",
-        "size": 0,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1925842/9e4f3d088ed47984b99474a29bda75ca81f04066/resource.tar.gz#test.test_eternal_load_test_case_all_fail_setup-test-all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_case_all_fail_setup-test-all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_fail[stop-load-all-cluster1]": {
-        "checksum": "d41d8cd98f00b204e9800998ecf8427e",
-        "size": 0,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1925842/9e4f3d088ed47984b99474a29bda75ca81f04066/resource.tar.gz#test.test_eternal_load_test_case_all_fail_stop-load-all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_case_all_fail_stop-load-all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_ok[rerun-load-all-cluster1]": {
-        "checksum": "86ce1cadf6b781337c891f04a175197a",
-        "size": 10023,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1942525/e67fc13894c8efaa254bb9e113d3c516aa399018/resource.tar.gz#test.test_eternal_load_test_case_all_ok_rerun-load-all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_eternal_load_test_case_all_ok_rerun-load-all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_test_eternal_load_db_test[all-cluster1]": {
-        "checksum": "ac3176fd070868f057071baf3326af19",
-        "size": 1556,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/e7aed7e724873d6534817f46c2e4f154a6bf5d4e/resource.tar.gz#test.test_test_eternal_load_db_test_all-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_test_eternal_load_db_test_all-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_test_eternal_load_db_test[eternal-1023gb-nonrepl-mysql-cluster1]": {
-        "checksum": "c979d3c75db6c8ee523694fb067688e8",
-        "size": 398,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/0f7cff67c8c8ee6522a96b73c673e01ecb6771b4/resource.tar.gz#test.test_test_eternal_load_db_test_eternal-1023gb-nonrepl-mysql-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_test_eternal_load_db_test_eternal-1023gb-nonrepl-mysql-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_test_eternal_load_db_test[eternal-1tb-postgresql-cluster1]": {
-        "checksum": "c5129cc7b1eb30564848d582cce8aba8",
-        "size": 282,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1937429/e7aed7e724873d6534817f46c2e4f154a6bf5d4e/resource.tar.gz#test.test_test_eternal_load_db_test_eternal-1tb-postgresql-cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_test_eternal_load_db_test_eternal-1tb-postgresql-cluster1_/testing_out_stuff_results.txt"
     }
 }
