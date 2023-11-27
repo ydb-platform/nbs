@@ -7,13 +7,9 @@ PEERDIR(
 
     library/python/testing/recipe
     library/python/testing/yatest_common
-)
 
-IF (NOT OPENSOURCE)
-    PEERDIR(
-        contrib/python/requests     # TODO: NBS-4453
-    )
-ENDIF()
+    contrib/python/requests
+)
 
 FILES(
     start.sh

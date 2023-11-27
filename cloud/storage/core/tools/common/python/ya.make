@@ -5,10 +5,8 @@ PY_SRCS(
     daemon.py
 )
 
-IF (NOT OPENSOURCE)
-    PEERDIR(
-        contrib/python/requests     # TODO: NBS-4453
-    )
-ENDIF()
+PEERDIR(
+    contrib/python/requests
+)
 
 END()

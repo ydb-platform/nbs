@@ -3,13 +3,9 @@ PY23_LIBRARY()
 PEERDIR(
     cloud/blockstore/public/api/grpc
     cloud/blockstore/public/sdk/python/protos
-)
 
-IF (NOT OPENSOURCE)
-    PEERDIR(
-        contrib/python/requests     # TODO: NBS-4453
-    )
-ENDIF()
+    contrib/python/requests
+)
 
 PY_SRCS(
     __init__.py

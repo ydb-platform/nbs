@@ -11,16 +11,11 @@ PY_SRCS(
 
 PEERDIR(
     contrib/python/PyYAML
+    contrib/python/qemu
     contrib/python/retrying
     library/python/fs
     library/python/testing/recipe
     contrib/ydb/tests/library
 )
-
-IF (NOT OPENSOURCE)
-    PEERDIR(
-        contrib/python/qemu     # TODO: NBS-4453
-    )
-ENDIF()
 
 END()

@@ -1,10 +1,8 @@
 PY3_PROGRAM(storage-unstable-process)
 
-IF (NOT OPENSOURCE)
-    PEERDIR(
-        contrib/python/requests     # TODO: NBS-4453
-    )
-ENDIF()
+PEERDIR(
+    contrib/python/requests
+)
 
 PY_SRCS(
     __main__.py
