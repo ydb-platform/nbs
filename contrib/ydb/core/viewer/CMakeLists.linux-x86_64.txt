@@ -309,18 +309,18 @@ if (YDB_EMBEDDED_UI_DEV_SNAPSHOT)
     COMMAND       ${NPM_PATH} run build:embedded
   )
   ExternalProject_Get_property(ydb-embedded-ui-git SOURCE_DIR)
-  add_gen_resources(ydb-embedded-ui-git ${CMAKE_BINARY_DIR}/ydb/core/viewer/ydb_embedded_ui_monitoring.cpp
+  add_gen_resources(ydb-embedded-ui-git ${CMAKE_BINARY_DIR}/contrib/ydb/core/viewer/ydb_embedded_ui_monitoring.cpp
     IN_DIR  ${SOURCE_DIR}/build
     PREFIX monitoring
   )
 
 else()
-  add_dir_resources(${CMAKE_BINARY_DIR}/ydb/core/viewer/ydb_embedded_ui_monitoring.cpp
+  add_dir_resources(${CMAKE_BINARY_DIR}/contrib/ydb/core/viewer/ydb_embedded_ui_monitoring.cpp
     IN_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/monitoring
     PREFIX monitoring
   )
 endif()
 target_sources(ydb-core-viewer.global PRIVATE
-  ${CMAKE_BINARY_DIR}/ydb/core/viewer/ydb_embedded_ui_monitoring.cpp
+  ${CMAKE_BINARY_DIR}/contrib/ydb/core/viewer/ydb_embedded_ui_monitoring.cpp
 )
 
