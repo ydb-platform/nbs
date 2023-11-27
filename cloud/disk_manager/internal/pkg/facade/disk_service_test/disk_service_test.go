@@ -152,8 +152,6 @@ func successfullyMigrateDisk(
 	})
 	require.NoError(t, err)
 
-	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_FINISHED)
-
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
@@ -408,8 +406,6 @@ func successfullyMigrateEmptyDisk(
 		Signal:      disk_manager.SendMigrationSignalRequest_FINISH_MIGRATION,
 	})
 	require.NoError(t, err)
-
-	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_FINISHED)
 
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
@@ -1599,26 +1595,26 @@ func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-/*
-TODO: NBS-4747: Fix creation of mirrored disks in large tests on Disk Manager.
 func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
-	param := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
-		DiskID:    t.Name(),
-		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
-		DiskSize:  1073741824,
-		FillDisk:  false,
-	}
+	/*
+		TODO: NBS-4747: Fix creation of mirrored disks in large tests on Disk Manager.
+		param := migrationTestParams{
+			SrcZoneID: "zone",
+			DstZoneID: "other",
+			DiskID:    t.Name(),
+			DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
+			DiskSize:  1073741824,
+			FillDisk:  false,
+		}
 
-	ctx, client := setupMigrationTest(t, param)
-	defer client.Close()
+		ctx, client := setupMigrationTest(t, param)
+		defer client.Close()
 
-	successfullyMigrateDisk(t, ctx, client, param)
+		successfullyMigrateDisk(t, ctx, client, param)
 
-	testcommon.CheckConsistency(t, ctx)
+		testcommon.CheckConsistency(t, ctx)
+	*/
 }
-*/
 
 func TestDiskServiceMigrateDisk(t *testing.T) {
 	diskID := t.Name()

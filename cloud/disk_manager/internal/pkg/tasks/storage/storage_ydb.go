@@ -440,11 +440,11 @@ func (s *storageYDB) ClearEndedTasks(
 	)
 }
 
-func (s *storageYDB) FinishTask(ctx context.Context, taskID string) error {
+func (s *storageYDB) ForceFinishTask(ctx context.Context, taskID string) error {
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.finishTask(ctx, session, taskID)
+			return s.forceFinishTask(ctx, session, taskID)
 		},
 	)
 }

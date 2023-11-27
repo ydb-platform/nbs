@@ -379,7 +379,7 @@ func (s *compoundStorage) ClearEndedTasks(
 	return s.storage.ClearEndedTasks(ctx, endedBefore, limit)
 }
 
-func (s *compoundStorage) FinishTask(ctx context.Context, taskID string) error {
+func (s *compoundStorage) ForceFinishTask(ctx context.Context, taskID string) error {
 	return errors.NewNonRetriableErrorf("not implemented")
 }
 

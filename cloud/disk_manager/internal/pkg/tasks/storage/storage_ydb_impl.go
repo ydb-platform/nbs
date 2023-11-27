@@ -1776,7 +1776,7 @@ func (s *storageYDB) clearEndedTasks(
 	return nil
 }
 
-func (s *storageYDB) finishTask(
+func (s *storageYDB) forceFinishTask(
 	ctx context.Context,
 	session *persistence.Session,
 	taskID string,

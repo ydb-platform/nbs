@@ -502,13 +502,13 @@ func printTasks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type finishTask struct {
+type forceFinishTask struct {
 	clientConfig *client_config.ClientConfig
 	serverConfig *server_config.ServerConfig
 	taskID       string
 }
 
-func (c *finishTask) run() error {
+func (c *forceFinishTask) run() error {
 	ctx := newContext(c.clientConfig)
 
 	taskStorage, db, err := newTaskStorage(ctx, c.serverConfig)
@@ -517,21 +517,21 @@ func (c *finishTask) run() error {
 	}
 	defer db.Close(ctx)
 
-	return taskStorage.FinishTask(ctx, c.taskID)
+	return taskStorage.ForceFinishTask(ctx, c.taskID)
 }
 
-func newFinishTaskCmd(
+func newForceFinishTaskCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	c := &finishTask{
+	c := &forceFinishTask{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
 
 	cmd := &cobra.Command{
-		Use:   "finish",
+		Use:   "force_finish",
 		Short: "Sets task as finished successfully. Dangerous command, use it carefully",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
@@ -654,7 +654,7 @@ func newTasksCmd(
 		newGetTaskCmd(clientConfig, serverConfig),
 		newCancelTaskCmd(clientConfig, serverConfig),
 		newListCmd(clientConfig, serverConfig),
-		newFinishTaskCmd(clientConfig, serverConfig),
+		newForceFinishTaskCmd(clientConfig, serverConfig),
 		newPauseTaskCmd(clientConfig, serverConfig),
 		newResumeTaskCmd(clientConfig, serverConfig),
 	)

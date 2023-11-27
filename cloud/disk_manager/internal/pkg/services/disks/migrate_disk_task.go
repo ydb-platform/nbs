@@ -119,8 +119,6 @@ func (t *migrateDiskTask) Run(
 				return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 			}
 
-		case protos.MigrationStatus_Finished:
-			t.logInfo(ctx, execCtx, "migration is finished, exiting")
 			return nil
 		}
 	}
@@ -527,12 +525,6 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
-	t.state.Status = protos.MigrationStatus_Finished
-	err = execCtx.SaveState(ctx)
-	if err != nil {
-		return err
-	}
-
 	t.logInfo(ctx, execCtx, "migration finished")
 	return nil
 }
@@ -573,8 +565,6 @@ func (t *migrateDiskTask) getStatusForAPI(ctx context.Context) (
 		apiStatus = disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED
 	case protos.MigrationStatus_Finishing:
 		apiStatus = disk_manager.MigrateDiskMetadata_FINISHING
-	case protos.MigrationStatus_Finished:
-		apiStatus = disk_manager.MigrateDiskMetadata_FINISHED
 	case protos.MigrationStatus_Unspecified:
 		fallthrough
 	default:
@@ -596,8 +586,6 @@ func MigrationStatusToString(status protos.MigrationStatus) string {
 		return "replication_finished"
 	case protos.MigrationStatus_Finishing:
 		return "finishing"
-	case protos.MigrationStatus_Finished:
-		return "finished"
 	}
 
 	return fmt.Sprintf("unknown_%v", status)

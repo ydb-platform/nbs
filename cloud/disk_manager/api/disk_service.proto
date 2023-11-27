@@ -170,7 +170,6 @@ message MigrateDiskMetadata {
         FINISHING_REPLICATION = 2;
         REPLICATION_FINISHED = 3;
         FINISHING = 4;
-        FINISHED = 5;
     }
 
     Status status = 1;

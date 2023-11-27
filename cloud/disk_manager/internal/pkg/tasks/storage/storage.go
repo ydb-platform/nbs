@@ -364,7 +364,7 @@ type Storage interface {
 
 	// NOTE: used for SRE operations only.
 	// Forcefully finishes task by setting "finished" status.
-	FinishTask(ctx context.Context, taskID string) error
+	ForceFinishTask(ctx context.Context, taskID string) error
 
 	// NOTE: used for SRE operations only.
 	// Pauses task execution until ResumeTask is called.

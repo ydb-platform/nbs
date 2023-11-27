@@ -214,7 +214,7 @@ func (s *StorageMock) ClearEndedTasks(
 	return args.Error(0)
 }
 
-func (s *StorageMock) FinishTask(ctx context.Context, taskID string) error {
+func (s *StorageMock) ForceFinishTask(ctx context.Context, taskID string) error {
 	args := s.Called(ctx, taskID)
 	return args.Error(0)
 }

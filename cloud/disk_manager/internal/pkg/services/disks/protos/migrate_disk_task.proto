@@ -26,7 +26,6 @@ enum MigrationStatus {
     FinishingReplication = 2;
     ReplicationFinished = 3;
     Finishing = 4;
-    Finished = 5;
 }
 
 message RelocateInfo {
