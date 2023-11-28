@@ -463,7 +463,6 @@ migrations:
     - datacloud/features/cluster/tests/yt_tests
     - datacloud/ml_utils/kmeans/lib
     - devtools/codenav/pyndexer
-    - devtools/local_cache/toolscache/tests/medium
     - devtools/subbotnik
     - dict/moria/nirvana/context/find_hypot_in_query
     - dict/mt/analytics/dashboards/human_eval/sbs/vh
@@ -746,7 +745,6 @@ migrations:
     - sandbox/projects/BuildExperimentsAdminkaEnv
     - sandbox/projects/BuildImproxyBundle
     - sandbox/projects/BuildKiwiTriggers
-    - sandbox/projects/BuildLemur
     - sandbox/projects/BuildLibOpenssl
     - sandbox/projects/BuildRTLine
     - sandbox/projects/BuildSepelib
@@ -4112,7 +4110,6 @@ migrations:
     - education/infra/ci/tasklets/send_notification/impl
     - education/lib/nirvana/operations/transfer_uploader/lib
     - education/lib/tasklet
-    - education/schoolbook/lib/pydantic_factories/utils
     - education/tools/service_config/lib
     - education/yaschool/services/sections/app/handlers
     - education/yaschool/services/sections/app/utils
@@ -6503,7 +6500,6 @@ migrations:
     - noc/hbf-server/contrib/py-radix/radix
     - noc/matilda/python/matilda-netdb
     - noc/packages/mondata_server/cmd/linkator3
-    - noc/packages/mondata_server/mondata/lib
     - noc/packages/mondata_server/monitoring/zabbix/server_scripts
     - noc/rtapi
     - noc/snmpd-plug
@@ -6591,8 +6587,6 @@ migrations:
     - sandbox/projects/MultiMediaRTMRMonitor
     - sandbox/projects/OrgSocialLinks/org_events_filter
     - sandbox/projects/PublishNewsArchive
-    - sandbox/projects/TestLemureVintage
-    - sandbox/projects/TestLemureVintageCompare
     - sandbox/projects/TestRTYServerManage
     - sandbox/projects/TestRTYServerUnit
     - sandbox/projects/TestSitaUnit
