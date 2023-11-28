@@ -8,6 +8,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 message TLogbrokerConfig
 {
+    enum EProtocol
+    {
+        PROTOCOL_UNSPECIFIED = 0;
+        PROTOCOL_PQ0 = 1;
+        PROTOCOL_TOPIC_API = 2;
+    };
+    
     optional string Address = 1;
     optional uint32 Port = 2;
     optional string Database = 3;
@@ -18,4 +25,6 @@ message TLogbrokerConfig
     optional string SourceId = 7;
 
     optional string MetadataServerAddress = 8;
+
+    optional EProtocol Protocol = 9;
 }

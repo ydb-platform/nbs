@@ -6,5 +6,4 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(iface)
-add_subdirectory(topic_api_impl)
+add_subdirectory(ut_utils)

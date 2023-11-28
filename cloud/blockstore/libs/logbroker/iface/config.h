@@ -31,6 +31,8 @@ public:
 
     TString GetMetadataServerAddress() const;
 
+    NProto::TLogbrokerConfig::EProtocol GetProtocol() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

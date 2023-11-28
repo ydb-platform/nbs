@@ -17,6 +17,9 @@ namespace {
     xxx(Topic,                    TString,      ""                            )\
     xxx(SourceId,                 TString,      ""                            )\
     xxx(MetadataServerAddress,    TString,      ""                            )\
+    xxx(Protocol,                                                              \
+        NProto::TLogbrokerConfig::EProtocol,                                   \
+        NProto::TLogbrokerConfig::PROTOCOL_UNSPECIFIED                        )\
 // BLOCKSTORE_LOGBROKER_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
@@ -33,6 +36,25 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(TSource value)
 {
     return static_cast<TTarget>(std::move(value));
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::TLogbrokerConfig::EProtocol pt)
+{
+    switch (pt) {
+        case NProto::TLogbrokerConfig::PROTOCOL_UNSPECIFIED:
+            return out << "PROTOCOL_UNSPECIFIED";
+        case NProto::TLogbrokerConfig::PROTOCOL_PQ0:
+            return out << "PROTOCOL_PQ0";
+        case NProto::TLogbrokerConfig::PROTOCOL_TOPIC_API:
+            return out << "PROTOCOL_TOPIC_API";
+        default:
+            return out
+                << "(Unknown TLogbrokerConfig::EProtocol value "
+                << static_cast<int>(pt)
+                << ")";
+    }
 }
 
 }   // namespace
