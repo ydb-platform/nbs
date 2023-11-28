@@ -16,5 +16,6 @@ ServerConfig {
   }
   NodeType: "nbs"
   NbdEnabled: true
+  VhostEnabled: true
 }
 
