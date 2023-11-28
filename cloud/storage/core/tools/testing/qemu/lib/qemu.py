@@ -1,12 +1,12 @@
+import json
+import logging
 import os
 import stat
-import logging
+import subprocess
+import time
+import uuid
 import yatest.common
 import yatest.common.network
-import qemu
-import uuid
-import time
-import json
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
 from .qmp import QmpClient
@@ -54,6 +54,16 @@ def prepare_root_image(src_image, dest_path, backup):
 def create_qmp_socket():
     filepath = '/tmp/{}'.format(uuid.uuid4())
     return filepath
+
+
+def kvm_available():
+    try:
+        str = subprocess.check_output(["kvm-ok"])
+        if isinstance(str, bytes):
+            str = str.decode("utf-8")
+        return 'KVM acceleration can be used' in str
+    except Exception:
+        return False
 
 
 class QemuException(Exception):
@@ -281,7 +291,7 @@ class Qemu:
         if self.qemu_bin is not None:
             return self.qemu_bin.daemon.process.pid
 
-        if self.enable_kvm and not qemu.kvm_available():
+        if self.enable_kvm and not kvm_available():
             msg = "/dev/kvm is not available"
             logger.error(msg)
             raise QemuException(msg)

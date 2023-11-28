@@ -11,7 +11,6 @@ PY_SRCS(
 
 PEERDIR(
     contrib/python/PyYAML
-    contrib/python/qemu
     contrib/python/retrying
     library/python/fs
     library/python/testing/recipe
