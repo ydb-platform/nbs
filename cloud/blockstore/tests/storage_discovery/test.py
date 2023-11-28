@@ -167,7 +167,7 @@ def create_disk_agent_static_config(data_path, agent_id):
     devices = [create_nvme_device(i) for i in range(6)]
     devices += [create_rot_device(i) for i in range(8)]
 
-    return generate_disk_agent_txt(file_devices=devices)
+    return generate_disk_agent_txt(agent_id=agent_id, file_devices=devices)
 
 
 @pytest.fixture(name='disk_agent_dynamic_config')
@@ -257,7 +257,8 @@ def test_storage_discovery(
         disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
 
     if source == "mix":
-        disk_agent_configurator.cms["DiskAgentConfig"] = generate_disk_agent_txt()
+        disk_agent_configurator.cms["DiskAgentConfig"] = generate_disk_agent_txt(
+            agent_id=agent_id)
 
     disk_agent = start_disk_agent(disk_agent_configurator)
     disk_agent.wait_for_registration()

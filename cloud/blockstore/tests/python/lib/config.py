@@ -1,5 +1,4 @@
 import os
-import socket
 
 from contrib.ydb.tests.library.common.yatest_common import PortManager
 
@@ -273,7 +272,7 @@ def generate_dr_proxy_txt():
 
 
 def generate_disk_agent_txt(
-        agent_id=None,
+        agent_id,
         file_devices=None,
         storage_discovery_config=None):
 
@@ -282,7 +281,7 @@ def generate_disk_agent_txt(
     config.DedicatedDiskAgent = True
     config.Backend = DISK_AGENT_BACKEND_AIO
     config.DirectIoFlagDisabled = True
-    config.AgentId = socket.getfqdn() if agent_id is None else agent_id
+    config.AgentId = agent_id
     config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
