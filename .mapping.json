@@ -11,6 +11,7 @@
   "LICENSE":"cloud/blockstore/github_toplevel/LICENSE",
   "README.md":"cloud/blockstore/github_toplevel/README.md",
   "build/ext_mapping.conf.json":"cloud/blockstore/github_toplevel/build/ext_mapping.conf.json",
+  "build/internal/conf/internal.conf":"cloud/blockstore/github_toplevel/build/internal/conf/internal.conf",
   "build/mapping.conf.json":"devtools/ya/opensource/mapping.conf.json",
   "build/scripts/export_script_gen.py":"",
   "build/scripts/generate_vcs_info.py":"",
