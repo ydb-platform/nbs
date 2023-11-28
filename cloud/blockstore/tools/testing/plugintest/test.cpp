@@ -15,6 +15,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+BlockPluginHost PluginHost;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCompletion
 {
     BlockPlugin_Completion C {};
@@ -125,6 +129,8 @@ TPluginTest::TPluginTest(
     , Options(std::move(options))
     , EndpointFolder(std::move(endpointFolder))
 {
+    Y_ASSERT(PluginHost.state == nullptr);
+
     PluginHost.magic = BLOCK_PLUGIN_HOST_MAGIC;
     if (!hostMajor && !hostMinor) {
         PluginHost.version_minor = BLOCK_PLUGIN_API_VERSION_MINOR;
@@ -137,6 +143,11 @@ TPluginTest::TPluginTest(
     PluginHost.complete_request = CompleteRequest;
     PluginHost.log_message = LogMessage;
     PluginHost.instance_id = "plugin_test";
+}
+
+TPluginTest::~TPluginTest() {
+    Y_ASSERT(PluginHost.state == this);
+    PluginHost.state = nullptr;
 }
 
 void TPluginTest::Start()

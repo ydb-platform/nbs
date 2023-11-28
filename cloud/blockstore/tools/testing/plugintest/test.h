@@ -20,8 +20,6 @@ private:
     const TString Options;
     const TString EndpointFolder;
 
-    BlockPluginHost PluginHost;
-
     TDynamicLibrary PluginLib;
     BlockPlugin_GetPlugin_t GetPluginFunc = nullptr;
     BlockPlugin_PutPlugin_t PutPluginFunc = nullptr;
@@ -36,6 +34,7 @@ public:
         ui32 hostMajor,
         ui32 hostMinor,
         TString endpointFolder);
+    ~TPluginTest();
 
     void Start();
     void Stop();
