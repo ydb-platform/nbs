@@ -33,7 +33,7 @@ set_property(
   blockstore-libs-service_throttling-ut_logger
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

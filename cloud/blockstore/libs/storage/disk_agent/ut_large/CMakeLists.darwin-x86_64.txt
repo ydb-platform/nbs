@@ -40,7 +40,7 @@ set_property(
   cloud-blockstore-libs-storage-disk_agent-ut_large
   PROPERTY
   SPLIT_FACTOR
-  1
+  8
 )
 add_yunittest(
   NAME

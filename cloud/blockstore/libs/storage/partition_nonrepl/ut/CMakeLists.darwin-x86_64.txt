@@ -45,7 +45,7 @@ set_property(
   blockstore-libs-storage-partition_nonrepl-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  10
 )
 add_yunittest(
   NAME

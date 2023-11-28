@@ -36,7 +36,7 @@ set_property(
   cloud-blockstore-libs-client-ut_throttling
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

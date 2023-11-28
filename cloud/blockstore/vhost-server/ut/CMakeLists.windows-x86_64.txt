@@ -43,7 +43,7 @@ set_property(
   cloud-blockstore-vhost-server-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

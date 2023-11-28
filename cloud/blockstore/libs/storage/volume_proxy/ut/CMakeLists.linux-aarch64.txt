@@ -40,7 +40,7 @@ set_property(
   cloud-blockstore-libs-storage-volume_proxy-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

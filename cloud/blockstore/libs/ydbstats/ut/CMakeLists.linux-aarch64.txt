@@ -37,7 +37,7 @@ set_property(
   cloud-blockstore-libs-ydbstats-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

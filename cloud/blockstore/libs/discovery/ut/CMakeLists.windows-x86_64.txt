@@ -31,7 +31,7 @@ set_property(
   cloud-blockstore-libs-discovery-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

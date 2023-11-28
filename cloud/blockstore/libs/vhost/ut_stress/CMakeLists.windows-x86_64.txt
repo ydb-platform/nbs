@@ -26,7 +26,7 @@ set_property(
   cloud-blockstore-libs-vhost-ut_stress
   PROPERTY
   SPLIT_FACTOR
-  1
+  10
 )
 add_yunittest(
   NAME

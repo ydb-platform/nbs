@@ -42,7 +42,7 @@ set_property(
   cloud-blockstore-libs-storage-partition2-model-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  15
 )
 add_yunittest(
   NAME

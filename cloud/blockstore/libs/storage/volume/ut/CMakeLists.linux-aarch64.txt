@@ -42,7 +42,7 @@ set_property(
   cloud-blockstore-libs-storage-volume-ut
   PROPERTY
   SPLIT_FACTOR
-  1
+  10
 )
 add_yunittest(
   NAME
