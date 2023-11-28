@@ -17,6 +17,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
@@ -33,6 +34,7 @@ const checkStatusPeriod = 200 * time.Millisecond
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateDiskTask struct {
+	disksConfig       *disks_config.DisksConfig
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
@@ -214,19 +216,23 @@ func (t *migrateDiskTask) start(
 	}
 
 	if !t.state.IsDiskCloned {
-		relocateInfo, err := t.poolStorage.OverlayDiskRelocating(
-			ctx,
-			t.request.Disk,
-			t.request.DstZoneId,
-		)
-		if err != nil {
-			return err
-		}
+		t.state.RelocateInfo = &protos.RelocateInfo{}
 
-		t.state.RelocateInfo = &protos.RelocateInfo{
-			BaseDiskID:       relocateInfo.BaseDiskID,
-			TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
-			SlotGeneration:   relocateInfo.SlotGeneration,
+		if t.disksConfig.GetEnableOptimizationForOverlayDiskRelocation() {
+			relocateInfo, err := t.poolStorage.OverlayDiskRelocating(
+				ctx,
+				t.request.Disk,
+				t.request.DstZoneId,
+			)
+			if err != nil {
+				return err
+			}
+
+			t.state.RelocateInfo = &protos.RelocateInfo{
+				BaseDiskID:       relocateInfo.BaseDiskID,
+				TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+				SlotGeneration:   relocateInfo.SlotGeneration,
+			}
 		}
 
 		multiZoneClient, err := t.nbsFactory.GetMultiZoneClient(

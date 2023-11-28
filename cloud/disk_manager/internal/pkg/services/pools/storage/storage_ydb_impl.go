@@ -1331,6 +1331,11 @@ func (s *storageYDB) overlayDiskRelocating(
 		return RebaseInfo{}, tx.Commit(ctx)
 	}
 
+	capacity, err := s.checkPoolConfigured(ctx, tx, imageID, targetZoneID)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
+
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
 	if err != nil {
 		return RebaseInfo{}, err
@@ -1363,6 +1368,29 @@ func (s *storageYDB) overlayDiskRelocating(
 
 		logging.Info(ctx, "Overlay disk relocating for RebaseInfo %+v", rebaseInfo)
 		return rebaseInfo, nil
+	}
+
+	if capacity == 0 {
+		// Zero capacity means that this pool should be created "on demand".
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $image_id as Utf8;
+			declare $zone_id as Utf8;
+			declare $kind as Int64;
+			declare $capacity as Uint64;
+
+			upsert into configs (image_id, zone_id, kind, capacity)
+			values ($image_id, $zone_id, $kind, $capacity)
+		`, s.tablesPath),
+			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+			persistence.ValueParam("$zone_id", persistence.UTF8Value(targetZoneID)),
+			persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
+			persistence.ValueParam("$capacity", persistence.Uint64Value(1)),
+		)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
 	}
 
 	err = tx.Commit(ctx)

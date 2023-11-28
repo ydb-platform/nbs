@@ -149,6 +149,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.MigrateDisk", func() tasks.Task {
 		return &migrateDiskTask{
+			disksConfig:       config,
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			poolService:       poolService,
