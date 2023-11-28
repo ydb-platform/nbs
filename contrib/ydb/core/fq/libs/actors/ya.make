@@ -37,11 +37,13 @@ PEERDIR(
     contrib/ydb/core/fq/libs/common
     contrib/ydb/core/fq/libs/compute/common
     contrib/ydb/core/fq/libs/compute/ydb
+    contrib/ydb/core/fq/libs/config/protos
     contrib/ydb/core/fq/libs/control_plane_storage
     contrib/ydb/core/fq/libs/control_plane_storage/events
     contrib/ydb/core/fq/libs/db_id_async_resolver_impl
     contrib/ydb/core/fq/libs/db_schema
     contrib/ydb/core/fq/libs/events
+    contrib/ydb/core/fq/libs/exceptions
     contrib/ydb/core/fq/libs/grpc
     contrib/ydb/core/fq/libs/private_client
     contrib/ydb/core/fq/libs/rate_limiter/utils
