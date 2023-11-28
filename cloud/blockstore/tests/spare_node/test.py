@@ -1,109 +1,39 @@
-import json
-import os
+import pytest
 import socket
 
-from subprocess import run, PIPE
+from cloud.blockstore.public.sdk.python.client import CreateClient
 
-from os.path import join
-
-from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
-    TKikimrServiceConfig
-from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
-
-from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
-from cloud.blockstore.tests.python.lib.test_base import thread_count, \
-    wait_for_nbs_server, get_nbs_counters, get_sensor_by_name
-
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-
-import yatest.common as yatest_common
+from cloud.blockstore.tests.python.lib.config import NbsConfigurator
+from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs
 
 
-def __query_available_storage(nbs_port):
-    p = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
+@pytest.fixture(name='ydb')
+def start_ydb_cluster():
 
-    args = [
-        p, "queryavailablestorage",
-        "--host", "localhost",
-        "--port", str(nbs_port),
-        "--verbose", "error",
-        "--agent-id", socket.getfqdn()
-    ]
+    ydb_cluster = start_ydb()
 
-    r = run(args, stdout=PIPE, universal_newlines=True)
+    yield ydb_cluster
 
-    assert r.returncode == 0
-
-    return json.loads(r.stdout)
+    ydb_cluster.stop()
 
 
-def test_spare_node():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+def test_spare_node(ydb):
+    nbs_configurator = NbsConfigurator(ydb)
+    nbs_configurator.generate_default_nbs_configs()
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_path=kikimr_binary_path,
-        has_cluster_uuid=False,
-        use_in_memory_pdisks=True,
-        dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
-            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
-        ])
+    nbs_configurator.files["storage"].DisableLocalService = True
+    nbs_configurator.files["storage"].KnownSpareNodes.append(socket.getfqdn())
 
-    nbs_binary_path = yatest_common.binary_path(
-        "cloud/blockstore/apps/server/nbsd")
+    nbs = start_nbs(nbs_configurator)
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
+    client = CreateClient(f"localhost:{nbs.port}")
 
-    server_app_config = TServerAppConfig()
-    server_app_config.ServerConfig.CopyFrom(TServerConfig())
-    server_app_config.ServerConfig.ThreadsCount = thread_count()
-    server_app_config.ServerConfig.StrictContractValidation = False
-    server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    server_app_config.ServerConfig.NodeType = 'nbs_control'
+    r = client.query_available_storage(["unknown"])
 
-    certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
+    assert len(r) == 0
 
-    server_app_config.ServerConfig.RootCertsFile = join(certs_dir, 'server.crt')
-    cert = server_app_config.ServerConfig.Certs.add()
-    cert.CertFile = os.path.join(certs_dir, 'server.crt')
-    cert.CertPrivateKeyFile = os.path.join(certs_dir, 'server.key')
+    is_spare_node = nbs.counters.find(sensor='IsSpareNode')
 
-    pm = yatest_common.network.PortManager()
+    assert is_spare_node['value'] == 1
 
-    nbs_port = pm.get_port()
-    nbs_secure_port = pm.get_port()
-
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
-
-    storage = TStorageServiceConfig()
-    storage.DisableLocalService = True
-    storage.KnownSpareNodes.append(socket.getfqdn())
-
-    nbs = LocalNbs(
-        kikimr_port,
-        configurator.domains_txt,
-        server_app_config=server_app_config,
-        storage_config_patches=[storage],
-        enable_tls=True,
-        nbs_secure_port=nbs_secure_port,
-        nbs_port=nbs_port,
-        kikimr_binary_path=kikimr_binary_path,
-        nbs_binary_path=nbs_binary_path)
-
-    nbs.start()
-
-    wait_for_nbs_server(nbs.nbs_port)
-
-    r = __query_available_storage(nbs.nbs_port)
-
-    assert json.dumps(r) == "{}"
-
-    sensors = get_nbs_counters(nbs.mon_port)['sensors']
-    is_spare_node = get_sensor_by_name(sensors, 'server', 'IsSpareNode')
-
-    assert is_spare_node == 1
-
-    nbs.stop()
+    nbs.kill()
