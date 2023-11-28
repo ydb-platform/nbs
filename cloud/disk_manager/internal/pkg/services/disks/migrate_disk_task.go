@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -515,18 +516,17 @@ func (t *migrateDiskTask) finishMigration(
 		}
 	}
 
-	err = t.resourceStorage.DiskRelocated(
+	return execCtx.FinishWithCallback(
 		ctx,
-		t.request.Disk.DiskId,
-		t.request.DstZoneId,
-		t.state.FillGeneration,
+		func(ctx context.Context, tx *persistence.Transaction) error {
+			return t.resourceStorage.DiskRelocated(
+				ctx,
+				tx,
+				t.request.Disk.DiskId,
+				t.request.DstZoneId,
+			)
+		},
 	)
-	if err != nil {
-		return err
-	}
-
-	t.logInfo(ctx, execCtx, "migration finished")
-	return nil
 }
 
 func (t *migrateDiskTask) releaseBaseDisk(

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 )
 
@@ -419,12 +420,12 @@ func (s *StorageMock) DiskScanned(
 
 func (s *StorageMock) DiskRelocated(
 	ctx context.Context,
+	tx *persistence.Transaction,
 	diskID string,
 	newZoneID string,
-	fillGeneration uint64,
 ) error {
 
-	args := s.Called(ctx, diskID, newZoneID, fillGeneration)
+	args := s.Called(ctx, tx, diskID, newZoneID)
 	return args.Error(0)
 }
 

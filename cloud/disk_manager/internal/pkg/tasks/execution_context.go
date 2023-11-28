@@ -14,6 +14,28 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type ExecutionContext interface {
+	SaveState(ctx context.Context) error
+
+	GetTaskType() string
+
+	GetTaskID() string
+
+	// Dependencies are automatically added by Scheduler.WaitTask.
+	AddTaskDependency(ctx context.Context, taskID string) error
+
+	SetEstimate(estimatedDuration time.Duration)
+
+	HasEvent(ctx context.Context, event int64) bool
+
+	FinishWithCallback(
+		ctx context.Context,
+		callback func(context.Context, *persistence.Transaction) error,
+	) error
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type executionContext struct {
 	task           Task
 	storage        storage.Storage

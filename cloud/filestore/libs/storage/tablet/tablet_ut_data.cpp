@@ -22,7 +22,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     using namespace NCloud::NStorage;
 
 #define TABLET_TEST(name)                                                      \
-    void TestImpl##name(const TFileSystemConfig& tabletConfig);                \
+    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
     Y_UNIT_TEST(name)                                                          \
     {                                                                          \
         TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
@@ -31,7 +31,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {                                                                          \
         TestImpl##name(TFileSystemConfig{.BlockSize = 128_KB});                \
     }                                                                          \
-    void TestImpl##name(const TFileSystemConfig& tabletConfig)                 \
+    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
 // TABLET_TEST
 
     TABLET_TEST(ShouldStoreFreshBytes)
@@ -675,21 +675,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldUpdateCompactionMapUponCleanup)
+    TABLET_TEST(ShouldUpdateCompactionMapUponCleanup)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 16_KB, 'a');
+        tablet.WriteData(handle, 0, 4 * block, 'a');
 
         tablet.Flush();
 
@@ -701,7 +707,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedCompactionRanges(), 1);
         }
 
-        tablet.WriteData(handle, 0_KB, 16_KB, 'b');
+        tablet.WriteData(handle, 0_KB, 4 * block, 'b');
         tablet.Flush();
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
@@ -740,7 +746,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleMultipleBlobsInRangeAndUpdateCompactionMap)
+    TABLET_TEST(ShouldHandleMultipleBlobsInRangeAndUpdateCompactionMap)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -748,22 +754,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TFileSystemConfig tabletConfig = {
-            .BlockSize = 128_KB
-        };
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, tabletConfig);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 1_MB, 'a');
-        tablet.WriteData(handle, 1_MB, 1_MB, 'b');
-        tablet.WriteData(handle, 2_MB, 1_MB, 'c');
-        tablet.WriteData(handle, 3_MB, 1_MB, 'd');
-        tablet.WriteData(handle, 4_MB, 1_MB, 'e');
+        const auto sz = tabletConfig.BlockSize * 8;
 
+        tablet.WriteData(handle, 0, sz, 'a');
+        tablet.WriteData(handle, sz, sz, 'b');
+        tablet.WriteData(handle, 2 * sz, sz, 'c');
+        tablet.WriteData(handle, 3 * sz, sz, 'd');
+        tablet.WriteData(handle, 4 * sz, sz, 'e');
+
+        // needed for small block sizes
         tablet.Flush();
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
@@ -772,7 +781,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMixedBlobsCount(),
+                ceil(5. * sz / 4_MB));
             UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedCompactionRanges(), 1);
         }
 
@@ -793,24 +804,30 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldRewriteBlobsOnCompaction)
+    TABLET_TEST(ShouldRewriteBlobsOnCompaction)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
 
-        tablet.WriteData(handle, 4_KB, 4_KB, 'b');
+        tablet.WriteData(handle, block, block, 'b');
         tablet.Flush();
 
         {
@@ -831,21 +848,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB);
+            auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 4_KB, 'a'));
+            UNIT_ASSERT(CompareBuffer(buffer, block, 'a'));
         }
 
         {
-            auto response = tablet.ReadData(handle, 4_KB, 4_KB);
+            auto response = tablet.ReadData(handle, block, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 4_KB, 'b'));
+            UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
         }
 
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldHandleErasedRangeDuringCompaction)
+    TABLET_TEST(ShouldHandleErasedRangeDuringCompaction)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -853,13 +870,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
         tablet.Flush();
 
         const ui32 rangeId = GetMixedRangeIndex(id, 0);
@@ -884,8 +905,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldAddGarbageBlobsForRewrittenBlobs)
+    TABLET_TEST(ShouldAddGarbageBlobsForRewrittenBlobs)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
@@ -899,13 +922,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
         tablet.CollectGarbage();
 
@@ -920,13 +947,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 4_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), block);
         }
 
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
         tablet.CollectGarbage();
 
@@ -939,13 +966,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 8_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);
         }
 
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 3_KB, 'a');
+        tablet.WriteData(handle, 0, block * 3 / 4, 'a');
 
         tablet.DestroyHandle(handle);
         tablet.UnlinkNode(RootNodeId, "test", false);
@@ -960,7 +987,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // GarbageQueueSize remains the same since FlushBytes doesn't
             // generate any new blobs after UnlinkNode (leads to Truncate to
             // zero size)
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 8_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);
         }
 
         tablet.CollectGarbage();
@@ -972,24 +999,30 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldCollectGarbage)
+    TABLET_TEST(ShouldCollectGarbage)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
 
-        tablet.WriteData(handle, 0, 4_KB, 'b');
+        tablet.WriteData(handle, 0, block, 'b');
         tablet.Flush();
 
         {
@@ -997,7 +1030,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 2);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * 4_KB);    // new: 2, garbage: 0
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);   // new: 2, garbage: 0
         }
 
         tablet.CollectGarbage();
@@ -1020,8 +1053,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetGarbageQueueSize(),
-                2 * 4_KB + 2 * 4_KB
-            );  // new: 1 (x 8_KB), garbage: 2 (x 4_KB)
+                2 * block + 2 * block
+            );  // new: 1 (x 2 blocks), garbage: 2 (x block)
         }
 
         tablet.CollectGarbage();
@@ -1035,23 +1068,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB);
+            auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 4_KB, 'b'));
+            UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
         }
 
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldFlushAfterEmptyFlush)
+    TABLET_TEST(ShouldFlushAfterEmptyFlush)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
@@ -1060,12 +1099,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 1, 4_KB, 'a');
+        tablet.WriteData(handle, 1, block, 'a');
 
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 4_KB - 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), block - 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
         }
 
@@ -1079,41 +1118,53 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldReadEmptyFile)
+    TABLET_TEST(ShouldReadEmptyFile)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        auto buffer = ReadData(tablet, handle, 4_KB);
+        auto buffer = ReadData(tablet, handle, block);
         UNIT_ASSERT_VALUES_EQUAL(buffer.size(), 0);
 
-        buffer = ReadData(tablet, handle, 4_KB, 4_KB);
+        buffer = ReadData(tablet, handle, block, block);
         UNIT_ASSERT_VALUES_EQUAL(buffer.size(), 0);
     }
 
-    Y_UNIT_TEST(ShouldUpdateFileSizeOnWrite)
+    TABLET_TEST(ShouldUpdateFileSizeOnWrite)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(),nodeIdx, tabletId, {
-            .BlockCount = MaxFileBlocks * 2
-        });
+        tabletConfig.BlockCount = MaxFileBlocks * 2;
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
-        const auto huge = env.GetStorageConfig()->GetWriteBlobThreshold() + 4_KB;
+        const auto huge = env.GetStorageConfig()->GetWriteBlobThreshold()
+            + block;
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
@@ -1130,16 +1181,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 1_KB, 1_KB, '4');
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), huge);
 
-        tablet.WriteData(handle, (MaxFileBlocks - 1) * DefaultBlockSize, DefaultBlockSize, '5');
-        UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), MaxFileBlocks * DefaultBlockSize);
+        tablet.WriteData(
+            handle,
+            (MaxFileBlocks - 1) * block,
+            block,
+            '5');
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetNodeAttrs(tablet, id).GetSize(),
+            MaxFileBlocks * block);
 
-        tablet.AssertWriteDataFailed(handle, MaxFileBlocks * DefaultBlockSize, 1_KB, '6');
-        UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), MaxFileBlocks * DefaultBlockSize);
+        tablet.AssertWriteDataFailed(
+            handle,
+            MaxFileBlocks * block,
+            1_KB,
+            '6');
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetNodeAttrs(tablet, id).GetSize(),
+            MaxFileBlocks * block);
     }
 
-    Y_UNIT_TEST(ShouldTrackUsedBlocks)
+    TABLET_TEST(ShouldTrackUsedBlocks)
     {
         constexpr ui64 maxBlocks = 256;
+        const auto block = tabletConfig.BlockSize;
 
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -1147,48 +1211,77 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
-            .BlockCount = maxBlocks
-        });
+        tabletConfig.BlockCount = maxBlocks;
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
-        const auto huge = env.GetStorageConfig()->GetWriteBlobThreshold() + 4_KB;
+        const auto huge = env.GetStorageConfig()->GetWriteBlobThreshold()
+            + block;
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
         ui64 handle = CreateHandle(tablet, id);
 
         tablet.WriteData(handle, 0, 1, '1');
-        UNIT_ASSERT_VALUES_EQUAL(GetStorageStats(tablet).GetUsedBlocksCount(), 1u);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetStorageStats(tablet).GetUsedBlocksCount(),
+            1u);
 
         tablet.WriteData(handle, 1, 1023, '2');
-        UNIT_ASSERT_VALUES_EQUAL(GetStorageStats(tablet).GetUsedBlocksCount(), 1u);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetStorageStats(tablet).GetUsedBlocksCount(),
+            1u);
 
         tablet.WriteData(handle, 0, huge, '3');
-        UNIT_ASSERT_VALUES_EQUAL(GetStorageStats(tablet).GetUsedBlocksCount(), huge/DefaultBlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetStorageStats(tablet).GetUsedBlocksCount(),
+            huge / block);
 
-        tablet.WriteData(handle, 0, maxBlocks * DefaultBlockSize, '4');
-        UNIT_ASSERT_VALUES_EQUAL(GetStorageStats(tablet).GetUsedBlocksCount(), maxBlocks);
+        tablet.WriteData(handle, 0, maxBlocks * block, '4');
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetStorageStats(tablet).GetUsedBlocksCount(),
+            maxBlocks);
 
-        auto response = tablet.AssertWriteDataFailed(handle, maxBlocks * DefaultBlockSize, 4_KB, '5');
+        auto response = tablet.AssertWriteDataFailed(
+            handle,
+            maxBlocks * block,
+            block,
+            '5');
         auto error = response->GetError();
-        UNIT_ASSERT_VALUES_EQUAL(STATUS_FROM_CODE(error.GetCode()), (ui32)NProto::E_FS_NOSPC);
+        UNIT_ASSERT_VALUES_EQUAL(
+            STATUS_FROM_CODE(error.GetCode()),
+            static_cast<ui32>(NProto::E_FS_NOSPC));
 
         tablet.UnlinkNode(RootNodeId, "test1", false);
-        UNIT_ASSERT_VALUES_EQUAL(GetStorageStats(tablet).GetUsedBlocksCount(), maxBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetStorageStats(tablet).GetUsedBlocksCount(),
+            maxBlocks);
 
         tablet.DestroyHandle(handle);
-        UNIT_ASSERT_VALUES_EQUAL(GetStorageStats(tablet).GetUsedBlocksCount(), 0u);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetStorageStats(tablet).GetUsedBlocksCount(),
+            0u);
     }
 
-    Y_UNIT_TEST(ShouldUpSizeFiles)
+    TABLET_TEST(ShouldUpSizeFiles)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -1197,37 +1290,48 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 1_KB, 1_KB, '1');
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 2_KB);
 
-        auto buffer = ReadData(tablet, handle, 16_KB, 0);
+        auto buffer = ReadData(tablet, handle, 4 * block, 0);
         UNIT_ASSERT_VALUES_EQUAL(buffer.size(), 2_KB);
         auto expected = TString(1_KB, 0) + TString(1_KB, '1');
         UNIT_ASSERT_VALUES_EQUAL(buffer, expected);
 
-        tablet.WriteData(handle, 5_KB, 1_KB, '2');
-        UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 6_KB);
+        tablet.WriteData(handle, block + 1_KB, 1_KB, '2');
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetNodeAttrs(tablet, id).GetSize(),
+            block + 2_KB);
 
-        buffer = ReadData(tablet, handle, 4_KB, 4_KB);
+        buffer = ReadData(tablet, handle, block, block);
         UNIT_ASSERT_VALUES_EQUAL(buffer.size(), 2_KB);
         expected = TString(1_KB, 0) + TString(1_KB, '2');
         UNIT_ASSERT_VALUES_EQUAL(buffer, expected);
     }
 
-    Y_UNIT_TEST(ShouldReadFromBlobsAndBlocksAtTheSameTime)
+    TABLET_TEST(ShouldReadFromBlobsAndBlocksAtTheSameTime)
     {
-        TTestEnv env;
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
-        tablet.WriteData(handle, 4_KB, 4_KB, 'b');
+        tablet.WriteData(handle, block, block, 'b');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1238,12 +1342,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         TString expected;
-        expected.ReserveAndResize(8_KB);
-        memset(expected.begin(), 'a', 4_KB);
-        memset(expected.begin() + 4_KB, 'b', 4_KB);
+        expected.ReserveAndResize(2 * block);
+        memset(expected.begin(), 'a', block);
+        memset(expected.begin() + block, 'b', block);
 
         {
-            auto response = tablet.ReadData(handle, 0, 8_KB);
+            auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1251,12 +1355,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldAutomaticallyRunCompaction)
+    TABLET_TEST(ShouldAutomaticallyRunCompaction)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(5);
         storageConfig.SetCleanupThreshold(999'999);
-        storageConfig.SetWriteBlobThreshold(8_KB);
+        storageConfig.SetWriteBlobThreshold(2 * block);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -1264,25 +1370,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
         // blob 0
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
 
         // blob 1
-        tablet.WriteData(handle, 4_KB, 4_KB, 'b');
+        tablet.WriteData(handle, block, block, 'b');
         tablet.Flush();
 
         // blob 2
-        tablet.WriteData(handle, 0, 8_KB, 'c');
+        tablet.WriteData(handle, 0, 2 * block, 'c');
 
         // blob 3
-        tablet.WriteData(handle, 0, 8_KB, 'd');
+        tablet.WriteData(handle, 0, 2 * block, 'd');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1291,7 +1401,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         // blob 4
-        tablet.WriteData(handle, 8_KB, 8_KB, 'e');
+        tablet.WriteData(handle, 2 * block, 2 * block, 'e');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1300,26 +1410,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         {
-            auto response = tablet.ReadData(handle, 0, 8_KB);
+            auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 8_KB, 'd'));
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'd'));
         }
 
         {
-            auto response = tablet.ReadData(handle, 8_KB, 8_KB);
+            auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 8_KB, 'e'));
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'e'));
         }
 
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldAutomaticallyRunCleanup)
+    TABLET_TEST(ShouldAutomaticallyRunCleanup)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(8);
-        storageConfig.SetWriteBlobThreshold(8_KB);
+        storageConfig.SetWriteBlobThreshold(2 * block);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -1327,24 +1439,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
         // deletion 0
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
 
         // deletion 1
-        tablet.WriteData(handle, 4_KB, 4_KB, 'b');
+        tablet.WriteData(handle, block, block, 'b');
 
         // deletion 2
-        tablet.WriteData(handle, 0, 8_KB, 'c');
+        tablet.WriteData(handle, 0, 2 * block, 'c');
 
         // deletion 3
-        tablet.WriteData(handle, 0, 8_KB, 'd');
+        tablet.WriteData(handle, 0, 2 * block, 'd');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1354,7 +1470,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         // deletion 4
-        tablet.WriteData(handle, 8_KB, 8_KB, 'e');
+        tablet.WriteData(handle, 2 * block, 2 * block, 'e');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1364,27 +1480,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         {
-            auto response = tablet.ReadData(handle, 0, 8_KB);
+            auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 8_KB, 'd'));
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'd'));
         }
 
         {
-            auto response = tablet.ReadData(handle, 8_KB, 8_KB);
+            auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 8_KB, 'e'));
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'e'));
         }
 
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldAutomaticallyRunCollectGarbage)
+    TABLET_TEST(ShouldAutomaticallyRunCollectGarbage)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
-        storageConfig.SetWriteBlobThreshold(8_KB);
-        storageConfig.SetCollectGarbageThreshold(24_KB);
+        storageConfig.SetWriteBlobThreshold(2 * block);
+        storageConfig.SetCollectGarbageThreshold(6 * block);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -1399,22 +1517,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto handle = CreateHandle(tablet, id);
 
         // flushed blob
-        tablet.WriteData(handle, 0, 4_KB, 'a');
-        tablet.WriteData(handle, 4_KB, 4_KB, 'b');
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, block, block, 'b');
         tablet.Flush();
 
         // directly written blob
-        tablet.WriteData(handle, 0, 12_KB, 'c');
+        tablet.WriteData(handle, 0, 3 * block, 'c');
 
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             // 20_KB of new blobs
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 20_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 5 * block);
         }
 
         // triggering automatic garbage collection
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
 
         {
@@ -1422,18 +1540,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             const auto& stats = response->Record.GetStats();
             // last flushed blob remains since Flush acquires a collect
             // barrier
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 4_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), block);
         }
 
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyHandleConcurrentCompactionAndMergedBlobWrite)
+    TABLET_TEST(ShouldCorrectlyHandleConcurrentCompactionAndMergedBlobWrite)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
-        storageConfig.SetWriteBlobThreshold(4_KB);
+        storageConfig.SetWriteBlobThreshold(block);
 
         TTestEnv env({}, std::move(storageConfig));
 
@@ -1442,13 +1562,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1479,13 +1603,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
         tablet.SendCompactionRequest(rangeId);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(readBlob);
 
-        tablet.WriteData(handle, 0, 4_KB, 'b');
+        tablet.WriteData(handle, 0, block, 'b');
 
         // writing some other data elsewhere to increment commit id
-        tablet.WriteData(handle, 1_MB, 4_KB, 'c');
+        tablet.WriteData(handle, 1_MB, block, 'c');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1511,11 +1635,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         intercept = false;
 
         TString expected;
-        expected.ReserveAndResize(4_KB);
-        memset(expected.begin(), 'b', 4_KB);
+        expected.ReserveAndResize(block);
+        memset(expected.begin(), 'b', block);
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB);
+            auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1523,8 +1647,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldReadFromFreshAndBlobsCorrectly)
+    TABLET_TEST(ShouldReadFromFreshAndBlobsCorrectly)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
@@ -1538,7 +1664,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -1547,17 +1677,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto freshBlockCount = 2;
 
         TString expected;
-        expected.ReserveAndResize(4_KB * freshBlockCount);
+        expected.ReserveAndResize(block * freshBlockCount);
 
         for (ui32 i = 0; i < freshBlockCount; ++i) {
             for (ui32 j = 0; j < i + 1; ++j) {
-                tablet.WriteData(handle, 4_KB * i, 4_KB, 'a' + j);
-                memset(expected.begin() + 4_KB * i, 'a' + j, 4_KB);
+                tablet.WriteData(handle, block * i, block, 'a' + j);
+                memset(expected.begin() + block * i, 'a' + j, block);
             }
         }
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB * freshBlockCount);
+            auto response = tablet.ReadData(handle, 0, block * freshBlockCount);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1565,16 +1695,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Flush();
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB * freshBlockCount);
+            auto response = tablet.ReadData(handle, 0, block * freshBlockCount);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
-        tablet.WriteData(handle, 0, 4_KB, 'e');
-        memset(expected.begin(), 'e', 4_KB);
+        tablet.WriteData(handle, 0, block, 'e');
+        memset(expected.begin(), 'e', block);
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB * freshBlockCount);
+            auto response = tablet.ReadData(handle, 0, block * freshBlockCount);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1582,7 +1712,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Flush();
 
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB * freshBlockCount);
+            auto response = tablet.ReadData(handle, 0, block * freshBlockCount);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1590,14 +1720,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldNotWriteToYellowGroups)
+    TABLET_TEST(ShouldNotWriteToYellowGroups)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetFlushThreshold(1_GB);
         storageConfig.SetFlushBytesThreshold(1_GB);
-        storageConfig.SetWriteBlobThreshold(16_KB);
+        storageConfig.SetWriteBlobThreshold(4 * block);
 
         TTestEnv env({}, std::move(storageConfig));
 
@@ -1606,9 +1738,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
-            .ChannelCount = 4
-        });
+        tabletConfig.ChannelCount = 4;
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -1617,9 +1752,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // writing some data so that our Compaction/Flush/FlushBytes requests
         // don't turn into no-ops
 
-        tablet.WriteData(handle, 0, 16_KB, 'a'); // merged blob
-        tablet.WriteData(handle, 0, 4_KB, 'a');     // fresh
-        tablet.WriteData(handle, 16_KB + 100, 3_KB, 'a'); // fresh bytes
+        tablet.WriteData(handle, 0, 4 * block, 'a'); // merged blob
+        tablet.WriteData(handle, 0, block, 'a');     // fresh
+        tablet.WriteData(handle, 4 * block + 100, block * 3 / 4, 'a'); // fresh bytes
 
         ui64 reassignedTabletId = 0;
         TVector<ui32> channels;
@@ -1657,20 +1792,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // checking that the request upon which we receive yellow flag
         // actually succeeds
 
-        tablet.SendWriteDataRequest(handle, 0, 16_KB, 'b');
+        tablet.SendWriteDataRequest(handle, 0, 4 * block, 'b');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
 
         TString expected;
-        expected.ReserveAndResize(16_KB);
-        memset(expected.begin(), 'b', 16_KB);
+        expected.ReserveAndResize(4 * block);
+        memset(expected.begin(), 'b', 4 * block);
 
         // checking that we can read what we have just written
 
         {
-            auto response = tablet.ReadData(handle, 0, 16_KB);
+            auto response = tablet.ReadData(handle, 0, 4 * block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1686,7 +1821,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // checking that all requests that attempt to write data will fail
 
-        tablet.SendWriteDataRequest(handle, 0, 16_KB, 'c');
+        tablet.SendWriteDataRequest(handle, 0, 4 * block, 'c');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_FS_OUT_OF_SPACE, response->GetStatus());
@@ -1714,7 +1849,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // checking that our data can be read
 
         {
-            auto response = tablet.ReadData(handle, 0, 16_KB);
+            auto response = tablet.ReadData(handle, 0, 4 * block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1728,7 +1863,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
 
-        tablet.SendWriteDataRequest(handle, 0, 16_KB, 'c');
+        tablet.SendWriteDataRequest(handle, 0, 4 * block, 'c');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_FS_OUT_OF_SPACE, response->GetStatus());
@@ -1741,8 +1876,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldProperlyReadBlobsWithHoles)
+    TABLET_TEST(ShouldProperlyReadBlobsWithHoles)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
@@ -1756,25 +1893,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
-        tablet.WriteData(handle, 8_KB, 4_KB, 'b');
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, 2 * block, block, 'b');
 
         tablet.Flush();
 
         TString expected;
-        expected.ReserveAndResize(12_KB);
-        memset(expected.begin(), 'a', 4_KB);
-        memset(expected.begin() + 4_KB, 0, 4_KB);
-        memset(expected.begin() + 8_KB, 'b', 4_KB);
+        expected.ReserveAndResize(3 * block);
+        memset(expected.begin(), 'a', block);
+        memset(expected.begin() + block, 0, block);
+        memset(expected.begin() + 2 * block, 'b', block);
 
         {
-            auto response = tablet.ReadData(handle, 0, 12_KB);
+            auto response = tablet.ReadData(handle, 0, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1782,14 +1923,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldNotDeleteBlobsMarkedAsGarbageByUncommittedTransactions)
+    TABLET_TEST(ShouldNotDeleteBlobsMarkedAsGarbageByUncommittedTransactions)
     {
         using namespace NKikimr;
+
+        const auto block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
-        storageConfig.SetWriteBlobThreshold(4_KB);
+        storageConfig.SetWriteBlobThreshold(block);
 
         TTestEnv env({}, std::move(storageConfig));
 
@@ -1830,7 +1973,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         );
 
         // blob1
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
 
         UNIT_ASSERT_VALUES_EQUAL(1, blobIds.size());
 
@@ -1838,7 +1981,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.CollectGarbage();
 
         // blob2 (making sure that our next CollectGarbage call does something)
-        tablet.WriteData(handle, 0, 4_KB, 'b');
+        tablet.WriteData(handle, 0, block, 'b');
 
         bool evPutObserved = false;
         env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
@@ -1907,12 +2050,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         env.GetRuntime().SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
 
         TString expected;
-        expected.ReserveAndResize(4_KB);
-        memset(expected.begin(), 'b', 4_KB);
+        expected.ReserveAndResize(block);
+        memset(expected.begin(), 'b', block);
 
         // Ensuring that our index is initialized
         {
-            auto response = tablet.ReadData(handle, 0, 4_KB);
+            auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -1921,11 +2064,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Compaction(rangeId);
     }
 
-    Y_UNIT_TEST(ShouldLimitDeleteGarbageBlobsPerTx)
+    TABLET_TEST(ShouldLimitDeleteGarbageBlobsPerTx)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxDeleteGarbageBlobsPerTx(2);
-        storageConfig.SetWriteBlobThreshold(4_KB);
+        storageConfig.SetWriteBlobThreshold(block);
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCollectGarbageThreshold(1_GB);
 
@@ -1942,11 +2087,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
-        tablet.WriteData(handle, 0, 4_KB, 'a');
-        tablet.WriteData(handle, 0, 4_KB, 'a');
-        tablet.WriteData(handle, 0, 4_KB, 'a');
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
 
         tablet.CollectGarbage();
 
@@ -1958,18 +2103,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectWritesDueToBackpressure)
+    TABLET_TEST(ShouldRejectWritesDueToBackpressure)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetWriteBlobThreshold(8_KB);
+        storageConfig.SetWriteBlobThreshold(2 * block);
         storageConfig.SetFlushThreshold(1_GB);
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetFlushBytesThreshold(1_GB);
-        storageConfig.SetFlushThresholdForBackpressure(8_KB);
+        storageConfig.SetFlushThresholdForBackpressure(2 * block);
         storageConfig.SetCompactionThresholdForBackpressure(3);
         storageConfig.SetCleanupThresholdForBackpressure(10);
-        storageConfig.SetFlushBytesThresholdForBackpressure(2_KB);
+        storageConfig.SetFlushBytesThresholdForBackpressure(block / 2);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -1977,16 +2124,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
-        tablet.WriteData(handle, 0, 4_KB, '0'); // 1 fresh block, 1 marker
-        tablet.WriteData(handle, 0, 4_KB, '0'); // 2 fresh blocks, 2 markers
+        tablet.WriteData(handle, 0, block, '0'); // 1 fresh block, 1 marker
+        tablet.WriteData(handle, 0, block, '0'); // 2 fresh blocks, 2 markers
 
         // backpressure due to FlushThresholdForBackpressure
-        tablet.SendWriteDataRequest(handle, 0, 4_KB, '0');
+        tablet.SendWriteDataRequest(handle, 0, block, '0');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -1995,12 +2146,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Flush();
 
         // no backpressure after Flush
-        tablet.WriteData(handle, 0, 4_KB, '0'); // 1 blob, 1 fresh block, 3 markers
-        tablet.WriteData(handle, 0, 8_KB, '0'); // 2 blobs, 1 fresh block, 5 markers
-        tablet.WriteData(handle, 0, 8_KB, '0'); // 3 blobs, 1 fresh block, 7 markers
+        tablet.WriteData(handle, 0, block, '0'); // 1 blob, 1 fresh block, 3 markers
+        tablet.WriteData(handle, 0, 2 * block, '0'); // 2 blobs, 1 fresh block, 5 markers
+        tablet.WriteData(handle, 0, 2 * block, '0'); // 3 blobs, 1 fresh block, 7 markers
 
         // backpressure due to CompactionScoreThresholdForBackpressure
-        tablet.SendWriteDataRequest(handle, 0, 8_KB, '0');
+        tablet.SendWriteDataRequest(handle, 0, 2 * block, '0');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -2010,14 +2161,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Compaction(rangeId);
 
         // no backpressure after Compaction
-        tablet.WriteData(handle, 0, 8_KB, '0'); // 2 blobs, 1 fresh block, 9 markers
+        tablet.WriteData(handle, 0, 2 * block, '0'); // 2 blobs, 1 fresh block, 9 markers
 
-        tablet.WriteData(handle, 0, 4_KB, '0'); // 2 blobs, 2 fresh blocks, 10 markers
+        tablet.WriteData(handle, 0, block, '0'); // 2 blobs, 2 fresh blocks, 10 markers
         tablet.Flush(); // 3 blobs, 10 markers
         tablet.Compaction(rangeId); // 1 blob, 10 markers
 
         // backpressure due to CleanupScoreThresholdForBackpressure
-        tablet.SendWriteDataRequest(handle, 0, 4_KB, '0');
+        tablet.SendWriteDataRequest(handle, 0, block, '0');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -2026,11 +2177,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Cleanup(rangeId); // 1 blob
 
         // no backpressure after Cleanup
-        tablet.WriteData(handle, 0, 1_KB, '0'); // 1 blob, 1_KB fresh bytes
-        tablet.WriteData(handle, 0, 1_KB, '0'); // 1 blob, 2_KB fresh bytes
+        tablet.WriteData(handle, 0, block / 4, '0'); // 1 blob, block / 4 fresh bytes
+        tablet.WriteData(handle, 0, block / 4, '0'); // 1 blob, block / 2 fresh bytes
 
         // backpressure due to FlushBytesThresholdForBackpressure
-        tablet.SendWriteDataRequest(handle, 0, 1_KB, '0');
+        tablet.SendWriteDataRequest(handle, 0, block / 4, '0');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -2039,14 +2190,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.FlushBytes(); // 2 blobs
 
         // no backpressure after FlushBytes
-        tablet.WriteData(handle, 0, 1_KB, '0'); // 2 blobs, 1_KB fresh bytes
+        tablet.WriteData(handle, 0, block / 4, '0'); // 2 blobs, block / 4 fresh bytes
 
         TString expected;
-        expected.ReserveAndResize(8_KB);
-        memset(expected.begin(), '0', 8_KB);
+        expected.ReserveAndResize(2 * block);
+        memset(expected.begin(), '0', 2 * block);
 
         {
-            auto response = tablet.ReadData(handle, 0, 8_KB);
+            auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -2054,15 +2205,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldRecoverAfterFreshBlocksRelatedBackpressure)
+    TABLET_TEST(ShouldRecoverAfterFreshBlocksRelatedBackpressure)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(1_GB);
-        storageConfig.SetFlushThreshold(8_KB);
+        storageConfig.SetFlushThreshold(2 * block);
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetFlushBytesThreshold(1_GB);
-        storageConfig.SetFlushThresholdForBackpressure(8_KB);
+        storageConfig.SetFlushThresholdForBackpressure(2 * block);
         storageConfig.SetCompactionThresholdForBackpressure(999);
         storageConfig.SetCleanupThresholdForBackpressure(999);
         storageConfig.SetFlushBytesThresholdForBackpressure(1_GB);
@@ -2078,7 +2231,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
-        tablet.WriteData(handle, 0, 4_KB, '0'); // 1 fresh block
+        tablet.WriteData(handle, 0, block, '0'); // 1 fresh block
         tablet.WriteData(handle, 0, 1, '0'); // 1 fresh byte
 
         TAutoPtr<IEventHandle> completion;
@@ -2098,10 +2251,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.FlushBytes();
 
-        tablet.WriteData(handle, 4_KB, 4_KB, '0'); // 2 fresh blocks
+        tablet.WriteData(handle, block, block, '0'); // 2 fresh blocks
 
         // backpressure due to FlushThresholdForBackpressure
-        tablet.SendWriteDataRequest(handle, 4_KB, 4_KB, '1');
+        tablet.SendWriteDataRequest(handle, block, block, '1');
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -2123,18 +2276,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         );
 
         env.GetRuntime().Send(completion.Release(), 1 /* node index */);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(flushObserved);
 
         // no backpressure after Flush
-        tablet.WriteData(handle, 4_KB, 4_KB, '0');
+        tablet.WriteData(handle, block, block, '0');
 
         TString expected;
-        expected.ReserveAndResize(8_KB);
-        memset(expected.begin(), '0', 8_KB);
+        expected.ReserveAndResize(2 * block);
+        memset(expected.begin(), '0', 2 * block);
 
         {
-            auto response = tablet.ReadData(handle, 0, 8_KB);
+            auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
@@ -2142,8 +2295,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldReadUnAligned)
+    TABLET_TEST(ShouldReadUnAligned)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
@@ -2153,8 +2308,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        TVector<char> buffer(8_KB);
-        for (ui64 i = 0; i < 8_KB; ++i) {
+        TVector<char> buffer(2 * block);
+        for (ui64 i = 0; i < 2 * block; ++i) {
             buffer[i] = i % 10;
         }
 
@@ -2163,75 +2318,81 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 0, buffer.size(), buffer.data());
 
         {
-            // [0, 4095)
-            TStringBuf expected(buffer.data(), 4_KB - 1);
+            // [0, block - 1)
+            TStringBuf expected(buffer.data(), block - 1);
 
-            auto response = tablet.ReadData(handle, 0, 4_KB - 1);
+            auto response = tablet.ReadData(handle, 0, block - 1);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), buffer.size());
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
         {
-            // [0, 4097)
-            TStringBuf expected(buffer.data(), 4_KB + 1);
+            // [0, block + 1)
+            TStringBuf expected(buffer.data(), block + 1);
 
-            auto response = tablet.ReadData(handle, 0, 4_KB + 1);
+            auto response = tablet.ReadData(handle, 0, block + 1);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), buffer.size());
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
         {
-            // [1, 4096)
-            TStringBuf expected(buffer.data() + 1, 4_KB - 1);
+            // [1, block)
+            TStringBuf expected(buffer.data() + 1, block - 1);
 
-            auto response = tablet.ReadData(handle, 1, 4_KB - 1);
+            auto response = tablet.ReadData(handle, 1, block - 1);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), buffer.size());
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
         {
-            // [1, 4098)
-            TStringBuf expected(buffer.data() + 1, 4_KB + 1);
+            // [1, block + 2)
+            TStringBuf expected(buffer.data() + 1, block + 1);
 
-            auto response = tablet.ReadData(handle, 1, 4_KB + 1);
+            auto response = tablet.ReadData(handle, 1, block + 1);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), buffer.size());
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
         {
-            // [1, 1025)
-            TStringBuf expected(buffer.data() + 1, 1_KB);
+            // [1, block / 4 + 1)
+            TStringBuf expected(buffer.data() + 1, block / 4);
 
-            auto response = tablet.ReadData(handle, 1, 1_KB);
+            auto response = tablet.ReadData(handle, 1, block / 4);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), buffer.size());
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
         {
-            // [6KB, 8KB) trim by file end
-            TStringBuf expected(buffer.data() + 6_KB, 2_KB);
+            // [block + block / 2, block + block) trim by file end
+            TStringBuf expected(buffer.data() + block * 3 / 2, block / 2);
 
-            auto response = tablet.ReadData(handle, 6_KB, 4_KB);
+            auto response = tablet.ReadData(handle, block * 3 / 2, block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), buffer.size());
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
     }
 
-    Y_UNIT_TEST(ShouldWriteFreshBlocksForUnalignedDataAtTheEnd)
+    TABLET_TEST(ShouldWriteFreshBlocksForUnalignedDataAtTheEnd)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
@@ -2240,7 +2401,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        tablet.WriteData(handle, 0, 3_KB, 'a');
+        tablet.WriteData(handle, 0, block * 3 / 4, 'a');
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
@@ -2248,7 +2409,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
         }
 
-        tablet.WriteData(handle, 0, 7_KB, 'b');
+        tablet.WriteData(handle, 0, block * 7 / 4, 'b');
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
@@ -2256,45 +2417,57 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 3);
         }
 
-        tablet.WriteData(handle, 100, 3_KB, 'a');
+        tablet.WriteData(handle, 100, block * 3 / 4, 'a');
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 3_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), block * 3 / 4);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 3);
         }
     }
 
-    Y_UNIT_TEST(ShouldCollectTracesForWriteRequests)
+    TABLET_TEST(ShouldCollectTracesForWriteRequests)
     {
+        const auto block = tabletConfig.BlockSize;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        auto request = tablet.CreateWriteDataRequest(handle, 0, 4_KB, 'a');
-        request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+        auto request = tablet.CreateWriteDataRequest(handle, 0, block, 'a');
+        request->Record.MutableHeaders()->MutableInternal()->MutableTrace()
+            ->SetIsTraced(true);
 
         tablet.SendRequest(std::move(request));
         auto response = tablet.AssertWriteDataResponse(S_OK);
-        CheckForkJoin(response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(), false);
+        CheckForkJoin(
+            response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(),
+            false);
 
         request = tablet.CreateWriteDataRequest(handle, 0, 1_MB, 'b');
-        request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+        request->Record.MutableHeaders()->MutableInternal()->MutableTrace()
+            ->SetIsTraced(true);
 
         tablet.SendRequest(std::move(request));
         response = tablet.AssertWriteDataResponse(S_OK);
-        CheckForkJoin(response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(), true);
+        CheckForkJoin(
+            response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(),
+            true);
     }
 
-    Y_UNIT_TEST(ShouldDoForcedCompaction)
+    TABLET_TEST(ShouldDoForcedCompaction)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2302,7 +2475,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         TVector<ui32> ranges;
@@ -2327,7 +2504,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.AssertForcedCompactionFailed(TVector<ui32>{});
     }
 
-    Y_UNIT_TEST(ShouldRetryForcedCompaction)
+    TABLET_TEST(ShouldRetryForcedCompaction)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2335,7 +2512,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         TVector<ui32> ranges;
@@ -2376,7 +2557,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(ranges[2], 1);
     }
 
-    Y_UNIT_TEST(ShouldEnqueuePendingForcedCompaction)
+    TABLET_TEST(ShouldEnqueuePendingForcedCompaction)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2384,7 +2565,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         bool dropped = false;
@@ -2409,34 +2594,42 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         );
 
         tablet.SendForcedCompactionRequest(::xrange(0, 1, 1));
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(request);
 
         tablet.SendForcedCompactionRequest(::xrange(1, 2, 1));
         env.GetRuntime().Send(request.Release(), 1 /* node index */);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(ranges.size(), 2);
     }
 
-    Y_UNIT_TEST(ShouldForceCompactRangeAndRemoveStaleNodesData)
+    TABLET_TEST(ShouldForceCompactRangeAndRemoveStaleNodesData)
     {
+        const auto block = tabletConfig.BlockSize;
+        const auto dataSize = 32 * block;
+
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         bool changed = false;
         env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
+                    using TAddBlob = TEvIndexTabletPrivate::TEvAddBlobRequest;
                     case TEvIndexTabletPrivate::EvAddBlobRequest: {
                         if (!changed) {
-                            auto* msg = event->Get<TEvIndexTabletPrivate::TEvAddBlobRequest>();
+                            auto* msg = event->Get<TAddBlob>();
                             msg->WriteRanges[0].MaxOffset = 1;
                             changed = true;
                         }
@@ -2451,7 +2644,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
         ui64 handle = CreateHandle(tablet, id);
-        tablet.WriteData(handle, 0, 128_KB, 'a');
+        tablet.WriteData(handle, 0, dataSize, 'a');
 
         tablet.UnlinkNode(RootNodeId, "test", false);
         tablet.DestroyHandle(handle);
@@ -2481,7 +2674,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // Should not remove data for existing nodes
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         handle = CreateHandle(tablet, id);
-        tablet.WriteData(handle, 0, 128_KB, 'a');
+        tablet.WriteData(handle, 0, dataSize, 'a');
 
         {
             auto response = tablet.GetStorageStats();
@@ -2506,7 +2699,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    Y_UNIT_TEST(ShouldDumpCompactionRangeBlobs)
+    TABLET_TEST(ShouldDumpCompactionRangeBlobs)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2514,7 +2707,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));

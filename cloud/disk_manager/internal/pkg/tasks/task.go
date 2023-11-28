@@ -2,27 +2,9 @@ package tasks
 
 import (
 	"context"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-type ExecutionContext interface {
-	SaveState(ctx context.Context) error
-
-	GetTaskType() string
-
-	GetTaskID() string
-
-	// Dependencies are automatically added by Scheduler.WaitTask.
-	AddTaskDependency(ctx context.Context, taskID string) error
-
-	SetEstimate(estimatedDuration time.Duration)
-
-	HasEvent(ctx context.Context, event int64) bool
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 

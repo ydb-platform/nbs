@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/operation"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage/mocks"
@@ -66,6 +67,15 @@ func (c *executionContextMock) AddTaskDependency(
 ) error {
 
 	args := c.Called(ctx, taskID)
+	return args.Error(0)
+}
+
+func (c *executionContextMock) FinishWithCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, callback)
 	return args.Error(0)
 }
 

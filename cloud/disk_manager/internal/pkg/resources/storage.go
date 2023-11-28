@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
@@ -275,8 +276,8 @@ type Storage interface {
 
 	DiskRelocated(
 		ctx context.Context,
+		tx *persistence.Transaction,
 		diskID string,
 		newZoneID string,
-		fillGeneration uint64,
 	) error
 }

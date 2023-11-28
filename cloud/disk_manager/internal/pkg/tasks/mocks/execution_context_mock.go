@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 )
 
@@ -45,6 +46,15 @@ func (c *ExecutionContextMock) SetEstimate(estimatedDuration time.Duration) {
 func (c *ExecutionContextMock) HasEvent(ctx context.Context, event int64) bool {
 	args := c.Called(ctx, event)
 	return args.Bool(0)
+}
+
+func (c *ExecutionContextMock) FinishWithCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, callback)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -354,8 +354,29 @@ func TestDiskRelocated(t *testing.T) {
 	oldZoneID := "zone"
 	newZoneID := "other"
 
-	err := storage.DiskRelocated(ctx, diskID, newZoneID, 0)
+	diskRelocated := func(ctx context.Context, diskID string, zoneID string) error {
+		return db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				tx, err := session.BeginRWTransaction(ctx)
+				if err != nil {
+					return err
+				}
+				defer tx.Rollback(ctx)
+
+				err = storage.DiskRelocated(ctx, tx, diskID, zoneID)
+				if err != nil {
+					return err
+				}
+
+				return tx.Commit(ctx)
+			},
+		)
+	}
+
+	err := diskRelocated(ctx, diskID, newZoneID)
 	require.Error(t, err)
+	require.ErrorContains(t, err, "unable to find disk")
 
 	diskMeta := DiskMeta{
 		ID:     diskID,
@@ -372,20 +393,10 @@ func TestDiskRelocated(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, actual)
 
-	_, err = storage.IncrementFillGeneration(ctx, diskID)
+	err = diskRelocated(ctx, diskID, newZoneID)
 	require.NoError(t, err)
 
-	getZoneID := func() string {
-		diskMeta, err := storage.GetDiskMeta(ctx, diskID)
-		require.NoError(t, err)
-		return diskMeta.ZoneID
-	}
-
-	err = storage.DiskRelocated(ctx, diskID, newZoneID, 0)
+	actual, err = storage.GetDiskMeta(ctx, diskID)
 	require.NoError(t, err)
-	require.Equal(t, oldZoneID, getZoneID())
-
-	err = storage.DiskRelocated(ctx, diskID, newZoneID, 1)
-	require.NoError(t, err)
-	require.Equal(t, newZoneID, getZoneID())
+	require.Equal(t, newZoneID, actual.ZoneID)
 }

@@ -863,52 +863,6 @@ func (s *storageYDB) diskScanned(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) diskRelocated(
-	ctx context.Context,
-	session *persistence.Session,
-	diskID string,
-	newZoneID string,
-	fillGeneration uint64,
-) error {
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	state, err := s.getDiskState(ctx, tx, diskID)
-	if err != nil {
-		return err
-	}
-
-	if fillGeneration > state.fillGeneration {
-		return errors.NewNonRetriableErrorf(
-			"fillGeneration=%d > state.fillGeneration=%d for disk %v",
-			fillGeneration,
-			state.fillGeneration,
-			diskID,
-		)
-	}
-
-	if fillGeneration == state.fillGeneration {
-		oldZoneID := state.zoneID
-		state.zoneID = newZoneID
-
-		err = s.updateDiskState(ctx, tx, state)
-		if err != nil {
-			return err
-		}
-
-		err = s.deleteDiskFromIncremental(ctx, tx, diskID, oldZoneID)
-		if err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit(ctx)
-}
-
 func (s *storageYDB) getDiskState(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -1130,23 +1084,25 @@ func (s *storageYDB) DiskScanned(
 
 func (s *storageYDB) DiskRelocated(
 	ctx context.Context,
+	tx *persistence.Transaction,
 	diskID string,
 	newZoneID string,
-	fillGeneration uint64,
 ) error {
 
-	return s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			return s.diskRelocated(
-				ctx,
-				session,
-				diskID,
-				newZoneID,
-				fillGeneration,
-			)
-		},
-	)
+	state, err := s.getDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+
+	oldZoneID := state.zoneID
+	state.zoneID = newZoneID
+
+	err = s.updateDiskState(ctx, tx, state)
+	if err != nil {
+		return err
+	}
+
+	return s.deleteDiskFromIncremental(ctx, tx, diskID, oldZoneID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
