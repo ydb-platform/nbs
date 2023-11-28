@@ -144,7 +144,10 @@ func successfullyMigrateDisk(
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, metadata)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), metadata.Progress)
-	require.Equal(t, int64(0), metadata.SecondsRemaining)
+	// We do not check metadata.SecondsRemaining == 0 here because Compute
+	// will not check SecondsRemaining after sending REPLICATION_FINISHED signal.
+	// Moreover, SecondsRemaining might be nonzero if disk is Disk Registry based
+	// and volume tablet reboots.
 
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 		OperationId: operation.Id,
@@ -399,7 +402,6 @@ func successfullyMigrateEmptyDisk(
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, metadata)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), metadata.Progress)
-	require.Equal(t, int64(0), metadata.SecondsRemaining)
 
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 		OperationId: operation.Id,
