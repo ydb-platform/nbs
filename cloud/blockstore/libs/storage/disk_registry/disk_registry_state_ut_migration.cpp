@@ -432,9 +432,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             agentConfig4,
         };
 
+        auto monitoring = CreateMonitoringServiceStub();
+        auto diskRegistryGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
+
         TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(diskRegistryGroup)
             .WithKnownAgents(agents)
             .Build();
+
+        auto minusCounter =
+            diskRegistryGroup->GetCounter("Mirror3DisksMinus1");
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
@@ -489,6 +500,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
         });
 
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
+
         const auto affectedReplica = "disk-1/" + ToString(agentNo);
 
         // enable migrations
@@ -507,6 +521,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 NProto::EDiskState_Name(NProto::DISK_STATE_WARNING),
                 NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
         });
+
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
 
         const auto source1 = agents[agentNo].GetDevices(0).GetDeviceUUID();
         const auto source2 = agents[agentNo].GetDevices(1).GetDeviceUUID();
@@ -547,6 +564,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(target2, device.GetDeviceUUID());
         });
+
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
 
         UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToReallocate().size());
         auto notification = state.GetDisksToReallocate().find("disk-1");
@@ -682,6 +702,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT(!updated);
         });
 
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
+
         replicaId = state.FindReplicaByMigration("disk-1", source1, target1);
         UNIT_ASSERT_VALUES_EQUAL("", replicaId);
 
@@ -783,6 +806,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
         });
 
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
+
         replicaId = state.FindReplicaByMigration("disk-1", source1, target1);
         UNIT_ASSERT_VALUES_EQUAL("", replicaId);
 
@@ -852,6 +878,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_SUCCESS(error);
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.FinishedMigrations.size());
         }
+
+        state.PublishCounters(Now());
+        UNIT_ASSERT_VALUES_EQUAL(minusCounter->Val(), 0);
 
         const auto rt = GetReplicaTableRepr(state, "disk-1");
         UNIT_ASSERT_VALUES_EQUAL(replicaTableRepr, rt);

@@ -5117,6 +5117,11 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
                 disk.MasterDiskId,
                 sourceId,
                 targetId);
+            // targetId is actually fully initialized after migration
+            ReplicaTable.MarkReplacementDevice(
+                disk.MasterDiskId,
+                targetId,
+                false);
 
             Y_DEBUG_ABORT_UNLESS(replaced);
         }
