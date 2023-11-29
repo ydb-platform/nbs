@@ -33,22 +33,28 @@ func (m *ydbMetrics) StatCall(
 			"call": name,
 		})
 
+		// Should initialize all counters before using them, to avoid 'no data'.
+		hangingCounter := subRegistry.Counter("hanging")
+		errorCounter := subRegistry.Counter("errors")
+		timeoutCounter := subRegistry.Counter("timeout")
+		successCounter := subRegistry.Counter("success")
+
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(ctx, "YDB call hanging, name %v, query %v", name, query)
-			subRegistry.Counter("hanging").Inc()
+			hangingCounter.Inc()
 		}
 
 		if *err != nil {
-			subRegistry.Counter("errors").Inc()
+			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
 				logging.Error(ctx, "YDB call timed out, name %v, query %v", name, query)
-				subRegistry.Counter("timeout").Inc()
+				timeoutCounter.Inc()
 			}
 			return
 		}
 
-		subRegistry.Counter("success").Inc()
+		successCounter.Inc()
 	}
 }
 
