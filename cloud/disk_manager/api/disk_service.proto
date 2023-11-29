@@ -113,6 +113,7 @@ message CreateDiskMetadata {
 message DeleteDiskRequest {
     reserved 2;
 
+    // `disk_id.zone_id` is optional.
     DiskId disk_id = 1;
     bool sync = 3;
 }
