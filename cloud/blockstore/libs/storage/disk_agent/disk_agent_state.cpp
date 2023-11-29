@@ -24,6 +24,8 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/system/hostname.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
@@ -411,6 +413,10 @@ void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
         THashMap<TString, TStorageAdapterPtr> devices;
 
         auto endpoint = AgentConfig->GetRdmaTarget().GetEndpoint();
+
+        if (endpoint.GetHost().empty()) {
+            endpoint.SetHost(FQDNHostName());
+        }
 
         for (auto& [uuid, state]: Devices) {
             state.Config.MutableRdmaEndpoint()->CopyFrom(endpoint);
