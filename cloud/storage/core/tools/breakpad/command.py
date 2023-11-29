@@ -1,6 +1,6 @@
-import StringIO
 import errno
 import fcntl
+import io
 import logging
 import os
 import select
@@ -26,8 +26,8 @@ class Command(object):
         self.execution_time = None  # type: float or None
         self.exit_code = None  # type: int or None
         self._process = None  # type: subprocess.Popen or None
-        self._buffer_out = StringIO.StringIO()
-        self._buffer_err = StringIO.StringIO()
+        self._buffer_out = io.StringIO()
+        self._buffer_err = io.StringIO()
         self._poller = select.poll()
         self._streams = list()
         self._fd2stream = dict()
@@ -44,8 +44,6 @@ class Command(object):
             # Read can return: "IOError: [Errno 11] Resource temporarily unavailable"
             if e.errno != 11:
                 self._logger.debug("Error read stream", exc_info=True)
-        except OSError:
-            self._logger.debug("Unknown error occurred during not block read %r", exc_info=True)
         return ""
 
     def _read_stream(self, stream):
@@ -67,7 +65,7 @@ class Command(object):
     def _check_streams(self):
         try:
             fds = self._poller.poll(100)
-        except select.error, e:
+        except select.error as e:
             if e[0] == errno.EINTR:
                 return
             raise

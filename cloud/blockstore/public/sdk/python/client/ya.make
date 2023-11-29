@@ -3,9 +3,15 @@ PY23_LIBRARY()
 PEERDIR(
     cloud/blockstore/public/api/grpc
     cloud/blockstore/public/sdk/python/protos
-
-    contrib/python/requests
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/opensource.inc)
+
+IF (OPENSOURCE)
+    PEERDIR(contrib/python/requests/py3)
+ELSE()
+    PEERDIR(contrib/python/requests)
+ENDIF()
 
 PY_SRCS(
     __init__.py

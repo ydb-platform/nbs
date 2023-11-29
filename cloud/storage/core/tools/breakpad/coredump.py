@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 
-from command import Command
+from .command import Command
 
 logger = logging.getLogger(__name__)
 

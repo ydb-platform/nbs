@@ -12,7 +12,7 @@ PEERDIR(
 
     contrib/ydb/tests/library
 
-    contrib/python/requests
+    contrib/python/requests/py3
 )
 
 DEPENDS(

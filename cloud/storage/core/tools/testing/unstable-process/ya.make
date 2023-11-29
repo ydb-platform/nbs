@@ -1,7 +1,7 @@
 PY3_PROGRAM(storage-unstable-process)
 
 PEERDIR(
-    contrib/python/requests
+    contrib/python/requests/py3
 )
 
 PY_SRCS(

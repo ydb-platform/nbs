@@ -1,4 +1,4 @@
-PY2_PROGRAM(generate-agents)
+PY3_PROGRAM(generate-agents)
 
 PEERDIR(
     cloud/blockstore/libs/storage/protos

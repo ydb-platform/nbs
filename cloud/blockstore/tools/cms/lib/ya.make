@@ -14,7 +14,7 @@ PY_SRCS(
 PEERDIR(
     cloud/blockstore/config
     contrib/python/jsondiff
-    contrib/python/requests
+    contrib/python/requests/py3
     contrib/ydb/core/protos
     contrib/ydb/public/api/protos
 )

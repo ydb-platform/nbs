@@ -8,7 +8,7 @@ PEERDIR(
     library/python/testing/recipe
     library/python/testing/yatest_common
 
-    contrib/python/requests
+    contrib/python/requests/py3
 )
 
 FILES(

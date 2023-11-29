@@ -1,7 +1,7 @@
 PY3_PROGRAM(pssh-mock)
 
 PEERDIR(
-    contrib/python/requests
+    contrib/python/requests/py3
 )
 
 PY_SRCS(

@@ -1,4 +1,4 @@
-PY2_PROGRAM(blockstore-calculate-perf-settings)
+PY3_PROGRAM(blockstore-calculate-perf-settings)
 
 PY_SRCS(
     __main__.py

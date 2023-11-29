@@ -6,7 +6,7 @@ PY_SRCS(
 )
 
 PEERDIR(
-    contrib/python/requests
+    contrib/python/requests/py3
 )
 
 END()

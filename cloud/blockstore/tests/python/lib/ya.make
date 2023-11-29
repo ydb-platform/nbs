@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/public/api/protos
     contrib/ydb/tests/library
 
-    contrib/python/requests
+    contrib/python/requests/py3
     contrib/python/retrying
 )
 

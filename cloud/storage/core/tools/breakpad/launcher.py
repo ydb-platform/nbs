@@ -13,10 +13,10 @@ import signal
 import subprocess
 import sys
 
-from core_checker import CoreChecker
-from crash_info import CrashInfo, CrashInfoStorage
-from error_collector import StreamErrorCollector, FileErrorCollector
-from oom_checker import OOMChecker
+from .core_checker import CoreChecker
+from .crash_info import CrashInfo, CrashInfoStorage
+from .error_collector import StreamErrorCollector, FileErrorCollector
+from .oom_checker import OOMChecker
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,6 @@ class Executer(object):
             # Read can return: "IOError: [Errno 11] Resource temporarily unavailable"
             if e.errno != 11:
                 self._logger.debug("Error read stream %r", e)
-        except OSError as e:
-            self._logger.debug("Unknown error occured during not block read %r", e)
         return ""
 
     def tee_stream(self, stream):
@@ -182,11 +180,10 @@ class Launcher(object):
 
     def ensure_directory(self, path):
         try:
-            os.makedirs(path, 0700)
+            os.makedirs(path, 0o700)
         except OSError as e:
             if e.errno != os.errno.EEXIST:
                 raise
-        except IOError as e:
             self._logger.error("Can't create directory %s %r", path, e)
             self._logger.debug("Exception", exc_info=True)
             raise LauncherError("Error create directory")
