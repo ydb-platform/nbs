@@ -213,7 +213,7 @@ func NewClient(ctx context.Context) (sdk_client.Client, error) {
 	)
 }
 
-func CreatePrivateClient(ctx context.Context) (internal_client.PrivateClient, error) {
+func NewPrivateClient(ctx context.Context) (internal_client.PrivateClient, error) {
 	creds, err := credentials.NewClientTLSFromFile(
 		os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE"),
 		"",

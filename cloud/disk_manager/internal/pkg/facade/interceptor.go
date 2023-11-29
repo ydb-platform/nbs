@@ -139,7 +139,7 @@ func requestDurationBuckets() metrics.DurationBuckets {
 	)
 }
 
-func makeRequestStats(registry metrics.Registry) *requestStats {
+func newRequestStats(registry metrics.Registry) *requestStats {
 	return &requestStats{
 		count:     registry.Counter("count"),
 		histogram: registry.DurationHistogram("time", requestDurationBuckets()),
@@ -153,11 +153,11 @@ type requestMetrics struct {
 	requestMetrics map[string]*requestStats
 }
 
-func makeRequestMetrics(registry metrics.Registry) requestMetrics {
+func newRequestMetrics(registry metrics.Registry) requestMetrics {
 	m := make(map[string]*requestStats)
 
 	for _, request := range requests {
-		m[request.name] = makeRequestStats(registry.WithTags(map[string]string{
+		m[request.name] = newRequestStats(registry.WithTags(map[string]string{
 			"request": request.name,
 		}))
 	}
@@ -292,7 +292,7 @@ func NewInterceptor(
 
 	return (&interceptor{
 		logger:        logger,
-		metrics:       makeRequestMetrics(metricsRegistry),
+		metrics:       newRequestMetrics(metricsRegistry),
 		accessService: accessService,
 		permissions:   permissions,
 	}).intercept

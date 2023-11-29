@@ -18,7 +18,7 @@ import (
 func TestPrivateServiceScheduleBlankOperation(t *testing.T) {
 	ctx := testcommon.NewContext()
 
-	client, err := testcommon.CreatePrivateClient(ctx)
+	client, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -51,7 +51,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 		false, // pooled
 	)
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -209,7 +209,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -292,7 +292,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operations[0].Id)
 	require.NoError(t, err)
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -344,7 +344,7 @@ func TestPrivateServiceConfigurePool(t *testing.T) {
 
 	imageID := t.Name()
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -415,7 +415,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 		false, // pooled
 	)
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -520,7 +520,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 func TestPrivateServiceListResources(t *testing.T) {
 	ctx := testcommon.NewContext()
 
-	client, err := testcommon.CreatePrivateClient(ctx)
+	client, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
 

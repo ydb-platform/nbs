@@ -749,7 +749,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 		false, // pooled
 	)
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -1168,7 +1168,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
@@ -1983,7 +1983,7 @@ func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
 	require.NoError(t, err)
 	defer client.Close()
 
-	privateClient, err := testcommon.CreatePrivateClient(ctx)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)
 	defer privateClient.Close()
 
