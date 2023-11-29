@@ -6,6 +6,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/string/builder.h>
+#include <util/system/file.h>
 
 #include <sys/stat.h>
 
@@ -29,7 +30,38 @@ ui32 GetBlockSize(const std::string& path)
             << ::strerror(ec);
     }
 
+    if (!s.st_blksize) {
+        ythrow TServiceError {E_FAIL} << "zero block size: " << path;
+    }
+
     return s.st_blksize;
+}
+
+ui64 GetFileLength(const std::string& path)
+{
+    TFileHandle file(path.c_str(),
+          EOpenModeFlag::RdOnly
+        | EOpenModeFlag::OpenExisting);
+
+    if (!file.IsOpen()) {
+        const int ec = errno;
+        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
+            << "unable to open file " << path << " error: " << ::strerror(ec);
+    }
+
+    const i64 size = file.Seek(0, sEnd);
+
+    if (size == -1) {
+        const int ec = errno;
+        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
+            << "unable to retrive file size " << path;
+    }
+
+    if (!size) {
+        ythrow TServiceError {E_FAIL} << "zero file size: " << path;
+    }
+
+    return size;
 }
 
 }   // namespace
@@ -77,7 +109,7 @@ NProto::TError FindDevices(
                         << path << ": the device number can't be zero");
                 }
 
-                const ui64 size = entry.file_size();
+                const ui64 size = GetFileLength(path);
                 auto* pool = FindIfPtr(p.GetPoolConfigs(), [&] (const auto& pool) {
                     return pool.GetMinSize() <= size && size <= pool.GetMaxSize();
                 });
