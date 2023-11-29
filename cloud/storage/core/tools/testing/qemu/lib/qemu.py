@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import stat
-import subprocess
 import time
 import uuid
 import yatest.common
@@ -58,10 +57,7 @@ def create_qmp_socket():
 
 def kvm_available():
     try:
-        str = subprocess.check_output(["kvm-ok"])
-        if isinstance(str, bytes):
-            str = str.decode("utf-8")
-        return 'KVM acceleration can be used' in str
+        return os.path.exists("/dev/kvm")
     except Exception:
         return False
 
