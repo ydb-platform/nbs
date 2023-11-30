@@ -768,6 +768,16 @@ ui64 TDeviceList::GetDeviceByteCount(const TDeviceId& id) const
         : 0;
 }
 
+void TDeviceList::ForgetDevice(const TString& id)
+{
+    RemoveDeviceFromFreeList(id);
+
+    AllDevices.erase(id);
+    AllocatedDevices.erase(id);
+    DirtyDevices.erase(id);
+    SuspendedDevices.erase(id);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TVector<NProto::TDeviceConfig> FilterDevices(

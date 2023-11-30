@@ -132,6 +132,8 @@ public:
 
     ui64 GetDeviceByteCount(const TDeviceId& id) const;
 
+    void ForgetDevice(const TString& id);
+
 private:
     TVector<TDeviceRange> CollectDevices(
         const TAllocationQuery& query,

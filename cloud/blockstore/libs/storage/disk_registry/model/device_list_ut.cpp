@@ -881,6 +881,76 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         UNIT_ASSERT_VALUES_EQUAL("uuid-29", filtered[19].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("uuid-32", filtered[20].GetDeviceUUID());
     }
+
+    Y_UNIT_TEST(ShouldForgetDevice)
+    {
+        TDeviceList deviceList({}, {});
+
+        NProto::TAgentConfig foo = CreateAgentConfig("foo", 1000, "rack-1");
+
+        deviceList.UpdateDevices(foo);
+        deviceList.MarkDeviceAsDirty("foo-1");
+
+        deviceList.MarkDeviceAllocated("vol0", "foo-2");
+        deviceList.MarkDeviceAsDirty("foo-2");
+
+        deviceList.MarkDeviceAllocated("vol0", "foo-3");
+
+        deviceList.MarkDeviceAsDirty("foo-4");
+        deviceList.SuspendDevice("foo-4");
+
+        deviceList.SuspendDevice("foo-5");
+
+        UNIT_ASSERT(deviceList.IsDirtyDevice("foo-1"));
+
+        UNIT_ASSERT(deviceList.IsDirtyDevice("foo-2"));
+        UNIT_ASSERT(deviceList.IsAllocatedDevice("foo-2"));
+
+        UNIT_ASSERT(deviceList.IsAllocatedDevice("foo-3"));
+
+        UNIT_ASSERT(deviceList.IsDirtyDevice("foo-4"));
+        UNIT_ASSERT(deviceList.IsSuspendedDevice("foo-4"));
+
+        UNIT_ASSERT(deviceList.IsSuspendedDevice("foo-5"));
+
+        UNIT_ASSERT(deviceList.FindDevice("foo-6"));
+
+        deviceList.ForgetDevice("foo-1");
+
+        UNIT_ASSERT(!deviceList.IsDirtyDevice("foo-1"));
+        UNIT_ASSERT(!deviceList.FindDevice("foo-1"));
+
+        deviceList.ForgetDevice("foo-2");
+
+        UNIT_ASSERT(!deviceList.IsDirtyDevice("foo-2"));
+        UNIT_ASSERT(!deviceList.IsAllocatedDevice("foo-2"));
+        UNIT_ASSERT(!deviceList.FindDevice("foo-2"));
+
+        deviceList.ForgetDevice("foo-3");
+
+        UNIT_ASSERT(!deviceList.IsAllocatedDevice("foo-3"));
+        UNIT_ASSERT(!deviceList.FindDevice("foo-3"));
+
+        deviceList.ForgetDevice("foo-4");
+
+        UNIT_ASSERT(!deviceList.IsDirtyDevice("foo-4"));
+        UNIT_ASSERT(!deviceList.IsSuspendedDevice("foo-4"));
+        UNIT_ASSERT(!deviceList.FindDevice("foo-4"));
+
+        deviceList.ForgetDevice("foo-5");
+
+        UNIT_ASSERT(!deviceList.IsSuspendedDevice("foo-5"));
+        UNIT_ASSERT(!deviceList.FindDevice("foo-5"));
+
+        deviceList.ForgetDevice("foo-6");
+
+        UNIT_ASSERT(!deviceList.FindDevice("foo-6"));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, deviceList.AllocateDevices("vol1", {
+            .LogicalBlockSize = 4_KB,
+            .BlockCount = 10 * DefaultBlockCount * DefaultBlockSize / 4_KB
+        }).size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

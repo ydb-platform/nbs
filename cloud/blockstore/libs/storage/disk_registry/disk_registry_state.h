@@ -937,6 +937,10 @@ private:
 
     void DeleteDisk(TDiskRegistryDatabase& db, const TString& diskId);
 
+    void ForgetDevices(
+        TDiskRegistryDatabase& db,
+        const TVector<TString>& ids);
+
     void AddToBrokenDisks(
         TInstant now,
         TDiskRegistryDatabase& db,

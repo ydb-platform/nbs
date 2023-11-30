@@ -2951,6 +2951,8 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         return MakeError(E_INVALID_STATE, "Destructive configuration change");
     }
 
+    ForgetDevices(db, removedDevices);
+
     if (Counters) {
         for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
             SelfCounters.RegisterPool(pool.GetName(), Counters);
@@ -2990,6 +2992,17 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     CurrentConfig = std::move(newConfig);
 
     return {};
+}
+
+void TDiskRegistryState::ForgetDevices(
+    TDiskRegistryDatabase& db,
+    const TVector<TString>& ids)
+{
+    for (const auto& id: ids) {
+        DeviceList.ForgetDevice(id);
+        db.DeleteSuspendedDevice(id);
+        db.DeleteDirtyDevice(id);
+    }
 }
 
 void TDiskRegistryState::RemoveAgent(
