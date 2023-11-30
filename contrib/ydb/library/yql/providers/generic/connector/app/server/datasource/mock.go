@@ -1,23 +1,22 @@
-package rdbms
+package datasource
 
 import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
-	api_common "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/api/common"
 	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/paging"
 	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/utils"
 	api_service_protos "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/libgo/service/protos"
 	"github.com/ydb-platform/nbs/library/go/core/log"
 )
 
-var _ Handler = (*HandlerMock)(nil)
+var _ DataSource = (*DataSourceMock)(nil)
 
-type HandlerMock struct {
+type DataSourceMock struct {
 	mock.Mock
 }
 
-func (m *HandlerMock) DescribeTable(
+func (m *DataSourceMock) DescribeTable(
 	ctx context.Context,
 	logger log.Logger,
 	request *api_service_protos.TDescribeTableRequest,
@@ -25,7 +24,7 @@ func (m *HandlerMock) DescribeTable(
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *HandlerMock) ReadSplit(
+func (m *DataSourceMock) ReadSplit(
 	ctx context.Context,
 	logger log.Logger,
 	split *api_service_protos.TSplit,
@@ -34,27 +33,6 @@ func (m *HandlerMock) ReadSplit(
 	m.Called(split, pagingWriter)
 }
 
-func (m *HandlerMock) TypeMapper() utils.TypeMapper {
+func (m *DataSourceMock) TypeMapper() utils.TypeMapper {
 	panic("not implemented") // TODO: Implement
-}
-
-var _ HandlerFactory = (*HandlerFactoryMock)(nil)
-
-type HandlerFactoryMock struct {
-	SQLFormatter      utils.SQLFormatter
-	ConnectionManager utils.ConnectionManager
-	TypeMapper        utils.TypeMapper
-}
-
-func (m *HandlerFactoryMock) Make(logger log.Logger, dataSourceType api_common.EDataSourceKind) (Handler, error) {
-	handler := newHandler(
-		logger,
-		&handlerPreset{
-			sqlFormatter:      m.SQLFormatter,
-			connectionManager: m.ConnectionManager,
-			typeMapper:        m.TypeMapper,
-		},
-	)
-
-	return handler, nil
 }
