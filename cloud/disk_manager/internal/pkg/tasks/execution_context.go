@@ -17,6 +17,11 @@ import (
 type ExecutionContext interface {
 	SaveState(ctx context.Context) error
 
+	SaveStateWithCallback(
+		ctx context.Context,
+		callback func(context.Context, *persistence.Transaction) error,
+	) error
+
 	GetTaskType() string
 
 	GetTaskID() string
@@ -50,21 +55,29 @@ func (c *executionContext) String() string {
 }
 
 func (c *executionContext) SaveState(ctx context.Context) error {
+	return c.SaveStateWithCallback(ctx, nil /* callback */)
+}
+
+func (c *executionContext) SaveStateWithCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
 	state, err := c.task.Save()
 	if err != nil {
 		return err
 	}
 
-	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		logging.Debug(
-			ctx,
-			"saving state %v",
-			taskState.ID,
-		)
+	return c.updateStateWithCallback(
+		ctx,
+		func(taskState storage.TaskState) storage.TaskState {
+			logging.Debug(ctx, "saving state for task %v", taskState.ID)
 
-		taskState.State = state
-		return taskState
-	})
+			taskState.State = state
+			return taskState
+		},
+		callback,
+	)
 }
 
 func (c *executionContext) GetTaskType() string {
@@ -90,12 +103,7 @@ func (c *executionContext) AddTaskDependency(
 	}
 
 	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		logging.Debug(
-			ctx,
-			"add task dependency of %v on %v",
-			taskState.ID,
-			taskID,
-		)
+		logging.Debug(ctx, "add task dependency of %v on %v", taskState.ID, taskID)
 
 		taskState.State = state
 		taskState.Dependencies.Add(taskID)

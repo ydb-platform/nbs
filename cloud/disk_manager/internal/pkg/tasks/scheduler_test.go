@@ -51,13 +51,27 @@ type executionContextMock struct {
 	mock.Mock
 }
 
-func (c *executionContextMock) Checkpoint(ctx context.Context) error {
+func (c *executionContextMock) SaveState(ctx context.Context) error {
 	args := c.Called(ctx)
 	return args.Error(0)
 }
 
-func (c *executionContextMock) GetOperationID(ctx context.Context) string {
-	args := c.Called(ctx)
+func (c *executionContextMock) SaveStateWithCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, callback)
+	return args.Error(0)
+}
+
+func (c *executionContextMock) GetTaskType() string {
+	args := c.Called()
+	return args.String(0)
+}
+
+func (c *executionContextMock) GetTaskID() string {
+	args := c.Called()
 	return args.String(0)
 }
 
@@ -70,6 +84,15 @@ func (c *executionContextMock) AddTaskDependency(
 	return args.Error(0)
 }
 
+func (c *executionContextMock) SetEstimate(estimatedDuration time.Duration) {
+	c.Called(estimatedDuration)
+}
+
+func (c *executionContextMock) HasEvent(ctx context.Context, event int64) bool {
+	args := c.Called(ctx, event)
+	return args.Bool(0)
+}
+
 func (c *executionContextMock) FinishWithCallback(
 	ctx context.Context,
 	callback func(context.Context, *persistence.Transaction) error,
@@ -79,9 +102,9 @@ func (c *executionContextMock) FinishWithCallback(
 	return args.Error(0)
 }
 
-func newExecutionContextMock() *executionContextMock {
+func newExecutionContextMock() ExecutionContext {
 	execCtx := &executionContextMock{}
-	execCtx.On("GetOperationID", mock.Anything).Return("toplevel_task_id")
+	execCtx.On("GetTaskID").Return("toplevel_task_id")
 	return execCtx
 }
 
