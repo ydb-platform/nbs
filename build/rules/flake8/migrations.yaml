@@ -935,7 +935,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-13562
     - yabs/server/test/ft/BSSERVER-15417
     - yabs/server/test/ft/BSSERVER-17702
-    - yabs/server/test/ft/BSSERVER-18972
     - yabs/server/test/ft/BSSERVER-2977
     - yabs/server/test/ft/BSSERVER-3108
     - yabs/server/test/ft/BSSERVER-3143
