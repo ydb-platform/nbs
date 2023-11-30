@@ -1,5 +1,6 @@
 import requests
 import subprocess
+import socket
 import time
 
 from .config import NbsConfigurator
@@ -236,3 +237,14 @@ def start_ydb():
     __enable_custom_cms_configs(ydb)
 
     return ydb
+
+
+def get_fqdn():
+    name = socket.gethostname()
+    r = socket.getaddrinfo(name, None, flags=socket.AI_CANONNAME)
+
+    assert len(r) > 0
+
+    _, _, _, canonname, _ = r[0]
+
+    return canonname.lower()

@@ -1,7 +1,6 @@
 import hashlib
 import os
 import pytest
-import socket
 
 from copy import deepcopy
 
@@ -12,7 +11,7 @@ from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
-    start_disk_agent
+    start_disk_agent, get_fqdn
 
 import yatest.common as yatest_common
 
@@ -87,16 +86,9 @@ def start_nbs_daemon(ydb):
     daemon.kill()
 
 
-@pytest.fixture
-def agent_id():
-    name = socket.gethostname()
-    r = socket.getaddrinfo(name, None, flags=socket.AI_CANONNAME)
-
-    assert len(r) > 0
-
-    _, _, _, canonname, _ = r[0]
-
-    return canonname.lower()
+@pytest.fixture(name='agent_id')
+def get_agent_id():
+    return get_fqdn()
 
 
 @pytest.fixture(autouse=True)
