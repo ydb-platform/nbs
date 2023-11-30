@@ -84,11 +84,7 @@ func GetAccountID(ctx context.Context) string {
 	return res.(string)
 }
 
-func SetAccountID(
-	ctx context.Context,
-	accountID string,
-) context.Context {
-
+func SetAccountID(ctx context.Context, accountID string) context.Context {
 	return context.WithValue(
 		ctx,
 		accountIDKey{},

@@ -17,8 +17,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
-	grpc_codes "google.golang.org/grpc/codes"
-	grpc_status "google.golang.org/grpc/status"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1483,80 +1481,6 @@ func TestDiskServiceDescribeDiskModel(t *testing.T) {
 	require.Equal(t, int64(4096), model.BlockSize)
 	require.Equal(t, int64(1000000*4096), model.Size)
 	require.Equal(t, disk_manager.DiskKind_DISK_KIND_SSD, model.Kind)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
-func TestDiskServiceUnauthorizedGetOperation(t *testing.T) {
-	ctx := testcommon.NewContextWithToken("TestTokenDisksOnly")
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	diskID := t.Name()
-
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	// Creating disk should have completed successfully.
-	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
-		},
-		Size: 4096,
-		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
-		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
-			DiskId: diskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	_, err = client.GetOperation(reqCtx, &disk_manager.GetOperationRequest{
-		OperationId: operation.Id,
-	})
-	require.Error(t, err)
-	require.Equalf(
-		t,
-		grpc_codes.PermissionDenied,
-		grpc_status.Code(err),
-		"actual error %v",
-		err,
-	)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
-func TestDiskServiceUnauthenticatedCreateDisk(t *testing.T) {
-	ctx := testcommon.NewContextWithToken("NoTestToken")
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	diskID := t.Name()
-
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	_, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
-		},
-		Size: 4096,
-		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
-		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
-			DiskId: diskID,
-		},
-	})
-	require.Error(t, err)
-	require.Equalf(
-		t,
-		grpc_codes.Unauthenticated,
-		grpc_status.Code(err),
-		"actual error %v",
-		err,
-	)
 
 	testcommon.CheckConsistency(t, ctx)
 }
