@@ -69,12 +69,14 @@ IOutputStream& operator <<(
             return out << "DISK_AGENT_BACKEND_SPDK";
         case NProto::DISK_AGENT_BACKEND_AIO:
             return out << "DISK_AGENT_BACKEND_AIO";
-        default:
-            return out
-                << "(Unknown EDiskAgentBackendType value "
-                << static_cast<int>(pt)
-                << ")";
+        case NProto:: DISK_AGENT_BACKEND_NULL:
+            return out << "DISK_AGENT_BACKEND_NULL";
     }
+
+    return out
+        << "(Unknown EDiskAgentBackendType value "
+        << static_cast<int>(pt)
+        << ")";
 }
 
 IOutputStream& operator <<(
@@ -90,12 +92,14 @@ IOutputStream& operator <<(
             return out << "DEVICE_ERASE_METHOD_CRYPTO_ERASE";
         case NProto::DEVICE_ERASE_METHOD_NONE:
             return out << "DEVICE_ERASE_METHOD_NONE";
-        default:
-            return out
-                << "(Unknown EDeviceEraseMethod value "
-                << static_cast<int>(pt)
-                << ")";
+        case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
+            return out << "DEVICE_ERASE_METHOD_DEALLOCATE";
     }
+
+    return out
+        << "(Unknown EDeviceEraseMethod value "
+        << static_cast<int>(pt)
+        << ")";
 }
 
 }   // namespace
