@@ -266,6 +266,23 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPriv
     TVector<TDeviceRequest>* deviceRequests,
     TRequest* request);
 
+void TNonreplicatedPartitionActor::OnResponse(
+    ui32 deviceIndex,
+    TDuration responseTime)
+{
+    auto& stat = DeviceStats[deviceIndex];
+    stat.LastTimeoutTs = {};
+    stat.TimedOutStateDuration = {};
+    stat.CurrentTimeout = {};
+    stat.ExpectedClientBackoff = {};
+    auto& rt = stat.ResponseTimes;
+    rt.PushBack(responseTime);
+    for (ui32 i = rt.FirstIndex(); i < rt.TotalSize(); ++i) {
+        stat.CurrentTimeout = Max(stat.CurrentTimeout, rt[i]);
+    }
+    stat.CurrentTimeout += GetMinRequestTimeout();
+}
+
 bool TNonreplicatedPartitionActor::IOErrorCooldownPassed(const TInstant now) const
 {
     return (now - BrokenTransitionTs) > Config->GetNonReplicatedAgentMaxTimeout();

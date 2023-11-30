@@ -36,6 +36,7 @@ private:
     const TActorId Part;
     const bool AssignIdToWriteAndZeroRequestsEnabled;
 
+    TInstant StartTime;
     ui32 RequestsCompleted = 0;
 
     bool ReplyLocal;
@@ -110,6 +111,8 @@ void TDiskAgentWriteActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->LWOrbit,
         "DiskAgentWrite",
         RequestInfo->CallContext->RequestId);
+
+    StartTime = ctx.Now();
 
     WriteBlocks(ctx);
 }
@@ -191,6 +194,8 @@ void TDiskAgentWriteActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
     auto& counters = *completion->Stats.MutableUserWriteCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
+    completion->ActorSystemTime = ctx.Now() - StartTime;
+
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
         blocks += dr.BlockRange.Size();
@@ -468,7 +473,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
     RequestsInProgress.RemoveRequest(ev->Sender);
     if (!msg->Failed) {
         for (const auto i: msg->DeviceIndices) {
-            DeviceStats[i] = {};
+            OnResponse(i, msg->ActorSystemTime);
         }
     }
 

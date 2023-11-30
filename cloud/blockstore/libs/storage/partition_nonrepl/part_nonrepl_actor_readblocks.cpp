@@ -33,6 +33,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
 
+    TInstant StartTime;
     ui32 RequestsCompleted = 0;
 
     NProto::TReadBlocksResponse Response;
@@ -98,6 +99,8 @@ void TDiskAgentReadActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->LWOrbit,
         "DiskAgentRead",
         RequestInfo->CallContext->RequestId);
+
+    StartTime = ctx.Now();
 
     ReadBlocks(ctx);
 }
@@ -175,6 +178,7 @@ void TDiskAgentReadActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
     auto& counters = *completion->Stats.MutableUserReadCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
+    completion->ActorSystemTime = ctx.Now() - StartTime;
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
@@ -337,7 +341,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     RequestsInProgress.RemoveRequest(ev->Sender);
     if (!msg->Failed) {
         for (const auto i: msg->DeviceIndices) {
-            DeviceStats[i] = {};
+            OnResponse(i, msg->ActorSystemTime);
         }
     }
 

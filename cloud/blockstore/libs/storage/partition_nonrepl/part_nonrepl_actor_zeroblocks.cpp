@@ -35,6 +35,7 @@ private:
     const ui32 BlockSize;
     const bool AssignIdToWriteAndZeroRequestsEnabled;
 
+    TInstant StartTime;
     ui32 RequestsCompleted = 0;
 
     NProto::TZeroBlocksResponse Response;
@@ -108,6 +109,8 @@ void TDiskAgentZeroActor::Bootstrap(const TActorContext& ctx)
         "DiskAgentZero",
         RequestInfo->CallContext->RequestId);
 
+    StartTime = ctx.Now();
+
     ZeroBlocks(ctx);
 }
 
@@ -175,6 +178,8 @@ void TDiskAgentZeroActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
     auto& counters = *completion->Stats.MutableUserWriteCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
+    completion->ActorSystemTime = ctx.Now() - StartTime;
+
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
         blocks += dr.BlockRange.Size();
@@ -329,7 +334,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
     RequestsInProgress.RemoveRequest(ev->Sender);
     if (!msg->Failed) {
         for (const auto i: msg->DeviceIndices) {
-            DeviceStats[i] = {};
+            OnResponse(i, msg->ActorSystemTime);
         }
     }
 

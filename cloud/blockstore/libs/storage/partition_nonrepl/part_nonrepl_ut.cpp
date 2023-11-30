@@ -862,6 +862,99 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         DoTestShouldHandleTimedoutIO(NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
     }
 
+    void DoTestShouldUseResponseTimeHistoryForTimeouts(NProto::EStorageMediaKind mediaKind)
+    {
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            false,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            mediaKind);
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(1'500);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // timeout = 1s
+        {
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            runtime.AdvanceCurrentTime(env.DiskAgentState->ResponseDelay);
+            runtime.DispatchEvents();
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
+        }
+
+        // backoff = 0.5s
+        // cumulative = 1.5s
+        // timeout = 2s
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
+            runtime.AdvanceCurrentTime(env.DiskAgentState->ResponseDelay);
+            runtime.DispatchEvents();
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(2'000);
+
+        // timeout = 1s + 1.5s
+        {
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            runtime.AdvanceCurrentTime(env.DiskAgentState->ResponseDelay);
+            runtime.DispatchEvents();
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(2'500);
+
+        // timeout = 1s + 2s
+        {
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            runtime.DispatchEvents();
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(5'000);
+
+        // timeout = 1s + 2.5s
+        {
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            runtime.AdvanceCurrentTime(env.DiskAgentState->ResponseDelay);
+            runtime.DispatchEvents();
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseResponseTimeHistoryForTimeoutsSSD)
+    {
+        DoTestShouldUseResponseTimeHistoryForTimeouts(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldUseResponseTimeHistoryForTimeoutsHDD)
+    {
+        DoTestShouldUseResponseTimeHistoryForTimeouts(NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+    }
+
     Y_UNIT_TEST(ShouldNotReturnIOErrorUponTimeoutForBackgroundRequests)
     {
         TTestBasicRuntime runtime;

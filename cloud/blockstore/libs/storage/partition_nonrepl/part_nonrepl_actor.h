@@ -17,6 +17,7 @@
 #include <library/cpp/actors/core/events.h>
 #include <library/cpp/actors/core/hfunc.h>
 #include <library/cpp/actors/core/mon.h>
+#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -37,6 +38,8 @@ private:
         TDuration TimedOutStateDuration;
         TDuration CurrentTimeout;
         TDuration ExpectedClientBackoff;
+
+        TSimpleRingBuffer<TDuration> ResponseTimes{10};
     };
     TVector<TDeviceStat> DeviceStats;
     bool HasBrokenDevice = false;
@@ -95,6 +98,8 @@ private:
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
         TRequest* request);
+
+    void OnResponse(ui32 deviceIndex, TDuration responseTime);
 
     bool IOErrorCooldownPassed(const TInstant now) const;
 

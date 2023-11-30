@@ -44,6 +44,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
 
+    TInstant StartTime;
     TMap<ui64, TPartialChecksum> Checksums;
     ui32 RequestsCompleted = 0;
 
@@ -108,6 +109,8 @@ void TDiskAgentChecksumActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->LWOrbit,
         "DiskAgentChecksum",
         RequestInfo->CallContext->RequestId);
+
+    StartTime = ctx.Now();
 
     ChecksumBlocks(ctx);
 }
@@ -176,6 +179,8 @@ void TDiskAgentChecksumActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
     auto& counters = *completion->Stats.MutableSysChecksumCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
+    completion->ActorSystemTime = ctx.Now() - StartTime;
+
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
         blocks += dr.BlockRange.Size();
@@ -335,7 +340,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
     RequestsInProgress.RemoveRequest(ev->Sender);
     if (!msg->Failed) {
         for (const auto i: msg->DeviceIndices) {
-            DeviceStats[i] = {};
+            OnResponse(i, msg->ActorSystemTime);
         }
     }
 

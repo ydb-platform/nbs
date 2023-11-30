@@ -139,6 +139,7 @@ struct TEvNonreplPartitionPrivate
         ui64 ExecCycles = 0;
 
         TStackVec<int, 2> DeviceIndices;
+        TDuration ActorSystemTime;
 
         bool Failed = false;
     };

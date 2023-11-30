@@ -67,6 +67,7 @@ PEERDIR(
     cloud/storage/core/libs/common
 
     library/cpp/actors/core
+    library/cpp/containers/ring_buffer
 
     contrib/ydb/core/base
     contrib/ydb/core/testlib
