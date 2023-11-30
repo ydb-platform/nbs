@@ -272,20 +272,21 @@ SERVICE_NAME = "disk_manager"
 
 class DiskManagerServer(Daemon):
 
-    def __init__(self, config_file, working_dir, with_nemesis):
-        disk_manager_path = yatest_common.binary_path(
-            "cloud/disk_manager/cmd/disk-manager/disk-manager"
-        )
-        nemesis_path = yatest_common.binary_path(
+    def __init__(self,
+                 config_file,
+                 working_dir,
+                 disk_manager_binary_path,
+                 with_nemesis):
+        nemesis_binary_path = yatest_common.binary_path(
             "cloud/disk_manager/test/nemesis/nemesis"
         )
 
         if with_nemesis:
-            internal_command = disk_manager_path + " --config " + config_file
-            command = [nemesis_path]
+            internal_command = disk_manager_binary_path + " --config " + config_file
+            command = [nemesis_binary_path]
             command += ["--cmd", internal_command]
         else:
-            command = [disk_manager_path]
+            command = [disk_manager_binary_path]
             command += ["--config", config_file]
 
         super(DiskManagerServer, self).__init__(
@@ -305,6 +306,7 @@ class DiskManagerLauncher:
         root_certs_file,
         idx,
         is_dataplane,
+        disk_manager_binary_path,
         with_nemesis,
         nfs_port=None,
         access_service_port=None,
@@ -394,7 +396,11 @@ class DiskManagerLauncher:
                 time.sleep(1)
                 continue
 
-        self.__daemon = DiskManagerServer(config_file, working_dir, with_nemesis)
+        self.__daemon = DiskManagerServer(
+            config_file,
+            working_dir,
+            disk_manager_binary_path,
+            with_nemesis)
 
     def start(self):
         self.__daemon.start()

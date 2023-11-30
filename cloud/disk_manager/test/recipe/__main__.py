@@ -30,12 +30,15 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_CERT_FILE", cert_file)
     set_env("DISK_MANAGER_RECIPE_CERT_KEY_FILE", cert_key_file)
 
-    if 'certs' in argv:
+    if 'certs-only' in argv:
         return
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/server/filestore-server")
+    disk_manager_binary_path = yatest_common.binary_path(
+        "cloud/disk_manager/cmd/disk-manager/disk-manager"
+    )
 
     with_nemesis = 'nemesis' in argv
 
@@ -43,7 +46,7 @@ def start(argv):
     kikimr.start()
     set_env("DISK_MANAGER_RECIPE_KIKIMR_PORT", str(kikimr.port))
 
-    if 'kikimr' in argv:
+    if 'kikimr-only' in argv:
         return
 
     compute_port = 0,
@@ -94,7 +97,7 @@ def start(argv):
         nbs2 = nbs
     set_env("DISK_MANAGER_RECIPE_NBS2_PORT", str(nbs2.port))
 
-    if 'nbs' in argv:
+    if 'nbs-only' in argv:
         return
 
     nfs = NfsLauncher(
@@ -105,7 +108,7 @@ def start(argv):
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
 
-    if 'nfs' in argv:
+    if 'nfs-only' in argv:
         return
 
     metadata_service = MetadataServiceLauncher()
@@ -140,6 +143,7 @@ def start(argv):
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=False,
+            disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=with_nemesis,
             nfs_port=nfs.port,
             access_service_port=access_service.port,
@@ -161,6 +165,7 @@ def start(argv):
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=True,
+            disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=with_nemesis,
             s3_port=int(os.getenv("S3MDS_PORT")),
             s3_credentials_file=s3_credentials_file

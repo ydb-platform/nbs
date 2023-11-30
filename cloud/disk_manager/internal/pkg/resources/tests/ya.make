@@ -2,7 +2,7 @@ OWNER(g:cloud-nbs)
 
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/resources)
 
-SET_APPEND(RECIPE_ARGS kikimr)
+SET_APPEND(RECIPE_ARGS kikimr-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 IF (RACE)

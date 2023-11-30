@@ -2,7 +2,7 @@ OWNER(g:cloud-nbs)
 
 GO_TEST()
 
-SET(RECIPE_ARGS kikimr)
+SET(RECIPE_ARGS kikimr-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/recipe.inc)
