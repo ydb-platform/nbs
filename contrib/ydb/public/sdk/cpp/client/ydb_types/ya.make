@@ -2,7 +2,7 @@ LIBRARY()
 
 PEERDIR(
     contrib/libs/protobuf
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     contrib/ydb/library/yql/public/issue
 )
 

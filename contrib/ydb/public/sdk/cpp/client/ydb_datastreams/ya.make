@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/string_utils/url
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/lib/operation_id

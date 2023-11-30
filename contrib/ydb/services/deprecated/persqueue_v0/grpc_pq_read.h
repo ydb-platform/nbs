@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/client/server/grpc_base.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 
-#include <library/cpp/grpc/server/grpc_request.h>
+#include <contrib/ydb/library/grpc/server/grpc_request.h>
 #include <library/cpp/actors/core/actorsystem.h>
 
 #include <util/generic/hash.h>

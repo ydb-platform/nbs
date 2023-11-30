@@ -29,7 +29,7 @@ PEERDIR(
     contrib/ydb/library/ycloud/api
     library/cpp/actors/core
     library/cpp/digest/crc32c
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/json
     contrib/ydb/core/base
     contrib/ydb/library/services

@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/grpc/server
+    contrib/ydb/library/grpc/server
     library/cpp/digest/md5
     contrib/ydb/core/grpc_services
     contrib/ydb/core/grpc_services/base

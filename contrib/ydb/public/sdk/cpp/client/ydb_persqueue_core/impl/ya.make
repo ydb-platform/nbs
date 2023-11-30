@@ -13,7 +13,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/containers/disjoint_interval_tree
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/metrics
     library/cpp/string_utils/url

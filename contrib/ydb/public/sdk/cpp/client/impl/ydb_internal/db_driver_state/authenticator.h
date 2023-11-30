@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
 
-#include <library/cpp/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
 
 namespace NYdb {
 

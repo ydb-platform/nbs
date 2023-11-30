@@ -8,7 +8,7 @@ PEERDIR(
     contrib/ydb/core/grpc_services
     contrib/ydb/public/api/grpc
     library/cpp/actors/core
-    library/cpp/grpc/server
+    contrib/ydb/library/grpc/server
 )
 
 END()

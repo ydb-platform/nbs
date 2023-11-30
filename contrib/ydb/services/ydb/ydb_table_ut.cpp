@@ -16,7 +16,7 @@
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
 
-#include <library/cpp/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
 
 #include <util/thread/factory.h>
 

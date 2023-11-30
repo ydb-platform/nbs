@@ -8,7 +8,7 @@ SRCS(
 PEERDIR(
     contrib/libs/protobuf
     library/cpp/actors/core
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/threading/future
     contrib/ydb/core/base
     contrib/ydb/core/client/minikql_compile

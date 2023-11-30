@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     contrib/ydb/library/yql/public/issue
 )
 

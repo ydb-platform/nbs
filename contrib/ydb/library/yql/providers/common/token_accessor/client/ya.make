@@ -8,7 +8,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/threading/atomic
     library/cpp/threading/future
     contrib/ydb/library/yql/providers/common/structured_token

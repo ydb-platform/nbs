@@ -36,7 +36,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/deprecated/enum_codegen
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/protobuf/json
     library/cpp/yson
     contrib/ydb/core/actorlib_impl

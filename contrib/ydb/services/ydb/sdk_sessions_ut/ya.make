@@ -17,7 +17,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     contrib/ydb/core/testlib/default
     contrib/ydb/core/testlib
     contrib/ydb/public/sdk/cpp/client/ydb_table

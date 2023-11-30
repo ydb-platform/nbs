@@ -11,7 +11,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    library/cpp/grpc/client
+    contrib/ydb/library/grpc/client
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/fq/libs/control_plane_storage

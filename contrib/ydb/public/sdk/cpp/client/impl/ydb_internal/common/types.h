@@ -9,14 +9,14 @@
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 
-#include <library/cpp/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
 
 
 namespace NYdb {
 
 // Other callbacks
 using TSimpleCb = std::function<void()>;
-using TErrorCb = std::function<void(NGrpc::TGrpcStatus&)>;
+using TErrorCb = std::function<void(NYdbGrpc::TGrpcStatus&)>;
 
 struct TBalancingSettings {
     EBalancingPolicy Policy;
