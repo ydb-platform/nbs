@@ -1,7 +1,7 @@
-PY3_LIBRARY()
+PY2_LIBRARY()
 
 PEERDIR(
-    contrib/python/requests/py3
+    contrib/python/requests
     library/python/retry
 )
 

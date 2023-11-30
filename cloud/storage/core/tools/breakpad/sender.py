@@ -8,8 +8,8 @@ from email.mime.text import MIMEText
 import requests
 from library.python.retry import retry
 
-from .conductor import Conductor
-from .coredump_formatter import CoredumpFormatter
+from conductor import Conductor
+from coredump_formatter import CoredumpFormatter
 
 logger = logging.getLogger(__name__)
 

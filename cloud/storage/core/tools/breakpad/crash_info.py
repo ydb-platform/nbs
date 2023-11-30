@@ -55,10 +55,11 @@ class CrashInfoStorage(object):
 
     def _ensure_queuedir(self):
         try:
-            os.makedirs(self._queue_dir, 0o700)
+            os.makedirs(self._queue_dir, 0700)
         except OSError as e:
             if e.errno != os.errno.EEXIST:
                 raise
+        except IOError as e:
             self._logger.error("Can't create directory %s %r", self._queue_dir, e)
             self._logger.debug("Exception", exc_info=True)
             raise CrashInfoStorageError("Error create queue directory")

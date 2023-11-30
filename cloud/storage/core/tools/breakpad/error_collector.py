@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 
-import io
+import StringIO
 import os
 
 
@@ -34,7 +34,7 @@ class StreamErrorCollector(ErrorCollector):
 
     def __init__(self):
         super(StreamErrorCollector, self).__init__()
-        self.buf = io.StringIO()
+        self.buf = StringIO.StringIO()
 
     def write(self, data):
         self.buf.write(data)
