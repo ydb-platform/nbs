@@ -1179,17 +1179,20 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvDiskRegistryPrivate::EvGetDependentDisksRequest: {
-                        auto* msg = event->Get<TEvDiskRegistryPrivate::TEvGetDependentDisksRequest>();
+                    case TEvDiskRegistry::EvGetDependentDisksRequest: {
+                        auto* msg = event->Get<TEvDiskRegistry::TEvGetDependentDisksRequest>();
 
-                        UNIT_ASSERT_VALUES_EQUAL("localhost", msg->Host);
+                        UNIT_ASSERT_VALUES_EQUAL("localhost", msg->Record.GetHost());
 
                         requestReceived = true;
                         break;
                     }
-                    case TEvDiskRegistryPrivate::EvGetDependentDisksResponse: {
-                        auto* msg = event->Get<TEvDiskRegistryPrivate::TEvGetDependentDisksResponse>();
-                        msg->DependentDiskIds = returnedDiskIds;
+                    case TEvDiskRegistry::EvGetDependentDisksResponse: {
+                        auto* msg = event->Get<TEvDiskRegistry::TEvGetDependentDisksResponse>();
+                        msg->Record.ClearDependentDiskIds();
+                        for (const auto& id : returnedDiskIds) {
+                            msg->Record.AddDependentDiskIds(id);
+                        }
                         break;
                     }
                 }

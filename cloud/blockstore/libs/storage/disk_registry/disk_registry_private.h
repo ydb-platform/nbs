@@ -157,7 +157,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(ReplaceDiskDevice,                          __VA_ARGS__)               \
     xxx(UpdateCmsHostDeviceState,                   __VA_ARGS__)               \
     xxx(UpdateCmsHostState,                         __VA_ARGS__)               \
-    xxx(GetDependentDisks,                          __VA_ARGS__)               \
     xxx(PublishDiskStates,                          __VA_ARGS__)               \
     xxx(StartMigration,                             __VA_ARGS__)               \
     xxx(NotifyUsers,                                __VA_ARGS__)               \
@@ -529,23 +528,6 @@ struct TEvDiskRegistryPrivate
     };
 
     //
-    // GetDependentDisks
-    //
-
-    struct TGetDependentDisksRequest
-    {
-        TString Host;
-        TString Path;
-
-        TGetDependentDisksRequest(
-                TString host,
-                TString path)
-            : Host(std::move(host))
-            , Path(std::move(path))
-        {}
-    };
-
-    //
     // CmsActionResponses
     //
 
@@ -557,7 +539,6 @@ struct TEvDiskRegistryPrivate
 
     using TUpdateCmsHostDeviceStateResponse = TCmsActionResponse;
     using TUpdateCmsHostStateResponse = TCmsActionResponse;
-    using TGetDependentDisksResponse = TCmsActionResponse;
 
     //
     // StartMigration

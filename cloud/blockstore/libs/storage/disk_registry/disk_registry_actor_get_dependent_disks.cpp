@@ -8,7 +8,7 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleGetDependentDisks(
-    const TEvDiskRegistryPrivate::TEvGetDependentDisksRequest::TPtr& ev,
+    const TEvDiskRegistry::TEvGetDependentDisksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(GetDependentDisks);
@@ -23,18 +23,21 @@ void TDiskRegistryActor::HandleGetDependentDisks(
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received GetDependentDisks request: Host=%s, Path=%s",
         TabletID(),
-        msg->Host.c_str(),
-        msg->Path.c_str());
+        msg->Record.GetHost().c_str(),
+        msg->Record.GetPath().c_str());
 
-    using TResponse = TEvDiskRegistryPrivate::TEvGetDependentDisksResponse;
+    using TResponse = TEvDiskRegistry::TEvGetDependentDisksResponse;
 
     TVector<TString> diskIds;
     auto error = State->GetDependentDisks(
-        msg->Host,
-        msg->Path,
+        msg->Record.GetHost(),
+        msg->Record.GetPath(),
         &diskIds);
-    auto response = std::make_unique<TResponse>(std::move(error));
-    response->DependentDiskIds = std::move(diskIds);
+    auto response = std::make_unique<TResponse>();
+    *response->Record.MutableError() = std::move(error);
+    for (const auto& id: diskIds) {
+        response->Record.AddDependentDiskIds(std::move(id));
+    }
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

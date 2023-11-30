@@ -47,6 +47,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DisableAgent,                       __VA_ARGS__)                       \
     xxx(StartForceMigration,                __VA_ARGS__)                       \
     xxx(UpdateDiskRegistryAgentListParams,  __VA_ARGS__)                       \
+    xxx(GetDependentDisks,                  __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -182,6 +183,9 @@ struct TEvDiskRegistry
 
         EvUpdateDiskRegistryAgentListParamsRequest = EvBegin + 61,
         EvUpdateDiskRegistryAgentListParamsResponse = EvBegin + 62,
+
+        EvGetDependentDisksRequest = EvBegin + 63,
+        EvGetDependentDisksResponse = EvBegin + 64,
 
         EvEnd
     };

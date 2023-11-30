@@ -41,7 +41,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void GetDependentDisks(const TActorContext& ctx, TEvDiskRegistryPrivate::TGetDependentDisksRequest request);
+    void GetDependentDisks(const TActorContext& ctx, NProto::TGetDependentDisksRequest request);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -54,7 +54,7 @@ private:
     STFUNC(StateWork);
 
     void HandleGetDependentDisksResponse(
-        const TEvDiskRegistryPrivate::TEvGetDependentDisksResponse::TPtr& ev,
+        const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -87,15 +87,15 @@ void TGetDependentDisksActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    GetDependentDisks(ctx, {
-        input["Host"].GetString(),
-        input["Path"].GetStringSafe({})
-    });
+    NProto::TGetDependentDisksRequest request;
+    request.SetHost(input["Host"].GetString());
+    request.SetPath(input["Path"].GetStringSafe({}));
+    GetDependentDisks(ctx, std::move(request));
 }
 
 void TGetDependentDisksActor::GetDependentDisks(
     const TActorContext& ctx,
-    TEvDiskRegistryPrivate::TGetDependentDisksRequest request)
+    NProto::TGetDependentDisksRequest request)
 {
     Become(&TThis::StateWork);
 
@@ -105,7 +105,7 @@ void TGetDependentDisksActor::GetDependentDisks(
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        std::make_unique<TEvDiskRegistryPrivate::TEvGetDependentDisksRequest>(
+        std::make_unique<TEvDiskRegistry::TEvGetDependentDisksRequest>(
             MakeIntrusive<TCallContext>(),
             std::move(request))
     );
@@ -145,7 +145,7 @@ void TGetDependentDisksActor::HandleError(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TGetDependentDisksActor::HandleGetDependentDisksResponse(
-    const TEvDiskRegistryPrivate::TEvGetDependentDisksResponse::TPtr& ev,
+    const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -161,7 +161,7 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
         .BeginObject()
             .WriteKey("DependentDiskIds")
         .BeginList();
-    for (const auto& diskId: msg->DependentDiskIds) {
+    for (const auto& diskId: msg->Record.GetDependentDiskIds()) {
         list.WriteString(diskId);
     }
     list.EndList().EndObject();
@@ -175,7 +175,7 @@ STFUNC(TGetDependentDisksActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvDiskRegistryPrivate::TEvGetDependentDisksResponse,
+            TEvDiskRegistry::TEvGetDependentDisksResponse,
             HandleGetDependentDisksResponse);
 
         default:

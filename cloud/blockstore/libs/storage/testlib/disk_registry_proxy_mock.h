@@ -124,7 +124,7 @@ private:
                 HandleUpdateDiskRegistryAgentListParams);
 
             HFunc(
-                TEvDiskRegistryPrivate::TEvGetDependentDisksRequest,
+                TEvDiskRegistry::TEvGetDependentDisksRequest,
                 HandleGetDependentDisks);
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
@@ -881,13 +881,13 @@ private:
     }
 
     void HandleGetDependentDisks(
-        const TEvDiskRegistryPrivate::TEvGetDependentDisksRequest::TPtr& ev,
+        const TEvDiskRegistry::TEvGetDependentDisksRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistryPrivate::TEvGetDependentDisksResponse>());
+            std::make_unique<TEvDiskRegistry::TEvGetDependentDisksResponse>());
     }
 
 };

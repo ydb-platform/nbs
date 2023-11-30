@@ -6644,6 +6644,129 @@ func (x *TUpdateDiskRegistryAgentListParamsResponse) GetError() *protos1.TError 
 	return nil
 }
 
+type TGetDependentDisksRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Agent hostname to search for dependent disks
+	Host string `protobuf:"bytes,1,opt,name=Host,proto3" json:"Host,omitempty"`
+	// Device path (ignored if empty)
+	Path string `protobuf:"bytes,2,opt,name=Path,proto3" json:"Path,omitempty"`
+}
+
+func (x *TGetDependentDisksRequest) Reset() {
+	*x = TGetDependentDisksRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[94]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *TGetDependentDisksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TGetDependentDisksRequest) ProtoMessage() {}
+
+func (x *TGetDependentDisksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[94]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TGetDependentDisksRequest.ProtoReflect.Descriptor instead.
+func (*TGetDependentDisksRequest) Descriptor() ([]byte, []int) {
+	return file_cloud_blockstore_libs_storage_protos_disk_proto_rawDescGZIP(), []int{94}
+}
+
+func (x *TGetDependentDisksRequest) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *TGetDependentDisksRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type TGetDependentDisksResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Optional error, set only if error happened.
+	Error *protos1.TError `protobuf:"bytes,1,opt,name=Error,proto3" json:"Error,omitempty"`
+	// Timeout to retry if E_TRY_AGAIN returned (in seconds).
+	Timeout uint64 `protobuf:"varint,2,opt,name=Timeout,proto3" json:"Timeout,omitempty"`
+	// List of agent's dependent disks
+	DependentDiskIds []string `protobuf:"bytes,3,rep,name=DependentDiskIds,proto3" json:"DependentDiskIds,omitempty"`
+}
+
+func (x *TGetDependentDisksResponse) Reset() {
+	*x = TGetDependentDisksResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[95]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *TGetDependentDisksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TGetDependentDisksResponse) ProtoMessage() {}
+
+func (x *TGetDependentDisksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[95]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TGetDependentDisksResponse.ProtoReflect.Descriptor instead.
+func (*TGetDependentDisksResponse) Descriptor() ([]byte, []int) {
+	return file_cloud_blockstore_libs_storage_protos_disk_proto_rawDescGZIP(), []int{95}
+}
+
+func (x *TGetDependentDisksResponse) GetError() *protos1.TError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *TGetDependentDisksResponse) GetTimeout() uint64 {
+	if x != nil {
+		return x.Timeout
+	}
+	return 0
+}
+
+func (x *TGetDependentDisksResponse) GetDependentDiskIds() []string {
+	if x != nil {
+		return x.DependentDiskIds
+	}
+	return nil
+}
+
 type TPlacementGroupConfig_TDiskInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -6659,7 +6782,7 @@ type TPlacementGroupConfig_TDiskInfo struct {
 func (x *TPlacementGroupConfig_TDiskInfo) Reset() {
 	*x = TPlacementGroupConfig_TDiskInfo{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[94]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[96]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6672,7 +6795,7 @@ func (x *TPlacementGroupConfig_TDiskInfo) String() string {
 func (*TPlacementGroupConfig_TDiskInfo) ProtoMessage() {}
 
 func (x *TPlacementGroupConfig_TDiskInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[94]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[96]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6721,7 +6844,7 @@ type TDeviceStats_TBucketInfo struct {
 func (x *TDeviceStats_TBucketInfo) Reset() {
 	*x = TDeviceStats_TBucketInfo{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[95]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[97]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6734,7 +6857,7 @@ func (x *TDeviceStats_TBucketInfo) String() string {
 func (*TDeviceStats_TBucketInfo) ProtoMessage() {}
 
 func (x *TDeviceStats_TBucketInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[95]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[97]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6775,7 +6898,7 @@ type TUserNotification_TDiskError struct {
 func (x *TUserNotification_TDiskError) Reset() {
 	*x = TUserNotification_TDiskError{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[96]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[98]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6788,7 +6911,7 @@ func (x *TUserNotification_TDiskError) String() string {
 func (*TUserNotification_TDiskError) ProtoMessage() {}
 
 func (x *TUserNotification_TDiskError) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[96]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[98]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6822,7 +6945,7 @@ type TUserNotification_TDiskBackOnline struct {
 func (x *TUserNotification_TDiskBackOnline) Reset() {
 	*x = TUserNotification_TDiskBackOnline{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[97]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[99]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6835,7 +6958,7 @@ func (x *TUserNotification_TDiskBackOnline) String() string {
 func (*TUserNotification_TDiskBackOnline) ProtoMessage() {}
 
 func (x *TUserNotification_TDiskBackOnline) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[97]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[99]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6870,7 +6993,7 @@ type TDiskRegistryStateBackup_TDiskStateUpdate struct {
 func (x *TDiskRegistryStateBackup_TDiskStateUpdate) Reset() {
 	*x = TDiskRegistryStateBackup_TDiskStateUpdate{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[98]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[100]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6883,7 +7006,7 @@ func (x *TDiskRegistryStateBackup_TDiskStateUpdate) String() string {
 func (*TDiskRegistryStateBackup_TDiskStateUpdate) ProtoMessage() {}
 
 func (x *TDiskRegistryStateBackup_TDiskStateUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[98]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[100]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6925,7 +7048,7 @@ type TDiskRegistryStateBackup_TBrokenDiskInfo struct {
 func (x *TDiskRegistryStateBackup_TBrokenDiskInfo) Reset() {
 	*x = TDiskRegistryStateBackup_TBrokenDiskInfo{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[99]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[101]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6938,7 +7061,7 @@ func (x *TDiskRegistryStateBackup_TBrokenDiskInfo) String() string {
 func (*TDiskRegistryStateBackup_TBrokenDiskInfo) ProtoMessage() {}
 
 func (x *TDiskRegistryStateBackup_TBrokenDiskInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[99]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[101]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6980,7 +7103,7 @@ type TDiskRegistryStateBackup_TDirtyDevice struct {
 func (x *TDiskRegistryStateBackup_TDirtyDevice) Reset() {
 	*x = TDiskRegistryStateBackup_TDirtyDevice{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[100]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[102]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6993,7 +7116,7 @@ func (x *TDiskRegistryStateBackup_TDirtyDevice) String() string {
 func (*TDiskRegistryStateBackup_TDirtyDevice) ProtoMessage() {}
 
 func (x *TDiskRegistryStateBackup_TDirtyDevice) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[100]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[102]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7035,7 +7158,7 @@ type TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo struct {
 func (x *TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo) Reset() {
 	*x = TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[101]
+		mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[103]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -7048,7 +7171,7 @@ func (x *TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo) String() str
 func (*TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo) ProtoMessage() {}
 
 func (x *TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[101]
+	mi := &file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[103]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8279,23 +8402,36 @@ var file_cloud_blockstore_libs_storage_protos_disk_proto_rawDesc = []byte{
 	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b,
 	0x0a, 0x05, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e,
 	0x4e, 0x43, 0x6c, 0x6f, 0x75, 0x64, 0x2e, 0x4e, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x54, 0x45,
-	0x72, 0x72, 0x6f, 0x72, 0x52, 0x05, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x2a, 0x5b, 0x0a, 0x0b, 0x45,
-	0x41, 0x67, 0x65, 0x6e, 0x74, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x16, 0x0a, 0x12, 0x41, 0x47,
-	0x45, 0x4e, 0x54, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x4f, 0x4e, 0x4c, 0x49, 0x4e, 0x45,
-	0x10, 0x00, 0x12, 0x17, 0x0a, 0x13, 0x41, 0x47, 0x45, 0x4e, 0x54, 0x5f, 0x53, 0x54, 0x41, 0x54,
-	0x45, 0x5f, 0x57, 0x41, 0x52, 0x4e, 0x49, 0x4e, 0x47, 0x10, 0x01, 0x12, 0x1b, 0x0a, 0x17, 0x41,
-	0x47, 0x45, 0x4e, 0x54, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x55, 0x4e, 0x41, 0x56, 0x41,
-	0x49, 0x4c, 0x41, 0x42, 0x4c, 0x45, 0x10, 0x02, 0x2a, 0x59, 0x0a, 0x0c, 0x45, 0x44, 0x65, 0x76,
-	0x69, 0x63, 0x65, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x17, 0x0a, 0x13, 0x44, 0x45, 0x56, 0x49,
-	0x43, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x4f, 0x4e, 0x4c, 0x49, 0x4e, 0x45, 0x10,
-	0x00, 0x12, 0x18, 0x0a, 0x14, 0x44, 0x45, 0x56, 0x49, 0x43, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54,
-	0x45, 0x5f, 0x57, 0x41, 0x52, 0x4e, 0x49, 0x4e, 0x47, 0x10, 0x01, 0x12, 0x16, 0x0a, 0x12, 0x44,
-	0x45, 0x56, 0x49, 0x43, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x45, 0x52, 0x52, 0x4f,
-	0x52, 0x10, 0x02, 0x42, 0x37, 0x5a, 0x35, 0x61, 0x2e, 0x79, 0x61, 0x6e, 0x64, 0x65, 0x78, 0x2d,
-	0x74, 0x65, 0x61, 0x6d, 0x2e, 0x72, 0x75, 0x2f, 0x63, 0x6c, 0x6f, 0x75, 0x64, 0x2f, 0x62, 0x6c,
-	0x6f, 0x63, 0x6b, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x2f, 0x6c, 0x69, 0x62, 0x73, 0x2f, 0x73, 0x74,
-	0x6f, 0x72, 0x61, 0x67, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x62, 0x06, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x33,
+	0x72, 0x72, 0x6f, 0x72, 0x52, 0x05, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x22, 0x43, 0x0a, 0x19, 0x54,
+	0x47, 0x65, 0x74, 0x44, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x65, 0x6e, 0x74, 0x44, 0x69, 0x73, 0x6b,
+	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x48, 0x6f, 0x73, 0x74,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x48, 0x6f, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04,
+	0x50, 0x61, 0x74, 0x68, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x50, 0x61, 0x74, 0x68,
+	0x22, 0x8f, 0x01, 0x0a, 0x1a, 0x54, 0x47, 0x65, 0x74, 0x44, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x65,
+	0x6e, 0x74, 0x44, 0x69, 0x73, 0x6b, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+	0x2b, 0x0a, 0x05, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15,
+	0x2e, 0x4e, 0x43, 0x6c, 0x6f, 0x75, 0x64, 0x2e, 0x4e, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x54,
+	0x45, 0x72, 0x72, 0x6f, 0x72, 0x52, 0x05, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x18, 0x0a, 0x07,
+	0x54, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x07, 0x54,
+	0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x12, 0x2a, 0x0a, 0x10, 0x44, 0x65, 0x70, 0x65, 0x6e, 0x64,
+	0x65, 0x6e, 0x74, 0x44, 0x69, 0x73, 0x6b, 0x49, 0x64, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x09,
+	0x52, 0x10, 0x44, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x65, 0x6e, 0x74, 0x44, 0x69, 0x73, 0x6b, 0x49,
+	0x64, 0x73, 0x2a, 0x5b, 0x0a, 0x0b, 0x45, 0x41, 0x67, 0x65, 0x6e, 0x74, 0x53, 0x74, 0x61, 0x74,
+	0x65, 0x12, 0x16, 0x0a, 0x12, 0x41, 0x47, 0x45, 0x4e, 0x54, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45,
+	0x5f, 0x4f, 0x4e, 0x4c, 0x49, 0x4e, 0x45, 0x10, 0x00, 0x12, 0x17, 0x0a, 0x13, 0x41, 0x47, 0x45,
+	0x4e, 0x54, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x57, 0x41, 0x52, 0x4e, 0x49, 0x4e, 0x47,
+	0x10, 0x01, 0x12, 0x1b, 0x0a, 0x17, 0x41, 0x47, 0x45, 0x4e, 0x54, 0x5f, 0x53, 0x54, 0x41, 0x54,
+	0x45, 0x5f, 0x55, 0x4e, 0x41, 0x56, 0x41, 0x49, 0x4c, 0x41, 0x42, 0x4c, 0x45, 0x10, 0x02, 0x2a,
+	0x59, 0x0a, 0x0c, 0x45, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12,
+	0x17, 0x0a, 0x13, 0x44, 0x45, 0x56, 0x49, 0x43, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f,
+	0x4f, 0x4e, 0x4c, 0x49, 0x4e, 0x45, 0x10, 0x00, 0x12, 0x18, 0x0a, 0x14, 0x44, 0x45, 0x56, 0x49,
+	0x43, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x57, 0x41, 0x52, 0x4e, 0x49, 0x4e, 0x47,
+	0x10, 0x01, 0x12, 0x16, 0x0a, 0x12, 0x44, 0x45, 0x56, 0x49, 0x43, 0x45, 0x5f, 0x53, 0x54, 0x41,
+	0x54, 0x45, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x10, 0x02, 0x42, 0x37, 0x5a, 0x35, 0x61, 0x2e,
+	0x79, 0x61, 0x6e, 0x64, 0x65, 0x78, 0x2d, 0x74, 0x65, 0x61, 0x6d, 0x2e, 0x72, 0x75, 0x2f, 0x63,
+	0x6c, 0x6f, 0x75, 0x64, 0x2f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x2f,
+	0x6c, 0x69, 0x62, 0x73, 0x2f, 0x73, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x2f, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -8311,7 +8447,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_rawDescGZIP() []byte {
 }
 
 var file_cloud_blockstore_libs_storage_protos_disk_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes = make([]protoimpl.MessageInfo, 103)
+var file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes = make([]protoimpl.MessageInfo, 105)
 var file_cloud_blockstore_libs_storage_protos_disk_proto_goTypes = []interface{}{
 	(EAgentState)(0),                                                  // 0: NCloud.NBlockStore.NProto.EAgentState
 	(EDeviceState)(0),                                                 // 1: NCloud.NBlockStore.NProto.EDeviceState
@@ -8409,28 +8545,30 @@ var file_cloud_blockstore_libs_storage_protos_disk_proto_goTypes = []interface{}
 	(*TCreateVolumeFromDevicesResponse)(nil),                          // 93: NCloud.NBlockStore.NProto.TCreateVolumeFromDevicesResponse
 	(*TUpdateDiskRegistryAgentListParamsRequest)(nil),                 // 94: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsRequest
 	(*TUpdateDiskRegistryAgentListParamsResponse)(nil),                // 95: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsResponse
-	(*TPlacementGroupConfig_TDiskInfo)(nil),                           // 96: NCloud.NBlockStore.NProto.TPlacementGroupConfig.TDiskInfo
-	(*TDeviceStats_TBucketInfo)(nil),                                  // 97: NCloud.NBlockStore.NProto.TDeviceStats.TBucketInfo
-	(*TUserNotification_TDiskError)(nil),                              // 98: NCloud.NBlockStore.NProto.TUserNotification.TDiskError
-	(*TUserNotification_TDiskBackOnline)(nil),                         // 99: NCloud.NBlockStore.NProto.TUserNotification.TDiskBackOnline
-	(*TDiskRegistryStateBackup_TDiskStateUpdate)(nil),                 // 100: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDiskStateUpdate
-	(*TDiskRegistryStateBackup_TBrokenDiskInfo)(nil),                  // 101: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TBrokenDiskInfo
-	(*TDiskRegistryStateBackup_TDirtyDevice)(nil),                     // 102: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDirtyDevice
-	(*TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo)(nil), // 103: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TAutomaticallyReplacedDeviceInfo
-	nil,                                    // 104: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParamsEntry
-	(*protos.TRdmaEndpoint)(nil),           // 105: NCloud.NBlockStore.NProto.TRdmaEndpoint
-	(protos.EDevicePoolKind)(0),            // 106: NCloud.NBlockStore.NProto.EDevicePoolKind
-	(protos.EDiskState)(0),                 // 107: NCloud.NBlockStore.NProto.EDiskState
-	(protos1.EStorageMediaKind)(0),         // 108: NCloud.NProto.EStorageMediaKind
-	(*protos.TPlacementGroupSettings)(nil), // 109: NCloud.NBlockStore.NProto.TPlacementGroupSettings
-	(protos.EPlacementStrategy)(0),         // 110: NCloud.NBlockStore.NProto.EPlacementStrategy
-	(*protos.TDeviceOverride)(nil),         // 111: NCloud.NBlockStore.NProto.TDeviceOverride
-	(*protos.THeaders)(nil),                // 112: NCloud.NBlockStore.NProto.THeaders
-	(*protos1.TError)(nil),                 // 113: NCloud.NProto.TError
-	(protos.EVolumeIOMode)(0),              // 114: NCloud.NBlockStore.NProto.EVolumeIOMode
-	(protos.EVolumeAccessMode)(0),          // 115: NCloud.NBlockStore.NProto.EVolumeAccessMode
-	(*protos.TIOVector)(nil),               // 116: NCloud.NBlockStore.NProto.TIOVector
-	(*protos.TDiskState)(nil),              // 117: NCloud.NBlockStore.NProto.TDiskState
+	(*TGetDependentDisksRequest)(nil),                                 // 96: NCloud.NBlockStore.NProto.TGetDependentDisksRequest
+	(*TGetDependentDisksResponse)(nil),                                // 97: NCloud.NBlockStore.NProto.TGetDependentDisksResponse
+	(*TPlacementGroupConfig_TDiskInfo)(nil),                           // 98: NCloud.NBlockStore.NProto.TPlacementGroupConfig.TDiskInfo
+	(*TDeviceStats_TBucketInfo)(nil),                                  // 99: NCloud.NBlockStore.NProto.TDeviceStats.TBucketInfo
+	(*TUserNotification_TDiskError)(nil),                              // 100: NCloud.NBlockStore.NProto.TUserNotification.TDiskError
+	(*TUserNotification_TDiskBackOnline)(nil),                         // 101: NCloud.NBlockStore.NProto.TUserNotification.TDiskBackOnline
+	(*TDiskRegistryStateBackup_TDiskStateUpdate)(nil),                 // 102: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDiskStateUpdate
+	(*TDiskRegistryStateBackup_TBrokenDiskInfo)(nil),                  // 103: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TBrokenDiskInfo
+	(*TDiskRegistryStateBackup_TDirtyDevice)(nil),                     // 104: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDirtyDevice
+	(*TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo)(nil), // 105: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TAutomaticallyReplacedDeviceInfo
+	nil,                                    // 106: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParamsEntry
+	(*protos.TRdmaEndpoint)(nil),           // 107: NCloud.NBlockStore.NProto.TRdmaEndpoint
+	(protos.EDevicePoolKind)(0),            // 108: NCloud.NBlockStore.NProto.EDevicePoolKind
+	(protos.EDiskState)(0),                 // 109: NCloud.NBlockStore.NProto.EDiskState
+	(protos1.EStorageMediaKind)(0),         // 110: NCloud.NProto.EStorageMediaKind
+	(*protos.TPlacementGroupSettings)(nil), // 111: NCloud.NBlockStore.NProto.TPlacementGroupSettings
+	(protos.EPlacementStrategy)(0),         // 112: NCloud.NBlockStore.NProto.EPlacementStrategy
+	(*protos.TDeviceOverride)(nil),         // 113: NCloud.NBlockStore.NProto.TDeviceOverride
+	(*protos.THeaders)(nil),                // 114: NCloud.NBlockStore.NProto.THeaders
+	(*protos1.TError)(nil),                 // 115: NCloud.NProto.TError
+	(protos.EVolumeIOMode)(0),              // 116: NCloud.NBlockStore.NProto.EVolumeIOMode
+	(protos.EVolumeAccessMode)(0),          // 117: NCloud.NBlockStore.NProto.EVolumeAccessMode
+	(*protos.TIOVector)(nil),               // 118: NCloud.NBlockStore.NProto.TIOVector
+	(*protos.TDiskState)(nil),              // 119: NCloud.NBlockStore.NProto.TDiskState
 }
 var file_cloud_blockstore_libs_storage_protos_disk_proto_depIdxs = []int32{
 	5,   // 0: NCloud.NBlockStore.NProto.TAgentConfig.Devices:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
@@ -8438,142 +8576,143 @@ var file_cloud_blockstore_libs_storage_protos_disk_proto_depIdxs = []int32{
 	2,   // 2: NCloud.NBlockStore.NProto.TAgentConfig.TimeBetweenFailures:type_name -> NCloud.NBlockStore.NProto.TMeanTimeBetweenFailures
 	5,   // 3: NCloud.NBlockStore.NProto.TAgentConfig.UnknownDevices:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
 	1,   // 4: NCloud.NBlockStore.NProto.TDeviceConfig.State:type_name -> NCloud.NBlockStore.NProto.EDeviceState
-	105, // 5: NCloud.NBlockStore.NProto.TDeviceConfig.RdmaEndpoint:type_name -> NCloud.NBlockStore.NProto.TRdmaEndpoint
-	106, // 6: NCloud.NBlockStore.NProto.TDeviceConfig.PoolKind:type_name -> NCloud.NBlockStore.NProto.EDevicePoolKind
+	107, // 5: NCloud.NBlockStore.NProto.TDeviceConfig.RdmaEndpoint:type_name -> NCloud.NBlockStore.NProto.TRdmaEndpoint
+	108, // 6: NCloud.NBlockStore.NProto.TDeviceConfig.PoolKind:type_name -> NCloud.NBlockStore.NProto.EDevicePoolKind
 	5,   // 7: NCloud.NBlockStore.NProto.TDeviceMigration.TargetDevice:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
-	107, // 8: NCloud.NBlockStore.NProto.TDiskConfig.State:type_name -> NCloud.NBlockStore.NProto.EDiskState
+	109, // 8: NCloud.NBlockStore.NProto.TDiskConfig.State:type_name -> NCloud.NBlockStore.NProto.EDiskState
 	7,   // 9: NCloud.NBlockStore.NProto.TDiskConfig.Migrations:type_name -> NCloud.NBlockStore.NProto.TDeviceMigration
 	8,   // 10: NCloud.NBlockStore.NProto.TDiskConfig.FinishedMigrations:type_name -> NCloud.NBlockStore.NProto.TFinishedDeviceMigration
-	108, // 11: NCloud.NBlockStore.NProto.TDiskConfig.StorageMediaKind:type_name -> NCloud.NProto.EStorageMediaKind
-	96,  // 12: NCloud.NBlockStore.NProto.TPlacementGroupConfig.Disks:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupConfig.TDiskInfo
-	109, // 13: NCloud.NBlockStore.NProto.TPlacementGroupConfig.Settings:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupSettings
-	110, // 14: NCloud.NBlockStore.NProto.TPlacementGroupConfig.PlacementStrategy:type_name -> NCloud.NBlockStore.NProto.EPlacementStrategy
-	106, // 15: NCloud.NBlockStore.NProto.TDevicePoolConfig.Kind:type_name -> NCloud.NBlockStore.NProto.EDevicePoolKind
+	110, // 11: NCloud.NBlockStore.NProto.TDiskConfig.StorageMediaKind:type_name -> NCloud.NProto.EStorageMediaKind
+	98,  // 12: NCloud.NBlockStore.NProto.TPlacementGroupConfig.Disks:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupConfig.TDiskInfo
+	111, // 13: NCloud.NBlockStore.NProto.TPlacementGroupConfig.Settings:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupSettings
+	112, // 14: NCloud.NBlockStore.NProto.TPlacementGroupConfig.PlacementStrategy:type_name -> NCloud.NBlockStore.NProto.EPlacementStrategy
+	108, // 15: NCloud.NBlockStore.NProto.TDevicePoolConfig.Kind:type_name -> NCloud.NBlockStore.NProto.EDevicePoolKind
 	3,   // 16: NCloud.NBlockStore.NProto.TDiskRegistryConfig.KnownAgents:type_name -> NCloud.NBlockStore.NProto.TAgentConfig
-	111, // 17: NCloud.NBlockStore.NProto.TDiskRegistryConfig.DeviceOverrides:type_name -> NCloud.NBlockStore.NProto.TDeviceOverride
+	113, // 17: NCloud.NBlockStore.NProto.TDiskRegistryConfig.DeviceOverrides:type_name -> NCloud.NBlockStore.NProto.TDeviceOverride
 	11,  // 18: NCloud.NBlockStore.NProto.TDiskRegistryConfig.DevicePoolConfigs:type_name -> NCloud.NBlockStore.NProto.TDevicePoolConfig
-	97,  // 19: NCloud.NBlockStore.NProto.TDeviceStats.HistogramBuckets:type_name -> NCloud.NBlockStore.NProto.TDeviceStats.TBucketInfo
+	99,  // 19: NCloud.NBlockStore.NProto.TDeviceStats.HistogramBuckets:type_name -> NCloud.NBlockStore.NProto.TDeviceStats.TBucketInfo
 	14,  // 20: NCloud.NBlockStore.NProto.TAgentStats.DeviceStats:type_name -> NCloud.NBlockStore.NProto.TDeviceStats
-	98,  // 21: NCloud.NBlockStore.NProto.TUserNotification.DiskError:type_name -> NCloud.NBlockStore.NProto.TUserNotification.TDiskError
-	99,  // 22: NCloud.NBlockStore.NProto.TUserNotification.DiskBackOnline:type_name -> NCloud.NBlockStore.NProto.TUserNotification.TDiskBackOnline
+	100, // 21: NCloud.NBlockStore.NProto.TUserNotification.DiskError:type_name -> NCloud.NBlockStore.NProto.TUserNotification.TDiskError
+	101, // 22: NCloud.NBlockStore.NProto.TUserNotification.DiskBackOnline:type_name -> NCloud.NBlockStore.NProto.TUserNotification.TDiskBackOnline
 	9,   // 23: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.Disks:type_name -> NCloud.NBlockStore.NProto.TDiskConfig
 	10,  // 24: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.PlacementGroups:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupConfig
 	3,   // 25: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.Agents:type_name -> NCloud.NBlockStore.NProto.TAgentConfig
 	4,   // 26: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.Sessions:type_name -> NCloud.NBlockStore.NProto.TDiskSession
 	12,  // 27: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.Config:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryConfig
-	100, // 28: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskStateChanges:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDiskStateUpdate
-	101, // 29: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.BrokenDisks:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TBrokenDiskInfo
-	102, // 30: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DirtyDevices:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDirtyDevice
-	103, // 31: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.AutomaticallyReplacedDevices:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TAutomaticallyReplacedDeviceInfo
-	104, // 32: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParams:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParamsEntry
+	102, // 28: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskStateChanges:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDiskStateUpdate
+	103, // 29: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.BrokenDisks:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TBrokenDiskInfo
+	104, // 30: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DirtyDevices:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDirtyDevice
+	105, // 31: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.AutomaticallyReplacedDevices:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TAutomaticallyReplacedDeviceInfo
+	106, // 32: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParams:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParamsEntry
 	18,  // 33: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.UserNotifications:type_name -> NCloud.NBlockStore.NProto.TUserNotification
 	6,   // 34: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.SuspendedDevices:type_name -> NCloud.NBlockStore.NProto.TSuspendedDevice
-	112, // 35: NCloud.NBlockStore.NProto.TRegisterAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	114, // 35: NCloud.NBlockStore.NProto.TRegisterAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	3,   // 36: NCloud.NBlockStore.NProto.TRegisterAgentRequest.AgentConfig:type_name -> NCloud.NBlockStore.NProto.TAgentConfig
-	113, // 37: NCloud.NBlockStore.NProto.TRegisterAgentResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 38: NCloud.NBlockStore.NProto.TUnregisterAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 39: NCloud.NBlockStore.NProto.TUnregisterAgentResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 40: NCloud.NBlockStore.NProto.TAllocateDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	108, // 41: NCloud.NBlockStore.NProto.TAllocateDiskRequest.StorageMediaKind:type_name -> NCloud.NProto.EStorageMediaKind
+	115, // 37: NCloud.NBlockStore.NProto.TRegisterAgentResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 38: NCloud.NBlockStore.NProto.TUnregisterAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 39: NCloud.NBlockStore.NProto.TUnregisterAgentResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 40: NCloud.NBlockStore.NProto.TAllocateDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	110, // 41: NCloud.NBlockStore.NProto.TAllocateDiskRequest.StorageMediaKind:type_name -> NCloud.NProto.EStorageMediaKind
 	5,   // 42: NCloud.NBlockStore.NProto.TReplica.Devices:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
-	113, // 43: NCloud.NBlockStore.NProto.TAllocateDiskResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 43: NCloud.NBlockStore.NProto.TAllocateDiskResponse.Error:type_name -> NCloud.NProto.TError
 	5,   // 44: NCloud.NBlockStore.NProto.TAllocateDiskResponse.Devices:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
-	114, // 45: NCloud.NBlockStore.NProto.TAllocateDiskResponse.IOMode:type_name -> NCloud.NBlockStore.NProto.EVolumeIOMode
+	116, // 45: NCloud.NBlockStore.NProto.TAllocateDiskResponse.IOMode:type_name -> NCloud.NBlockStore.NProto.EVolumeIOMode
 	7,   // 46: NCloud.NBlockStore.NProto.TAllocateDiskResponse.Migrations:type_name -> NCloud.NBlockStore.NProto.TDeviceMigration
 	25,  // 47: NCloud.NBlockStore.NProto.TAllocateDiskResponse.Replicas:type_name -> NCloud.NBlockStore.NProto.TReplica
-	112, // 48: NCloud.NBlockStore.NProto.TDeallocateDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 49: NCloud.NBlockStore.NProto.TDeallocateDiskResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 50: NCloud.NBlockStore.NProto.TAcquireDevicesRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	114, // 48: NCloud.NBlockStore.NProto.TDeallocateDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 49: NCloud.NBlockStore.NProto.TDeallocateDiskResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 50: NCloud.NBlockStore.NProto.TAcquireDevicesRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	13,  // 51: NCloud.NBlockStore.NProto.TAcquireDevicesRequest.RateLimits:type_name -> NCloud.NBlockStore.NProto.TDeviceRateLimits
-	115, // 52: NCloud.NBlockStore.NProto.TAcquireDevicesRequest.AccessMode:type_name -> NCloud.NBlockStore.NProto.EVolumeAccessMode
-	113, // 53: NCloud.NBlockStore.NProto.TAcquireDevicesResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 54: NCloud.NBlockStore.NProto.TReleaseDevicesRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 55: NCloud.NBlockStore.NProto.TReleaseDevicesResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 56: NCloud.NBlockStore.NProto.TAcquireDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	115, // 57: NCloud.NBlockStore.NProto.TAcquireDiskRequest.AccessMode:type_name -> NCloud.NBlockStore.NProto.EVolumeAccessMode
-	113, // 58: NCloud.NBlockStore.NProto.TAcquireDiskResponse.Error:type_name -> NCloud.NProto.TError
+	117, // 52: NCloud.NBlockStore.NProto.TAcquireDevicesRequest.AccessMode:type_name -> NCloud.NBlockStore.NProto.EVolumeAccessMode
+	115, // 53: NCloud.NBlockStore.NProto.TAcquireDevicesResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 54: NCloud.NBlockStore.NProto.TReleaseDevicesRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 55: NCloud.NBlockStore.NProto.TReleaseDevicesResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 56: NCloud.NBlockStore.NProto.TAcquireDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	117, // 57: NCloud.NBlockStore.NProto.TAcquireDiskRequest.AccessMode:type_name -> NCloud.NBlockStore.NProto.EVolumeAccessMode
+	115, // 58: NCloud.NBlockStore.NProto.TAcquireDiskResponse.Error:type_name -> NCloud.NProto.TError
 	5,   // 59: NCloud.NBlockStore.NProto.TAcquireDiskResponse.Devices:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
 	7,   // 60: NCloud.NBlockStore.NProto.TAcquireDiskResponse.Migrations:type_name -> NCloud.NBlockStore.NProto.TDeviceMigration
 	25,  // 61: NCloud.NBlockStore.NProto.TAcquireDiskResponse.Replicas:type_name -> NCloud.NBlockStore.NProto.TReplica
-	112, // 62: NCloud.NBlockStore.NProto.TReleaseDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 63: NCloud.NBlockStore.NProto.TReleaseDiskResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 64: NCloud.NBlockStore.NProto.TDescribeDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 65: NCloud.NBlockStore.NProto.TDescribeDiskResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 62: NCloud.NBlockStore.NProto.TReleaseDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 63: NCloud.NBlockStore.NProto.TReleaseDiskResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 64: NCloud.NBlockStore.NProto.TDescribeDiskRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 65: NCloud.NBlockStore.NProto.TDescribeDiskResponse.Error:type_name -> NCloud.NProto.TError
 	5,   // 66: NCloud.NBlockStore.NProto.TDescribeDiskResponse.Devices:type_name -> NCloud.NBlockStore.NProto.TDeviceConfig
-	107, // 67: NCloud.NBlockStore.NProto.TDescribeDiskResponse.State:type_name -> NCloud.NBlockStore.NProto.EDiskState
+	109, // 67: NCloud.NBlockStore.NProto.TDescribeDiskResponse.State:type_name -> NCloud.NBlockStore.NProto.EDiskState
 	7,   // 68: NCloud.NBlockStore.NProto.TDescribeDiskResponse.Migrations:type_name -> NCloud.NBlockStore.NProto.TDeviceMigration
 	25,  // 69: NCloud.NBlockStore.NProto.TDescribeDiskResponse.Replicas:type_name -> NCloud.NBlockStore.NProto.TReplica
-	112, // 70: NCloud.NBlockStore.NProto.TReadDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 71: NCloud.NBlockStore.NProto.TReadDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
-	116, // 72: NCloud.NBlockStore.NProto.TReadDeviceBlocksResponse.Blocks:type_name -> NCloud.NBlockStore.NProto.TIOVector
-	112, // 73: NCloud.NBlockStore.NProto.TWriteDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	116, // 74: NCloud.NBlockStore.NProto.TWriteDeviceBlocksRequest.Blocks:type_name -> NCloud.NBlockStore.NProto.TIOVector
-	113, // 75: NCloud.NBlockStore.NProto.TWriteDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 76: NCloud.NBlockStore.NProto.TZeroDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 77: NCloud.NBlockStore.NProto.TZeroDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 78: NCloud.NBlockStore.NProto.TUpdateConfigRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	114, // 70: NCloud.NBlockStore.NProto.TReadDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 71: NCloud.NBlockStore.NProto.TReadDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
+	118, // 72: NCloud.NBlockStore.NProto.TReadDeviceBlocksResponse.Blocks:type_name -> NCloud.NBlockStore.NProto.TIOVector
+	114, // 73: NCloud.NBlockStore.NProto.TWriteDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	118, // 74: NCloud.NBlockStore.NProto.TWriteDeviceBlocksRequest.Blocks:type_name -> NCloud.NBlockStore.NProto.TIOVector
+	115, // 75: NCloud.NBlockStore.NProto.TWriteDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 76: NCloud.NBlockStore.NProto.TZeroDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 77: NCloud.NBlockStore.NProto.TZeroDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 78: NCloud.NBlockStore.NProto.TUpdateConfigRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	12,  // 79: NCloud.NBlockStore.NProto.TUpdateConfigRequest.Config:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryConfig
-	113, // 80: NCloud.NBlockStore.NProto.TUpdateConfigResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 81: NCloud.NBlockStore.NProto.TDescribeConfigRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 82: NCloud.NBlockStore.NProto.TDescribeConfigResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 80: NCloud.NBlockStore.NProto.TUpdateConfigResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 81: NCloud.NBlockStore.NProto.TDescribeConfigRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 82: NCloud.NBlockStore.NProto.TDescribeConfigResponse.Error:type_name -> NCloud.NProto.TError
 	12,  // 83: NCloud.NBlockStore.NProto.TDescribeConfigResponse.Config:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryConfig
-	112, // 84: NCloud.NBlockStore.NProto.TSecureEraseDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 85: NCloud.NBlockStore.NProto.TSecureEraseDeviceResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 86: NCloud.NBlockStore.NProto.TChecksumDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 87: NCloud.NBlockStore.NProto.TChecksumDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 88: NCloud.NBlockStore.NProto.TDisableConcreteAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 89: NCloud.NBlockStore.NProto.TDisableConcreteAgentResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 90: NCloud.NBlockStore.NProto.TEnableAgentDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 91: NCloud.NBlockStore.NProto.TEnableAgentDeviceResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 92: NCloud.NBlockStore.NProto.TStartForceMigrationRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 93: NCloud.NBlockStore.NProto.TStartForceMigrationResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 94: NCloud.NBlockStore.NProto.TUpdateAgentStatsRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	114, // 84: NCloud.NBlockStore.NProto.TSecureEraseDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 85: NCloud.NBlockStore.NProto.TSecureEraseDeviceResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 86: NCloud.NBlockStore.NProto.TChecksumDeviceBlocksRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 87: NCloud.NBlockStore.NProto.TChecksumDeviceBlocksResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 88: NCloud.NBlockStore.NProto.TDisableConcreteAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 89: NCloud.NBlockStore.NProto.TDisableConcreteAgentResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 90: NCloud.NBlockStore.NProto.TEnableAgentDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 91: NCloud.NBlockStore.NProto.TEnableAgentDeviceResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 92: NCloud.NBlockStore.NProto.TStartForceMigrationRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 93: NCloud.NBlockStore.NProto.TStartForceMigrationResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 94: NCloud.NBlockStore.NProto.TUpdateAgentStatsRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	15,  // 95: NCloud.NBlockStore.NProto.TUpdateAgentStatsRequest.AgentStats:type_name -> NCloud.NBlockStore.NProto.TAgentStats
-	113, // 96: NCloud.NBlockStore.NProto.TUpdateAgentStatsResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 97: NCloud.NBlockStore.NProto.TReplaceDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 98: NCloud.NBlockStore.NProto.TReplaceDeviceResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 99: NCloud.NBlockStore.NProto.TChangeDeviceStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 96: NCloud.NBlockStore.NProto.TUpdateAgentStatsResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 97: NCloud.NBlockStore.NProto.TReplaceDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 98: NCloud.NBlockStore.NProto.TReplaceDeviceResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 99: NCloud.NBlockStore.NProto.TChangeDeviceStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	1,   // 100: NCloud.NBlockStore.NProto.TChangeDeviceStateRequest.DeviceState:type_name -> NCloud.NBlockStore.NProto.EDeviceState
-	113, // 101: NCloud.NBlockStore.NProto.TChangeDeviceStateResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 102: NCloud.NBlockStore.NProto.TChangeAgentStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 101: NCloud.NBlockStore.NProto.TChangeDeviceStateResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 102: NCloud.NBlockStore.NProto.TChangeAgentStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	0,   // 103: NCloud.NBlockStore.NProto.TChangeAgentStateRequest.AgentState:type_name -> NCloud.NBlockStore.NProto.EAgentState
-	113, // 104: NCloud.NBlockStore.NProto.TChangeAgentStateResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 105: NCloud.NBlockStore.NProto.TDisableAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 106: NCloud.NBlockStore.NProto.TDisableAgentResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 107: NCloud.NBlockStore.NProto.TFinishMigrationRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 104: NCloud.NBlockStore.NProto.TChangeAgentStateResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 105: NCloud.NBlockStore.NProto.TDisableAgentRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 106: NCloud.NBlockStore.NProto.TDisableAgentResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 107: NCloud.NBlockStore.NProto.TFinishMigrationRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	69,  // 108: NCloud.NBlockStore.NProto.TFinishMigrationRequest.Migrations:type_name -> NCloud.NBlockStore.NProto.TDeviceMigrationIds
-	113, // 109: NCloud.NBlockStore.NProto.TFinishMigrationResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 110: NCloud.NBlockStore.NProto.TBackupDiskRegistryStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 111: NCloud.NBlockStore.NProto.TBackupDiskRegistryStateResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 109: NCloud.NBlockStore.NProto.TFinishMigrationResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 110: NCloud.NBlockStore.NProto.TBackupDiskRegistryStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 111: NCloud.NBlockStore.NProto.TBackupDiskRegistryStateResponse.Error:type_name -> NCloud.NProto.TError
 	19,  // 112: NCloud.NBlockStore.NProto.TBackupDiskRegistryStateResponse.Backup:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup
-	112, // 113: NCloud.NBlockStore.NProto.TRestoreDiskRegistryStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	114, // 113: NCloud.NBlockStore.NProto.TRestoreDiskRegistryStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	19,  // 114: NCloud.NBlockStore.NProto.TRestoreDiskRegistryStateRequest.Backup:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryStateBackup
-	113, // 115: NCloud.NBlockStore.NProto.TRestoreDiskRegistryStateResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 116: NCloud.NBlockStore.NProto.TSetWritableStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 117: NCloud.NBlockStore.NProto.TSetWritableStateResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 118: NCloud.NBlockStore.NProto.TMarkDiskForCleanupRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 119: NCloud.NBlockStore.NProto.TMarkDiskForCleanupResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 120: NCloud.NBlockStore.NProto.TSetUserIdRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 121: NCloud.NBlockStore.NProto.TSetUserIdResponse.Error:type_name -> NCloud.NProto.TError
-	113, // 122: NCloud.NBlockStore.NProto.TUpdateDiskBlockSizeResponse.Error:type_name -> NCloud.NProto.TError
-	113, // 123: NCloud.NBlockStore.NProto.TUpdateDiskReplicaCountResponse.Error:type_name -> NCloud.NProto.TError
-	113, // 124: NCloud.NBlockStore.NProto.TMarkReplacementDeviceResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 125: NCloud.NBlockStore.NProto.TSuspendDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	113, // 126: NCloud.NBlockStore.NProto.TSuspendDeviceResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 127: NCloud.NBlockStore.NProto.TUpdatePlacementGroupSettingsRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
-	109, // 128: NCloud.NBlockStore.NProto.TUpdatePlacementGroupSettingsRequest.Settings:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupSettings
-	113, // 129: NCloud.NBlockStore.NProto.TUpdatePlacementGroupSettingsResponse.Error:type_name -> NCloud.NProto.TError
-	113, // 130: NCloud.NBlockStore.NProto.TCreateVolumeFromDevicesResponse.Error:type_name -> NCloud.NProto.TError
-	112, // 131: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 115: NCloud.NBlockStore.NProto.TRestoreDiskRegistryStateResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 116: NCloud.NBlockStore.NProto.TSetWritableStateRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 117: NCloud.NBlockStore.NProto.TSetWritableStateResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 118: NCloud.NBlockStore.NProto.TMarkDiskForCleanupRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 119: NCloud.NBlockStore.NProto.TMarkDiskForCleanupResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 120: NCloud.NBlockStore.NProto.TSetUserIdRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 121: NCloud.NBlockStore.NProto.TSetUserIdResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 122: NCloud.NBlockStore.NProto.TUpdateDiskBlockSizeResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 123: NCloud.NBlockStore.NProto.TUpdateDiskReplicaCountResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 124: NCloud.NBlockStore.NProto.TMarkReplacementDeviceResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 125: NCloud.NBlockStore.NProto.TSuspendDeviceRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	115, // 126: NCloud.NBlockStore.NProto.TSuspendDeviceResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 127: NCloud.NBlockStore.NProto.TUpdatePlacementGroupSettingsRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
+	111, // 128: NCloud.NBlockStore.NProto.TUpdatePlacementGroupSettingsRequest.Settings:type_name -> NCloud.NBlockStore.NProto.TPlacementGroupSettings
+	115, // 129: NCloud.NBlockStore.NProto.TUpdatePlacementGroupSettingsResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 130: NCloud.NBlockStore.NProto.TCreateVolumeFromDevicesResponse.Error:type_name -> NCloud.NProto.TError
+	114, // 131: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsRequest.Headers:type_name -> NCloud.NBlockStore.NProto.THeaders
 	16,  // 132: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsRequest.Params:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryAgentListRequestParams
-	113, // 133: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsResponse.Error:type_name -> NCloud.NProto.TError
-	117, // 134: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDiskStateUpdate.State:type_name -> NCloud.NBlockStore.NProto.TDiskState
-	17,  // 135: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParamsEntry.value:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryAgentParams
-	136, // [136:136] is the sub-list for method output_type
-	136, // [136:136] is the sub-list for method input_type
-	136, // [136:136] is the sub-list for extension type_name
-	136, // [136:136] is the sub-list for extension extendee
-	0,   // [0:136] is the sub-list for field type_name
+	115, // 133: NCloud.NBlockStore.NProto.TUpdateDiskRegistryAgentListParamsResponse.Error:type_name -> NCloud.NProto.TError
+	115, // 134: NCloud.NBlockStore.NProto.TGetDependentDisksResponse.Error:type_name -> NCloud.NProto.TError
+	119, // 135: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.TDiskStateUpdate.State:type_name -> NCloud.NBlockStore.NProto.TDiskState
+	17,  // 136: NCloud.NBlockStore.NProto.TDiskRegistryStateBackup.DiskRegistryAgentListParamsEntry.value:type_name -> NCloud.NBlockStore.NProto.TDiskRegistryAgentParams
+	137, // [137:137] is the sub-list for method output_type
+	137, // [137:137] is the sub-list for method input_type
+	137, // [137:137] is the sub-list for extension type_name
+	137, // [137:137] is the sub-list for extension extendee
+	0,   // [0:137] is the sub-list for field type_name
 }
 
 func init() { file_cloud_blockstore_libs_storage_protos_disk_proto_init() }
@@ -9711,7 +9850,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[94].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TPlacementGroupConfig_TDiskInfo); i {
+			switch v := v.(*TGetDependentDisksRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9723,7 +9862,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[95].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TDeviceStats_TBucketInfo); i {
+			switch v := v.(*TGetDependentDisksResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9735,7 +9874,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[96].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TUserNotification_TDiskError); i {
+			switch v := v.(*TPlacementGroupConfig_TDiskInfo); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9747,7 +9886,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[97].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TUserNotification_TDiskBackOnline); i {
+			switch v := v.(*TDeviceStats_TBucketInfo); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9759,7 +9898,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[98].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TDiskRegistryStateBackup_TDiskStateUpdate); i {
+			switch v := v.(*TUserNotification_TDiskError); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9771,7 +9910,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[99].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TDiskRegistryStateBackup_TBrokenDiskInfo); i {
+			switch v := v.(*TUserNotification_TDiskBackOnline); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9783,7 +9922,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[100].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TDiskRegistryStateBackup_TDirtyDevice); i {
+			switch v := v.(*TDiskRegistryStateBackup_TDiskStateUpdate); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9795,6 +9934,30 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			}
 		}
 		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[101].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*TDiskRegistryStateBackup_TBrokenDiskInfo); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[102].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*TDiskRegistryStateBackup_TDirtyDevice); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_cloud_blockstore_libs_storage_protos_disk_proto_msgTypes[103].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*TDiskRegistryStateBackup_TAutomaticallyReplacedDeviceInfo); i {
 			case 0:
 				return &v.state
@@ -9819,7 +9982,7 @@ func file_cloud_blockstore_libs_storage_protos_disk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_cloud_blockstore_libs_storage_protos_disk_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   103,
+			NumMessages:   105,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

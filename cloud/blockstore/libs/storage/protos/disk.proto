@@ -1426,3 +1426,26 @@ message TUpdateDiskRegistryAgentListParamsResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Get dependent disks
+
+message TGetDependentDisksRequest
+{
+    // Agent hostname to search for dependent disks
+    string Host = 1;
+    // Device path (ignored if empty)
+    string Path = 2;
+}
+
+message TGetDependentDisksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Timeout to retry if E_TRY_AGAIN returned (in seconds).
+    uint64 Timeout = 2;
+
+    // List of agent's dependent disks
+    repeated string DependentDiskIds = 3;
+}

@@ -44,6 +44,10 @@ private:
         const TResponse& response,
         const TActorContext& ctx);
 
+    void HandleCmsActionResponseProto(
+        const TEvDiskRegistry::TEvGetDependentDisksResponse& response,
+        const TActorContext& ctx);
+
     void HandleUpdateHostDeviceStateResponse(
         const TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -53,7 +57,7 @@ private:
         const TActorContext& ctx);
 
     void HandleGetDependentDisksResponse(
-        const TEvDiskRegistryPrivate::TEvGetDependentDisksResponse::TPtr& ev,
+        const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -124,10 +128,10 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
 
         case NProto::TAction_EType::TAction_EType_GET_DEPENDENT_DISKS: {
             using TRequest =
-                TEvDiskRegistryPrivate::TEvGetDependentDisksRequest;
-            auto request = std::make_unique<TRequest>(
-                action.GetHost(),
-                action.GetDevice());
+                TEvDiskRegistry::TEvGetDependentDisksRequest;
+            auto request = std::make_unique<TRequest>();
+            request->Record.SetHost(action.GetHost());
+            request->Record.SetPath(action.GetDevice());
 
             NCloud::Send(
                 ctx,
@@ -207,6 +211,21 @@ void TCmsRequestActor::HandleCmsActionResponse(
     SendNextRequest(ctx);
 }
 
+void TCmsRequestActor::HandleCmsActionResponseProto(
+    const TEvDiskRegistry::TEvGetDependentDisksResponse& response,
+    const TActorContext& ctx)
+{
+    auto& result = *Response->Record.MutableActionResults()->Add();
+    *result.MutableResult() = response.Record.GetError();
+    result.SetTimeout(response.Record.GetTimeout());
+    for (auto& diskId: response.Record.GetDependentDiskIds()) {
+        *result.AddDependentDisks() = std::move(diskId);
+    }
+
+    ++CurrentRequest;
+    SendNextRequest(ctx);
+}
+
 void TCmsRequestActor::HandleUpdateCmsHostStateResponse(
     const TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -222,10 +241,10 @@ void TCmsRequestActor::HandleUpdateHostDeviceStateResponse(
 }
 
 void TCmsRequestActor::HandleGetDependentDisksResponse(
-    const TEvDiskRegistryPrivate::TEvGetDependentDisksResponse::TPtr& ev,
+    const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleCmsActionResponse(*ev->Get(), ctx);
+    HandleCmsActionResponseProto(*ev->Get(), ctx);
 }
 
 void TCmsRequestActor::HandlePoisonPill(
@@ -253,7 +272,7 @@ STFUNC(TCmsRequestActor::StateWork)
             HandleUpdateCmsHostStateResponse);
 
         HFunc(
-            TEvDiskRegistryPrivate::TEvGetDependentDisksResponse,
+            TEvDiskRegistry::TEvGetDependentDisksResponse,
             HandleGetDependentDisksResponse);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
