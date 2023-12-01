@@ -6,7 +6,7 @@
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/map.h>

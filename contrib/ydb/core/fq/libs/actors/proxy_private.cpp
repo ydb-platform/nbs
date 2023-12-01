@@ -3,13 +3,13 @@
 
 #include <contrib/ydb/core/fq/libs/events/events.h>
 
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/fq/libs/config/yq_issue.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/guid.h>

@@ -1,7 +1,7 @@
 #include "msgbus_server.h"
 #include "msgbus_server_proxy.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>

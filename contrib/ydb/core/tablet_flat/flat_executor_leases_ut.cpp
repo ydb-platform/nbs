@@ -2,7 +2,7 @@
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/base/statestorage.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NKikimr::NTabletFlatExecutor {

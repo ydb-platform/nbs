@@ -3,7 +3,7 @@
 #include "put_status.h"
 #include "blob_constructor.h"
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/core/tx/columnshard/blob_manager.h>
 #include <contrib/ydb/core/tx/columnshard/defs.h>
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/write.h>

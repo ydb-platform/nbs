@@ -2,7 +2,7 @@ LIBRARY()
 
 PEERDIR(
     contrib/libs/protobuf
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/containers/intrusive_rb_tree
     contrib/ydb/core/base
     contrib/ydb/core/blobstorage/groupinfo

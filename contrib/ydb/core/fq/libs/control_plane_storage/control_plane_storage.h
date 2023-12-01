@@ -1,6 +1,6 @@
 #pragma once
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <contrib/ydb/core/fq/libs/config/protos/common.pb.h>

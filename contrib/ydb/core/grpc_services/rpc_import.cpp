@@ -8,7 +8,7 @@
 
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_import.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/generic/ptr.h>
 #include <util/string/builder.h>

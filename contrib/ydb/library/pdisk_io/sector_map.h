@@ -1,7 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
-#include <library/cpp/actors/util/ticket_lock.h>
+#include <contrib/ydb/library/actors/util/ticket_lock.h>
 
 #include <util/datetime/base.h>
 #include <util/datetime/cputimer.h>

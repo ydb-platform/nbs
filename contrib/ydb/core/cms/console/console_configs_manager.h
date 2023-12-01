@@ -14,8 +14,8 @@
 #include <contrib/ydb/core/cms/console/util/config_index.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
 namespace NKikimr::NConsole {
 

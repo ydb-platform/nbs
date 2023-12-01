@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/viewer/json/json.h>
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 
 namespace NKikimr::NPublicHttp {
 

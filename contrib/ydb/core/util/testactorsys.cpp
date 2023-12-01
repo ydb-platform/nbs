@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/base/statestorage_impl.h>
 #include <contrib/ydb/core/base/tablet_resolver.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <library/cpp/time_provider/time_provider.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/grpc_services/grpc_helper.h>

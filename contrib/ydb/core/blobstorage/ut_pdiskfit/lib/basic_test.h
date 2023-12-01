@@ -1,8 +1,8 @@
 #pragma once
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/protos/services_common.pb.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/protos/services_common.pb.h>
 #include <contrib/ydb/core/protos/pdiskfit.pb.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>

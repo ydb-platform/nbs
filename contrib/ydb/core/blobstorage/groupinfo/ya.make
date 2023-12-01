@@ -1,7 +1,7 @@
 LIBRARY()
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/digest/crc32c
     library/cpp/pop_count
     contrib/ydb/core/base

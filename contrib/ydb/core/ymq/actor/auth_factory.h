@@ -1,7 +1,7 @@
 #pragma once
 
 #include "actor.h"
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/core/ymq/base/action.h>
 #include <contrib/ydb/core/ymq/base/counters.h>
 #include <contrib/ydb/library/http_proxy/authorization/signature.h>

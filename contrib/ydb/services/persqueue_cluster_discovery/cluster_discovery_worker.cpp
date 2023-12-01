@@ -2,8 +2,8 @@
 
 #include <contrib/ydb/services/persqueue_cluster_discovery/cluster_ordering/weighed_ordering.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/digest/numeric.h>
 #include <util/generic/hash.h>

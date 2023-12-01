@@ -1,5 +1,5 @@
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/public/api/client/yc_private/resourcemanager/folder_service.grpc.pb.h>
 #include "folder_service.h"
 #include "grpc_service_client.h"

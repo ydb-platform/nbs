@@ -74,11 +74,11 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/helpers
-    library/cpp/actors/interconnect
-    library/cpp/actors/protos
-    library/cpp/actors/wilson
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/helpers
+    contrib/ydb/library/actors/interconnect
+    contrib/ydb/library/actors/protos
+    contrib/ydb/library/actors/wilson
     library/cpp/deprecated/enum_codegen
     library/cpp/logger
     library/cpp/lwtrace

@@ -14,7 +14,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/containers/disjoint_interval_tree
     contrib/ydb/library/grpc/server
     contrib/ydb/core/base

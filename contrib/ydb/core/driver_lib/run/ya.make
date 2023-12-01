@@ -25,13 +25,13 @@ SRCS(
 
 PEERDIR(
     contrib/libs/protobuf
-    library/cpp/actors/core
-    library/cpp/actors/dnsresolver
-    library/cpp/actors/interconnect
-    library/cpp/actors/memory_log
-    library/cpp/actors/prof
-    library/cpp/actors/protos
-    library/cpp/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/dnsresolver
+    contrib/ydb/library/actors/interconnect
+    contrib/ydb/library/actors/memory_log
+    contrib/ydb/library/actors/prof
+    contrib/ydb/library/actors/protos
+    contrib/ydb/library/actors/util
     library/cpp/getopt/small
     contrib/ydb/library/grpc/client
     contrib/ydb/library/grpc/server

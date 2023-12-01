@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/tx/sequenceshard/public/events.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_manager.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <util/string/builder.h>
 
 #define TXLOG_LOG(priority, stream) \

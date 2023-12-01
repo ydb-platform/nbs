@@ -1,7 +1,7 @@
 #pragma once
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/digest/crc32c/crc32c.h>
 #include <contrib/ydb/library/grpc/client/grpc_client_low.h>
 #include <contrib/ydb/library/services/services.pb.h>

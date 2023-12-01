@@ -5,8 +5,8 @@
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/protos/base.pb.h>

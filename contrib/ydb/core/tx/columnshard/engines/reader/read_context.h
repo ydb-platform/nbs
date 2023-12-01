@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/tx/columnshard/resources/memory.h>
 #include <contrib/ydb/core/tx/columnshard/resource_subscriber/task.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr::NOlap {
 

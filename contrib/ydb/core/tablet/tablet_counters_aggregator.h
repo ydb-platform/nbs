@@ -4,9 +4,9 @@
 #include "defs.h"
 #include "tablet_counters.h"
 
-#include <library/cpp/actors/core/defs.h>
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/defs.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/protos/labeled_counters.pb.h>

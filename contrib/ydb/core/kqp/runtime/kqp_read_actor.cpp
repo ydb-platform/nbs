@@ -15,8 +15,8 @@
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_impl.h>
 
 #include <library/cpp/threading/hot_swap/hot_swap.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 #include <util/generic/intrlist.h>
 

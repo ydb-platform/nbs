@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/tx/columnshard/columnshard_private_events.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 namespace NKikimr::NOlap::NResourceBroker::NSubscribe {
 

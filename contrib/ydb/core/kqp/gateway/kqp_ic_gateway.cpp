@@ -29,8 +29,8 @@
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/string/split.h>
 #include <util/string/vector.h>
@@ -825,7 +825,7 @@ public:
         }
     }
 
-    TFuture<TGenericResult> AlterTable(const TString&, Ydb::Table::AlterTableRequest&&, const TMaybe<TString>&, ui64) override
+    TFuture<TGenericResult> AlterTable(const TString&, Ydb::Table::AlterTableRequest&&, const TMaybe<TString>&, ui64, NKikimrIndexBuilder::TIndexBuildSettings&&) override
     {
         try {
             YQL_ENSURE(false, "gateway doesn't implement alter");

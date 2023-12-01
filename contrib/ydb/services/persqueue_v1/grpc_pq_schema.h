@@ -5,8 +5,8 @@
 #include <contrib/ydb/core/client/server/grpc_base.h>
 #include <contrib/ydb/core/persqueue/cluster_tracker.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 #include <util/generic/hash.h>
 #include <util/system/mutex.h>

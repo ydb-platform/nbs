@@ -3,8 +3,8 @@
 #include "target_discoverer.h"
 #include "util.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <contrib/ydb/core/tx/replication/ydb_proxy/ydb_proxy.h>
 

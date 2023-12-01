@@ -6,9 +6,9 @@
 #include <contrib/ydb/library/ycloud/api/events.h>
 #include <contrib/ydb/library/ycloud/impl/grpc_service_client.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NFq {
 

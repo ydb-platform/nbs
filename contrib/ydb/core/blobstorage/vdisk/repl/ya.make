@@ -1,7 +1,7 @@
 LIBRARY()
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/monlib/service/pages
     contrib/ydb/core/base
     contrib/ydb/core/blobstorage/backpressure

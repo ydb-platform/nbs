@@ -1,5 +1,5 @@
-#include <library/cpp/actors/core/event.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/library/testlib/service_mocks/access_service_mock.h>
 #include <contrib/ydb/library/grpc/server/grpc_server.h>

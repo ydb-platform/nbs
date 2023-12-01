@@ -5,7 +5,7 @@
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/vector.h>
 #include <util/generic/set.h>

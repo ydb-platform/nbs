@@ -1,7 +1,7 @@
 PROTO_LIBRARY()
 
 PEERDIR(
-    library/cpp/actors/protos
+    contrib/ydb/library/actors/protos
 )
 
 SRCS(

@@ -3,8 +3,8 @@
 
 #include <functional>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/s3_settings.h>
 #include <contrib/ydb/services/metadata/secret/snapshot.h>

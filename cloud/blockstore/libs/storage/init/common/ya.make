@@ -10,8 +10,8 @@ PEERDIR(
 
     cloud/storage/core/libs/kikimr
 
-    library/cpp/actors/core
-    library/cpp/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/util
     library/cpp/logger
     library/cpp/monlib/service/pages
 

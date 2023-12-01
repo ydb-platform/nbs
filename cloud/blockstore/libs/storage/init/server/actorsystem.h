@@ -23,7 +23,7 @@
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
-#include <library/cpp/actors/core/defs.h>
+#include <contrib/ydb/library/actors/core/defs.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

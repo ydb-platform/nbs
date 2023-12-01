@@ -14,7 +14,7 @@
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
 
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>

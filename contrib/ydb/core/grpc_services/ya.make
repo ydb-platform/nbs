@@ -124,6 +124,7 @@ PEERDIR(
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/public/types
+    contrib/ydb/library/yql/public/issue
     contrib/ydb/library/services
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos

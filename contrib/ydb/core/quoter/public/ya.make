@@ -6,7 +6,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/library/time_series_vec
 )
 

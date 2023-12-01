@@ -2,7 +2,7 @@
 #include <contrib/ydb/core/tx/columnshard/counters/common/object_counter.h>
 #include <contrib/ydb/core/tx/columnshard/counters/common/owner.h>
 #include <contrib/ydb/library/services/services.pb.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <util/system/mutex.h>
 
 namespace NKikimr::NOlap {

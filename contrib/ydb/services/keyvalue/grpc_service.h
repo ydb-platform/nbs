@@ -3,7 +3,7 @@
 #include <contrib/ydb/public/api/grpc/ydb_keyvalue_v1.grpc.pb.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 
 namespace NKikimr::NGRpcService {

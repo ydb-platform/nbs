@@ -10,8 +10,8 @@
 #include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h>
 #include <contrib/ydb/public/lib/base/msgbus_status.h>
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/event.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/hash.h>

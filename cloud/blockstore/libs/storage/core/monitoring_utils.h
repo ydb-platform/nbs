@@ -13,8 +13,8 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/stream/output.h>
 #include <util/generic/vector.h>

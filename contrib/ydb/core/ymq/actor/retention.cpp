@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/ymq/queues/common/key_hashes.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <util/random/random.h>
 #include <util/generic/guid.h>
 

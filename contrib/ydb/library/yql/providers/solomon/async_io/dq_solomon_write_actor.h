@@ -7,9 +7,9 @@
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/providers/solomon/proto/dq_solomon_shard.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 
 #include <util/generic/size_literals.h>
 #include <util/system/types.h>

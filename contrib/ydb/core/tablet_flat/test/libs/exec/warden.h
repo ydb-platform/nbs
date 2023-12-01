@@ -2,7 +2,7 @@
 
 #include "world.h"
 #include "storage.h"
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/tablet_flat/util_fmt_logger.h>

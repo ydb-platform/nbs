@@ -4,7 +4,7 @@
 #include <contrib/ydb/services/metadata/manager/restore_controller.h>
 #include <contrib/ydb/services/metadata/request/request_actor.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NMetadata::NModifications {
 

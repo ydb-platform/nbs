@@ -3,10 +3,10 @@
 #include "factories.h"
 #include "service_initializer.h"
 
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/log_settings.h>
-#include <library/cpp/actors/interconnect/poller_tcp.h>
-#include <library/cpp/actors/util/should_continue.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/log_settings.h>
+#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
+#include <contrib/ydb/library/actors/util/should_continue.h>
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/statestorage.h>

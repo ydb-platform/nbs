@@ -8,7 +8,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/json
     library/cpp/logger
     contrib/ydb/core/base

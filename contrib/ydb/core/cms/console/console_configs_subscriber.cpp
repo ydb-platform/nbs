@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/cms/console/util/config_index.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <util/system/hostname.h>
 #include <util/generic/ptr.h>
 

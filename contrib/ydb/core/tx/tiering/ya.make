@@ -17,7 +17,7 @@ IF (OS_WINDOWS)
 ENDIF()
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/json/writer
     contrib/ydb/core/blobstorage
     contrib/ydb/core/protos

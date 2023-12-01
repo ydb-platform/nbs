@@ -97,7 +97,7 @@ PEERDIR(
     cloud/storage/core/libs/tablet/model
     cloud/storage/core/protos
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/protobuf/json
 
     contrib/ydb/core/base

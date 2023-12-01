@@ -16,8 +16,8 @@
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/queue.h>

@@ -2,8 +2,8 @@
 
 #include "defs.h"
 
-#include <library/cpp/actors/interconnect/events_local.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/interconnect/events_local.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>

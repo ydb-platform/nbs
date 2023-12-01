@@ -1,7 +1,7 @@
 #pragma once
 
-#include <library/cpp/actors/core/defs.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/defs.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <atomic>
 

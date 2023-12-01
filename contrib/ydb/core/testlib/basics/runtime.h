@@ -1,7 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
 namespace NActors {
 

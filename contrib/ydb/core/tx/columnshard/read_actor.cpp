@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/storages_manager.h>
 #include <contrib/ydb/core/tx/columnshard/blobs_reader/events.h>
 #include <contrib/ydb/core/tx/conveyor/usage/events.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include "blobs_reader/actor.h"
 #include "engines/reader/read_context.h"
 #include "resource_subscriber/actor.h"

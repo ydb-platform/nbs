@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/persqueue/cluster_tracker.h>
 #include <contrib/ydb/core/util/address_classifier.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NPQ::NClusterDiscovery::NWorker {
 

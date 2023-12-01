@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <util/generic/set.h>
 

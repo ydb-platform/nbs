@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/tx/tx_processing.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr::NPQ::NHelpers {
 

@@ -3,12 +3,12 @@
 #include "defs.h"
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
-#include <library/cpp/actors/core/executor_pool_basic.h>
-#include <library/cpp/actors/core/executor_pool_io.h>
-#include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_io.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <contrib/ydb/core/mon/sync_http_mon.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
-#include <library/cpp/actors/protos/services_common.pb.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/protos/services_common.pb.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/scheme_types/scheme_type_registry.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>

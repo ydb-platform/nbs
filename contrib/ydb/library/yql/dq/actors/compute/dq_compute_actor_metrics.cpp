@@ -2,7 +2,7 @@
 #include "dq_compute_actor.h"
 
 #include <contrib/ydb/library/yql/dq/actors/dq.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 namespace NYql::NDq {
 

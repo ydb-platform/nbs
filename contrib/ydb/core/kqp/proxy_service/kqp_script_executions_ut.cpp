@@ -8,7 +8,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 
 namespace NKikimr::NKqp {
 

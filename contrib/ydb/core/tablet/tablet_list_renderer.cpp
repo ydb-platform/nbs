@@ -1,7 +1,7 @@
 #include "tablet_list_renderer.h"
 
 #include <contrib/ydb/core/mon/mon.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <contrib/ydb/core/tablet/tablet_sys.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <util/generic/algorithm.h>

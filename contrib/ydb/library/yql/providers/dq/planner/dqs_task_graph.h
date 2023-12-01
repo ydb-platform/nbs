@@ -3,7 +3,7 @@
 #include <contrib/ydb/library/yql/dq/tasks/dq_connection_builder.h>
 #include <contrib/ydb/library/yql/dq/tasks/dq_tasks_graph.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NYql::NDqs {
     struct TStageInfoMeta {

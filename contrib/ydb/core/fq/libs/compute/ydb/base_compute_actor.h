@@ -8,7 +8,7 @@
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/retry/retry_policy.h>
 
 namespace NFq {

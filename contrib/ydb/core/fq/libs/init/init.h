@@ -13,7 +13,7 @@
 
 #include <contrib/ydb/library/yql/providers/pq/cm_client/client.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/generic/ptr.h>
 

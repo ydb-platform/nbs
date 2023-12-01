@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
 #include <contrib/ydb/core/protos/kqp.pb.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 

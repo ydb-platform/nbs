@@ -6,7 +6,7 @@
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 #include <contrib/ydb/public/lib/operation_id/operation_id.h>
 
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <util/generic/maybe.h>
 

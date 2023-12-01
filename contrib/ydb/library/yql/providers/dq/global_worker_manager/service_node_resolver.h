@@ -5,7 +5,7 @@
 
 #include <util/generic/string.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/threading/future/future.h>
 #include <contrib/ydb/library/grpc/client/grpc_client_low.h>
 

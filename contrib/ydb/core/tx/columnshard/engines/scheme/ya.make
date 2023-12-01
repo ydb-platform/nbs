@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/formats/arrow
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 )
 
 YQL_LAST_ABI_VERSION()

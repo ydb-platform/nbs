@@ -1,8 +1,8 @@
 #pragma once
 #include <contrib/ydb/core/fq/libs/quota_manager/events/events.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NFq {
 

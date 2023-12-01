@@ -44,6 +44,7 @@ SRCS(
     flat_page_label.cpp
     flat_part_dump.cpp
     flat_part_iter_multi.cpp
+    flat_part_index_iter_create.cpp
     flat_part_loader.cpp
     flat_part_overlay.cpp
     flat_part_outset.cpp
@@ -88,7 +89,7 @@ ENDIF()
 
 PEERDIR(
     contrib/libs/protobuf
-    library/cpp/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/containers/absl_flat_hash
     library/cpp/containers/intrusive_rb_tree
     library/cpp/containers/stack_vector

@@ -11,8 +11,8 @@
 #include <contrib/ydb/core/testlib/basics/helpers.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NStorage {

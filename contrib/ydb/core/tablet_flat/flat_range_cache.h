@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/base/row_version.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 
-#include <library/cpp/actors/util/memory_track.h>
+#include <contrib/ydb/library/actors/util/memory_track.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/intrlist.h>

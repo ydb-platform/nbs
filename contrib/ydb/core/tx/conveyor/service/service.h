@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/tx/conveyor/usage/config.h>
 #include <contrib/ydb/core/tx/conveyor/usage/events.h>
 #include <contrib/ydb/core/tx/columnshard/counters/common/owner.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <queue>
 

@@ -3,13 +3,13 @@
 #include "defs.h"
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <library/cpp/actors/core/executor_pool_basic.h>
-#include <library/cpp/actors/core/executor_pool_io.h>
-#include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_io.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
-#include <library/cpp/actors/protos/services_common.pb.h>
+#include <contrib/ydb/library/actors/protos/services_common.pb.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/dsproxy_nodemon.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/dsproxy.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>

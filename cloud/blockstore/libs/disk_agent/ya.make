@@ -27,7 +27,7 @@ PEERDIR(
 
     library/cpp/lwtrace/mon
 
-    library/cpp/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/getopt/small
     library/cpp/logger
     library/cpp/monlib/dynamic_counters

@@ -17,7 +17,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 #include <contrib/ydb/services/lib/sharding/sharding.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/digest/md5/md5.h>
 #include <google/protobuf/util/time_util.h>
 #include <util/string/hex.h>

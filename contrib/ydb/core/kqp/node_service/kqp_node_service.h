@@ -8,8 +8,8 @@
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
 
 namespace NYql {
 namespace NDq {

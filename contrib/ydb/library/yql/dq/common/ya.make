@@ -1,8 +1,8 @@
 LIBRARY()
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/util
     contrib/ydb/library/mkql_proto/protos
     contrib/ydb/library/yql/dq/proto
     contrib/ydb/library/yql/utils

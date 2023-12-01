@@ -1,8 +1,8 @@
 #pragma once
 #include <unordered_map>
 #include <unordered_set>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/hive.h>

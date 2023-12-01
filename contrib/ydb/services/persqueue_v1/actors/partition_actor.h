@@ -3,8 +3,8 @@
 #include "events.h"
 #include "partition_id.h"
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/containers/disjoint_interval_tree/disjoint_interval_tree.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>

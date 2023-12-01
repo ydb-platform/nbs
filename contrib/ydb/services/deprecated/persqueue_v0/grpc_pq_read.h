@@ -8,7 +8,7 @@
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_request.h>
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 #include <util/generic/hash.h>
 #include <util/system/mutex.h>

@@ -17,7 +17,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/storage/core/libs/kikimr
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/string_utils/quote
     contrib/ydb/core/base
     contrib/ydb/core/tablet

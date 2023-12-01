@@ -1,9 +1,9 @@
 #include "quota_manager.h"
 #include "quota_proxy.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/util.h>

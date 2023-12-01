@@ -1,7 +1,7 @@
 #include "handoff_mon.h"
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_mon.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 using namespace NKikimrServices;
 using namespace NKikimr::NHandoff;

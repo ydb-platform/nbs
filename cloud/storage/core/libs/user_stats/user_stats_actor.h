@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/core/mon/mon.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
 namespace NCloud::NStorage::NUserStats {

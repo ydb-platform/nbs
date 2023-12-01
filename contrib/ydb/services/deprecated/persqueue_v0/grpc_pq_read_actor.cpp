@@ -12,8 +12,8 @@
 #include <contrib/ydb/library/persqueue/topic_parser/counters.h>
 #include <contrib/ydb/library/persqueue/deprecated/read_batch_converter/read_batch_converter.h>
 
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <library/cpp/protobuf/util/repeated_field_utils.h>
 
 #include <util/string/strip.h>

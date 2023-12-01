@@ -17,8 +17,8 @@ target_link_libraries(storage-init-common PUBLIC
   blockstore-libs-kikimr
   libs-storage-api
   core-libs-kikimr
-  cpp-actors-core
-  cpp-actors-util
+  library-actors-core
+  library-actors-util
   library-cpp-logger
   monlib-service-pages
   run

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <variant>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/mailbox.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/mailbox.h>
 #include <contrib/ydb/core/util/simple_cache.h>
 
 namespace NCloud {

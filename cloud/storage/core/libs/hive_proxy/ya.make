@@ -27,7 +27,7 @@ PEERDIR(
     contrib/ydb/core/testlib
     contrib/ydb/core/testlib/basics
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 )
 
 END()

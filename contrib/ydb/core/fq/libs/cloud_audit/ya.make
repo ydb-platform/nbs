@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/log_backend
+    contrib/ydb/library/actors/log_backend
     library/cpp/unified_agent_client
     contrib/ydb/core/fq/libs/actors
     contrib/ydb/core/fq/libs/audit/events

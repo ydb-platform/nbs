@@ -6,9 +6,9 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>

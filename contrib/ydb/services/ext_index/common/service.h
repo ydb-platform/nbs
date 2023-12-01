@@ -2,7 +2,7 @@
 #include "events.h"
 
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/libs/apache/arrow/cpp/src/arrow/record_batch.h>
 #include <shared_mutex>
 

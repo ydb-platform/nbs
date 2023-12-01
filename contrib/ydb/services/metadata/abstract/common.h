@@ -2,12 +2,12 @@
 #include "fetcher.h"
 #include "events.h"
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/actor_virtual.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor_virtual.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/object_factory/object_factory.h>
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/accessor/accessor.h>

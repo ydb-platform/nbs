@@ -10,9 +10,9 @@
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/folder/path.h>
 #include <util/generic/string.h>

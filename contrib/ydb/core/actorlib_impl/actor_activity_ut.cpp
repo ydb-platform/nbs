@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
 namespace NActors {

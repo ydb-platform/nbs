@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/yql/minikql/mkql_buffer.h>
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 
-#include <library/cpp/actors/util/rope.h>
+#include <contrib/ydb/library/actors/util/rope.h>
 
 #include <util/generic/buffer.h>
 

@@ -33,7 +33,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/protos
-    library/cpp/actors/prof
+    contrib/ydb/library/actors/prof
     library/cpp/deprecated/atomic
     library/cpp/logger
     library/cpp/lwtrace

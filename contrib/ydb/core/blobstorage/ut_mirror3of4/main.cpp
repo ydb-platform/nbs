@@ -1,5 +1,5 @@
 #include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/actors/core/actor_coroutine.h>
+#include <contrib/ydb/library/actors/core/actor_coroutine.h>
 #include <contrib/ydb/core/util/testactorsys.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/blobstorage/backpressure/queue_backpressure_client.h>

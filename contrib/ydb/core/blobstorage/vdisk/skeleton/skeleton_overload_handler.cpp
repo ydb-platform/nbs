@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/hullop/blobstorage_hull.h>
 #include <contrib/ydb/core/util/queue_inplace.h>
 #include <contrib/ydb/library/wilson_ids/wilson.h>
-#include <library/cpp/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
 
 namespace NKikimr {
 

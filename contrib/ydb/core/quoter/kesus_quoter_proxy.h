@@ -3,8 +3,8 @@
 #include <contrib/ydb/core/protos/kesus.pb.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <library/cpp/containers/ring_buffer/ring_buffer.h>
 
 #include <util/datetime/base.h>

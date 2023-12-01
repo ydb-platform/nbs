@@ -37,7 +37,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/monlib/service/pages
     library/cpp/string_utils/quote
 

@@ -14,7 +14,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/protos
+    contrib/ydb/library/actors/protos
     library/cpp/lwtrace/protos
     contrib/ydb/core/fq/libs/compute/common
     contrib/ydb/core/fq/libs/config/protos

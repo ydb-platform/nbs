@@ -1,7 +1,7 @@
 #include "msgbus_servicereq.h"
-#include <library/cpp/actors/interconnect/load.h>
-#include <library/cpp/actors/interconnect/slowpoke_actor.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/load.h>
+#include <contrib/ydb/library/actors/interconnect/slowpoke_actor.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 namespace NKikimr {
 namespace NMsgBusProxy {

@@ -7,7 +7,7 @@
 
 #include <contrib/ydb/services/deprecated/persqueue_v0/api/grpc/persqueue.grpc.pb.h>
 
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/maybe.h>

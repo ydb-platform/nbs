@@ -1,4 +1,4 @@
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/system/types.h>
 

@@ -17,7 +17,7 @@
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
 #include <contrib/ydb/library/yql/providers/pq/cm_client/client.h>
 
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 #include <functional>
 #include <unordered_map>

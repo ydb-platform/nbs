@@ -1,11 +1,11 @@
 #include "yql_generic_read_actor.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>

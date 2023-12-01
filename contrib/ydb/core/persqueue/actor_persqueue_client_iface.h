@@ -5,7 +5,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/logger/log.h>
 
 #include <util/datetime/base.h>

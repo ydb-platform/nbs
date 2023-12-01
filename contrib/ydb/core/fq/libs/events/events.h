@@ -11,7 +11,7 @@
 #include <contrib/ydb/core/fq/libs/protos/fq_private.pb.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 #include <util/digest/multi.h>
 

@@ -6,7 +6,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/public/udf

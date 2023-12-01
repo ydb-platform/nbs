@@ -2,14 +2,14 @@
 
 #include <contrib/ydb/core/base/events.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <library/cpp/logger/backend.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
 #include <library/cpp/logger/record.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/strbuf.h>
 #include <util/datetime/base.h>

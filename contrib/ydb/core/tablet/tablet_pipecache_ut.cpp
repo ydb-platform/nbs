@@ -2,7 +2,7 @@
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

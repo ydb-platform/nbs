@@ -33,7 +33,7 @@ target_link_libraries(libs-storage-core PUBLIC
   core-libs-diagnostics
   core-libs-kikimr
   contrib-libs-openssl
-  cpp-actors-core
+  library-actors-core
   library-cpp-cgiparam
   cpp-containers-intrusive_rb_tree
   cpp-deprecated-atomic

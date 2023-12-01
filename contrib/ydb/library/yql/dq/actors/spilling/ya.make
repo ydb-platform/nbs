@@ -14,8 +14,8 @@ PEERDIR(
     contrib/ydb/library/yql/dq/runtime
     contrib/ydb/library/yql/utils
 
-    library/cpp/actors/core
-    library/cpp/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/util
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/service/pages
 )

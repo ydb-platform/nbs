@@ -9,7 +9,7 @@ SIZE(MEDIUM)
 PEERDIR(
     library/cpp/getopt
     library/cpp/svnversion
-    library/cpp/actors/helpers
+    contrib/ydb/library/actors/helpers
     contrib/ydb/core/base
     contrib/ydb/core/mind
     contrib/ydb/core/mind/hive

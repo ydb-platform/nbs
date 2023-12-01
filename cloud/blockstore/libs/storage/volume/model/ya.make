@@ -25,7 +25,7 @@ PEERDIR(
 
     cloud/storage/core/libs/throttling
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/containers/intrusive_rb_tree
 )
 

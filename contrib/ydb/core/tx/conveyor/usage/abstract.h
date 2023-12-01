@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/library/accessor/accessor.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <util/generic/string.h>
 
 namespace NKikimr::NConveyor {

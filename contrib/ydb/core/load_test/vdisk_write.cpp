@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/interconnect_channels.h>
 #include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/actors/util/rope.h>
+#include <contrib/ydb/library/actors/util/rope.h>
 
 namespace NKikimr {
 

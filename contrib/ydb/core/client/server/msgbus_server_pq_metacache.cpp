@@ -14,8 +14,8 @@
 #include <contrib/ydb/core/persqueue/pq_database.h>
 #include <contrib/ydb/core/persqueue/cluster_tracker.h>
 
-#include <library/cpp/actors/protos/actors.pb.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/protos/actors.pb.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <library/cpp/json/json_reader.h>
 
 namespace NKikimr::NMsgBusProxy {

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/yql/utils/actors/rich_actor.h>
 
 #include <contrib/ydb/library/yql/utils/log/log.h>

@@ -1,6 +1,6 @@
 #pragma once
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <library/cpp/protobuf/json/json2proto.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/library/services/services.pb.h>

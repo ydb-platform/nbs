@@ -1,8 +1,8 @@
 #pragma once
 #include "defs.h"
 
-#include <library/cpp/actors/core/mailbox.h>
-#include <library/cpp/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/mailbox.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NKikimr {
 

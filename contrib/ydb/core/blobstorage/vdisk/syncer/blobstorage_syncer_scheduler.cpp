@@ -6,9 +6,9 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/blobstorage_dblogcutter.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/blobstorage_status.h>
 
-#include <library/cpp/actors/core/mon.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <util/generic/queue.h>
 #include <util/generic/deque.h>

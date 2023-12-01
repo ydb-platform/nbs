@@ -1,8 +1,8 @@
 #pragma once
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <util/generic/hash_set.h>
 #include <contrib/ydb/library/services/services.pb.h>
 

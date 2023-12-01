@@ -23,10 +23,10 @@
 #include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr {
 namespace NKqp {

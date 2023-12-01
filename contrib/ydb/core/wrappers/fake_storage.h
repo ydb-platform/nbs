@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/string/builder.h>
 #include <util/string/printf.h>

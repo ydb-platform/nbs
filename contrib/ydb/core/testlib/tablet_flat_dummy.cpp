@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 #include <contrib/ydb/core/engine/minikql/flat_local_tx_factory.h>
 #include <contrib/ydb/core/base/appdata.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr {
 

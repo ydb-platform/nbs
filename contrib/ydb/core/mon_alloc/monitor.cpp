@@ -6,9 +6,9 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/prof/tag.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/prof/tag.h>
 #include <library/cpp/html/pcdata/pcdata.h>
 #include <library/cpp/lfalloc/dbg_info/dbg_info.h>
 #include <library/cpp/malloc/api/malloc.h>

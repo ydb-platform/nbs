@@ -9,7 +9,7 @@ SIZE(MEDIUM)
 TIMEOUT(600)
 
 PEERDIR(
-    library/cpp/actors/interconnect/mock
+    contrib/ydb/library/actors/interconnect/mock
     library/cpp/testing/unittest
     contrib/ydb/core/blobstorage/backpressure
     contrib/ydb/core/blobstorage/base

@@ -15,7 +15,7 @@
 #include <contrib/ydb/core/protos/ydb_table_impl.pb.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr {
 namespace NGRpcService {

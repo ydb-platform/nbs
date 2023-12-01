@@ -3,10 +3,10 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/util/address_classifier.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/defs.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/defs.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 

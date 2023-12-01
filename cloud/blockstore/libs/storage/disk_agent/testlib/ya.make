@@ -11,7 +11,7 @@ PEERDIR(
 
     cloud/storage/core/libs/aio
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/testing/unittest
 
     contrib/ydb/core/mind/bscontroller

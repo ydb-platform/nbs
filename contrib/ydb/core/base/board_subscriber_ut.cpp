@@ -5,9 +5,9 @@
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/basics/helpers.h>
 
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>

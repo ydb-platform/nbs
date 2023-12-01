@@ -31,7 +31,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/json
     library/cpp/monlib/service/pages
 

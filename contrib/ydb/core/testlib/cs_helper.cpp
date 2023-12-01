@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/grpc_services/local_rpc/local_rpc.h>
 #include <contrib/ydb/library/binary_json/write.h>
 
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/event.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/buffer.h>

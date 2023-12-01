@@ -5,8 +5,8 @@
 #include <contrib/ydb/core/protos/data_events.pb.h>
 #include <contrib/ydb/core/base/events.h>
 
-#include <library/cpp/actors/core/event_pb.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 
 namespace NKikimr::NEvents {

@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/library/yql/providers/dq/actors/actor_helpers.h>
 
-#include <library/cpp/actors/helpers/future_callback.h>
+#include <contrib/ydb/library/actors/helpers/future_callback.h>
 
 namespace NYql::NDqs {
 

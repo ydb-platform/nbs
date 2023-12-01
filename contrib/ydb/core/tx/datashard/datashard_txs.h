@@ -4,7 +4,7 @@
 #include "datashard_impl.h"
 #include "execution_unit_kind.h"
 
-#include <library/cpp/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
 
 namespace NKikimr::NDataShard {
 

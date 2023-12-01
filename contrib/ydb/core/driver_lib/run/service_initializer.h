@@ -1,6 +1,6 @@
 #pragma once
 
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/list.h>

@@ -22,8 +22,8 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/interconnect
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/interconnect
     contrib/ydb/library/grpc/client
     contrib/ydb/library/grpc/server
     contrib/ydb/library/grpc/server/actors

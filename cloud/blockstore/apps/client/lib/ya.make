@@ -55,7 +55,7 @@ PEERDIR(
 
     cloud/storage/core/libs/version
 
-    library/cpp/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/getopt/small
     library/cpp/protobuf/util
     library/cpp/threading/blocking_queue

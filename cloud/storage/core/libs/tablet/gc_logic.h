@@ -8,7 +8,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/generic/map.h>
 #include <util/generic/vector.h>

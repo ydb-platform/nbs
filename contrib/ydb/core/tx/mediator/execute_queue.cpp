@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/tx_processing.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/core/tx/time_cast/time_cast.h>
 
 #include <util/generic/hash.h>

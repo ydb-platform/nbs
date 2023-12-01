@@ -2,8 +2,8 @@
 
 #include <contrib/ydb/core/kqp/runtime/kqp_compute.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NKikimr {
 namespace NSysView {

@@ -7,7 +7,7 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NCloud::NFileStore::NStorage {
 

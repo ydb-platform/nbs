@@ -17,8 +17,8 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 namespace NCloud::NBlockStore::NStorage {

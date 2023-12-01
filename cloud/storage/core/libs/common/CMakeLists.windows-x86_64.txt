@@ -21,7 +21,7 @@ target_link_libraries(core-libs-common PUBLIC
   yutil
   tools-enum_parser-enum_serialization_runtime
   storage-core-protos
-  cpp-actors-prof
+  library-actors-prof
   cpp-deprecated-atomic
   library-cpp-logger
   library-cpp-lwtrace

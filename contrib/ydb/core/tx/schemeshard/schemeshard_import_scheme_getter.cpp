@@ -6,8 +6,8 @@
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 #include <contrib/ydb/public/api/protos/ydb_import.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <google/protobuf/text_format.h>
 

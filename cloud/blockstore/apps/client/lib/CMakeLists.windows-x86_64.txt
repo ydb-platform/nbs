@@ -20,7 +20,7 @@ target_link_libraries(apps-client-lib PUBLIC
   blockstore-libs-encryption
   blockstore-libs-service
   core-libs-version
-  cpp-actors-util
+  library-actors-util
   cpp-getopt-small
   cpp-protobuf-util
   cpp-threading-blocking_queue

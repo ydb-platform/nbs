@@ -1,10 +1,10 @@
 #pragma once
 
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/executor_pool_basic.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/log_settings.h>
-#include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log_settings.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <util/generic/ptr.h>
 #include <util/generic/xrange.h>
 #include <contrib/ydb/library/services/services.pb.h>

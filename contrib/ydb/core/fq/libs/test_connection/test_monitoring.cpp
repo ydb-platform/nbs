@@ -12,7 +12,7 @@
 #include <contrib/ydb/library/yql/providers/solomon/async_io/dq_solomon_write_actor.h>
 #include <contrib/ydb/library/yql/utils/actors/http_sender_actor.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NFq {
 

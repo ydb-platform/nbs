@@ -3,7 +3,7 @@
 #include "spilling_counters.h"
 
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/system/types.h>
 #include <util/generic/strbuf.h>

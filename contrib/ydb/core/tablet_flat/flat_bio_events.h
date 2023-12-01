@@ -5,7 +5,7 @@
 #include "flat_sausage_fetch.h"
 #include <contrib/ydb/core/protos/base.pb.h>
 #include <contrib/ydb/core/base/events.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 namespace NKikimr {
 namespace NTabletFlatExecutor {

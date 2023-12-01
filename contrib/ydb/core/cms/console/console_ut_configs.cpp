@@ -10,7 +10,7 @@
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 
 #include <contrib/ydb/core/testlib/tenant_runtime.h>
 #include <library/cpp/testing/unittest/registar.h>

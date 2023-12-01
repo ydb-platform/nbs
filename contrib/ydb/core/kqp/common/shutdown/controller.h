@@ -1,7 +1,7 @@
 #pragma once
 #include "state.h"
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
 namespace NKikimr::NKqp {

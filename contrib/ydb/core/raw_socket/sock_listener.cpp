@@ -1,7 +1,7 @@
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/interconnect/poller_actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/interconnect/poller_actor.h>
 #include <util/network/sock.h>
 #include <contrib/ydb/library/services/services.pb.h>
 

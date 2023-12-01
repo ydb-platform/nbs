@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/appdata.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/core/persqueue/events/global.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
 #include <contrib/ydb/core/tablet_flat/flat_dbase_scheme.h>

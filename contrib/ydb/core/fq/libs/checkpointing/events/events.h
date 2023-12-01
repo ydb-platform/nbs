@@ -2,9 +2,9 @@
 #include <contrib/ydb/core/fq/libs/checkpointing_common/defs.h>
 #include <contrib/ydb/core/fq/libs/events/event_subspace.h>
 
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/event_pb.h>
-#include <library/cpp/actors/interconnect/events_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/interconnect/events_local.h>
 
 namespace NFq {
 

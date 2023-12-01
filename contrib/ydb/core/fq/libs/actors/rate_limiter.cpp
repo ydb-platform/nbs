@@ -3,8 +3,8 @@
 #include <contrib/ydb/core/fq/libs/private_client/events.h>
 #include <contrib/ydb/public/lib/fq/scope.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/retry/retry_policy.h>
 
 namespace NFq {

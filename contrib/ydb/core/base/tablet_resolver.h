@@ -3,7 +3,7 @@
 #include "events.h"
 
 #include <contrib/ydb/core/protos/base.pb.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 

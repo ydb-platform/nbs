@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/wrappers/ut_helpers/s3_mock.h>
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/testing/unittest/registar.h>
 

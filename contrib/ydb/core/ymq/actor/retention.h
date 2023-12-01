@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/ymq/actor/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr::NSQS {
     

@@ -4,7 +4,7 @@
 #include "configs_config.h"
 #include "console.h"
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr::NConsole {
 

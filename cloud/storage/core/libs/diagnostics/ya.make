@@ -27,7 +27,7 @@ PEERDIR(
 
     library/cpp/lwtrace/mon
 
-    library/cpp/actors/prof
+    contrib/ydb/library/actors/prof
     library/cpp/containers/ring_buffer
     library/cpp/deprecated/atomic
     library/cpp/histogram/hdr

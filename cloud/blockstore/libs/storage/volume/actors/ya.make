@@ -12,7 +12,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/lwtrace
 )
 

@@ -1,6 +1,6 @@
 #include "ydb_common_ut.h"
 
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 
 #include <contrib/ydb/core/grpc_services/db_metadata_cache.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>

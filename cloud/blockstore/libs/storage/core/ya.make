@@ -49,7 +49,7 @@ PEERDIR(
 
     contrib/libs/openssl
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/cgiparam
     library/cpp/containers/intrusive_rb_tree
     library/cpp/deprecated/atomic

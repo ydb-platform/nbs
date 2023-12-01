@@ -4,10 +4,10 @@
 #include <contrib/ydb/core/grpc_services/rpc_calls.h>
 #include <contrib/ydb/core/grpc_services/grpc_helper.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/http/http.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/http/http.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/uri/uri.h>
 
 #include <util/generic/guid.h>

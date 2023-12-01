@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/grpc_services/auth_processor/dynamic_node_auth_processor.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/public/lib/base/defs.h>
 #include <contrib/ydb/public/lib/base/msgbus.h>
 #include "msgbus_http_server.h"

@@ -5,7 +5,7 @@
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NSQS {
 

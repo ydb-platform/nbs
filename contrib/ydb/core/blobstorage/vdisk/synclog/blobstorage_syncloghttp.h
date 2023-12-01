@@ -2,7 +2,7 @@
 
 #include "defs.h"
 #include "blobstorage_synclogneighbors.h"
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 
 namespace NKikimr {
 

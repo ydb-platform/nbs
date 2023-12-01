@@ -16,7 +16,7 @@
 
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr {
 namespace NGRpcService {

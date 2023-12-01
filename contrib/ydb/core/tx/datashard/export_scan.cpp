@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_state.h>
 #include <contrib/ydb/core/tablet_flat/flat_scan_spent.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/generic/bitmap.h>
 #include <util/string/builder.h>

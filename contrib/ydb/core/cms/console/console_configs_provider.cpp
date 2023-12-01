@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/cms/console/validators/registry.h>
 #include <contrib/ydb/core/mon/mon.h>
 
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 namespace NKikimr::NConsole {
 

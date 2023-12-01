@@ -24,8 +24,8 @@
 
 #include <contrib/ydb/core/tablet_flat/flat_executor_counters.h>
 
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
 

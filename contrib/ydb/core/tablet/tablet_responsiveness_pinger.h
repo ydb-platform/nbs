@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 
 namespace NKikimr {

@@ -9,8 +9,8 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/ticket_parser.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/deque.h>

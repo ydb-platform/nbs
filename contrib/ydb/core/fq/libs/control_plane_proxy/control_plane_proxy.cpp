@@ -25,8 +25,8 @@
 #include <contrib/ydb/core/fq/libs/control_plane_proxy/events/events.h>
 #include <contrib/ydb/public/lib/fq/scope.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <contrib/ydb/library/ycloud/api/access_service.h>
 #include <contrib/ydb/library/ycloud/impl/access_service.h>

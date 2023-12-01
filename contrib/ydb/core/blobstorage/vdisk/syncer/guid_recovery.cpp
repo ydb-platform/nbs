@@ -4,7 +4,7 @@
 #include "blobstorage_syncquorum.h"
 #include <contrib/ydb/core/blobstorage/vdisk/common/sublog.h>
 
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 using namespace NKikimrServices;
 using namespace NKikimr::NSync;

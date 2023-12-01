@@ -7,7 +7,7 @@
 
 #include <util/generic/fwd.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/monlib/encode/json/json.h>

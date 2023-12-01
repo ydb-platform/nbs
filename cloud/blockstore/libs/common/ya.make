@@ -16,7 +16,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/public/api/protos
     cloud/storage/core/libs/common
-    library/cpp/actors/prof
+    contrib/ydb/library/actors/prof
     library/cpp/digest/crc32c
     library/cpp/threading/future
     library/cpp/deprecated/atomic

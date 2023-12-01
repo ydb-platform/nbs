@@ -3,8 +3,8 @@
 
 #include <contrib/ydb/core/protos/grpc.grpc.pb.h>
 
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
 #include <contrib/ydb/public/lib/base/defs.h>

@@ -7,8 +7,8 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/scheduler_cookie.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>

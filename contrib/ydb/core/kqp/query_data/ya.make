@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
     contrib/ydb/core/kqp/common/simple

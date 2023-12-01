@@ -14,8 +14,8 @@ ELSE()
 ENDIF()
 
 PEERDIR(
-    library/cpp/actors/protos
-    library/cpp/actors/util
+    contrib/ydb/library/actors/protos
+    contrib/ydb/library/actors/util
     library/cpp/getopt
     library/cpp/svnversion
     contrib/ydb/core/base

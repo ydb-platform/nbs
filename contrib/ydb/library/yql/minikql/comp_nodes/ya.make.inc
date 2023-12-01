@@ -135,7 +135,7 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf/arrow
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/utils
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 )
 
 CFLAGS(

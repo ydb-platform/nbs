@@ -2,7 +2,7 @@
 #include "abstract.h"
 #include "s3_out.h"
 
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>

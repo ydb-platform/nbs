@@ -17,8 +17,8 @@
 #include <contrib/ydb/core/ymq/proto/events.pb.h>
 #include <contrib/ydb/core/ymq/proto/records.pb.h>
 
-#include <library/cpp/actors/core/event_pb.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/hash.h>

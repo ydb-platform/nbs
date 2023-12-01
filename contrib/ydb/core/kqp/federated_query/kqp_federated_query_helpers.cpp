@@ -1,6 +1,6 @@
 #include "kqp_federated_query_helpers.h"
 
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/feature_flags.h>

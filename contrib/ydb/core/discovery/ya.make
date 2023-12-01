@@ -7,7 +7,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/tx/scheme_cache
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 )
 
 END()

@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/protos/tx.pb.h>
 #include <contrib/ydb/core/tx/tx_processing.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>

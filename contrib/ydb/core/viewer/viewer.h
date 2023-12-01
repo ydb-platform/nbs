@@ -3,9 +3,9 @@
 #include <contrib/ydb/core/viewer/json/json.h>
 
 #include <contrib/ydb/core/tablet/defs.h>
-#include <library/cpp/actors/core/defs.h>
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/defs.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 #include <contrib/ydb/core/driver_lib/run/config.h>
 #include <contrib/ydb/core/viewer/protos/viewer.pb.h>
 #include <util/system/hostname.h>

@@ -14,8 +14,8 @@
 #include <contrib/ydb/library/yql/providers/dq/actors/yt/resource_manager.h>
 #include <contrib/ydb/library/yql/providers/dq/global_worker_manager/coordination_helper.h>
 
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/yson/node/node_io.h>
 
 #include <yt/cpp/mapreduce/interface/fluent.h>

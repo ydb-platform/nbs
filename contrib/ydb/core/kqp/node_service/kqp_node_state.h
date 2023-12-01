@@ -8,7 +8,7 @@
 #include <contrib/ydb/library/yql/dq/proto/dq_tasks.pb.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_tasks_runner.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/str_stl.h>
 

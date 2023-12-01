@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/client/server/msgbus_server_pq_metacache.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -10,7 +10,7 @@
 
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <queue>
 #include <mutex>

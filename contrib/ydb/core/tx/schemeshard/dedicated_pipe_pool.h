@@ -5,7 +5,7 @@
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 
-#include <library/cpp/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 #include <util/generic/map.h>
 

@@ -2,10 +2,10 @@
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_events.pb.h>
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 #include <util/generic/yexception.h>
 #include <util/system/types.h>

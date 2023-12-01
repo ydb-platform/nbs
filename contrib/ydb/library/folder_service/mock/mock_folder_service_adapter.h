@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/folder_service/proto/config.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr::NFolderService {
 

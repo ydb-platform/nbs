@@ -1,9 +1,9 @@
 #include "source_id_encoding.h"
 #include "writer.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>

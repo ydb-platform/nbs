@@ -1,6 +1,6 @@
 #pragma once
 
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/services/persqueue_v1/actors/events.h>
 

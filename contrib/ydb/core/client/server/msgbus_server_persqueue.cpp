@@ -3,8 +3,8 @@
 #include "msgbus_server_persqueue.h"
 #include "msgbus_server_pq_metacache.h"
 #include "msgbus_server_pq_metarequest.h"
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <contrib/ydb/core/persqueue/events/global.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>

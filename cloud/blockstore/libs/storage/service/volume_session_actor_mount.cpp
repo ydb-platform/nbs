@@ -15,7 +15,7 @@
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>

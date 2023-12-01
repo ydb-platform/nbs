@@ -1,9 +1,9 @@
 #include "internal_service.h"
 #include "private_client.h"
 
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
 

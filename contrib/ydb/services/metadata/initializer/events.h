@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 namespace NKikimr::NMetadata::NInitializer {
 

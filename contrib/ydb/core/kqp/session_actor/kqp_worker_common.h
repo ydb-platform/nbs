@@ -9,8 +9,8 @@
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
 #include <contrib/ydb/core/protos/kqp.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/json/json_reader.h>
 
 #include <util/datetime/base.h>

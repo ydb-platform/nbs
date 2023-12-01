@@ -19,7 +19,7 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/user_stats
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 
     contrib/ydb/core/base
     contrib/ydb/core/driver_lib/run

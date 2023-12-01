@@ -9,8 +9,8 @@
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/generic/string.h>
 

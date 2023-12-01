@@ -10,7 +10,7 @@
 #include <contrib/ydb/services/metadata/abstract/common.h>
 #include <contrib/ydb/services/metadata/secret/snapshot.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NColumnShard::NTiers {
 class TConfigsSnapshot;

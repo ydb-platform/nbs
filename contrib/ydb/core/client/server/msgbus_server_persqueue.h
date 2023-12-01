@@ -7,8 +7,8 @@
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/interconnect/interconnect_tcp_proxy.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_tcp_proxy.h>
 
 #include <util/generic/ptr.h>
 #include <util/system/compiler.h>

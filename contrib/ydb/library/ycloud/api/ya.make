@@ -12,7 +12,7 @@ PEERDIR(
     contrib/ydb/public/api/client/yc_private/iam
     contrib/ydb/public/api/client/yc_private/servicecontrol
     contrib/ydb/public/api/client/yc_private/resourcemanager
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/library/grpc/client
     contrib/ydb/core/base
     contrib/ydb/core/grpc_caching

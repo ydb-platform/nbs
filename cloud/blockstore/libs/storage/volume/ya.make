@@ -58,7 +58,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/lwtrace
     library/cpp/monlib/service/pages
     library/cpp/protobuf/util

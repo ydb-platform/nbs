@@ -19,7 +19,7 @@ PEERDIR(
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/operation_id
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 )
 
 YQL_LAST_ABI_VERSION()

@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/tx/scheme_board/cache.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>

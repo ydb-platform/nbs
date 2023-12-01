@@ -11,8 +11,8 @@
 #include <contrib/ydb/core/tablet_flat/flat_database.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NCloud::NFileStore::NStorage {
 

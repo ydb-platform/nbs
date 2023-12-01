@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/protos/kqp.pb.h>
 #include <contrib/ydb/core/base/appdata.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimrConfig {
     class TQueryServiceConfig;

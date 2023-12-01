@@ -6,9 +6,9 @@
 #include <contrib/ydb/core/util/ulid.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 namespace NKikimr {
 namespace NLongTxService {

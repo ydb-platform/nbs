@@ -55,7 +55,7 @@ PEERDIR(
     contrib/ydb/core/tx/tx_allocator
     contrib/ydb/core/tx/tx_proxy
 
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/testing/unittest
 )
 

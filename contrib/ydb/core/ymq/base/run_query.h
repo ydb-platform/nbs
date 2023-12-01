@@ -4,7 +4,7 @@
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 
 namespace NKikimr::NSQS {

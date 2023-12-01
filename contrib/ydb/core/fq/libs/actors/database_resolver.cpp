@@ -8,9 +8,9 @@
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>
 #include <contrib/ydb/library/yql/utils/url_builder.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/http/http.h>
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/http/http.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 #include <library/cpp/json/json_reader.h>
 
 #define LOG_E(stream) LOG_ERROR_S(*TlsActivationContext, NKikimrServices::FQ_DATABASE_RESOLVER, "TraceId: " << TraceId << " " << stream)

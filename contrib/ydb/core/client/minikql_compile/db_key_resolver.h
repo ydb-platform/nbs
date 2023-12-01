@@ -1,9 +1,9 @@
 #pragma once
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/event.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/core/scheme/tablet_scheme_defs.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 

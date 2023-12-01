@@ -11,7 +11,7 @@
 
 #include <contrib/ydb/core/mind/local.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/hash.h>

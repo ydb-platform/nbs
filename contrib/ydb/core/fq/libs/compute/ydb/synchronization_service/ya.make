@@ -5,8 +5,8 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/protos
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/protos
     contrib/ydb/core/fq/libs/control_plane_storage/proto
     contrib/ydb/public/api/grpc
     contrib/ydb/library/db_pool/protos

@@ -11,10 +11,10 @@
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/public/api/protos/ydb_clickhouse_internal.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
 #include <util/string/vector.h>
 #include <util/generic/hash.h>

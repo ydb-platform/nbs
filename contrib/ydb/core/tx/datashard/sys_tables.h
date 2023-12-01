@@ -1,6 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/scheme/scheme_types_auto.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
+#include <contrib/ydb/public/api/protos/ydb_value.pb.h>
 
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
 
@@ -28,7 +29,7 @@ struct TSysTables {
         i32 KeyOrder = -1;
         TString DefaultFromSequence;
         EDefaultKind DefaultKind;
-        NKikimrMiniKQL::TResult DefaultFromLiteral;
+        Ydb::TypedValue DefaultFromLiteral;
 
         TTableColumnInfo() = default;
 
@@ -52,7 +53,7 @@ struct TSysTables {
             const TString& typeMod = {}, i32 keyOrder = -1,
             const TString& defaultFromSequence = {},
             EDefaultKind defaultKind = EDefaultKind::DEFAULT_UNDEFINED,
-            const NKikimrMiniKQL::TResult& defaultFromLiteral = {})
+            const Ydb::TypedValue& defaultFromLiteral = {})
             : Name(name)
             , Id(colId)
             , PType(type)

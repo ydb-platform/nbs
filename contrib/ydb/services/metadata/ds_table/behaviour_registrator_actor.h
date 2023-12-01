@@ -6,7 +6,7 @@
 #include <contrib/ydb/services/metadata/abstract/kqp_common.h>
 #include <contrib/ydb/services/metadata/initializer/common.h>
 #include <contrib/ydb/services/metadata/initializer/events.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NMetadata::NProvider {
 

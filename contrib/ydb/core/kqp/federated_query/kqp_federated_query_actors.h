@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/kqp/common/events/script_executions.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 
 namespace NKikimr::NKqp {

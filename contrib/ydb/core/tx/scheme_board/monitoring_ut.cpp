@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/string/printf.h>

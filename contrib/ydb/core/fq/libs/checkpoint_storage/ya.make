@@ -10,7 +10,7 @@ SRCS(
 
 PEERDIR(
     contrib/libs/fmt
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/core/fq/libs/actors/logging
     contrib/ydb/core/fq/libs/control_plane_storage
     contrib/ydb/core/fq/libs/ydb

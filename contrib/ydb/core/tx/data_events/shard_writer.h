@@ -6,8 +6,8 @@
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/events.h>
 #include <contrib/ydb/public/api/grpc/draft/ydb_long_tx_v1.pb.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/wilson/wilson_profile_span.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/wilson/wilson_profile_span.h>
 
 
 namespace NKikimr::NEvWrite {

@@ -1,13 +1,13 @@
 #pragma once
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/core/tx/conveyor/usage/abstract.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/library/conclusion/result.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr::NConveyor {
 

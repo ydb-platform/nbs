@@ -29,8 +29,8 @@ ELSEIF(OS_WINDOWS)
 ENDIF()
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/http
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/http
     library/cpp/monlib/service/pages
     library/cpp/openssl/io
     contrib/ydb/core/base

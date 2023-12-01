@@ -1,10 +1,10 @@
 #pragma once
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/actor_virtual.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor_virtual.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/public/api/protos/ydb_table.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_scheme.pb.h>

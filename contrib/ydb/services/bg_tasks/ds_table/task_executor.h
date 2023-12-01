@@ -5,7 +5,7 @@
 #include <contrib/ydb/services/bg_tasks/abstract/task.h>
 #include <contrib/ydb/services/bg_tasks/ds_table/task_executor_controller.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NBackgroundTasks {
 

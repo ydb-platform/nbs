@@ -5,8 +5,8 @@
 #include <contrib/ydb/core/tx/columnshard/blob.h>
 #include <contrib/ydb/core/tx/columnshard/blob_cache.h>
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr::NOlap::NBlobOperations::NRead {
 

@@ -5,7 +5,7 @@
 
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/core/protos/sys_view.pb.h>
 
 namespace NKikimr {

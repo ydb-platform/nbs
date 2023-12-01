@@ -25,7 +25,7 @@
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
 
 #include <util/generic/set.h>
 #include <util/generic/maybe.h>

@@ -15,7 +15,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
 #include <contrib/ydb/public/api/grpc/ydb_scripting_v1.grpc.pb.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NLocalPgWire {
 

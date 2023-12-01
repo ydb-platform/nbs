@@ -7,8 +7,8 @@
 #include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 #include <contrib/ydb/core/base/services/blobstorage_service_id.h>
 

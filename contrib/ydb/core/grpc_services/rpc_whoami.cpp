@@ -1,7 +1,7 @@
 #include "service_discovery.h"
 
 #include <contrib/ydb/core/grpc_services/base/base.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 

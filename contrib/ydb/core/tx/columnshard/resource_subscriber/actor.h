@@ -3,7 +3,7 @@
 #include "task.h"
 #include "events.h"
 #include <contrib/ydb/core/tablet/resource_broker.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NOlap::NResourceBroker::NSubscribe {
 

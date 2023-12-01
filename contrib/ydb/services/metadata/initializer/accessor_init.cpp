@@ -6,7 +6,7 @@
 #include <contrib/ydb/services/metadata/abstract/common.h>
 #include <contrib/ydb/services/metadata/manager/alter.h>
 #include <contrib/ydb/services/metadata/service.h>
-#include <library/cpp/actors/core/invoke.h>
+#include <contrib/ydb/library/actors/core/invoke.h>
 
 namespace NKikimr::NMetadata::NInitializer {
 

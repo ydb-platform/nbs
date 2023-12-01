@@ -2,7 +2,7 @@
 #include "key_conflicts.h"
 #include "datashard_impl.h"
 
-#include <library/cpp/actors/core/monotonic_provider.h>
+#include <contrib/ydb/library/actors/core/monotonic_provider.h>
 
 namespace NKikimr {
 namespace NDataShard {

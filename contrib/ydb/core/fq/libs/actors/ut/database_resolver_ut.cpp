@@ -7,7 +7,7 @@
 
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 #include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 
 namespace {
 

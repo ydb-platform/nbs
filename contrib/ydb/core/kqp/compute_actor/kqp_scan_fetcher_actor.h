@@ -16,10 +16,10 @@
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/wilson/wilson_trace.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 namespace NKikimr::NKqp::NScanPrivate {
 

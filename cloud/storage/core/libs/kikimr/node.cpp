@@ -8,8 +8,8 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>

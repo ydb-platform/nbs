@@ -1,7 +1,7 @@
 UNITTEST_FOR(contrib/ydb/core/pgproxy)
 
 PEERDIR(
-    library/cpp/actors/testlib
+    contrib/ydb/library/actors/testlib
     contrib/ydb/core/protos
 )
 

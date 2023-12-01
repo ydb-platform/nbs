@@ -1,7 +1,7 @@
 #include "meta.h"
 #include <contrib/ydb/core/tx/columnshard/engines/scheme/index_info.h>
 #include <contrib/ydb/core/formats/arrow/arrow_filter.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr::NOlap {
 

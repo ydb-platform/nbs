@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/string/builder.h>
 

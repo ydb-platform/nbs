@@ -8,7 +8,7 @@
 #include "operation_helpers.h"
 #include "rpc_calls.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/feature_flags.h>

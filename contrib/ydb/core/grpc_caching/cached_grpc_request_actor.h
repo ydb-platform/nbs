@@ -7,9 +7,9 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/util/simple_cache.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/grpc/client/grpc_client_low.h>
 
 #include <util/datetime/base.h>

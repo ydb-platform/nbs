@@ -8,10 +8,10 @@
 #include <contrib/ydb/core/mind/tenant_pool.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #define LOG_T(stream) LOG_TRACE_S (*TlsActivationContext, NKikimrServices::CMS, "[InfoCollector] " << stream)
 #define LOG_D(stream) LOG_DEBUG_S (*TlsActivationContext, NKikimrServices::CMS, "[InfoCollector] " << stream)

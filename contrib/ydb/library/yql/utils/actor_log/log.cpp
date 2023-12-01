@@ -1,6 +1,6 @@
 #include "log.h"
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NYql {
 namespace NDq {

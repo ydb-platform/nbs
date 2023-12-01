@@ -3,7 +3,7 @@
 #include "events.h"
 #include <contrib/ydb/core/protos/statestorage.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
-#include <library/cpp/actors/interconnect/event_filter.h>
+#include <contrib/ydb/library/actors/interconnect/event_filter.h>
 #include <util/stream/str.h>
 #include <util/generic/list.h>
 #include <util/generic/map.h>

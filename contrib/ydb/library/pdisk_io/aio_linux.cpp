@@ -6,7 +6,7 @@
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 
 #include <contrib/ydb/library/pdisk_io/spdk_state.h>
-#include <library/cpp/actors/util/intrinsics.h>
+#include <contrib/ydb/library/actors/util/intrinsics.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <util/system/file.h>
 #include <util/stream/format.h>

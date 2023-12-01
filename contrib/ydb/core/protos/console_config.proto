@@ -1,4 +1,4 @@
-import "library/cpp/actors/protos/actors.proto";
+import "contrib/ydb/library/actors/protos/actors.proto";
 import "contrib/ydb/core/protos/config.proto";
 import "contrib/ydb/core/protos/console_base.proto";
 import "contrib/ydb/public/api/protos/ydb_status_codes.proto";

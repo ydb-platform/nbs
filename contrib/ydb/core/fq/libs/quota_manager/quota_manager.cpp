@@ -1,9 +1,9 @@
 #include "quota_manager.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/protobuf/interop/cast.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>

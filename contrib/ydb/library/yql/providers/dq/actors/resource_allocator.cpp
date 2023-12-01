@@ -5,7 +5,7 @@
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <contrib/ydb/library/yql/providers/dq/worker_manager/interface/events.h>
 #include <contrib/ydb/library/yql/providers/dq/counters/counters.h>

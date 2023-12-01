@@ -7,7 +7,7 @@
 
 #include <contrib/ydb/core/base/hive.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/vector.h>
 

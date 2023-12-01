@@ -1,7 +1,7 @@
 LIBRARY()
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/library/ydb_issue
     contrib/ydb/library/yql/utils/failure_injector
     contrib/ydb/library/yql/providers/common/config

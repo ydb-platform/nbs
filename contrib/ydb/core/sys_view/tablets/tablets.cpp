@@ -9,7 +9,7 @@
 
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr::NSysView {
 

@@ -2,9 +2,9 @@
 
 #include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 namespace NKikimr::NDataStreams::V1 {
 

@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/anubis_osiris/blobstorage_anubisrunner.h>
 #include <contrib/ydb/core/blobstorage/vdisk/synclog/blobstorage_synclogmsgreader.h>
 #include <contrib/ydb/core/base/interconnect_channels.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 #include <library/cpp/random_provider/random_provider.h>
 
 using namespace NKikimrServices;

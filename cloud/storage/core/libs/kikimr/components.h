@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 #include <util/generic/string.h>
 

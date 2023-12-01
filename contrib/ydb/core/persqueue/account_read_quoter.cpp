@@ -7,7 +7,7 @@
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 #include <contrib/ydb/library/persqueue/topic_parser/counters.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/string/join.h>
 #include <util/string/vector.h>

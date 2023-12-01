@@ -8,8 +8,8 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/actors/helpers
-    library/cpp/actors/interconnect
+    contrib/ydb/library/actors/helpers
+    contrib/ydb/library/actors/interconnect
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
     contrib/ydb/core/engine/minikql

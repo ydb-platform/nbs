@@ -19,7 +19,7 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/storage/core/libs/grpc
 
-    library/cpp/actors/prof
+    contrib/ydb/library/actors/prof
     library/cpp/monlib/service
     library/cpp/monlib/service/pages
 

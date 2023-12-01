@@ -9,7 +9,7 @@
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
 #include <contrib/ydb/public/lib/value/value.h>
 
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 #include <library/cpp/messagebus/message_status.h>
 #include <library/cpp/messagebus/message.h>
 #include <library/cpp/threading/future/future.h>

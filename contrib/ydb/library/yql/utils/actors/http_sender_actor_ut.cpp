@@ -6,8 +6,8 @@
 
 #include <contrib/ydb/core/fq/libs/control_plane_proxy/events/events.h>
 
-#include <library/cpp/actors/core/executor_pool_basic.h>
-#include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/library/yql/utils/actors/http_sender_actor.h>

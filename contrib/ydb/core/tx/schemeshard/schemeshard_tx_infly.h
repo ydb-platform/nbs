@@ -7,7 +7,7 @@
 
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 

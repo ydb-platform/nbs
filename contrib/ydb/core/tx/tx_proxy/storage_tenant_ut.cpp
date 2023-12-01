@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_impl.h>

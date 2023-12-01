@@ -6,7 +6,7 @@
 #include <contrib/ydb/library/yql/minikql/mkql_alloc.h>
 #include <contrib/ydb/library/yql/minikql/aligned_page_pool.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/size_literals.h>
 #include <util/system/types.h>

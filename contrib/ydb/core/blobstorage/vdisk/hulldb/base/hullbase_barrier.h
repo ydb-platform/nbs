@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_dbtype.h>
 #include <contrib/ydb/core/blobstorage/vdisk/ingress/blobstorage_ingress.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
-#include <library/cpp/actors/util/named_tuple.h>
+#include <contrib/ydb/library/actors/util/named_tuple.h>
 
 namespace NKikimr {
 

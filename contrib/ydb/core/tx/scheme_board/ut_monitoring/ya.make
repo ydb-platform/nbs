@@ -7,7 +7,7 @@ SIZE(MEDIUM)
 TIMEOUT(600)
 
 PEERDIR(
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/testing/unittest
     contrib/ydb/core/testlib/basics/default
 )

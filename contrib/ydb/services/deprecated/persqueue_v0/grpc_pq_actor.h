@@ -12,9 +12,9 @@
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
 #include <contrib/ydb/core/persqueue/writer/source_id_encoding.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 #include <contrib/ydb/core/persqueue/events/global.h>

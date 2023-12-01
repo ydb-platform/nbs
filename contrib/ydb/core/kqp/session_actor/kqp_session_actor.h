@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NKikimr::NKqp {
 

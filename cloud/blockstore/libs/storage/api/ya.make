@@ -23,7 +23,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos_ydb
     cloud/blockstore/private/api/protos
     cloud/blockstore/public/api/protos
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/core/protos
 )
 

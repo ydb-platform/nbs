@@ -2,7 +2,7 @@
 #include <contrib/ydb/core/tx/columnshard/engines/column_engine_logs.h>
 #include <contrib/ydb/core/tx/columnshard/blobs_action/blob_manager_db.h>
 #include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr::NOlap {
 

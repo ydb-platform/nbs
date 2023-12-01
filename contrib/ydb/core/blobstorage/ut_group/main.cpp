@@ -1,5 +1,5 @@
 #include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/actors/core/actor_coroutine.h>
+#include <contrib/ydb/library/actors/core/actor_coroutine.h>
 #include <contrib/ydb/core/blobstorage/crypto/default.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo_sets.h>

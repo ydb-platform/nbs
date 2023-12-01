@@ -1,7 +1,7 @@
 #pragma once
 #include "abstract.h"
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/conclusion/result.h>
 #include <contrib/ydb/core/base/events.h>
 

@@ -1,10 +1,10 @@
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/mon/mon.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 #include <util/generic/algorithm.h>
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/tablet_types.h>

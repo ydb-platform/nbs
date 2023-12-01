@@ -3,7 +3,7 @@
 #include "msgbus_server_proxy.h"
 #include "msgbus_securereq.h"
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>

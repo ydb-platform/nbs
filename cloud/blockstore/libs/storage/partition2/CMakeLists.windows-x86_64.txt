@@ -22,7 +22,7 @@ target_link_libraries(libs-storage-partition2 PUBLIC
   libs-storage-protos
   core-libs-api
   core-libs-tablet
-  cpp-actors-core
+  library-actors-core
   library-cpp-cgiparam
   cpp-containers-dense_hash
   cpp-containers-intrusive_rb_tree

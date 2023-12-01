@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
 
-#include <library/cpp/actors/core/scheduler_cookie.h>
+#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 #include <util/generic/deque.h>
 #include <contrib/ydb/core/base/tracing.h>
 

@@ -2,7 +2,7 @@
 
 #include "grpc_request_context_wrapper.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/protobuf/json/json2proto.h>
 #include <contrib/ydb/core/fq/libs/result_formatter/result_formatter.h>
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>

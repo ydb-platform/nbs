@@ -2,7 +2,7 @@
 #include <contrib/ydb/core/keyvalue/keyvalue_events.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 
 namespace NKikimr {

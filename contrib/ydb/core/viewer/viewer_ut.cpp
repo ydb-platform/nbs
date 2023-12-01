@@ -1,7 +1,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
-#include <library/cpp/actors/helpers/selfping_actor.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/helpers/selfping_actor.h>
 #include <library/cpp/json/json_reader.h>
 #include <util/stream/null.h>
 #include <contrib/ydb/core/viewer/protos/viewer.pb.h>
@@ -18,7 +18,7 @@
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 using namespace NKikimr;
 using namespace NViewer;

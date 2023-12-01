@@ -11,9 +11,9 @@
 #include <contrib/ydb/core/tx/scheme_board/scheme_board.h>
 #include <contrib/ydb/core/util/tuples.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/system/info.h>
 #include <util/string/vector.h>

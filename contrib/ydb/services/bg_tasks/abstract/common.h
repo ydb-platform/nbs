@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/base/events.h>
 
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 namespace NKikimr::NBackgroundTasks {
 

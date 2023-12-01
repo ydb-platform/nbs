@@ -30,8 +30,8 @@ IF (OS_WINDOWS)
 ENDIF(OS_WINDOWS)
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/wilson
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/wilson
     library/cpp/monlib/dynamic_counters
     contrib/ydb/core/debug
     contrib/ydb/library/pdisk_io/protos

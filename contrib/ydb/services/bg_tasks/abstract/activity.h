@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/core/base/events.h>
 
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <library/cpp/object_factory/object_factory.h>
 
 namespace NKikimr::NBackgroundTasks {

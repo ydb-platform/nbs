@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #define LOG_IMPL_AS(actorSystem, level, component, logRecordStream) \
     LOG_LOG_S(actorSystem, ::NActors::NLog:: Y_CAT(PRI_, level), ::NKikimrServices::component, logRecordStream);

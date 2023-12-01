@@ -5,10 +5,10 @@
 #include <contrib/ydb/core/tx/columnshard/blob.h>
 #include <contrib/ydb/core/tx/columnshard/blob_cache.h>
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NOlap::NBlobOperations::NRead {
 

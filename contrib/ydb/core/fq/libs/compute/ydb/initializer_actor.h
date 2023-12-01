@@ -6,7 +6,7 @@
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_query/query.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NFq {
 

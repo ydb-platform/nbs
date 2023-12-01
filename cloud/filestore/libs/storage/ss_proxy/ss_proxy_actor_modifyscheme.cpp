@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

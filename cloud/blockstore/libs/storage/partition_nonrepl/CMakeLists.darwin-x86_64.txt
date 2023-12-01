@@ -23,7 +23,7 @@ target_link_libraries(libs-storage-partition_nonrepl PUBLIC
   storage-partition_nonrepl-model
   libs-storage-protos
   core-libs-common
-  cpp-actors-core
+  library-actors-core
   cpp-containers-ring_buffer
   ydb-core-base
   ydb-core-testlib

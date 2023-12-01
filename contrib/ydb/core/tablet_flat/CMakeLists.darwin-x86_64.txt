@@ -54,7 +54,7 @@ target_link_libraries(ydb-core-tablet_flat PUBLIC
   yutil
   tools-enum_parser-enum_serialization_runtime
   contrib-libs-protobuf
-  cpp-actors-util
+  library-actors-util
   cpp-containers-absl_flat_hash
   cpp-containers-intrusive_rb_tree
   cpp-containers-stack_vector
@@ -105,6 +105,7 @@ target_sources(ydb-core-tablet_flat PRIVATE
   ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_page_label.cpp
   ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_part_dump.cpp
   ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_part_iter_multi.cpp
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_part_index_iter_create.cpp
   ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_part_loader.cpp
   ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_part_overlay.cpp
   ${CMAKE_SOURCE_DIR}/contrib/ydb/core/tablet_flat/flat_part_outset.cpp

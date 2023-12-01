@@ -2,7 +2,7 @@ LIBRARY()
 
 PEERDIR(
     contrib/libs/grpc
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/library/grpc/server
     contrib/ydb/core/base
 )

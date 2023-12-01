@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 #include <contrib/ydb/library/yql/providers/ydb/proto/source.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 
 namespace NYql::NDq {

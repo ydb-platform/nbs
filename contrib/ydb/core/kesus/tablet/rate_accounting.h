@@ -3,8 +3,8 @@
 #include <contrib/ydb/core/protos/kesus.pb.h>
 #include <contrib/ydb/library/time_series_vec/time_series_vec.h>
 
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/noncopyable.h>

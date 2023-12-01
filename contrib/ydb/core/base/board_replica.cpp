@@ -1,11 +1,11 @@
 #include "statestorage_impl.h"
 #include <contrib/ydb/library/services/services.pb.h>
-#include <library/cpp/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
 
 #include <util/generic/set.h>
 
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #if defined BLOG_D || defined BLOG_I || defined BLOG_ERROR
 #error log macro definition clash

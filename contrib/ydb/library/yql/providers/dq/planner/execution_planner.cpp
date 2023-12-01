@@ -27,7 +27,7 @@
 #include <contrib/ydb/library/yql/minikql/aligned_page_pool.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
 
-#include <library/cpp/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
 
 #include <stack>
 

@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/metering/bill_record.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/string/builder.h>
 #include <util/generic/deque.h>

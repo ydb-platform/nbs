@@ -13,8 +13,8 @@
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
 
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/json/json_writer.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/blobstorage.h>

@@ -6,8 +6,8 @@
 #include <contrib/ydb/core/testlib/tenant_runtime.h>
 #include <contrib/ydb/core/kqp/common/simple/services.h>
 
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/interconnect/interconnect_impl.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/tx/columnshard/columnshard_private_events.h>
 #include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
 #include <contrib/ydb/core/tx/columnshard/blob_manager.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr::NOlap::NBlobOperations::NBlobStorage {
 

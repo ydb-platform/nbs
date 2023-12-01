@@ -1,9 +1,9 @@
 #include "mkql_compile_service.h"
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/executor_thread.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/client/scheme_cache_lib/yql_db_scheme_resolver.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/tx/scheme_board/cache.h>

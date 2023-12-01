@@ -15,7 +15,7 @@
 #include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/cast.h>
 

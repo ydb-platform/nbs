@@ -3,10 +3,10 @@
 #include <contrib/ydb/library/yql/providers/solomon/proto/dq_solomon_shard.pb.h>
 #include <contrib/ydb/library/yql/public/udf/udf_data_type.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 
 namespace NYql::NDq {
 

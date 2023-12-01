@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_context.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_mon.h>
 
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 

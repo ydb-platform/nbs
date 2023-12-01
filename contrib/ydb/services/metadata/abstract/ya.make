@@ -15,7 +15,7 @@ GENERATE_ENUM_SERIALIZATION(kqp_common.h)
 
 PEERDIR(
     contrib/ydb/library/accessor
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/services/metadata/request
     contrib/ydb/public/api/protos
     contrib/ydb/core/base

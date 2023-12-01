@@ -10,7 +10,7 @@
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 
 namespace NLocalPgWire {

@@ -7,9 +7,9 @@
 
 #include <contrib/ydb/core/protos/base.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NCloud::NBlockStore {
 

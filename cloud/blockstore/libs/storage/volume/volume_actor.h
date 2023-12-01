@@ -37,11 +37,11 @@
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
 #include <contrib/ydb/core/mind/local.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/list.h>

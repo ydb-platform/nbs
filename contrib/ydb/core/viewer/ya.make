@@ -250,8 +250,8 @@ RESOURCE(
 )
 
 PEERDIR(
-    library/cpp/actors/core
-    library/cpp/actors/helpers
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/helpers
     library/cpp/archive
     library/cpp/mime/types
     library/cpp/protobuf/json

@@ -19,12 +19,12 @@
 #include <contrib/ydb/core/util/queue_oneone_inplace.h>
 #include <contrib/ydb/library/pdisk_io/aio.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/executor_pool_io.h>
-#include <library/cpp/actors/core/executor_pool_basic.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/mon.h>
-#include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/executor_pool_io.h>
+#include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/algorithm.h>

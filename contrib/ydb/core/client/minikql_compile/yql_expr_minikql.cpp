@@ -3,9 +3,9 @@
 #include "compile_context.h"
 #include "db_key_resolver.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/executor_thread.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider_impl.h>

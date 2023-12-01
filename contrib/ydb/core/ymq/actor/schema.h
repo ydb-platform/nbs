@@ -9,10 +9,10 @@
 #include <contrib/ydb/core/kesus/tablet/events.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event_pb.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/generic/hash.h>
 

@@ -7,8 +7,8 @@
 #include <contrib/ydb/core/protos/cms.pb.h>
 #include <contrib/ydb/core/protos/maintenance.pb.h>
 
-#include <library/cpp/actors/interconnect/events_local.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/interconnect/events_local.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 /**
  * Here we declare interface for CMS (Cluster Management System) tablet whose intention

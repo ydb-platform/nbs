@@ -8,7 +8,7 @@ import "contrib/ydb/core/protos/netclassifier.proto";
 import "contrib/ydb/library/services/services.proto";
 import "contrib/ydb/core/scheme/protos/type_info.proto";
 
-import "library/cpp/actors/protos/actors.proto";
+import "contrib/ydb/library/actors/protos/actors.proto";
 
 
 package NKikimrPQ;

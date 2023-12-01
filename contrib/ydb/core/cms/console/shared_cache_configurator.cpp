@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/tablet_flat/shared_sausagecache.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NConsole {
 

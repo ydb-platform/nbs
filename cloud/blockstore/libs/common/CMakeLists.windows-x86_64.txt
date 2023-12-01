@@ -14,7 +14,7 @@ target_link_libraries(blockstore-libs-common PUBLIC
   yutil
   public-api-protos
   core-libs-common
-  cpp-actors-prof
+  library-actors-prof
   cpp-digest-crc32c
   cpp-threading-future
   cpp-deprecated-atomic

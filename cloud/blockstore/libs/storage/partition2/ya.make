@@ -57,7 +57,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
     cloud/storage/core/libs/api
     cloud/storage/core/libs/tablet
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/cgiparam
     library/cpp/containers/dense_hash
     library/cpp/containers/intrusive_rb_tree

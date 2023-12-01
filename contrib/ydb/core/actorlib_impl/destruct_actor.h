@@ -1,9 +1,9 @@
 #pragma once
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/protos/services_common.pb.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/protos/services_common.pb.h>
 #include <contrib/ydb/library/services/services.pb.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 namespace NActors {
 

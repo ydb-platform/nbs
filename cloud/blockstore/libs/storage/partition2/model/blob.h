@@ -10,7 +10,7 @@
 
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
 #include <util/digest/multi.h>

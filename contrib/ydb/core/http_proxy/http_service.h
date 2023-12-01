@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/protos/serverless_proxy_config.pb.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 
 namespace NKikimr::NHttpProxy {

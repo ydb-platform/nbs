@@ -10,7 +10,7 @@
 #include <contrib/ydb/library/yql/core/yql_type_annotation.h>
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/cache/cache.h>
 
 #include <util/generic/flags.h>

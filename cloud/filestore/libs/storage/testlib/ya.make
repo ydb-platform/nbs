@@ -25,7 +25,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/testing/unittest
     contrib/ydb/core/base
     contrib/ydb/core/client/minikql_compile

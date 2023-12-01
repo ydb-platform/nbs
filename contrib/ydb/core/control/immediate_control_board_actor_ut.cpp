@@ -2,18 +2,18 @@
 #include "immediate_control_board_actor.h"
 #include "immediate_control_board_wrapper.h"
 
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/base/tablet.h>
-#include <library/cpp/actors/core/executor_pool_basic.h>
-#include <library/cpp/actors/core/executor_pool_io.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/core/mon.h>
-#include <library/cpp/actors/core/scheduler_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/executor_pool_io.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/mon.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 

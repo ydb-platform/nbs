@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <contrib/ydb/library/yql/providers/common/metrics/service_counters.h>
 

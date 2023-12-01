@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/kqp/common/kqp_event_ids.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 
 namespace NKikimr {

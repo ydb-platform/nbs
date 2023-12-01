@@ -3,7 +3,7 @@
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NFq {
 

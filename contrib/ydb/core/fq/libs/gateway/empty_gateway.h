@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/library/yql/providers/dq/provider/yql_dq_gateway.h>
 
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 namespace NFq {
 

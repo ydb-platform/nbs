@@ -2,7 +2,7 @@
 
 #include "counters.h"
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/core/fq/libs/config/protos/common.pb.h>
 #include <contrib/ydb/core/fq/libs/control_plane_proxy/events/events.h>
 #include <contrib/ydb/core/fq/libs/signer/signer.h>

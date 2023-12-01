@@ -8,9 +8,9 @@
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actor_coroutine.h>
-#include <library/cpp/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_coroutine.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 #include <util/generic/ptr.h>
 #include <util/system/yassert.h>

@@ -10,14 +10,14 @@
 
 #include <util/system/hp_timer.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
-#include <library/cpp/actors/core/monotonic_provider.h>
+#include <contrib/ydb/library/actors/core/monotonic_provider.h>
 #include <contrib/ydb/core/base/resource_profile.h>
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/nameservice.h>
 #include <contrib/ydb/core/base/channel_profiles.h>
 #include <contrib/ydb/core/base/domain.h>
 #include <util/system/condvar.h>
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 namespace NKikimr {
 namespace NPDisk {

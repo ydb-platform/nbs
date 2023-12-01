@@ -14,7 +14,7 @@ target_link_libraries(core-tx-tiering PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  cpp-actors-core
+  library-actors-core
   cpp-json-writer
   ydb-core-blobstorage
   ydb-core-protos
@@ -40,7 +40,7 @@ target_link_libraries(core-tx-tiering.global PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  cpp-actors-core
+  library-actors-core
   cpp-json-writer
   ydb-core-blobstorage
   ydb-core-protos

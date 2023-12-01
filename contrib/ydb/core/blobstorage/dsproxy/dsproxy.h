@@ -14,8 +14,8 @@
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/blobstorage/base/transparent.h>
 #include <contrib/ydb/core/blobstorage/backpressure/queue_backpressure_client.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/group_stat.h>
 #include <contrib/ydb/library/wilson_ids/wilson.h>

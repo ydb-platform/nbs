@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/debug/valgrind_check.h>
 
 #include <contrib/ydb/library/pdisk_io/spdk_state.h>
-#include <library/cpp/actors/util/unordered_cache.h>
+#include <contrib/ydb/library/actors/util/unordered_cache.h>
 
 #include <util/system/sanitizers.h>
 

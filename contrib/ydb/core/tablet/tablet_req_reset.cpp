@@ -1,8 +1,8 @@
 #include "tablet_impl.h"
 #include "tablet_sys.h"
 #include <contrib/ydb/core/base/logoblob.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr {
 

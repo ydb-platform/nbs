@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/common/sglist_test.h>
 
-#include <library/cpp/actors/testlib/test_runtime.h>
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {

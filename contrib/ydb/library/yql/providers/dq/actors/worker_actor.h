@@ -11,7 +11,7 @@
 
 #include <contrib/ydb/library/yql/dq/runtime/dq_transport.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <contrib/ydb/library/yql/providers/dq/counters/counters.h>
 

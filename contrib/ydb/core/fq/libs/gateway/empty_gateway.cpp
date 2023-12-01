@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/fq/libs/events/events.h>
 #include <contrib/ydb/core/fq/libs/tasks_packer/tasks_packer.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NFq {
 

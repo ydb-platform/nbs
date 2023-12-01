@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 
-#include <library/cpp/actors/util/rope.h>
+#include <contrib/ydb/library/actors/util/rope.h>
 
 #include <arrow/datum.h>
 

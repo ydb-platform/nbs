@@ -2,7 +2,7 @@
 #include "common.h"
 #include "config.h"
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/grpc_services/local_rpc/local_rpc.h>

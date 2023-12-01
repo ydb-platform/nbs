@@ -2,8 +2,8 @@
 #include <contrib/ydb/core/keyvalue/defs.h>
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/protos/msgbus.pb.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>

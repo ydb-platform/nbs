@@ -23,8 +23,8 @@ SRCS(
 
 PEERDIR(
     contrib/restricted/nlohmann_json
-    library/cpp/actors/http
-    library/cpp/actors/core
+    contrib/ydb/library/actors/http
+    contrib/ydb/library/actors/core
     contrib/ydb/core/base
     contrib/ydb/core/protos
     contrib/ydb/core/grpc_services/local_rpc

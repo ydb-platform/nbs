@@ -9,8 +9,8 @@
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>
 #include <contrib/ydb/public/lib/operation_id/operation_id.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr::NGRpcService {
 

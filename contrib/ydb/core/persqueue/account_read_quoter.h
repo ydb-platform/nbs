@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/quoter/public/quoter.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 
 namespace NKikimr {

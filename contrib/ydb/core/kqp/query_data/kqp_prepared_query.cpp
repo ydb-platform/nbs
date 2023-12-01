@@ -11,7 +11,7 @@
 #include <contrib/ydb/core/protos/kqp_physical.pb.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr::NKqp {
 

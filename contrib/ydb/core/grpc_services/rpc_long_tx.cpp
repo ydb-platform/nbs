@@ -18,7 +18,7 @@
 #include <contrib/ydb/core/tx/long_tx_service/public/events.h>
 #include <contrib/ydb/services/ext_index/common/service.h>
 
-#include <library/cpp/actors/wilson/wilson_profile_span.h>
+#include <contrib/ydb/library/actors/wilson/wilson_profile_span.h>
 #include <contrib/libs/apache/arrow/cpp/src/arrow/compute/api.h>
 
 namespace NKikimr {

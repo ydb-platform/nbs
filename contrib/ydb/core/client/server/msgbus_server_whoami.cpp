@@ -1,4 +1,4 @@
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/base/ticket_parser.h>
 #include "msgbus_server.h"

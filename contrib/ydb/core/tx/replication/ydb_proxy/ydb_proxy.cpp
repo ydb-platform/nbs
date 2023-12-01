@@ -4,8 +4,8 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 

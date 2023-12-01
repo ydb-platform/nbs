@@ -2,7 +2,7 @@ LIBRARY()
 
 PEERDIR(
     contrib/libs/apache/arrow
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
 )
 
 SRCS(

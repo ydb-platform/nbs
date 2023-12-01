@@ -20,7 +20,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    library/cpp/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/getopt
     library/cpp/getopt/small
     library/cpp/logger

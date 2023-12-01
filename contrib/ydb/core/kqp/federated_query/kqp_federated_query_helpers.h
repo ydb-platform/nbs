@@ -1,6 +1,6 @@
 #pragma once
 
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>

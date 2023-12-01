@@ -12,9 +12,9 @@
 
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <library/cpp/lwtrace/shuttle.h>
 
 namespace NCloud::NBlockStore::NStorage {

@@ -10,8 +10,8 @@
 #include <contrib/ydb/core/fq/libs/control_plane_storage/schema.h>
 #include <contrib/ydb/core/fq/libs/db_schema/db_schema.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <contrib/ydb/library/db_pool/db_pool.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>

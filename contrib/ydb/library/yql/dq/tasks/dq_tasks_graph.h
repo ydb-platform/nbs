@@ -5,7 +5,7 @@
 #include <contrib/ydb/library/yql/dq/proto/dq_tasks.pb.h>
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
 
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <variant>
 

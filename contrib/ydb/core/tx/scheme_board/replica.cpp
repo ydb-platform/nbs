@@ -10,10 +10,10 @@
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/log.h>
-#include <library/cpp/actors/util/memory_track.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/util/memory_track.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>

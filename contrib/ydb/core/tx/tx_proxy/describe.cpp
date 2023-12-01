@@ -11,7 +11,7 @@
 
 #include <contrib/ydb/library/aclib/aclib.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr {
 namespace NTxProxy {

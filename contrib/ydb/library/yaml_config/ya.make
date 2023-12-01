@@ -13,7 +13,7 @@ PEERDIR(
     contrib/libs/openssl
     contrib/libs/protobuf
     contrib/libs/yaml-cpp
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/protobuf/json
     library/cpp/yaml/fyamlcpp
     contrib/ydb/core/base

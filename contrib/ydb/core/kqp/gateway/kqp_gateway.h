@@ -14,8 +14,8 @@
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
 
-#include <library/cpp/actors/wilson/wilson_trace.h>
-#include <library/cpp/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <library/cpp/lwtrace/shuttle.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 

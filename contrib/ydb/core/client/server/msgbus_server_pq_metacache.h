@@ -1,7 +1,7 @@
 #pragma once
 
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 

@@ -19,7 +19,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/accessor
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     contrib/ydb/public/api/protos
     contrib/ydb/services/bg_tasks/abstract
     contrib/ydb/services/metadata/initializer

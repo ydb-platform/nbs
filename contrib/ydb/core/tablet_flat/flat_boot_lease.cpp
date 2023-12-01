@@ -1,6 +1,6 @@
 #include "flat_executor_bootlogic.h"
 #include <contrib/ydb/core/util/pb.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
 namespace NKikimr {
 namespace NTabletFlatExecutor {

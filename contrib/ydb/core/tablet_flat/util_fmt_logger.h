@@ -4,8 +4,8 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <library/cpp/time_provider/time_provider.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/log_iface.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/log_iface.h>
 
 namespace NKikimr {
 namespace NUtil {

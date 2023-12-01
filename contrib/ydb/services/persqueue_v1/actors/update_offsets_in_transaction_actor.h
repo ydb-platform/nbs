@@ -5,8 +5,8 @@
 
 #include <contrib/ydb/core/kqp/common/kqp.h>
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <memory>
 

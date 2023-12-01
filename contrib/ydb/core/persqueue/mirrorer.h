@@ -2,8 +2,8 @@
 
 #include "actor_persqueue_client_iface.h"
 
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/persqueue/percentile_counter.h>
 #include <contrib/ydb/core/protos/counters_pq.pb.h>

@@ -10,7 +10,7 @@
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/cms/console/validators/registry.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 namespace NKikimr::NConsole {

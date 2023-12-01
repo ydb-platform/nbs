@@ -8,7 +8,7 @@
 #include <contrib/ydb/services/bg_tasks/abstract/activity.h>
 #include <contrib/ydb/services/metadata/abstract/common.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NKikimr::NColumnShard::NTiers {
 

@@ -12,9 +12,9 @@
 #include <contrib/ydb/core/kqp/host/kqp_translate.h>
 #include <contrib/ydb/library/aclib/aclib.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/wilson/wilson_span.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/cache/cache.h>
 
 #include <util/string/escape.h>

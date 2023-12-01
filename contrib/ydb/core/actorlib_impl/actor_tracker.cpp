@@ -1,7 +1,7 @@
 #include "actor_tracker.h"
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/executor_thread.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NActors {
 

@@ -2,9 +2,9 @@
 
 #include "kqp_worker_common.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/wilson/wilson_span.h>
-#include <library/cpp/actors/wilson/wilson_trace.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
 
 #include <contrib/ydb/core/base/cputime.h>
 #include <contrib/ydb/library/wilson_ids/wilson.h>

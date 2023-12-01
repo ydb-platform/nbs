@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_hugeblobctx.h>
 #include <contrib/ydb/core/blobstorage/vdisk/skeleton/blobstorage_takedbsnap.h>
 #include <contrib/ydb/core/util/stlog.h>
-#include <library/cpp/actors/core/invoke.h>
+#include <contrib/ydb/library/actors/core/invoke.h>
 
 namespace NKikimr {
 

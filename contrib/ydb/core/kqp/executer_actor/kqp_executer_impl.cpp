@@ -8,7 +8,7 @@
 #include <contrib/ydb/library/yql/dq/runtime/dq_transport.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_arrow_helpers.h>
 
-#include <library/cpp/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr {
 namespace NKqp {

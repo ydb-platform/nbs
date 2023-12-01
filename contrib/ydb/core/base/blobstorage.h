@@ -14,10 +14,10 @@
 #include <contrib/ydb/core/protos/blobstorage_base3.pb.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 
-#include <library/cpp/actors/wilson/wilson_trace.h>
+#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
 #include <library/cpp/lwtrace/shuttle.h>
-#include <library/cpp/actors/util/rope.h>
-#include <library/cpp/actors/util/shared_data_rope_backend.h>
+#include <contrib/ydb/library/actors/util/rope.h>
+#include <contrib/ydb/library/actors/util/shared_data_rope_backend.h>
 
 #include <util/stream/str.h>
 #include <util/generic/xrange.h>

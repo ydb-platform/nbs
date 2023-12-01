@@ -5,11 +5,11 @@ SRCS(
 
 PEERDIR(
     contrib/libs/apache/arrow
-    library/cpp/actors/core
-    library/cpp/actors/helpers
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/helpers
     library/cpp/digest/md5
     library/cpp/string_utils/base64
-    library/cpp/actors/wilson
+    contrib/ydb/library/actors/wilson
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
     contrib/ydb/core/client/minikql_compile

@@ -18,7 +18,7 @@
 #include <contrib/ydb/core/ymq/queues/fifo/queries.h>
 #include <contrib/ydb/core/ymq/queues/std/queries.h>
 
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <util/random/random.h>
 #include <util/random/shuffle.h>

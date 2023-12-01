@@ -11,7 +11,7 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/protos
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/monlib/dynamic_counters
     contrib/ydb/core/base
 )

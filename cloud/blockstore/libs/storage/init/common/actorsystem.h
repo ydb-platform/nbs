@@ -10,8 +10,8 @@
 #include <contrib/ydb/core/driver_lib/run/run.h>
 #include <contrib/ydb/core/driver_lib/run/service_initializer.h>
 
-#include <library/cpp/actors/core/defs.h>
-#include <library/cpp/actors/util/should_continue.h>
+#include <contrib/ydb/library/actors/core/defs.h>
+#include <contrib/ydb/library/actors/util/should_continue.h>
 #include <library/cpp/logger/log.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/core/raw_socket/sock_config.h>
 #include <contrib/ydb/core/pgproxy/protos/pgproxy.pb.h>
 #include "pg_proxy_types.h"

@@ -2,7 +2,7 @@
 
 #include <util/system/file.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/yql/providers/dq/config/config.pb.h>
 
 #include <contrib/ydb/library/yql/providers/dq/task_runner/file_cache.h>

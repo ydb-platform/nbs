@@ -2,8 +2,8 @@
 
 #include <contrib/ydb/library/yql/dq/actors/dq_events_ids.h>
 
-#include <library/cpp/actors/util/rope.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/util/rope.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/buffer.h>

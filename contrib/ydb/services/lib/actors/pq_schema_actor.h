@@ -5,10 +5,10 @@
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/event_local.h>
-#include <library/cpp/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 
 struct TMsgPqCodes {

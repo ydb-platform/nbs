@@ -116,8 +116,8 @@
 #include <contrib/ydb/core/client/server/msgbus_server_tracer.h>
 #include <contrib/ydb/core/client/server/ic_nodes_cache_service.h>
 
-#include <library/cpp/actors/http/http_proxy.h>
-#include <library/cpp/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
 #include <contrib/ydb/library/grpc/server/actors/logger.h>
 

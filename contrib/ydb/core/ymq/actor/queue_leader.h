@@ -10,8 +10,8 @@
 #include <contrib/ydb/core/ymq/actor/message_delay_stats.h>
 #include <contrib/ydb/core/ymq/base/counters.h>
 
-#include <library/cpp/actors/core/actorid.h>
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/hash_multi_map.h>

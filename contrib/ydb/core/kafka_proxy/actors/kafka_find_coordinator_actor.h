@@ -1,6 +1,6 @@
 #include "actors.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/client/server/ic_nodes_cache_service.h>
 
 namespace NKafka {

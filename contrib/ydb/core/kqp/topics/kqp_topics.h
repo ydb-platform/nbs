@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/tx/long_tx_service/public/lock_handle.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/system/types.h>
 

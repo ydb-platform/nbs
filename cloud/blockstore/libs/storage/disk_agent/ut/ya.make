@@ -19,7 +19,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent/testlib
-    library/cpp/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/testing/unittest
     contrib/ydb/core/testlib
     contrib/ydb/core/testlib/basics

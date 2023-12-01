@@ -1,12 +1,12 @@
 #include "async_http_mon.h"
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/http/http_proxy.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/ticket_parser.h>
 
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-#include <library/cpp/actors/core/probes.h>
+#include <contrib/ydb/library/actors/core/probes.h>
 #include <contrib/ydb/core/base/monitoring_provider.h>
 
 #include <library/cpp/monlib/service/pages/mon_page.h>

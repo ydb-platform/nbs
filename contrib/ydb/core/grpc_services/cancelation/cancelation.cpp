@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/grpc_services/cancelation/cancelation_event.h>
 
-#include <library/cpp/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 namespace NKikimr {
 namespace NGRpcService {

@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/driver_lib/cli_base/cli.h>
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
-#include <library/cpp/actors/interconnect/poller_tcp.h>
+#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
 
 #include <library/cpp/deprecated/enum_codegen/enum_codegen.h>

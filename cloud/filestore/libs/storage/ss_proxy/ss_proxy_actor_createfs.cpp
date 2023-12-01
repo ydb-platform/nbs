@@ -7,7 +7,7 @@
 
 #include <contrib/ydb/core/base/path.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
 #include <util/string/join.h>

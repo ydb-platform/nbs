@@ -1,6 +1,6 @@
 #pragma once
 #include <contrib/ydb/services/metadata/abstract/common.h>
-#include <library/cpp/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <shared_mutex>
 
 namespace NKikimr::NMetadata::NProvider {

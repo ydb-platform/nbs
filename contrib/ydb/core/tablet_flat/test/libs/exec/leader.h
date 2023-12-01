@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/tablet_flat/util_fmt_abort.h>
 #include <contrib/ydb/core/tablet_flat/util_fmt_desc.h>
 #include <contrib/ydb/core/tablet_flat/util_fmt_basic.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NKikimr {
 namespace NFake {

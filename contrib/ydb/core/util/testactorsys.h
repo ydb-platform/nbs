@@ -2,14 +2,14 @@
 
 #include "defs.h"
 
-#include <library/cpp/actors/core/actor.h>
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/interconnect.h>
-#include <library/cpp/actors/core/mailbox.h>
-#include <library/cpp/actors/core/scheduler_queue.h>
-#include <library/cpp/actors/interconnect/interconnect_common.h>
-#include <library/cpp/actors/util/should_continue.h>
-#include <library/cpp/actors/core/monotonic_provider.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/core/mailbox.h>
+#include <contrib/ydb/library/actors/core/scheduler_queue.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
+#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <contrib/ydb/library/actors/core/monotonic_provider.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>

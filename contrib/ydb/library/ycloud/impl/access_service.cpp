@@ -1,5 +1,5 @@
-#include <library/cpp/actors/core/actorsystem.h>
-#include <library/cpp/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/json/json_value.h>
 #include <contrib/ydb/public/api/client/yc_private/servicecontrol/access_service.grpc.pb.h>
 #include "access_service.h"

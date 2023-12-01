@@ -5,9 +5,9 @@
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/event_pb.h>
-#include <library/cpp/actors/interconnect/events_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <contrib/ydb/library/actors/interconnect/events_local.h>
 
 namespace NFq {
 

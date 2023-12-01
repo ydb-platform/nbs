@@ -2,7 +2,7 @@
 #include "probes.h"
 #include "test_connection.h"
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <contrib/ydb/core/fq/libs/actors/clusters_from_connections.h>
 #include <contrib/ydb/core/fq/libs/config/yq_issue.h>
