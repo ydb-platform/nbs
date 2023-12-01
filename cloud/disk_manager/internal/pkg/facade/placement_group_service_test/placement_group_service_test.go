@@ -61,7 +61,7 @@ func TestDiskServiceCreateDeletePlacementGroup(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreatePlacementGroup(reqCtx, &disk_manager.CreatePlacementGroupRequest{
 		GroupId: &disk_manager.GroupId{
-			ZoneId:  "zone",
+			ZoneId:  "zone-a",
 			GroupId: groupID,
 		},
 		PlacementStrategy: disk_manager.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
@@ -77,7 +77,7 @@ func TestDiskServiceCreateDeletePlacementGroup(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeletePlacementGroup(reqCtx, &disk_manager.DeletePlacementGroupRequest{
 		GroupId: &disk_manager.GroupId{
-			ZoneId:  "zone",
+			ZoneId:  "zone-a",
 			GroupId: groupID,
 		},
 	})
@@ -101,7 +101,7 @@ func TestDiskServiceCreatePartitionPlacementGroup(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreatePlacementGroup(reqCtx, &disk_manager.CreatePlacementGroupRequest{
 		GroupId: &disk_manager.GroupId{
-			ZoneId:  "zone",
+			ZoneId:  "zone-a",
 			GroupId: groupID,
 		},
 		PlacementStrategy:       disk_manager.PlacementStrategy_PLACEMENT_STRATEGY_PARTITION,

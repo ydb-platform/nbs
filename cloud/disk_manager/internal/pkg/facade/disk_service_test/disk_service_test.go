@@ -515,7 +515,7 @@ func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 		Size: 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -546,7 +546,7 @@ func TestDiskServiceShouldFailCreateDiskFromNonExistingImage(t *testing.T) {
 			Size: 134217728,
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 		})
@@ -608,7 +608,7 @@ func TestDiskServiceCreateDiskFromImageWithForceNotLayered(t *testing.T) {
 		Size: 134217728,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		ForceNotLayered: true,
@@ -618,7 +618,7 @@ func TestDiskServiceCreateDiskFromImageWithForceNotLayered(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(
 		diskID,
 		testcommon.GetRawImageSize(t),
@@ -659,7 +659,7 @@ func TestDiskServiceCancelCreateDiskFromImage(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -703,7 +703,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -754,7 +754,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:      imageID,
-		ZoneId:       "zone",
+		ZoneId:       "zone-a",
 		Capacity:     12,
 		UseImageSize: true,
 	})
@@ -777,7 +777,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 			Size: int64(diskSize),
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 			EncryptionDesc: &disk_manager.EncryptionDesc{},
@@ -787,7 +787,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 		operations = append(operations, operation)
 	}
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
 	for i, operation := range operations {
 		err := internal_client.WaitOperation(ctx, client, operation.Id)
@@ -855,7 +855,7 @@ func testCreateDiskFromIncrementalSnapshot(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -864,7 +864,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	_, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
@@ -873,7 +873,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -892,7 +892,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID2,
@@ -913,7 +913,7 @@ func testCreateDiskFromIncrementalSnapshot(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -965,7 +965,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -974,7 +974,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
@@ -983,7 +983,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -1009,7 +1009,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -1050,7 +1050,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -1059,7 +1059,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
@@ -1069,7 +1069,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID1,
 			},
 		},
@@ -1096,7 +1096,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -1133,7 +1133,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 		Size: int64(imageSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -1142,7 +1142,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
 	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, imageSize)
 	require.NoError(t, err)
@@ -1153,7 +1153,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID1,
 			},
 		},
@@ -1173,7 +1173,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:      imageID,
-		ZoneId:       "zone",
+		ZoneId:       "zone-a",
 		Capacity:     1,
 		UseImageSize: true,
 	})
@@ -1193,7 +1193,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 		Size: int64(largeDiskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -1207,7 +1207,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 		SnapshotId: snapshotID,
@@ -1228,7 +1228,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 		Size: int64(largeDiskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID3,
 		},
 	})
@@ -1278,7 +1278,7 @@ func TestDiskServiceCreateZonalTaskInAnotherZone(t *testing.T) {
 
 	snapshotID := t.Name()
 
-	// zoneId of DM test server is "zone", dataPlane requests for another zone shouldn't be executed
+	// zoneId of DM test server is "zone-a", dataPlane requests for another zone shouldn't be executed
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
@@ -1338,7 +1338,7 @@ func TestDiskServiceResizeDisk(t *testing.T) {
 		Size: 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -1350,7 +1350,7 @@ func TestDiskServiceResizeDisk(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.ResizeDisk(reqCtx, &disk_manager.ResizeDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		Size: 40960,
@@ -1380,7 +1380,7 @@ func TestDiskServiceAlterDisk(t *testing.T) {
 		Size: 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		CloudId:  "cloud",
@@ -1394,7 +1394,7 @@ func TestDiskServiceAlterDisk(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.AlterDisk(reqCtx, &disk_manager.AlterDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		CloudId:  "newCloud",
@@ -1425,7 +1425,7 @@ func TestDiskServiceAssignDisk(t *testing.T) {
 		Size: 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -1437,7 +1437,7 @@ func TestDiskServiceAssignDisk(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.AssignDisk(reqCtx, &disk_manager.AssignDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		InstanceId: "InstanceId",
@@ -1460,7 +1460,7 @@ func TestDiskServiceDescribeDiskModel(t *testing.T) {
 	defer client.Close()
 
 	model, err := client.DescribeDiskModel(ctx, &disk_manager.DescribeDiskModelRequest{
-		ZoneId:        "zone",
+		ZoneId:        "zone-a",
 		BlockSize:     4096,
 		Size:          1000000 * 4096,
 		Kind:          disk_manager.DiskKind_DISK_KIND_SSD,
@@ -1487,8 +1487,8 @@ func TestDiskServiceDescribeDiskModel(t *testing.T) {
 
 func TestDiskServiceMigrateNonreplDisk(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskSize:  1073741824,
@@ -1505,8 +1505,8 @@ func TestDiskServiceMigrateNonreplDisk(t *testing.T) {
 
 func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 		DiskSize:  1073741824,
@@ -1525,8 +1525,8 @@ func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
 	/*
 		TODO: NBS-4747: Fix creation of mirrored disks in large tests on Disk Manager.
 		param := migrationTestParams{
-			SrcZoneID: "zone",
-			DstZoneID: "other",
+			SrcZoneID: "zone-a",
+			DstZoneID: "zone-b",
 			DiskID:    t.Name(),
 			DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
 			DiskSize:  1073741824,
@@ -1545,8 +1545,8 @@ func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
 func TestDiskServiceMigrateDisk(t *testing.T) {
 	diskID := t.Name()
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    diskID,
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1585,8 +1585,8 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 
 func TestDiskServiceCancelMigrateDisk(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1620,8 +1620,8 @@ func TestDiskServiceCancelMigrateDisk(t *testing.T) {
 
 func TestDiskServiceMigrateDiskAfterCancel(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1655,8 +1655,8 @@ func TestDiskServiceMigrateDiskAfterCancel(t *testing.T) {
 // TODO: NBS-4487 - uncomment this code.
 /* func TestDiskServiceMigrateDiskFreezeAndUnfreeze(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1698,8 +1698,8 @@ func TestDiskServiceMigrateOverlayDisk(t *testing.T) {
 	)
 
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1737,8 +1737,8 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithAliveSrcImage(t *testing.T) {
 	defer client.Close()
 
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1772,8 +1772,8 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithoutAliveSrcImage(t *testing.T) {
 	defer client.Close()
 
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1810,8 +1810,8 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithAliveSrcImageAfterCancel(
 	defer client.Close()
 
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1859,8 +1859,8 @@ func TestDiskServiceMigrateEmptyOverlayDiskWithoutAliveSrcImageAfterCancel(
 	defer client.Close()
 
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1912,8 +1912,8 @@ func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
 	defer privateClient.Close()
 
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1938,7 +1938,7 @@ func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
 		reqCtx := testcommon.GetRequestContext(t, ctx)
 		operation, err := privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
 			ImageId: t.Name(),
-			ZoneId:  "zone",
+			ZoneId:  "zone-a",
 		})
 
 		retireErr <- err
@@ -1965,8 +1965,8 @@ func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
 
 func TestDiskServiceMigrateEmptyDisk(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -2014,7 +2014,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		EncryptionDesc: &disk_manager.EncryptionDesc{
@@ -2026,7 +2026,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	diskParams1, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 
@@ -2054,7 +2054,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID,
@@ -2080,7 +2080,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 		EncryptionDesc: &disk_manager.EncryptionDesc{
@@ -2115,7 +2115,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID3,
 		},
 	})
@@ -2168,7 +2168,7 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 		Size: 134217728,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		ForceNotLayered: true,
@@ -2194,8 +2194,8 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 
 func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	params := migrationTestParams{
-		SrcZoneID: "zone",
-		DstZoneID: "other",
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,

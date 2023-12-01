@@ -37,7 +37,7 @@ func testCreateSnapshotFromDisk(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		BlockSize: int64(diskBlockSize),
@@ -47,7 +47,7 @@ func testCreateSnapshotFromDisk(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	_, _, err = testcommon.FillDisk(nbsClient, diskID, 64*4096)
 	require.NoError(t, err)
 
@@ -56,7 +56,7 @@ func testCreateSnapshotFromDisk(
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID,
@@ -142,7 +142,7 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 		Size: 4194304,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -156,7 +156,7 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID,
@@ -197,7 +197,7 @@ func testCreateIncrementalSnapshotFromDisk(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -206,7 +206,7 @@ func testCreateIncrementalSnapshotFromDisk(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	contentSize := 134217728
 
 	bytes := make([]byte, contentSize)
@@ -222,7 +222,7 @@ func testCreateIncrementalSnapshotFromDisk(
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -245,7 +245,7 @@ func testCreateIncrementalSnapshotFromDisk(
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID2,
@@ -267,7 +267,7 @@ func testCreateIncrementalSnapshotFromDisk(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -322,7 +322,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -331,7 +331,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
 	bytes := make([]byte, diskSize)
 	for i := 0; i < len(bytes); i++ {
@@ -346,7 +346,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -372,7 +372,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID2,
@@ -394,7 +394,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -431,7 +431,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -440,7 +440,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
 	bytes := make([]byte, diskSize)
 	for i := 0; i < len(bytes); i++ {
@@ -455,7 +455,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -478,7 +478,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID2,
@@ -503,7 +503,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})
@@ -540,7 +540,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -554,7 +554,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: baseSnapshotID,
@@ -570,7 +570,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	createOperation, err := client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID1,
@@ -599,7 +599,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID2,
@@ -630,7 +630,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 		Size: 4194304,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -644,7 +644,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID,
@@ -697,7 +697,7 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 		Size: 4194304,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -711,7 +711,7 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	createOp, err := client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID,

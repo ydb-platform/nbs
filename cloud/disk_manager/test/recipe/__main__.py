@@ -32,6 +32,11 @@ def parse_args(args):
     parser.add_argument("--nbs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nfs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-disk-managers", action=argparse.BooleanOptionalAction)
+    parser.add_argument(
+        "--disk-manager-binary-path",
+        type=str,
+        default="cloud/disk_manager/cmd/disk-manager/disk-manager")
+
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -53,9 +58,7 @@ def start(argv):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/server/filestore-server")
-    disk_manager_binary_path = yatest_common.binary_path(
-        "cloud/disk_manager/cmd/disk-manager/disk-manager"
-    )
+    disk_manager_binary_path = yatest_common.binary_path(args.disk_manager_binary_path)
 
     kikimr = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
     kikimr.start()

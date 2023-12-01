@@ -58,7 +58,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:  imageID,
-		ZoneId:   "zone",
+		ZoneId:   "zone-a",
 		Capacity: 11,
 	})
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 			Size: 134217728,
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 		})
@@ -100,7 +100,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
 		ImageId: imageID,
-		ZoneId:  "zone",
+		ZoneId:  "zone-a",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -111,7 +111,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	for i := 0; i < diskCount; i++ {
 		operationID := operations[i].Id
 
-		nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+		nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 
 		go func() {
@@ -191,7 +191,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -216,7 +216,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
 		ImageId:          imageID,
-		ZoneId:           "zone",
+		ZoneId:           "zone-a",
 		UseBaseDiskAsSrc: true,
 	})
 	require.NoError(t, err)
@@ -224,7 +224,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(diskID, imageSize, imageCrc32)
 	require.NoError(t, err)
 
@@ -275,7 +275,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 			Size: 134217728,
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 		})
@@ -307,7 +307,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	for i := 0; i < diskCount; i++ {
 		operationID := operations[i].Id
 
-		nbsClient := testcommon.NewNbsClient(t, ctx, "zone")
+		nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 
 		go func() {
@@ -351,7 +351,7 @@ func TestPrivateServiceConfigurePool(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:  imageID,
-		ZoneId:   "zone",
+		ZoneId:   "zone-a",
 		Capacity: 1000,
 	})
 	require.NoError(t, err)
@@ -374,7 +374,7 @@ func TestPrivateServiceConfigurePool(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:  imageID,
-		ZoneId:   "zone",
+		ZoneId:   "zone-a",
 		Capacity: 1000,
 	})
 	require.NoError(t, err)
@@ -385,7 +385,7 @@ func TestPrivateServiceConfigurePool(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:  imageID,
-		ZoneId:   "zone",
+		ZoneId:   "zone-a",
 		Capacity: 0,
 	})
 	require.NoError(t, err)
@@ -422,7 +422,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:  imageID,
-		ZoneId:   "zone",
+		ZoneId:   "zone-a",
 		Capacity: 1,
 	})
 	require.NoError(t, err)
@@ -441,7 +441,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
 	})
@@ -453,7 +453,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.DeletePool(reqCtx, &api.DeletePoolRequest{
 		ImageId: imageID,
-		ZoneId:  "zone",
+		ZoneId:  "zone-a",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -464,7 +464,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:  imageID,
-		ZoneId:   "zone",
+		ZoneId:   "zone-a",
 		Capacity: 1,
 	})
 	require.NoError(t, err)
@@ -483,7 +483,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
 	})

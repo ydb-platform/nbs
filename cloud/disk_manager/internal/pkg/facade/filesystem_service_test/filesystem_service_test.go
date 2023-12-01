@@ -23,7 +23,7 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateFilesystem(reqCtx, &disk_manager.CreateFilesystemRequest{
 		FilesystemId: &disk_manager.FilesystemId{
-			ZoneId:       "zone",
+			ZoneId:       "zone-a",
 			FilesystemId: filesystemID,
 		},
 		BlockSize:   4096,
@@ -38,7 +38,7 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteFilesystem(reqCtx, &disk_manager.DeleteFilesystemRequest{
 		FilesystemId: &disk_manager.FilesystemId{
-			ZoneId:       "zone",
+			ZoneId:       "zone-a",
 			FilesystemId: filesystemID,
 		},
 	})

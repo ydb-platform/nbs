@@ -44,7 +44,7 @@ TasksConfig: <
 >
 NfsConfig: <
     Zones: <
-        key: "zone"
+        key: "zone-a"
         value: <
             Endpoints: [
                 "localhost:{nfs_port}",
@@ -53,7 +53,7 @@ NfsConfig: <
         >
     >
     Zones: <
-        key: "other"
+        key: "zone-b"
         value: <
             Endpoints: [
                 "localhost:{nfs_port}",
@@ -69,7 +69,7 @@ FilesystemConfig: <
 >
 NbsConfig: <
     Zones: <
-        key: "zone"
+        key: "zone-a"
         value: <
             Endpoints: [
                 "localhost:{nbs_port}",
@@ -78,7 +78,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "other"
+        key: "zone-b"
         value: <
             Endpoints: [
                 "localhost:{nbs2_port}",
@@ -137,11 +137,11 @@ ImagesConfig: <
     ClearDeletedImagesTaskScheduleInterval: "2s"
     DefaultDiskPoolConfigs: [
         <
-            ZoneId: "zone"
+            ZoneId: "zone-a"
             Capacity: 0
         >,
         <
-            ZoneId: "other"
+            ZoneId: "zone-b"
             Capacity: 1
         >
     ]
@@ -184,7 +184,7 @@ PlacementGroupConfig: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone", "other", "zone-c"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -206,7 +206,7 @@ TasksConfig: <
 >
 NbsConfig: <
     Zones: <
-        key: "zone"
+        key: "zone-a"
         value: <
             Endpoints: [
                 "localhost:{nbs_port}",
@@ -215,7 +215,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "other"
+        key: "zone-b"
         value: <
             Endpoints: [
                 "localhost:{nbs2_port}",

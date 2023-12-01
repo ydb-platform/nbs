@@ -244,7 +244,7 @@ func NewNbsClient(
 		ctx,
 		&nbs_config.ClientConfig{
 			Zones: map[string]*nbs_config.Zone{
-				"zone": {
+				"zone-a": {
 					Endpoints: []string{
 						fmt.Sprintf(
 							"localhost:%v",
@@ -252,7 +252,7 @@ func NewNbsClient(
 						),
 					},
 				},
-				"other": {
+				"zone-b": {
 					Endpoints: []string{
 						fmt.Sprintf(
 							"localhost:%v",
@@ -333,7 +333,7 @@ func RequireCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone")
+	nbsClient := NewNbsClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 	require.Empty(t, checkpoints)
@@ -345,7 +345,7 @@ func WaitForCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone")
+	nbsClient := NewNbsClient(t, ctx, "zone-a")
 
 	for {
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
@@ -522,7 +522,7 @@ func CreateImage(
 		Size: int64(imageSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone",
+			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
 	})
@@ -531,7 +531,7 @@ func CreateImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := NewNbsClient(t, ctx, "zone")
+	nbsClient := NewNbsClient(t, ctx, "zone-a")
 	crc32, storageSize, err = FillDisk(nbsClient, diskID, imageSize)
 	require.NoError(t, err)
 
@@ -539,7 +539,7 @@ func CreateImage(
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone",
+				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 		},
@@ -567,7 +567,7 @@ func isValidUUID(s string) bool {
 }
 
 func CheckConsistency(t *testing.T, ctx context.Context) {
-	nbsClient := NewNbsClient(t, ctx, "zone")
+	nbsClient := NewNbsClient(t, ctx, "zone-a")
 
 	for {
 		ok := true
