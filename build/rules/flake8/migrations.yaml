@@ -1499,8 +1499,6 @@ migrations:
     - maps/b2bgeo/mvrp_solver/backend/integration_tests/bin
     - maps/bicycle/tools/matrix_compare/bin
     - maps/bizdir/sps/signal_processor/tests
-    - maps/garden/sdk/resources/scanners
-    - maps/garden/sdk/resources/scanners/tests
     - maps/garden/tools/stat_updater/lib
     - maps/geoq/experiments/check_poi_rendering
     - maps/masstransit/tools/compare_routers/lib
@@ -4439,7 +4437,6 @@ migrations:
     - maps/garden/sdk/core
     - maps/garden/sdk/module_rpc
     - maps/garden/sdk/module_rpc/tests
-    - maps/garden/sdk/resources
     - maps/garden/tools/module_version_sync/bin
     - maps/geoq/hypotheses/flats/lib
     - maps/goods/tools/tycoon_importer
@@ -6170,7 +6167,6 @@ migrations:
     - yt/cron/merge/perform_merge/lib
     - yweb/antiporno/nirvana/operations/self_updateable
     - yweb/dups/dmetric3/bin
-    - yweb/video/faas/lib/abr
     - yweb/video/faas/lib/drm
     - yweb/yasap/answers/admin/admin/resources
     - zen/yweb/video/faas/lib/drm
@@ -8347,7 +8343,6 @@ migrations:
     - yweb/video/faas/graphs/catchup-vod
     - yweb/video/faas/graphs/music
     - yweb/video/faas/graphs/music-videoshots
-    - yweb/video/faas/graphs/ott/abr_stream_splitter
     - yweb/video/faas/graphs/regular
     - yweb/video/faas/graphs/regular-drm
     - yweb/video/faas/graphs/regular-fast
