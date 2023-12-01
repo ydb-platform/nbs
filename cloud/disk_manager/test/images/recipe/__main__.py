@@ -136,7 +136,7 @@ def start(argv):
     qcow2_fuzzing_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_QCOW2_FUZZING_IMAGE_FILE_SERVER_PORT", str(qcow2_fuzzing_image_file_server.port))
 
-    if 'generate-vmdk-image' in argv:
+    if '--generate-vmdk-image' in argv:
         generated_raw_image_file_path = os.path.join(
             working_dir,
             "generated_raw_image",

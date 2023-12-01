@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -21,7 +22,23 @@ S3_CREDENTIALS_FILE = """
 """
 
 
+def parse_args(args):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--certs-only", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--nemesis", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--kikimr-only", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--encryption", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--multiple-nbs", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--nbs-only", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--nfs-only", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--multiple-disk-managers", action=argparse.BooleanOptionalAction)
+    args, _ = parser.parse_known_args(args=args)
+    return args
+
+
 def start(argv):
+    args = parse_args(argv)
+
     certs_dir = yatest_common.source_path("cloud/blockstore/tests/certs")
     root_certs_file = os.path.join(certs_dir, "server.crt")
     cert_file = os.path.join(certs_dir, "server.crt")
@@ -30,7 +47,7 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_CERT_FILE", cert_file)
     set_env("DISK_MANAGER_RECIPE_CERT_KEY_FILE", cert_key_file)
 
-    if 'certs-only' in argv:
+    if args.certs_only:
         return
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
@@ -40,19 +57,17 @@ def start(argv):
         "cloud/disk_manager/cmd/disk-manager/disk-manager"
     )
 
-    with_nemesis = 'nemesis' in argv
-
     kikimr = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
     kikimr.start()
     set_env("DISK_MANAGER_RECIPE_KIKIMR_PORT", str(kikimr.port))
 
-    if 'kikimr-only' in argv:
+    if args.kikimr_only:
         return
 
     compute_port = 0,
     kms_port = 0
 
-    if 'encryption' in argv:
+    if args.encryption:
         compute = ComputeLauncher()
         compute.start()
         compute_port = compute.port
@@ -76,7 +91,7 @@ def start(argv):
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 
-    if 'multiple-nbs' in argv:
+    if args.multiple_nbs:
         kikimr2 = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
         kikimr2.start()
 
@@ -116,7 +131,7 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_NBS2_PORT", str(nbs2.port))
     set_env("DISK_MANAGER_RECIPE_NBS3_PORT", str(nbs3.port))
 
-    if 'nbs-only' in argv:
+    if args.nbs_only:
         return
 
     nfs = NfsLauncher(
@@ -127,7 +142,7 @@ def start(argv):
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
 
-    if 'nfs-only' in argv:
+    if args.nfs_only:
         return
 
     metadata_service = MetadataServiceLauncher()
@@ -150,7 +165,7 @@ def start(argv):
 
     disk_managers = []
 
-    controlplane_disk_manager_count = 2 if 'multiple-disk-managers' in argv else 1
+    controlplane_disk_manager_count = 2 if args.multiple_disk_managers else 1
     for _ in range(0, controlplane_disk_manager_count):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
@@ -164,7 +179,7 @@ def start(argv):
             idx=idx,
             is_dataplane=False,
             disk_manager_binary_path=disk_manager_binary_path,
-            with_nemesis=with_nemesis,
+            with_nemesis=args.nemesis,
             nfs_port=nfs.port,
             access_service_port=access_service.port,
             cert_file=cert_file,
@@ -187,7 +202,7 @@ def start(argv):
             idx=idx,
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
-            with_nemesis=with_nemesis,
+            with_nemesis=args.nemesis,
             s3_port=int(os.getenv("S3MDS_PORT")),
             s3_credentials_file=s3_credentials_file
         )

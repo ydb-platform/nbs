@@ -2,8 +2,8 @@ OWNER(g:cloud-nbs)
 
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/facade)
 
-SET_APPEND(RECIPE_ARGS generate-vmdk-image)
-SET_APPEND(RECIPE_ARGS encryption)
+SET_APPEND(RECIPE_ARGS --generate-vmdk-image)
+SET_APPEND(RECIPE_ARGS --encryption)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
 GO_XTEST_SRCS(
