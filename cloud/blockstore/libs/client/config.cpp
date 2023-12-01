@@ -36,6 +36,8 @@ TDuration MSeconds(ui64 x)
     xxx(ThreadsCount,           ui32,             1                           )\
                                                                                \
     xxx(RequestTimeout,                 TDuration,      Seconds(30)           )\
+    xxx(RequestTimeoutIncrementOnRetry, TDuration,      Seconds(30)           )\
+    xxx(RequestTimeoutMax,              TDuration,      Minutes(2)            )\
     xxx(RetryTimeout,                   TDuration,      Minutes(5)            )\
     xxx(RetryTimeoutIncrement,          TDuration,      MSeconds(500)         )\
     xxx(ConnectionErrorMaxRetryTimeout, TDuration,      MSeconds(100)         )\

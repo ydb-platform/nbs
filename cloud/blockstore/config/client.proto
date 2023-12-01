@@ -177,6 +177,12 @@ message TClientConfig
 
     // Skip server certificate verification
     optional bool SkipCertVerification = 40;
+
+    // Request timeout increment on every retry (in milliseconds).
+    optional uint32 RequestTimeoutIncrementOnRetry = 41;
+
+    // Max request timeout (in milliseconds)
+    optional uint32 RequestTimeoutMax = 42;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

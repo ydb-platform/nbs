@@ -205,7 +205,7 @@ private:
         TResponseProto response;
 
         auto& error = *response.MutableError();
-        error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT
+        error.SetCode(E_TIMEOUT);
         error.SetMessage("Timeout");
 
         CompleteRequest(ctx, response);

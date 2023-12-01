@@ -1032,6 +1032,75 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             callContext->Time(EProcessingStage::Postponed), TDuration());
     }
+
+    Y_UNIT_TEST(ShouldIncreaseRequestTimeoutOnRetry)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr uint32_t expectedTimeoutsSec[] = {30, 70, 110, 120};
+        static constexpr size_t maxRequestsCount = std::size(expectedTimeoutsSec);
+        size_t requestsCount = 0;
+
+        client->PingHandler =
+            [&] (std::shared_ptr<NProto::TPingRequest> request) {
+                const auto requestTimeoutMsec = request->GetHeaders().GetRequestTimeout();
+                UNIT_ASSERT_EQUAL(
+                    requestTimeoutMsec,
+                    expectedTimeoutsSec[requestsCount] * 1000);
+
+                NProto::TPingResponse response;
+
+                if (++requestsCount < maxRequestsCount) {
+                    auto& error = *response.MutableError();
+                    error.SetCode(E_TIMEOUT);
+                }
+
+                return MakeFuture(std::move(response));
+            };
+
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRequestTimeout(TDuration::Seconds(30).MilliSeconds());
+        clientConfigProto.SetRequestTimeoutIncrementOnRetry(TDuration::Seconds(40).MilliSeconds());
+        clientConfigProto.SetRequestTimeoutMax(TDuration::Minutes(2).MilliSeconds());
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy = CreateRetryPolicy(config);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=) {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        auto request = std::make_shared<NProto::TPingRequest>();
+        request->MutableHeaders()->SetRequestTimeout(
+            TDuration::Seconds(30).MilliSeconds());
+        auto future = durable->Ping(
+            MakeIntrusive<TCallContext>(),
+            request);
+
+        const auto& response = future.GetValue(TDuration::Minutes(30));
+        UNIT_ASSERT(!HasError(response));
+
+        UNIT_ASSERT_EQUAL(requestsCount, maxRequestsCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

@@ -223,6 +223,17 @@ private:
     }
 
     template <typename T>
+    void IncrementRequestTimeout(T& request)
+    {
+        auto& headers = *request.MutableHeaders();
+        const auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
+        const auto newTimeout = Min<TDuration>(
+            timeout + Config->GetRequestTimeoutIncrementOnRetry(),
+            Config->GetRequestTimeoutMax());
+        headers.SetRequestTimeout(newTimeout.MilliSeconds());
+    }
+
+    template <typename T>
     void HandleResponse(
         TRequestStatePtr<T> state,
         TFuture<typename T::TResponse> future)
@@ -273,6 +284,9 @@ private:
                     }
                     default:
                         break;
+                }
+                if (error.GetCode() == E_TIMEOUT) {
+                    IncrementRequestTimeout(*state->Request);
                 }
 
                 if (doLogging) {

@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         actorSystem->DispatchEvents(TDuration::Seconds(5));
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_EQUAL(response.GetError().GetCode(), E_REJECTED);
+        UNIT_ASSERT_EQUAL(response.GetError().GetCode(), E_TIMEOUT);
     }
 
     Y_UNIT_TEST(ShouldCompleteRequestWhenShuttingDown)

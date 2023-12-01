@@ -50,6 +50,8 @@ public:
     ui32 GetMaxMessageSize() const;
     ui32 GetThreadsCount() const;
     TDuration GetRequestTimeout() const;
+    TDuration GetRequestTimeoutIncrementOnRetry() const;
+    TDuration GetRequestTimeoutMax() const;
     TDuration GetRetryTimeout() const;
     TDuration GetRetryTimeoutIncrement() const;
     TDuration GetConnectionErrorMaxRetryTimeout() const;
