@@ -4,7 +4,6 @@ RECURSE(
     acceptance
     common
     images
-    loadtest
     mocks
     nemesis
     recipe
