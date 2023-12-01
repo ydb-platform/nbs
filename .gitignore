@@ -1,0 +1,65 @@
+.git
+./cloud/blockstore/apps/client/blockstore-client
+./cloud/blockstore/apps/disk_agent/diskagentd
+./cloud/blockstore/apps/server/nbsd
+./cloud/blockstore/tools/nbd/blockstore-nbd
+cmake-build-debug-system/*
+cmake-build-debug/*
+cmake.*
+./build/
+./.idea/*
+
+
+*.cmake
+.conan
+__pycache__
+*.py[cod]
+*$py.class
+*_pb2.py
+*_pb2_grpc.py
+*_pb2.pyi
+*.pb.cc
+*.pb.h
+# MacOS specific
+.DS_Store
+
+# clangd cache
+.cache
+
+compile_commands.json
+
+/build_*
+/build-*
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app

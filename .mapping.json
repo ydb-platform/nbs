@@ -1,5 +1,13 @@
 {
   ".":"cloud/blockstore/github_toplevel",
+  ".github/actions/build/action.yaml":"cloud/blockstore/github_toplevel/.github/actions/build/action.yaml",
+  ".github/actions/prepare/action.yaml":"cloud/blockstore/github_toplevel/.github/actions/prepare/action.yaml",
+  ".github/actions/test/action.yaml":"cloud/blockstore/github_toplevel/.github/actions/test/action.yaml",
+  ".github/workflows/build_and_test_on_demand.yaml":"cloud/blockstore/github_toplevel/.github/workflows/build_and_test_on_demand.yaml",
+  ".github/workflows/build_and_test_ya.yaml":"cloud/blockstore/github_toplevel/.github/workflows/build_and_test_ya.yaml",
+  ".github/workflows/nightly.yaml":"cloud/blockstore/github_toplevel/.github/workflows/nightly.yaml",
+  ".github/workflows/pr.yaml":"cloud/blockstore/github_toplevel/.github/workflows/pr.yaml",
+  ".gitignore":"cloud/blockstore/github_toplevel/.gitignore",
   "CLANG-FORMAT.md":"cloud/blockstore/github_toplevel/CLANG-FORMAT.md",
   "CMakeLists.darwin-x86_64.txt":"",
   "CMakeLists.linux-aarch64.txt":"",

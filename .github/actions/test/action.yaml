@@ -1,0 +1,133 @@
+name: Run tests (ya make)
+description: Run tests using ya make
+inputs:
+  build_target:
+    required: false
+    description: "build target"
+
+  build_preset:
+    required: true
+    default: "relwithdebinfo"
+    description: "relwithdebinfo, release-asan, release-tsan"
+
+  test_size:
+    required: false
+    default: "small,medium,large"
+    description: "small or small-medium or all"
+
+  test_type:
+    required: false
+    default: "unittest,py3test,py2test,pytest"
+    description: "run "
+
+  test_threads:
+    required: false
+    default: "28"
+    description: "Test threads count"
+  link_threads:
+    required: false
+    default: "8"
+    description: "link threads count"
+
+  testman_token:
+    required: false
+    description: "test manager auth token"
+  testman_url:
+    required: false
+    description: "test manager endpoint"
+  testman_project_id:
+    required: false
+    description: "test manager project id"
+  bazel_remote_uri:
+    required: false
+    description: "bazel-remote endpoint"
+  cache_tests:
+    required: false
+    description: "Use cache for tests"
+runs:
+  using: "composite"
+  steps:
+    - name: Init
+      id: init
+      shell: bash
+      run: |
+        echo "SHELLOPTS=xtrace" >> $GITHUB_ENV
+        export TMP_DIR=$(pwd)/tmp
+        echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
+        echo "LOG_DIR=$TMP_DIR/logs" >> $GITHUB_ENV
+        echo "OUT_DIR=$TMP_DIR/out" >> $GITHUB_ENV
+        echo "ARTIFACTS_DIR=$TMP_DIR/artifacts" >> $GITHUB_ENV
+        echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml" >> $GITHUB_ENV
+        echo "SUMMARY_LINKS=$(mktemp)" >> $GITHUB_ENV
+
+    - name: prepare
+      shell: bash
+      run: |
+        rm -rf $TMP_DIR $JUNIT_REPORT_XML
+        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR
+
+    - name: ya test
+      shell: bash
+      run: |
+        extra_params=()
+
+        # FIXME: copy-paste from build_ya
+        case "${{ inputs.build_preset }}" in
+          debug)
+            build_type=debug
+            ;;
+          relwithdebinfo)
+            build_type=relwithdebinfo
+            ;;
+          release-asan)
+            build_type=release
+            extra_params+=(--sanitize="address")
+            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            ;;
+          release-tsan)
+            build_type=release
+            extra_params+=(--sanitize="thread")
+            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            ;;
+          *)
+            echo "Invalid preset: ${{ inputs.build_preset }}"
+            exit 1
+            ;;
+        esac
+
+
+        if [ ! -z "${{ inputs.build_target }}" ]; then
+          extra_params+=(--target="${{ inputs.build_target }}")
+        fi
+
+        if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
+          extra_params+=(--bazel-remote-store)
+          extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
+        fi
+
+        if [ "${{ inputs.cache_tests }}" = "true" ]; then
+          extra_params+=(--cache-tests)
+        fi
+
+        readarray -d ',' -t test_size < <(printf "%s" "${{ inputs.test_size }}")
+        readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
+
+        ./ya test -k --build "${build_type}" -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' \
+          ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
+          --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
+          --cache-size 512G --do-not-output-stderrs -T \
+          --stat --log-file "$LOG_DIR/ya_log.txt" --evlog-file "$LOG_DIR/ya_evlog.jsonl" \
+          --canonization-backend=ydb-canondata.storage.yandexcloud.net \
+          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" || (
+            RC=$?
+            if [[ $RC -ge 10 && $RC -le 14 ]]; then
+              echo "ya test returned failed tests status, recovering.."
+            else
+              exit $RC
+            fi
+        )
+
+    - name: show free space
+      if: always()
+      shell: bash
+      run: df -h

@@ -1,0 +1,17 @@
+name: Nightly build
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      test_label_regexp:
+        required: false
+        type: string
+
+jobs:
+  ya_x86_64:
+    name: Build/test x86_64 using YA
+    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    secrets: inherit
+    with:
+      update_bazel_cache: true
