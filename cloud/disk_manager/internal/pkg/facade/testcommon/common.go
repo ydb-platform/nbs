@@ -260,6 +260,14 @@ func NewNbsClient(
 						),
 					},
 				},
+				"zone-c": {
+					Endpoints: []string{
+						fmt.Sprintf(
+							"localhost:%v",
+							os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+						),
+					},
+				},
 			},
 			RootCertsFile:              &rootCertsFile,
 			DurableClientTimeout:       &durableClientTimeout,

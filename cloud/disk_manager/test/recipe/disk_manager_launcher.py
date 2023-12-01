@@ -87,6 +87,15 @@ NbsConfig: <
         >
     >
     Zones: <
+        key: "zone-c"
+        value: <
+            Endpoints: [
+                "localhost:{nbs3_port}",
+                "localhost:{nbs3_port}"
+            ]
+        >
+    >
+    Zones: <
         key: "no_dataplane"
         value: <
             Endpoints: [
@@ -175,7 +184,7 @@ PlacementGroupConfig: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone", "other"]
+    ZoneIds: ["zone", "other", "zone-c"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -211,6 +220,15 @@ NbsConfig: <
             Endpoints: [
                 "localhost:{nbs2_port}",
                 "localhost:{nbs2_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-c"
+        value: <
+            Endpoints: [
+                "localhost:{nbs3_port}",
+                "localhost:{nbs3_port}"
             ]
         >
     >
@@ -302,6 +320,7 @@ class DiskManagerLauncher:
         kikimr_port,
         nbs_port,
         nbs2_port,
+        nbs3_port,
         metadata_url,
         root_certs_file,
         idx,
@@ -347,6 +366,7 @@ class DiskManagerLauncher:
                     root_certs_file=root_certs_file,
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
+                    nbs3_port=nbs3_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -365,6 +385,7 @@ class DiskManagerLauncher:
                     nfs_port=nfs_port,
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
+                    nbs3_port=nbs3_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,

@@ -410,7 +410,7 @@ func successfullyMigrateEmptyDisk(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	_, err = srcZoneNBSClient.Describe(ctx, params.SrcZoneID)
+	_, err = srcZoneNBSClient.Describe(ctx, params.DiskID)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Path not found")
 

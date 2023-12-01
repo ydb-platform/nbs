@@ -93,9 +93,28 @@ def start(argv):
             compute_port=compute_port,
             kms_port=kms_port)
         nbs2.start()
+
+        kikimr3 = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
+        kikimr3.start()
+
+        nbs3 = NbsLauncher(
+            kikimr3.port,
+            kikimr3.domains_txt,
+            kikimr3.dynamic_storage_pools,
+            root_certs_file,
+            cert_file,
+            cert_key_file,
+            kikimr_binary_path=kikimr_binary_path,
+            nbs_binary_path=nbs_binary_path,
+            kikimr_client=kikimr3.client,
+            compute_port=compute_port,
+            kms_port=kms_port)
+        nbs3.start()
     else:
         nbs2 = nbs
+        nbs3 = nbs
     set_env("DISK_MANAGER_RECIPE_NBS2_PORT", str(nbs2.port))
+    set_env("DISK_MANAGER_RECIPE_NBS3_PORT", str(nbs3.port))
 
     if 'nbs-only' in argv:
         return
@@ -139,6 +158,7 @@ def start(argv):
             kikimr_port=kikimr.port,
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
+            nbs3_port=nbs3.port,
             metadata_url=metadata_service.url,
             root_certs_file=root_certs_file,
             idx=idx,
@@ -161,6 +181,7 @@ def start(argv):
             kikimr_port=kikimr.port,
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
+            nbs3_port=nbs3.port,
             metadata_url=metadata_service.url,
             root_certs_file=root_certs_file,
             idx=idx,
