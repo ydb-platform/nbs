@@ -23,13 +23,13 @@ enum class ECheckpointRequestType
     Create = 0,
     Delete = 1,
     DeleteData = 2,
+    CreateWithoutData = 3,
 };
 
 enum class ECheckpointType
 {
     Normal,
     Light,
-    WithoutData
 };
 
 enum class ECheckpointData
@@ -121,7 +121,9 @@ private:
     [[nodiscard]] TCheckpointRequest& GetRequest(ui64 requestId);
     TCheckpointRequest& AddCheckpointRequest(
         TCheckpointRequest checkpointRequest);
-    void AddCheckpoint(const TString& checkpointId, ECheckpointType type);
+    void AddCheckpoint(
+        const TCheckpointRequest& checkpointRequest,
+        bool forceDataDeleted);
     void DeleteCheckpoint(const TString& checkpointId);
     void DeleteCheckpointData(const TString& checkpointId);
     void CalcDoesCheckpointWithDataExist();

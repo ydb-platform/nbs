@@ -44,8 +44,45 @@ const char* GetCheckpointRequestName(ECheckpointRequestType reqType) {
         case ECheckpointRequestType::DeleteData:
             return TDeleteCheckpointDataMethod::Name;
         case ECheckpointRequestType::Create:
+        case ECheckpointRequestType::CreateWithoutData:
             return TCreateCheckpointMethod::Name;
     }
+}
+
+ECheckpointType ProtoCheckpointType2CheckpointType(
+    bool isLight,
+    NProto::ECheckpointType checkpointType)
+{
+    static const THashMap<NProto::ECheckpointType, ECheckpointType> proto2enum{
+        {NProto::ECheckpointType::NORMAL, ECheckpointType::Normal},
+        {NProto::ECheckpointType::LIGHT, ECheckpointType::Light},
+        {NProto::ECheckpointType::WITHOUT_DATA, ECheckpointType::Normal}};
+
+    if (isLight) {
+        // TODO(NBS-4531): remove this after dm release
+        checkpointType = NProto::ECheckpointType::LIGHT;
+    }
+
+    return proto2enum.Value(checkpointType, ECheckpointType::Normal);
+}
+
+ECheckpointRequestType ProtoCheckpointType2Create(
+    bool isLight,
+    NProto::ECheckpointType checkpointType)
+{
+    static const THashMap<NProto::ECheckpointType, ECheckpointRequestType>
+        proto2enum{
+            {NProto::ECheckpointType::NORMAL, ECheckpointRequestType::Create},
+            {NProto::ECheckpointType::LIGHT, ECheckpointRequestType::Create},
+            {NProto::ECheckpointType::WITHOUT_DATA,
+             ECheckpointRequestType::CreateWithoutData}};
+
+    if (isLight) {
+        // TODO(NBS-4531): remove this after dm release
+        checkpointType = NProto::ECheckpointType::LIGHT;
+    }
+
+    return proto2enum.Value(checkpointType, ECheckpointRequestType::Create);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -670,21 +707,6 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
-static ECheckpointType ProtoCheckpointType2CheckpointType(bool isLight, NProto::ECheckpointType checkpointType)
-{
-    const THashMap<NProto::ECheckpointType, ECheckpointType> proto2enum{
-        {NProto::ECheckpointType::NORMAL, ECheckpointType::Normal},
-        {NProto::ECheckpointType::LIGHT, ECheckpointType::Light},
-        {NProto::ECheckpointType::WITHOUT_DATA, ECheckpointType::WithoutData}
-    };
-    if (isLight) {
-        // TODO(NBS-4531): remove this after dm release
-        return ECheckpointType::Light;
-    }
-
-    return proto2enum.Value(checkpointType, ECheckpointType::Normal);
-}
-
 template <>
 bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
     const TActorContext& ctx,
@@ -695,20 +717,24 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
 {
     Y_UNUSED(volumeRequestId);
 
+    const auto& msg = *ev->Get();
+
     auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext);
+        msg.CallContext);
 
     AddTransaction(*requestInfo);
 
     const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
-        ev->Get()->Record.GetCheckpointId(),
+        msg.Record.GetCheckpointId(),
         ctx.Now(),
-        ECheckpointRequestType::Create,
+        ProtoCheckpointType2Create(
+            msg.Record.GetIsLight(),
+            msg.Record.GetCheckpointType()),
         ProtoCheckpointType2CheckpointType(
-            ev->Get()->Record.GetIsLight(),
-            ev->Get()->Record.GetCheckpointType()));
+            msg.Record.GetIsLight(),
+            msg.Record.GetCheckpointType()));
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -727,17 +753,19 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
     bool isTraced,
     ui64 traceTs)
 {
-     Y_UNUSED(volumeRequestId);
+    Y_UNUSED(volumeRequestId);
+
+    const auto& msg = *ev->Get();
 
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext);
+        msg.CallContext);
 
     AddTransaction(*requestInfo);
 
     auto& checkpointStore = State->GetCheckpointStore();
-    const auto& checkpointId = ev->Get()->Record.GetCheckpointId();
+    const auto& checkpointId = msg.Record.GetCheckpointId();
     const auto type = checkpointStore.GetCheckpointType(checkpointId);
 
     const auto& checkpointRequest = checkpointStore.CreateNew(
@@ -765,15 +793,17 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
 {
     Y_UNUSED(volumeRequestId);
 
+    const auto& msg = *ev->Get();
+
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointDataMethod>(
         ev->Sender,
         ev->Cookie,
-        ev->Get()->CallContext);
+        msg.CallContext);
 
     AddTransaction(*requestInfo);
 
     const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
-        ev->Get()->Record.GetCheckpointId(),
+        msg.Record.GetCheckpointId(),
         ctx.Now(),
         ECheckpointRequestType::DeleteData,
         ECheckpointType::Normal);
@@ -876,7 +906,8 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
 
     TActorId actorId;
     switch (request.ReqType) {
-        case ECheckpointRequestType::Create: {
+        case ECheckpointRequestType::Create:
+        case ECheckpointRequestType::CreateWithoutData: {
             if (request.Type == ECheckpointType::Light) {
                 return CreateCheckpointLightRequest(
                     ctx,

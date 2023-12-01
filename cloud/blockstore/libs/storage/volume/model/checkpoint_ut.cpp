@@ -111,9 +111,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 12,
                 "checkpoint-5",
                 TInstant::Now(),
-                ECheckpointRequestType::Create,
+                ECheckpointRequestType::CreateWithoutData,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::WithoutData},
+                ECheckpointType::Normal},
         };
         TCheckpointStore store(
             TVector<TCheckpointRequest>{
@@ -351,8 +351,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             const auto& request = store.CreateNew(
                 checkpointId,
                 TInstant::Now(),
-                ECheckpointRequestType::Create,
-                ECheckpointType::WithoutData);
+                ECheckpointRequestType::CreateWithoutData,
+                ECheckpointType::Normal);
 
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());

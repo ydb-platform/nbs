@@ -20,6 +20,7 @@ class TCreateCheckpointCommand final
 private:
     TString DiskId;
     TString CheckpointId;
+    NProto::ECheckpointType CheckpointType;
 
 public:
     TCreateCheckpointCommand(IBlockStorePtr client)
@@ -32,6 +33,22 @@ public:
         Opts.AddLongOption("checkpoint-id", "Checkpoint identifier")
             .RequiredArgument("STR")
             .StoreResult(&CheckpointId);
+
+        Opts.AddLongOption("checkpoint-type", "Checkpoint type")
+            .RequiredArgument("{normal, light, without-data}")
+            .DefaultValue("normal")
+            .Handler1T<TString>([this] (const TString& s) {
+                if (s == "normal") {
+                    CheckpointType = NProto::ECheckpointType::NORMAL;
+                } else if (s == "light") {
+                    CheckpointType = NProto::ECheckpointType::LIGHT;
+                } else if (s == "without-data") {
+                    CheckpointType = NProto::ECheckpointType::WITHOUT_DATA;
+                } else {
+                    ythrow yexception()
+                        << "unknown checkpoint type: " << s.Quote();
+                }
+            });
     }
 
 protected:
@@ -51,6 +68,7 @@ protected:
         } else {
             request->SetDiskId(DiskId);
             request->SetCheckpointId(CheckpointId);
+            request->SetCheckpointType(CheckpointType);
         }
 
         STORAGE_DEBUG("Sending CreateCheckpoint request");

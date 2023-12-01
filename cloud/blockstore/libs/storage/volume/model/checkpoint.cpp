@@ -58,7 +58,8 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 
     CheckpointRequestInProgress = requestId;
     CheckpointBeingCreated =
-        checkpointRequest.ReqType == ECheckpointRequestType::Create;
+        checkpointRequest.ReqType == ECheckpointRequestType::Create ||
+        checkpointRequest.ReqType == ECheckpointRequestType::CreateWithoutData;
 }
 
 void TCheckpointStore::SetCheckpointRequestFinished(
@@ -198,16 +199,17 @@ TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
 }
 
 void TCheckpointStore::AddCheckpoint(
-    const TString& checkpointId,
-    ECheckpointType type)
+    const TCheckpointRequest& checkpointRequest,
+    bool forceDataDeleted)
 {
+    ECheckpointData checkpointData =
+        checkpointRequest.Type == ECheckpointType::Normal && !forceDataDeleted
+            ? ECheckpointData::DataPresent
+            : ECheckpointData::DataDeleted;
+
     ActiveCheckpoints.emplace(
-        checkpointId,
-        TActiveCheckpointsType{
-            type,
-            type == ECheckpointType::Normal
-                ? ECheckpointData::DataPresent
-                : ECheckpointData::DataDeleted});
+        checkpointRequest.CheckpointId,
+        TActiveCheckpointsType{checkpointRequest.Type, checkpointData});
     CalcDoesCheckpointWithDataExist();
 }
 
@@ -240,9 +242,11 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
     }
     switch (checkpointRequest.ReqType) {
         case ECheckpointRequestType::Create: {
-            AddCheckpoint(
-                checkpointRequest.CheckpointId,
-                checkpointRequest.Type);
+            AddCheckpoint(checkpointRequest, false);
+            break;
+        }
+        case ECheckpointRequestType::CreateWithoutData: {
+            AddCheckpoint(checkpointRequest, true);
             break;
         }
         case ECheckpointRequestType::Delete: {

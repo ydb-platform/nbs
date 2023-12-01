@@ -7,11 +7,18 @@
 
 
 add_subdirectory(ut)
+get_built_tool_path(
+  TOOL_enum_parser_bin
+  TOOL_enum_parser_dependency
+  tools/enum_parser/enum_parser
+  enum_parser
+)
 
 add_library(storage-volume-model)
 target_link_libraries(storage-volume-model PUBLIC
   contrib-libs-cxxsupp
   yutil
+  tools-enum_parser-enum_serialization_runtime
   blockstore-libs-common
   blockstore-libs-kikimr
   blockstore-libs-service
@@ -33,4 +40,9 @@ target_sources(storage-volume-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/volume_params.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.cpp
+)
+generate_enum_serilization(storage-volume-model
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/model/checkpoint.h
+  INCLUDE_HEADERS
+  cloud/blockstore/libs/storage/volume/model/checkpoint.h
 )

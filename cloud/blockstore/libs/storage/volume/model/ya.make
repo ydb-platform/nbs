@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(checkpoint.h)
+
 SRCS(
     checkpoint.cpp
     checkpoint_light.cpp

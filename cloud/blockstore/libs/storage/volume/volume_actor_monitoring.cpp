@@ -70,46 +70,6 @@ IOutputStream& operator <<(
     }
 }
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    ECheckpointRequestState checkpointRequestState)
-{
-    switch (checkpointRequestState) {
-        case ECheckpointRequestState::Received:
-            return out << "Received";
-        case ECheckpointRequestState::Saved:
-            return out << "Saved";
-        case ECheckpointRequestState::Completed:
-            return out << "Completed";
-        case ECheckpointRequestState::Rejected:
-            return out << "Rejected";
-        default:
-            return out
-                << "(Unknown ECheckpointRequestState value "
-                << static_cast<int>(checkpointRequestState)
-                << ")";
-    }
-}
-
-IOutputStream& operator <<(
-    IOutputStream& out,
-    ECheckpointRequestType checkpointRequestType)
-{
-    switch (checkpointRequestType) {
-        case ECheckpointRequestType::Create:
-            return out << "Create";
-        case ECheckpointRequestType::Delete:
-            return out << "Delete";
-        case ECheckpointRequestType::DeleteData:
-            return out << "DeleteData";
-        default:
-            return out
-                << "(Unknown ECheckpointRequestType value "
-                << static_cast<int>(checkpointRequestType)
-                << ")";
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void BuildVolumeRemoveClientButton(
@@ -1293,6 +1253,12 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 
             SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px") {
                 out << statusText;
+            }
+
+            if (!CanExecuteWriteRequest()) {
+                SPAN_CLASS_STYLE("label label-danger", "margin-left:10px") {
+                    out << "Writes blocked by checkpoint";
+                }
             }
         }
 
