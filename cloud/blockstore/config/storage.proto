@@ -883,4 +883,6 @@ message TStorageServiceConfig
     // Placeholders for legacy params that are still used in configs.
     optional uint32 NonReplicatedMinRequestTimeout = 340;
     optional uint32 NonReplicatedMaxRequestTimeout = 341;
+
+    optional uint64 MaxChangedBlocksRangeBlocksCount = 342;
 }

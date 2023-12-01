@@ -344,6 +344,11 @@ private:
         ui32 blockCount,
         TBlockRange64* range) const;
 
+    bool InitChangedBlocksRange(
+        ui64 blockIndex,
+        ui32 blockCount,
+        TBlockRange64* range) const;
+
     void UpdateChannelPermissions(
         const NActors::TActorContext& ctx,
         ui32 channel,

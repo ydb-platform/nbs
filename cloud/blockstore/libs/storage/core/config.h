@@ -117,6 +117,7 @@ public:
     TDuration GetCompactionRetryTimeout() const;
     TDuration GetCleanupRetryTimeout() const;
     ui64 GetMaxReadWriteRangeSize() const;
+    ui64 GetMaxChangedBlocksRangeBlocksCount() const;
     ui32 GetMaxBlobRangeSize() const;
     ui32 GetMaxRangesPerBlob() const;
     ui32 GetMaxBlobSize() const;

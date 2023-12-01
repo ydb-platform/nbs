@@ -483,6 +483,22 @@ bool TPartitionActor::InitReadWriteBlockRange(
         (range->Size() <= Config->GetMaxReadWriteRangeSize() / State->GetBlockSize());
 }
 
+bool TPartitionActor::InitChangedBlocksRange(
+    ui64 blockIndex,
+    ui32 blockCount,
+    TBlockRange64* range) const
+{
+    if (!blockCount) {
+        return false;
+    }
+
+    *range = TBlockRange64::WithLength(blockIndex, blockCount);
+
+    return
+        State->CheckBlockRange(*range) &&
+        (range->Size() <= Config->GetMaxChangedBlocksRangeBlocksCount());
+}
+
 void TPartitionActor::UpdateChannelPermissions(
     const TActorContext& ctx,
     ui32 channel,

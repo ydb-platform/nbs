@@ -2139,6 +2139,34 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 
+    Y_UNIT_TEST(ShouldValidateMaxChangedBlocksRangeBlocksCount)
+    {
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), 1 << 21);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        {
+            partition.SendGetChangedBlocksRequest(
+                TBlockRange32::WithLength(0, 1 << 21),
+                "",
+                "");
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                partition.RecvGetChangedBlocksResponse()->GetError().GetCode());
+        }
+
+        {
+            auto response = partition.GetChangedBlocks(
+                TBlockRange32::WithLength(0, 1 << 20),
+                "",
+                "");
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
+
     Y_UNIT_TEST(ShouldSeeChangedFreshBlocksInChangedBlocksRequest)
     {
         auto config = DefaultConfig();

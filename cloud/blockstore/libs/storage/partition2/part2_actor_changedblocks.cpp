@@ -374,7 +374,7 @@ void TPartitionActor::HandleGetChangedBlocks(
 
     readRange = bounds.Intersect(readRange);
 
-    auto ok = InitReadWriteBlockRange(
+    auto ok = InitChangedBlocksRange(
         readRange.Start,
         readRange.Size(),
         &readRange

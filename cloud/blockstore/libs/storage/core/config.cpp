@@ -107,6 +107,8 @@ TDuration MSeconds(ui32 value)
     xxx(SpareNodeProbability,           ui32,               0                 )\
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
+                                                                               \
+    xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20        )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
