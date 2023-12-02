@@ -148,10 +148,7 @@ func newGRPCServer(
 ) (*grpc.Server, error) {
 
 	logging.Info(ctx, "Initializing Access Service client")
-	accessServiceClient, err := auth.NewAccessServiceClientWithCreds(
-		config.GetAuthConfig(),
-		creds,
-	)
+	authorizer, err := auth.NewAuthorizerWithCreds(config.GetAuthConfig(), creds)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize Access Service client: %v", err)
 		return nil, err
@@ -190,7 +187,7 @@ func newGRPCServer(
 		grpc.UnaryInterceptor(facade.NewInterceptor(
 			logging.GetLogger(ctx),
 			facadeMetricsRegistry,
-			accessServiceClient,
+			authorizer,
 		)),
 	)
 

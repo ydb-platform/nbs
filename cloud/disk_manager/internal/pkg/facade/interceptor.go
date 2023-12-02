@@ -177,10 +177,10 @@ func (m *requestMetrics) getForRequest(requestName string) (*requestStats, error
 ////////////////////////////////////////////////////////////////////////////////
 
 type interceptor struct {
-	logger        logging.Logger
-	metrics       requestMetrics
-	accessService auth.AccessServiceClient
-	permissions   map[string]string
+	logger      logging.Logger
+	metrics     requestMetrics
+	authorizer  auth.Authorizer
+	permissions map[string]string
 }
 
 func (i *interceptor) intercept(
@@ -233,7 +233,7 @@ func (i *interceptor) handleRequest(
 		return nil, fmt.Errorf("permissions for %v are undefined", requestName)
 	}
 
-	accountID, err := i.accessService.Authorize(ctx, permission)
+	accountID, err := i.authorizer.Authorize(ctx, permission)
 	if err != nil {
 		logging.Warn(ctx, "Authorize failed, err=%v", err)
 		return nil, err
@@ -281,7 +281,7 @@ func (i *interceptor) handleRequest(
 func NewInterceptor(
 	logger logging.Logger,
 	metricsRegistry metrics.Registry,
-	accessService auth.AccessServiceClient,
+	authorizer auth.Authorizer,
 ) grpc.UnaryServerInterceptor {
 
 	permissions := make(map[string]string)
@@ -291,9 +291,9 @@ func NewInterceptor(
 	}
 
 	return (&interceptor{
-		logger:        logger,
-		metrics:       newRequestMetrics(metricsRegistry),
-		accessService: accessService,
-		permissions:   permissions,
+		logger:      logger,
+		metrics:     newRequestMetrics(metricsRegistry),
+		authorizer:  authorizer,
+		permissions: permissions,
 	}).intercept
 }

@@ -6,21 +6,21 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type AccessServiceClient interface {
+type Authorizer interface {
 	Authorize(ctx context.Context, permission string) (string, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewStubClient() AccessServiceClient {
-	return &stubClient{}
+func NewStubAuthorizer() Authorizer {
+	return &stubAuthorizer{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type stubClient struct{}
+type stubAuthorizer struct{}
 
-func (c *stubClient) Authorize(
+func (a *stubAuthorizer) Authorize(
 	ctx context.Context,
 	permission string,
 ) (string, error) {
