@@ -30,6 +30,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/yt/gateway/file
     contrib/ydb/library/yql/providers/yt/provider
     contrib/ydb/library/yql/core/url_preprocessing
+    contrib/ydb/library/yql/providers/pg/provider
 )
 
 YQL_LAST_ABI_VERSION()
