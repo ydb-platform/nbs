@@ -951,6 +951,44 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             .BlockCount = 10 * DefaultBlockCount * DefaultBlockSize / 4_KB
         }).size());
     }
+
+    Y_UNIT_TEST(ShouldTrackDeviceCountPerPool)
+    {
+        TDeviceList deviceList({}, {});
+
+        auto a1 = CreateAgentConfig("a1", 1000, "rack-1");
+        auto a2 = CreateAgentConfig(
+            "a2",
+            2000,
+            "rack-2",
+            "rot",
+            {"/some/device"},
+            100);
+
+        deviceList.UpdateDevices(a1);
+        deviceList.UpdateDevices(a2);
+
+        auto devCounts = deviceList.GetPoolName2DeviceCount();
+        UNIT_ASSERT_VALUES_EQUAL(2, devCounts.size());
+        UNIT_ASSERT_VALUES_EQUAL(15, devCounts[""]);
+        UNIT_ASSERT_VALUES_EQUAL(100, devCounts["rot"]);
+
+        deviceList.ForgetDevice("a1-1");
+        deviceList.ForgetDevice("a2-1");
+        deviceList.ForgetDevice("a2-2");
+
+        devCounts = deviceList.GetPoolName2DeviceCount();
+        UNIT_ASSERT_VALUES_EQUAL(2, devCounts.size());
+        UNIT_ASSERT_VALUES_EQUAL(14, devCounts[""]);
+        UNIT_ASSERT_VALUES_EQUAL(98, devCounts["rot"]);
+
+        deviceList.RemoveDevices(a2);
+
+        devCounts = deviceList.GetPoolName2DeviceCount();
+        UNIT_ASSERT_VALUES_EQUAL(2, devCounts.size());
+        UNIT_ASSERT_VALUES_EQUAL(14, devCounts[""]);
+        UNIT_ASSERT_VALUES_EQUAL(0, devCounts["rot"]);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

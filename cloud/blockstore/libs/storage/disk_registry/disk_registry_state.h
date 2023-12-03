@@ -216,7 +216,7 @@ private:
     };
 
     TSet<TDeviceMigration, TDeviceMigrationCompare> Migrations;
-    ui32 DeviceMigrationsInProgress = 0;
+    THashMap<TString, THashSet<TDeviceId>> SourceDeviceMigrationsInProgress;
 
     TReplicaTable ReplicaTable{&DeviceList};
 

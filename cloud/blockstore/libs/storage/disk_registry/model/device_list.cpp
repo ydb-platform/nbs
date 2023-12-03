@@ -107,7 +107,7 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
             Y_DEBUG_ABORT_UNLESS(device.GetNodeId() == 0);
 
             const auto& uuid = device.GetDeviceUUID();
-            AllDevices[uuid] = device;
+            UpdateInAllDevices(uuid, device);
         }
 
         return;
@@ -138,8 +138,7 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
         }
 
         const auto& uuid = device.GetDeviceUUID();
-
-        AllDevices[uuid] = device;
+        UpdateInAllDevices(uuid, device);
 
         if (device.GetRack() != freeDevices.Rack) {
             continue;
@@ -171,7 +170,7 @@ void TDeviceList::RemoveDevices(const NProto::TAgentConfig& agent)
 
     for (const auto& device: agent.GetDevices()) {
         const auto& uuid = device.GetDeviceUUID();
-        AllDevices.erase(uuid);
+        RemoveFromAllDevices(uuid);
         DirtyDevices.erase(uuid);
     }
 }
@@ -772,10 +771,36 @@ void TDeviceList::ForgetDevice(const TString& id)
 {
     RemoveDeviceFromFreeList(id);
 
-    AllDevices.erase(id);
+    RemoveFromAllDevices(id);
     AllocatedDevices.erase(id);
     DirtyDevices.erase(id);
     SuspendedDevices.erase(id);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDeviceList::UpdateInAllDevices(
+    const TDeviceId& id,
+    const NProto::TDeviceConfig& device)
+{
+    auto& config = AllDevices[id];
+    if (config.GetDeviceUUID()) {
+        // device with this id is already registered
+        --PoolName2DeviceCount[config.GetPoolName()];
+    }
+    config = device;
+    ++PoolName2DeviceCount[device.GetPoolName()];
+}
+
+void TDeviceList::RemoveFromAllDevices(const TDeviceId& id)
+{
+    auto it = AllDevices.find(id);
+    if (it == AllDevices.end()) {
+        return;
+    }
+
+    --PoolName2DeviceCount[it->second.GetPoolName()];
+    AllDevices.erase(it);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

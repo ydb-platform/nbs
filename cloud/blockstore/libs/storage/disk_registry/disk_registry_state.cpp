@@ -413,7 +413,14 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         for (auto& m: config.GetMigrations()) {
-            ++DeviceMigrationsInProgress;
+            const auto* device = DeviceList.FindDevice(m.GetSourceDeviceId());
+            TString poolName;
+            if (device) {
+                poolName = device->GetPoolName();
+            }
+
+            SourceDeviceMigrationsInProgress[poolName].insert(
+                m.GetSourceDeviceId());
 
             disk.MigrationTarget2Source.emplace(
                 m.GetTargetDevice().GetDeviceUUID(),
@@ -1374,7 +1381,8 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
         = sourceDeviceId;
     disk.MigrationSource2Target[sourceDeviceId]
         = targetDevice.GetDeviceUUID();
-    ++DeviceMigrationsInProgress;
+    SourceDeviceMigrationsInProgress[sourceDevice->GetPoolName()].insert(
+        sourceDeviceId);
 
     DeleteDeviceMigration(sourceDiskId, sourceDeviceId);
 
@@ -3521,8 +3529,13 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.DisksInMigrationState->Set(disksInWarningState);
     SelfCounters.MaxMigrationTime->Set(maxWarningTime.Seconds());
 
+    ui32 migratingDeviceCount = 0;
+    for (const auto& x: SourceDeviceMigrationsInProgress) {
+        migratingDeviceCount += x.second.size();
+    }
+
     SelfCounters.DevicesInMigrationState->Set(
-        DeviceMigrationsInProgress + Migrations.size());
+        migratingDeviceCount + Migrations.size());
     SelfCounters.DisksInTemporarilyUnavailableState->Set(
         disksInTemporarilyUnavailableState);
     SelfCounters.DisksInErrorState->Set(disksInErrorState);
@@ -5069,7 +5082,12 @@ void TDiskRegistryState::CancelDeviceMigration(
 
     disk.MigrationTarget2Source.erase(targetId);
     disk.MigrationSource2Target.erase(it);
-    --DeviceMigrationsInProgress;
+
+    // searching in all pools - in theory pool name might change between
+    // the start/cancel/finish events
+    for (auto& x: SourceDeviceMigrationsInProgress) {
+        x.second.erase(sourceId);
+    }
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
 
@@ -5113,7 +5131,11 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     } else {
         disk.MigrationTarget2Source.erase(it);
         disk.MigrationSource2Target.erase(sourceId);
-        --DeviceMigrationsInProgress;
+        // searching in all pools - in theory pool name might change between
+        // the start/cancel/finish events
+        for (auto& x: SourceDeviceMigrationsInProgress) {
+            x.second.erase(sourceId);
+        }
     }
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
@@ -5185,18 +5207,9 @@ auto TDiskRegistryState::FindReplicaByMigration(
 TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
 {
     size_t budget = StorageConfig->GetMaxNonReplicatedDeviceMigrationsInProgress();
-    // can be true if we decrease the limit in our storage config while there
-    // are more migrations in progress than our new limit
-    if (budget <= DeviceMigrationsInProgress) {
-        return {};
-    }
-
-    budget -= DeviceMigrationsInProgress;
-
-    const size_t limit = std::min(Migrations.size(), budget);
 
     TVector<TDeviceMigration> result;
-    result.reserve(limit);
+    THashMap<TString, ui32> poolName2Budget;
 
     for (const auto& m: Migrations) {
         auto [agentPtr, devicePtr] = FindDeviceLocation(m.SourceDeviceId);
@@ -5214,11 +5227,29 @@ TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
             continue;
         }
 
-        result.push_back(m);
-
-        if (result.size() == limit) {
-            break;
+        auto* inProgressPtr =
+            SourceDeviceMigrationsInProgress.FindPtr(devicePtr->GetPoolName());
+        ui32 inProgress = inProgressPtr ? inProgressPtr->size() : 0;
+        // limits might have changed after the start of some of our current
+        // migrations - that's why inProgress can sometimes be greater than budget
+        if (inProgress >= budget) {
+            continue;
         }
+
+        // lazy initialization
+        if (!poolName2Budget.contains(devicePtr->GetPoolName())) {
+            poolName2Budget[devicePtr->GetPoolName()] = budget - inProgress;
+        }
+
+        // the size of the migration list for each pool should not be greater
+        // than the limit minus inProgress
+        auto& remainingBudget = poolName2Budget[devicePtr->GetPoolName()];
+        if (remainingBudget == 0) {
+            continue;
+        }
+        --remainingBudget;
+
+        result.push_back(m);
     }
 
     return result;

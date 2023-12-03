@@ -55,6 +55,7 @@ private:
     THashSet<TDeviceId> DirtyDevices;
     THashMap<TDeviceId, NProto::TSuspendedDevice> SuspendedDevices;
     THashMap<NProto::EDevicePoolKind, TVector<TString>> PoolKind2PoolNames;
+    THashMap<TString, ui32> PoolName2DeviceCount;
 
 public:
     struct TAllocationQuery
@@ -82,6 +83,11 @@ public:
     size_t Size() const
     {
         return AllDevices.size();
+    }
+
+    const auto& GetPoolName2DeviceCount() const
+    {
+        return PoolName2DeviceCount;
     }
 
     void UpdateDevices(const NProto::TAgentConfig& agent, TNodeId prevNodeId);
@@ -143,6 +149,10 @@ private:
         const TAllocationQuery& query,
         const TString& poolName) const;
     void RemoveDeviceFromFreeList(const TDeviceId& id);
+    void UpdateInAllDevices(
+        const TDeviceId& id,
+        const NProto::TDeviceConfig& device);
+    void RemoveFromAllDevices(const TDeviceId& id);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
