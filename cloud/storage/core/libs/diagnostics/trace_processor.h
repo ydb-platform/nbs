@@ -30,6 +30,7 @@ namespace NCloud {
 struct TLWTraceThreshold
 {
     TDuration Default;
+    TDuration PerSizeUnit;
     THashMap<TString, TDuration> ByRequestType;
 };
 
@@ -39,7 +40,8 @@ using TRequestThresholds =
 using TProtoRequestThresholds =
     google::protobuf::RepeatedPtrField<NCloud::NProto::TLWTraceThreshold>;
 
-TRequestThresholds ConvertRequestThresholds(const TProtoRequestThresholds& value);
+TRequestThresholds ConvertRequestThresholds(
+    const TProtoRequestThresholds& value);
 
 void OutRequestThresholds(
 IOutputStream& out,
@@ -114,6 +116,7 @@ bool ReaderIdMatch(const TString& traceType, const TString& readerId);
 TDuration GetThresholdByRequestType(
     const NProto::EStorageMediaKind mediaKind,
     const TRequestThresholds& requestThresholds,
-    const NLWTrace::TParam* requestTypeParam);
+    const NLWTrace::TParam* requestTypeParam,
+    const NLWTrace::TParam* requestSizeParam);
 
 }   // namespace NCloud

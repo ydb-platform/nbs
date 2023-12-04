@@ -28,7 +28,7 @@ message TTraceInfo
 
 message TLWTraceThreshold
 {
-    // Default threshold of this mediaKind
+    // Default threshold of this mediaKind.
     optional uint32 Default = 1;
 
     // Mapping from requestTypes to thresholds.
@@ -36,4 +36,7 @@ message TLWTraceThreshold
 
     // Storage media kind.
     NCloud.NProto.EStorageMediaKind MediaKind = 3;
+
+    // Default threshold increment per 1KiB of the request size.
+    optional uint32 PerSizeUnit = 4;
 };

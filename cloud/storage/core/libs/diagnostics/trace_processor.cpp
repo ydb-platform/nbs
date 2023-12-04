@@ -12,6 +12,7 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/hash.h>
+#include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 #include <util/stream/str.h>
 
@@ -338,15 +339,13 @@ public:
 
         auto mediaKind = mediaKindParam->Get<NProto::EStorageMediaKind>();
 
-        TDuration srt;
+        const auto* requestSizeParam = FindParam(tl.Items.front(), RequestSize);
 
-        if (RequestThresholds) {
-            srt = Max(GetThresholdByRequestType(
-                mediaKind,
-                RequestThresholds,
-                requestTypeParam
-            ), srt);
-        }
+        auto srt = GetThresholdByRequestType(
+            mediaKind,
+            RequestThresholds,
+            requestTypeParam,
+            requestSizeParam);
 
         const auto* executionTimeParam = FindParam(
             tl.Items.back(), RequestExecutionTime);
@@ -646,13 +645,16 @@ NLWTrace::TQuery ProbabilisticQuery(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRequestThresholds ConvertRequestThresholds(const TProtoRequestThresholds& value)
+TRequestThresholds ConvertRequestThresholds(
+    const TProtoRequestThresholds& value)
 {
     TRequestThresholds requestThresholds;
     for (const auto& threshold: value) {
         TLWTraceThreshold requestThreshold;
         requestThreshold.Default = TDuration::MilliSeconds(
             threshold.GetDefault());
+        requestThreshold.PerSizeUnit = TDuration::MilliSeconds(
+            threshold.GetPerSizeUnit());
         for (const auto& [rType, typeThresh]: threshold.GetByRequestType()) {
             requestThreshold.ByRequestType[rType] = \
                 TDuration::MilliSeconds(typeThresh);
@@ -665,7 +667,7 @@ TRequestThresholds ConvertRequestThresholds(const TProtoRequestThresholds& value
 }
 
 void OutRequestThresholds(
-IOutputStream& out,
+    IOutputStream& out,
     const NCloud::TRequestThresholds& value)
 {
     for (const auto& [mediaKind, tr]: value) {
@@ -673,6 +675,7 @@ IOutputStream& out,
         protoTr.SetMediaKind(
             static_cast<NCloud::NProto::EStorageMediaKind>(mediaKind));
         protoTr.SetDefault(tr.Default.MilliSeconds());
+        protoTr.SetPerSizeUnit(tr.PerSizeUnit.MilliSeconds());
         auto& protoByRequestType = *protoTr.MutableByRequestType();
         for (const auto& [requestType, duration]: tr.ByRequestType) {
             protoByRequestType[requestType] = duration.MilliSeconds();
@@ -684,7 +687,8 @@ IOutputStream& out,
 TDuration GetThresholdByRequestType(
     const NProto::EStorageMediaKind mediaKind,
     const TRequestThresholds& requestThresholds,
-    const NLWTrace::TParam* requestTypeParam)
+    const NLWTrace::TParam* requestTypeParam,
+    const NLWTrace::TParam* requestSizeParam)
 {
     TDuration srt;
     auto mediaKindThresholdsIt = requestThresholds.find(mediaKind);
@@ -703,6 +707,10 @@ TDuration GetThresholdByRequestType(
             if (threshold != mediaKindThresholds.ByRequestType.end()) {
                 srt = Max(srt, threshold->second);
             }
+        }
+        if (requestSizeParam) {
+            auto requestSize = requestSizeParam->Get<ui64>();
+            srt += mediaKindThresholds.PerSizeUnit * requestSize / 1_KB;
         }
     }
     return srt;

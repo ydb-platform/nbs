@@ -36,6 +36,7 @@ namespace NProbeParam {
 constexpr const char* MediaKind = "mediaKind";
 constexpr const char* RequestExecutionTime = "requestExecutionTime";
 constexpr const char* RequestType = "requestType";
+constexpr const char* RequestSize = "requestSize";
 
 }   // namespace NProbeParam
 
