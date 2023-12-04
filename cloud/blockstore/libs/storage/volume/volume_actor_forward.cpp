@@ -383,15 +383,14 @@ void TVolumeActor::HandleResponse(
         FillResponse<TMethod>(*msg, cc, it->second.ReceiveTime);
 
         // forward response to the caller
-        TAutoPtr<IEventHandle> event = new IEventHandle(
+        auto event = std::make_unique<IEventHandle>(
             it->second.Request->Sender,
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
-            it->second.Request->Cookie
-        );
+            it->second.Request->Cookie);
 
-        ctx.Send(event);
+        ctx.Send(event.release());
 
         VolumeRequests.erase(it);
     }

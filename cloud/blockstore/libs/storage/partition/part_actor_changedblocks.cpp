@@ -146,12 +146,12 @@ void TGetChangedBlocksActor::SendGetChangedBlocksFromBaseDisk(const TActorContex
     request->Record.SetBlocksCount(ReadRange.Size());
     request->Record.SetHighCheckpointId(BaseDiskCheckpointId);
 
-    TAutoPtr<IEventHandle> event = new IEventHandle(
+    auto event = std::make_unique<IEventHandle>(
         MakeVolumeProxyServiceId(),
         SelfId(),
         request.release());
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 }
 
 void TGetChangedBlocksActor::HandleGetChangedBlocksResponse(

@@ -92,18 +92,16 @@ void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
         auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
         request->Record.SetDeviceUUID(device.GetDeviceUUID());
 
-        TAutoPtr<IEventHandle> event(
-            new IEventHandle(
-                MakeDiskAgentServiceId(device.GetNodeId()),
-                ctx.SelfID,
-                request.get(),
-                IEventHandle::FlagForwardOnNondelivery, // flags
-                i,          // cookie
-                &ctx.SelfID // forwardOnNondelivery
-            ));
-        request.release();
+        auto event = std::make_unique<IEventHandle>(
+            MakeDiskAgentServiceId(device.GetNodeId()),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,   // flags
+            i,                                        // cookie
+            &ctx.SelfID                               // forwardOnNondelivery
+        );
 
-        ctx.Send(event);
+        ctx.Send(event.release());
 
         ++PendingRequests;
     }

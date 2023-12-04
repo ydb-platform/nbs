@@ -67,19 +67,16 @@ void TResyncRangeActor::ChecksumReplicaBlocks(const TActorContext& ctx, int idx)
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(TString(BackgroundOpsClientId));
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            Replicas[idx].ActorId,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            idx,  // cookie
-            &ctx.SelfID    // forwardOnNondelivery
-        )
+    auto event = std::make_unique<NActors::IEventHandle>(
+        Replicas[idx].ActorId,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        idx,          // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
-    Y_UNUSED(request.release());
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 }
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx) {
@@ -147,19 +144,16 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(TString(BackgroundOpsClientId));
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            Replicas[idx].ActorId,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            idx,  // cookie
-            &ctx.SelfID    // forwardOnNondelivery
-        )
+    auto event = std::make_unique<NActors::IEventHandle>(
+        Replicas[idx].ActorId,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        idx,          // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
-    Y_UNUSED(request.release());
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 
     ReadStartTs = ctx.Now();
 }
@@ -199,17 +193,14 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
         }
     }
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            Replicas[idx].ActorId,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            idx,  // cookie
-            &ctx.SelfID    // forwardOnNondelivery
-        )
+    auto event = std::make_unique<NActors::IEventHandle>(
+        Replicas[idx].ActorId,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        idx,          // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
-    Y_UNUSED(request.release());
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu Overwrite block range %s during resync",
@@ -217,7 +208,7 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
         idx,
         DescribeRange(Range).c_str());
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 }
 
 void TResyncRangeActor::Done(const TActorContext& ctx)

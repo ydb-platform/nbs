@@ -644,7 +644,7 @@ void TPartitionActor::MapBaseDiskIdToTabletId(
             State->GetBaseDiskId(),
             State->GetBaseDiskTabletId());
 
-        TAutoPtr<IEventHandle> event = new IEventHandle(
+        auto event = std::make_unique<IEventHandle>(
             MakeVolumeProxyServiceId(),
             SelfId(),
             request.release());
@@ -656,7 +656,7 @@ void TPartitionActor::MapBaseDiskIdToTabletId(
             << " BaseTabletId="
             << State->GetBaseDiskTabletId());
 
-        ctx.Send(event);
+        ctx.Send(event.release());
     }
 }
 
@@ -668,7 +668,7 @@ void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
             TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
                 State->GetBaseDiskId());
 
-        TAutoPtr<IEventHandle> event = new IEventHandle(
+        auto event = std::make_unique<IEventHandle>(
             MakeVolumeProxyServiceId(),
             SelfId(),
             request.release());
@@ -678,7 +678,7 @@ void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
             << " Sending ClearBaseDiskIdToTabletIdMapping to VolumeProxy: BaseDiskId="
             << State->GetBaseDiskId().Quote());
 
-        ctx.Send(event);
+        ctx.Send(event.release());
     }
 }
 

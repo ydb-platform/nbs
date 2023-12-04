@@ -347,16 +347,16 @@ void TVolumeClientActor::HandleResponse(
         it->second.CallContext->RequestId);
 
     // forward response to the caller
-    TAutoPtr<IEventHandle> event;
+    std::unique_ptr<NActors::IEventHandle> event;
     if (ev->HasEvent()) {
-        event = new IEventHandle(
+        event = std::make_unique<IEventHandle>(
             it->second.Request->Sender,
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
             it->second.Request->Cookie);
     } else {
-        event = new IEventHandle(
+        event = std::make_unique<IEventHandle>(
             ev->Type,
             ev->Flags,
             it->second.Request->Sender,
@@ -365,7 +365,7 @@ void TVolumeClientActor::HandleResponse(
             it->second.Request->Cookie);
     }
 
-    ctx.Send(event);
+    ctx.Send(event.release());
     ActiveRequests.erase(it);
 }
 

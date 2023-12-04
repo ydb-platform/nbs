@@ -33,15 +33,14 @@ inline void SendEvReacquireDisk(
     NActors::TActorSystem& system,
     const NActors::TActorId& recipient)
 {
-    TAutoPtr<NActors::IEventHandle> event(
-        new NActors::IEventHandle(
-            recipient,
-            {},
-            new TEvVolume::TEvReacquireDisk(),
-            0,
-            0));
+    auto event = std::make_unique<NActors::IEventHandle>(
+        recipient,
+        NActors::TActorId{},
+        new TEvVolume::TEvReacquireDisk(),
+        0,
+        0);
 
-    system.Send(event);
+    system.Send(event.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

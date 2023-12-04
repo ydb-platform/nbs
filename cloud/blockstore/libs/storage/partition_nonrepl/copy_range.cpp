@@ -72,19 +72,16 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(TString(BackgroundOpsClientId));
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            Source,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            0,  // cookie
-            &ctx.SelfID    // forwardOnNondelivery
-        )
+    auto event = std::make_unique<IEventHandle>(
+        Source,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        0,            // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
-    request.release();
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 
     ReadStartTs = ctx.Now();
 }
@@ -118,19 +115,16 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
         }
     }
 
-    TAutoPtr<IEventHandle> event(
-        new IEventHandle(
-            Target,
-            ctx.SelfID,
-            request.get(),
-            IEventHandle::FlagForwardOnNondelivery,
-            0,  // cookie
-            &ctx.SelfID    // forwardOnNondelivery
-        )
+    auto event = std::make_unique<IEventHandle>(
+        Target,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        0,            // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
-    request.release();
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 
     WriteStartTs = ctx.Now();
 }

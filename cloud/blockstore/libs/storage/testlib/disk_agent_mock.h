@@ -68,16 +68,14 @@ private:
         }
 
         if (State->ResponseDelay) {
-            TAutoPtr<NActors::IEventHandle> event(
-                new NActors::IEventHandle(
-                    request.Sender,
-                    ctx.SelfID,
-                    response.release(),
-                    0,          // flags
-                    request.Cookie
-                ));
+            auto event = std::make_unique<NActors::IEventHandle>(
+                request.Sender,
+                ctx.SelfID,
+                response.release(),
+                0,   // flags
+                request.Cookie);
 
-            ctx.ExecutorThread.Schedule(State->ResponseDelay, event);
+            ctx.ExecutorThread.Schedule(State->ResponseDelay, event.release());
 
             return;
         }

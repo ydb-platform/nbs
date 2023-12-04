@@ -181,18 +181,16 @@ void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
 
         ++PendingRequests;
 
-        TAutoPtr<IEventHandle> event(
-            new IEventHandle(
-                MakeDiskAgentServiceId(nodeId),
-                ctx.SelfID,
-                request.get(),
-                IEventHandle::FlagForwardOnNondelivery,
-                cookie++,
-                &ctx.SelfID // forwardOnNondelivery
-            ));
-        request.release();
+        auto event = std::make_unique<IEventHandle>(
+            MakeDiskAgentServiceId(nodeId),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            cookie++,
+            &ctx.SelfID   // forwardOnNondelivery
+        );
 
-        ctx.Send(event);
+        ctx.Send(event.release());
     }
 }
 

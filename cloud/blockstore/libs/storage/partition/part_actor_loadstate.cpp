@@ -47,12 +47,12 @@ void TPartitionActor::SendGetUsedBlocksFromBaseDisk(const TActorContext& ctx)
 
     request->Record.SetDiskId(State->GetBaseDiskId());
 
-    TAutoPtr<IEventHandle> event = new IEventHandle(
+    auto event = std::make_unique<IEventHandle>(
         MakeVolumeProxyServiceId(),
         SelfId(),
         request.release());
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 }
 
 bool TPartitionActor::PrepareLoadState(

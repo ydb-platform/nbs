@@ -88,18 +88,16 @@ void TRequestActor<TMethod>::SendRequest(const NActors::TActorContext& ctx)
     request->CallContext = RequestInfo->CallContext;
     request->Record = std::move(Request);
 
-    TAutoPtr<NActors::IEventHandle> event(
-        new NActors::IEventHandle(
-            Partition,
-            ctx.SelfID,
-            request.release(),
-            NActors::IEventHandle::FlagForwardOnNondelivery,
-            RequestInfo->Cookie,
-            &ctx.SelfID // forwardOnNondelivery
-        )
+    auto event = std::make_unique<IEventHandle>(
+        Partition,
+        ctx.SelfID,
+        request.release(),
+        NActors::IEventHandle::FlagForwardOnNondelivery,
+        RequestInfo->Cookie,
+        &ctx.SelfID   // forwardOnNondelivery
     );
 
-    ctx.Send(event);
+    ctx.Send(event.release());
 }
 
 template <typename TMethod>

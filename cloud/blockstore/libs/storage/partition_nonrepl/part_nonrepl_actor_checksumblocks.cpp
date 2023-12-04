@@ -129,18 +129,16 @@ void TDiskAgentChecksumActor::ChecksumBlocks(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
-        TAutoPtr<IEventHandle> event(
-            new IEventHandle(
-                MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
-                ctx.SelfID,
-                request.get(),
-                IEventHandle::FlagForwardOnNondelivery,
-                cookie++,
-                &ctx.SelfID // forwardOnNondelivery
-            ));
-        request.release();
+        auto event = std::make_unique<IEventHandle>(
+            MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            cookie++,
+            &ctx.SelfID   // forwardOnNondelivery
+        );
 
-        ctx.Send(event);
+        ctx.Send(event.release());
     }
 }
 
