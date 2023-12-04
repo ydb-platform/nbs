@@ -147,10 +147,10 @@ func newGRPCServer(
 	creds auth.Credentials,
 ) (*grpc.Server, error) {
 
-	logging.Info(ctx, "Initializing Access Service client")
-	authorizer, err := auth.NewAuthorizerWithCreds(config.GetAuthConfig(), creds)
+	logging.Info(ctx, "Initializing authorizer")
+	authorizer, err := auth.NewAuthorizer(config.GetAuthConfig(), creds)
 	if err != nil {
-		logging.Error(ctx, "Failed to initialize Access Service client: %v", err)
+		logging.Error(ctx, "Failed to initialize authorizer: %v", err)
 		return nil, err
 	}
 

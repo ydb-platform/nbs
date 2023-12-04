@@ -69,8 +69,5 @@ func SetLoggingFields(ctx context.Context) context.Context {
 
 	fields = append(fields, log.String("SYSLOG_IDENTIFIER", "disk-manager"))
 
-	return ctxlog.WithFields(
-		ctx,
-		fields...,
-	)
+	return ctxlog.WithFields(ctx, fields...)
 }
