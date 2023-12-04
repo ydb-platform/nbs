@@ -20,11 +20,14 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/protos
+    
     cloud/storage/core/libs/common
+    
     library/cpp/aio
-    library/cpp/protobuf/util
-    contrib/libs/protobuf
     library/cpp/deprecated/atomic
+    library/cpp/protobuf/util
+    
+    contrib/libs/protobuf
 )
 
 END()

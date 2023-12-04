@@ -12,9 +12,10 @@ add_library(blockstore-libs-service)
 target_link_libraries(blockstore-libs-service PUBLIC
   contrib-libs-cxxsupp
   yutil
-  public-api-protos
   cloud-blockstore-config
   blockstore-libs-common
+  public-api-protos
+  core-libs-common
   library-cpp-lwtrace
 )
 target_sources(blockstore-libs-service PRIVATE

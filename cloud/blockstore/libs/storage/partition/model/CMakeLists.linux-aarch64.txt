@@ -29,6 +29,7 @@ target_link_libraries(storage-partition-model PUBLIC
   blockstore-libs-common
   libs-storage-core
   libs-storage-protos
+  core-libs-common
   core-libs-tablet
   cpp-protobuf-json
 )

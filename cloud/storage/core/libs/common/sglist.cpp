@@ -2,7 +2,7 @@
 
 #include <util/string/builder.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 namespace {
 
@@ -213,4 +213,4 @@ TResultOrError<TSgList> SgListNormalize(TSgList sglist, ui32 blockSize)
     return result;
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

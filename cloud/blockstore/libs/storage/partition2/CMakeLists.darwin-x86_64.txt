@@ -21,8 +21,8 @@ target_link_libraries(libs-storage-partition2 PUBLIC
   storage-partition2-model
   libs-storage-protos
   core-libs-api
+  core-libs-common
   core-libs-tablet
-  library-actors-core
   library-cpp-cgiparam
   cpp-containers-dense_hash
   cpp-containers-intrusive_rb_tree
@@ -35,6 +35,7 @@ target_link_libraries(libs-storage-partition2 PUBLIC
   ydb-core-tablet
   ydb-core-tablet_flat
   core-testlib-basics
+  library-actors-core
 )
 target_sources(libs-storage-partition2 PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition2/garbage_queue.cpp

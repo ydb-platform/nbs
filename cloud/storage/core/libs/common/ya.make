@@ -6,6 +6,8 @@ SRCS(
     affinity.cpp
     alloc.cpp
     backoff_delay_provider.cpp
+    block_buffer.cpp
+    block_data_ref.cpp
     byte_vector.cpp
     compressed_bitmap.cpp
     concurrent_queue.cpp
@@ -13,6 +15,7 @@ SRCS(
     error.cpp
     file_io_service.cpp
     format.cpp
+    guarded_sglist.cpp
     helpers.cpp
     media.cpp
     proto_helpers.cpp
@@ -21,6 +24,8 @@ SRCS(
     scheduler.cpp
     scheduler_test.cpp
     scoped_handle.cpp
+    sglist.cpp
+    sglist_test.cpp
     startable.cpp
     task_queue.cpp
     thread.cpp
@@ -33,12 +38,14 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/protos
-    contrib/ydb/library/actors/prof
+
     library/cpp/deprecated/atomic
     library/cpp/logger
     library/cpp/lwtrace
     library/cpp/protobuf/util
     library/cpp/threading/future
+
+    contrib/ydb/library/actors/prof
 )
 
 END()

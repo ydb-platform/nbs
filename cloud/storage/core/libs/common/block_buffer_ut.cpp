@@ -4,7 +4,7 @@
 
 #include <util/generic/maybe.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -165,5 +165,4 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore
-
+}   // namespace NCloud

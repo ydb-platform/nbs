@@ -1,9 +1,9 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
-#include <cloud/blockstore/libs/common/block_data_ref.h>
-#include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 
 #include <contrib/ydb/core/base/logoblob.h>
 

@@ -23,7 +23,10 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
+    
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet
+    
     library/cpp/protobuf/json
 )
 

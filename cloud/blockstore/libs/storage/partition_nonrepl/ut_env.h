@@ -4,13 +4,13 @@
 #include "part_nonrepl_events_private.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/common/sglist_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>

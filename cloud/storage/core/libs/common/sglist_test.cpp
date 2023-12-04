@@ -1,6 +1,6 @@
 #include "sglist_test.h"
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -23,4 +23,4 @@ TSgList ResizeBlocks(
     return sglist;
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

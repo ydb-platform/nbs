@@ -1,6 +1,7 @@
 #pragma once
 
 #include <util/generic/ptr.h>
+#include <util/generic/size_literals.h>
 
 #include <memory>
 
@@ -37,6 +38,10 @@ constexpr const char* RequestExecutionTime = "requestExecutionTime";
 constexpr const char* RequestType = "requestType";
 
 }   // namespace NProbeParam
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui32 DefaultBlockSize = 4_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -3,9 +3,9 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-#include <cloud/blockstore/libs/common/sglist.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <library/cpp/threading/future/future.h>

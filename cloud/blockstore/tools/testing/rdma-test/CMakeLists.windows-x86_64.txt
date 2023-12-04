@@ -36,14 +36,15 @@ target_link_libraries(rdma-test PUBLIC
   blockstore-libs-diagnostics
   libs-rdma-iface
   libs-rdma-impl
+  core-libs-common
   core-libs-diagnostics
+  cpp-deprecated-atomic
   library-cpp-getopt
   library-cpp-lwtrace
   cpp-lwtrace-mon
   cpp-monlib-dynamic_counters
   AIO::aio
   contrib-libs-liburing
-  cpp-deprecated-atomic
   contrib-libs-protobuf
 )
 target_proto_messages(rdma-test PRIVATE

@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/common/sglist.h>
 
+#include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <util/generic/strbuf.h>

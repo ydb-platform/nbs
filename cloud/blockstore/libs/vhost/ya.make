@@ -10,6 +10,8 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
+    
+    cloud/storage/core/libs/common
 
     cloud/contrib/vhost
 )

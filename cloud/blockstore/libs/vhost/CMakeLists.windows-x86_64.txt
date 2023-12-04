@@ -16,6 +16,7 @@ target_link_libraries(blockstore-libs-vhost PUBLIC
   blockstore-libs-common
   blockstore-libs-diagnostics
   blockstore-libs-service
+  core-libs-common
   vhost-server
 )
 target_sources(blockstore-libs-vhost PRIVATE

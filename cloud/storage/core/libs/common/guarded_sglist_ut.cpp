@@ -2,14 +2,14 @@
 
 #include "sglist_test.h"
 
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/thread/factory.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -425,4 +425,4 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

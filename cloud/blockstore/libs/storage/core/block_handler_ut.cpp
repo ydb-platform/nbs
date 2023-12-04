@@ -1,6 +1,6 @@
 #include "block_handler.h"
 
-#include <cloud/blockstore/libs/common/sglist_test.h>
+#include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

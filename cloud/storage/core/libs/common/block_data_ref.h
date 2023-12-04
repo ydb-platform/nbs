@@ -7,7 +7,7 @@
 #include <util/generic/string.h>
 #include <util/stream/output.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 // This class is similar to TStringBuf but there is a difference:
@@ -90,12 +90,12 @@ public:
     }
 };
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud
 
 template <>
-inline void Out<NCloud::NBlockStore::TBlockDataRef>(
+inline void Out<NCloud::TBlockDataRef>(
     IOutputStream& o,
-    const NCloud::NBlockStore::TBlockDataRef& p)
+    const NCloud::TBlockDataRef& p)
 {
     if (!p.Empty()) {
         o.Write(p.Data(), p.Size());

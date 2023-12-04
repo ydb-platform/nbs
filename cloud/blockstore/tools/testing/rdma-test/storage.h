@@ -3,12 +3,11 @@
 #include "private.h"
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
-
-#include <cloud/blockstore/libs/common/guarded_sglist.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 

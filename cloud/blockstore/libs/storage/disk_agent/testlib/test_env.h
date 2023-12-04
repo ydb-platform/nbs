@@ -4,7 +4,6 @@
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/common/iovector.h>
-#include <cloud/blockstore/libs/common/sglist_test.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/fault_injection.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -18,6 +17,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/common_properties.h>
+
+#include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>

@@ -2,7 +2,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NBlockStore {
+#include <util/generic/size_literals.h>
+
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -69,4 +71,4 @@ Y_UNIT_TEST_SUITE(TSgListTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

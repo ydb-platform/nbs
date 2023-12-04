@@ -66,12 +66,12 @@ PEERDIR(
 
     cloud/storage/core/libs/common
 
-    contrib/ydb/library/actors/core
     library/cpp/containers/ring_buffer
 
     contrib/ydb/core/base
     contrib/ydb/core/testlib
     contrib/ydb/core/testlib/basics
+    contrib/ydb/library/actors/core
 )
 
 END()

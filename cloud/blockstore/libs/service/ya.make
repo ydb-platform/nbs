@@ -19,10 +19,11 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/public/api/protos
     cloud/blockstore/config
-
     cloud/blockstore/libs/common
+    cloud/blockstore/public/api/protos
+    
+    cloud/storage/core/libs/common
 
     library/cpp/lwtrace
 )

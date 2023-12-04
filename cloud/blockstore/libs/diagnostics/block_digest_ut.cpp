@@ -1,6 +1,6 @@
 #include "block_digest.h"
 
-#include <cloud/blockstore/libs/common/block_data_ref.h>
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -3,7 +3,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,4 +44,4 @@ Y_UNIT_TEST_SUITE(TBlockDataRefTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

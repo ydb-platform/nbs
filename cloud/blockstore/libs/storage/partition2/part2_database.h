@@ -2,13 +2,13 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/block_data_ref.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block_list.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>

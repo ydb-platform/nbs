@@ -3,7 +3,6 @@
 #include "part2_events_private.h"
 #include "part2_schema.h"
 
-#include <cloud/blockstore/libs/common/sglist_test.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -22,6 +21,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>

@@ -28,14 +28,18 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/rdma/impl
+    
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    
+    library/cpp/deprecated/atomic
     library/cpp/getopt
     library/cpp/lwtrace
     library/cpp/lwtrace/mon
     library/cpp/monlib/dynamic_counters
+    
     contrib/libs/libaio
     contrib/libs/liburing
-    library/cpp/deprecated/atomic
 )
 
 END()

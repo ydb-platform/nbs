@@ -2,9 +2,9 @@
 
 #include "public.h"
 
-#include "sglist.h"
-
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+
+#include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore {
 

@@ -1,6 +1,5 @@
 #include "part_actor.h"
 
-#include <cloud/blockstore/libs/common/block_buffer.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -8,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/common/block_buffer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 

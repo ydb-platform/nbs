@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/sglist.h>
+#include <cloud/storage/core/libs/common/sglist.h>
 
 #include <util/generic/buffer.h>
 #include <util/generic/string.h>

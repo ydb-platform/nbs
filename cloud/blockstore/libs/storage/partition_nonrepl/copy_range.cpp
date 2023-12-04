@@ -2,12 +2,13 @@
 
 #include "part_nonrepl_events_private.h"
 
-#include <cloud/blockstore/libs/common/sglist.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+
+#include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

@@ -53,14 +53,15 @@ PEERDIR(
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/service
 
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/version
 
-    contrib/ydb/library/actors/util
     library/cpp/getopt/small
+    library/cpp/lwtrace/mon
     library/cpp/protobuf/util
     library/cpp/threading/blocking_queue
-
-    library/cpp/lwtrace/mon
+    
+    contrib/ydb/library/actors/util
 )
 
 END()

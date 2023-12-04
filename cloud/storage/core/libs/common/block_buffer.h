@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "block_data_ref.h"
 
 #include <util/generic/noncopyable.h>
@@ -9,7 +10,7 @@
 #include <util/generic/vector.h>
 #include <util/memory/alloc.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -170,4 +171,4 @@ private:
     }
 };
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

@@ -27,29 +27,31 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/public/api/protos
     cloud/blockstore/config
     cloud/blockstore/libs/common
-    cloud/blockstore/libs/diagnostics/events
     cloud/blockstore/libs/diagnostics/data
+    cloud/blockstore/libs/diagnostics/events
     cloud/blockstore/libs/service
+    cloud/blockstore/public/api/protos
+    
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/throttling
     cloud/storage/core/libs/user_stats/counter
-    library/cpp/lwtrace/mon
+    
+    library/cpp/deprecated/atomic
     library/cpp/digest/crc32c
     library/cpp/eventlog
     library/cpp/histogram/hdr
     library/cpp/logger
     library/cpp/lwtrace
+    library/cpp/lwtrace/mon
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/encode/spack
     library/cpp/monlib/service
     library/cpp/monlib/service/pages
     library/cpp/monlib/service/pages/tablesorter
     library/cpp/threading/hot_swap
-    library/cpp/deprecated/atomic
 )
 
 END()

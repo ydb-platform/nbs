@@ -31,13 +31,9 @@ target_link_options(cloud-blockstore-libs-common-ut PRIVATE
 )
 target_sources(cloud-blockstore-libs-common-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/caching_allocator_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_buffer_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_checksum_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_data_ref_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_range_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/guarded_sglist_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/iovector_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/sglist_ut.cpp
 )
 set_property(
   TARGET

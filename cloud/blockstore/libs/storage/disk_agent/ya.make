@@ -36,13 +36,17 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/model
-    contrib/ydb/library/actors/core
+    
+    cloud/storage/core/libs/common
+    
     library/cpp/containers/stack_vector
+    library/cpp/deprecated/atomic
+    
     contrib/ydb/core/base
     contrib/ydb/core/mind
     contrib/ydb/core/mon
     contrib/ydb/core/tablet
-    library/cpp/deprecated/atomic
+    contrib/ydb/library/actors/core
 )
 
 END()

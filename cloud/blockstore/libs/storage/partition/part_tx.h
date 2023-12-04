@@ -4,7 +4,6 @@
 
 #include "part_events_private.h"
 
-#include <cloud/blockstore/libs/common/block_buffer.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -19,6 +18,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
+#include <cloud/storage/core/libs/common/block_buffer.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 

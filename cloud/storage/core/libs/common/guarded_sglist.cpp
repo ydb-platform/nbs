@@ -1,6 +1,6 @@
 #include "guarded_sglist.h"
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -276,4 +276,4 @@ void TGuardedSgList::Close()
     GuardedObject->Close();
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

@@ -15,20 +15,15 @@ target_link_libraries(blockstore-libs-common PUBLIC
   yutil
   public-api-protos
   core-libs-common
-  library-actors-prof
   cpp-digest-crc32c
   cpp-threading-future
   cpp-deprecated-atomic
+  library-actors-prof
 )
 target_sources(blockstore-libs-common PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_checksum.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_data_ref.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/caching_allocator.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/guarded_sglist.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/iovector.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/sglist.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/sglist_test.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/typeinfo.cpp
 )

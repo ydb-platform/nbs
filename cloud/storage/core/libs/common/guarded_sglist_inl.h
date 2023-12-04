@@ -9,7 +9,7 @@
 #include <util/generic/buffer.h>
 #include <util/generic/string.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,4 +105,4 @@ TGuardedSgList TGuardedBuffer<T>::CreateGuardedSgList(TSgList sglist) const
     return Impl->CreateGuardedSgList(std::move(sglist));
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

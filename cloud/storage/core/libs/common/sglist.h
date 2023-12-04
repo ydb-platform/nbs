@@ -8,7 +8,7 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,4 +22,4 @@ size_t SgListCopy(const TSgList& src, TBlockDataRef dst);
 TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize);
 TResultOrError<TSgList> SgListNormalize(TSgList sglist, ui32 blockSize);
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

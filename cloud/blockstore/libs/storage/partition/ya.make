@@ -65,7 +65,6 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet
 
-    contrib/ydb/library/actors/core
     library/cpp/blockcodecs
     library/cpp/cgiparam
     library/cpp/containers/dense_hash
@@ -78,6 +77,7 @@ PEERDIR(
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/testlib/basics
+    contrib/ydb/library/actors/core
 )
 
 END()

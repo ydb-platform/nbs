@@ -13,6 +13,7 @@ target_link_libraries(libs-spdk-iface PUBLIC
   yutil
   blockstore-libs-common
   blockstore-libs-diagnostics
+  core-libs-common
   core-libs-diagnostics
 )
 target_sources(libs-spdk-iface PRIVATE

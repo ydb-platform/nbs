@@ -4,11 +4,12 @@
 
 #include "sglist.h"
 
-#include <util/generic/noncopyable.h>
-#include <util/generic/ptr.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
 
-namespace NCloud::NBlockStore {
+#include <util/generic/noncopyable.h>
+#include <util/generic/ptr.h>
+
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -169,7 +170,7 @@ public:
     TGuardedSgList CreateGuardedSgList(TSgList sglist) const;
 };
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud
 
 #define BLOCKSTORE_INCLUDE_GUARDED_SGLIST_INL
 #include "guarded_sglist_inl.h"

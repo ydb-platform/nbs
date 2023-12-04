@@ -4,14 +4,15 @@
 
 #include "block.h"
 
-#include <cloud/blockstore/libs/common/block_buffer.h>
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/common/guarded_sglist.h>
 
+#include <cloud/storage/core/libs/common/block_buffer.h>
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
+
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/digest/multi.h>
 #include <util/generic/hash.h>

@@ -16,13 +16,17 @@ ENDIF()
 
 SRCS(
     backoff_delay_provider_ut.cpp
+    block_buffer_ut.cpp
+    block_data_ref_ut.cpp
     concurrent_queue_ut.cpp
     context_ut.cpp
     error_ut.cpp
     file_io_service_ut.cpp
+    guarded_sglist_ut.cpp
     ring_buffer_ut.cpp
     scheduler_ut.cpp
     scoped_handle_ut.cpp
+    sglist_ut.cpp
     thread_pool_ut.cpp
 )
 

@@ -23,6 +23,7 @@ target_link_libraries(nbd-test PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-nbd
   blockstore-libs-service
+  core-libs-common
   core-libs-coroutine
   core-libs-diagnostics
   library-cpp-getopt

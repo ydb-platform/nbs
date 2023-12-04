@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/block_buffer.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -15,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/partition2/model/block.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
+#include <cloud/storage/core/libs/common/block_buffer.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>

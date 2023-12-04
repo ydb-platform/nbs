@@ -15,29 +15,29 @@ target_link_libraries(blockstore-libs-diagnostics PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  public-api-protos
   cloud-blockstore-config
   blockstore-libs-common
-  libs-diagnostics-events
   libs-diagnostics-data
+  libs-diagnostics-events
   blockstore-libs-service
+  public-api-protos
   core-libs-common
   core-libs-diagnostics
   core-libs-throttling
   libs-user_stats-counter
-  cpp-lwtrace-mon
+  cpp-deprecated-atomic
   cpp-digest-crc32c
   library-cpp-eventlog
   cpp-histogram-hdr
   library-cpp-logger
   library-cpp-lwtrace
+  cpp-lwtrace-mon
   cpp-monlib-dynamic_counters
   monlib-encode-spack
   cpp-monlib-service
   monlib-service-pages
   service-pages-tablesorter
   cpp-threading-hot_swap
-  cpp-deprecated-atomic
 )
 target_sources(blockstore-libs-diagnostics PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/diagnostics/block_digest.cpp

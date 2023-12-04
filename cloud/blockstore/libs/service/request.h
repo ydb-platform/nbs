@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/guarded_sglist.h>
-
 #include <cloud/blockstore/public/api/protos/actions.pb.h>
 #include <cloud/blockstore/public/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/public/api/protos/cms.pb.h>
@@ -17,6 +15,8 @@
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 #include <cloud/blockstore/public/api/protos/placement.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
+
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
 
 #include <library/cpp/threading/future/future.h>
 

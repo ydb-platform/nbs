@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/block_data_ref.h>
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 
 #include <util/generic/maybe.h>
 

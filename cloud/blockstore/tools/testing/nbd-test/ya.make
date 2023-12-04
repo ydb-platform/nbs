@@ -16,8 +16,11 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/service
+    
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
+    
     library/cpp/getopt
     library/cpp/deprecated/atomic
 )
