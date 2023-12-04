@@ -60,6 +60,17 @@ type loggerWithURLReplaced struct {
 	substringToReplace string
 }
 
+func newLoggerWithURLReplaced(
+	ctx context.Context,
+	substringToReplace string,
+) *loggerWithURLReplaced {
+
+	return &loggerWithURLReplaced{
+		ctx:                logging.AddCallerSkip(ctx, 1),
+		substringToReplace: substringToReplace,
+	}
+}
+
 func (l *loggerWithURLReplaced) getKeysAndValuesFormat(itemsCount int) string {
 	format := ""
 
@@ -311,10 +322,10 @@ func newHTTPClient(
 	retryableClient.RetryWaitMin = minRetryTimeout
 	retryableClient.RetryWaitMax = maxRetryTimeout
 	retryableClient.RetryMax = int(maxRetries)
-	retryableClient.Logger = &loggerWithURLReplaced{
-		ctx:                ctx,
-		substringToReplace: getParametersFromURL(url),
-	}
+	retryableClient.Logger = newLoggerWithURLReplaced(
+		ctx,
+		getParametersFromURL(url),
+	)
 
 	return &httpClient{
 		client: retryableClient.StandardClient(),

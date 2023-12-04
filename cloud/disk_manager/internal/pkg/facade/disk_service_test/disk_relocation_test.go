@@ -999,7 +999,6 @@ func TestDiskServiceMigrateEmptyDisk(t *testing.T) {
 func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	params := migrationTestParams{
 		SrcZoneID: "zone-a",
-		DstZoneID: "zone-b",
 		DiskID:    t.Name(),
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskSize:  migrationTestsDiskSize,
@@ -1020,19 +1019,28 @@ func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	require.NoError(t, err)
 
 	var operations []*operation_proto.Operation
+	zoneByOperationID := make(map[string]string)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 6; i++ {
+		var dstZoneID string
+		if i%2 == 0 {
+			dstZoneID = "zone-b"
+		} else {
+			dstZoneID = "zone-c"
+		}
+
 		reqCtx := testcommon.GetRequestContext(t, ctx)
 		operation, err := client.MigrateDisk(reqCtx, &disk_manager.MigrateDiskRequest{
 			DiskId: &disk_manager.DiskId{
 				DiskId: params.DiskID,
 				ZoneId: params.SrcZoneID,
 			},
-			DstZoneId: params.DstZoneID,
+			DstZoneId: dstZoneID,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, operation)
 
+		zoneByOperationID[operation.Id] = dstZoneID
 		operations = append(operations, operation)
 	}
 
@@ -1075,21 +1083,23 @@ func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	}
 
 	successCount := 0
+	var dstZoneID string
 
 	for _, operation := range operations {
 		err = internal_client.WaitOperation(ctx, client, operation.Id)
 		if err == nil {
 			successCount++
+			dstZoneID = zoneByOperationID[operation.Id]
 		}
 	}
 
-	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
-
+	require.LessOrEqual(t, successCount, 1)
 	if successCount > 0 {
 		_, err = srcZoneNBSClient.Describe(ctx, params.DiskID)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "Path not found")
 
+		dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, dstZoneID)
 		dstCrc32, err := dstZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 		require.NoError(t, err)
 		require.Equal(t, srcCrc32, dstCrc32)

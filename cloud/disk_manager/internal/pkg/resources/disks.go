@@ -1086,7 +1086,8 @@ func (s *storageYDB) DiskRelocated(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
-	newZoneID string,
+	srcZoneID string,
+	dstZoneID string,
 ) error {
 
 	state, err := s.getDiskState(ctx, tx, diskID)
@@ -1095,7 +1096,13 @@ func (s *storageYDB) DiskRelocated(
 	}
 
 	oldZoneID := state.zoneID
-	state.zoneID = newZoneID
+	if oldZoneID != srcZoneID {
+		return errors.NewNonRetriableErrorf(
+			"Disk has been already relocated by another competing task.",
+		)
+	}
+
+	state.zoneID = dstZoneID
 
 	err = s.updateDiskState(ctx, tx, state)
 	if err != nil {

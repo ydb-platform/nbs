@@ -127,7 +127,6 @@ func (t *migrateDiskTask) Run(
 	}
 }
 
-// TODO: forbid task cancellation after FINISH_MIGRATION signal has arrived NBS-3657.
 func (t *migrateDiskTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -135,11 +134,18 @@ func (t *migrateDiskTask) Cancel(
 
 	t.logInfo(ctx, execCtx, "cancelling task")
 
-	err := t.deleteDstDisk(ctx, execCtx)
-	if err != nil {
-		return err
+	// We do not expect task cancelling after FINISH_MIGRATION signal, but we still
+	// avoid dst disk deletion.
+	if !execCtx.HasEvent(
+		ctx,
+		int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION),
+	) {
+		err := t.deleteDstDisk(ctx, execCtx)
+		if err != nil {
+			return err
+		}
+		t.logInfo(ctx, execCtx, "deleted dst disk")
 	}
-	t.logInfo(ctx, execCtx, "deleted dst disk")
 
 	// TODO: NBS-4487 - uncomment this code.
 	/* return t.unfreezeSrcDisk(ctx, execCtx) */
@@ -529,6 +535,7 @@ func (t *migrateDiskTask) finishMigration(
 				ctx,
 				tx,
 				t.request.Disk.DiskId,
+				t.request.Disk.ZoneId,
 				t.request.DstZoneId,
 			)
 		},

@@ -422,10 +422,11 @@ func (s *StorageMock) DiskRelocated(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
-	newZoneID string,
+	srcZoneID string,
+	dstZoneID string,
 ) error {
 
-	args := s.Called(ctx, tx, diskID, newZoneID)
+	args := s.Called(ctx, tx, diskID, srcZoneID, dstZoneID)
 	return args.Error(0)
 }
 

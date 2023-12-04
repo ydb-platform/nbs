@@ -278,6 +278,7 @@ type Storage interface {
 		ctx context.Context,
 		tx *persistence.Transaction,
 		diskID string,
-		newZoneID string,
+		srcZoneID string,
+		dstZoneID string,
 	) error
 }

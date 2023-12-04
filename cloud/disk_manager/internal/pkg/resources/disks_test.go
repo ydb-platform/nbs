@@ -352,9 +352,9 @@ func TestDiskRelocated(t *testing.T) {
 
 	diskID := t.Name()
 	oldZoneID := "zone"
-	newZoneID := "other"
+	dstZoneID := "other"
 
-	diskRelocated := func(ctx context.Context, diskID string, zoneID string) error {
+	diskRelocated := func(ctx context.Context, diskID string, srcZoneID, dstZoneID string) error {
 		return db.Execute(
 			ctx,
 			func(ctx context.Context, session *persistence.Session) error {
@@ -364,7 +364,7 @@ func TestDiskRelocated(t *testing.T) {
 				}
 				defer tx.Rollback(ctx)
 
-				err = storage.DiskRelocated(ctx, tx, diskID, zoneID)
+				err = storage.DiskRelocated(ctx, tx, diskID, srcZoneID, dstZoneID)
 				if err != nil {
 					return err
 				}
@@ -374,7 +374,7 @@ func TestDiskRelocated(t *testing.T) {
 		)
 	}
 
-	err := diskRelocated(ctx, diskID, newZoneID)
+	err := diskRelocated(ctx, diskID, oldZoneID, dstZoneID)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "unable to find disk")
 
@@ -393,10 +393,18 @@ func TestDiskRelocated(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, actual)
 
-	err = diskRelocated(ctx, diskID, newZoneID)
+	err = diskRelocated(ctx, diskID, "another", dstZoneID)
+	require.Error(t, err)
+	require.ErrorContains(
+		t,
+		err,
+		"Disk has been already relocated by another competing task.",
+	)
+
+	err = diskRelocated(ctx, diskID, oldZoneID, dstZoneID)
 	require.NoError(t, err)
 
 	actual, err = storage.GetDiskMeta(ctx, diskID)
 	require.NoError(t, err)
-	require.Equal(t, newZoneID, actual.ZoneID)
+	require.Equal(t, dstZoneID, actual.ZoneID)
 }
