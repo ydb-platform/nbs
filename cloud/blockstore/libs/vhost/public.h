@@ -6,7 +6,7 @@ namespace NCloud::NBlockStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-typedef int TMemoryCallback(void* addr, size_t len, void* priv);
+typedef int TMemoryCallback(void* addr, size_t len);
 
 struct TVhostCallbacks
 {

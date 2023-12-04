@@ -83,10 +83,10 @@ struct vhd_vdev {
     struct vhd_vring *vrings; /* Total num_queues elements */
 
     /* Gets called after mapping guest memory region */
-    int (*map_cb)(void *addr, size_t len, void *priv);
+    int (*map_cb)(void *addr, size_t len);
 
     /* Gets called before unmapping guest memory region */
-    int (*unmap_cb)(void *addr, size_t len, void *priv);
+    int (*unmap_cb)(void *addr, size_t len);
 
     struct vhd_memory_map *memmap;
     struct vhd_memory_map *old_memmap;
@@ -145,8 +145,8 @@ int vhd_vdev_init_server(
     int max_queues,
     struct vhd_request_queue **rqs, int num_rqs,
     void *priv,
-    int (*map_cb)(void *addr, size_t len, void *priv),
-    int (*unmap_cb)(void *addr, size_t len, void *priv));
+    int (*map_cb)(void *addr, size_t len),
+    int (*unmap_cb)(void *addr, size_t len));
 
 /**
  * Stop vhost device.  Once this returns no more new requests will reach the

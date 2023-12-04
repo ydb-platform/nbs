@@ -42,10 +42,10 @@ struct vhd_bdev_info {
     uint64_t features;
 
     /* Gets called after mapping guest memory region */
-    int (*map_cb)(void *addr, size_t len, void *priv);
+    int (*map_cb)(void *addr, size_t len);
 
     /* Gets called before unmapping guest memory region */
-    int (*unmap_cb)(void *addr, size_t len, void *priv);
+    int (*unmap_cb)(void *addr, size_t len);
 };
 
 static inline bool vhd_blockdev_is_readonly(const struct vhd_bdev_info *bdev)

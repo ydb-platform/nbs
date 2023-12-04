@@ -869,7 +869,7 @@ static int vhost_set_mem_table(struct vhd_vdev *vdev, const void *payload,
         return -EINVAL;
     }
 
-    mm = vhd_memmap_new(vdev->map_cb, vdev->unmap_cb, vdev->priv);
+    mm = vhd_memmap_new(vdev->map_cb, vdev->unmap_cb);
 
     for (i = 0; i < desc->nregions; i++) {
         const struct vhost_user_mem_region *region = &desc->regions[i];
@@ -1901,8 +1901,8 @@ int vhd_vdev_init_server(
     struct vhd_request_queue **rqs,
     int num_rqs,
     void *priv,
-    int (*map_cb)(void *addr, size_t len, void *priv),
-    int (*unmap_cb)(void *addr, size_t len, void *priv))
+    int (*map_cb)(void *addr, size_t len),
+    int (*unmap_cb)(void *addr, size_t len))
 {
     int ret;
     int listenfd;
