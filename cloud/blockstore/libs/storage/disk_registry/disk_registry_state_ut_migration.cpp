@@ -955,7 +955,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotMigrateMoreThanNDevicesAtTheSameTime)
+    void DoTestShouldNotMigrateMoreThanNDevicesAtTheSameTime(
+        NProto::TStorageServiceConfig config)
     {
         const TVector agents {
             AgentConfig(1, {
@@ -983,11 +984,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
                 Disk("disk-2", {"uuid-2.1"}),
             })
-            .WithStorageConfig([] {
-                auto config = CreateDefaultStorageConfigProto();
-                config.SetMaxNonReplicatedDeviceMigrationsInProgress(2);
-                return config;
-            }())
+            .WithStorageConfig(std::move(config))
             .Build();
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
@@ -1088,6 +1085,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotMigrateMoreThanNDevicesAtTheSameTime)
+    {
+        auto config = CreateDefaultStorageConfigProto();
+        config.SetMaxNonReplicatedDeviceMigrationsInProgress(2);
+        config.SetMaxNonReplicatedDeviceMigrationPercentageInProgress(1); // min limit
+        DoTestShouldNotMigrateMoreThanNDevicesAtTheSameTime(std::move(config));
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateMoreThanAPercentageOfDevicesAtTheSameTime)
+    {
+        auto config = CreateDefaultStorageConfigProto();
+        config.SetMaxNonReplicatedDeviceMigrationsInProgress(1); // min limit
+        config.SetMaxNonReplicatedDeviceMigrationPercentageInProgress(34);
+        DoTestShouldNotMigrateMoreThanNDevicesAtTheSameTime(std::move(config));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

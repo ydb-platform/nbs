@@ -528,6 +528,8 @@ message TStorageServiceConfig
     optional bool NonReplicatedVolumeMigrationDisabled = 200;
 
     // Maximum number of migrations running in parallel.
+    // Max value is selected between this limit and
+    // MaxNonReplicatedDeviceMigrationPercentageInProgress * deviceCount.
     optional uint32 MaxNonReplicatedDeviceMigrationsInProgress = 201;
 
     // Enables extra diagnostics by dumping block commitIds.
@@ -885,4 +887,10 @@ message TStorageServiceConfig
     optional uint32 NonReplicatedMaxRequestTimeout = 341;
 
     optional uint64 MaxChangedBlocksRangeBlocksCount = 342;
+
+    // Maximum number of migrations running in parallel as a percentage of the
+    // devices belonging to the same pool as the source device.
+    // Max value is selected between this limit and
+    // MaxNonReplicatedDeviceMigrationsInProgress.
+    optional uint32 MaxNonReplicatedDeviceMigrationPercentageInProgress = 343;
 }

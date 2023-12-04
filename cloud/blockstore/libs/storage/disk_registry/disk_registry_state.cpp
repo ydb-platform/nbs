@@ -5206,7 +5206,10 @@ auto TDiskRegistryState::FindReplicaByMigration(
 
 TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
 {
-    size_t budget = StorageConfig->GetMaxNonReplicatedDeviceMigrationsInProgress();
+    const ui32 minBudget =
+        StorageConfig->GetMaxNonReplicatedDeviceMigrationsInProgress();
+    const ui32 budgetPercentage =
+        StorageConfig->GetMaxNonReplicatedDeviceMigrationPercentageInProgress();
 
     TVector<TDeviceMigration> result;
     THashMap<TString, ui32> poolName2Budget;
@@ -5227,9 +5230,18 @@ TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
             continue;
         }
 
-        auto* inProgressPtr =
+        const ui32* deviceCountInPoolPtr =
+            DeviceList.GetPoolName2DeviceCount().FindPtr(devicePtr->GetPoolName());
+        const ui32 deviceCountInPool =
+            deviceCountInPoolPtr ? *deviceCountInPoolPtr : 0;
+
+        const ui32 budget = Max(
+            minBudget,
+            deviceCountInPool * budgetPercentage / 100);
+
+        const auto* inProgressPtr =
             SourceDeviceMigrationsInProgress.FindPtr(devicePtr->GetPoolName());
-        ui32 inProgress = inProgressPtr ? inProgressPtr->size() : 0;
+        const ui32 inProgress = inProgressPtr ? inProgressPtr->size() : 0;
         // limits might have changed after the start of some of our current
         // migrations - that's why inProgress can sometimes be greater than budget
         if (inProgress >= budget) {

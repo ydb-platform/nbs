@@ -385,7 +385,8 @@ TDuration MSeconds(ui32 value)
     xxx(MaxMigrationBandwidth,                     ui32,      100             )\
     xxx(ExpectedDiskAgentSize,                     ui32,      15              )\
     /* 75 devices = 5 agents */                                                \
-    xxx(MaxNonReplicatedDeviceMigrationsInProgress,ui32,      75              )\
+    xxx(MaxNonReplicatedDeviceMigrationsInProgress,             ui32,      75 )\
+    xxx(MaxNonReplicatedDeviceMigrationPercentageInProgress,    ui32,      5  )\
     xxx(MirroredMigrationStartAllowed,             bool,      false           )\
     xxx(PlacementGroupAlertPeriod,                 TDuration, Hours(8)        )\
     xxx(EnableLoadActor,                           bool,      false           )\
