@@ -26,6 +26,7 @@ SRCS(
     ring_buffer_ut.cpp
     scheduler_ut.cpp
     scoped_handle_ut.cpp
+    sglist_iter_ut.cpp
     sglist_ut.cpp
     thread_pool_ut.cpp
 )

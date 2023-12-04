@@ -25,6 +25,7 @@ SRCS(
     scheduler_test.cpp
     scoped_handle.cpp
     sglist.cpp
+    sglist_iter.cpp
     sglist_test.cpp
     startable.cpp
     task_queue.cpp

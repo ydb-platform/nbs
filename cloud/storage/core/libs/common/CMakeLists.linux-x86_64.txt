@@ -52,6 +52,7 @@ target_sources(core-libs-common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/scheduler_test.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/scoped_handle.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/sglist.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/sglist_iter.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/sglist_test.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/startable.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/task_queue.cpp
