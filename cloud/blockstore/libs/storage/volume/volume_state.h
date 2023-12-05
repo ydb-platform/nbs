@@ -361,7 +361,7 @@ public:
         TString lowCheckpointId,
         TString highCheckpointId,
         const TBlockRange64& blockRange,
-        TString& mask) const;
+        TString* mask) const;
 
     void MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& blockRange);
 

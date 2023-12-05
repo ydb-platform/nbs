@@ -668,7 +668,7 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
         TBlockRange64::WithLength(
             msg->Record.GetStartIndex(),
             msg->Record.GetBlocksCount()),
-        mask);
+        &mask);
 
     if (!SUCCEEDED(error.GetCode())) {
         replyError(error);

@@ -29,7 +29,7 @@ private:
     TCompressedBitmap CurrentDirtyBlocks;
     TCompressedBitmap FutureDirtyBlocks;
 
-    bool CheckpointExists(const TString& checkpointId) const;
+    bool IsCheckpointEmptyOrExists(const TString& checkpointId) const;
 
 public:
     TCheckpointLight(ui64 blocksCount);
@@ -50,7 +50,7 @@ public:
         const TString& lowCheckpointId,
         const TString& highCheckpointId,
         const TBlockRange64& blockRange,
-        TString& mask) const;
+        TString* mask) const;
 
     /**
      * @brief Mark blocks as modified
