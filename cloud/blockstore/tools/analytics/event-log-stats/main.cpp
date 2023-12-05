@@ -240,11 +240,20 @@ private:
         } else if (!Options.NoInternalRequests || bl.GetRequestType() < maxReq) {
             Y_ABORT_UNLESS(bl.GetRequestType() != ZeroRequestType);
 
+            // deduplication needed - nbs can log different versions for the
+            // same blockIndex - first some old versions and later on - the
+            // last version
+            THashMap<ui64, ui32> checksums;
+
             for (const auto& bi: bl.GetBlockInfos()) {
+                checksums[bi.GetBlockIndex()] = bi.GetChecksum();
+            }
+
+            for (const auto [blockIndex, checksum]: checksums) {
                 BlockInfoConsumer->RegisterAccess(
                     TInstant::MicroSeconds(bl.GetTimestampMcs()),
-                    bi.GetBlockIndex(),
-                    bi.GetChecksum(),
+                    blockIndex,
+                    checksum,
                     bl.GetRequestType()
                 );
             }
