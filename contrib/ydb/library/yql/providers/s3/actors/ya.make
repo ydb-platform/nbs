@@ -24,18 +24,19 @@ PEERDIR(
     library/cpp/string_utils/quote
     library/cpp/xml/document
     contrib/ydb/core/fq/libs/events
-    contrib/ydb/library/yql/minikql/computation/llvm
-    contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/providers/common/token_accessor/client
-    contrib/ydb/library/yql/providers/common/schema/mkql
-    contrib/ydb/library/yql/providers/common/http_gateway
+    contrib/ydb/library/yql/minikql/computation/llvm
     contrib/ydb/library/yql/providers/common/arrow
     contrib/ydb/library/yql/providers/common/arrow/interface
+    contrib/ydb/library/yql/providers/common/http_gateway
+    contrib/ydb/library/yql/providers/common/schema/mkql
+    contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/providers/s3/common
     contrib/ydb/library/yql/providers/s3/compressors
+    contrib/ydb/library/yql/providers/s3/credentials
     contrib/ydb/library/yql/providers/s3/object_listers
     contrib/ydb/library/yql/providers/s3/proto
+    contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/udfs/common/clickhouse/client
 )
 

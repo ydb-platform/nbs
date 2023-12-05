@@ -2,6 +2,7 @@ UNITTEST_FOR(contrib/ydb/core/kqp/provider)
 
 SRCS(
     yql_kikimr_gateway_ut.cpp
+    yql_kikimr_provider_ut.cpp
 )
 
 PEERDIR(
