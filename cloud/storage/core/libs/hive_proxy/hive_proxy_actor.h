@@ -91,8 +91,17 @@ private:
     {
         enum StatsUpdateState
         {
+            // Previous stats where sent and acknowledged.
+            // No new stats for hive have arrived
             STATE_NO_STATS,
+            // Previous stats where sent and acknowledged.
+            // New stats for hive have arrived
             STATE_HAS_STATS,
+            // Stats have been sent, but not yet acknowledged.
+            STATE_SENDING_STATS,
+            // Stats have been sent, but not yet acknowledged.
+            // But new stats from tablet have arrived. After ack from hive
+            // new stats need to be sent again.
             STATE_SEND_UPDATE
         };
 
@@ -107,16 +116,26 @@ private:
         {
             switch (State) {
                 case STATE_NO_STATS: State = STATE_HAS_STATS; break;
+                case STATE_HAS_STATS: break;
                 default: State = STATE_SEND_UPDATE; break;
+            }
+        }
+
+        void OnStatsSend()
+        {
+            Y_DEBUG_ABORT_UNLESS(State != STATE_NO_STATS);
+            Y_DEBUG_ABORT_UNLESS(State != STATE_SENDING_STATS);
+            if (State == STATE_HAS_STATS) {
+                State = STATE_SENDING_STATS;
             }
         }
 
         void OnHiveAck()
         {
             Y_DEBUG_ABORT_UNLESS(State != STATE_NO_STATS);
-
+            Y_DEBUG_ABORT_UNLESS(State != STATE_HAS_STATS);
             switch (State) {
-                case STATE_HAS_STATS: State = STATE_NO_STATS; break;
+                case STATE_SENDING_STATS: State = STATE_NO_STATS; break;
                 case STATE_SEND_UPDATE: State = STATE_HAS_STATS; break;
                 default: break;
             }

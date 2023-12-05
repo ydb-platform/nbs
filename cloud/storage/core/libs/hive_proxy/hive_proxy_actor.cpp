@@ -194,9 +194,10 @@ void THiveProxyActor::SendTabletMetrics(
     STORAGE_VERIFY(state, "Hive", hive);
     state->ScheduledSendTabletMetrics = false;
     TAutoPtr<TEvHive::TEvTabletMetrics> event = MakeHolder<TEvHive::TEvTabletMetrics>();
-    NKikimrHive::TEvTabletMetrics &record = event->Record;
-    for (const auto &prTabletId : state->UpdatedTabletMetrics) {
+    NKikimrHive::TEvTabletMetrics& record = event->Record;
+    for (auto& prTabletId: state->UpdatedTabletMetrics) {
         AddTabletMetrics(prTabletId.first, prTabletId.second, record);
+        prTabletId.second.OnStatsSend();
     }
     if (record.TabletMetricsSize() > 0) {
         ClientCache->Send(ctx, hive, event.Release());
@@ -249,7 +250,7 @@ void THiveProxyActor::HandleConnectionError(
     // Hive is a tablet, so it should eventually get up
     // Re-send all outstanding requests
     if (auto* states = HiveStates.FindPtr(hive)) {
-        for (auto& kv : states->LockStates) {
+        for (auto& kv: states->LockStates) {
             ui64 tabletId = kv.first;
             auto* state = &kv.second;
             if (state->Phase == PHASE_LOCKED) {
@@ -270,7 +271,7 @@ void THiveProxyActor::HandleConnectionError(
             }
         }
 
-        for (auto& kv : states->GetInfoRequests) {
+        for (auto& kv: states->GetInfoRequests) {
             ui64 tabletId = kv.first;
             auto& requests = kv.second;
             if (!requests.empty()) {
@@ -381,28 +382,28 @@ void THiveProxyActor::HandleTabletMetrics(
     }
     if (metrics.GroupReadThroughputSize() > 0) {
         tabletData.ResourceValues.ClearGroupReadThroughput();
-        for (const auto &v : metrics.GetGroupReadThroughput()) {
+        for (const auto& v: metrics.GetGroupReadThroughput()) {
             tabletData.ResourceValues.AddGroupReadThroughput()->CopyFrom(v);
         }
         hasChanges = true;
     }
     if (metrics.GroupWriteThroughputSize() > 0) {
         tabletData.ResourceValues.ClearGroupWriteThroughput();
-        for (const auto &v : metrics.GetGroupWriteThroughput()) {
+        for (const auto& v: metrics.GetGroupWriteThroughput()) {
             tabletData.ResourceValues.AddGroupWriteThroughput()->CopyFrom(v);
         }
         hasChanges = true;
     }
     if (metrics.GroupReadIopsSize() > 0) {
         tabletData.ResourceValues.ClearGroupReadIops();
-        for (const auto &v : metrics.GetGroupReadIops()) {
+        for (const auto& v: metrics.GetGroupReadIops()) {
             tabletData.ResourceValues.AddGroupReadIops()->CopyFrom(v);
         }
         hasChanges = true;
     }
     if (metrics.GroupWriteIopsSize() > 0) {
         tabletData.ResourceValues.ClearGroupWriteIops();
-        for (const auto &v : metrics.GetGroupWriteIops()) {
+        for (const auto& v: metrics.GetGroupWriteIops()) {
             tabletData.ResourceValues.AddGroupWriteIops()->CopyFrom(v);
         }
         hasChanges = true;

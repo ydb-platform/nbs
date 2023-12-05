@@ -1,4 +1,5 @@
 #include "hive_proxy.h"
+#include "hive_proxy_events_private.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
@@ -136,6 +137,7 @@ private:
             HFunc(TEvHive::TEvInitiateTabletExternalBoot, HandleBoot);
             HFunc(TEvHive::TEvReassignTablet, HandleReassignTablet);
             HFunc(TEvHive::TEvDrainNode, HandleDrainNode);
+            HFunc(TEvHive::TEvTabletMetrics, HandleTabletMetrics);
             IgnoreFunc(TEvTabletPipe::TEvServerConnected);
             IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
             default:
@@ -371,6 +373,22 @@ private:
         }
 
         ctx.Send(ev->Sender, new TEvHive::TEvDrainNodeResult(replyStatus));
+    }
+
+    void HandleTabletMetrics(
+        const TEvHive::TEvTabletMetrics::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto* msg = ev->Get();
+        auto response = std::make_unique<TEvLocal::TEvTabletMetricsAck>();
+        for (ui32 i = 0; i < msg->Record.TabletMetricsSize(); ++i) {
+            response->Record.AddTabletId(
+                msg->Record.GetTabletMetrics(i).GetTabletID());
+            response->Record.AddFollowerId(
+                msg->Record.GetTabletMetrics(i).GetFollowerID());
+        }
+
+        ctx.Send(ev->Sender, response.release());
     }
 };
 
@@ -740,6 +758,23 @@ struct TTestEnv
         const auto* msg = ev->Get();
         UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
         return *msg;
+    }
+
+    void SendTabletMetricRequestAsync(
+        const TActorId& sender,
+        ui64 tabletId)
+    {
+        NKikimrTabletBase::TMetrics resourceValues;
+        resourceValues.SetCPU(1'000'000);
+        auto request = std::make_unique<TEvLocal::TEvTabletMetrics>(
+            tabletId,
+            0,
+            resourceValues);
+
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            request.release()));
     }
 };
 
@@ -1386,6 +1421,44 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(
             env.TenantHiveState->LockedTablets[FakeTablet2],
             TActorId());
+    }
+
+    Y_UNIT_TEST(ShouldNotResendMetricsIfTheyUpdatedBeforeSending)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, "", false, false, true);
+
+        ui32 hiveMessages = 0;
+        ui32 wakeups = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHive::EvTabletMetrics: {
+                        ++hiveMessages;
+                        break;
+                    }
+                    case TEvHiveProxyPrivate::EvSendTabletMetrics: {
+                        ++wakeups;
+                        break;
+                    }
+                    default: break;
+                }
+                return TTestActorRuntime::EEventAction::PROCESS;
+            });
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        env.SendLockRequest(sender, FakeTablet2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.TenantHiveState->LockedTablets[FakeTablet2],
+            env.HiveProxyActorId);
+
+        env.SendTabletMetricRequestAsync(sender, FakeTablet2);
+        env.SendTabletMetricRequestAsync(sender, FakeTablet2);
+
+        runtime.DispatchEvents({}, TDuration::Seconds(6));
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveMessages);
+        UNIT_ASSERT_VALUES_EQUAL(1, wakeups);
     }
 }
 
