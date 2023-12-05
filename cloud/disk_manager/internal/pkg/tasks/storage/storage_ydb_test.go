@@ -1423,6 +1423,7 @@ func TestStorageYDBListFailedTasks(t *testing.T) {
 			TaskInfo{
 				ID:           taskIDWithNonSilentError,
 				GenerationID: generationID + 1,
+				TaskType:     "task1",
 			},
 		},
 		taskInfos,
@@ -1474,6 +1475,7 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 		return TaskInfo{
 			ID:           id,
 			GenerationID: task.GenerationID,
+			TaskType:     task.TaskType,
 		}
 	}
 	createTask(createdAt, 5, 4) // Should not be presented in the result

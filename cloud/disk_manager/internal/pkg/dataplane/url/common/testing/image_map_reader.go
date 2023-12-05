@@ -129,6 +129,7 @@ func MapImageTest(
 
 	reader, err := common.NewURLReader(
 		ctx,
+		time.Minute,   // httpClientTimeout
 		time.Second,   // httpClientMinRetryTimeout
 		8*time.Second, // httpClientMaxRetryTimeout
 		5,             // httpClientMaxRetries

@@ -877,7 +877,7 @@ func (s *storageYDB) listTasks(
 	}
 	defer res.Close()
 
-	return scanTaskInfos(ctx, res)
+	return scanTaskInfosStream(ctx, res)
 }
 
 func (s *storageYDB) listFailedTasks(
@@ -894,7 +894,7 @@ func (s *storageYDB) listFailedTasks(
 
 		$task_ids = (select id from ended where ended_at >= $since);
 
-		select id, generation_id
+		select *
 		from tasks
 		where id in $task_ids and error_message != "" and not error_silent
 	`, s.tablesPath),
@@ -905,34 +905,7 @@ func (s *storageYDB) listFailedTasks(
 	}
 	defer res.Close()
 
-	var result []TaskInfo
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var id string
-			var generationID uint64
-			err := res.ScanNamed(
-				persistence.OptionalWithDefault("id", &id),
-				persistence.OptionalWithDefault("generation_id", &generationID),
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, TaskInfo{
-				ID:           id,
-				GenerationID: generationID,
-			})
-		}
-	}
-
-	// NOTE: always check stream query result after iteration.
-	err = res.Err()
-	if err != nil {
-		return nil, errors.NewRetriableError(err)
-	}
-
-	return result, nil
+	return scanTaskInfosStream(ctx, res)
 }
 
 func (s *storageYDB) listSlowTasks(
@@ -966,34 +939,7 @@ func (s *storageYDB) listSlowTasks(
 	}
 	defer res.Close()
 
-	var taskInfos []TaskInfo
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var id string
-			var generationID uint64
-			err := res.ScanNamed(
-				persistence.OptionalWithDefault("id", &id),
-				persistence.OptionalWithDefault("generation_id", &generationID),
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			taskInfos = append(taskInfos, TaskInfo{
-				ID:           id,
-				GenerationID: generationID,
-			})
-		}
-	}
-
-	// NOTE: always check stream query result after iteration.
-	err = res.Err()
-	if err != nil {
-		return nil, errors.NewRetriableError(err)
-	}
-
-	return taskInfos, nil
+	return scanTaskInfosStream(ctx, res)
 }
 
 func (s *storageYDB) listTasksStallingWhileExecuting(
@@ -1033,7 +979,7 @@ func (s *storageYDB) listTasksStallingWhileExecuting(
 	}
 	defer res.Close()
 
-	return scanTaskInfos(ctx, res)
+	return scanTaskInfosStream(ctx, res)
 }
 
 func (s *storageYDB) lockTaskToExecute(

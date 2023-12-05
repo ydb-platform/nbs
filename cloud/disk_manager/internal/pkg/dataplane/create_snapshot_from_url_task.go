@@ -22,6 +22,7 @@ type createSnapshotFromURLTask struct {
 	nbsFactory                nbs_client.Factory
 	storage                   storage.Storage
 	config                    *config.DataplaneConfig
+	httpClientTimeout         time.Duration
 	httpClientMinRetryTimeout time.Duration
 	httpClientMaxRetryTimeout time.Duration
 
@@ -58,6 +59,7 @@ func (t *createSnapshotFromURLTask) Run(
 
 	source, err := url.NewURLSource(
 		ctx,
+		t.httpClientTimeout,
 		t.httpClientMinRetryTimeout,
 		t.httpClientMaxRetryTimeout,
 		t.config.GetHTTPClientMaxRetries(),

@@ -16,6 +16,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
+	defaultHTTPClientTimeout         = time.Minute
 	defaultHTTPClientMinRetryTimeout = time.Second
 	defaultHTTPClientMaxRetryTimeout = 8 * time.Second
 	defaultHTTPClientMaxRetries      = 5
@@ -157,6 +158,7 @@ func (s *urlSource) ETag() string {
 
 func NewURLSource(
 	ctx context.Context,
+	httpClientTimeout time.Duration,
 	httpClientMinRetryTimeout time.Duration,
 	httpClientMaxRetryTimeout time.Duration,
 	httpClientMaxRetries uint32,
@@ -166,6 +168,7 @@ func NewURLSource(
 
 	urlReader, err := url_common.NewURLReader(
 		ctx,
+		httpClientTimeout,
 		httpClientMinRetryTimeout,
 		httpClientMaxRetryTimeout,
 		httpClientMaxRetries,
@@ -198,6 +201,7 @@ func NewURLSource(
 func GetImageFormat(ctx context.Context, url string) (ImageFormat, error) {
 	urlReader, err := url_common.NewURLReader(
 		ctx,
+		defaultHTTPClientTimeout,
 		defaultHTTPClientMinRetryTimeout,
 		defaultHTTPClientMaxRetryTimeout,
 		defaultHTTPClientMaxRetries,

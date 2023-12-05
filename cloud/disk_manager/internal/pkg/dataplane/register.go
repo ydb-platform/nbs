@@ -45,6 +45,11 @@ func RegisterForExecution(
 		return err
 	}
 
+	httpClientTimeout, err := time.ParseDuration(config.GetHTTPClientTimeout())
+	if err != nil {
+		return err
+	}
+
 	httpClientMinRetryTimeout, err := time.ParseDuration(
 		config.GetHTTPClientMinRetryTimeout(),
 	)
@@ -63,6 +68,7 @@ func RegisterForExecution(
 		return &createSnapshotFromURLTask{
 			storage:                   storage,
 			config:                    config,
+			httpClientTimeout:         httpClientTimeout,
 			httpClientMinRetryTimeout: httpClientMinRetryTimeout,
 			httpClientMaxRetryTimeout: httpClientMaxRetryTimeout,
 		}

@@ -310,6 +310,7 @@ func (r httpReadCloser) Close() error {
 
 func newHTTPClient(
 	ctx context.Context,
+	timeout time.Duration,
 	minRetryTimeout time.Duration,
 	maxRetryTimeout time.Duration,
 	maxRetries uint32,
@@ -318,7 +319,7 @@ func newHTTPClient(
 
 	retryableClient := retryablehttp.NewClient()
 
-	retryableClient.HTTPClient.Timeout = time.Minute
+	retryableClient.HTTPClient.Timeout = timeout
 	retryableClient.RetryWaitMin = minRetryTimeout
 	retryableClient.RetryWaitMax = maxRetryTimeout
 	retryableClient.RetryMax = int(maxRetries)

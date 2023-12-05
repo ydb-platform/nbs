@@ -82,24 +82,31 @@ func marshalErrorDetails(details *errors.ErrorDetails) []byte {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func scanTaskInfos(ctx context.Context, res persistence.Result) (taskInfos []TaskInfo, err error) {
+func scanTaskInfosStream(ctx context.Context, res persistence.Result) ([]TaskInfo, error) {
+	taskInfos := []TaskInfo{}
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			var info TaskInfo
-			err = res.ScanNamed(
+			err := res.ScanNamed(
 				persistence.OptionalWithDefault("id", &info.ID),
 				persistence.OptionalWithDefault("generation_id", &info.GenerationID),
 				persistence.OptionalWithDefault("task_type", &info.TaskType),
 			)
 			if err != nil {
-				return
+				return []TaskInfo{}, err
 			}
 
 			taskInfos = append(taskInfos, info)
 		}
 	}
 
-	return
+	// NOTE: always check stream query result after iteration.
+	err := res.Err()
+	if err != nil {
+		return []TaskInfo{}, errors.NewRetriableError(err)
+	}
+
+	return taskInfos, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

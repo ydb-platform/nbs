@@ -3,16 +3,17 @@ package common
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestURLReplacementInHTTPClientErrors(t *testing.T) {
+func TestHTTPClientURLReplacement(t *testing.T) {
 	invalidURL := "InvalidURL"
 
 	notFoundURLPrefix := "https://foo/bar"
@@ -44,13 +45,12 @@ func TestURLReplacementInHTTPClientErrors(t *testing.T) {
 		require.Contains(t, err.Error(), urlPrefix)
 	}
 
-	ctx := context.Background()
-	logger := logging.NewStderrLogger(logging.DebugLevel)
-	ctx = logging.SetLogger(ctx, logger)
+	ctx := newContext()
 
 	for _, testCase := range testCases {
 		httpClient := newHTTPClient(
 			ctx,
+			time.Millisecond, // timeout
 			time.Millisecond, // minRetryTimeout
 			time.Millisecond, // maxRetryTimeout
 			1,                // maxRetries
@@ -65,7 +65,7 @@ func TestURLReplacementInHTTPClientErrors(t *testing.T) {
 	}
 }
 
-func TestLogger(t *testing.T) {
+func TestHTTPClientLogger(t *testing.T) {
 	urlPrefix := "https://foo.com/bar"
 	urlParameters := "?aa=bb&cc=dd"
 	url := urlPrefix + urlParameters
@@ -89,4 +89,28 @@ func TestLogger(t *testing.T) {
 		urlReplacement,
 	)
 	require.Equal(t, expected, result)
+}
+
+func TestHTTPClientTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(10 * time.Second)
+		},
+	))
+	defer server.Close()
+
+	ctx := newContext()
+
+	httpClient := newHTTPClient(
+		ctx,
+		time.Millisecond, // timeout
+		time.Millisecond, // minRetryTimeout
+		time.Millisecond, // maxRetryTimeout
+		1,                // maxRetries
+		server.URL,
+	)
+
+	_, err := httpClient.Head(ctx)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "deadline exceeded")
 }

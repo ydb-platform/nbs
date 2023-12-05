@@ -44,6 +44,7 @@ type urlReader struct {
 
 func NewURLReader(
 	ctx context.Context,
+	httpClientTimeout time.Duration,
 	httpClientMinRetryTimeout time.Duration,
 	httpClientMaxRetryTimeout time.Duration,
 	httpClientMaxRetries uint32,
@@ -52,6 +53,7 @@ func NewURLReader(
 
 	httpClient := newHTTPClient(
 		ctx,
+		httpClientTimeout,
 		httpClientMinRetryTimeout,
 		httpClientMaxRetryTimeout,
 		httpClientMaxRetries,

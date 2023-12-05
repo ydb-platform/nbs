@@ -19,6 +19,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
+	defaultHTTPClientTimeout         = time.Minute
 	defaultHTTPClientMinRetryTimeout = time.Second
 	defaultHTTPClientMaxRetryTimeout = 8 * time.Second
 	defaultHTTPClientMaxRetries      = 5
@@ -167,6 +168,7 @@ func TestImageReading(t *testing.T) {
 
 			source, err := url.NewURLSource(
 				ctx,
+				defaultHTTPClientTimeout,
 				defaultHTTPClientMinRetryTimeout,
 				defaultHTTPClientMaxRetryTimeout,
 				defaultHTTPClientMaxRetries,
@@ -194,6 +196,7 @@ func TestInvalidImageReading(t *testing.T) {
 
 	source, err := url.NewURLSource(
 		ctx,
+		defaultHTTPClientTimeout,
 		defaultHTTPClientMinRetryTimeout,
 		defaultHTTPClientMaxRetryTimeout,
 		defaultHTTPClientMaxRetries,
