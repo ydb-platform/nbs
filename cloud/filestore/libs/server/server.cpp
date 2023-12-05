@@ -464,7 +464,8 @@ private:
             CallContext,
             TString(TMethod::RequestName),
             NProto::STORAGE_MEDIA_SSD,  // TODO NBS-2954
-            CallContext->FileSystemId);
+            CallContext->FileSystemId,
+            CallContext->RequestSize);
 
         AppCtx.Stats->RequestStarted(Log, *CallContext);
         Started = true;

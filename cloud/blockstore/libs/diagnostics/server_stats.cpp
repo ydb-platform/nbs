@@ -322,7 +322,8 @@ void TServerStats::RequestStarted(
         GetBlockStoreRequestName(req.RequestType),
         static_cast<ui32>(req.MediaKind),
         callContext.RequestId,
-        req.DiskId);
+        req.DiskId,
+        req.RequestBytes);
 
     req.RequestTimestamp = TInstant::Now();
     auto started = RequestStats->RequestStarted(

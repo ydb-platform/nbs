@@ -11,21 +11,23 @@
 #define FILESTORE_SERVER_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)          \
     PROBE(ExecuteRequest,                                                      \
         GROUPS("NFSRequest"),                                                  \
-        TYPES(TString, ui64, ui32, TString),                                   \
+        TYPES(TString, ui64, ui32, TString, ui64),                             \
         NAMES(                                                                 \
-            "requestType",                                                     \
+            NCloud::NProbeParam::RequestType,                                  \
             "requestId",                                                       \
             NCloud::NProbeParam::MediaKind,                                    \
-            "fsId"))                                                           \
+            "fsId",                                                            \
+            NCloud::NProbeParam::RequestSize)                                  \
+    )                                                                          \
     PROBE(SendResponse,                                                        \
         GROUPS("NFSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
-        NAMES("requestType", "requestId")                                      \
+        NAMES(NCloud::NProbeParam::RequestType, "requestId")                   \
     )                                                                          \
     PROBE(RequestCompleted,                                                    \
         GROUPS("NFSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
-        NAMES("requestType", "requestId")                                      \
+        NAMES(NCloud::NProbeParam::RequestType, "requestId")                   \
     )                                                                          \
 // FILESTORE_SERVER_PROVIDER
 
