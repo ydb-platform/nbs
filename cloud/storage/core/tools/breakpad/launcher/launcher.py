@@ -13,8 +13,9 @@ import signal
 import subprocess
 import sys
 
+from cloud.storage.core.tools.breakpad.common.crash_info import CrashInfo, CrashInfoStorage
+
 from core_checker import CoreChecker
-from crash_info import CrashInfo, CrashInfoStorage
 from error_collector import StreamErrorCollector, FileErrorCollector
 from oom_checker import OOMChecker
 

@@ -8,8 +8,8 @@ from email.mime.text import MIMEText
 import requests
 from library.python.retry import retry
 
-from conductor import Conductor
-from coredump_formatter import CoredumpFormatter
+from .conductor import Conductor
+from .coredump_formatter import CoredumpFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class Sender(object):
 
         try:
             sendmail = subprocess.Popen(["/usr/sbin/sendmail", "-t"], stdin=subprocess.PIPE)
-            sendmail.communicate(message.as_string())
+            sendmail.communicate(message.as_string().encode("utf-8"))
             sendmail.wait()
         except Exception as e:
             self._logger.error("sendmail error %r", e)

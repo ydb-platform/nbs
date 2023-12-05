@@ -1,9 +1,16 @@
 PY2_PROGRAM(yc-storage-breakpad-launcher)
 
 PEERDIR(
-    cloud/storage/core/tools/breakpad
+    cloud/storage/core/tools/breakpad/common
 )
 
-PY_MAIN(cloud.storage.core.tools.breakpad.launcher:main)
+PY_SRCS(
+    core_checker.py
+    error_collector.py
+    launcher.py
+    oom_checker.py
+)
+
+PY_MAIN(cloud.storage.core.tools.breakpad.launcher.launcher:main)
 
 END()

@@ -8,10 +8,11 @@ import signal
 import sys
 import time
 
-from coredump import Minidump, Coredump, CoredumpError
-from crash_info import CrashInfoStorage
-from sender import Sender, SenderError
-from limiter import Limiter
+from cloud.storage.core.tools.breakpad.common.crash_info import CrashInfoStorage
+
+from .coredump import Minidump, Coredump, CoredumpError
+from .sender import Sender, SenderError
+from .limiter import Limiter
 
 logger = logging.getLogger(__name__)
 
