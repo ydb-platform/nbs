@@ -657,7 +657,6 @@ migrations:
     - mssngr/router/tests/lib
     - music/tools/download-info
     - noc/comocutor-contrib/utils
-    - noc/pahom/src/spotter/utils
     - orgvisits/export/unite_methods
     - orgvisits/heuristics/wifi/data/clusters_simple
     - orgvisits/user/orgvisits_interests
@@ -1946,7 +1945,6 @@ migrations:
     - maps/statistics/hypgen/masstransit_hypothesis/libs/draw_on_map
     - maps/tools/naviguide/tools/optimize_config/bin
     - maps/wikimap/mapspro/libs/python/pymod/yandex/maps/wiki
-    - maps/wikimap/stat/tasks_payment/tasks_logging/outsource/lib
     - market/bootcamp/deep_dive_2021/trmigor/converter/test
     - market/library/shiny/server/beam
     - market/pylibrary/lite
