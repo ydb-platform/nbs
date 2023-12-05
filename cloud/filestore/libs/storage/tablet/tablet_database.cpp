@@ -806,7 +806,7 @@ bool TIndexTabletDatabase::ReadSessions(TVector<NProto::TSession>& sessions)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// SessionHandles
+// SessionHistory
 
 void TIndexTabletDatabase::WriteSessionHandle(
     const NProto::TSessionHandle& handle)
@@ -1662,7 +1662,7 @@ void TIndexTabletDatabase::WriteTabletStorageInfo(
 void TIndexTabletDatabase::WriteSessionHistoryEntry(
     const NProto::TSessionHistoryEntry& entry)
 {
-    using TTable = TIndexTabletSchema::SessionsHistory;
+    using TTable = TIndexTabletSchema::SessionHistory;
 
     Table<TTable>()
         .Key(entry.GetEntryId())
@@ -1670,7 +1670,7 @@ void TIndexTabletDatabase::WriteSessionHistoryEntry(
 }
 
 void TIndexTabletDatabase::DeleteSessionHistoryEntry(ui64 entryId) {
-    using TTable = TIndexTabletSchema::SessionsHistory;
+    using TTable = TIndexTabletSchema::SessionHistory;
 
     Table<TTable>()
         .Key(entryId)
@@ -1681,7 +1681,7 @@ void TIndexTabletDatabase::DeleteSessionHistoryEntry(ui64 entryId) {
 bool TIndexTabletDatabase::ReadSessionHistoryEntries(
     TVector<NProto::TSessionHistoryEntry>& entries)
 {
-    using TTable = TIndexTabletSchema::SessionsHistory;
+    using TTable = TIndexTabletSchema::SessionHistory;
 
     auto it = Table<TTable>()
         .Select();

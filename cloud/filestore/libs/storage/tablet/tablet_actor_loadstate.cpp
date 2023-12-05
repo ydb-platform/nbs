@@ -159,7 +159,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         ready = false;
     }
 
-    if (!db.ReadSessionHistoryEntries(args.SessionsHistory)) {
+    if (!db.ReadSessionHistoryEntries(args.SessionHistory)) {
         ready = false;
     }
 
@@ -291,7 +291,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.Handles,
         args.Locks,
         args.DupCache,
-        args.SessionsHistory);
+        args.SessionHistory);
 
     if (!Config->GetEnableCollectGarbageAtStart()) {
         SetStartupGcExecuted();

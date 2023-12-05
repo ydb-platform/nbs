@@ -141,7 +141,7 @@ TSession* TIndexTabletState::CreateSession(
     }
 
     db.WriteSession(proto);
-    PushSessionHistoryEntry(
+    AddSessionHistoryEntry(
         db,
         TSessionHistoryEntry(proto, TSessionHistoryEntry::CREATE),
         SessionHistoryEntryCount);
@@ -300,7 +300,7 @@ void TIndexTabletState::ResetSession(
     if (state) {
         session->SetSessionState(*state);
         db.WriteSession(*session);
-        PushSessionHistoryEntry(
+        AddSessionHistoryEntry(
             db,
             TSessionHistoryEntry(*session, TSessionHistoryEntry::RESET),
             SessionHistoryEntryCount);
@@ -318,7 +318,7 @@ void TIndexTabletState::RemoveSession(
     ResetSession(db, session, {});
 
     db.DeleteSession(sessionId);
-    PushSessionHistoryEntry(
+    AddSessionHistoryEntry(
         db,
         TSessionHistoryEntry(*session, TSessionHistoryEntry::DELETE),
         SessionHistoryEntryCount);
@@ -377,19 +377,20 @@ TVector<TSession*> TIndexTabletState::GetSessionsToNotify(
     return result;
 }
 
-const TSessionHistoryList& TIndexTabletState::GetSessionHistoryList() const {
+const TSessionHistoryList& TIndexTabletState::GetSessionHistoryList() const
+{
     return Impl->SessionHistoryList;
 }
 
-void TIndexTabletState::PushSessionHistoryEntry(
+void TIndexTabletState::AddSessionHistoryEntry(
     TIndexTabletDatabase& db,
     const TSessionHistoryEntry& entry,
-    size_t maxEntriesCount)
+    size_t maxEntryCount)
 {
     Impl->SessionHistoryList.push_back(entry);
     db.WriteSessionHistoryEntry(entry);
     ui64 entryToDelete = 0;
-    if (Impl->SessionHistoryList.size() > maxEntriesCount) {
+    if (Impl->SessionHistoryList.size() > maxEntryCount) {
         entryToDelete = Impl->SessionHistoryList.front().GetEntryId();
         Impl->SessionHistoryList.pop_front();
     }

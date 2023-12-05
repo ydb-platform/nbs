@@ -44,8 +44,9 @@ type THeaders struct {
 	// Session sequence endpoint set by endpoint.
 	SessionSeqNo uint64 `protobuf:"varint,8,opt,name=SessionSeqNo,proto3" json:"SessionSeqNo,omitempty"`
 	// Internal header, should not be used outside.
-	Internal   *THeaders_TInternal `protobuf:"bytes,9,opt,name=Internal,proto3" json:"Internal,omitempty"`
-	OriginFqdn string              `protobuf:"bytes,10,opt,name=OriginFqdn,proto3" json:"OriginFqdn,omitempty"`
+	Internal *THeaders_TInternal `protobuf:"bytes,9,opt,name=Internal,proto3" json:"Internal,omitempty"`
+	// FQDN of the host, where the request originated.
+	OriginFqdn string `protobuf:"bytes,10,opt,name=OriginFqdn,proto3" json:"OriginFqdn,omitempty"`
 }
 
 func (x *THeaders) Reset() {

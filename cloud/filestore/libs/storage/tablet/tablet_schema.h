@@ -466,7 +466,7 @@ struct TIndexTabletSchema
     };
 
 
-    struct SessionsHistory: TTableSchema<24>
+    struct SessionHistory: TTableSchema<24>
     {
         struct Id       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct Proto    : ProtoColumn<2, NProto::TSessionHistoryEntry> {};
@@ -505,7 +505,7 @@ struct TIndexTabletSchema
         SessionDupCache,
         TabletStorageInfo,
         TruncateQueue,
-        SessionsHistory
+        SessionHistory
     >;
 
     using TSettings = SchemaSettings<

@@ -442,7 +442,9 @@ public:
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
-    void PushSessionHistoryEntry(TIndexTabletDatabase& db, const TSessionHistoryEntry& entry, size_t maxEntriesCount = 100);
+    void AddSessionHistoryEntry(
+        TIndexTabletDatabase& db,
+        const TSessionHistoryEntry& entry, size_t maxEntryCount);
 
 private:
     TSession* CreateSession(

@@ -957,7 +957,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
         TAG(TH3)
         {
-            out << "Sessions history";
+            out << "Session history";
         }
         DumpSessionHistory(out, GetSessionHistoryList());
 

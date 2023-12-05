@@ -120,7 +120,8 @@ message TSession
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TSessionHistoryEntry {
+message TSessionHistoryEntry
+{
     uint64 EntryId = 1;
     string SessionId = 2;
     string ClientId = 3;

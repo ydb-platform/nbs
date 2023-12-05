@@ -51,6 +51,7 @@ message THeaders
     // Internal header, should not be used outside.
     TInternal Internal = 9;
 
+    // FQDN of the host, where the request originated.
     string OriginFqdn = 10;
 }
 

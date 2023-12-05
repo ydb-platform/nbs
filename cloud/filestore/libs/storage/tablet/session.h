@@ -250,7 +250,7 @@ private:
 public:
     static void UpdateMaxEntryId(ui64 value)
     {
-        UnusedSessionId = std::max(UnusedSessionId, value + 1);
+        UnusedSessionId = Max(UnusedSessionId, value + 1);
     }
 };
 
