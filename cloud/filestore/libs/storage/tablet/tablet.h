@@ -8,7 +8,7 @@
 
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 namespace NCloud::NFileStore::NStorage {
 

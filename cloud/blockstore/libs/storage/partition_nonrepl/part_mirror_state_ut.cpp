@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -28,7 +28,7 @@ STORAGE_POOL = [
 
 
 def kikimr_start():
-    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,

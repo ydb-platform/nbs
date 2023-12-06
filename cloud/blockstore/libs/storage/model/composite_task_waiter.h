@@ -2,8 +2,8 @@
 
 #include <cloud/storage/core/libs/actors/public.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/event.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

@@ -6,7 +6,7 @@
 #include <cloud/storage/core/libs/diagnostics/executor_counters.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <util/generic/maybe.h>
 #include <util/generic/scope.h>

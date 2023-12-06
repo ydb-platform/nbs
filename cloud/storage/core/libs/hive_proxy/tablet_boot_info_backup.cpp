@@ -3,8 +3,8 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/base/tablet.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/base/tablet.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <contrib/ydb/core/tablet_flat/flat_database.h>
-#include <contrib/ydb/core/tablet_flat/test/libs/table/test_dummy.h>
+#include <ydb/core/tablet_flat/flat_database.h>
+#include <ydb/core/tablet_flat/test/libs/table/test_dummy.h>
 
 namespace NCloud::NFileStore::NStorage {
 

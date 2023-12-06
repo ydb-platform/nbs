@@ -24,13 +24,13 @@
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
-#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <ydb/core/base/tablet_pipe.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/mon.h>
 
 #include <util/generic/deque.h>
 

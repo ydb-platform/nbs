@@ -10,8 +10,8 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/log.h>
 
 namespace NCloud::NFileStore {
 

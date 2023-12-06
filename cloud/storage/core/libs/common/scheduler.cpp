@@ -4,7 +4,7 @@
 #include "thread.h"
 #include "timer.h"
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/vector.h>

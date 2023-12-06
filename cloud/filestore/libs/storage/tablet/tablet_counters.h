@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/tablet_counters.h>
 
-#include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
+#include <ydb/core/tablet/tablet_counters_protobuf.h>
 
 namespace NCloud::NFileStore::NStorage {
 

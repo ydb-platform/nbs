@@ -12,7 +12,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

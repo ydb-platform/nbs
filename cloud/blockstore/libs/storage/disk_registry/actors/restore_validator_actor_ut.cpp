@@ -1,6 +1,6 @@
 #include "restore_validator_actor.h"
 
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {

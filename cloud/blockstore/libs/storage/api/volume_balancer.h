@@ -8,7 +8,7 @@
 
 #include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 

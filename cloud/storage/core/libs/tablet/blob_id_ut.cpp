@@ -1,6 +1,6 @@
 #include "blob_id.h"
 
-#include <contrib/ydb/core/base/tablet.h>
+#include <ydb/core/base/tablet.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

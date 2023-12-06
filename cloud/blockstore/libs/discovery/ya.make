@@ -22,7 +22,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/storage/core/libs/grpc
 
-    contrib/ydb/library/actors/prof
+    ydb/library/actors/prof
     library/cpp/deprecated/atomic
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/service/pages    # for config html dump

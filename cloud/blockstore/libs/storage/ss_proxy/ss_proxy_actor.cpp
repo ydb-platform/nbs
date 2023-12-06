@@ -4,8 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

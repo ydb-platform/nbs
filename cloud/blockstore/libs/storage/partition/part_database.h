@@ -15,7 +15,7 @@
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>

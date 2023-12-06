@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <contrib/ydb/core/base/logoblob.h>
+#include <ydb/core/base/logoblob.h>
 
 #include <util/generic/vector.h>
 #include <util/stream/output.h>

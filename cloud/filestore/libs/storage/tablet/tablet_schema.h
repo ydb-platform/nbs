@@ -8,8 +8,8 @@
 
 #include <cloud/storage/core/protos/tablet.pb.h>
 
-#include <contrib/ydb/core/scheme/scheme_types_defs.h>
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/scheme/scheme_types_defs.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 namespace NCloud::NFileStore::NStorage {
 

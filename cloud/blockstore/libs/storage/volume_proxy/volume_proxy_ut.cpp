@@ -11,7 +11,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

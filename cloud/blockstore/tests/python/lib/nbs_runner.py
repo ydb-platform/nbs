@@ -87,7 +87,7 @@ class LocalNbs(Daemon):
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path
         else:
-            self.__kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            self.__kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
         self.__output_path = yatest_common.output_path()
         self.__cwd = get_unique_path_for_current_test(

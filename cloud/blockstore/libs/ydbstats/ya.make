@@ -16,12 +16,12 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/storage/core/libs/iam/iface
     library/cpp/threading/future
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_params
-    contrib/ydb/public/sdk/cpp/client/ydb_result
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_value
+    ydb/public/sdk/cpp/client/ydb_driver
+    ydb/public/sdk/cpp/client/ydb_params
+    ydb/public/sdk/cpp/client/ydb_result
+    ydb/public/sdk/cpp/client/ydb_scheme
+    ydb/public/sdk/cpp/client/ydb_table
+    ydb/public/sdk/cpp/client/ydb_value
 )
 
 END()

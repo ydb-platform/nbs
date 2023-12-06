@@ -14,7 +14,7 @@ PEERDIR(
     contrib/python/retrying
     library/python/fs
     library/python/testing/recipe
-    contrib/ydb/tests/library
+    ydb/tests/library
 )
 
 END()

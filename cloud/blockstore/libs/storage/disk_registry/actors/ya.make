@@ -10,7 +10,7 @@ PEERDIR(
 
     cloud/storage/core/libs/actors
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
 )
 
 END()

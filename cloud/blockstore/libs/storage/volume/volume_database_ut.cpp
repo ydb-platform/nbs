@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/guid.h>

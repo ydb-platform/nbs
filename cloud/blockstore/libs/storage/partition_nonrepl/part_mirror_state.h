@@ -7,7 +7,7 @@
 
 #include <cloud/blockstore/libs/storage/core/public.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/vector.h>
 

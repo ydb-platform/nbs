@@ -1,6 +1,6 @@
 #include "tablet_schema.h"
 
-#include <contrib/ydb/core/base/localdb.h>
+#include <ydb/core/base/localdb.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

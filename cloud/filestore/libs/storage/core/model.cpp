@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <ydb/core/protos/filestore_config.pb.h>
 
 namespace NCloud::NFileStore::NStorage {
 

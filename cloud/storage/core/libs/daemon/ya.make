@@ -11,7 +11,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    contrib/ydb/library/actors/util
+    ydb/library/actors/util
     library/cpp/deprecated/atomic
     library/cpp/logger
     library/cpp/sighandler

@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>

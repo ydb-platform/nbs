@@ -6,8 +6,8 @@
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <contrib/ydb/core/testlib/actors/test_runtime.h>
-#include <contrib/ydb/core/testlib/test_client.h>
+#include <ydb/core/testlib/actors/test_runtime.h>
+#include <ydb/core/testlib/test_client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -1,6 +1,6 @@
 #include "helpers.h"
 
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <ydb/core/protos/filestore_config.pb.h>
 
 namespace NCloud::NFileStore::NStorage {
 

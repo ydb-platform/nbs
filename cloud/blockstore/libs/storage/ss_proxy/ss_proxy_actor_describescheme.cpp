@@ -6,9 +6,9 @@
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

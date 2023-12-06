@@ -7,9 +7,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/actors/core/event_local.h>
-#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/event_local.h>
+#include <ydb/library/actors/core/event_pb.h>
 
 #include <util/generic/string.h>
 

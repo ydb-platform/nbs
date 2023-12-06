@@ -4,7 +4,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

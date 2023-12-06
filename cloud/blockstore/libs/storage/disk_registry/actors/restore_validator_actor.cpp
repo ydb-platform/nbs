@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
 
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 #include <util/generic/algorithm.h>
 

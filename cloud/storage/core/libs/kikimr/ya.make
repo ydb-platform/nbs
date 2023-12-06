@@ -17,18 +17,18 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    contrib/ydb/library/actors/core
-    contrib/ydb/library/actors/util
-    contrib/ydb/library/actors/wilson
+    ydb/library/actors/core
+    ydb/library/actors/util
+    ydb/library/actors/wilson
     library/cpp/getopt/small
     library/cpp/lwtrace
 
-    contrib/ydb/core/base
-    contrib/ydb/core/mind
-    contrib/ydb/core/protos
-    contrib/ydb/core/tx/coordinator
-    contrib/ydb/core/tx/mediator
-    contrib/ydb/core/tx/schemeshard
+    ydb/core/base
+    ydb/core/mind
+    ydb/core/protos
+    ydb/core/tx/coordinator
+    ydb/core/tx/mediator
+    ydb/core/tx/schemeshard
 )
 
 END()

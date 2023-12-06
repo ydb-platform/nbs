@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
 

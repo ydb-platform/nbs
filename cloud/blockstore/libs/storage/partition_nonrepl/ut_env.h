@@ -13,7 +13,7 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

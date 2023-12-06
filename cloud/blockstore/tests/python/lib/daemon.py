@@ -222,7 +222,7 @@ def __enable_custom_cms_configs(ydb):
 def start_ydb():
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
         has_cluster_uuid=False,
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[

@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/features_config.h>
 
-#include <contrib/ydb/core/tablet/tablet_metrics.h>
+#include <ydb/core/tablet/tablet_metrics.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>

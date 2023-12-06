@@ -7,8 +7,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/public/sdk/cpp/client/ydb_topic/ut/ut_utils
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
+    ydb/public/sdk/cpp/client/ydb_topic/ut/ut_utils
+    ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
 )
 
 YQL_LAST_ABI_VERSION()

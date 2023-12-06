@@ -3,15 +3,15 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/base/hive.h>
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/tablet/tablet_setup.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/base/hive.h>
+#include <ydb/core/base/tablet.h>
+#include <ydb/core/tablet/tablet_setup.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <util/generic/utility.h>
 

@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>

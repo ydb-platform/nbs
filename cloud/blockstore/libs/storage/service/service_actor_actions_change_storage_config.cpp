@@ -7,7 +7,7 @@
 
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <google/protobuf/util/json_util.h>
 

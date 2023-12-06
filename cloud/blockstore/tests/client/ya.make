@@ -11,7 +11,7 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
 
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 DATA(
@@ -22,7 +22,7 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/tests/python/lib
 
-    contrib/ydb/tests/library
+    ydb/tests/library
 )
 
 END()

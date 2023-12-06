@@ -8,11 +8,11 @@
 
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <ydb/core/protos/flat_tx_scheme.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 #include <util/folder/path.h>
 #include <util/generic/string.h>

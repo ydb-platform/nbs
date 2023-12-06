@@ -7,10 +7,10 @@
 
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 #include <util/generic/vector.h>
 

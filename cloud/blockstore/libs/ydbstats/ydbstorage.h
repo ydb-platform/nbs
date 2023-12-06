@@ -10,7 +10,7 @@
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 #include <library/cpp/threading/future/future.h>
 

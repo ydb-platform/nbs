@@ -10,7 +10,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>

@@ -16,7 +16,7 @@ DATA(
 )
 
 PEERDIR(
-    contrib/ydb/tests/library
+    ydb/tests/library
 
     cloud/blockstore/tests/python/lib
 )
