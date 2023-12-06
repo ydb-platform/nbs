@@ -932,7 +932,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-11994
     - yabs/server/test/ft/BSSERVER-12495
     - yabs/server/test/ft/BSSERVER-13562
-    - yabs/server/test/ft/BSSERVER-15417
     - yabs/server/test/ft/BSSERVER-17702
     - yabs/server/test/ft/BSSERVER-2977
     - yabs/server/test/ft/BSSERVER-3108
@@ -1231,7 +1230,6 @@ migrations:
     - statbox/nile/nile/drivers/common
     - statbox/nile/nile/graph
     - statbox/nile/tests/cluster
-    - taxi/antifraud/xaron/mover/lib/tests
     - testenv/core/engine/metatests
     - travel/avia/avia_api/avia/api
     - travel/avia/avia_api/avia/lib
@@ -1271,7 +1269,6 @@ migrations:
     - yabs/server/test/ft/BSDEV-82197
     - yabs/server/test/ft/BSSERVER-14461
     - yabs/server/test/ft/BSSERVER-1971
-    - yabs/server/test/ft/BSSERVER-3685
     - yabs/server/test/qabs_bsserver_pytest
     - yabs/stat/direct_monitoring/libs/checks
     - yabs/vh/cms-pgaas/stream_ad_lib/biz
