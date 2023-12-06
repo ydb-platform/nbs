@@ -102,7 +102,7 @@ struct IBlockInfoConsumer
     virtual ~IBlockInfoConsumer() {
     }
 
-    virtual void UpdateBlock(ui64 blockIndex, ui32 checksum) = 0;
+    virtual void UpdateBlock(ui64 commitId, ui64 blockIndex, ui32 checksum) = 0;
     virtual void RegisterAccess(
         TInstant ts,
         ui64 blockIndex,
@@ -215,6 +215,7 @@ private:
             for (const auto& range: r.GetRanges()) {
                 for (ui64 i = 0; i < range.GetBlockCount(); ++i) {
                     BlockInfoConsumer->UpdateBlock(
+                        0,  // TODO: log CommitId for request records
                         range.GetBlockIndex() + i,
                         ZERO_BLOCK_CHECKSUM
                     );
@@ -233,6 +234,7 @@ private:
         if (bl.GetRequestType() == WriteRequestType) {
             for (const auto& bi: bl.GetBlockInfos()) {
                 BlockInfoConsumer->UpdateBlock(
+                    bl.GetCommitId(),
                     bi.GetBlockIndex(),
                     bi.GetChecksum()
                 );
@@ -438,11 +440,22 @@ struct TIntersectionStat
 
 struct TBlockChecksumValidator: IBlockInfoConsumer
 {
-    THashMap<ui64, ui32> Blocks;
-
-    void UpdateBlock(ui64 blockIndex, ui32 checksum) override
+    struct TChecksum
     {
-        Blocks[blockIndex] = checksum;
+        ui64 CommitId = 0;
+        ui32 Value = 0;
+    };
+    THashMap<ui64, TChecksum> Blocks;
+
+    void UpdateBlock(ui64 commitId, ui64 blockIndex, ui32 checksum) override
+    {
+        auto& csum = Blocks[blockIndex];
+        if (!commitId) {
+            commitId = csum.CommitId;
+        }
+        if (commitId >= csum.CommitId) {
+            csum.Value = checksum;
+        }
     }
 
     void RegisterAccess(
@@ -452,11 +465,11 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
         ui32 requestType) override
     {
         auto it = Blocks.find(blockIndex);
-        if (it != Blocks.end() && checksum != it->second) {
+        if (it != Blocks.end() && checksum != it->second.Value) {
             Cout << "corruption at " << ts
                 << ", block " << blockIndex
                 << ", request=" << RequestName(requestType)
-                << ", old checksum=" << it->second
+                << ", old checksum=" << it->second.Value
                 << ", new checksum=" << checksum
                 << Endl;
         }
@@ -465,7 +478,8 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
         const auto f = static_cast<ui32>(ESysRequestType::Flush);
         // XXX ReadBlocks and Flush can produce fake zero digests
         if (checksum != 0 || r != requestType && f != requestType) {
-            UpdateBlock(blockIndex, checksum);
+            // TODO: CommitId
+            UpdateBlock(0, blockIndex, checksum);
         }
     }
 };
