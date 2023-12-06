@@ -93,75 +93,32 @@ bool TIndexTabletActor::PrepareTx_LoadState(
 
     TIndexTabletDatabase db(tx.DB);
 
-    bool ready = true;
+    std::initializer_list<bool> results = {
+        db.ReadFileSystem(args.FileSystem),
+        db.ReadFileSystemStats(args.FileSystemStats),
+        db.ReadTabletStorageInfo(args.TabletStorageInfo),
+        db.ReadNode(RootNodeId, 0, args.RootNode),
+        db.ReadSessions(args.Sessions),
+        db.ReadSessionHandles(args.Handles),
+        db.ReadSessionLocks(args.Locks),
+        db.ReadSessionDupCacheEntries(args.DupCache),
+        db.ReadFreshBytes(args.FreshBytes),
+        db.ReadFreshBlocks(args.FreshBlocks),
+        db.ReadNewBlobs(args.NewBlobs),
+        db.ReadGarbageBlobs(args.GarbageBlobs),
+        db.ReadCheckpoints(args.Checkpoints),
+        db.ReadCompactionMap(args.CompactionMap),
+        db.ReadTruncateQueue(args.TruncateQueue),
+        db.ReadStorageConfig(args.StorageConfig),
+        db.ReadSessionHistoryEntries(args.SessionHistory)
+    };
 
-    if (!db.ReadFileSystem(args.FileSystem)) {
-        ready = false;
-    }
-
-    if (!db.ReadFileSystemStats(args.FileSystemStats)) {
-        ready = false;
-    }
-
-    if (!db.ReadTabletStorageInfo(args.TabletStorageInfo)) {
-        ready = false;
-    }
-
-    if (!db.ReadNode(RootNodeId, 0, args.RootNode)) {
-        ready = false;
-    }
-
-    if (!db.ReadSessions(args.Sessions)) {
-        ready = false;
-    }
-
-    if (!db.ReadSessionHandles(args.Handles)) {
-        ready = false;
-    }
-
-    if (!db.ReadSessionLocks(args.Locks)) {
-        ready = false;
-    }
-
-    if (!db.ReadSessionDupCacheEntries(args.DupCache)) {
-        ready = false;
-    }
-
-    if (!db.ReadFreshBytes(args.FreshBytes)) {
-        ready = false;
-    }
-
-    if (!db.ReadFreshBlocks(args.FreshBlocks)) {
-        ready = false;
-    }
-
-    if (!db.ReadNewBlobs(args.NewBlobs)) {
-        ready = false;
-    }
-
-    if (!db.ReadGarbageBlobs(args.GarbageBlobs)) {
-        ready = false;
-    }
-
-    if (!db.ReadCheckpoints(args.Checkpoints)) {
-        ready = false;
-    }
-
-    if (!db.ReadCompactionMap(args.CompactionMap)) {
-        ready = false;
-    }
-
-    if (!db.ReadTruncateQueue(args.TruncateQueue)) {
-        ready = false;
-    }
-
-    if (!db.ReadStorageConfig(args.StorageConfig)) {
-        ready = false;
-    }
-
-    if (!db.ReadSessionHistoryEntries(args.SessionHistory)) {
-        ready = false;
-    }
+    bool ready = std::accumulate(
+        results.begin(),
+        results.end(),
+        true,
+        std::logical_and<>()
+    );
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet state data "
