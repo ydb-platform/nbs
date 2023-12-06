@@ -12,6 +12,7 @@ PEERDIR(
     contrib/ydb/core/formats/arrow/dictionary
     contrib/ydb/core/formats/arrow/transformer
     contrib/ydb/core/formats/arrow/reader
+    contrib/ydb/core/formats/arrow/hash
     contrib/ydb/library/actors/core
     contrib/ydb/library/arrow_kernels
     contrib/ydb/library/binary_json

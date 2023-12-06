@@ -135,6 +135,22 @@ Y_UNIT_TEST_SUITE(PgSqlParsingOnly) {
         UNIT_ASSERT_STRINGS_EQUAL(res.Root->ToString(), expectedAst.Root->ToString());
     }
 
+    Y_UNIT_TEST(CreateTableStmt_Default) {
+        auto res = PgSqlToYql("CREATE TABLE t (a int PRIMARY KEY, b int DEFAULT 0)");
+        UNIT_ASSERT(res.Root);
+
+        TString program = R"(
+        (
+            (let world (Configure! world (DataSource 'config) 'OrderedColumns))
+            (let world (Write! world (DataSink '"kikimr" '"") (Key '('tablescheme (String '"t"))) (Void) '('('mode 'create) '('columns '('('a (PgType 'int4)) '('b (PgType 'int4)))) '('primarykey '('a)) '('notnull '('a)) '('default 'b (PgConst '0 (PgType 'int4))))))
+            (let world (CommitAll! world))
+            (return world)
+        )
+        )";
+        const auto expectedAst = NYql::ParseAst(program);
+        UNIT_ASSERT_STRINGS_EQUAL(res.Root->ToString(), expectedAst.Root->ToString());
+    }    
+
     Y_UNIT_TEST(CreateTableStmt_PKAndNotNull) {
         auto res = PgSqlToYql("CREATE TABLE t (a int PRIMARY KEY NOT NULL, b text)");
         UNIT_ASSERT(res.Root);
@@ -361,12 +377,22 @@ Y_UNIT_TEST_SUITE(PgSqlParsingOnly) {
     }
 
     Y_UNIT_TEST(DropTableUnknownClusterStmt) {
-        auto res = PgSqlToYql("drop table if exists public.t");
+        auto res = PgSqlToYql("drop table if exists pub.t");
         UNIT_ASSERT(!res.IsOk());
         UNIT_ASSERT_EQUAL(res.Issues.Size(), 1);
 
         auto issue = *(res.Issues.begin());
-        UNIT_ASSERT_C(issue.GetMessage().find("Unknown cluster: public") != TString::npos, res.Issues.ToString());
+        UNIT_ASSERT_C(issue.GetMessage().find("Unknown cluster: pub") != TString::npos, res.Issues.ToString());
+    }
+
+    Y_UNIT_TEST(PublicSchemeRemove) {
+        auto res = PgSqlToYql("DROP TABLE IF EXISTS public.t; CREATE TABLE public.t(id INT PRIMARY KEY, foo INT);\
+INSERT INTO public.t VALUES(1, 2);\
+UPDATE public.t SET foo = 3 WHERE id == 1;\
+DELETE FROM public.t WHERE id == 1;\
+SELECT COUNT(*) FROM public.t;");
+        UNIT_ASSERT(res.IsOk());
+        UNIT_ASSERT(res.Root->ToString().find("public") == TString::npos);
     }
 
     Y_UNIT_TEST(UpdateStmt) {

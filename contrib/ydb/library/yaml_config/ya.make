@@ -15,7 +15,7 @@ PEERDIR(
     contrib/libs/yaml-cpp
     contrib/ydb/library/actors/core
     library/cpp/protobuf/json
-    library/cpp/yaml/fyamlcpp
+    contrib/ydb/library/fyamlcpp
     contrib/ydb/core/base
     contrib/ydb/core/cms/console/util
     contrib/ydb/core/erasure

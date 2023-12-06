@@ -7,12 +7,18 @@
 
 
 
-add_library(cpp-yaml-fyamlcpp)
-target_link_libraries(cpp-yaml-fyamlcpp PUBLIC
+add_library(formats-arrow-hash)
+target_link_libraries(formats-arrow-hash PUBLIC
   contrib-libs-cxxsupp
   yutil
-  contrib-libs-libfyaml
+  libs-apache-arrow
+  formats-arrow-simple_builder
+  formats-arrow-switch
+  library-actors-core
+  ydb-library-services
+  library-actors-protos
 )
-target_sources(cpp-yaml-fyamlcpp PRIVATE
-  ${CMAKE_SOURCE_DIR}/library/cpp/yaml/fyamlcpp/fyamlcpp.cpp
+target_sources(formats-arrow-hash PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/formats/arrow/hash/calcer.cpp
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/core/formats/arrow/hash/xx_hash.cpp
 )

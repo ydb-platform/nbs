@@ -2,7 +2,7 @@
 
 #include "fwd.h"
 
-#include <library/cpp/yaml/fyamlcpp/fyamlcpp.h>
+#include <contrib/ydb/library/fyamlcpp/fyamlcpp.h>
 
 #include <util/generic/maybe.h>
 

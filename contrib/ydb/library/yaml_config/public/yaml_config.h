@@ -1,6 +1,6 @@
 #pragma once
 
-#include <library/cpp/yaml/fyamlcpp/fyamlcpp.h>
+#include <contrib/ydb/library/fyamlcpp/fyamlcpp.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 
 #include <openssl/sha.h>

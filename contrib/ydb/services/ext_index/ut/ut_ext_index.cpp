@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/wrappers/ut_helpers/s3_mock.h>
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 #include <contrib/ydb/core/wrappers/fake_storage.h>
-#include <contrib/ydb/core/tx/sharding/xx_hash.h>
+#include <contrib/ydb/core/formats/arrow/hash/xx_hash.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 #include <contrib/ydb/services/metadata/manager/alter.h>
@@ -140,7 +140,7 @@ Y_UNIT_TEST_SUITE(ExternalIndex) {
             UNIT_ASSERT_EQUAL(resultData, "[6000u]");
         }
         {
-            NSharding::TStreamStringHashCalcer calcer(0);
+            NArrow::NHash::NXX64::TStreamStringHashCalcer calcer(0);
             calcer.Start();
             TString resultData;
             TString uid = "uid_" + ::ToString(tsStart + 2);

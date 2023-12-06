@@ -90,7 +90,6 @@ TConclusionStatus TGeneralCompactColumnEngineChanges::DoConstructBlobs(TConstruc
         NActors::TLogContextGuard logGuard(NActors::TLogContextBuilder::Build()("field_name", f->name()));
         const ui32 columnId = resultSchema->GetColumnId(f->name());
         auto columnInfo = stats->GetColumnInfo(columnId);
-        Y_ABORT_UNLESS(columnInfo);
 
         std::vector<TPortionColumnCursor> cursors;
 //        Cerr << f->name() << Endl;
@@ -101,7 +100,10 @@ TConclusionStatus TGeneralCompactColumnEngineChanges::DoConstructBlobs(TConstruc
 //            Cerr << "loader: " << loader->DebugString() << Endl;
             std::vector<const TColumnRecord*> records;
             std::vector<IPortionColumnChunk::TPtr> chunks;
-            p.ExtractColumnChunks(columnId, records, chunks);
+            if (!p.ExtractColumnChunks(columnId, records, chunks)) {
+                records = {nullptr};
+                chunks.emplace_back(std::make_shared<TNullChunkPreparation>(columnId, p.GetPortionInfo().GetRecordsCount(), loader->GetField(), dataSchema->GetColumnSaver(f->name(), SaverContext)));
+            }
             cursors.emplace_back(TPortionColumnCursor(chunks, records, loader, p.GetPortionInfo().GetPortionId()));
         }
 
@@ -111,7 +113,7 @@ TConclusionStatus TGeneralCompactColumnEngineChanges::DoConstructBlobs(TConstruc
         ui32 batchIdx = 0;
         for (auto&& batchResult : batchResults) {
             const ui32 portionRecordsCountLimit = batchResult->num_rows() / (batchResult->num_rows() / 10000 + 1) + 1;
-            TColumnMergeContext context(resultSchema, portionRecordsCountLimit, 50 * 1024 * 1024, f, *columnInfo, SaverContext);
+            TColumnMergeContext context(resultSchema, portionRecordsCountLimit, 50 * 1024 * 1024, f, columnInfo, SaverContext);
             TMergedColumn mColumn(context);
 
             auto columnPortionIdx = batchResult->GetColumnByName(portionIdFieldName);
