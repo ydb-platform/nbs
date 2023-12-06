@@ -7,6 +7,7 @@
 #include <util/system/file.h>
 
 #include <linux/fs.h>
+#include <linux/hdreg.h>
 #include <linux/nvme_ioctl.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -101,6 +102,34 @@ bool IsBlockOrCharDevice(TFileHandle& device)
 
     return S_ISCHR(deviceStat.st_mode) || S_ISBLK(deviceStat.st_mode);
 }
+
+hd_driveid HDIdentity(TFileHandle& device)
+{
+    hd_driveid hd {};
+    int err = ioctl(device, HDIO_GET_IDENTITY, &hd);
+
+    if (err) {
+        int err = errno;
+        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+            << "HDIdentity failed: " << strerror(err);
+    }
+
+    return hd;
+}
+
+TResultOrError<bool> IsRotational(TFileHandle& device)
+{
+    unsigned short val = 0;
+    int err = ioctl(device, BLKROTATIONAL, &val);
+    if (err) {
+        int err = errno;
+        return MakeError(MAKE_SYSTEM_ERROR(err), strerror(err));
+    }
+
+    return val != 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TNvmeManager final
     : public INvmeManager
@@ -213,12 +242,23 @@ public:
         return SafeExecute<TResultOrError<TString>>([&] {
             TFileHandle device(path, OpenExisting | RdOnly);
 
-            nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device);
+            auto str = [] (auto& arr) {
+                auto* sn = std::bit_cast<const char*>(&arr[0]);
+                auto end = std::find(sn, sn + sizeof(arr), '\0');
 
-            auto* sn = reinterpret_cast<const char*>(ctrl.sn);
-            auto end = std::find(sn, sn + sizeof(ctrl.sn), '\0');
+                return TString(sn, end);
+            };
 
-            return TString(sn, end);
+            auto [isRot, error] = IsRotational(device);
+
+            if (!HasError(error) && isRot) {
+                auto hd = HDIdentity(device);
+                return str(hd.serial_no);
+            }
+
+            auto ctrl = NVMeIdentifyCtrl(device);
+
+            return str(ctrl.sn);
         });
     }
 
@@ -227,15 +267,13 @@ public:
         return SafeExecute<TResultOrError<bool>>([&] {
             TFileHandle device(path, OpenExisting | RdOnly);
 
-            unsigned short isRotational = 0;
-            int err = ioctl(device, BLKROTATIONAL, &isRotational);
-            if (err) {
-                int err = errno;
-                ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
-                    << "NVMeIsSsd failed: " << strerror(err);
+            auto [isRot, error] = IsRotational(device);
+            if (HasError(error)) {
+                ythrow TServiceError(error.GetCode())
+                    << "NVMeIsSsd failed: " << error.GetMessage();
             }
 
-            return isRotational == 0;
+            return TResultOrError { !isRot };
         });
     }
 };
