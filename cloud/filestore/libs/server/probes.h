@@ -11,23 +11,29 @@
 #define FILESTORE_SERVER_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)          \
     PROBE(ExecuteRequest,                                                      \
         GROUPS("NFSRequest"),                                                  \
-        TYPES(TString, ui64, ui32, TString, ui64),                             \
+        TYPES(TString, ui64, TString, ui32, ui64),                             \
         NAMES(                                                                 \
             NCloud::NProbeParam::RequestType,                                  \
-            "requestId",                                                       \
+            NCloud::NProbeParam::RequestId,                                    \
+            NCloud::NProbeParam::FsId,                                         \
             NCloud::NProbeParam::MediaKind,                                    \
-            "fsId",                                                            \
             NCloud::NProbeParam::RequestSize)                                  \
     )                                                                          \
     PROBE(SendResponse,                                                        \
         GROUPS("NFSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
-        NAMES(NCloud::NProbeParam::RequestType, "requestId")                   \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
     )                                                                          \
     PROBE(RequestCompleted,                                                    \
         GROUPS("NFSRequest"),                                                  \
-        TYPES(TString, ui64),                                                  \
-        NAMES(NCloud::NProbeParam::RequestType, "requestId")                   \
+        TYPES(TString, ui64, ui64, ui64),                                      \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId,                                    \
+            NCloud::NProbeParam::RequestTime,                                  \
+            NCloud::NProbeParam::RequestExecutionTime)                         \
     )                                                                          \
 // FILESTORE_SERVER_PROVIDER
 

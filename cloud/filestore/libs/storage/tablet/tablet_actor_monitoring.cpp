@@ -1035,13 +1035,12 @@ void TIndexTabletActor::HandleHttpInfo_DumpCompactionRange(
         return;
     }
 
-    LWTRACK(
+    FILESTORE_TRACK(
         BackgroundTaskStarted_Tablet,
-        requestInfo->CallContext->LWOrbit,
+        requestInfo->CallContext,
         "DumpCompactionRange",
-        GetFileSystem().GetStorageMediaKind(),
-        requestInfo->CallContext->RequestId,
-        GetFileSystem().GetFileSystemId());
+        requestInfo->CallContext->FileSystemId,
+        GetFileSystem().GetStorageMediaKind());
 
     using TRequest = TEvIndexTabletPrivate::TEvDumpCompactionRangeRequest;
     auto request = std::make_unique<TRequest>(

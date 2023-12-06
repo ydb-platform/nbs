@@ -170,13 +170,12 @@ void TIndexTabletActor::HandleTruncate(
         ev->Cookie,
         msg->CallContext);
 
-    LWTRACK(
+    FILESTORE_TRACK(
         BackgroundTaskStarted_Tablet,
-        msg->CallContext->LWOrbit,
+        msg->CallContext,
         "Truncate",
-        GetFileSystem().GetStorageMediaKind(),
-        msg->CallContext->RequestId,
-        GetFileSystem().GetFileSystemId());
+        msg->CallContext->FileSystemId,
+        GetFileSystem().GetStorageMediaKind());
 
     auto actor = std::make_unique<TTruncateWorker>(
         LogTag,

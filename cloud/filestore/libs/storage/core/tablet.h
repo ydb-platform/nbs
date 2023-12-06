@@ -43,11 +43,7 @@ concept combinedRequest = requires (T v)
 }   // namespace NImpl
 
 #define TX_TRACK_HELPER(probe, info)                                           \
-    LWTRACK(                                                                   \
-        probe,                                                                 \
-        info->CallContext->LWOrbit,                                            \
-        TTx::Name,                                                             \
-        info->CallContext->RequestId);                                         \
+    FILESTORE_TRACK(probe, info->CallContext, TTx::Name);                      \
 // TX_TRACK_HELPER
 
 #define TX_TRACK(probe)                                                        \
@@ -62,7 +58,7 @@ concept combinedRequest = requires (T v)
 
 #define TX_FORK_HELPER(request)                                                \
     if (auto& cc = request->CallContext; !cc->LWOrbit.Fork(Orbit)) {           \
-        LWTRACK(ForkFailed, cc->LWOrbit, TTx::Name, cc->RequestId);            \
+        FILESTORE_TRACK(ForkFailed, cc, TTx::Name);                            \
     }                                                                          \
 // TX_FORK_HELPER
 

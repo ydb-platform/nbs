@@ -40,13 +40,12 @@ void TIndexTabletActor::HandleDeleteGarbage(
         msg->NewBlobs.size(),
         msg->GarbageBlobs.size());
 
-    LWTRACK(
+    FILESTORE_TRACK(
         BackgroundTaskStarted_Tablet,
-        msg->CallContext->LWOrbit,
+        msg->CallContext,
         "DeleteGarbage",
-        GetFileSystem().GetStorageMediaKind(),
-        msg->CallContext->RequestId,
-        GetFileSystem().GetFileSystemId());
+        msg->CallContext->FileSystemId,
+        GetFileSystem().GetStorageMediaKind());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

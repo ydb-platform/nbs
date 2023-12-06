@@ -463,8 +463,8 @@ private:
             ExecuteRequest,
             CallContext,
             TString(TMethod::RequestName),
-            NProto::STORAGE_MEDIA_SSD,  // TODO NBS-2954
             CallContext->FileSystemId,
+            NProto::STORAGE_MEDIA_SSD,  // TODO NBS-2954
             CallContext->RequestSize);
 
         AppCtx.Stats->RequestStarted(Log, *CallContext);
@@ -557,10 +557,15 @@ private:
             << " request completed");
 
         if (CallContext) {
+            const ui64 now = GetCycleCount();
+            const auto ts = CallContext->CalcRequestTime(now);
+
             FILESTORE_TRACK(
                 RequestCompleted,
                 CallContext,
-                TString(TMethod::RequestName));
+                TString(TMethod::RequestName),
+                ts.TotalTime.MicroSeconds(),
+                ts.ExecutionTime.MicroSeconds());
 
             AppCtx.Stats->RequestCompleted(Log, *CallContext);
 
@@ -572,7 +577,7 @@ private:
 
             auto request = &ProfileLogRecord.Request;
             request->SetTimestampMcs(startTs.MicroSeconds());
-            request->SetDurationMcs((Now() - startTs).MicroSeconds());
+            request->SetDurationMcs(ts.TotalTime.MicroSeconds());
             request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
 
             AppCtx.ProfileLog->Write(std::move(ProfileLogRecord));

@@ -31,7 +31,11 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESTORE_TRACK(probe, context, type, ...)                             \
-    LWTRACK(probe, context->LWOrbit, type, context->RequestId,                 \
+    LWTRACK(                                                                   \
+        probe,                                                                 \
+        context->LWOrbit,                                                      \
+        type,                                                                  \
+        context->RequestId,                                                    \
         ##__VA_ARGS__);                                                        \
 // FILESTORE_TRACK
 

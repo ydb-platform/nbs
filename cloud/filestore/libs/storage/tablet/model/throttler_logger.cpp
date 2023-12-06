@@ -1,5 +1,6 @@
 #include "throttler_logger.h"
 
+#include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
@@ -16,7 +17,7 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 struct TThrottlerLogger::TImpl
 {
 private:
-    TString LogTag;
+    TString LogTag{};
     std::function<void(ui32, TDuration)> UpdateDelayCounterFunc;
 
 public:
@@ -89,22 +90,20 @@ private:
         TCallContextBase& callContext,
         const char* methodName) const
     {
-        LWTRACK(
+        FILESTORE_TRACK(
             RequestPostponed_Tablet,
-            callContext.LWOrbit,
-            methodName,
-            callContext.RequestId);
+            (&callContext),
+            methodName);
     }
 
     void TrackAdvancedRequest(
         TCallContextBase& callContext,
         const char* methodName) const
     {
-        LWTRACK(
+        FILESTORE_TRACK(
             RequestAdvanced_Tablet,
-            callContext.LWOrbit,
-            methodName,
-            callContext.RequestId);
+            (&callContext),
+            methodName);
     }
 };
 

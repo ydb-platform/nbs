@@ -32,13 +32,12 @@ TSession* TIndexTabletActor::AcceptRequest(
 
     Metrics.BusyIdleCalc.OnRequestStarted();
 
-    LWTRACK(
+    FILESTORE_TRACK(
         RequestReceived_Tablet,
-        msg->CallContext->LWOrbit,
+        msg->CallContext,
         TMethod::Name,
-        GetFileSystem().GetStorageMediaKind(),
-        msg->CallContext->RequestId,
-        GetFileSystem().GetFileSystemId());
+        msg->CallContext->FileSystemId,
+        GetFileSystem().GetStorageMediaKind());
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s %s: %s",

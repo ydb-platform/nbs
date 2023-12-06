@@ -353,13 +353,12 @@ void TIndexTabletActor::HandleCollectGarbage(
 
     auto* msg = ev->Get();
 
-    LWTRACK(
+    FILESTORE_TRACK(
         BackgroundTaskStarted_Tablet,
-        msg->CallContext->LWOrbit,
+        msg->CallContext,
         "CollectGarbage",
-        GetFileSystem().GetStorageMediaKind(),
-        msg->CallContext->RequestId,
-        GetFileSystem().GetFileSystemId());
+        msg->CallContext->FileSystemId,
+        GetFileSystem().GetStorageMediaKind());
 
     auto replyError = [&] (
         const TActorContext& ctx,

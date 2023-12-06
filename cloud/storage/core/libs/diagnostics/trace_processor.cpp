@@ -50,6 +50,32 @@ const NLWTrace::TParam* FindParam(
     return nullptr;
 }
 
+template <typename TResult>
+requires std::is_default_constructible_v<TResult>
+TResult GetIdParam(const NLWTrace::TTrackLog::TItem& ringItem)
+{
+    if (auto* diskId = FindParam(ringItem, NProbeParam::DiskId); diskId) {
+        return diskId->Get<TResult>();
+    } else if (auto* fsId = FindParam(ringItem, NProbeParam::FsId); fsId) {
+        return fsId->Get<TResult>();
+    }
+
+    return TResult{};
+}
+
+template <typename TResult>
+requires std::is_default_constructible_v<TResult>
+TResult GetIdParam(const TCgiParameters& cgiParams)
+{
+    if (auto diskId = cgiParams.Get(NProbeParam::DiskId); !diskId.empty()) {
+        return diskId;
+    } else if (auto fsId = cgiParams.Get(NProbeParam::FsId); !fsId.empty()) {
+        return fsId;
+    }
+
+    return TResult{};
+}
+
 [[maybe_unused]] TString DumpLogItem(const NLWTrace::TLogItem& logItem)
 {
     TStringStream ss;
@@ -97,7 +123,6 @@ void SerializeTraceEntry(
         item.Probe->Event.Signature.SerializeParams(
             item.Params,
             paramValues);
-        //item.Params.Param[1].Get<ui32>();
 
         writer.BeginList();
         {
@@ -135,17 +160,10 @@ bool ReaderIdMatch(const TString& traceType, const TString& readerId)
     return traceType.empty() || key == TRACE_TYPE_SLOW || key == TRACE_TYPE_RANDOM;
 }
 
-TString FindDiskIdParam(const NLWTrace::TTrackLog::TItem& ringItem)
-{
-    const auto* traceDiskId = FindParam(ringItem, "diskId");
-    Y_DEBUG_ABORT_UNLESS(traceDiskId);
-    return traceDiskId ? traceDiskId->Get<TString>() : TString{};
-}
-
 TVector<TTraceLog> PrepareTraceLogDump(
     const TVector<ITraceReaderPtr>& readers,
     const TString& traceType,
-    const TString& diskId)
+    const TString& id)
 {
     TVector<TTraceLog> traceLogDump;
 
@@ -157,9 +175,9 @@ TVector<TTraceLog> PrepareTraceLogDump(
         }
 
         reader->ForEachTraceLog([&] (const auto& item) {
-            auto traceDiskId = FindDiskIdParam(item.TrackLog.Items.front());
+            const auto traceId = GetIdParam<TString>(item.TrackLog.Items.front());
 
-            if (!traceDiskId.empty() && (diskId.empty() || traceDiskId == diskId)) {
+            if (!traceId.empty() && (id.empty() || traceId == id)) {
                 traceLogDump.emplace_back(readerId, item);
             }
         });
@@ -516,14 +534,14 @@ private:
         IMonHttpRequest& request,
         const TString& traceType)
     {
-        auto traceLogDump = PrepareTraceLogDump(
-            Readers, traceType, request.GetParams().Get("diskId")
+        const auto traceLogDump = PrepareTraceLogDump(
+            Readers, traceType, GetIdParam<TString>(request.GetParams())
         );
-
         DumpTraceLogHtml(out, traceLogDump);
     }
 
-    void OutputJson(IOutputStream& out, IMonHttpRequest& request) {
+    void OutputJson(IOutputStream& out, IMonHttpRequest& request)
+    {
         const TString traceType = request.GetParams().Get("traceType");
         if (slowName != traceType &&
             randomName != traceType &&
@@ -534,8 +552,8 @@ private:
             );
         }
 
-        auto traceLogDump = PrepareTraceLogDump(
-            Readers, traceType, request.GetParams().Get("diskId")
+        const auto traceLogDump = PrepareTraceLogDump(
+            Readers, traceType, GetIdParam<TString>(request.GetParams())
         );
 
         out << HTTPOKJSON;

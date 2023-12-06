@@ -339,6 +339,9 @@ private:
 
     void CompleteRequest()
     {
+        const ui64 now = GetCycleCount();
+        const auto ts = CallContext->CalcRequestTime(now);
+
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
@@ -348,7 +351,9 @@ private:
         FILESTORE_TRACK(
             RequestCompleted,
             CallContext,
-            TString(TMethod::RequestName));
+            TString(TMethod::RequestName),
+            ts.TotalTime.MicroSeconds(),
+            ts.ExecutionTime.MicroSeconds());
     }
 };
 

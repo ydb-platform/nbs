@@ -92,11 +92,10 @@ private:
             std::move(AuthToken),
             std::move(Permissions));
 
-        LWTRACK(
+        FILESTORE_TRACK(
             AuthRequestSent_Proxy,
-            CallContext->LWOrbit,
-            GetFileStoreRequestName(CallContext->RequestType),
-            CallContext->RequestId);
+            CallContext,
+            GetFileStoreRequestName(CallContext->RequestType));
 
         NCloud::Send(
             ctx,
@@ -142,11 +141,10 @@ private:
     {
         const auto* msg = ev->Get();
 
-        LWTRACK(
+        FILESTORE_TRACK(
             AuthResponseReceived_Proxy,
-            CallContext->LWOrbit,
-            GetFileStoreRequestName(CallContext->RequestType),
-            CallContext->RequestId);
+            CallContext,
+            GetFileStoreRequestName(CallContext->RequestType));
 
         if (FAILED(msg->GetStatus())) {
             LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
