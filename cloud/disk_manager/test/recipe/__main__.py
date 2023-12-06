@@ -57,7 +57,7 @@ def start(argv):
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
-    nfs_binary_path = yatest_common.binary_path("cloud/filestore/server/filestore-server")
+    nfs_binary_path = yatest_common.binary_path("cloud/nbs_internal/filestore/server/filestore-server")
     disk_manager_binary_path = yatest_common.binary_path(args.disk_manager_binary_path)
 
     kikimr = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)

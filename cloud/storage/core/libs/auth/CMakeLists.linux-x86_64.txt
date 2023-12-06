@@ -24,7 +24,7 @@ target_link_libraries(core-libs-auth PUBLIC
   storage-core-protos
   library-actors-core
   cpp-monlib-dynamic_counters
-  ydb-core-base
+  ydb-core-security
 )
 target_sources(core-libs-auth PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/auth/auth_counters.cpp

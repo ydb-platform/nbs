@@ -7,7 +7,7 @@
 #include <cloud/storage/core/libs/api/authorizer.h>
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/ticket_parser.h>
+#include <contrib/ydb/core/security/ticket_parser.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>

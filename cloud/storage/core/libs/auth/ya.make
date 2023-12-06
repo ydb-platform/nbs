@@ -13,7 +13,7 @@ PEERDIR(
     cloud/storage/core/protos
     contrib/ydb/library/actors/core
     library/cpp/monlib/dynamic_counters
-    contrib/ydb/core/base
+    contrib/ydb/core/security
 )
 
 END()

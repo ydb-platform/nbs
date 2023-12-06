@@ -2,7 +2,7 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/nbs_internal/blockstore/daemon
 
-    cloud/filestore/server
+    cloud/nbs_internal/filestore/server
 
     cloud/disk_manager/cmd/disk-manager
     cloud/disk_manager/cmd/disk-manager-init-db
