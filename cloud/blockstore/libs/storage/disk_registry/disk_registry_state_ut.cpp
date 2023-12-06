@@ -6704,7 +6704,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             "disk-1,disk-2,disk-3",
             JoinSeq(",", diskIds));
 
-        diskIds.clear();
         error = state.GetDependentDisks(
             agent2.GetAgentId(),
             {}, // path
@@ -6713,7 +6712,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL("", JoinSeq(",", diskIds));
 
-        diskIds.clear();
         error = state.GetDependentDisks(
             "no-such-agent",
             {}, // path
@@ -6721,6 +6719,58 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL("", JoinSeq(",", diskIds));
+    }
+
+    Y_UNIT_TEST(ShouldReturnDependentDisksForMirroredDisk)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const auto agent1 = AgentConfig(1, {
+            Device("dev-1", "uuid-1.1", "rack-1"),
+            Device("dev-2", "uuid-1.2", "rack-1"),
+            Device("dev-3", "uuid-1.3", "rack-1"),
+        });
+
+        const auto agent2 = AgentConfig(2, {
+            Device("dev-1", "uuid-2.1", "rack-1"),
+            Device("dev-2", "uuid-2.2", "rack-1"),
+            Device("dev-3", "uuid-2.3", "rack-1"),
+        });
+
+        const auto agent3 = AgentConfig(3, {
+            Device("dev-1", "uuid-3.1", "rack-1"),
+            Device("dev-2", "uuid-3.2", "rack-1"),
+            Device("dev-3", "uuid-3.3", "rack-1"),
+        });
+
+        auto disks = MirrorDisk(
+            "mirrored-disk-1",
+            {
+                {"uuid-1.1", "uuid-1.2"},
+                {"uuid-2.1", "uuid-2.2"},
+            });
+        disks.push_back(Disk("disk-1", {"uuid-2.3", "uuid-3.3"}));
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({ agent1, agent2, agent3 })
+            .WithDisks(disks)
+            .Build();
+
+        TVector<TString> diskIds;
+        auto error = state.GetDependentDisks(agent1.GetAgentId(), {}, &diskIds);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("mirrored-disk-1", JoinSeq(",", diskIds));
+
+        error = state.GetDependentDisks(agent2.GetAgentId(), {}, &diskIds);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("mirrored-disk-1,disk-1", JoinSeq(",", diskIds));
+
+        error = state.GetDependentDisks(agent3.GetAgentId(), {}, &diskIds);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", JoinSeq(",", diskIds));
     }
 
     Y_UNIT_TEST(ShouldNotRestoreOnlineStateAutomatically)

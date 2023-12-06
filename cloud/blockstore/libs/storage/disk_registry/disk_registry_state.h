@@ -756,7 +756,8 @@ private:
         const TString& sourceDeviceId);
     void FillMigrations();
 
-    TDiskState* FindDiskState(const TDiskId& diskId);
+    const TDiskState* FindDiskState(const TDiskId& diskId) const;
+    TDiskState* AccessDiskState(const TDiskId& diskId);
 
     template <typename T>
     bool RemoveAgent(

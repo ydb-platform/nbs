@@ -2880,6 +2880,7 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
     const TString& path,
     TVector<TDiskId>* diskIds) const
 {
+    diskIds->clear();
     auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
         return MakeError(E_NOT_FOUND, agentId);
@@ -2894,6 +2895,12 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
 
         if (!diskId) {
             continue;
+        }
+
+        // for mirrored disks return master diskId
+        const TDiskState* state = FindDiskState(diskId);
+        if (state && state->MasterDiskId) {
+            diskId = state->MasterDiskId;
         }
 
         // linear search on every iteration is ok here, diskIds size is small
@@ -4262,7 +4269,8 @@ const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToReallocate() const
     return NotificationSystem.GetDisksToReallocate();
 }
 
-auto TDiskRegistryState::FindDiskState(const TDiskId& diskId) -> TDiskState*
+auto TDiskRegistryState::FindDiskState(const TDiskId& diskId) const
+    -> const TDiskState*
 {
     auto it = Disks.find(diskId);
     if (it == Disks.end()) {
@@ -4271,12 +4279,17 @@ auto TDiskRegistryState::FindDiskState(const TDiskId& diskId) -> TDiskState*
     return &it->second;
 }
 
+auto TDiskRegistryState::AccessDiskState(const TDiskId& diskId) -> TDiskState*
+{
+    return const_cast<TDiskState*>(FindDiskState(diskId));
+}
+
 void TDiskRegistryState::RemoveFinishedMigrations(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     ui64 seqNo)
 {
-    auto* disk = FindDiskState(diskId);
+    auto* disk = AccessDiskState(diskId);
     if (!disk) {
         return;
     }
@@ -6533,7 +6546,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     const TDeviceId& sourceDeviceId,
     const TDeviceId& targetDeviceId)
 {
-    TDiskState* diskState = FindDiskState(diskId);
+    TDiskState* diskState = AccessDiskState(diskId);
     if (!diskState) {
         return MakeError(E_ARGUMENT, TStringBuilder()
             <<  "disk " << diskId.Quote() << " not found");
