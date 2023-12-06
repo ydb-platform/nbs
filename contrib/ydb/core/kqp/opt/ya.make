@@ -23,7 +23,7 @@ PEERDIR(
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/opt
     contrib/ydb/library/yql/dq/type_ann
-    contrib/ydb/library/yql/providers/s3/expr_nodes
+    contrib/ydb/library/yql/utils/plan
     contrib/ydb/core/kqp/provider
 )
 
