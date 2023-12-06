@@ -49,6 +49,7 @@ namespace NCloud::NBlockStore {
     xxx(FreshDeviceNotFoundInConfig)                                           \
     xxx(DiskAgentConfigMismatch)                                               \
     xxx(DiskRegistryDeviceNotFoundSoft)                                        \
+    xxx(DiskRegistrySourceDiskNotFound)                                        \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

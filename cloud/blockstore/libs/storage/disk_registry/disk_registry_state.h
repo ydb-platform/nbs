@@ -50,6 +50,11 @@ struct TDiskInfo
     TVector<TString> DeviceReplacementIds;
     NProto::EStorageMediaKind MediaKind =
         NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+    TString CheckpointId;
+    TString SourceDiskId;
+
+    ui64 GetBlocksCount() const;
+    TString GetPoolName() const;
 };
 
 struct TRackInfo
@@ -99,6 +104,34 @@ struct TBrokenGroupInfo
     ui32 RecentlyBrokenDiskCount = 0;
 };
 
+struct TCheckpointInfo
+{
+    TString SourceDiskId;
+    TString CheckpointId;
+    TString CheckpointDiskId;
+
+    TCheckpointInfo() = default;
+
+    TCheckpointInfo(
+            TString sourceDiskId,
+            TString checkpointId,
+            TString checkpointDiskId)
+        : SourceDiskId(std::move(sourceDiskId))
+        , CheckpointId(std::move(checkpointId))
+        , CheckpointDiskId(std::move(checkpointDiskId))
+    {}
+
+    static TString MakeCheckpointDiskId(
+        const TString& sourceDiskId,
+        const TString& checkpointId);
+
+    static TString MakeUniqueId(
+        const TString& sourceDiskId,
+        const TString& checkpointId);
+
+    TString UniqueId() const;
+};
+
 struct TPlacementGroupInfo
 {
     NProto::TPlacementGroupConfig Config;
@@ -121,6 +154,7 @@ class TDiskRegistryState
     using TAgentId = TString;
     using TDeviceId = TString;
     using TDiskId = TString;
+    using TCheckpointId = TString;
     using TNodeId = ui32;
 
     struct TDiskPlacementInfo
@@ -133,6 +167,8 @@ class TDiskRegistryState
     // * a nonreplicated disk
     // * a local disk
     // * a single replica of a mirrored disk
+    // * a "checkpoint" replica - can be created for nonreplicated or mirrored
+    //   disk
     // * a "master" disk - exists for each mirrored disk
     //
     // Master disks don't contain devices and migrations - all devices and
@@ -163,6 +199,7 @@ class TDiskRegistryState
 
         ui32 ReplicaCount = 0;
         TString MasterDiskId;
+        NProto::TCheckpointReplica CheckpointReplica;
 
         TVector<TDeviceId> DeviceReplacementIds;
 
@@ -178,6 +215,7 @@ class TDiskRegistryState
     using TKnownAgents = THashMap<TAgentId, TKnownAgent>;
     using TDeviceOverrides = THashMap<TDeviceId, TVolumeDeviceOverrides>;
 
+    using TCheckpoints = THashMap<TCheckpointId, TCheckpointInfo>;
     using TPlacementGroups = THashMap<TString, TPlacementGroupInfo>;
 
 private:
@@ -194,6 +232,7 @@ private:
     THashSet<TDiskId> DisksToCleanup;
     TKnownAgents KnownAgents;
     TDeviceOverrides DeviceOverrides;
+    TCheckpoints Checkpoints;
     TPlacementGroups PlacementGroups;
     TVector<TBrokenDiskInfo> BrokenDisks;
 
@@ -293,6 +332,11 @@ public:
         bool MuteIOErrors = false;
     };
 
+    struct TAllocateCheckpointResult: public TAllocateDiskResult
+    {
+        TString CheckpointDiskId;
+    };
+
     NProto::TError AllocateDisk(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -303,12 +347,40 @@ public:
         TDiskRegistryDatabase& db,
         const TString& diskId);
 
+    NProto::TError AllocateCheckpoint(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TCheckpointId& checkpointId,
+        TAllocateCheckpointResult* result);
+
+    NProto::TError DeallocateCheckpoint(
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TCheckpointId& checkpointId);
+
+    NProto::TError GetCheckpointDataState(
+        const TDiskId& sourceDiskId,
+        const TCheckpointId& checkpointId,
+        NProto::ECheckpointState* checkpointState) const;
+
+    NProto::TError SetCheckpointDataState(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TCheckpointId& checkpointId,
+        NProto::ECheckpointState checkpointState);
+
     [[nodiscard]] NProto::TError GetDiskDevices(
         const TDiskId& diskId,
         TVector<NProto::TDeviceConfig>& devices) const;
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
+    NProto::TError GetCheckpointDiskId(
+        const TDiskId& sourceDiskId,
+        const TCheckpointId& checkpointId,
+        TDiskId* checkpointDiskId) const;
 
     bool FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const;
 
@@ -672,6 +744,7 @@ public:
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
+    void ProcessCheckpoints();
     void ProcessPlacementGroups(TVector<NProto::TPlacementGroupConfig> placementGroups);
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
@@ -902,6 +975,7 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TAllocateDiskParams& params,
+        const NProto::TCheckpointReplica& checkpointParams,
         TDiskState& disk,
         TAllocateDiskResult* result);
 
@@ -936,6 +1010,9 @@ private:
         const TString& logPrefix);
 
     void DeleteDisk(TDiskRegistryDatabase& db, const TString& diskId);
+    void DeleteCheckpointByDisk(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId);
 
     void ForgetDevices(
         TDiskRegistryDatabase& db,

@@ -243,6 +243,62 @@ void SetDeviceErrorState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString TCheckpointInfo::UniqueId() const
+{
+    return MakeUniqueId(SourceDiskId, CheckpointId);
+}
+
+// static
+TString TCheckpointInfo::MakeUniqueId(
+    const TString& sourceDiskId,
+    const TString& checkpointId)
+{
+    return sourceDiskId + "-" + checkpointId;
+}
+
+// static
+TString TCheckpointInfo::MakeCheckpointDiskId(
+    const TString& sourceDiskId,
+    const TString& checkpointId)
+{
+    return sourceDiskId + "/" + checkpointId;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 TDiskInfo::GetBlocksCount() const
+{
+    ui64 result = 0;
+    if (MasterDiskId) {
+        for (const auto& replica: Replicas) {
+            for (const auto& device: replica) {
+                result += device.GetBlocksCount();
+            }
+            break;
+        }
+    } else {
+        for (const auto& device: Devices) {
+            const ui64 logicalBlockCount = device.GetBlockSize() *
+                                           device.GetBlocksCount() /
+                                           LogicalBlockSize;
+            result += logicalBlockCount;
+        }
+    }
+    return result;
+}
+
+TString TDiskInfo::GetPoolName() const
+{
+    for (const auto& replica: Replicas) {
+        for (const auto& device: replica) {
+            return device.GetPoolName();
+        }
+    }
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDiskRegistryState::TDiskRegistryState(
         ILoggingServicePtr logging,
         TStorageConfigPtr storageConfig,
@@ -306,6 +362,8 @@ TDiskRegistryState::TDiskRegistryState(
     ProcessAgents();
     // fills disk configs and may use DeviceList
     ProcessDisks(std::move(disks));
+    // fills Checkpoints and depends on Disks
+    ProcessCheckpoints();
     // fills PlacementGroups and depends on Disks
     ProcessPlacementGroups(std::move(placementGroups));
     // fills DisksToCleanup and shouldn't depend on anything
@@ -359,6 +417,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.UserId = config.GetUserId();
         disk.ReplicaCount = config.GetReplicaCount();
         disk.MasterDiskId = config.GetMasterDiskId();
+        disk.CheckpointReplica = config.GetCheckpointReplica();
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
 
         if (config.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT) {
@@ -464,6 +523,31 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             for (const auto& id: x.second.DeviceReplacementIds) {
                 ReplicaTable.MarkReplacementDevice(x.first, id, true);
             }
+        }
+    }
+}
+
+void TDiskRegistryState::ProcessCheckpoints()
+{
+    for (const auto& [diskId, diskState]: Disks) {
+        const auto& checkpointReplica = diskState.CheckpointReplica;
+
+        if (!checkpointReplica.GetCheckpointId().Empty()) {
+            auto* sourceDisk = Disks.FindPtr(checkpointReplica.GetSourceDiskId());
+            if (!sourceDisk) {
+                ReportDiskRegistrySourceDiskNotFound(
+                    TStringBuilder()
+                    << "CheckpointId: " << checkpointReplica.GetCheckpointId()
+                    << " SourceDiskId: " << checkpointReplica.GetSourceDiskId()
+                    << " ReplicaDiskId: " << diskId);
+                continue;
+            }
+
+            TCheckpointInfo checkpointInfo{
+                checkpointReplica.GetSourceDiskId(),
+                checkpointReplica.GetCheckpointId(),
+                diskId};
+            Checkpoints[checkpointInfo.UniqueId()] = std::move(checkpointInfo);
         }
     }
 }
@@ -1890,7 +1974,181 @@ NProto::TError TDiskRegistryState::AllocateDisk(
         return AllocateMirroredDisk(now, db, params, disk, result);
     }
 
-    return AllocateSimpleDisk(now, db, params, disk, result);
+    return AllocateSimpleDisk(now, db, params, {}, disk, result);
+}
+
+NProto::TError TDiskRegistryState::AllocateCheckpoint(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& sourceDiskId,
+    const TCheckpointId& checkpointId,
+    TAllocateCheckpointResult* result)
+{
+    TDiskInfo diskInfo;
+    auto error = GetDiskInfo(sourceDiskId, diskInfo);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    if (diskInfo.CheckpointId) {
+        return MakeError(E_ARGUMENT, "Can't create checkpoint for checkpoint");
+    }
+
+    auto checkpointDiskId =
+        TCheckpointInfo::MakeCheckpointDiskId(sourceDiskId, checkpointId);
+    auto checkpointMediaKind =
+        diskInfo.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+            ? NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+            : NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+
+    TAllocateDiskParams diskParams{
+        checkpointDiskId,
+        diskInfo.CloudId,
+        diskInfo.FolderId,
+        {},   // PlacementGroupId
+        0,    // PlacementPartitionIndex
+        diskInfo.LogicalBlockSize,
+        diskInfo.GetBlocksCount(),
+        0,                        // ReplicaCount
+        {},                       // MasterDiskId
+        {},                       // AgentIds
+        diskInfo.GetPoolName(),   // PoolName;
+        checkpointMediaKind};
+
+    if (diskParams.BlocksCount == 0 ){
+        return MakeError(E_ARGUMENT, "blocks count == 0");
+    }
+
+    NProto::TCheckpointReplica checkpointParams;
+    checkpointParams.SetSourceDiskId(sourceDiskId);
+    checkpointParams.SetCheckpointId(checkpointId);
+    checkpointParams.SetStateTs(now.MicroSeconds());
+    checkpointParams.SetState(
+        NProto::ECheckpointState::CHECKPOINT_STATE_CREATING);
+
+    auto& disk = Disks[diskParams.DiskId];
+    error = ValidateAllocateDiskParams(disk, diskParams);
+
+    if (HasError(error)) {
+        if (disk.Devices.empty()) {
+            Disks.erase(diskParams.DiskId);
+        }
+        return error;
+    }
+
+    error = AllocateSimpleDisk(
+        now,
+        db,
+        diskParams,
+        checkpointParams,
+        disk,
+        result);
+    if (HasError(error)) {
+        return error;
+    }
+
+    result->CheckpointDiskId = checkpointDiskId;
+
+    TCheckpointInfo checkpointInfo{
+        sourceDiskId,
+        checkpointId,
+        checkpointDiskId};
+    Checkpoints[checkpointInfo.UniqueId()] = std::move(checkpointInfo);
+    return error;
+}
+
+NProto::TError TDiskRegistryState::DeallocateCheckpoint(
+    TDiskRegistryDatabase& db,
+    const TDiskId& sourceDiskId,
+    const TCheckpointId& checkpointId)
+{
+    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto* checkpointInfo = Checkpoints.FindPtr(id);
+    if (!checkpointInfo) {
+        return MakeError(
+            S_ALREADY,
+            TStringBuilder()
+                << "Checkpoint " << checkpointId.Quote() << " for disk "
+                << sourceDiskId.Quote() << " not found");
+    }
+
+    const auto checkpointDiskId = checkpointInfo->CheckpointDiskId;
+
+    Checkpoints.erase(id);
+
+    MarkDiskForCleanup(db, checkpointDiskId);
+    return DeallocateDisk(db, checkpointDiskId);
+}
+
+NProto::TError TDiskRegistryState::GetCheckpointDataState(
+    const TDiskId& sourceDiskId,
+    const TCheckpointId& checkpointId,
+    NProto::ECheckpointState* checkpointState) const
+{
+    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto* checkpointInfo = Checkpoints.FindPtr(id);
+    if (!checkpointInfo) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Checkpoint " << checkpointId.Quote() << " for disk "
+                << sourceDiskId.Quote() << " not found");
+    }
+
+    const auto* checkpointDisk =
+        Disks.FindPtr(checkpointInfo->CheckpointDiskId);
+    if (!checkpointDisk) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Disk " << checkpointInfo->CheckpointDiskId.Quote()
+                << " not found");
+    }
+
+    *checkpointState = checkpointDisk->CheckpointReplica.GetState();
+
+    return MakeError(S_OK);
+}
+
+NProto::TError TDiskRegistryState::SetCheckpointDataState(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& sourceDiskId,
+    const TCheckpointId& checkpointId,
+    NProto::ECheckpointState checkpointState)
+{
+    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto* checkpointInfo = Checkpoints.FindPtr(id);
+    if (!checkpointInfo) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Checkpoint " << checkpointId.Quote() << " for disk "
+                << sourceDiskId.Quote() << " not found");
+    }
+
+    auto* checkpointDisk = Disks.FindPtr(checkpointInfo->CheckpointDiskId);
+    if (!checkpointDisk) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Disk " << checkpointInfo->CheckpointDiskId.Quote()
+                << " not found");
+    }
+
+    if (checkpointDisk->CheckpointReplica.GetState() == checkpointState) {
+        return MakeError(
+            S_ALREADY,
+            TStringBuilder()
+                << "state for checkpoint " << checkpointId.Quote()
+                << " already " << ECheckpointState_Name(checkpointState));
+    }
+    checkpointDisk->CheckpointReplica.SetState(checkpointState);
+    checkpointDisk->CheckpointReplica.SetStateTs(now.MicroSeconds());
+    db.UpdateDisk(
+        BuildDiskConfig(checkpointInfo->CheckpointDiskId, *checkpointDisk));
+    return MakeError(S_OK);
 }
 
 bool TDiskRegistryState::IsMirroredDiskAlreadyAllocated(
@@ -1997,6 +2255,7 @@ NProto::TError TDiskRegistryState::AllocateDiskReplica(
         now,
         db,
         subParams,
+        {},
         Disks[subParams.DiskId],
         result);
 }
@@ -2191,6 +2450,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TAllocateDiskParams& params,
+    const NProto::TCheckpointReplica& checkpointParams,
     TDiskState& disk,
     TAllocateDiskResult* result)
 {
@@ -2318,6 +2578,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     disk.FolderId = params.FolderId;
     disk.MasterDiskId = params.MasterDiskId;
     disk.MediaKind = params.MediaKind;
+    disk.CheckpointReplica.CopyFrom(checkpointParams);
 
     db.UpdateDisk(BuildDiskConfig(params.DiskId, disk));
 
@@ -2476,6 +2737,34 @@ void TDiskRegistryState::DeleteDisk(
 
     db.DeleteDisk(diskId);
     db.DeleteDiskToCleanup(diskId);
+
+    DeleteCheckpointByDisk(db, diskId);
+}
+
+void TDiskRegistryState::DeleteCheckpointByDisk(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId)
+{
+    TVector<TDiskId> disksToDelete;
+    TVector<TCheckpointId> checkpointsToDelete;
+    for (const auto& [id, checkpointInfo]: Checkpoints) {
+        if (checkpointInfo.SourceDiskId == diskId)
+        {
+            disksToDelete.push_back(checkpointInfo.CheckpointDiskId);
+            checkpointsToDelete.push_back(id);
+        }
+        if (checkpointInfo.CheckpointDiskId == diskId)
+        {
+            checkpointsToDelete.push_back(id);
+        }
+    }
+    for (const auto& id: checkpointsToDelete) {
+        Checkpoints.erase(id);
+    }
+    for (const auto& diskToDelete: disksToDelete) {
+        MarkDiskForCleanup(db, diskToDelete);
+        DeallocateDisk(db, diskToDelete);
+    }
 }
 
 void TDiskRegistryState::AddToBrokenDisks(
@@ -2758,6 +3047,25 @@ NProto::EDiskState TDiskRegistryState::GetDiskState(const TDiskId& diskId) const
     return disk->State;
 }
 
+NProto::TError TDiskRegistryState::GetCheckpointDiskId(
+    const TDiskId& sourceDiskId,
+    const TCheckpointId& checkpointId,
+    TDiskId* checkpointDiskId) const
+{
+    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto* checkpointInfo = Checkpoints.FindPtr(id);
+    if (!checkpointInfo) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Checkpoint " << checkpointId.Quote() << " for disk "
+                << sourceDiskId.Quote() << " not found");
+    }
+
+    *checkpointDiskId = checkpointInfo->CheckpointDiskId;
+    return MakeError(S_OK);
+}
+
 NProto::TError TDiskRegistryState::GetDiskInfo(
     const TString& diskId,
     TDiskInfo& diskInfo) const
@@ -2783,6 +3091,8 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.DeviceReplacementIds = disk.DeviceReplacementIds;
     diskInfo.MediaKind = disk.MediaKind;
     diskInfo.MasterDiskId = disk.MasterDiskId;
+    diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
+    diskInfo.SourceDiskId = disk.CheckpointReplica.GetSourceDiskId();
 
     auto error = FillAllDiskDevices(diskId, disk, diskInfo);
 
@@ -3083,7 +3393,7 @@ TVector<TString> TDiskRegistryState::GetDiskIds() const
 {
     TVector<TString> ids(Reserve(Disks.size()));
 
-    for (auto& kv: Disks) {
+    for (const auto& kv: Disks) {
         ids.push_back(kv.first);
     }
 
@@ -3096,7 +3406,7 @@ TVector<TString> TDiskRegistryState::GetMasterDiskIds() const
 {
     TVector<TString> ids(Reserve(Disks.size()));
 
-    for (auto& kv: Disks) {
+    for (const auto& kv: Disks) {
         if (!kv.second.MasterDiskId) {
             ids.push_back(kv.first);
         }
@@ -3111,7 +3421,7 @@ TVector<TString> TDiskRegistryState::GetMirroredDiskIds() const
 {
     TVector<TString> ids;
 
-    for (auto& kv: Disks) {
+    for (const auto& kv: Disks) {
         if (kv.second.ReplicaCount) {
             ids.push_back(kv.first);
         }
@@ -4051,6 +4361,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetUserId(diskState.UserId);
     config.SetReplicaCount(diskState.ReplicaCount);
     config.SetMasterDiskId(diskState.MasterDiskId);
+    config.MutableCheckpointReplica()->CopyFrom(diskState.CheckpointReplica);
     config.SetStorageMediaKind(diskState.MediaKind);
 
     for (const auto& [uuid, seqNo]: diskState.FinishedMigrations) {

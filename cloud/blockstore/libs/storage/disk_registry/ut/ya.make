@@ -4,7 +4,9 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     disk_registry_database_ut.cpp
-    disk_registry_state_ut.cpp
+    disk_registry_state_ut_checkpoint.cpp
+    disk_registry_state_ut_cms.cpp
+    disk_registry_state_ut_config.cpp
     disk_registry_state_ut_create.cpp
     disk_registry_state_ut_migration.cpp
     disk_registry_state_ut_mirrored_disks.cpp
@@ -12,8 +14,7 @@ SRCS(
     disk_registry_state_ut_pools.cpp
     disk_registry_state_ut_suspend.cpp
     disk_registry_state_ut_updates.cpp
-    disk_registry_state_ut_cms.cpp
-    disk_registry_state_ut_config.cpp
+    disk_registry_state_ut.cpp
 )
 
 PEERDIR(

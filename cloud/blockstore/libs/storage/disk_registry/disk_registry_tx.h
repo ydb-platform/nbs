@@ -57,6 +57,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateDiskRegistryAgentListParams,  __VA_ARGS__)                       \
     xxx(CleanupExpiredAgentListParams,      __VA_ARGS__)                       \
     xxx(SwitchAgentDisksToReadOnly,         __VA_ARGS__)                       \
+    xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
+    xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
+    xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1295,6 +1298,89 @@ struct TTxDiskRegistry
                 TString agentId)
             : RequestInfo(std::move(requestInfo))
             , AgentId(std::move(agentId))
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
+    // TAllocateCheckpoint
+    //
+
+    struct TAllocateCheckpoint
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TCheckpointReplica CheckpointReplica;
+
+        NProto::TError Error;
+        TString CheckpointDiskId;
+
+        TAllocateCheckpoint(
+                TRequestInfoPtr requestInfo,
+                NProto::TCheckpointReplica checkpointReplica)
+            : RequestInfo(std::move(requestInfo))
+            , CheckpointReplica(std::move(checkpointReplica))
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+            CheckpointDiskId.clear();
+        }
+    };
+
+    //
+    // TDeallocateCheckpoint
+    //
+
+    struct TDeallocateCheckpoint
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString SourceDiskId;
+        const TString CheckpointId;
+
+        NProto::TError Error;
+
+        TDeallocateCheckpoint(
+                TRequestInfoPtr requestInfo,
+                TString sourceDiskId,
+                TString checkpointId)
+            : RequestInfo(std::move(requestInfo))
+            , SourceDiskId(std::move(sourceDiskId))
+            , CheckpointId(std::move(checkpointId))
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
+    // SetCheckpointDataState
+    //
+
+    struct TSetCheckpointDataState
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString SourceDiskId;
+        const TString CheckpointId;
+        const NProto::ECheckpointState CheckpointState;
+
+        NProto::TError Error;
+
+        TSetCheckpointDataState(
+                TRequestInfoPtr requestInfo,
+                TString sourceDiskId,
+                TString checkpointId,
+                NProto::ECheckpointState checkpointState)
+            : RequestInfo(std::move(requestInfo))
+            , SourceDiskId(std::move(sourceDiskId))
+            , CheckpointId(std::move(checkpointId))
+            , CheckpointState(checkpointState)
         {}
 
         void Clear()

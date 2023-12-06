@@ -508,6 +508,10 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             if (info.MasterDiskId) {
                 out << " (Replica of " << info.MasterDiskId << ")";
             }
+            if (info.CheckpointId) {
+                out << " (Replica of " << info.SourceDiskId << " for checkpoint "
+                    << info.CheckpointId.Quote() << ")";
+            }
         }
 
         DIV() {

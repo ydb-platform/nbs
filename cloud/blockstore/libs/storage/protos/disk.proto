@@ -33,6 +33,15 @@ enum EDeviceState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum ECheckpointState
+{
+    CHECKPOINT_STATE_CREATING = 0;
+    CHECKPOINT_STATE_OK = 1;
+    CHECKPOINT_STATE_ERROR = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Mean time between failures.
 message TMeanTimeBetweenFailures
 {
@@ -188,6 +197,23 @@ message TFinishedDeviceMigration
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TCheckpointReplica
+{
+    // CheckpointId.
+    string CheckpointId = 1;
+
+    // The name of the disk that the checkpoint belongs to.
+    string SourceDiskId = 2;
+
+    // Timestamp when checkpoint was changed (in microseconds)
+    uint64 StateTs = 3;
+
+    // Current state of checkpoint
+    ECheckpointState State = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskConfig
 {
     // Label of volume.
@@ -231,6 +257,9 @@ message TDiskConfig
 
     // Storage media.
     NCloud.NProto.EStorageMediaKind StorageMediaKind = 14;
+
+    // Contains checkpoint info if this disk is used as a checkpoint replica.
+    TCheckpointReplica CheckpointReplica = 15;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

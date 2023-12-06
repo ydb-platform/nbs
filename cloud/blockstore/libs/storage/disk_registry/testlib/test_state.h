@@ -167,6 +167,15 @@ NProto::TError AllocateDisk(
         NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
     TString poolName = "");
 
+NProto::TError AllocateCheckpoint(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    TDiskRegistryState& state,
+    const TString& sourceDiskId,
+    const TString& checkpointId,
+    TString* checkpointDiskId,
+    TVector<TDeviceConfig>* devices);
+
 NProto::TStorageServiceConfig CreateDefaultStorageConfigProto();
 
 TStorageConfigPtr CreateStorageConfig(NProto::TStorageServiceConfig proto);

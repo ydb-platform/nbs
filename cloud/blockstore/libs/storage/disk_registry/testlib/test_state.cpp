@@ -194,6 +194,8 @@ NProto::TError AllocateMirroredDisk(
         db,
         TDiskRegistryState::TAllocateDiskParams {
             .DiskId = diskId,
+            .CloudId = "cloud-1",
+            .FolderId = "folder-1",
             .BlockSize = DefaultLogicalBlockSize,
             .BlocksCount = totalSize / DefaultLogicalBlockSize,
             .ReplicaCount = replicaCount,
@@ -231,6 +233,8 @@ NProto::TError AllocateDisk(
         db,
         TDiskRegistryState::TAllocateDiskParams {
             .DiskId = diskId,
+            .CloudId = "cloud-1",
+            .FolderId = "folder-1",
             .PlacementGroupId = placementGroupId,
             .PlacementPartitionIndex = placementPartitionIndex,
             .BlockSize = DefaultLogicalBlockSize,
@@ -245,6 +249,29 @@ NProto::TError AllocateDisk(
 
     UNIT_ASSERT_VALUES_EQUAL(0, result.Replicas.size());
     UNIT_ASSERT_VALUES_EQUAL(0, result.DeviceReplacementIds.size());
+
+    return error;
+}
+
+NProto::TError AllocateCheckpoint(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    TDiskRegistryState& state,
+    const TString& sourceDiskId,
+    const TString& checkpointId,
+    TString* checkpointDiskId,
+    TVector<TDeviceConfig>* devices)
+{
+    TDiskRegistryState::TAllocateCheckpointResult result{};
+
+    auto error =
+        state.AllocateCheckpoint(now, db, sourceDiskId, checkpointId, &result);
+
+    UNIT_ASSERT_VALUES_EQUAL(0, result.Replicas.size());
+    UNIT_ASSERT_VALUES_EQUAL(0, result.DeviceReplacementIds.size());
+
+    *devices = std::move(result.Devices);
+    *checkpointDiskId = std::move(result.CheckpointDiskId);
 
     return error;
 }
