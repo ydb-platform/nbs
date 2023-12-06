@@ -455,6 +455,7 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
         }
         if (commitId >= csum.CommitId) {
             csum.Value = checksum;
+            csum.CommitId = commitId;
         }
     }
 
