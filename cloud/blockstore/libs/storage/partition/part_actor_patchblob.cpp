@@ -44,7 +44,7 @@ private:
     TStorageStatusFlags StorageStatusFlags;
     double ApproximateFreeSpaceShare = 0;
 
-    ui64 OriginalGroupId = 0;
+    ui32 OriginalGroupId = 0;
 
 public:
     TPatchBlobActor(
@@ -52,7 +52,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
-        ui64 originalGroupId);
+        ui32 originalGroupId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -89,7 +89,7 @@ TPatchBlobActor::TPatchBlobActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
-        ui64 originalGroupId)
+        ui32 originalGroupId)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -106,10 +106,11 @@ void TPatchBlobActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     LWTRACK(
-        RequestReceived_PartitionWorker,
+        RequestReceived_PartitionWorker_DSProxy,
         RequestInfo->CallContext->LWOrbit,
         "PatchBlob",
-        RequestInfo->CallContext->RequestId);
+        RequestInfo->CallContext->RequestId,
+        OriginalGroupId);
 
     SendPatchRequest(ctx);
 }

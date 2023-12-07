@@ -36,6 +36,7 @@ private:
 
     const ui64 TabletId;
     const std::unique_ptr<TRequest> Request;
+    const ui32 GroupId;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -97,6 +98,7 @@ TWriteBlobActor::TWriteBlobActor(
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , Request(std::move(request))
+    , GroupId(groupId)
 {
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
@@ -108,10 +110,11 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     LWTRACK(
-        RequestReceived_PartitionWorker,
+        RequestReceived_PartitionWorker_DSProxy,
         RequestInfo->CallContext->LWOrbit,
         "WriteBlob",
-        RequestInfo->CallContext->RequestId);
+        RequestInfo->CallContext->RequestId,
+        GroupId);
 
     SendPutRequest(ctx);
     TLongRunningOperationCompanion::RequestStarted(ctx);

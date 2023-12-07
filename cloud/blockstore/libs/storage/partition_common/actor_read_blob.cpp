@@ -43,10 +43,11 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     LWTRACK(
-        RequestReceived_PartitionWorker,
+        RequestReceived_PartitionWorker_DSProxy,
         RequestInfo->CallContext->LWOrbit,
         "ReadBlob",
-        RequestInfo->CallContext->RequestId);
+        RequestInfo->CallContext->RequestId,
+        Request->GroupId);
 
     SendGetRequest(ctx);
     TLongRunningOperationCompanion::RequestStarted(ctx);

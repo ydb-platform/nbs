@@ -71,6 +71,10 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
         NAMES(NCloud::NProbeParam::RequestType, "requestId"))                  \
+    PROBE(RequestReceived_PartitionWorker_DSProxy,                             \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(TString, ui64, ui32),                                            \
+        NAMES(NCloud::NProbeParam::RequestType, "requestId", "groupId"))       \
     PROBE(ResponseSent_Partition,                                              \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \

@@ -34,6 +34,7 @@ private:
 
     const ui64 TabletId;
     const std::unique_ptr<TRequest> Request;
+    const ui32 GroupId;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -45,7 +46,8 @@ public:
         const TActorId& tabletActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        std::unique_ptr<TRequest> request);
+        std::unique_ptr<TRequest> request,
+        ui32 groupId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -81,11 +83,13 @@ TWriteBlobActor::TWriteBlobActor(
         const TActorId& tabletActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        std::unique_ptr<TRequest> request)
+        std::unique_ptr<TRequest> request,
+        ui32 groupId)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , Request(std::move(request))
+    , GroupId(groupId)
 {
     ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
@@ -97,10 +101,11 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     LWTRACK(
-        RequestReceived_PartitionWorker,
+        RequestReceived_PartitionWorker_DSProxy,
         RequestInfo->CallContext->LWOrbit,
         "WriteBlob",
-        RequestInfo->CallContext->RequestId);
+        RequestInfo->CallContext->RequestId,
+        GroupId);
 
     SendPutRequest(ctx);
 }
@@ -295,12 +300,15 @@ void TPartitionActor::HandleWriteBlob(
 
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
+    ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
     State->EnqueueIORequest(channel, std::make_unique<TWriteBlobActor>(
         SelfId(),
         requestInfo,
         TabletID(),
-        std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(msg.Release())));
+        std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
+            msg.Release()),
+        groupId));
 
     ProcessIOQueue(ctx, channel);
 }
