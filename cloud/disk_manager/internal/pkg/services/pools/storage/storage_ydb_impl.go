@@ -833,7 +833,7 @@ func (s *storageYDB) updateBaseDiskAndSlot(
 	)
 }
 
-func (s *storageYDB) checkPoolConfigured(
+func (s *storageYDB) getPoolCapacity(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	imageID string,
@@ -968,6 +968,44 @@ func (s *storageYDB) isPoolConfigured(
 	return count != 0, nil
 }
 
+func (s *storageYDB) createPoolIfNecessary(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	imageID string,
+	zoneID string,
+) error {
+
+	capacity, err := s.getPoolCapacity(ctx, tx, imageID, zoneID)
+	if err != nil {
+		return err
+	}
+
+	if capacity == 0 {
+		// Zero capacity means that this pool should be created "on demand".
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $image_id as Utf8;
+			declare $zone_id as Utf8;
+			declare $kind as Int64;
+			declare $capacity as Uint64;
+
+			upsert into configs (image_id, zone_id, kind, capacity)
+			values ($image_id, $zone_id, $kind, $capacity)
+		`, s.tablesPath),
+			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+			persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+			persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
+			persistence.ValueParam("$capacity", persistence.Uint64Value(1)),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *storageYDB) acquireBaseDiskSlot(
 	ctx context.Context,
 	session *persistence.Session,
@@ -994,11 +1032,6 @@ func (s *storageYDB) acquireBaseDiskSlot(
 	}
 
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, zoneID)
-	if err != nil {
-		return BaseDisk{}, err
-	}
-
-	capacity, err := s.checkPoolConfigured(ctx, tx, imageID, zoneID)
 	if err != nil {
 		return BaseDisk{}, err
 	}
@@ -1056,27 +1089,9 @@ func (s *storageYDB) acquireBaseDiskSlot(
 		return baseDisk.toBaseDisk(), nil
 	}
 
-	if capacity == 0 {
-		// Zero capacity means that this pool should be created "on demand".
-		_, err = tx.Execute(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-			declare $image_id as Utf8;
-			declare $zone_id as Utf8;
-			declare $kind as Int64;
-			declare $capacity as Uint64;
-
-			upsert into configs (image_id, zone_id, kind, capacity)
-			values ($image_id, $zone_id, $kind, $capacity)
-		`, s.tablesPath),
-			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-			persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
-			persistence.ValueParam("$capacity", persistence.Uint64Value(1)),
-		)
-		if err != nil {
-			return BaseDisk{}, err
-		}
+	err = s.createPoolIfNecessary(ctx, tx, imageID, zoneID)
+	if err != nil {
+		return BaseDisk{}, err
 	}
 
 	err = tx.Commit(ctx)
@@ -1331,11 +1346,6 @@ func (s *storageYDB) overlayDiskRelocating(
 		return RebaseInfo{}, tx.Commit(ctx)
 	}
 
-	capacity, err := s.checkPoolConfigured(ctx, tx, imageID, targetZoneID)
-	if err != nil {
-		return RebaseInfo{}, err
-	}
-
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
 	if err != nil {
 		return RebaseInfo{}, err
@@ -1370,27 +1380,9 @@ func (s *storageYDB) overlayDiskRelocating(
 		return rebaseInfo, nil
 	}
 
-	if capacity == 0 {
-		// Zero capacity means that this pool should be created "on demand".
-		_, err = tx.Execute(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-			declare $image_id as Utf8;
-			declare $zone_id as Utf8;
-			declare $kind as Int64;
-			declare $capacity as Uint64;
-
-			upsert into configs (image_id, zone_id, kind, capacity)
-			values ($image_id, $zone_id, $kind, $capacity)
-		`, s.tablesPath),
-			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(targetZoneID)),
-			persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
-			persistence.ValueParam("$capacity", persistence.Uint64Value(1)),
-		)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
+	err = s.createPoolIfNecessary(ctx, tx, imageID, targetZoneID)
+	if err != nil {
+		return RebaseInfo{}, err
 	}
 
 	err = tx.Commit(ctx)
