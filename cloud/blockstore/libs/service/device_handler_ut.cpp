@@ -161,6 +161,13 @@ public:
         return ctx;
     }
 
+    std::pair<TPromise<void>, TVector<TFuture<NProto::TError>>> TakeWriteTrigger()
+    {
+        TPromise<void> result = NewPromise<void>();
+        WriteTrigger.Swap(result);
+        return std::make_pair(std::move(result), std::move(Futures));
+    }
+
     void RunWriteService()
     {
         WriteTrigger.SetValue();
@@ -737,6 +744,44 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         UNIT_ASSERT_VALUES_EQUAL(ctx1->Time(EProcessingStage::Postponed), TDuration::Seconds(11));
         UNIT_ASSERT(ctx2->Time(EProcessingStage::Postponed) > TDuration::Seconds(11));
         UNIT_ASSERT(ctx3->Time(EProcessingStage::Postponed) > TDuration::Seconds(11));
+    }
+
+    Y_UNIT_TEST(ShouldNotOverflowStack)
+    {
+        // We are running a very long series of overlapping queries. If the
+        // executed requests are not destroyed gradually, but do so after the
+        // end of the cycle, stack overflow will occur. Therefore, let's choose
+        // the number of iterations large enough so that stack overflow is
+        // guaranteed to happen.
+#if defined(NDEBUG)
+        constexpr ui32 RequestCount = 1000000;
+#else
+        constexpr ui32 RequestCount = 100000;
+#endif
+
+        TTestEnvironment env(2, DefaultBlockSize, 8);
+
+        // Create first request.
+        env.WriteSectors(0, 4, 'a');
+
+        for (ui32 i = 0; i < RequestCount; ++i) {
+            // Take request trigger for previous request.
+            auto [writeTrigger, futures] = env.TakeWriteTrigger();
+            UNIT_ASSERT_VALUES_EQUAL(1, futures.size());
+
+            // Create new request
+            env.WriteSectors(i % 4, 4, 'b');
+
+            // Execute previous request
+            writeTrigger.SetValue();
+            for (const auto& future: futures) {
+                const auto& response = future.GetValue(TDuration::Seconds(5));
+                UNIT_ASSERT(!HasError(response));
+            }
+        }
+
+        // Execute last request
+        env.RunWriteService();
     }
 }
 

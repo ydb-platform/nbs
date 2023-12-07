@@ -295,6 +295,8 @@ public:
             }
         }
 
+        Dependencies.clear();
+
         Status.store(InFlight);
         return true;
     }
