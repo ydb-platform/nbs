@@ -502,6 +502,11 @@ void TVolumeActor::CancelRequests(const TActorContext& ctx)
     CancelPendingRequests(ctx, PendingRequests);
 }
 
+NKikimr::NMetrics::TResourceMetrics* TVolumeActor::GetResourceMetrics()
+{
+    return Executor()->GetResourceMetrics();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandlePoisonPill(
@@ -669,7 +674,63 @@ void TVolumeActor::HandleTabletMetrics(
     NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
     const TActorContext& ctx)
 {
-    ctx.Send(ev->Forward(MakeHiveProxyServiceId()));
+    auto* resourceMetrics = GetResourceMetrics();
+    if (resourceMetrics != nullptr) {
+        const auto* msg = ev->Get();
+        const auto& metrics = msg->ResourceValues;
+        bool changed = false;
+        if (metrics.HasCPU()) {
+            resourceMetrics->CPU.Increment(metrics.GetCPU(), ctx.Now());
+            changed = true;
+        }
+        if (metrics.HasNetwork()) {
+            resourceMetrics->Network.Increment(metrics.GetNetwork(), ctx.Now());
+            changed = true;
+        }
+        if (metrics.HasStorage()) {
+            resourceMetrics->StorageUser.Increment(metrics.GetStorage());
+            changed = true;
+        }
+        if (metrics.GroupReadThroughputSize() > 0) {
+            for (const auto &v: metrics.GetGroupReadThroughput()) {
+                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+                resourceMetrics->ReadThroughput[id].Increment(
+                    v.GetThroughput(),
+                    ctx.Now());
+            }
+            changed = true;
+        }
+        if (metrics.GroupWriteThroughputSize() > 0) {
+            for (const auto &v: metrics.GetGroupWriteThroughput()) {
+                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+                resourceMetrics->WriteThroughput[id].Increment(
+                    v.GetThroughput(),
+                    ctx.Now());
+            }
+            changed = true;
+        }
+        if (metrics.GroupReadIopsSize() > 0) {
+            for (const auto &v: metrics.GetGroupReadIops()) {
+                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+                resourceMetrics->ReadIops[id].Increment(
+                    v.GetIops(),
+                    ctx.Now());
+            }
+            changed = true;
+        }
+        if (metrics.GroupWriteIopsSize() > 0) {
+            for (const auto &v: metrics.GetGroupWriteIops()) {
+                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+                resourceMetrics->WriteIops[id].Increment(
+                    v.GetIops(),
+                    ctx.Now());
+            }
+            changed = true;
+        }
+        if (changed) {
+            resourceMetrics->TryUpdate(ctx);
+        }
+    }
 }
 
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
@@ -903,7 +964,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
-        HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
+        IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
             if (!RejectRequests(ev)) {

@@ -8088,6 +8088,115 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const auto& clients = stat->Record.GetClients();
         UNIT_ASSERT_VALUES_EQUAL(clients.size(), 0);
     }
+
+    Y_UNIT_TEST(ShouldAggregateMetricsFromTabletsAndSendThemToHive)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        NKikimrTabletBase::TMetrics metrics;
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case NKikimr::TEvLocal::EvTabletMetrics: {
+                        const auto* msg =
+                            event->Get<NKikimr::TEvLocal::TEvTabletMetrics>();
+                        if (TestTabletId == msg->TabletId) {
+                            const auto* msg =
+                                event->Get<NKikimr::TEvLocal::TEvTabletMetrics>();
+                            metrics = msg->ResourceValues;
+                        }
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        // advance time to make previous metrics obsolete
+        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+
+        // initial sample
+        {
+            NKikimrTabletBase::TMetrics metrics;
+            metrics.SetCPU(60000000);
+            metrics.SetNetwork(60000000);
+            metrics.SetStorage(60000000);
+
+            {
+                auto& readBw = *metrics.AddGroupReadThroughput();
+                readBw.SetChannel(1);
+                readBw.SetGroupID(2);
+                readBw.SetThroughput(1 << 20);
+            }
+
+            {
+                auto& writeBw = *metrics.AddGroupWriteThroughput();
+                writeBw.SetChannel(1);
+                writeBw.SetGroupID(2);
+                writeBw.SetThroughput(1 << 20);
+            }
+
+            volume.SendPartitionTabletMetrics(0, metrics);
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
+            runtime->DispatchEvents(options);
+        }
+
+        // sample to check
+        {
+            NKikimrTabletBase::TMetrics metrics;
+            metrics.SetCPU(60000000);
+            metrics.SetNetwork(60000000);
+            metrics.SetStorage(60000000);
+
+            {
+                auto& readBw = *metrics.AddGroupReadThroughput();
+                readBw.SetChannel(1);
+                readBw.SetGroupID(2);
+                readBw.SetThroughput(1 << 20); // significant change
+            }
+
+            {
+                auto& writeBw = *metrics.AddGroupWriteThroughput();
+                writeBw.SetChannel(1);
+                writeBw.SetGroupID(2);
+                writeBw.SetThroughput(1 << 20); // significant change
+            }
+
+            volume.SendPartitionTabletMetrics(0, metrics);
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, metrics.GetCPU());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, metrics.GetNetwork());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, metrics.GetStorage());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, metrics.GroupReadThroughputSize());
+        const auto& readBw = metrics.GetGroupReadThroughput(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, readBw.GetChannel());
+        UNIT_ASSERT_VALUES_EQUAL(2, readBw.GetGroupID());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, readBw.GetThroughput());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, metrics.GroupWriteThroughputSize());
+        const auto& writeBw = metrics.GetGroupWriteThroughput(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeBw.GetChannel());
+        UNIT_ASSERT_VALUES_EQUAL(2, writeBw.GetGroupID());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, writeBw.GetThroughput());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

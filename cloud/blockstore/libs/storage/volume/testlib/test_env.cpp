@@ -547,6 +547,18 @@ std::unique_ptr<NMon::TEvRemoteHttpInfoRes> TVolumeClient::RemoteHttpInfo(
 {
     return RemoteHttpInfo(params, HTTP_METHOD::HTTP_METHOD_GET);
 }
+
+void TVolumeClient::SendPartitionTabletMetrics(
+    ui64 tabletId,
+    const NKikimrTabletBase::TMetrics& metrics)
+{
+    auto request = std::make_unique<NKikimr::TEvLocal::TEvTabletMetrics>(
+        tabletId,
+        0,
+        metrics);
+    SendToPipe(std::move(request));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(

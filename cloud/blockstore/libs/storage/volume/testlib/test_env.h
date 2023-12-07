@@ -458,6 +458,10 @@ public:
     std::unique_ptr<NMon::TEvRemoteHttpInfoRes> RemoteHttpInfo(
         const TString& params);
 
+void SendPartitionTabletMetrics(
+    ui64 tabletId,
+    const NKikimrTabletBase::TMetrics& metrics);
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

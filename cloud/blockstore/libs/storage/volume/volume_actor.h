@@ -516,6 +516,8 @@ private:
 
     bool CanChangeThrottlingPolicy() const;
 
+    NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

@@ -1,10 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/partition2)
 
-IF (SANITIZER_TYPE OR WITH_VALGRIND OR OPENSOURCE)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
-ENDIF()
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     garbage_queue_ut.cpp
