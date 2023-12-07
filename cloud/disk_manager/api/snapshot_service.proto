@@ -3,7 +3,7 @@ syntax = "proto3";
 package cloud.disk_manager;
 
 import "google/protobuf/timestamp.proto";
-import "yandex/cloud/api/operation.proto";
+import "cloud/api/operation.proto";
 import "cloud/disk_manager/disk.proto";
 import "cloud/disk_manager/operation/operation.proto";
 
@@ -15,14 +15,14 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 // right after we create the checkpoint (very quick operation) and continue data copying in the background.
 service SnapshotService {
     rpc Create(CreateSnapshotRequest) returns (operation.Operation) {
-        option (cloud.disk_manager.operation) = {
+        option (cloud.api.operation) = {
             metadata: "CreateSnapshotMetadata"
             response: "CreateSnapshotResponse"
         };
     }
 
     rpc Delete(DeleteSnapshotRequest) returns (operation.Operation) {
-        option (cloud.disk_manager.operation) = {
+        option (cloud.api.operation) = {
             metadata: "DeleteSnapshotMetadata"
             response: "DeleteSnapshotResponse"
         };
