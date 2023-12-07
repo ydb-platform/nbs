@@ -10,6 +10,7 @@ import (
 	api_common "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/api/common"
 	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/utils"
 	"github.com/ydb-platform/nbs/library/go/core/log"
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 )
 
 var _ utils.Connection = (*Connection)(nil)
@@ -24,20 +25,15 @@ func (r rows) Close() error {
 	return nil
 }
 
-func (r rows) MakeAcceptors() ([]any, error) {
+func (r rows) MakeTransformer(ydbTypes []*Ydb.Type) (utils.Transformer, error) {
 	fields := r.FieldDescriptions()
-	acceptors := make([]any, 0, len(fields))
 
+	oids := make([]uint32, 0, len(fields))
 	for _, field := range fields {
-		acceptor, err := acceptorFromOID(field.DataTypeOID)
-		if err != nil {
-			return nil, fmt.Errorf("get acceptor from OID: %w", err)
-		}
-
-		acceptors = append(acceptors, acceptor)
+		oids = append(oids, field.DataTypeOID)
 	}
 
-	return acceptors, nil
+	return transformerFromOIDs(oids, ydbTypes)
 }
 
 type Connection struct {

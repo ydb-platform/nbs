@@ -5,9 +5,9 @@ import (
 
 	api_common "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/api/common"
 	data_source "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/datasource"
-	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/rdbms"
-	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/rdbms/clickhouse"
-	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/rdbms/postgresql"
+	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/datasource/rdbms"
+	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/datasource/rdbms/clickhouse"
+	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/datasource/rdbms/postgresql"
 	"github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/app/server/utils"
 	"github.com/ydb-platform/nbs/library/go/core/log"
 )

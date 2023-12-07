@@ -3,9 +3,11 @@ package utils
 import (
 	"context"
 
+	"github.com/apache/arrow/go/v13/arrow/array"
 	api_common "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/api/common"
 	api_service_protos "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/libgo/service/protos"
 	"github.com/ydb-platform/nbs/library/go/core/log"
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 )
 
 type Connection interface {
@@ -18,7 +20,16 @@ type Rows interface {
 	Err() error
 	Next() bool
 	Scan(dest ...any) error
-	MakeAcceptors() ([]any, error)
+	MakeTransformer(ydbTypes []*Ydb.Type) (Transformer, error)
+}
+
+// Transformer accepts values from a row, converts them and appends to arrow builders
+type Transformer interface {
+	// Return acceptors for scan values from a row
+	GetAcceptors() []any
+
+	// Convert and append to arrow buiders accepted values
+	AppendToArrowBuilders(builder []array.Builder) error
 }
 
 type ConnectionManager interface {
