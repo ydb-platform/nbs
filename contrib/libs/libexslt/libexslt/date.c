@@ -38,7 +38,6 @@
 
 #include "exslt.h"
 
-#include <stdlib.h>
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
@@ -53,11 +52,13 @@
 
 #include <time.h>
 
-#if defined(_MSC_VER) && _MSC_VER >= 1400 || \
-    defined(_WIN32) && \
-    defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 4
-  #define HAVE_MSVCRT
+#ifdef HAVE_LOCALE_H
+#include <locale.h>
 #endif
+
+#include <stdlib.h>
+
+
 
 /*
  * types of date and/or time (from schema datatypes)
@@ -245,14 +246,12 @@ _exsltDateParseGYear (exsltDateValPtr dt, const xmlChar **str)
 static void
 exsltFormatGYear(xmlChar **cur, xmlChar *end, long yr)
 {
-    long year;
-    xmlChar tmp_buf[100], *tmp = tmp_buf, *tmp_end = tmp_buf + 99;
-
     if (yr <= 0 && *cur < end) {
         *(*cur)++ = '-';
     }
 
-    year = (yr <= 0) ? -yr + 1 : yr;
+    long year = (yr <= 0) ? -yr + 1 : yr;
+    xmlChar tmp_buf[100], *tmp = tmp_buf, *tmp_end = tmp_buf + 99;
     /* result is in reverse-order */
     while (year > 0 && tmp < tmp_end) {
         *tmp++ = '0' + (xmlChar)(year % 10);
@@ -679,7 +678,7 @@ static exsltDateValPtr
 exsltDateCurrent (void)
 {
     struct tm localTm, gmTm;
-#if !defined(HAVE_GMTIME_R) && !defined(HAVE_MSVCRT)
+#if !defined(HAVE_GMTIME_R) && !defined(_WIN32)
     struct tm *tb = NULL;
 #endif
     time_t secs;
@@ -701,7 +700,7 @@ exsltDateCurrent (void)
         errno = 0;
 	secs = (time_t) strtol (source_date_epoch, NULL, 10);
 	if (errno == 0) {
-#ifdef HAVE_MSVCRT
+#ifdef _WIN32
 	    struct tm *gm = gmtime_s(&localTm, &secs) ? NULL : &localTm;
 	    if (gm != NULL)
 	        override = 1;
@@ -722,7 +721,7 @@ exsltDateCurrent (void)
     /* get current time */
 	secs    = time(NULL);
 
-#ifdef HAVE_MSVCRT
+#ifdef _WIN32
 	localtime_s(&localTm, &secs);
 #elif HAVE_LOCALTIME_R
 	localtime_r(&secs, &localTm);
@@ -743,7 +742,7 @@ exsltDateCurrent (void)
     ret->sec  = (double) localTm.tm_sec;
 
     /* determine the time zone offset from local to gm time */
-#ifdef HAVE_MSVCRT
+#ifdef _WIN32
     gmtime_s(&gmTm, &secs);
 #elif HAVE_GMTIME_R
     gmtime_r(&secs, &gmTm);
@@ -3752,6 +3751,234 @@ exsltDateDurationFunction (xmlXPathParserContextPtr ctxt, int nargs)
 	xmlXPathReturnString(ctxt, ret);
 }
 
+/* YANDEX FUNCTIONS BEGIN */
+
+/**
+ * exsltDateUnixtimeToDateVal
+ *
+ * Convert unix timestamp to DateVal.
+ */
+static void
+exsltDateUnixtimeToDateVal(time_t secs, exsltDateValPtr val) {
+    struct tm localTm, gmTm;
+    int local_s, gm_s;
+
+    if (val == NULL)
+        return;
+
+#if HAVE_LOCALTIME_R
+    localtime_r(&secs, &localTm);
+#else
+    localTm = *localtime(&secs);
+#endif
+
+    /* get real year, not years since 1900 */
+    val->year = localTm.tm_year + 1900;
+
+    val->mon  = localTm.tm_mon + 1;
+    val->day  = localTm.tm_mday;
+    val->hour = localTm.tm_hour;
+    val->min  = localTm.tm_min;
+
+    /* floating point seconds */
+    val->sec  = (double) localTm.tm_sec;
+
+    /* determine the time zone offset from local to gm time */
+#if HAVE_GMTIME_R
+    gmtime_r(&secs, &gmTm);
+#else
+    gmTm = *gmtime(&secs);
+#endif
+    val->tz_flag = 0;
+
+    local_s = localTm.tm_hour * SECS_PER_HOUR +
+        localTm.tm_min * SECS_PER_MIN +
+        localTm.tm_sec;
+
+    gm_s = gmTm.tm_hour * SECS_PER_HOUR +
+        gmTm.tm_min * SECS_PER_MIN +
+        gmTm.tm_sec;
+
+    if (localTm.tm_year < gmTm.tm_year) {
+        val->tzo = -((SECS_PER_DAY - local_s) + gm_s)/60;
+    } else if (localTm.tm_year > gmTm.tm_year) {
+        val->tzo = ((SECS_PER_DAY - gm_s) + local_s)/60;
+    } else if (localTm.tm_mon < gmTm.tm_mon) {
+        val->tzo = -((SECS_PER_DAY - local_s) + gm_s)/60;
+    } else if (localTm.tm_mon > gmTm.tm_mon) {
+        val->tzo = ((SECS_PER_DAY - gm_s) + local_s)/60;
+    } else if (localTm.tm_mday < gmTm.tm_mday) {
+        val->tzo = -((SECS_PER_DAY - local_s) + gm_s)/60;
+    } else if (localTm.tm_mday > gmTm.tm_mday) {
+        val->tzo = ((SECS_PER_DAY - gm_s) + local_s)/60;
+    } else  {
+        val->tzo = (local_s - gm_s)/60;
+    }
+}
+
+#ifdef HAVE_LOCALE_H
+static xmlMutexPtr exsltLocaleLock = NULL;
+#endif
+
+static void
+exsltFormatDateFunction(xmlXPathParserContextPtr ctxt, int nargs)
+{
+    xmlChar *date = NULL;
+    xmlChar *format = NULL;
+    xmlChar *locale = NULL;
+    exsltDateValPtr x = NULL;
+    long int gmtoff = 0;
+    struct tm tt;
+    char ret[256];
+
+    if (nargs < 2 || nargs > 3) {
+        xmlXPathSetArityError(ctxt);
+        return;
+    }
+
+    if (nargs == 3){
+        locale = xmlXPathPopString(ctxt);
+        if (xmlXPathCheckError(ctxt)) {
+            xmlXPathSetTypeError(ctxt);
+            return;
+        }
+    }
+
+    format = xmlXPathPopString(ctxt);
+    if (xmlXPathCheckError(ctxt)) {
+        xmlFree(locale);
+        xmlXPathSetTypeError(ctxt);
+        return;
+    }
+
+    date = xmlXPathPopString(ctxt);
+    if (xmlXPathCheckError(ctxt)) {
+        xmlFree(locale);
+        xmlFree(format);
+        xmlXPathSetTypeError(ctxt);
+        return;
+    }
+
+    x = exsltDateParse(date);
+    if(x == NULL){
+        //fprintf(stderr, "libxslt format-date: Can't parse date '%s'\n", date);
+        xmlFree(locale);
+        xmlFree(format);
+        xmlFree(date);
+        xmlXPathReturnEmptyString(ctxt);
+        return;
+    }
+
+    tt.tm_sec  = (int)x->sec;    /* seconds */
+    tt.tm_min  = x->min;         /* minutes */
+    tt.tm_hour = x->hour;
+    tt.tm_mday = x->day;
+    tt.tm_mon  = x->mon - 1;
+    tt.tm_year = x->year - 1900;
+    tt.tm_yday = DAY_IN_YEAR( x->day, x->mon, x->year);
+    tt.tm_wday = (_exsltDateDayInWeek(tt.tm_yday, x->year) + 7) % 7;
+    tt.tm_isdst = 0;
+
+    if (x->tz_flag || x->tzo != 0) {
+        gmtoff = x->tzo * 60;
+    }
+
+#if defined(HAVE_STRUCT_TM___TM_GMTOFF)
+    tt.__tm_gmtoff = gmtoff;
+    tt.__tm_zone = NULL;
+#elif defined(HAVE_STRUCT_TM_TM_GMTOFF)
+    tt.tm_gmtoff = gmtoff;
+    tt.tm_zone = NULL;
+#endif
+
+#ifdef HAVE_LOCALE_H
+    if (locale != NULL) {
+        xmlMutexLock(exsltLocaleLock);
+        setlocale(LC_TIME, (const char*) locale);
+    }
+#endif
+
+    ret[ strftime(&(ret[0]), sizeof(ret)-1, (const char*) format, &tt) ] = '\0';
+
+#ifdef HAVE_LOCALE_H
+    if (locale != NULL)
+        xmlMutexUnlock(exsltLocaleLock);
+#endif
+
+    xmlFree(date);
+    xmlFree(format);
+    xmlFree(locale);
+
+    exsltDateFreeDate(x);
+
+    valuePush((ctxt), xmlXPathNewCString(&(ret[0])));
+}
+
+/**
+ * exsltDateParseUnixtimeFunction
+ *
+ */
+static void
+exsltDateParseUnixtimeFunction(xmlXPathParserContextPtr ctxt, int nargs) {
+    xmlChar *ret = NULL;
+    xmlChar *time = NULL;
+    char * endptr;
+    exsltDateValPtr dt;
+    time_t secs;
+
+    if (nargs != 1) {
+        xmlXPathSetArityError(ctxt);
+        return;
+    }
+
+    time = xmlXPathPopString(ctxt);
+    if (xmlXPathCheckError(ctxt)) {
+        xmlXPathSetTypeError(ctxt);
+        return;
+    }
+
+    dt = exsltDateCreateDate(XS_DATETIME);
+    if (dt == NULL){
+        xmlFree(time);
+        xmlXPathReturnEmptyString(ctxt);
+        return;
+    }
+
+    secs = strtoul((const char*) time, &endptr, 10);
+    if(*endptr!='\0'){
+        exsltDateFreeDate(dt);
+        xmlFree(time);
+        xmlXPathReturnEmptyString(ctxt);
+        return;
+    }
+
+    exsltDateUnixtimeToDateVal(secs, dt);
+
+    ret = exsltDateFormatDateTime(dt);
+    exsltDateFreeDate(dt);
+    xmlFree(time);
+
+    if (ret == NULL)
+        xmlXPathReturnEmptyString(ctxt);
+    else
+        xmlXPathReturnString(ctxt, ret);
+}
+
+#ifdef HAVE_LOCALE_H
+static void
+exsltDateCleanupLocaleLock(void)
+{
+    if (exsltLocaleLock != NULL) {
+        xmlFreeMutex(exsltLocaleLock);
+        exsltLocaleLock = NULL;
+    }
+}
+#endif
+
+
+/* YANDEX FUNCTIONS END */
+
+
 /**
  * exsltDateRegister:
  *
@@ -3760,6 +3987,23 @@ exsltDateDurationFunction (xmlXPathParserContextPtr ctxt, int nargs)
 void
 exsltDateRegister (void)
 {
+/* YANDEX REGISTER BEGIN */
+#ifdef HAVE_LOCALE_H
+    if (exsltLocaleLock == NULL) {
+        exsltLocaleLock = xmlNewMutex();
+       atexit(&exsltDateCleanupLocaleLock);
+    }
+#endif
+
+    xsltRegisterExtModuleFunction((const xmlChar *) "format-date",
+                          (const xmlChar *) EXSLT_DATE_NAMESPACE,
+                          exsltFormatDateFunction);
+    xsltRegisterExtModuleFunction((const xmlChar *) "from-unixtime",
+                          (const xmlChar *) EXSLT_DATE_NAMESPACE,
+                          exsltDateParseUnixtimeFunction);
+
+/* YANDEX REGISTER END */
+
     xsltRegisterExtModuleFunction ((const xmlChar *) "add",
 				   (const xmlChar *) EXSLT_DATE_NAMESPACE,
 				   exsltDateAddFunction);
