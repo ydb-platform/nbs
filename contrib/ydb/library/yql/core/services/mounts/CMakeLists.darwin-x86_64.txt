@@ -40,20 +40,22 @@ target_link_libraries(core-services-mounts.global PUBLIC
   library-yql-core
 )
 target_sources(core-services-mounts.global PRIVATE
-  ${CMAKE_BINARY_DIR}/contrib/ydb/library/yql/core/services/mounts/55ff6b82a2c6ac43074c8b237fc0e240.cpp
+  ${CMAKE_BINARY_DIR}/contrib/ydb/library/yql/core/services/mounts/ff4be3f839663a50dda5eeba1a8fba5f.cpp
 )
 resources(core-services-mounts.global
-  ${CMAKE_BINARY_DIR}/contrib/ydb/library/yql/core/services/mounts/55ff6b82a2c6ac43074c8b237fc0e240.cpp
+  ${CMAKE_BINARY_DIR}/contrib/ydb/library/yql/core/services/mounts/ff4be3f839663a50dda5eeba1a8fba5f.cpp
   INPUTS
   ${CMAKE_SOURCE_DIR}/contrib/ydb/library/yql/mount/lib/yql/aggregate.yql
   ${CMAKE_SOURCE_DIR}/contrib/ydb/library/yql/mount/lib/yql/window.yql
   ${CMAKE_SOURCE_DIR}/contrib/ydb/library/yql/mount/lib/yql/id.yql
   ${CMAKE_SOURCE_DIR}/contrib/ydb/library/yql/mount/lib/yql/sqr.yql
   ${CMAKE_SOURCE_DIR}/contrib/ydb/library/yql/mount/lib/yql/core.yql
+  ${CMAKE_SOURCE_DIR}/contrib/ydb/library/yql/mount/lib/yql/walk_folders.yql
   KEYS
   /lib/yql/aggregate.yql
   /lib/yql/window.yql
   /lib/yql/id.yql
   /lib/yql/sqr.yql
   /lib/yql/core.yql
+  /lib/yql/walk_folders.yql
 )
