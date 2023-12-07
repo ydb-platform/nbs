@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
+	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
@@ -22,6 +22,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +31,7 @@ func Run(
 	appName string,
 	defaultConfigFilePath string,
 	newMetricsRegistry metrics.NewRegistryFunc,
+	newAuthorizer auth.NewAuthorizer,
 ) {
 
 	var configFilePath string
@@ -42,7 +44,7 @@ func Run(
 			return util.ParseProto(configFilePath, config)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(config, newMetricsRegistry)
+			return run(config, newMetricsRegistry, newAuthorizer)
 		},
 	}
 	rootCmd.Flags().StringVar(
@@ -62,6 +64,7 @@ func Run(
 func run(
 	config *server_config.ServerConfig,
 	newMetricsRegistry metrics.NewRegistryFunc,
+	newAuthorizer auth.NewAuthorizer,
 ) error {
 
 	var err error
@@ -95,7 +98,7 @@ func run(
 
 	accounting.Init(mon.NewRegistry("accounting"))
 
-	creds := auth.NewCredentials(ctx, config.GetAuthConfig())
+	creds := internal_auth.NewCredentials(ctx, config.GetAuthConfig())
 
 	logging.Info(ctx, "Initializing YDB client")
 	ydbClientRegistry := mon.NewRegistry("ydb_client")
@@ -212,6 +215,7 @@ func run(
 			config,
 			mon,
 			creds,
+			newAuthorizer,
 			db,
 			taskStorage,
 			taskRegistry,

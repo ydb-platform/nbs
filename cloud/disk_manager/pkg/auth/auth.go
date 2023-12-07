@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/karlseguin/ccache/v2"
+	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+type AuthConfig = auth_config.AuthConfig
 
 type Credentials = credentials.Credentials
 
@@ -22,6 +25,8 @@ type Authorizer interface {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+type NewAuthorizer = func(config *AuthConfig, creds Credentials) (Authorizer, error)
 
 func NewAuthorizerWithCache(
 	authorizer Authorizer,

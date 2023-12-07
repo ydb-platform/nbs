@@ -8,7 +8,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
@@ -29,6 +28,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -145,10 +145,11 @@ func newGRPCServer(
 	config *server_config.ServerConfig,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
+	newAuthorizer auth.NewAuthorizer,
 ) (*grpc.Server, error) {
 
 	logging.Info(ctx, "Initializing authorizer")
-	authorizer, err := auth.NewAuthorizer(config.GetAuthConfig(), creds)
+	authorizer, err := newAuthorizer(config.GetAuthConfig(), creds)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize authorizer: %v", err)
 		return nil, err
@@ -348,6 +349,7 @@ func initControlplane(
 	config *server_config.ServerConfig,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
+	newAuthorizer auth.NewAuthorizer,
 	db *persistence.YDBClient,
 	taskStorage tasks_storage.Storage,
 	taskRegistry *tasks.Registry,
@@ -428,7 +430,7 @@ func initControlplane(
 	}
 
 	logging.Info(ctx, "Initializing GRPC server")
-	server, err := newGRPCServer(ctx, config, mon, creds)
+	server, err := newGRPCServer(ctx, config, mon, creds, newAuthorizer)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize GRPC server: %v", err)
 		return nil, err
