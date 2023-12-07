@@ -12,12 +12,7 @@ class ResultsProcessorFsBase:
         self._results_path = results_path
 
         os.makedirs(results_path, exist_ok=True)
-        os.makedirs(os.path.join(results_path, cluster), exist_ok=True)
-        os.makedirs(os.path.join(results_path, cluster, service), exist_ok=True)
-        os.makedirs(os.path.join(results_path, cluster, service, test_suite), exist_ok=True)
-        os.makedirs(os.path.join(results_path, cluster, service, test_suite, date), exist_ok=True)
-
-        self._path = os.path.join(results_path, cluster, service, test_suite, date)
+        self._path = results_path
 
     def publish_test_report_base(
         self,
@@ -32,6 +27,9 @@ class ResultsProcessorFsBase:
     ) -> None:
 
         report = {
+            'cluster': self._cluster,
+            'service': self._service,
+            'test_suite': self._test_suite,
             'date': self._date,
             'compute_node': compute_node,
             'id': id,
