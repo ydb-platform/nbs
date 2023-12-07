@@ -15,8 +15,6 @@ DEPENDS(
     cloud/disk_manager/test/recipe
 
     contrib/python/moto/bin
-    library/recipes/s3mds
-
     contrib/ydb/apps/ydbd
 )
 
@@ -26,7 +24,5 @@ DATA(
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/images/recipe/recipe.inc)
-
-USE_RECIPE(library/recipes/s3mds/s3mds-recipe)
 
 USE_RECIPE(cloud/disk_manager/test/recipe/recipe ${RECIPE_ARGS})

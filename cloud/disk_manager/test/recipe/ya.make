@@ -12,6 +12,7 @@ PY_SRCS(
     metadata_service_launcher.py
     nbs_launcher.py
     nfs_launcher.py
+    s3_launcher.py
 )
 
 PEERDIR(

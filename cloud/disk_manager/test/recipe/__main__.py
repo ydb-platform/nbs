@@ -13,6 +13,7 @@ from cloud.disk_manager.test.recipe.kms_launcher import KmsLauncher
 from cloud.disk_manager.test.recipe.metadata_service_launcher import MetadataServiceLauncher
 from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
 from cloud.disk_manager.test.recipe.nfs_launcher import NfsLauncher
+from cloud.disk_manager.test.recipe.s3_launcher import S3Launcher
 
 S3_CREDENTIALS_FILE = """
 {
@@ -54,6 +55,10 @@ def start(argv):
 
     if args.certs_only:
         return
+
+    s3 = S3Launcher()
+    s3.start()
+    set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
@@ -206,7 +211,7 @@ def start(argv):
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
-            s3_port=int(os.getenv("S3MDS_PORT")),
+            s3_port=s3.port,
             s3_credentials_file=s3_credentials_file
         )
         disk_managers.append(disk_manager)
@@ -226,6 +231,7 @@ def stop(argv):
     KmsLauncher.stop()
     ComputeLauncher.stop()
     KikimrLauncher.stop()
+    S3Launcher.stop()
 
 
 if __name__ == "__main__":

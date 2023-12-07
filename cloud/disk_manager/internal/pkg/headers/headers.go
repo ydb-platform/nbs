@@ -20,10 +20,7 @@ func appendToIncomingContext(
 		md = grpc_metadata.Join(existingMd, md)
 	}
 
-	return grpc_metadata.NewIncomingContext(
-		ctx,
-		md,
-	)
+	return grpc_metadata.NewIncomingContext(ctx, md)
 }
 
 func appendToOutgoingContext(
@@ -36,10 +33,7 @@ func appendToOutgoingContext(
 		md = grpc_metadata.Join(existingMd, md)
 	}
 
-	return grpc_metadata.NewOutgoingContext(
-		ctx,
-		md,
-	)
+	return grpc_metadata.NewOutgoingContext(ctx, md)
 }
 
 func Append(ctx context.Context, headers map[string]string) context.Context {
@@ -208,16 +202,6 @@ func GetAccessToken(ctx context.Context) (string, error) {
 	}
 
 	return token[len(tokenPrefix):], nil
-}
-
-func SetIncomingAccessToken(ctx context.Context, token string) context.Context {
-	return appendToIncomingContext(
-		ctx,
-		grpc_metadata.Pairs(
-			"authorization",
-			fmt.Sprintf("Bearer %v", token),
-		),
-	)
 }
 
 func SetOutgoingAccessToken(ctx context.Context, token string) context.Context {

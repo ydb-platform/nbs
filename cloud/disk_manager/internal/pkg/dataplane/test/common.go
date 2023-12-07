@@ -13,7 +13,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewS3Client() (*persistence.S3Client, error) {
-	endpoint := fmt.Sprintf("http://localhost:%s", os.Getenv("S3MDS_PORT"))
+	endpoint := fmt.Sprintf("http://localhost:%s", os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"))
 	credentials := persistence.NewS3Credentials("test", "test")
 	return persistence.NewS3Client(endpoint, "test", credentials)
 }
