@@ -174,6 +174,11 @@ _DISK_CONFIGS = {
             size=93 * 11,
             bs=4096,
             type='network-ssd-io-m3'),
+    'eternal-1023gb-mirror3-rdma':
+        DiskCreateConfig(
+            size=93 * 11,
+            bs=4096,
+            type='network-ssd-io-m3'),
 
     'eternal-512gb-different-size-requests': DiskCreateConfig(512, 4096, 'network-ssd'),
     'eternal-1tb-different-size-requests': DiskCreateConfig(1024, 4096, 'network-ssd'),
@@ -242,6 +247,7 @@ _LOAD_CONFIGS = {
     'eternal-1023gb-mirror2': LoadConfig(False, False, 32, 50, 4096),
     'eternal-1023gb-mirror2-different-size-requests': LoadConfig(True, False, 32, 50, 4096),
     'eternal-1023gb-mirror3': LoadConfig(False, False, 32, 50, 4096),
+    'eternal-1023gb-mirror3-rdma': LoadConfig(False, False, 32, 50, 4096),
 
     'eternal-512gb-different-size-requests': LoadConfig(True, True, 32, 50, 4096),
     'eternal-1tb-different-size-requests': LoadConfig(True, True, 32, 50, 4096),
@@ -262,6 +268,7 @@ _LOAD_CONFIGS = {
 _IPC_TYPE = {
     'eternal-1023gb-nonrepl-vhost': 'vhost',
     'eternal-1023gb-nonrepl-rdma': 'rdma',
+    'eternal-1023gb-mirror3-rdma': 'rdma',
     'eternal-186gb-ssd-local': 'vhost',
     'eternal-279gb-ssd-local-different-size-requests': 'vhost',
 }
