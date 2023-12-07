@@ -175,8 +175,6 @@ migrations:
     - sandbox/projects/websearch/SearchIntegrationTests3
     - sandbox/projects/websearch/SearchIntegrationTestsWithRetries
     - sandbox/projects/websearch/common/DeployFastData
-    - sandbox/projects/yabs/SysConstLifetime/const_proto
-    - sandbox/projects/yabs/SysConstLifetime/sys_const
     - sandbox/projects/yabs/auto_supbs_2/lib/order_processor_lib/tests
     - sandbox/projects/yabs/chargeback
     - sandbox/projects/yabs/cpm_multiplier/merge
@@ -825,8 +823,6 @@ migrations:
     - sandbox/projects/vins/MegamindPerfTest
     - sandbox/projects/wmc/CheckTankerUrls
     - sandbox/projects/yabs/CommitHeaven/lib
-    - sandbox/projects/yabs/SysConstLifetime/const_proto
-    - sandbox/projects/yabs/SysConstLifetime/sys_const
     - sandbox/projects/yabs/auto_supbs_2/lib/matching_funnel_issue_processor
     - sandbox/projects/yabs/monitoring/tasks/ABExperimentValidateConfigInfo
     - sandbox/projects/yabs/panther/import_linear_model_dump
@@ -4984,7 +4980,6 @@ migrations:
     - sandbox/projects/websearch/begemot/common
     - sandbox/projects/websearch/begemot/common/fast_build
     - sandbox/projects/yabs/AnomalyAuditReport/lib
-    - sandbox/projects/yabs/SysConstLifetime/lib
     - sandbox/projects/yabs/YabsServerSSPPagesAutomoderation
     - sandbox/projects/yabs/avp/YabsMakeTnsLog
     - sandbox/projects/yabs/awaps/YabsAwapsAntifraudExportPage
@@ -6031,8 +6026,6 @@ migrations:
     - sandbox/projects/statkey/money_map/monitorings/moneymap_monitorings
     - sandbox/projects/vh/frontend/dolbilka_plan_creator
     - sandbox/projects/websearch/begemot/common/fast_build
-    - sandbox/projects/yabs/SysConstLifetime/const_proto
-    - sandbox/projects/yabs/SysConstLifetime/sys_const
     - sandbox/projects/yabs/auto_supbs_2/lib/order_processor_lib
     - sandbox/projects/yabs/base_differ
     - sandbox/projects/yabs/sandbox_task_tracing/impl/test
