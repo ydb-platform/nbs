@@ -35,10 +35,22 @@ func NewAuthorizerWithCache(
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 func NewStubAuthorizer() Authorizer {
 	return &stubAuthorizer{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetRequestID(ctx context.Context) string {
+	return headers.GetRequestID(ctx)
+}
+
+func GetAccessToken(ctx context.Context) (string, error) {
+	return headers.GetAccessToken(ctx)
+}
+
+func SetOutgoingAccessToken(ctx context.Context, token string) context.Context {
+	return headers.SetOutgoingAccessToken(ctx, token)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +89,7 @@ func (a *authorizerWithCache) Authorize(
 	permission string,
 ) (string, error) {
 
-	token, err := headers.GetAccessToken(ctx)
+	token, err := GetAccessToken(ctx)
 	if err != nil {
 		return "", err
 	}
