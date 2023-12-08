@@ -6,4 +6,6 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(client)
 add_subdirectory(server)
+add_subdirectory(vhost)

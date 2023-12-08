@@ -1,0 +1,389 @@
+#include "bootstrap.h"
+
+#include "options.h"
+#include "config_initializer.h"
+
+#include <cloud/filestore/libs/client/client.h>
+#include <cloud/filestore/libs/client/config.h>
+#include <cloud/filestore/libs/client/durable.h>
+#include <cloud/filestore/libs/client/probes.h>
+#include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/profile_log.h>
+#include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/endpoint/listener.h>
+#include <cloud/filestore/libs/endpoint/service.h>
+#include <cloud/filestore/libs/endpoint/service_auth.h>
+#include <cloud/filestore/libs/endpoint_vhost/config.h>
+#include <cloud/filestore/libs/endpoint_vhost/listener.h>
+#include <cloud/filestore/libs/endpoint_vhost/server.h>
+#include <cloud/filestore/libs/server/config.h>
+#include <cloud/filestore/libs/server/probes.h>
+#include <cloud/filestore/libs/server/server.h>
+#include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/endpoint.h>
+#include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/service/service_auth.h>
+#include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
+#include <cloud/filestore/libs/service_kikimr/service.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/vfs/probes.h>
+
+#include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/stats_updater.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
+
+#include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
+#include <contrib/ydb/core/tablet_flat/probes.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/protobuf/util/pb_io.h>
+
+#include <util/generic/guid.h>
+#include <util/generic/map.h>
+#include <util/stream/file.h>
+#include <util/system/fs.h>
+#include <util/system/hostname.h>
+
+
+namespace NCloud::NFileStore::NDaemon {
+
+using namespace NCloud::NFileStore::NVhost;
+using namespace NCloud::NStorage;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFileStoreEndpoints final
+    : public IFileStoreEndpoints
+{
+private:
+    using TEndpointsMap = TMap<TString, IFileStoreServicePtr>;
+
+private:
+    ITimerPtr Timer;
+    ISchedulerPtr Scheduler;
+    ILoggingServicePtr Logging;
+    IActorSystemPtr ActorSystem;
+
+    TEndpointsMap Endpoints;
+
+public:
+    TFileStoreEndpoints(
+            ITimerPtr timer,
+            ISchedulerPtr scheduler,
+            ILoggingServicePtr logging,
+            IActorSystemPtr actorSystem)
+        : Timer(std::move(timer))
+        , Scheduler(std::move(scheduler))
+        , Logging(std::move(logging))
+        , ActorSystem(std::move(actorSystem))
+    {}
+
+    void Start() override
+    {
+        for (const auto& [name, endpoint]: Endpoints) {
+            endpoint->Start();
+        }
+    }
+
+    void Stop() override
+    {
+        for (const auto& [name, endpoint]: Endpoints) {
+            endpoint->Stop();
+        }
+    }
+
+    IFileStoreServicePtr GetEndpoint(const TString& name) override
+    {
+        const auto* p = Endpoints.FindPtr(name);
+        return p ? *p : nullptr;
+    }
+
+    bool AddEndpoint(
+        const TString& name,
+        const NProto::TClientConfig& config,
+        NDaemon::EServiceKind kind)
+    {
+        auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
+        auto fileStore = (kind == NDaemon::EServiceKind::Kikimr) ?
+            CreateKikimrFileStore(ActorSystem) :
+            NClient::CreateFileStoreClient(clientConfig, Logging);
+
+        return AddEndpoint(
+            name,
+            std::move(clientConfig),
+            std::move(fileStore));
+    }
+
+    bool Empty() const
+    {
+        return Endpoints.empty();
+    }
+
+private:
+    bool AddEndpoint(
+        const TString& name,
+        std::shared_ptr<NClient::TClientConfig> clientConfig,
+        IFileStoreServicePtr filestore)
+    {
+        if (Endpoints.contains(name)) {
+            return false;
+        }
+
+        auto client = NClient::CreateDurableClient(
+            Logging,
+            Timer,
+            Scheduler,
+            NClient::CreateRetryPolicy(clientConfig),
+            filestore);
+
+        Endpoints.emplace(name, std::move(client));
+        return true;
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TBootstrapVhost::TBootstrapVhost(
+        std::shared_ptr<NKikimr::TModuleFactories> kikimrFactories,
+        TVhostModuleFactoriesPtr vhostFactories)
+    : TBootstrapCommon(
+        std::move(kikimrFactories),
+        "NFS_VHOST",
+        "client",
+        NUserStats::CreateUserCounterSupplier())
+    , VhostModuleFactories(std::move(vhostFactories))
+{}
+
+TBootstrapVhost::~TBootstrapVhost()
+{}
+
+TConfigInitializerCommonPtr TBootstrapVhost::InitConfigs(int argc, char** argv)
+{
+    auto options = std::make_shared<TOptionsVhost>();
+    options->Parse(argc, argv);
+
+    Configs = std::make_shared<TConfigInitializerVhost>(std::move(options));
+    return Configs;
+}
+
+void TBootstrapVhost::InitComponents()
+{
+    InitConfig();
+
+    NVhost::InitLog(Logging);
+    switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
+        case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
+        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING:
+            EndpointStorage = CreateKeyringEndpointStorage(
+                Configs->VhostServiceConfig->GetRootKeyringName(),
+                Configs->VhostServiceConfig->GetEndpointsKeyringName());
+            break;
+        case NCloud::NProto::ENDPOINT_STORAGE_FILE:
+            EndpointStorage = CreateFileEndpointStorage(
+                Configs->VhostServiceConfig->GetEndpointStorageDir());
+            break;
+        default:
+            Y_ABORT(
+                "unsupported endpoint storage type %d",
+                Configs->VhostServiceConfig->GetEndpointStorageType());
+    }
+
+    switch (Configs->Options->Service) {
+        case NDaemon::EServiceKind::Local:
+        case NDaemon::EServiceKind::Kikimr:
+            InitEndpoints();
+            break;
+        case NDaemon::EServiceKind::Null:
+            InitNullEndpoints();
+            break;
+    }
+
+    if (Configs->Options->Service == EServiceKind::Kikimr) {
+        EndpointManager = CreateAuthService(
+            std::move(EndpointManager),
+            CreateKikimrAuthProvider(ActorSystem));
+    }
+
+    Server = CreateServer(
+        Configs->ServerConfig,
+        Logging,
+        StatsRegistry->GetRequestStats(),
+        EndpointManager);
+    RegisterServer(Server);
+
+    InitLWTrace();
+}
+
+void TBootstrapVhost::InitConfig()
+{
+    Configs->InitAppConfig();
+}
+
+void TBootstrapVhost::InitEndpoints()
+{
+    auto endpoints = std::make_shared<TFileStoreEndpoints>(
+        Timer,
+        Scheduler,
+        Logging,
+        ActorSystem);
+
+    for (const auto& endpoint: Configs->VhostServiceConfig->GetServiceEndpoints()) {
+        bool inserted = endpoints->AddEndpoint(
+            endpoint.GetName(),
+            endpoint.GetClientConfig(),
+            Configs->Options->Service);
+
+        if (inserted) {
+            STORAGE_INFO("configured endpoint type %s -> %s",
+                ToString<EServiceKind>(Configs->Options->Service).c_str(),
+                endpoint.ShortDebugString().c_str());
+        } else {
+            STORAGE_ERROR("duplicated client config: '" << endpoint.GetName() << "'");
+        }
+    }
+
+    if (endpoints->Empty()) {
+        // TODO: ReportCritEvent()
+        STORAGE_ERROR("Empty endpoints config");
+    }
+
+    FileStoreEndpoints = std::move(endpoints);
+
+    EndpointListener = NVhost::CreateEndpointListener(
+        Logging,
+        Timer,
+        Scheduler,
+        FileStoreEndpoints,
+        VhostModuleFactories->LoopFactory(
+            Logging,
+            Timer,
+            Scheduler,
+            StatsRegistry,
+            ProfileLog));
+
+    EndpointManager = CreateEndpointManager(
+        Logging,
+        EndpointStorage,
+        EndpointListener);
+}
+
+void TBootstrapVhost::InitNullEndpoints()
+{
+    EndpointManager = CreateNullEndpointManager();
+}
+
+void TBootstrapVhost::InitLWTrace()
+{
+    TVector<NLWTrace::TProbe**> probes = {
+        LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER),
+        LWTRACE_GET_PROBES(FILESTORE_CLIENT_PROVIDER),
+        LWTRACE_GET_PROBES(FILESTORE_SERVER_PROVIDER),
+        LWTRACE_GET_PROBES(FILESTORE_STORAGE_PROVIDER),
+        LWTRACE_GET_PROBES(FILESTORE_VFS_PROVIDER),
+        LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER),
+        LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER),
+    };
+
+    const TVector<std::tuple<TString, TString>> probesToTrace = {
+        {"RequestReceived",              "FILESTORE_VFS_PROVIDER"},
+    };
+
+    TBootstrapCommon::InitLWTrace(probes, probesToTrace);
+}
+
+void TBootstrapVhost::StartComponents()
+{
+    NVhost::StartServer();
+
+    FILESTORE_LOG_START_COMPONENT(FileStoreEndpoints);
+    FILESTORE_LOG_START_COMPONENT(EndpointManager);
+    FILESTORE_LOG_START_COMPONENT(Server);
+
+    RestoreKeyringEndpoints();
+}
+
+void TBootstrapVhost::StopComponents()
+{
+    FILESTORE_LOG_STOP_COMPONENT(Server);
+    FILESTORE_LOG_STOP_COMPONENT(EndpointManager);
+    FILESTORE_LOG_STOP_COMPONENT(FileStoreEndpoints);
+
+    NVhost::StopServer();
+}
+
+void TBootstrapVhost::RestoreKeyringEndpoints()
+{
+    auto idsOrError = EndpointStorage->GetEndpointIds();
+
+    if (HasError(idsOrError)) {
+        auto logLevel = TLOG_INFO;
+
+        if (Configs->VhostServiceConfig->GetRequireEndpointsKeyring()) {
+            logLevel = TLOG_ERR;
+            // TODO: report critical error
+        }
+
+        STORAGE_LOG(logLevel, "Failed to get endpoints from storage: "
+            << FormatError(idsOrError.GetError()));
+        return;
+    }
+
+    const auto& storedIds = idsOrError.GetResult();
+    STORAGE_INFO("Found " << storedIds.size() << " endpoints in storage");
+
+    auto clientId = CreateGuidAsString();
+    auto originFqdn = GetFQDNHostName();
+
+    for (auto keyringId: storedIds) {
+        auto requestOrError = EndpointStorage->GetEndpoint(keyringId);
+        if (HasError(requestOrError)) {
+            STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
+                << ", error: " << FormatError(requestOrError.GetError()));
+            continue;
+        }
+
+        auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(
+            requestOrError.GetResult());
+
+        if (!request) {
+            // TODO: report critical error
+            STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
+            continue;
+        }
+
+        auto requestId = CreateRequestId();
+        request->MutableHeaders()->SetRequestId(requestId);
+        request->MutableHeaders()->SetClientId(clientId);
+        request->MutableHeaders()->SetOriginFqdn(originFqdn);
+
+        auto future = EndpointManager->StartEndpoint(
+            MakeIntrusive<TCallContext>(requestId),
+            std::move(request));
+
+        future.Subscribe([=] (const auto& f) {
+            const auto& response = f.GetValue();
+            if (HasError(response)) {
+                // TODO: report critical error
+                STORAGE_ERROR("Failed to start endpoint: "
+                    << FormatError(response.GetError()));
+            }
+        });
+    }
+}
+
+}   // namespace NCloud::NFileStore::NDaemon

@@ -1,4 +1,4 @@
-PROGRAM(nfsd)
+PROGRAM(filestore-server)
 
 ALLOCATOR(TCMALLOC_TC)
 

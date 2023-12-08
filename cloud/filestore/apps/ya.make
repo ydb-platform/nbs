@@ -1,3 +1,5 @@
 RECURSE(
+    client
     server
+    vhost
 )

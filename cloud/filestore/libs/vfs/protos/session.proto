@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+// Fuse internal session state
+
+message TVfsSessionState
+{
+    /**
+     * Major version of the protocol (read-only)
+     */
+    uint32 ProtoMajor = 1;
+
+    /**
+     * Minor version of the protocol (read-only)
+     */
+    uint32 ProtoMinor = 2;
+
+    /**
+     * Capability flags that the kernel supports (read-only)
+     */
+    uint32 Capable = 3;
+
+    /**
+     * Capability flags that the filesystem wants to enable
+     */
+    uint32 Want = 4;
+
+    /**
+     * Maximum buffer size for incoming requests
+     */
+    uint32 BufferSize = 5;
+}

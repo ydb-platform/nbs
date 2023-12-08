@@ -1,0 +1,38 @@
+LIBRARY()
+
+SRCS(
+    bootstrap.cpp
+    config_initializer.cpp
+    options.cpp
+)
+
+PEERDIR(
+    cloud/filestore/config
+    cloud/filestore/libs/client
+    cloud/filestore/libs/daemon/common
+    cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/endpoint
+    cloud/filestore/libs/endpoint_vhost
+    cloud/filestore/libs/server
+    cloud/filestore/libs/service
+    cloud/filestore/libs/service_kikimr
+    cloud/filestore/libs/vfs_fuse/vhost
+
+    cloud/storage/core/libs/common
+    cloud/storage/core/libs/daemon
+    cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/keyring
+    cloud/storage/core/libs/kikimr
+
+    contrib/ydb/core/blobstorage/lwtrace_probes
+    contrib/ydb/core/tablet_flat
+
+    library/cpp/lwtrace
+    library/cpp/lwtrace/mon
+)
+
+END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

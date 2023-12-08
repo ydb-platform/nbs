@@ -60,11 +60,7 @@ func (s *scheduler) ScheduleZonalTask(
 	folderID string,
 ) (string, error) {
 
-	logging.Debug(
-		ctx,
-		"scheduling task %v",
-		taskType,
-	)
+	logging.Debug(ctx, "scheduling task %v", taskType)
 
 	marshalledRequest, err := proto.Marshal(request)
 	if err != nil {
@@ -102,12 +98,7 @@ func (s *scheduler) ScheduleZonalTask(
 		FolderID:       folderID,
 	})
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to persist task %v: %v",
-			taskType,
-			err,
-		)
+		logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
 		return "", err
 	}
 
@@ -144,20 +135,14 @@ func (s *scheduler) ScheduleRegularTasks(
 				)):
 			}
 
-			logging.Debug(
-				ctx,
-				"scheduling %v iteration",
-				taskType,
-			)
+			logging.Debug(ctx, "scheduling %v iteration", taskType)
 
 			createdAt := time.Now()
 
-			xRequestID, err := uuid.NewV4()
+			requestID, err := uuid.NewV4()
 			if err != nil {
-				logging.Warn(
-					ctx,
-					"failed to generate "+
-						"x_request_id for task %v: %v",
+				logging.Warn(ctx,
+					"failed to generate x_request_id for task %v: %v",
 					taskType,
 					err,
 				)
@@ -165,7 +150,7 @@ func (s *scheduler) ScheduleRegularTasks(
 			}
 
 			metadata := tasks_storage.NewMetadata(map[string]string{
-				"x-request-id": xRequestID.String(),
+				"x-request-id": requestID.String(),
 			})
 
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{
@@ -181,12 +166,7 @@ func (s *scheduler) ScheduleRegularTasks(
 				Dependencies: tasks_storage.NewStringSet(),
 			}, scheduleInterval, maxTasksInflight)
 			if err != nil {
-				logging.Warn(
-					ctx,
-					"failed to persist task %v: %v",
-					taskType,
-					err,
-				)
+				logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
 			}
 		}
 	}()
@@ -197,19 +177,11 @@ func (s *scheduler) CancelTask(
 	taskID string,
 ) (bool, error) {
 
-	logging.Info(
-		ctx,
-		"cancelling task %v",
-		taskID,
-	)
+	logging.Info(ctx, "cancelling task %v", taskID)
 
 	cancelling, err := s.storage.MarkForCancellation(ctx, taskID, time.Now())
 	if err != nil {
-		logging.Info(
-			ctx,
-			"failed to cancel task %v",
-			taskID,
-		)
+		logging.Info(ctx, "failed to cancel task %v", taskID)
 		return false, err
 	}
 
@@ -264,12 +236,7 @@ func (s *scheduler) WaitTask(
 
 	err := execCtx.AddTaskDependency(ctx, taskID)
 	if err != nil {
-		errors.LogError(
-			ctx,
-			err,
-			"failed to add task dependency %v",
-			taskID,
-		)
+		errors.LogError(ctx, err, "failed to add task dependency %v", taskID)
 		return nil, err
 	}
 
@@ -304,18 +271,10 @@ func (s *scheduler) WaitAnyTasks(
 
 		select {
 		case <-ctx.Done():
-			logging.Debug(
-				ctx,
-				"waiting cancelled, taskIDs %v",
-				taskIDs,
-			)
+			logging.Debug(ctx, "waiting cancelled, taskIDs %v", taskIDs)
 			return nil, ctx.Err()
 		case <-timeout:
-			logging.Debug(
-				ctx,
-				"waiting timed out, taskIDs %v",
-				taskIDs,
-			)
+			logging.Debug(ctx, "waiting timed out, taskIDs %v", taskIDs)
 			return nil, errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
@@ -332,12 +291,7 @@ func (s *scheduler) WaitTaskEnded(
 	for {
 		state, err := s.storage.GetTask(ctx, taskID)
 		if err != nil {
-			logging.Info(
-				ctx,
-				"wait iteration failed, taskID %v: %v",
-				taskID,
-				err,
-			)
+			logging.Info(ctx, "wait iteration failed, taskID %v: %v", taskID, err)
 			return err
 		}
 
@@ -347,18 +301,10 @@ func (s *scheduler) WaitTaskEnded(
 
 		select {
 		case <-ctx.Done():
-			logging.Debug(
-				ctx,
-				"waiting cancelled, taskID %v",
-				taskID,
-			)
+			logging.Debug(ctx, "waiting cancelled, taskID %v", taskID)
 			return ctx.Err()
 		case <-timeout:
-			logging.Debug(
-				ctx,
-				"waiting timed out, taskID %v",
-				taskID,
-			)
+			logging.Debug(ctx, "waiting timed out, taskID %v", taskID)
 			return errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
@@ -370,21 +316,11 @@ func (s *scheduler) GetTaskMetadata(
 	taskID string,
 ) (proto.Message, error) {
 
-	logging.Debug(
-		ctx,
-		"getting task metadata %v",
-		taskID,
-	)
+	logging.Debug(ctx, "getting task metadata %v", taskID)
 
 	taskState, err := s.storage.GetTask(ctx, taskID)
 	if err != nil {
-		logging.Info(
-			ctx,
-			"failed to get task %v from storage %v",
-			taskID,
-			err,
-		)
-
+		logging.Info(ctx, "failed to get task %v from storage %v", taskID, err)
 		return nil, err
 	}
 
@@ -402,13 +338,7 @@ func (s *scheduler) GetTaskMetadata(
 
 	err = task.Load(taskState.Request, taskState.State)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to load task %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to load task %v: %v", taskID, err)
 		return nil, err
 	}
 
@@ -429,93 +359,47 @@ func (s *scheduler) GetOperation(
 	taskID string,
 ) (*operation.Operation, error) {
 
-	logging.Debug(
-		ctx,
-		"getting operation proto %v",
-		taskID,
-	)
+	logging.Debug(ctx, "getting operation proto %v", taskID)
 
 	taskState, err := s.storage.GetTask(ctx, taskID)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to get task %v from storage %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to get task %v from storage %v", taskID, err)
 		return nil, err
 	}
 
 	task, err := s.registry.NewTask(taskState.TaskType)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to get task descriptor %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to get task descriptor %v: %v", taskID, err)
 		return nil, err
 	}
 
 	err = task.Load(taskState.Request, taskState.State)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to load task %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to load task %v: %v", taskID, err)
 		return nil, err
 	}
 
 	createdAtProto, err := ptypes.TimestampProto(taskState.CreatedAt)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to convert CreatedAt %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to convert CreatedAt %v: %v", taskID, err)
 		return nil, err
 	}
 
 	modifiedAtProto, err := ptypes.TimestampProto(taskState.ModifiedAt)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to convert ModifiedAt %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to convert ModifiedAt %v: %v", taskID, err)
 		return nil, err
 	}
 
 	metadata, err := task.GetMetadata(ctx, taskID)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to get task metadata %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to get task metadata %v: %v", taskID, err)
 		return nil, err
 	}
 
 	metadataAny, err := ptypes.MarshalAny(metadata)
 	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to convert metadata %v: %v",
-			taskID,
-			err,
-		)
-
+		logging.Warn(ctx, "failed to convert metadata %v: %v", taskID, err)
 		return nil, err
 	}
 
@@ -537,11 +421,7 @@ func (s *scheduler) GetOperation(
 			if err == nil {
 				status = statusWithDetails
 			} else {
-				logging.Warn(
-					ctx,
-					"failed to attach error details: %v",
-					err,
-				)
+				logging.Warn(ctx, "failed to attach error details: %v", err)
 			}
 		}
 
@@ -551,13 +431,7 @@ func (s *scheduler) GetOperation(
 	} else if tasks_storage.HasResult(taskState.Status) {
 		responseAny, err := ptypes.MarshalAny(task.GetResponse())
 		if err != nil {
-			logging.Warn(
-				ctx,
-				"failed to convert response %v: %v",
-				taskID,
-				err,
-			)
-
+			logging.Warn(ctx, "failed to convert response %v: %v", taskID, err)
 			return nil, err
 		}
 
@@ -584,27 +458,17 @@ func (s *scheduler) WaitTaskSync(
 	wait := func() error {
 		select {
 		case <-ctx.Done():
-			logging.Info(
-				ctx,
-				"waiting cancelled: %v",
-				ctx.Err(),
-			)
+			logging.Info(ctx, "waiting cancelled: %v", ctx.Err())
 			return ctx.Err()
 		case <-timeoutChannel:
-			return errors.NewNonRetriableErrorf(
-				"scheduler.WaitTaskSync timed out",
-			)
+			return errors.NewNonRetriableErrorf("scheduler.WaitTaskSync timed out")
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
 
 		iteration++
 
 		if iteration%20 == 0 {
-			logging.Debug(
-				ctx,
-				"still waiting for task with id %v",
-				taskID,
-			)
+			logging.Debug(ctx, "still waiting for task with id %v", taskID)
 		}
 		return nil
 	}
@@ -612,12 +476,7 @@ func (s *scheduler) WaitTaskSync(
 	for {
 		response, err := s.getTaskResponse(ctx, taskID)
 		if err != nil {
-			logging.Info(
-				ctx,
-				"wait iteration failed, taskID %v: %v",
-				taskID,
-				err,
-			)
+			logging.Info(ctx, "wait iteration failed, taskID %v: %v", taskID, err)
 			if errors.CanRetry(err) {
 				err := wait()
 				if err != nil {
