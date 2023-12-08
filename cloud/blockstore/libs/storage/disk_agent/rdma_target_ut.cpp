@@ -245,6 +245,51 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rejectedCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, alreadyCounter->Val());
     }
+
+    Y_UNIT_TEST(ShouldRespectDeviceErasure)
+    {
+        TRdmaTestEnvironment env(8_MB, 2);
+
+        const auto blockRange = TBlockRange64::WithLength(0, 1024);
+
+        {   // Write with id=100. This request should be executed successfully.
+            auto responseFuture =
+                env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+            auto response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        {   // Try write with id=99. This request should be rejected.
+            auto responseFuture = env.Run(env.MakeWriteRequest(
+                TBlockRange64::WithLength(512, 1024),
+                'A',
+                99));
+            auto response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        // Secure erase device.
+        env.RdmaTarget->DeviceSecureErased(env.Device_1);
+
+        {   // Try write with id=99 again. This one should be executed
+            // successfully.
+            auto responseFuture = env.Run(env.MakeWriteRequest(
+                TBlockRange64::WithLength(512, 1024),
+                'A',
+                99));
+            auto response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

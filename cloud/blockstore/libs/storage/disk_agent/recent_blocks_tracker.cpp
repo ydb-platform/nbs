@@ -187,6 +187,13 @@ const TString& TRecentBlocksTracker::GetDeviceUUID() const {
     return DeviceUUID;
 }
 
+void TRecentBlocksTracker::Reset()
+{
+    OrderedById.clear();
+    OrderedByArrival.Clear();
+    InflightBlocks.clear();
+}
+
 void TRecentBlocksTracker::ReportRepeatedRequestId(
     ui64 requestId,
     const TBlockRange64& range) const

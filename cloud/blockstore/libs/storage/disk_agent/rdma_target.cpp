@@ -195,6 +195,12 @@ public:
         TaskQueue->ExecuteSimple(std::move(safeHandleRequest));
     }
 
+    void DeviceSecureErased(const TString& deviceUUID)
+    {
+        auto token = GetAccessToken(deviceUUID);
+        token->RecentBlocksTracker.Reset();
+    }
+
 private:
     NProto::TError DoHandleRequest(
         void* context,
@@ -903,6 +909,11 @@ public:
     void Stop() override
     {
         TaskQueue->Stop();
+    }
+
+    void DeviceSecureErased(const TString& deviceUUID) override
+    {
+        Handler->DeviceSecureErased(deviceUUID);
     }
 };
 

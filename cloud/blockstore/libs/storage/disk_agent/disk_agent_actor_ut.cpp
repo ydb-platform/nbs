@@ -1057,6 +1057,92 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         DoShouldHandleSameRequestId(false);
     }
 
+    Y_UNIT_TEST(ShouldRespectDeviceErasure)
+    {
+        TTestBasicRuntime runtime;
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                       }))
+                       .With(
+                           []()
+                           {
+                               NProto::TStorageServiceConfig config;
+                               config.SetRejectLateRequestsAtDiskAgentEnabled(true);
+                               return config;
+                           }())
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{"MemoryDevice1", "MemoryDevice2"};
+
+        const TString clientId = "client-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        auto sendZeroRequest = [&](ui64 volumeRequestId,
+                                   ui64 blockStart,
+                                   ui32 blockCount,
+                                   const TString& deviceUUID)
+        {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+            request->Record.MutableHeaders()->SetClientId(clientId);
+            request->Record.SetDeviceUUID(deviceUUID);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(blockCount);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        {
+            // Execute first request with id = 100.
+            sendZeroRequest(100, 2048, 16, uuids[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                diskAgent.RecvZeroDeviceBlocksResponse()->GetStatus());
+        }
+
+        {
+            // Send request with id=99. This request should be rejected.
+            sendZeroRequest(99, 2048, 32, uuids[0]);
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        // Secure erase device.
+        diskAgent.ReleaseDevices(uuids, clientId);
+        diskAgent.SecureEraseDevice(uuids[0]);
+        diskAgent.AcquireDevices(
+            uuids,
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        {
+            // Send request with id=99 again. This one should be executed
+            // successfully.
+            sendZeroRequest(99, 2048, 32, uuids[0]);
+            auto response =
+                diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
+
     Y_UNIT_TEST(ShouldSupportReadOnlyClients)
     {
         TTestBasicRuntime runtime;

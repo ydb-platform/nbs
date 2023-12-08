@@ -322,7 +322,7 @@ TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevices() const
 TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 {
     return InitializeSpdk(AgentConfig, Spdk, Allocator)
-        .Apply([=] (auto future) {
+        .Apply([this] (auto future) {
             TInitializeSpdkResult r = future.ExtractValue();
 
             InitErrorsCount = r.Errors.size();
@@ -533,7 +533,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         request.GetBlockSize());
 
     return result.Apply(
-        [=] (auto future) {
+        [] (auto future) {
             auto data = future.ExtractValue();
             NProto::TReadDeviceBlocksResponse response;
 
@@ -596,7 +596,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
         request.GetBlockSize());
 
     return result.Apply(
-        [=] (const auto& future) {
+        [] (const auto& future) {
             NProto::TWriteDeviceBlocksResponse response;
 
             *response.MutableError() = future.GetValue().GetError();
@@ -633,7 +633,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         request.GetBlockSize());
 
     return result.Apply(
-        [=] (const auto& future) {
+        [] (const auto& future) {
             NProto::TZeroDeviceBlocksResponse response;
 
             *response.MutableError() = future.GetValue().GetError();
@@ -663,8 +663,22 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         return MakeFuture(NProto::TError());
     }
 
-    return device.StorageAdapter->EraseDevice(
-        AgentConfig->GetDeviceEraseMethod());
+    auto onDeviceSecureErased =
+        [weakRdmaTarget = std::weak_ptr<IRdmaTarget>(RdmaTarget),
+         uuid](const TFuture<NProto::TError>& future)
+    {
+        if (HasError(future.GetValue())) {
+            return;
+        }
+        // The device has been secure erased and now a new client can use it.
+        if (auto rdmaTarget = weakRdmaTarget.lock()) {
+            rdmaTarget->DeviceSecureErased(uuid);
+        }
+    };
+
+    return device.StorageAdapter
+        ->EraseDevice(AgentConfig->GetDeviceEraseMethod())
+        .Subscribe(std::move(onDeviceSecureErased));
 }
 
 TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
@@ -691,7 +705,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
         request.GetBlockSize());
 
     return result.Apply(
-        [=] (auto future) {
+        [] (auto future) {
             auto data = future.ExtractValue();
             NProto::TChecksumDeviceBlocksResponse response;
 

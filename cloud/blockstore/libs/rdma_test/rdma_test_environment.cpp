@@ -46,7 +46,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
             Counters->GetCounter("Already")},
         poolSize};
 
-    RdmaTaget = CreateRdmaTarget(
+    RdmaTarget = CreateRdmaTarget(
         std::move(config),
         std::move(rdmaTargetConfig),
         Logging,
@@ -54,12 +54,12 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         std::move(deviceClient),
         std::move(devices));
 
-    RdmaTaget->Start();
+    RdmaTarget->Start();
 }
 
 TRdmaTestEnvironment::~TRdmaTestEnvironment()
 {
-    RdmaTaget->Stop();
+    RdmaTarget->Stop();
 }
 
 // static

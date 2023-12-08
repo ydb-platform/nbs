@@ -19,28 +19,29 @@ void TDiskAgentActor::SecureErase(
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
 
-    auto reply = [=] (auto error) {
-        auto response = std::make_unique<TEvDiskAgentPrivate::TEvSecureEraseCompleted>(
-            std::move(error),
-            deviceId);
+    auto reply = [actorSystem, deviceId, replyTo](auto error)
+    {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvSecureEraseCompleted>(
+                std::move(error),
+                deviceId);
 
         actorSystem->Send(
-            new IEventHandle(
-                replyTo,
-                replyTo,
-                response.release()));
+            new IEventHandle(replyTo, replyTo, response.release()));
     };
 
     try {
         auto result = State->SecureErase(deviceId, ctx.Now());
 
-        result.Subscribe([=] (const auto& future) {
-            try {
-                reply(future.GetValue());
-            } catch (...) {
-                reply(MakeError(E_FAIL, CurrentExceptionMessage()));
-            }
-        });
+        result.Subscribe(
+            [reply](const auto& future)
+            {
+                try {
+                    reply(future.GetValue());
+                } catch (...) {
+                    reply(MakeError(E_FAIL, CurrentExceptionMessage()));
+                }
+            });
     } catch (const TServiceError& e) {
         LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_AGENT,
             "Secure erase device " << deviceId << " has failed with error: "
@@ -98,6 +99,10 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
     } else {
         LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
             "Secure erase for " << msg->DeviceId.Quote() << " succeeded");
+
+        // The device has been secure erased and now a new client can use it.
+        auto& recentBlocksTracker = GetRecentBlocksTracker(msg->DeviceId);
+        recentBlocksTracker.Reset();
     }
 
     // send responses

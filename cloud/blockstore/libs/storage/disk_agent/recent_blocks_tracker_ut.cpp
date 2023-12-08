@@ -229,6 +229,41 @@ Y_UNIT_TEST_SUITE(TRecentBlocksTrackerTest)
 
         UNIT_ASSERT_GT(idGen2.GetValue(), idGen1.GetValue());
     }
+
+    Y_UNIT_TEST(AcceptAnyAfterReset)
+    {
+        TRecentBlocksTracker tracker("device1");
+
+        tracker.AddRecorded(200, TBlockRange64::WithLength(0, 10));
+        tracker.AddInflight(201, TBlockRange64::WithLength(10, 10));
+        {
+            TString overlapDetails;
+            UNIT_ASSERT_VALUES_EQUAL(
+                EOverlapStatus::Partial,
+                tracker.CheckRecorded(
+                    100,
+                    TBlockRange64::WithLength(5, 10),
+                    &overlapDetails));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                tracker.CheckInflight(100, TBlockRange64::WithLength(5, 10)));
+        }
+
+        tracker.Reset();
+        {
+            TString overlapDetails;
+            UNIT_ASSERT_VALUES_EQUAL(
+                EOverlapStatus::NotOverlapped,
+                tracker.CheckRecorded(
+                    100,
+                    TBlockRange64::WithLength(5, 10),
+                    &overlapDetails));
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                tracker.CheckInflight(100, TBlockRange64::WithLength(5, 10)));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

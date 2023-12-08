@@ -77,6 +77,10 @@ public:
 
     [[nodiscard]] const TString& GetDeviceUUID() const;
 
+    // Clears the internal state and is ready to accept requests from any
+    // generation.
+    void Reset();
+
 private:
     void ReportRepeatedRequestId(ui64 requestId, const TBlockRange64& range)
         const;

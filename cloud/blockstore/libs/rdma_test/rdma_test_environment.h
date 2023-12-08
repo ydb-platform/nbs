@@ -27,7 +27,7 @@ struct TRdmaTestEnvironment
 
     std::shared_ptr<TMemoryTestStorage> Storage;
 
-    IRdmaTargetPtr RdmaTaget;
+    IRdmaTargetPtr RdmaTarget;
 
     NMonitoring::TDynamicCountersPtr Counters{
         new NMonitoring::TDynamicCounters()};

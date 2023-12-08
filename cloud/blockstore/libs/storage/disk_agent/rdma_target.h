@@ -30,6 +30,7 @@ struct TRdmaTargetConfig
 
 struct IRdmaTarget: IStartable
 {
+    virtual void DeviceSecureErased(const TString& deviceUUID) = 0;
 };
 
 using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
