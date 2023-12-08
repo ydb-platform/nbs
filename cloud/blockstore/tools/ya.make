@@ -2,7 +2,6 @@ RECURSE(
     analytics
     ci
     cms
-    common
     debug
     fs
     http_proxy
