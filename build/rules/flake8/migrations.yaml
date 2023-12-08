@@ -843,7 +843,6 @@ migrations:
     - search/geo/tools/make_metrics_config
     - search/geo/tools/metrics_tools/make_metrics_config
     - search/geo/tools/rubric_sbs/orgs_enrichment
-    - search/metrics/monitoring/core
     - search/mon/bot/bot
     - search/mon/bot/bot/modules
     - search/mon/workplace/src/libs/catalog
@@ -7591,7 +7590,6 @@ migrations:
     - sandbox/projects/yt
     - sandbox/projects/yt/ci_tasks/packages/YtBuildCronPackage
     - sandbox/projects/yt/layers_tasks/YtBuildSpravLayerTask
-    - search/metrics/monitoring/core
     - search/mon/trainer/libs
     - search/mon/wabbajack/bin/icscr
     - search/mon/wabbajack/libs/client
@@ -10738,10 +10736,6 @@ migrations:
     - yweb/peoplesearch/yweb_social_snippet/tools/yweb_social_snippet_generator_mr/tests
     - yweb/pumpkin/mrcollector/tests
     - yweb/querydata/querydata_indexer/tests
-    - yweb/querydata/querydata_indexer_saas/ferryman/abstract_worker/local_yt_tests
-    - yweb/querydata/querydata_indexer_saas/ferryman/json_worker/local_yt_tests
-    - yweb/querydata/querydata_indexer_saas/ferryman/tests/local_yt_tests
-    - yweb/querydata/querydata_indexer_saas/ferryman/worker/local_yt_tests
     - yweb/querydata/tools/trie_searcher_test/tests
     - yweb/querydata/tools/url2docid/tests
     - yweb/querydata/tools/url2owner/tests
