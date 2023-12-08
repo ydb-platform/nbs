@@ -95,7 +95,7 @@ There is a possibility when the test runner can leave leaked resources inside th
 
 ### Example
 ```(bash)
-$ ./yc-disk-manager-ci-acceptance-test-suite --cluster hw-nbs-stable-lab --acceptance-test <path_to_arcadia>/cloud/disk_manager/test/acceptance/acceptance-test --instance-cores 16 --instance-ram 16 --verbose sync --disk-size 1024
+$ ./disk-manager-ci-acceptance-test-suite --cluster hw-nbs-stable-lab --acceptance-test <path_to_arcadia>/cloud/disk_manager/test/acceptance/acceptance-test --instance-cores 16 --instance-ram 16 --verbose sync --disk-size 1024
 ```
 
 ### Leaked resources
