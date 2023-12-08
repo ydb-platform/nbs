@@ -28,7 +28,7 @@ func (s *diskService) Create(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) Delete(
@@ -41,7 +41,7 @@ func (s *diskService) Delete(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) Resize(
@@ -54,7 +54,7 @@ func (s *diskService) Resize(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) Alter(
@@ -67,7 +67,7 @@ func (s *diskService) Alter(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) Assign(
@@ -80,7 +80,7 @@ func (s *diskService) Assign(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) Unassign(
@@ -93,7 +93,7 @@ func (s *diskService) Unassign(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) DescribeModel(
@@ -122,7 +122,7 @@ func (s *diskService) Migrate(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *diskService) SendMigrationSignal(

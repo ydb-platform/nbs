@@ -27,7 +27,7 @@ func (s *snapshotService) Create(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *snapshotService) Delete(
@@ -40,7 +40,7 @@ func (s *snapshotService) Delete(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

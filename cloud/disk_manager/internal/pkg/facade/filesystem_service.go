@@ -27,7 +27,7 @@ func (s *filesystemService) Create(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *filesystemService) Delete(
@@ -40,7 +40,7 @@ func (s *filesystemService) Delete(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *filesystemService) Resize(
@@ -53,7 +53,7 @@ func (s *filesystemService) Resize(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *filesystemService) DescribeModel(

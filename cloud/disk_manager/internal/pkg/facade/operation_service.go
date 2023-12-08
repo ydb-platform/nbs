@@ -20,7 +20,7 @@ func (s *operationService) Get(
 	req *disk_manager.GetOperationRequest,
 ) (*operation.Operation, error) {
 
-	return s.taskScheduler.GetOperationProto(ctx, req.OperationId)
+	return s.taskScheduler.GetOperation(ctx, req.OperationId)
 }
 
 func (s *operationService) Cancel(
@@ -33,7 +33,7 @@ func (s *operationService) Cancel(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, req.OperationId)
+	return s.taskScheduler.GetOperation(ctx, req.OperationId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

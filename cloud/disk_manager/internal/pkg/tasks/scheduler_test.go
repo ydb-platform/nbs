@@ -305,7 +305,7 @@ func TestSchedulerGetTaskMetadata(t *testing.T) {
 	assertpb.Equal(t, metadata, &empty.Empty{})
 }
 
-func TestSchedulerGetOperationProtoReadyToRun(t *testing.T) {
+func TestSchedulerGetOperationReadyToRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -340,7 +340,7 @@ func TestSchedulerGetOperationProtoReadyToRun(t *testing.T) {
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
-	op, err := scheduler.GetOperationProto(ctx, taskID)
+	op, err := scheduler.GetOperation(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
 	assertpb.Equal(t, op, &operation.Operation{
@@ -360,7 +360,7 @@ func TestSchedulerGetOperationProtoReadyToRun(t *testing.T) {
 	})
 }
 
-func TestSchedulerGetOperationProtoRunning(t *testing.T) {
+func TestSchedulerGetOperationRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -395,7 +395,7 @@ func TestSchedulerGetOperationProtoRunning(t *testing.T) {
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
-	op, err := scheduler.GetOperationProto(ctx, taskID)
+	op, err := scheduler.GetOperation(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
 	assertpb.Equal(t, op, &operation.Operation{
@@ -415,7 +415,7 @@ func TestSchedulerGetOperationProtoRunning(t *testing.T) {
 	})
 }
 
-func TestSchedulerGetOperationProtoFinished(t *testing.T) {
+func TestSchedulerGetOperationFinished(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -452,7 +452,7 @@ func TestSchedulerGetOperationProtoFinished(t *testing.T) {
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 	expectedResponse, _ := ptypes.MarshalAny(&empty.Empty{})
 
-	op, err := scheduler.GetOperationProto(ctx, taskID)
+	op, err := scheduler.GetOperation(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
 	assertpb.Equal(t, op, &operation.Operation{
@@ -475,7 +475,7 @@ func TestSchedulerGetOperationProtoFinished(t *testing.T) {
 	})
 }
 
-func TestSchedulerGetOperationProtoReadyToCancel(t *testing.T) {
+func TestSchedulerGetOperationReadyToCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -513,7 +513,7 @@ func TestSchedulerGetOperationProtoReadyToCancel(t *testing.T) {
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
-	op, err := scheduler.GetOperationProto(ctx, taskID)
+	op, err := scheduler.GetOperation(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
 	assertpb.Equal(t, op, &operation.Operation{
@@ -536,7 +536,7 @@ func TestSchedulerGetOperationProtoReadyToCancel(t *testing.T) {
 	})
 }
 
-func TestSchedulerGetOperationProtoCancelling(t *testing.T) {
+func TestSchedulerGetOperationCancelling(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -574,7 +574,7 @@ func TestSchedulerGetOperationProtoCancelling(t *testing.T) {
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
-	op, err := scheduler.GetOperationProto(ctx, taskID)
+	op, err := scheduler.GetOperation(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
 	assertpb.Equal(t, op, &operation.Operation{
@@ -597,7 +597,7 @@ func TestSchedulerGetOperationProtoCancelling(t *testing.T) {
 	})
 }
 
-func TestSchedulerGetOperationProtoCancelled(t *testing.T) {
+func TestSchedulerGetOperationCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -635,7 +635,7 @@ func TestSchedulerGetOperationProtoCancelled(t *testing.T) {
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
-	op, err := scheduler.GetOperationProto(ctx, taskID)
+	op, err := scheduler.GetOperation(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
 	assertpb.Equal(t, op, &operation.Operation{

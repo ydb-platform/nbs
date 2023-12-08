@@ -27,7 +27,7 @@ func (s *placementGroupService) Create(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *placementGroupService) Delete(
@@ -40,7 +40,7 @@ func (s *placementGroupService) Delete(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *placementGroupService) Alter(
@@ -53,7 +53,7 @@ func (s *placementGroupService) Alter(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *placementGroupService) List(

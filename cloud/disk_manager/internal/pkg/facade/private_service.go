@@ -39,7 +39,7 @@ func (s *privateService) ScheduleBlankOperation(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) RebaseOverlayDisk(
@@ -63,7 +63,7 @@ func (s *privateService) RebaseOverlayDisk(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) RetireBaseDisk(
@@ -86,7 +86,7 @@ func (s *privateService) RetireBaseDisk(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) RetireBaseDisks(
@@ -106,7 +106,7 @@ func (s *privateService) RetireBaseDisks(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) OptimizeBaseDisks(
@@ -119,7 +119,7 @@ func (s *privateService) OptimizeBaseDisks(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) ConfigurePool(
@@ -155,7 +155,7 @@ func (s *privateService) ConfigurePool(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) DeletePool(
@@ -174,7 +174,7 @@ func (s *privateService) DeletePool(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperationProto(ctx, taskID)
+	return s.taskScheduler.GetOperation(ctx, taskID)
 }
 
 func (s *privateService) ListDisks(

@@ -128,7 +128,7 @@ func (s *SchedulerMock) SendEvent(
 	return args.Error(0)
 }
 
-func (s *SchedulerMock) GetOperationProto(
+func (s *SchedulerMock) GetOperation(
 	ctx context.Context,
 	taskID string,
 ) (*operation.Operation, error) {

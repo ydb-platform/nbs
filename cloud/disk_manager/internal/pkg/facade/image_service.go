@@ -28,7 +28,7 @@ func (s *imageService) Create(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 func (s *imageService) Update(
@@ -49,7 +49,7 @@ func (s *imageService) Delete(
 		return nil, err
 	}
 
-	return s.scheduler.GetOperationProto(ctx, taskID)
+	return s.scheduler.GetOperation(ctx, taskID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

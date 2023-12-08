@@ -69,10 +69,7 @@ type Scheduler interface {
 	SendEvent(ctx context.Context, taskID string, event int64) error
 
 	// TODO: Does it belong here?
-	GetOperationProto(
-		ctx context.Context,
-		taskID string,
-	) (*operation.Operation, error)
+	GetOperation(ctx context.Context, taskID string) (*operation.Operation, error)
 
 	// Used in tests.
 	// Synchronously waits for task response.

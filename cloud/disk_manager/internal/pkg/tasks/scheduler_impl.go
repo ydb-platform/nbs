@@ -424,7 +424,7 @@ func (s *scheduler) SendEvent(
 	return s.storage.SendEvent(ctx, taskID, event)
 }
 
-func (s *scheduler) GetOperationProto(
+func (s *scheduler) GetOperation(
 	ctx context.Context,
 	taskID string,
 ) (*operation.Operation, error) {
