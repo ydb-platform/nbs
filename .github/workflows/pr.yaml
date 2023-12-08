@@ -30,7 +30,20 @@ jobs:
           script: |
             // This is used primarily in forks. Repository owner
             // should be allowed to run anything.
+            const whiteListedUsers = [
+              'qkrorlqr', 'budevg', 'jkuradobery', 'debnatkh', 'librarian',
+              'sharpeye', 'SvartMetal', '0x2493', 'sanek325', 'asorotsky',
+              'dvrazumov', 'WilyTiger',
+              'EvgeniyKozev', 'BarkovBG', 'gy2411', 'leftmain', 'v131v',
+              'yegorskii', 'drbasic', 'umed', 'slipstak2', 'NewBediver'
+            ]
+
             const userLogin = context.payload.pull_request.user.login;
+
+            if (whiteListedUsers.includes(userLogin)) {
+              console.log('User is whitelisted')
+              return true
+            }
 
             // How to interpret membership status code:
             // https://docs.github.com/en/rest/orgs/members?apiVersion=2022-11-28#check-organization-membership-for-a-user
@@ -50,10 +63,12 @@ jobs:
             }
 
             if (context.payload.repository.owner.login == userLogin) {
+              console.log('User is repo owner')
               return true;
             }
 
             if (await isOrgMember()) {
+              console.log('User is member')
               return true;
             }
 
