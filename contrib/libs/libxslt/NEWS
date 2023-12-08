@@ -1,6 +1,42 @@
 NEWS file for libxslt
 
-v1.1.38: not yet released
+v1.1.39: Nov 16 2023
+
+### Bug fixes
+
+- extensions: Don't search imports for extension prefixes
+
+### Improvements
+
+- transform: Check maximum depth when processing default templates
+- build: Add more missing includes
+- python: Don't set deprecated global
+- build: Add missing includes
+- imports: Limit nesting depth
+- extensions: Report top-level elements in xsltDebugDumpExtensions
+- Add extern "C" { } block to xsltlocale.h (David Kilzer)
+
+### Portability
+
+- python: Make it compatible with python3.12 (Daniel Garcia Moreno)
+- date: Fix check for localtime_s
+- date: Fix check for gmtime_s
+
+### Build systems
+
+- pkg-config files include cflags for static builds (Mike Dalessio)
+- Handle NOCONFIG case when setting locations from CMake target properties (Markus
+  Rickert)
+- autotools: Make xslt-config executable
+
+### Tests
+
+- tests: Structured error handler now passes a const xmlError
+- python: Fix tests on MinGW
+- fuzz: Fix xmlFuzzEntityLoader after recent libxml2 changes
+
+
+v1.1.38: May 8 2023
 
 ### Major changes
 
