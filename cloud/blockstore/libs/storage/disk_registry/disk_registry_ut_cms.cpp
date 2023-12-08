@@ -906,6 +906,63 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldGetDependentDisksAndIgnoreReplicated)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        {
+            const uint32_t replicaCount = 1;
+            auto response = diskRegistry.AllocateDisk(
+                "replicated-vol", 10_GB, 4_KB, "", 0, "", "",
+                replicaCount, NProto::STORAGE_MEDIA_SSD_MIRROR2);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ReplicasSize());
+        }
+
+        {
+            auto response = diskRegistry.AllocateDisk("nonrepl-vol", 20_GB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.DevicesSize());
+        }
+
+        for (const auto& agentId: {"agent-1", "agent-2"}) {
+            NProto::TAction action;
+            action.SetHost(agentId);
+            action.SetType(NProto::TAction::GET_DEPENDENT_DISKS);
+            TVector<NProto::TAction> actions = {action};
+
+            auto response = diskRegistry.CmsAction(actions);
+            const auto& result = response->Record.GetActionResults(0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+
+            ASSERT_VECTOR_CONTENTS_EQUAL(
+                result.GetDependentDisks(),
+                TVector<TString>({"nonrepl-vol"}));
+        }
+    }
+
     Y_UNIT_TEST(ShouldAddHostAndDevicesAfterRemoval)
     {
         const TVector agents {

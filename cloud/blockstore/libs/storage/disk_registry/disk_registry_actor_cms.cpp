@@ -132,6 +132,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
             auto request = std::make_unique<TRequest>();
             request->Record.SetHost(action.GetHost());
             request->Record.SetPath(action.GetDevice());
+            request->Record.SetIgnoreReplicatedDisks(true);
 
             NCloud::Send(
                 ctx,

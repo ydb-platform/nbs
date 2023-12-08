@@ -1463,8 +1463,12 @@ message TGetDependentDisksRequest
 {
     // Agent hostname to search for dependent disks
     string Host = 1;
+
     // Device path (ignored if empty)
     string Path = 2;
+
+    // Do not count replicated disks
+    bool IgnoreReplicatedDisks = 3;
 }
 
 message TGetDependentDisksResponse

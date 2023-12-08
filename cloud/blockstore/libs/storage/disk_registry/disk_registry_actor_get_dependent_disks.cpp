@@ -32,6 +32,7 @@ void TDiskRegistryActor::HandleGetDependentDisks(
     auto error = State->GetDependentDisks(
         msg->Record.GetHost(),
         msg->Record.GetPath(),
+        msg->Record.GetIgnoreReplicatedDisks(),
         &diskIds);
     auto response = std::make_unique<TResponse>();
     *response->Record.MutableError() = std::move(error);

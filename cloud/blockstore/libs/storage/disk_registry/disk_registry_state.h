@@ -424,6 +424,7 @@ public:
     NProto::TError GetDependentDisks(
         const TString& agentId,
         const TString& path,
+        bool ignoreReplicatedDisks,
         TVector<TDiskId>* diskIds) const;
 
     TVector<NProto::TDeviceConfig> GetBrokenDevices() const;

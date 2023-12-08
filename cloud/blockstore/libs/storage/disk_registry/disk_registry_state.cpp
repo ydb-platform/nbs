@@ -2878,6 +2878,7 @@ NProto::EDeviceState TDiskRegistryState::GetDeviceState(
 NProto::TError TDiskRegistryState::GetDependentDisks(
     const TString& agentId,
     const TString& path,
+    bool ignoreReplicatedDisks,
     TVector<TDiskId>* diskIds) const
 {
     diskIds->clear();
@@ -2897,9 +2898,12 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
             continue;
         }
 
-        // for mirrored disks return master diskId
         const TDiskState* state = FindDiskState(diskId);
         if (state && state->MasterDiskId) {
+            if (ignoreReplicatedDisks) {
+                continue;
+            }
+            // for mirrored disks return master diskId
             diskId = state->MasterDiskId;
         }
 
@@ -4479,17 +4483,12 @@ NProto::TError TDiskRegistryState::SwitchAgentDisksToReadOnly(
     TVector<TDiskId>& affectedDisks)
 {
     TVector<TDiskId> dependentDisks;
-    auto error = GetDependentDisks(agentId, "", &dependentDisks);
+    auto error = GetDependentDisks(agentId, "", true, &dependentDisks);
     if (error.GetCode() != S_OK) {
         return error;
     }
 
     for (const auto& diskId: dependentDisks) {
-        const auto& disk = Disks[diskId];
-        if (disk.MasterDiskId) {
-            continue;  // ignore replicated disks
-        }
-
         AddReallocateRequest(db, diskId);
         affectedDisks.push_back(diskId);
     }
