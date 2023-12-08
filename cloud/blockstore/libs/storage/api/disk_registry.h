@@ -48,6 +48,10 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(StartForceMigration,                __VA_ARGS__)                       \
     xxx(UpdateDiskRegistryAgentListParams,  __VA_ARGS__)                       \
     xxx(GetDependentDisks,                  __VA_ARGS__)                       \
+    xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
+    xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
+    xxx(GetCheckpointDataState,             __VA_ARGS__)                       \
+    xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -186,6 +190,18 @@ struct TEvDiskRegistry
 
         EvGetDependentDisksRequest = EvBegin + 63,
         EvGetDependentDisksResponse = EvBegin + 64,
+
+        EvAllocateCheckpointRequest = EvBegin + 65,
+        EvAllocateCheckpointResponse = EvBegin + 66,
+
+        EvDeallocateCheckpointRequest = EvBegin + 67,
+        EvDeallocateCheckpointResponse = EvBegin + 68,
+
+        EvGetCheckpointDataStateRequest = EvBegin + 69,
+        EvGetCheckpointDataStateResponse = EvBegin + 70,
+
+        EvSetCheckpointDataStateRequest = EvBegin + 71,
+        EvSetCheckpointDataStateResponse = EvBegin + 72,
 
         EvEnd
     };

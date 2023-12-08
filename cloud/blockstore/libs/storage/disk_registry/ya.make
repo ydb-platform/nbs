@@ -5,6 +5,7 @@ SRCS(
     disk_registry_actor_allocate.cpp
     disk_registry_actor_backup_state.cpp
     disk_registry_actor_change_disk_device.cpp
+    disk_registry_actor_checkpoint.cpp
     disk_registry_actor_cleanup.cpp
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp
@@ -93,6 +94,7 @@ RECURSE_FOR_TESTS(
     ut_allocation
     ut_cms
     ut_config
+    ut_checkpoint
     ut_create
     ut_migration
     ut_mirrored_disk_migration

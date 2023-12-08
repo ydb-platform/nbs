@@ -586,6 +586,60 @@ public:
         return request;
     }
 
+    auto CreateAllocateCheckpointRequest(
+        const TString& sourceDiskId,
+        const TString& checkpointId)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAllocateCheckpointRequest>();
+
+        request->Record.SetSourceDiskId(sourceDiskId);
+        request->Record.SetCheckpointId(checkpointId);
+
+        return request;
+    }
+
+    auto CreateDeallocateCheckpointRequest(
+        const TString& sourceDiskId,
+        const TString& checkpointId)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvDeallocateCheckpointRequest>();
+
+        request->Record.SetSourceDiskId(sourceDiskId);
+        request->Record.SetCheckpointId(checkpointId);
+
+        return request;
+    }
+
+    auto CreateGetCheckpointDataStateRequest(
+        const TString& sourceDiskId,
+        const TString& checkpointId)
+    {
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvGetCheckpointDataStateRequest>();
+
+        request->Record.SetSourceDiskId(sourceDiskId);
+        request->Record.SetCheckpointId(checkpointId);
+
+        return request;
+    }
+
+    auto CreateSetCheckpointDataStateRequest(
+        const TString& sourceDiskId,
+        const TString& checkpointId,
+        NProto::ECheckpointState newState)
+    {
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvSetCheckpointDataStateRequest>();
+
+        request->Record.SetSourceDiskId(sourceDiskId);
+        request->Record.SetCheckpointId(checkpointId);
+        request->Record.SetCheckpointState(newState);
+
+        return request;
+    }
+
     auto CreateAcquireDiskRequest(
         const TString& diskId,
         const TString& clientId,

@@ -1478,3 +1478,84 @@ message TGetDependentDisksResponse
     // List of agent's dependent disks
     repeated string DependentDiskIds = 3;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Allocate disk for checkpoint replica
+
+message TAllocateCheckpointRequest
+{
+    // The name of the disk for which the checkpoint is being created.
+    string SourceDiskId = 1;
+
+    // The name of the checkpoint.
+    string CheckpointId = 2;
+}
+
+message TAllocateCheckpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The name of the disk on which the replica for the checkpoint was created.
+    string CheckpointDiskId = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Deallocate disk for checkpoint replica
+
+message TDeallocateCheckpointRequest
+{
+    // The name of the disk for which the checkpoint was created.
+    string SourceDiskId = 1;
+
+    // The name of the checkpoint.
+    string CheckpointId = 2;
+}
+
+message TDeallocateCheckpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Get current data state for checkpoint replica
+
+message TGetCheckpointDataStateRequest
+{
+    // The name of the disk for which the checkpoint was created.
+    string SourceDiskId = 1;
+
+    // The name of the checkpoint.
+    string CheckpointId = 2;
+}
+
+message TGetCheckpointDataStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Checkpoint data state.
+    ECheckpointState CheckpointState = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Set current data state for checkpoint replica
+
+message TSetCheckpointDataStateRequest
+{
+    // The name of the disk for which the checkpoint was created.
+    string SourceDiskId = 1;
+
+    // The name of the checkpoint.
+    string CheckpointId = 2;
+
+    // New checkpoint data state.
+    ECheckpointState CheckpointState = 3;
+}
+
+message TSetCheckpointDataStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
