@@ -1348,7 +1348,6 @@ migrations:
     - adfox/amacs/tests/functional/tests_amacs/yt
     - ads/fast_rank/metrics
     - ads/ml_engine/learn/result/local_extended_fstr/ut
-    - ads/pytorch/lib/online_learning/production/processors/deploy_v2_processor
     - ads/quality/adv_machine/scripts/cluster_master
     - ads/quality/adv_machine/scripts/yp_tools
     - ads/quality/apc/prgmgv3/spy/browser_visit_log
