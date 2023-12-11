@@ -4,6 +4,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     library/cpp/containers/disjoint_interval_tree
     library/cpp/string_utils/base64
+    contrib/ydb/core/util
     contrib/ydb/core/base
     contrib/ydb/core/grpc_services
     contrib/ydb/core/persqueue
@@ -38,6 +39,8 @@ SRCS(
     read_info_actor.h
     read_info_actor.cpp
     read_session_actor.h
+    direct_read_actor.h
+    direct_read_actor.cpp
     write_session_actor.h
     schema_actors.h
     schema_actors.cpp

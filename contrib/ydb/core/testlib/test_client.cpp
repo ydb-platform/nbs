@@ -99,6 +99,7 @@
 #include <contrib/ydb/core/keyvalue/keyvalue.h>
 #include <contrib/ydb/core/persqueue/pq.h>
 #include <contrib/ydb/core/persqueue/cluster_tracker.h>
+#include <contrib/ydb/core/persqueue/dread_cache_service/caching_service.h>
 #include <contrib/ydb/library/security/ydb_credentials_provider_factory.h>
 #include <contrib/ydb/core/fq/libs/init/init.h>
 #include <contrib/ydb/core/fq/libs/mock/yql_mock.h>
@@ -960,6 +961,11 @@ namespace Tests {
             IActor* pqClusterTracker = NPQ::NClusterTracker::CreateClusterTracker();
             TActorId pqClusterTrackerId = Runtime->Register(pqClusterTracker, nodeIdx);
             Runtime->RegisterService(NPQ::NClusterTracker::MakeClusterTrackerID(), pqClusterTrackerId, nodeIdx);
+        }
+        {
+            IActor* pqReadCacheService = NPQ::CreatePQDReadCacheService(Runtime->GetDynamicCounters());
+            TActorId readCacheId = Runtime->Register(pqReadCacheService, nodeIdx);
+            Runtime->RegisterService(NPQ::MakePQDReadCacheServiceActorId(), readCacheId, nodeIdx);
         }
 
         {
