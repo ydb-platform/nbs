@@ -30,6 +30,9 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
     def _remote_verify_test_path(self) -> str:
         return '/usr/bin/verify-test'
 
+    def _get_test_suite(self):
+        return self._args.test_suite
+
     def _run_single_testcase(self, instance, test_case):
         with self._recording_result(
             instance.compute_node,

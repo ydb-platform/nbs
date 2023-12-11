@@ -129,10 +129,14 @@ class BaseAcceptanceTestRunner(ABC):
             self._results_processor = common.ResultsProcessorFsBase(
                 service='disk-manager',
                 cluster=self._cluster.name,
-                test_suite=self._args.test_suite,
+                test_suite=self._get_test_suite(),
                 date=datetime.today().strftime('%Y-%m-%d'),
                 results_path=self._args.results_path,
             )
+
+    @abstractmethod
+    def _get_test_suite(self):
+        pass
 
     def _setup_binary_executor(self):
         self._test_binary_executor = self._test_binary_executor_type(

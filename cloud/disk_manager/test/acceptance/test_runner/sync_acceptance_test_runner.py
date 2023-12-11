@@ -20,6 +20,14 @@ class SyncTestBinaryExecutor(BaseTestBinaryExecutor):
 
 
 class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
+
+    def _get_test_suite(self):
+        return (
+            f'{self._args.zone_id}_sync_'
+            f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
+            f'{size_prettifier(self._args.disk_blocksize)}'.lower()
+        )
+
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
