@@ -31,11 +31,11 @@ on:
         description: "run tests"
       test_threads:
         type: string
-        default: '32'
+        default: '60'
         description: "Test threads count"
       link_threads:
         type: string
-        default: '8'
+        default: '16'
         description: "link threads count"
       test_size:
         type: string
