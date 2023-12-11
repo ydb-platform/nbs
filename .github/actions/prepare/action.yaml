@@ -3,30 +3,6 @@ description: Install required packages
 runs:
   using: "composite"
   steps:
-    - name: add cmake
-      shell: bash
-      run: |
-        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
-        echo "deb https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
-        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-        echo "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-14 main" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null
-    - name: install build dependencies
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils tzdata cmake \
-          python3-dev python3-pip ninja-build antlr3 m4 libidn11-dev libaio1 libaio-dev make clang-14 lld-14 llvm-14 file \
-          distcc s3cmd
-        sudo pip3 install conan==1.59 grpcio-tools pyinstaller==5.13.2 six pyyaml packaging PyHamcrest cryptography
-        sudo pip3 install conan==1.59 pytest==7.1.3 pytest-timeout pytest-xdist==3.3.1 setproctitle==1.3.2 grpcio grpcio-tools PyHamcrest tornado xmltodict pyarrow boto3 moto[server] psutil pygithub==1.59.1
-    - name: install ccache
-      shell: bash
-      run: |
-        export CCACHE_VERSION=4.8.1
-        export OS_ARCH=$(uname -m)
-        curl -L https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${OS_ARCH}.tar.xz \
-          | tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner ccache-${CCACHE_VERSION}-linux-${OS_ARCH}/ccache
-        ls -la /usr/local/bin/ccache
     - name: mount ccache shared folder
       shell: bash
       run: |

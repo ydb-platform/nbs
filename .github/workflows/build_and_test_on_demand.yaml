@@ -111,11 +111,11 @@ jobs:
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           folder-id: bjeuq5o166dq4ukv3eec
-          image-id: arlng9uhmtlat6q5pqlv
+          image-id: ${{ vars.IMAGE_ID_2204 }}
           disk-size: '1023GB'
           disk-type: network-ssd-nonreplicated
           platform-id: standard-v2
-          cores: 32
+          cores: 60
           memory: 128GB
           core-fraction: 100
           zone-id: eu-north1-c
