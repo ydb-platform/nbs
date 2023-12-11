@@ -167,7 +167,6 @@ migrations:
     - sandbox/projects/images/balancer/ImagesBuildThumbBalancerConfig
     - sandbox/projects/market/mqm/MerchYtComparatorMonitoring
     - sandbox/projects/market/partner_services/MarketPartnerItemServiceUpdateJob
-    - sandbox/projects/megamind/release_megamind_formulas
     - sandbox/projects/music/MusicDiffTest/lib
     - sandbox/projects/security/ReportFuzzing/ReportBuildAndFuzz
     - sandbox/projects/security/gideon/gideon-analytics/deploy-acl-parser-task
