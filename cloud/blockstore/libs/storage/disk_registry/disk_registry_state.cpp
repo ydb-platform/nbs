@@ -953,6 +953,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             if (TryUpdateDiskState(db, id, timestamp)) {
                 affectedDisks->push_back(id);
             }
+            TDiskState& disk = Disks[id];
+            UpdatePlacementGroup(db, id, disk, "RegisterAgent");
         }
 
         if (r.PrevNodeId != agent.GetNodeId()) {

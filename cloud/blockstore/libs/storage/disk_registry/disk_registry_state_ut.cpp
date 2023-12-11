@@ -3350,6 +3350,53 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldConsistentlyUpdateDeviceRacksOnAgentUpdate)
+    {
+        const int AgentNodeId = 1;
+        const auto config = AgentConfig(AgentNodeId, {
+            Device("dev-1", "uuid-1", "rack-1", 512, 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 512, 10_GB),
+        });
+        const auto configUpdated = AgentConfig(AgentNodeId, {
+            Device("dev-1", "uuid-1", "rack-1-updated", 512, 10_GB),
+            Device("dev-2", "uuid-2", "rack-1-updated", 512, 10_GB),
+        });
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({config})
+            .WithPlacementGroups({"group-1"})
+            .Build();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(db, state, "disk-1", {"group-1"}, {}, 20_GB, devices);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("dev-1", devices[0].GetDeviceName());
+        });
+
+        auto group = state.FindPlacementGroup("group-1");
+        UNIT_ASSERT(group);
+        UNIT_ASSERT_VALUES_EQUAL(1, group->DisksSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetDisks(0).DeviceRacksSize());
+        UNIT_ASSERT_VALUES_EQUAL("rack-1", group->GetDisks(0).GetDeviceRacks(0));
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, configUpdated));
+        });
+
+        group = state.FindPlacementGroup("group-1");
+        UNIT_ASSERT(group);
+        UNIT_ASSERT_VALUES_EQUAL(1, group->DisksSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetDisks(0).DeviceRacksSize());
+        UNIT_ASSERT_VALUES_EQUAL("rack-1-updated", group->GetDisks(0).GetDeviceRacks(0));
+    }
+
     Y_UNIT_TEST(ShouldUpdateAgentState)
     {
         TTestExecutor executor;
