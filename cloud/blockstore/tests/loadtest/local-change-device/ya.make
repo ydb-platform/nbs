@@ -6,10 +6,6 @@ TEST_SRCS(
     test.py
 )
 
-PEERDIR(
-    cloud/blockstore/pylibs/common
-)
-
 DEPENDS(
     cloud/blockstore/apps/disk_agent
 )

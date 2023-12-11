@@ -1,6 +1,5 @@
 import argparse
 from datetime import datetime
-import paramiko
 import socket
 
 from .test_cases import generate_test_cases, TestCase
@@ -83,6 +82,7 @@ def parse_args():
 
 
 def _run_test_case(
+    module_factories: common.ModuleFactories,
     ycp: YcpWrapper,
     test_case: TestCase,
     instance: Ycp.Instance,
@@ -95,7 +95,7 @@ def _run_test_case(
 
     logger.info(f'Running verify-test at instance <id={instance.id}>')
     exception = None
-    with common.make_ssh_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as ssh:
+    with module_factories.make_ssh_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as ssh:
         _, stdout, _ = ssh.exec_command(
             f'{_VERIFY_TEST_REMOTE_PATH} {test_case.verify_test_cmd_args} --file {file} 2>&1')
         exit_code = stdout.channel.recv_exit_status()
@@ -122,10 +122,17 @@ def _run_test_case(
         raise exception
 
 
-def _mount_fs(ycp: YcpWrapper, instance_ip: str, dry_run: bool, args, logger):
+def _mount_fs(
+    module_factories: common.ModuleFactories,
+    ycp: YcpWrapper,
+    instance_ip: str,
+    dry_run: bool,
+    args,
+    logger
+):
     logger.info('Mounting fs')
-    with (common.make_ssh_client(dry_run, instance_ip, ssh_key_path=args.ssh_key_path) as ssh,
-          common.make_sftp_client(dry_run, instance_ip, ssh_key_path=args.ssh_key_path) as sftp):
+    with (module_factories.make_ssh_client(dry_run, instance_ip, ssh_key_path=args.ssh_key_path) as ssh,
+          module_factories.make_sftp_client(dry_run, instance_ip, ssh_key_path=args.ssh_key_path) as sftp):
         sftp.mkdir(_NFS_MOUNT_PATH)
         _, _, stderr = ssh.exec_command(f'mount -t virtiofs {_NFS_DEVICE} {_NFS_MOUNT_PATH} && '
                                         f'touch {_NFS_TEST_FILE}')
@@ -147,7 +154,7 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
 
     folder = cluster.ipc_type_to_folder_desc(args.ipc_type)
 
-    helpers = common.make_helpers(args.dry_run)
+    helpers = module_factories.make_helpers(args.dry_run)
     ycp_config_generator = None
     if args.generate_ycp_config:
         ycp_config_generator = module_factories.make_config_generator(args.dry_run)
@@ -195,14 +202,14 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
         logger.info(f'Waiting until instance <id={instance.id}> becomes available via ssh')
         try:
             helpers.wait_until_instance_becomes_available_via_ssh(instance.ip, ssh_key_path=args.ssh_key_path)
-        except (paramiko.SSHException, socket.error) as e:
+        except (common.SshException, socket.error) as e:
             if args.debug:
                 ycp.turn_off_auto_deletion()
             raise Error(f'failed to start test, problem with'
                         f' ssh connection: {e}')
 
         logger.info(f'Copying verify-test to instance <id={instance.id}>')
-        with common.make_sftp_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as sftp:
+        with module_factories.make_sftp_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as sftp:
             sftp.put(args.verify_test_path, _VERIFY_TEST_REMOTE_PATH)
             sftp.chmod(_VERIFY_TEST_REMOTE_PATH, 0o755)
 
@@ -224,6 +231,7 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
                                     f' as a block device at instance <id={instance.id}>')
                         helpers.wait_for_block_device_to_appear(instance.ip, '/dev/vdb', ssh_key_path=args.ssh_key_path)
                         _run_test_case(
+                            module_factories,
                             ycp,
                             test_case,
                             instance,
@@ -235,8 +243,14 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
             else:
                 with ycp.create_fs(size=test_case.size, type_id=disk_type) as fs:
                     with ycp.attach_fs(instance, fs, _NFS_DEVICE):
-                        _mount_fs(ycp, instance.ip, args.dry_run, args, logger)
+                        _mount_fs(
+                            module_factories,
+                            ycp,
+                            instance.ip,
+                            args.dry_run,
+                            args, logger)
                         _run_test_case(
+                            module_factories,
                             ycp,
                             test_case,
                             instance,

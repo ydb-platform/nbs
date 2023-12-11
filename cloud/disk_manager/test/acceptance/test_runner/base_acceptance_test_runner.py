@@ -4,7 +4,6 @@ import contextlib
 import logging
 import uuid
 
-import paramiko
 import re
 import socket
 import subprocess
@@ -152,6 +151,7 @@ class BaseAcceptanceTestRunner(ABC):
             cluster_test_config_path=self._args.cluster_config_path,
             chunk_storage_type=self._args.chunk_storage_type,
             make_ycp_config_generator=self._module_factory.make_config_generator,
+            module_factory=self._module_factory,
             use_generated_config=self._args.generate_ycp_config,
             profile_name=self._args.profile_name,
             ycp_requests_template_path=self._args.ycp_requests_template_path,
@@ -177,6 +177,7 @@ class BaseAcceptanceTestRunner(ABC):
             placement_group=self._args.placement_group_name,
             platform_ids=self._args.instance_platform_ids,
             auto_delete=not self._args.debug,
+            module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
@@ -195,12 +196,12 @@ class BaseAcceptanceTestRunner(ABC):
                   src: str,
                   dst: str,
                   ip: str) -> None:
-        check_ssh_connection(ip, self._profiler, self._args.ssh_key_path)
+        check_ssh_connection(ip, self._profiler, self._module_factory, self._args.ssh_key_path)
         try:
-            with common.sftp_client(ip, ssh_key_path=self._args.ssh_key_path) as sftp:
+            with self._module_factory.sftp_client(ip, ssh_key_path=self._args.ssh_key_path) as sftp:
                 sftp.put(src, dst)
                 sftp.chmod(dst, 0o755)
-        except (paramiko.SSHException, socket.error) as e:
+        except (common.SshException, socket.error) as e:
             raise Error(f'Failed to copy file {src}'
                         f' from local to remote host {ip}:'
                         f'{dst} via sftp: {e}')
@@ -208,8 +209,8 @@ class BaseAcceptanceTestRunner(ABC):
     def _execute_ssh_cmd(self,
                          cmd: str,
                          ip: str) -> str:
-        check_ssh_connection(ip, self._profiler, self._args.ssh_key_path)
-        with common.ssh_client(ip, ssh_key_path=self._args.ssh_key_path) as ssh:
+        check_ssh_connection(ip, self._profiler, self._module_factory, self._args.ssh_key_path)
+        with self._module_factory.ssh_client(ip, ssh_key_path=self._args.ssh_key_path) as ssh:
             _, stdout, stderr = ssh.exec_command(cmd)
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):

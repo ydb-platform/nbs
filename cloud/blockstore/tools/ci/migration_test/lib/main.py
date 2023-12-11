@@ -46,7 +46,7 @@ class TestRunner:
         self.module_factories = module_factories
         self.args = args
         self.logger = logger
-        self.helpers = common.make_helpers(self.args.dry_run)
+        self.helpers = module_factories.make_helpers(self.args.dry_run)
         self.port = args.nbs_port
         self.need_kill_tablet = args.kill_tablet
         self.sleep_timeout = args.kill_period
@@ -144,7 +144,7 @@ class TestRunner:
     @common.retry(tries=5, delay=10, exception=Error)
     def check_load(self):
         self.logger.info(f'check if eternal load running on instance with ip=<{self.instance.ip}>')
-        with common.make_ssh_client(self.args.dry_run, self.instance.ip, ssh_key_path=self.args.ssh_key_path) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, self.instance.ip, ssh_key_path=self.args.ssh_key_path) as ssh:
             _, stdout, _ = ssh.exec_command('pgrep eternal-load')
             stdout.channel.exit_status_ready()
             out = ''.join(stdout.readlines())

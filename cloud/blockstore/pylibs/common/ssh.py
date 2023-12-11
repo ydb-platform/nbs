@@ -1,12 +1,11 @@
-from .retry import retry
-
-from contextlib import contextmanager
-
-import paramiko
 import sys
 
-_SSH_DEFAULT_RETRIES_COUNT = 15  # seconds
-_SSH_DEFAULT_USER = 'root'
+SSH_DEFAULT_RETRIES_COUNT = 15  # seconds
+SSH_DEFAULT_USER = 'root'
+
+
+class SshException(Exception):
+    pass
 
 
 class SshTestClient:
@@ -49,25 +48,6 @@ class SshTestClient:
 
     def get_transport(self):
         return SshTestClient.FakeTransport(self.ip)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
-
-
-class SshClient:
-    def __init__(self, ip: str, user: str, timeout: int):
-        self.client = ssh_client(ip, user, timeout)
-
-    @retry(tries=10, delay=60)
-    def exec_command(self, command):
-        return self.client.exec_command(command)
-
-    @retry(tries=10, delay=60)
-    def get_transport(self):
-        return self.client.get_transport()
 
     def __enter__(self):
         return self
@@ -124,82 +104,31 @@ class SftpTestClient:
         pass
 
 
-def configure_ssh_client(
-    client: paramiko.SSHClient,
-    ip: str,
-    ssh_key_path: str = None,
-    user: str = _SSH_DEFAULT_USER,
-    retries: int = _SSH_DEFAULT_RETRIES_COUNT
-):
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.load_system_host_keys()
-    retry_func = retry(tries=retries, delay=60)
-    retry_func(client.connect)(ip, username=user, timeout=180, key_filename=ssh_key_path)
-    transport = client.get_transport()
-    transport.set_keepalive(60)
-    session = transport.open_session()
-    paramiko.agent.AgentRequestHandler(session)
-
-
-@contextmanager
-def ssh_client(
-    ip: str,
-    ssh_key_path: str = None,
-    user: str = _SSH_DEFAULT_USER,
-    retries: int = _SSH_DEFAULT_RETRIES_COUNT
-) -> paramiko.SSHClient:
-    with paramiko.SSHClient() as ssh_client:
-        configure_ssh_client(ssh_client, ip, ssh_key_path, user, retries)
-        yield ssh_client
-
-
-def make_channel(
+def make_ssh_channel_stub(
     dry_run: bool,
     ip: str,
     ssh_key_path: str = None,
-    user: str = _SSH_DEFAULT_USER,
-    retries: int = _SSH_DEFAULT_RETRIES_COUNT
+    user: str = SSH_DEFAULT_USER,
+    retries: int = SSH_DEFAULT_RETRIES_COUNT
 ):
-    if dry_run:
-        return SshTestClient.FakeStdout().channel
-
-    ssh_client = paramiko.SSHClient()
-    configure_ssh_client(ssh_client, ip, ssh_key_path, user, retries)
-    return ssh_client.get_transport().open_session()
+    return SshTestClient.FakeStdout().channel
 
 
-def make_ssh_client(
+def make_ssh_client_stub(
     dry_run: bool,
     ip: str,
     ssh_key_path: str = None,
-    user: str = _SSH_DEFAULT_USER,
-    retries: int = _SSH_DEFAULT_RETRIES_COUNT
+    user: str = SSH_DEFAULT_USER,
+    retries: int = SSH_DEFAULT_RETRIES_COUNT
 ):
-    if dry_run:
-        return SshTestClient(ip)
-
-    return ssh_client(ip, ssh_key_path, user, retries)
+    return SshTestClient(ip)
 
 
-@contextmanager
-def sftp_client(
-    ip: str,
-    ssh_key_path: str = None,
-    user: str = _SSH_DEFAULT_USER,
-    retries: int = _SSH_DEFAULT_RETRIES_COUNT
-) -> paramiko.SFTPClient:
-    with ssh_client(ip, ssh_key_path, user, retries) as ssh:
-        yield ssh.open_sftp()
-
-
-def make_sftp_client(
+def make_sftp_client_stub(
     dry_run: bool,
     ip: str,
     ssh_key_path: str = None,
-    user: str = _SSH_DEFAULT_USER,
-    retries: int = _SSH_DEFAULT_RETRIES_COUNT
+    user: str = SSH_DEFAULT_USER,
+    retries: int = SSH_DEFAULT_RETRIES_COUNT
 ):
-    if dry_run:
-        return SftpTestClient(ip)
-
-    return sftp_client(ip, ssh_key_path, user, retries)
+    return SftpTestClient(ip)

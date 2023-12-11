@@ -19,4 +19,8 @@ def test_create_ycp():
         cluster_test_config_path=cluster_test_configs_path,
         use_generated_config=False,
         make_ycp_config_generator=common.make_config_generator_stub,
+        module_factory=common.ModuleFactories(
+            common.make_test_result_processor_stub,
+            common.fetch_server_version_stub,
+            common.make_config_generator_stub),
         dry_run=True)

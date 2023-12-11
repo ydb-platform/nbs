@@ -36,7 +36,13 @@ def find_disk(ycp: Ycp, args):
             return disk
 
 
-def get_test_config(ycp: Ycp, helpers: common.Helpers, args, logger) -> TestConfig:
+def get_test_config(
+    module_factories: common.ModuleFactories,
+    ycp: Ycp,
+    helpers,
+    args,
+    logger
+) -> TestConfig:
     logger.info('Generating test config')
     instance = find_instance(ycp, args)
     if instance is None:
@@ -46,7 +52,7 @@ def get_test_config(ycp: Ycp, helpers: common.Helpers, args, logger) -> TestConf
     if disk is None:
         raise Error(f'No disk with name=<{_DISK_NAME}> found')
 
-    with common.make_sftp_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as sftp:
+    with module_factories.make_sftp_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as sftp:
         file = sftp.file(_FILE_NAME)
         cfg = "".join(file.readlines())
 

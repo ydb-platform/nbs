@@ -12,9 +12,6 @@ PY_SRCS(
 )
 
 PEERDIR(
-    contrib/python/paramiko
-    contrib/python/urllib3
-
     cloud/blockstore/pylibs/clusters/test_config
 )
 

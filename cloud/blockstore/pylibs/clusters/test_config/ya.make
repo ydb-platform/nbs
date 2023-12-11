@@ -7,6 +7,8 @@ PY_SRCS(
 
 PEERDIR(
     contrib/python/Jinja2
+
+    library/python/resource
 )
 
 END()

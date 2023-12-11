@@ -1,7 +1,6 @@
 import logging
 import os
 
-import paramiko
 import random
 import socket
 
@@ -19,12 +18,13 @@ _logger = logging.getLogger(__file__)
 def check_ssh_connection(
     ip: str,
     profiler: common.Profiler,
+    module_factory,
     ssh_key_path: str | None = None,
 ) -> None:
     try:
-        helpers = common.make_helpers(False)
+        helpers = module_factory.make_helpers(False)
         helpers.wait_until_instance_becomes_available_via_ssh(ip, ssh_key_path=ssh_key_path)
-    except (paramiko.SSHException, socket.error) as e:
+    except (common.SshException, socket.error) as e:
         profiler.add_ip(ip)
         raise Error(f'failed to connect to remote host {ip} via ssh: {e}')
 
@@ -32,9 +32,10 @@ def check_ssh_connection(
 def wait_for_block_device_to_appear(
     ip: str,
     block_device: str,
+    module_factory,
     ssh_key_path: str | None = None,
 ) -> None:
-    helpers = common.make_helpers(False)
+    helpers = module_factory.make_helpers(False)
     helpers.wait_for_block_device_to_appear(ip, block_device, ssh_key_path=ssh_key_path)
 
 
@@ -48,6 +49,7 @@ def create_ycp(cluster_name: str,
                chunk_storage_type: str,
                cluster_test_config_path: str | None,
                make_ycp_config_generator: Callable[[bool], YcpConfigGeneratorProtocol],
+               module_factory,
                use_generated_config: bool = True,
                profile_name: str | None = None,
                dry_run: bool = False,
@@ -63,7 +65,7 @@ def create_ycp(cluster_name: str,
                       logger=_logger,
                       engine=make_ycp_engine(dry_run),
                       ycp_config_generator=make_ycp_config_generator(dry_run),
-                      helpers=common.make_helpers(dry_run),
+                      helpers=module_factory.make_helpers(dry_run),
                       use_generated_config=use_generated_config,
                       ycp_requests_template_path=ycp_requests_template_path,
                       )

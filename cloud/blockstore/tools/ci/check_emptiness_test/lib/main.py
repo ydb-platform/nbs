@@ -3,7 +3,6 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import argparse
 from datetime import datetime
 import os
-import paramiko
 import socket
 import threading
 
@@ -102,7 +101,7 @@ def _scan_disk(
     cores = int(os.getenv("TEST_VM_CORES", "2"))
     memory = int(os.getenv("TEST_VM_RAM", "8"))
 
-    helpers = common.make_helpers(args.dry_run)
+    helpers = module_factories.make_helpers(args.dry_run)
     ycp = YcpWrapper(
         args.profile_name or cluster.name,
         cluster.ipc_type_to_folder_desc('grpc'),
@@ -142,7 +141,7 @@ def _scan_disk(
 
             try:
                 helpers.wait_until_instance_becomes_available_via_ssh(instance.ip, ssh_key_path=args.ssh_key_path)
-            except (paramiko.SSHException, socket.error) as e:
+            except (common.SshException, socket.error) as e:
                 if args.debug:
                     ycp.turn_off_auto_deletion()
                 raise Error(f'failed to start test, instance not reachable'
@@ -150,7 +149,7 @@ def _scan_disk(
 
             with ycp.attach_disk(instance, disk):
                 logger.info(f'Copying verify-test to instance <id={instance.id}>')
-                with common.make_sftp_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as sftp:
+                with module_factories.make_sftp_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as sftp:
                     sftp.put(args.verify_test_path, _VERIFY_TEST_REMOTE_PATH)
                     sftp.chmod(_VERIFY_TEST_REMOTE_PATH, 0o755)
 
@@ -163,7 +162,7 @@ def _scan_disk(
                 helpers.wait_for_block_device_to_appear(instance.ip, device_name, ssh_key_path=args.ssh_key_path)
 
                 logger.info(f'Scanning disk with <id={disk.id}>')
-                with common.make_ssh_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as ssh:
+                with module_factories.make_ssh_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as ssh:
 
                     _, stdout, _ = ssh.exec_command(
                         f'{_VERIFY_TEST_REMOTE_PATH}'

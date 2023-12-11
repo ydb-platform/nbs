@@ -2,7 +2,6 @@ import argparse
 from datetime import datetime
 import json
 import logging
-import paramiko
 import socket
 
 
@@ -150,13 +149,13 @@ class FioTestsRunner:
         self,
         test_cases: list[TestCase],
         completed_test_cases: set[TestCase],
-        helpers: common.Helpers,
+        helpers,
         ycp: YcpWrapper,
         instance: Ycp.Instance,
     ) -> None:
         pass
 
-    def _load_fio_results(self, fio_results: paramiko.channel.ChannelFile):
+    def _load_fio_results(self, fio_results):
         return fio_results if self._args.dry_run else json.load(fio_results)
 
     def _teardown(
@@ -172,7 +171,7 @@ class FioTestsRunner:
 
         today = datetime.today().strftime('%Y-%m-%d')
 
-        helpers = common.make_helpers(self._args.dry_run)
+        helpers = self._module_factories.make_helpers(self._args.dry_run)
         ycp_config_generator = self._module_factories.make_config_generator(self._args.dry_run)
         ycp = YcpWrapper(
             self._args.profile_name or cluster.name,
@@ -241,7 +240,7 @@ class FioTestsRunner:
                 try:
                     helpers.wait_until_instance_becomes_available_via_ssh(instance.ip,
                                                                           ssh_key_path=self._args.ssh_key_path)
-                except (paramiko.SSHException, socket.error) as e:
+                except (common.SshException, socket.error) as e:
                     self._profiler.add_ip(instance.ip)
                     self._teardown(ycp)
                     raise Error(f'failed to start test, instance not reachable'
@@ -286,8 +285,8 @@ class FioTestsRunner:
         test_case: TestCase,
         ycp: YcpWrapper,
         instance: Ycp.Instance
-    ) -> paramiko.channel.ChannelFile:
-        with common.make_ssh_client(self._args.dry_run, instance.ip, ssh_key_path=self._args.ssh_key_path) as ssh:
+    ):
+        with self._module_factories.make_ssh_client(self._args.dry_run, instance.ip, ssh_key_path=self._args.ssh_key_path) as ssh:
             try:
                 if test_case.type in ['network-ssd-io-m2', 'network-ssd-io-m3']:
                     minutes_to_wait = 10
@@ -317,7 +316,7 @@ class FioTestsRunner:
                     self._teardown(ycp)
                     raise Error(f'failed to run fio on instance'
                                 f' <id={instance.id}>:\n{stderr_str}')
-            except (paramiko.SSHException, socket.error) as e:
+            except (common.SshException, socket.error) as e:
                 self._profiler.add_ip(instance.ip)
                 self._teardown(ycp)
                 raise Error(f'failed to finish test, problem with ssh'
@@ -389,7 +388,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
         self,
         test_cases: list[TestCase],
         completed_test_cases: set[TestCase],
-        helpers: common.Helpers,
+        helpers,
         ycp: YcpWrapper,
         instance: Ycp.Instance,
     ) -> None:
@@ -415,7 +414,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
         self,
         test_cases: list[TestCase],
         completed_test_cases: set[TestCase],
-        helpers: common.Helpers,
+        helpers,
         ycp: YcpWrapper,
         instance: Ycp.Instance,
     ) -> None:
@@ -462,7 +461,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
         self,
         test_cases: list[TestCase],
         completed_test_cases: set[TestCase],
-        helpers: common.Helpers,
+        helpers,
         ycp: YcpWrapper,
         instance: Ycp.Instance,
     ) -> None:
@@ -485,7 +484,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                         ssh_key_path=self._args.ssh_key_path)
                     disks.append(disk)
 
-        with common.make_ssh_client(self._args.dry_run, instance.ip, ssh_key_path=self._args.ssh_key_path) as ssh:
+        with self._module_factories.make_ssh_client(self._args.dry_run, instance.ip, ssh_key_path=self._args.ssh_key_path) as ssh:
             stdouts = list()
             stderrs = list()
             for test_case in test_cases:
@@ -496,7 +495,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                         self._get_fio_cmd_to_fill_device(test_case.target_path, test_case.type))
                     stdouts.append(stdout)
                     stderrs.append(stderr)
-                except (paramiko.SSHException, socket.error) as e:
+                except (common.SshException, socket.error) as e:
                     self._profiler.add_ip(instance.ip)
                     self._teardown_parallel_run(ycp, instance, disks)
                     raise Error(f'failed to finish test, problem with'
@@ -520,7 +519,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                     stdouts.append(stdout)
                     stderrs.append(stderr)
                     self._logger.info(f'Executing test case <{test_case.name}>')
-                except (paramiko.SSHException, socket.error) as e:
+                except (common.SshException, socket.error) as e:
                     self._profiler.add_ip(instance.ip)
                     self._teardown_parallel_run(ycp, instance, disks)
                     raise Error(f'failed to finish test, problem with'
@@ -566,8 +565,8 @@ class FioTestsRunnerNfs(FioTestsRunner):
         instance_ip: str,
     ) -> None:
         self._logger.info('Mounting fs')
-        with common.make_ssh_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as ssh, \
-                common.make_sftp_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as sftp:
+        with self._module_factories.make_ssh_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as ssh, \
+                self._module_factories.make_sftp_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as sftp:
             sftp.mkdir(self._NFS_MOUNT_PATH)
             _, _, stderr = ssh.exec_command(f'mount -t virtiofs '
                                             f'{self._NFS_DEVICE} {self._NFS_MOUNT_PATH} && '
@@ -586,8 +585,8 @@ class FioTestsRunnerNfs(FioTestsRunner):
         instance_ip: str,
     ) -> None:
         self._logger.info('Unmounting fs')
-        with common.make_ssh_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as ssh, \
-                common.make_sftp_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as sftp:
+        with self._module_factories.make_ssh_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as ssh, \
+                self._module_factories.make_sftp_client(self._args.dry_run, instance_ip, ssh_key_path=self._args.ssh_key_path) as sftp:
             _, _, stderr = ssh.exec_command(f'umount {self._NFS_MOUNT_PATH}')
             exit_code = stderr.channel.recv_exit_status()
             if exit_code != 0:
@@ -601,7 +600,7 @@ class FioTestsRunnerNfs(FioTestsRunner):
         self,
         test_cases: list[TestCase],
         completed_test_cases: set[TestCase],
-        helpers: common.Helpers,
+        helpers,
         ycp: YcpWrapper,
         instance: Ycp.Instance,
     ) -> None:

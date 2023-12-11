@@ -93,7 +93,7 @@ class EternalTestHelper:
         self.ycp = None
 
         self.ycp_config_generator = self.module_factories.make_config_generator(self.args.dry_run)
-        self.helpers = common.make_helpers(self.args.dry_run)
+        self.helpers = self.module_factories.make_helpers(self.args.dry_run)
 
         if self.args.test_case == 'all':
             self.all_test_configs = get_test_config(self.args, 'db' in self.args.command)
@@ -132,7 +132,7 @@ class EternalTestHelper:
             blockSize=(self.test_config.disk_config or self.test_config.fs_config).bs,
             filePath=self.test_config.test_file
         )
-        with common.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
+        with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
             file = sftp.file(self._CONFIG_PATH, 'w')
             file.write(json)
             file.flush()
@@ -156,12 +156,12 @@ class EternalTestHelper:
     def run_command_in_background(self, instance_ip: str, command: str):
         self.logger.info(f'Running command on instance:\n{command}')
 
-        channel = common.make_channel(self.args.dry_run, instance_ip, user='root', ssh_key_path=self.args.ssh_key_path)
+        channel = self.module_factories.make_ssh_channel(self.args.dry_run, instance_ip, user='root', ssh_key_path=self.args.ssh_key_path)
         channel.exec_command(command)
 
     @common.retry(tries=5, delay=5, exception=Error)
     def _wait_until_killing(self, instance_ip: str, command: str):
-        with common.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
             _, stdout, _ = ssh.exec_command(f'pgrep {command}')
             stdout.channel.recv_exit_status()
 
@@ -171,7 +171,7 @@ class EternalTestHelper:
 
     def kill_load_on_instance(self, instance_ip: str, command: str):
         self.logger.info(f'Killing {command} on instance')
-        with common.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
             _, stdout, _ = ssh.exec_command(f'pkill {command}')
             stdout.channel.recv_exit_status()
             self._wait_until_killing(instance_ip, command)
@@ -192,8 +192,8 @@ class EternalTestHelper:
                     dst.writelines(src)
                 self.logger.info(f'done: {time.time() - t0} s')
 
-            with common.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh, \
-                 common.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
+            with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh, \
+                 self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
 
                 self.logger.info(f'scp "{src_path} to {dst_path} ...')
                 t0 = time.time()
@@ -221,7 +221,7 @@ class EternalTestHelper:
             src_path = self.loader_path
             dst_path = self._REMOTE_PATH
 
-            with common.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
+            with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
                 self.logger.info(f'scp "{src_path} to {dst_path} ...')
                 t0 = time.time()
                 sftp.put(src_path, dst_path)
@@ -231,7 +231,7 @@ class EternalTestHelper:
 
     def copy_test_script_to_instance(self, instance_ip, name: str, path: str):
         self.logger.info(f'Copying test_script to instance with <ip={instance_ip}>')
-        with common.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
+        with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
             file = sftp.file(f'{path}/{name}', 'w')
             file.write(resource.find(name).decode('utf8'))
             file.flush()
@@ -283,7 +283,7 @@ class EternalTestHelper:
     def _mount_fs(self, instance: Ycp.Instance):
         self.logger.info('Mounting fs')
         config = self.test_config.fs_config
-        with common.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
             cmd = (f'mkdir -p {config.mount_path} && {{ sudo umount {config.mount_path} || true; }} &&'
                    f' mount -t virtiofs {config.device_name} {config.mount_path}')
             if hasattr(self.test_config, 'test_file'):
@@ -444,7 +444,7 @@ class EternalTestHelper:
         instance = self.find_instance()
 
         crontab_cmd = self.generate_run_load_command()
-        with common.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
             _, _, stderr = ssh.exec_command(
                 f'(crontab -l 2>/dev/null; echo "@reboot {crontab_cmd}") | crontab -')
             if stderr.channel.recv_exit_status():
@@ -493,14 +493,14 @@ class EternalTestHelper:
 
         instance = self.create_and_configure_vm()
         self.logger.info('Prepare database, executing script')
-        with common.make_sftp_client(self.args.dry_run, instance.ip) as sftp:
+        with self.module_factories.make_sftp_client(self.args.dry_run, instance.ip) as sftp:
             script_name = self._DB_TEST_INIT_SCRIPT % self.test_config.db
             file = sftp.file(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 'w')
             file.write(resource.find(script_name).decode('utf8'))
             file.flush()
             sftp.chmod(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 0o755)
 
-        with common.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
             _, stdout, stderr = ssh.exec_command(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}')
             exit_code = stdout.channel.recv_exit_status()
             if exit_code != 0:
@@ -521,7 +521,7 @@ class EternalTestHelper:
 
     def check_load(self, instance: Ycp.Instance) -> bool:
         self.logger.info(f'Check if eternal load running on instance id=<{instance.id}>')
-        with common.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
             _, stdout, _ = ssh.exec_command('pgrep eternal-load')
             stdout.channel.exit_status_ready()
             out = ''.join(stdout.readlines())

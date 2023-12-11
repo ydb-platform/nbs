@@ -26,7 +26,7 @@ class TestRunner:
     def __init__(self, module_factories: common.ModuleFactories, args, logger):
         self.args = args
         self.logger = logger
-        self.helpers = common.make_helpers(args.dry_run)
+        self.helpers = module_factories.make_helpers(args.dry_run)
         self.ycp = Ycp(
             args.profile_name,
             use_generated_config=args.generate_ycp_config,
@@ -35,7 +35,7 @@ class TestRunner:
             ycp_config_generator=module_factories.make_config_generator(args.dry_run),
             helpers=self.helpers,
             ycp_requests_template_path=args.ycp_requests_template_path)
-        self.test_config = get_test_config(self.ycp, self.helpers, args, logger)
+        self.test_config = get_test_config(module_factories, self.ycp, self.helpers, args, logger)
 
         self.port = args.nbs_port
         credentials = None

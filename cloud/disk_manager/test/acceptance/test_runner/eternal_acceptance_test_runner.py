@@ -1,6 +1,5 @@
 import logging
 import math
-import paramiko
 
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor
@@ -127,9 +126,8 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                             cmds = []
                             for i in range(self._iodepth):
                                 offset = int(i * byte_count)
-                                check_ssh_connection(instance.ip, self._profiler, self._args.ssh_key_path)
-                                ssh = paramiko.SSHClient()
-                                common.configure_ssh_client(ssh, instance.ip, ssh_key_path=self._args.ssh_key_path)
+                                check_ssh_connection(instance.ip, self._profiler, self._module_factory, self._args.ssh_key_path)
+                                ssh = self._module_factory.make_ssh_client(False, instance.ip, ssh_key_path=self._args.ssh_key_path)
                                 cmd = (f'{self._remote_cmp_path} --verbose'
                                        f' --bytes={byte_count}'
                                        f' --ignore-initial={offset}'

@@ -21,6 +21,7 @@ class YcpNewInstancePolicy:
                  placement_group: str,
                  platform_ids: list[str],
                  auto_delete: bool,
+                 module_factory,
                  ssh_key_path: str | None = None) -> None:
         self._ycp = ycp
         self._zone_id = zone_id
@@ -31,6 +32,7 @@ class YcpNewInstancePolicy:
         self._placement_group = placement_group
         self._platform_ids = platform_ids
         self._auto_delete = auto_delete
+        self._module_factory = module_factory
         self._ssh_key_path = ssh_key_path
 
     @contextmanager
@@ -65,5 +67,5 @@ class YcpNewInstancePolicy:
     @contextmanager
     def attach_disk(self, disk: Ycp.Disk, block_device: str) -> None:
         with self._ycp.attach_disk(self._instance, disk):
-            wait_for_block_device_to_appear(self._instance.ip, block_device, self._ssh_key_path)
+            wait_for_block_device_to_appear(self._instance.ip, block_device, self._module_factory, self._ssh_key_path)
             yield

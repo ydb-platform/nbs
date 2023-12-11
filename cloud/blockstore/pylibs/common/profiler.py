@@ -1,6 +1,4 @@
-import logging
 import os
-import paramiko
 import subprocess
 import sys
 import uuid
@@ -10,8 +8,6 @@ from contextlib import contextmanager
 
 class Profiler:
     def __init__(self, logger):
-        paramiko.util.log_to_file(f'ssh-{uuid.uuid1()}.log', level=logging.DEBUG)
-
         self.logger = logger
         self.ips = []
         self.tcpdump_file = open(f'tcpdump-{uuid.uuid1()}.txt', 'w')
