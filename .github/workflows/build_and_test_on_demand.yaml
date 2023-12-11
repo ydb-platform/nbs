@@ -116,7 +116,7 @@ jobs:
           disk-type: network-ssd-nonreplicated
           platform-id: standard-v2
           cores: 60
-          memory: 128GB
+          memory: 120GB
           core-fraction: 100
           zone-id: eu-north1-c
           subnet-id: f8uh0ml4rhb45nde9p75
