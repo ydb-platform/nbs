@@ -44,6 +44,7 @@ class TDiskRegistryActor final
 {
     using TLogbrokerServicePtr = NLogbroker::IServicePtr;
     using TDiskId = TString;
+    using TDeviceId = TString;
 
     enum EState
     {
@@ -62,6 +63,17 @@ class TDiskRegistryActor final
         NActors::IActor::TReceiveFunc Func;
     };
 
+    struct TPendingWaitForDeviceCleanupRequest
+    {
+        THashSet<TDeviceId> PendingDevices;
+        TRequestInfoPtr RequestInfo;
+        std::function<NActors::IEventBasePtr (const NProto::TError&)> ResponseFactory;
+
+        void Reply(
+            const NActors::TActorContext& ctx,
+            const NProto::TError& error);
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -77,6 +89,8 @@ private:
     TDeque<TPendingRequest> PendingRequests;
 
     THashMap<TDiskId, TVector<TRequestInfoPtr>> PendingDiskDeallocationRequests;
+    THashMap<TDeviceId, TVector<std::shared_ptr<TPendingWaitForDeviceCleanupRequest>>>
+        PendingWaitForDeviceCleanupRequests;
 
     bool BrokenDisksDestructionInProgress = false;
     bool DisksNotificationInProgress = false;
@@ -233,6 +247,25 @@ private:
         const NActors::TActorContext& ctx,
         TVector<TRequestInfoPtr>& requestInfos,
         NProto::TError error);
+
+    void ReplyToPendingWaitForDeviceCleanupRequests(
+        const NActors::TActorContext& ctx,
+        const TVector<TDeviceId>& devices);
+
+    void CancelAllPendingWaitForDeviceCleanupRequests(
+        const NActors::TActorContext& ctx);
+
+    void CancelPendingWaitForDeviceCleanupRequests(
+        const NActors::TActorContext& ctx,
+        const TDeviceId& id,
+        const NProto::TError& error);
+
+    void PostponeUpdateCmsHostDeviceStateResponse(
+        const NActors::TActorContext& ctx,
+        TDuration timeout,
+        TVector<TString> devicesNeedToBeClean,
+        TVector<TString> affectedDisks,
+        TRequestInfoPtr requestInfo);
 
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 

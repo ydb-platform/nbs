@@ -5016,27 +5016,37 @@ auto TDiskRegistryState::ResolveDevices(
     return { agent, std::move(devices) };
 }
 
-NProto::TError TDiskRegistryState::AddNewDevices(
+auto TDiskRegistryState::AddNewDevices(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     const TString& path,
     TInstant now,
-    bool dryRun)
+    bool dryRun) -> TUpdateCmsDeviceStateResult
 {
+    TVector<TDeviceId> devicesThatNeedToBeCleaned;
     TVector<NProto::TDeviceConfig*> devices;
+
     for (auto& device: *agent.MutableUnknownDevices()) {
         if (device.GetDeviceName() == path) {
             devices.push_back(&device);
+
+            if (GetDevicePoolKind(device.GetPoolName()) == NProto::DEVICE_POOL_KIND_LOCAL) {
+                devicesThatNeedToBeCleaned.push_back(device.GetDeviceUUID());
+            }
         }
     }
 
     if (devices.empty()) {
-        return MakeError(E_NOT_FOUND, TStringBuilder()
-            << "Device not found (" << agent.GetAgentId() << "," << path << ')');
+        return {
+            .Error = MakeError(E_NOT_FOUND, TStringBuilder()
+                << "Device not found (" << agent.GetAgentId() << "," << path << ')')
+        };
     }
 
     if (dryRun) {
-        return {};
+        return {
+            .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
+        };
     }
 
     TVector<TString> ids;
@@ -5080,7 +5090,10 @@ NProto::TError TDiskRegistryState::AddNewDevices(
 
     ResumeDevices(now, db, ids);
 
-    return error;
+    return {
+        .Error = std::move(error),
+        .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
+    };
 }
 
 NProto::TError TDiskRegistryState::CmsAddDevice(
@@ -5126,6 +5139,10 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
     TDiskId affectedDisk;
     ApplyDeviceStateChange(db, agent, device, now, affectedDisk);
     Y_UNUSED(affectedDisk);
+
+    if (!HasError(error)) {
+        ResumeDevice(now, db, device.GetDeviceUUID());
+    }
 
     return error;
 }
@@ -5202,20 +5219,18 @@ NProto::TError TDiskRegistryState::CmsRemoveDevice(
     return error;
 }
 
-NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
+auto TDiskRegistryState::UpdateCmsDeviceState(
     TDiskRegistryDatabase& db,
     const TAgentId& agentId,
     const TString& path,
     NProto::EDeviceState newState,
     TInstant now,
-    bool dryRun,
-    TVector<TDiskId>& affectedDisks,
-    TDuration& timeout)
+    bool dryRun) -> TUpdateCmsDeviceStateResult
 {
     if (newState != NProto::DEVICE_STATE_ONLINE &&
         newState != NProto::DEVICE_STATE_WARNING)
     {
-        return MakeError(E_ARGUMENT, "Unexpected state");
+        return { .Error = MakeError(E_ARGUMENT, "Unexpected state") };
     }
 
     auto [agent, devices] = ResolveDevices(agentId, path);
@@ -5225,39 +5240,54 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
     }
 
     if (!agent || devices.empty()) {
-        return MakeError(E_NOT_FOUND, TStringBuilder()
-            << "Device not found (" << agentId << "," << path << ')');
+        return {
+            .Error = MakeError(E_NOT_FOUND, TStringBuilder()
+                << "Device not found (" << agentId << "," << path << ')')
+        };
     }
 
-    NProto::TError error;
+    TUpdateCmsDeviceStateResult result;
 
     // not transactional actually but it's not a big problem
     ui32 processed = 0;
     for (auto* device: devices) {
         if (newState == NProto::DEVICE_STATE_ONLINE) {
-            error = CmsAddDevice(db, *agent, *device, now, dryRun, timeout);
+            result.Error = CmsAddDevice(
+                db,
+                *agent,
+                *device,
+                now,
+                dryRun,
+                result.Timeout);
+
+            if (!HasError(result.Error)
+                    && IsDirtyDevice(device->GetDeviceUUID())
+                    && device->GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL)
+            {
+                result.DevicesThatNeedToBeCleaned.push_back(device->GetDeviceUUID());
+            }
         } else {
             TString affectedDisk;
-            error = CmsRemoveDevice(
+            result.Error = CmsRemoveDevice(
                 db,
                 *agent,
                 *device,
                 now,
                 dryRun,
                 affectedDisk,
-                timeout);
+                result.Timeout);
             if (!affectedDisk.empty()) {
-                affectedDisks.push_back(std::move(affectedDisk));
+                result.AffectedDisks.push_back(std::move(affectedDisk));
             }
         }
 
-        if (HasError(error)) {
+        if (HasError(result.Error)) {
             STORAGE_WARN(
                 "UpdateCmsDeviceState stopped after processing %u devices"
                 ", current deviceId: %s, error: %s",
                 processed,
                 device->GetDeviceUUID().c_str(),
-                FormatError(error).c_str());
+                FormatError(result.Error).c_str());
 
             break;
         }
@@ -5265,9 +5295,9 @@ NProto::TError TDiskRegistryState::UpdateCmsDeviceState(
         ++processed;
     }
 
-    SortUnique(affectedDisks);
+    SortUnique(result.AffectedDisks);
 
-    return error;
+    return result;
 }
 
 void TDiskRegistryState::ApplyDeviceStateChange(
@@ -6310,28 +6340,44 @@ NProto::TError TDiskRegistryState::SuspendDevice(
     return {};
 }
 
+void TDiskRegistryState::ResumeDevice(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDeviceId& id)
+{
+    if (DeviceList.IsSuspendedDevice(id) && DeviceList.IsDirtyDevice(id)) {
+        DeviceList.ResumeAfterErase(id);
+
+        NProto::TSuspendedDevice device;
+        device.SetId(id);
+        device.SetResumeAfterErase(true);
+        db.UpdateSuspendedDevice(device);
+    } else {
+        DeviceList.ResumeDevice(id);
+        db.DeleteSuspendedDevice(id);
+
+        TryUpdateDevice(now, db, id);
+    }
+}
+
 void TDiskRegistryState::ResumeDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TVector<TDeviceId>& ids)
 {
     for (const auto& id: ids) {
-        if (DeviceList.ResumeDevice(id)) {
-            db.DeleteSuspendedDevice(id);
-
-            TryUpdateDevice(now, db, id);
-        } else {
-            NProto::TSuspendedDevice device;
-            device.SetId(id);
-            device.SetResumeAfterErase(true);
-            db.UpdateSuspendedDevice(device);
-        }
+        ResumeDevice(now, db, id);
     }
 }
 
 bool TDiskRegistryState::IsSuspendedDevice(const TDeviceId& id) const
 {
     return DeviceList.IsSuspendedDevice(id);
+}
+
+bool TDiskRegistryState::IsDirtyDevice(const TDeviceId& id) const
+{
+    return DeviceList.IsDirtyDevice(id);
 }
 
 TVector<NProto::TSuspendedDevice> TDiskRegistryState::GetSuspendedDevices() const

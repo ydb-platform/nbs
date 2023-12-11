@@ -535,6 +535,12 @@ struct TEvDiskRegistryPrivate
     {
         TDuration Timeout;
         TVector<TString> DependentDiskIds;
+
+        TCmsActionResponse() = default;
+        TCmsActionResponse(TDuration timeout, TVector<TString> dependentDiskIds)
+            : Timeout(timeout)
+            , DependentDiskIds(std::move(dependentDiskIds))
+        {}
     };
 
     using TUpdateCmsHostDeviceStateResponse = TCmsActionResponse;

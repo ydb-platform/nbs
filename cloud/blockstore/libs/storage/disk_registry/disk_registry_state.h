@@ -540,15 +540,21 @@ public:
         TString reason,
         TDiskId& affectedDisk);
 
-    NProto::TError UpdateCmsDeviceState(
+    struct TUpdateCmsDeviceStateResult
+    {
+        NProto::TError Error;
+        TVector<TDiskId> AffectedDisks;
+        TVector<TDeviceId> DevicesThatNeedToBeCleaned;
+        TDuration Timeout;
+    };
+
+    TUpdateCmsDeviceStateResult UpdateCmsDeviceState(
         TDiskRegistryDatabase& db,
         const TAgentId& agentId,
         const TString& path,
         NProto::EDeviceState state,
         TInstant now,
-        bool dryRun,
-        TVector<TDiskId>& affectedDisks,
-        TDuration& timeout);
+        bool dryRun);
 
     NProto::TError ReplaceDevice(
         TDiskRegistryDatabase& db,
@@ -667,11 +673,16 @@ public:
         bool isReplacement);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
+    void ResumeDevice(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDeviceId& id);
     void ResumeDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& ids);
     bool IsSuspendedDevice(const TDeviceId& id) const;
+    bool IsDirtyDevice(const TDeviceId& id) const;
     TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
     const TDeque<TAutomaticallyReplacedDeviceInfo>& GetAutomaticallyReplacedDevices() const
@@ -1100,7 +1111,7 @@ private:
         bool dryRun,
         TDuration& timeout);
 
-    NProto::TError AddNewDevices(
+    TUpdateCmsDeviceStateResult AddNewDevices(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         const TString& path,

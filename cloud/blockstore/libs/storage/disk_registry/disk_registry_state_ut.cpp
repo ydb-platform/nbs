@@ -5819,21 +5819,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-            auto error = state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts,
-                false,
-                affectedDisks,
-                timeout);
+                false);  // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(storageConfig->GetNonReplicatedInfraTimeout(), timeout);
-            ASSERT_VECTORS_EQUAL(TVector{"disk-3"}, affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, result.Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                storageConfig->GetNonReplicatedInfraTimeout(),
+                result.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector{"disk-3"}, result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
@@ -5878,23 +5877,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         // cms comes and request host removal
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-            auto error = state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts + TDuration::Seconds(10),
-                false,
-                affectedDisks,
-                timeout);
+                false); // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 TDuration(),
-                timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+                result.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
 
         // mark agent is unavailable
@@ -7090,39 +7086,33 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto ts = Now();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-            auto error = state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts,
-                false,
-                affectedDisks,
-                timeout);
+                false); // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration(), result.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-            auto error = state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts + TDuration::Seconds(10),
-                true,
-                affectedDisks,
-                timeout);
+                true);   // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration(), result.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
     }
 
@@ -7148,18 +7138,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
 
         auto updateDevice = [&] (auto db, auto desiredState) {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-            auto error = state.UpdateCmsDeviceState(
+            return state.UpdateCmsDeviceState(
                 db,
                 agent1.GetAgentId(),
                 "dev-2",
                 desiredState,
                 Now(),
-                false,   // dryRun
-                affectedDisks,
-                timeout);
-            return std::make_tuple(error, timeout, affectedDisks);
+                false);   // dryRun
         };
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -7179,13 +7164,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            auto [error, timeout, affectedDisks] = updateDevice(
-                db,
-                NProto::DEVICE_STATE_WARNING);
+            auto r = updateDevice(db, NProto::DEVICE_STATE_WARNING);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_VALUES_UNEQUAL(TDuration{}, timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, r.Error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(TDuration{}, r.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, r.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -7196,35 +7180,32 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            auto [error, timeout, affectedDisks] = updateDevice(
-                db,
-                NProto::DEVICE_STATE_WARNING);
+            auto r = updateDevice(db, NProto::DEVICE_STATE_WARNING);
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, r.Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, r.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            auto [error, timeout, affectedDisks] = updateDevice(
-                db,
-                NProto::DEVICE_STATE_WARNING);
+            auto r = updateDevice(db, NProto::DEVICE_STATE_WARNING);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, r.Error.GetCode(), r.Error);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, r.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            auto [error, timeout, affectedDisks] = updateDevice(
-                db,
-                NProto::DEVICE_STATE_ONLINE);
+            auto r = updateDevice(db, NProto::DEVICE_STATE_ONLINE);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, r.Error.GetCode(), r.Error);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, r.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
     }

@@ -60,18 +60,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-
-            UNIT_ASSERT_SUCCESS(state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_ONLINE,
                 Now(),
-                false, // dryRun
-                affectedDisks,
-                timeout));
+                false); // dryRun
+
+            UNIT_ASSERT_SUCCESS(result.Error);
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfigVersion());
@@ -82,8 +79,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 "uuid-1.1",
                 state.GetConfig().GetKnownAgents(0).GetDevices(0).GetDeviceUUID());
 
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
@@ -140,18 +138,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-
-            UNIT_ASSERT_SUCCESS(state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
-                false, // dryRun
-                affectedDisks,
-                timeout));
+                false); // dryRun
+
+            UNIT_ASSERT_SUCCESS(result.Error);
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfigVersion());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
@@ -160,8 +155,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 state.GetConfig().GetKnownAgents(0).DevicesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDirtyDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
@@ -233,22 +229,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-
-            auto error = state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
-                false, // dryRun
-                affectedDisks,
-                timeout);
+                false); // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL_C(E_TRY_AGAIN, error.GetCode(), error);
-            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_VALUES_UNEQUAL(TDuration {}, timeout);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                result.Error.GetCode(),
+                result.Error);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{"vol0"}, result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
+            UNIT_ASSERT_VALUES_UNEQUAL(TDuration {}, result.Timeout);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -264,21 +259,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-
-            UNIT_ASSERT_SUCCESS(state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agentConfig.GetAgentId(),
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
-                false, // dryRun
-                affectedDisks,
-                timeout));
+                false); // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, timeout);
+            UNIT_ASSERT_SUCCESS(result.Error);
+
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
 
             TVector<NProto::TDeviceConfig> devices;
             auto error = state.GetDiskDevices("vol0", devices);

@@ -280,25 +280,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
 
             for (const auto& d: Agents[1].GetDevices()) {
-                TVector<TString> diskIds;
-                TDuration timeout;
-                auto error = state.UpdateCmsDeviceState(
+                auto r = state.UpdateCmsDeviceState(
                     db,
                     Agents[1].GetAgentId(),
                     d.GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
                     TInstant::FromValue(1),
-                    false,    // dryRun
-                    diskIds,
-                    timeout);
+                    false); // dryRun
 
                 UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));
 
                 if (d.GetDeviceUUID() == result.Devices[0].GetDeviceUUID()) {
-                    UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-                    ASSERT_VECTORS_EQUAL(TVector{"nrd0"}, diskIds);
+                    UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, r.Error.GetCode());
+                    ASSERT_VECTORS_EQUAL(TVector{"nrd0"}, r.AffectedDisks);
                 } else {
-                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, r.Error.GetCode());
                 }
             }
         });

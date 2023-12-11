@@ -132,7 +132,8 @@ public:
     NProto::EDeviceState GetDeviceState(const TDeviceId& uuid) const;
 
     void SuspendDevice(const TDeviceId& ids);
-    bool ResumeDevice(const TDeviceId& id);
+    void ResumeDevice(const TDeviceId& id);
+    void ResumeAfterErase(const TDeviceId& id);
     bool IsSuspendedDevice(const TDeviceId& id) const;
     TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 

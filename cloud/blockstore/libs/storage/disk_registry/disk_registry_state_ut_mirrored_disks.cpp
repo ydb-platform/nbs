@@ -1128,21 +1128,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             // mirrored disk replicas should not delay host/device maintenance
             // FIXME NBS-4169
 
-            TVector<TString> affectedDisks;
-            TDuration timeout;
-            auto error = state.UpdateCmsDeviceState(
+            auto result = state.UpdateCmsDeviceState(
                 db,
                 agentConfig1.GetAgentId(),
                 "dev-3",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
-                false,
-                affectedDisks,
-                timeout);
+                false); // dryRun
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), result.Timeout);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
+            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
 
         TDiskInfo diskInfo;
@@ -2073,24 +2070,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     agentConfig1.GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
                     changeStateTs,
-                    false,
+                    false,  // dryRun
                     affectedDisks,
                     timeout);
 
                 ASSERT_VECTORS_EQUAL(TVector{"disk-1/0"}, affectedDisks);
             } else {
-                TVector<TString> affectedDisks;
-                error = state.UpdateCmsDeviceState(
+                auto result = state.UpdateCmsDeviceState(
                     db,
                     agentConfig1.GetAgentId(),
                     "dev-1",
                     NProto::DEVICE_STATE_WARNING,
                     changeStateTs,
-                    false,
-                    affectedDisks,
-                    timeout);
+                    false); // dryRun
 
-                ASSERT_VECTORS_EQUAL(TVector{"disk-1/0"}, affectedDisks);
+                error = result.Error;
+                timeout = result.Timeout;
+
+                ASSERT_VECTORS_EQUAL(TVector{"disk-1/0"}, result.AffectedDisks);
+                ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
             }
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
@@ -2188,24 +2186,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     agentConfig1.GetAgentId(),
                     NProto::AGENT_STATE_WARNING,
                     changeStateTs,
-                    false,
+                    false,  // dryRun
                     affectedDisks,
                     timeout);
 
                 ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
             } else {
-                TVector<TString> affectedDisks;
-                error = state.UpdateCmsDeviceState(
+                auto result = state.UpdateCmsDeviceState(
                     db,
                     agentConfig1.GetAgentId(),
                     "dev-1",
                     NProto::DEVICE_STATE_WARNING,
                     changeStateTs,
-                    false,
-                    affectedDisks,
-                    timeout);
+                    false); // dryRun
 
-                ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+                error = result.Error;
+                timeout = result.Timeout;
+
+                ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
+                ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
             }
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());

@@ -31,7 +31,7 @@ def test_spare_node(ydb):
 
     assert len(r) == 0
 
-    is_spare_node = nbs.counters.find(sensor='IsSpareNode')
+    is_spare_node = nbs.counters.find({'sensor': 'IsSpareNode'})
 
     assert is_spare_node['value'] == 1
 

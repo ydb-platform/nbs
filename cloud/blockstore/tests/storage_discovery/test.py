@@ -19,10 +19,12 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
     ensure_path_exists
 
 
+DEVICE_SIZE = 1024**2
+
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
-        {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": 1024**2},
-        {"Name": "rot", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": 1024**2},
+        {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_LOCAL", "AllocationUnit": DEVICE_SIZE},
+        {"Name": "rot", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": DEVICE_SIZE},
     ]}
 
 
@@ -121,9 +123,9 @@ def create_device_files(data_path):
             f.flush()
 
     for i in range(6):
-        create_file(f"NVMENBS{i + 1:02}", 1024**2 + i * 4096)
+        create_file(f"NVMENBS{i + 1:02}", DEVICE_SIZE + i * 4096)
 
-    create_file("ROTNBS01", 1024**2 * 10)
+    create_file("ROTNBS01", DEVICE_SIZE * 10)
 
 
 @pytest.fixture(name='disk_agent_configurator')
@@ -151,8 +153,8 @@ def create_disk_agent_static_config(data_path, agent_id):
             "Path": os.path.join(data_path, "ROTNBS01"),
             "BlockSize": 4096,
             "PoolName": "rot",
-            "Offset": 1024**2 / 2 + i * (1024**2 + 4096),
-            "FileSize": 1024**2,
+            "Offset": DEVICE_SIZE / 2 + i * (DEVICE_SIZE + 4096),
+            "FileSize": DEVICE_SIZE,
             "DeviceId": _md5(f"{agent_id}-01-{i + 1:03}-rot")
         }
 
@@ -171,20 +173,20 @@ def create_disk_agent_dynamic_config(data_path):
             "PoolConfigs": [{
                 "PoolName": "rot",
                 "MinSize": 0,
-                "MaxSize": 1024**2 * 10,
+                "MaxSize": DEVICE_SIZE * 10,
                 "HashSuffix": "-rot",
                 "Layout": {
-                    "DeviceSize": 1024**2,
+                    "DeviceSize": DEVICE_SIZE,
                     "DevicePadding": 4096,
-                    "HeaderSize": 1024**2 / 2
+                    "HeaderSize": DEVICE_SIZE / 2
                 }
             }]
         }, {
             "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
             "PoolConfigs": [{
                 "PoolName": "1Mb",
-                "MinSize": 1024**2,
-                "MaxSize": 1024**2 + 5 * 4096
+                "MinSize": DEVICE_SIZE,
+                "MaxSize": DEVICE_SIZE + 5 * 4096
             }]}]
         })
 
@@ -214,21 +216,21 @@ def _check_disk_agent_config(nbs, agent_id, data_path):
 
     for i, d in enumerate(nvme):
         assert d["DeviceName"] == f"{data_path}/NVMENBS{i + 1:02}"
-        assert int(d["BlocksCount"]) == 1024**2 / 4096
-        assert int(d["UnadjustedBlockCount"]) == 1024**2 / 4096 + i
+        assert int(d["BlocksCount"]) == DEVICE_SIZE / 4096
+        assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 4096 + i
 
     rot = sorted(
         [d for d in devices if d["PoolName"] == "rot"],
         key=lambda d: int(d["PhysicalOffset"]))
     assert len(rot) == 8
 
-    offset = 1024**2 / 2
+    offset = DEVICE_SIZE / 2
     for d in rot:
         assert d["DeviceName"] == f"{data_path}/ROTNBS01"
-        assert int(d["BlocksCount"]) == 1024**2 / 4096
-        assert int(d["UnadjustedBlockCount"]) == 1024**2 / 4096
+        assert int(d["BlocksCount"]) == DEVICE_SIZE / 4096
+        assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 4096
         assert int(d["PhysicalOffset"]) == offset
-        offset += 1024**2 + 4096
+        offset += DEVICE_SIZE + 4096
 
 
 @pytest.mark.parametrize("source", ['file', 'cms', 'mix'])
@@ -274,7 +276,7 @@ def test_config_comparison(
         # create an additional file to make the dynamic configuration different
         # from the static one.
         with open(os.path.join(data_path, "NVMENBS42"), 'wb') as f:
-            f.seek(1024**2 - 1)
+            f.seek(DEVICE_SIZE - 1)
             f.write(b'\0')
             f.flush()
 
@@ -288,7 +290,7 @@ def test_config_comparison(
 
     _check_disk_agent_config(nbs, agent_id, data_path)
 
-    crit = disk_agent.counters.find(sensor='AppCriticalEvents/DiskAgentConfigMismatch')
+    crit = disk_agent.counters.find({'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
     assert crit is not None
     assert crit['value'] == (1 if cmp == 'mismatch' else 0)
 
@@ -302,6 +304,7 @@ def test_add_devices(
         disk_agent_configurator,
         disk_agent_dynamic_config):
 
+    # start DA with a dynamically generated config
     disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
 
     disk_agent = start_disk_agent(disk_agent_configurator)
@@ -309,30 +312,75 @@ def test_add_devices(
 
     client = NbsClient(nbs.port)
 
+    # just pools in the DR config
+    client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
+
     bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp["Agents"][0]["AgentId"] == agent_id
     assert bkp["Agents"][0].get("Devices") is None
 
     grpc_client = CreateClient(f"localhost:{nbs.port}")
 
-    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
+    storage = grpc_client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    # no devices have been added yet
+    assert storage[0].ChunkCount == 0
+
+    # adding one local device: DR must wait for this device to be cleaned.
+    r = _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0, r
+
+    storage = grpc_client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    # now we see one chunk
+    assert storage[0].ChunkCount == 1
+    assert storage[0].ChunkSize == DEVICE_SIZE
 
     bkp = client.backup_disk_registry_state()["Backup"]
+    assert bkp.get("DirtyDevices") is None
     assert bkp["Agents"][0]["AgentId"] == agent_id
 
     assert len(bkp["Agents"][0]["Devices"]) == 1
+    assert bkp["Agents"][0]["Devices"][0].get("State") is None
 
-    _add_devices(grpc_client, agent_id, [
+    # adding all the local devices
+    r = _add_devices(grpc_client, agent_id, [
         os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
     ])
+    assert len(r.ActionResults) == 6
+    assert all(x.Result.Code == 0 for x in r.ActionResults)
+
+    storage = grpc_client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    # now we see all the local devices
+    assert storage[0].ChunkCount == 6
+    assert storage[0].ChunkSize == DEVICE_SIZE
 
     bkp = client.backup_disk_registry_state()["Backup"]
+    assert bkp.get("DirtyDevices") is None
     assert len(bkp["Agents"][0]["Devices"]) == 6
+    assert all([d.get("State") is None for d in bkp["Agents"][0]["Devices"]])
 
-    _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+    # adding a non local device: DR will not wait for this device to clear.
+    r = _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0, r
 
+    # we see all the devices in the backup
     bkp = client.backup_disk_registry_state()["Backup"]
+    assert bkp.get("DirtyDevices") is not None
     assert len(bkp["Agents"][0]["Devices"]) == 14
+
+    storage = grpc_client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    # we still see all the local devices
+    assert storage[0].ChunkCount == 6
+    assert storage[0].ChunkSize == DEVICE_SIZE
 
     disk_agent.kill()
 
@@ -387,7 +435,7 @@ def test_remove_devices(
     assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
 
     r = _remove_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
-    assert r.ActionResults[0].Result.Code == 0  # E_NOT_FOUND
+    assert r.ActionResults[0].Result.Code == 0  # S_OK
     assert r.ActionResults[0].Timeout == 0
 
     bkp = get_bkp()
@@ -499,7 +547,7 @@ def test_change_layout(
 
     _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
 
-    # now we have new device
+    # now we have a new device
     bkp = client.backup_disk_registry_state()["Backup"]
 
     assert len(bkp["Config"]["KnownAgents"]) == 1

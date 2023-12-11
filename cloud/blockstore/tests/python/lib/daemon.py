@@ -1,3 +1,4 @@
+import json
 import requests
 import subprocess
 import socket
@@ -21,18 +22,41 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
     ensure_path_exists
 
 
+def _match(labels, query):
+    for name, value in query.items():
+        v = labels.get(name)
+        if v is None or v != value:
+            return False
+    return True
+
+
 class _Counters:
 
     def __init__(self, data):
         self.__data = data
 
-    def find(self, sensor: str):
+    def find(self, query):
         for s in self.__data["sensors"]:
-            labels = s.get("labels", {})
-
-            if labels.get("sensor") == sensor:
+            if _match(s.get("labels", {}), query):
                 return s
+
         return None
+
+    def find_all(self, queries):
+        r = []
+        for s in self.__data["sensors"]:
+            for query in queries:
+                if _match(s.get("labels", {}), query):
+                    r.append(s)
+                    break
+
+        return r
+
+    def __rep__(self):
+        return json.dumps(self.__data)
+
+    def __str__(self):
+        return json.dumps(self.__data, indent=4)
 
 
 def _get_counters(mon_port):

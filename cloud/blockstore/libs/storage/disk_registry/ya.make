@@ -103,6 +103,7 @@ RECURSE_FOR_TESTS(
     ut_restore
     ut_session
     ut_suspend
+    ut_wait_device
 )
 
 # DEVTOOLSSUPPORT-28903

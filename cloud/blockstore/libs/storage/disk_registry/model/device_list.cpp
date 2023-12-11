@@ -721,21 +721,19 @@ void TDeviceList::SuspendDevice(const TDeviceId& id)
     RemoveDeviceFromFreeList(id);
 }
 
-bool TDeviceList::ResumeDevice(const TDeviceId& id)
+void TDeviceList::ResumeDevice(const TDeviceId& id)
+{
+    SuspendedDevices.erase(id);
+}
+
+void TDeviceList::ResumeAfterErase(const TDeviceId& id)
 {
     auto it = SuspendedDevices.find(id);
     if (it == SuspendedDevices.end()) {
-        return true;
+        return;
     }
 
-    if (IsDirtyDevice(id)) {
-        it->second.SetResumeAfterErase(true);
-        return false;
-    }
-
-    SuspendedDevices.erase(it);
-
-    return true;
+    it->second.SetResumeAfterErase(true);
 }
 
 bool TDeviceList::IsSuspendedDevice(const TDeviceId& id) const
