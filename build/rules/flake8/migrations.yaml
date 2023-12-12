@@ -7562,7 +7562,6 @@ migrations:
     - saas/tools/devops/check_backup
     - saas/tools/devops/lib23
     - saas/tools/refresh/import_rtyserver
-    - sandbox/projects/alice_evo
     - sandbox/projects/avia/mysql_sync_testing_with_prod
     - sandbox/projects/balancer/load/BalancerLoadCompare
     - sandbox/projects/bitbucket/GBGAdaptor
@@ -10346,7 +10345,6 @@ migrations:
     - yt/python/contrib/python-dill
     - yt/python/yt/tools
     - yt/python/yt/transfer_manager
-    - yt/yt/experiments/dyntables_stress_test
     - yweb/antiporno/bert/development/python/lib/google_bert
     - yweb/antiporno/queries_active_learning/work_with_markup_cache
     - yweb/antiporno/site_reachability/lib/retraversal_sites
