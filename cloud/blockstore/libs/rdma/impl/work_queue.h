@@ -23,15 +23,17 @@ union TWorkRequestId
 
     struct {
         ui32 Magic;
-        ui32 Index;
+        ui16 Generation;
+        ui16 Index;
     };
 
     TWorkRequestId(ui64 id)
         : Id(id)
     {}
 
-    TWorkRequestId(ui32 magic, ui32 index)
+    TWorkRequestId(ui32 magic, ui16 generation, ui16 index)
         : Magic(magic)
+        , Generation(generation)
         , Index(index)
     {}
 };
@@ -40,7 +42,7 @@ union TWorkRequestId
 
 inline IOutputStream& operator<<(IOutputStream& out, const TWorkRequestId& id)
 {
-    Printf(out, "%08x:%08x", id.Magic, id.Index);
+    Printf(out, "%08X:%X:%X", id.Magic, id.Generation, id.Index);
     return out;
 }
 

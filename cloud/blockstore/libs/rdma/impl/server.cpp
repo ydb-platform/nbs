@@ -365,6 +365,9 @@ TServerSession::TServerSession(
 {
     Connection->context = this;
 
+    STORAGE_INFO("start new session [send_magic=%X recv_magic=%X]",
+        SendMagic, RecvMagic);
+
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
     SetNonBlock(CompletionChannel->fd, true);
 
@@ -413,15 +416,12 @@ TServerSession::TServerSession(
     SendWrs.resize(Config->QueueSize);
     RecvWrs.resize(Config->QueueSize);
 
-    STORAGE_INFO("SEND magic is " << TWorkRequestId(SendMagic, 0));
-    STORAGE_INFO("RECV magic is " << TWorkRequestId(RecvMagic, 0));
-
     ui32 i = 0;
     ui64 responseMsg = SendBuffer.Address;
     for (auto& wr: SendWrs) {
         wr.wr.opcode = IBV_WR_SEND;
 
-        wr.wr.wr_id = TWorkRequestId(SendMagic, i++).Id;
+        wr.wr.wr_id = TWorkRequestId(SendMagic, 0, i++).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
@@ -436,7 +436,7 @@ TServerSession::TServerSession(
     ui32 j = 0;
     ui64 requestMsg = RecvBuffer.Address;
     for (auto& wr: RecvWrs) {
-        wr.wr.wr_id = TWorkRequestId(RecvMagic, j++).Id;
+        wr.wr.wr_id = TWorkRequestId(RecvMagic, 0, j++).Id;
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
