@@ -202,7 +202,7 @@ class BaseAcceptanceTestRunner(ABC):
                   ip: str) -> None:
         check_ssh_connection(ip, self._profiler, self._module_factory, self._args.ssh_key_path)
         try:
-            with self._module_factory.sftp_client(ip, ssh_key_path=self._args.ssh_key_path) as sftp:
+            with self._module_factory.make_sftp_client(False, ip, ssh_key_path=self._args.ssh_key_path) as sftp:
                 sftp.put(src, dst)
                 sftp.chmod(dst, 0o755)
         except (common.SshException, socket.error) as e:
@@ -214,7 +214,7 @@ class BaseAcceptanceTestRunner(ABC):
                          cmd: str,
                          ip: str) -> str:
         check_ssh_connection(ip, self._profiler, self._module_factory, self._args.ssh_key_path)
-        with self._module_factory.ssh_client(ip, ssh_key_path=self._args.ssh_key_path) as ssh:
+        with self._module_factory.make_ssh_client(False, ip, ssh_key_path=self._args.ssh_key_path) as ssh:
             _, stdout, stderr = ssh.exec_command(cmd)
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):
