@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+d="/root"
+scripts="${d}/runner"
+nbspath="$d/github/blockstore/nbs"
+cwd=`pwd`
+
+lockfile="/var/tmp/_run_all.lock"
+if { set -C; 2>/dev/null > $lockfile; }; then
+    trap "rm -f $lockfile; echo 'lock file removed'" EXIT
+else
+    echo "lock file exists…"
+    exit
+fi
+
+cd $nbspath &&
+git pull
+
+if [ -d "$scripts/contrib" ]; then
+    cp -r "$scripts/contrib" $nbspath   # DEVTOOLSSUPPORT-38677
+fi
+
+logs_dir="/var/www/build/logs/run_$(date +%y_%m_%d__%H)" &&
+rm -rf $logs_dir &&
+mkdir -p $logs_dir
+
+lineArr=($(egrep -lir --include=ya.make "(PY3TEST|UNITTEST_FOR)" $nbspath/cloud))
+for line in ${lineArr[@]}; do
+    echo "run test " $line
+    ${scripts}/run_test.sh $nbspath $line $logs_dir
+done
+
+echo "generate report"
+$scripts/generate_report.py $logs_dir $scripts/github_report.xsl $scripts/tests_index.xsl
+
+function clean_bin () {
+    keyword=$1
+    find_args=$2
+    lineArr=($(egrep -lir --include=ya.make $keyword $nbspath))
+    for line in ${lineArr[@]}; do
+        subdir=$(echo $line | awk -F $nbspath '{print $2}' | sed -r 's/(.*)\/[^/]+$/\1/')
+        dir="${logs_dir}${subdir}"
+        if [ -e ${dir} ]; then
+            find "${dir}" $find_args -type f -exec rm {} \;
+        fi
+    done
+}
+
+echo "clean"
+clean_bin "(PROGRAM)" "-mindepth 1 -maxdepth 1"
+clean_bin "(PACKAGE)" "-mindepth 1"
+git clean -f ./
+
+cd $cwd
