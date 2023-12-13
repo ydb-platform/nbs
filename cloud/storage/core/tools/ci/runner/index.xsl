@@ -93,7 +93,7 @@
             <xsl:with-param name="show-all-testsuites" select="$show-all-testsuites"/>
         </xsl:apply-templates>
         <div>
-            <a href="/ci/results/${suite-kind}.html">All Runs</a>
+            <a href="/ci/results/{$suite-kind}.html">All Runs</a>
         </div>
     </div>
 </xsl:template>
