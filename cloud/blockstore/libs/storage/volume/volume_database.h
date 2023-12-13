@@ -108,7 +108,10 @@ public:
         TDuration deletedCheckpointHistoryLifetime,
         TInstant now,
         THashMap<TString, TInstant>& deletedCheckpoints);
-    void UpdateCheckpointRequest(ui64 requestId, bool completed);
+    void UpdateCheckpointRequest(
+        ui64 requestId,
+        bool completed,
+        TString shadowDiskId);
     bool ReadCheckpointRequests(
         const THashMap<TString, TInstant>& deletedCheckpoints,
         TVector<TCheckpointRequest>& requests,

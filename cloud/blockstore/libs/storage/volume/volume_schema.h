@@ -139,8 +139,20 @@ struct TVolumeSchema
         {
         };
 
+        struct ShadowDiskId
+            : public Column<7, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
         using TKey = TableKey<RequestId>;
-        using TColumns = TableColumns<RequestId, CheckpointId, Timestamp, State, ReqType, CheckpointType>;
+        using TColumns = TableColumns<
+            RequestId,
+            CheckpointId,
+            Timestamp,
+            State,
+            ReqType,
+            CheckpointType,
+            ShadowDiskId>;
     };
 
     struct NonReplPartStats

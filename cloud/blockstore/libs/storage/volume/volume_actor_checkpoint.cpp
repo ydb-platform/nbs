@@ -234,7 +234,8 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
         std::make_unique<TEvVolumePrivate::TEvUpdateCheckpointRequestRequest>(
             std::move(requestInfo),
             RequestId,
-            completed);
+            completed,
+            TString() /*TODO(drbasic)*/);
 
     auto event = std::make_unique<IEventHandle>(
         VolumeActorId,
@@ -580,7 +581,8 @@ void TVolumeActor::CreateCheckpointLightRequest(
         ctx,
         requestInfo ? std::move(requestInfo->RequestInfo) : nullptr,
         requestId,
-        true // Completed
+        true,       // Completed
+        TString()   // ShadowDiskId
     );
 }
 
@@ -604,7 +606,8 @@ void TVolumeActor::DeleteCheckpointLightRequest(
         ctx,
         requestInfo ? std::move(requestInfo->RequestInfo) : nullptr,
         requestId,
-        true // Completed
+        true,       // Completed
+        TString()   // ShadowDiskId
     );
 }
 
@@ -829,8 +832,8 @@ void TVolumeActor::HandleUpdateCheckpointRequest(
         ctx,
         std::move(msg->RequestInfo),
         msg->RequestId,
-        msg->Completed
-    );
+        msg->Completed,
+        std::move(msg->ShadowDiskId));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1076,7 +1079,10 @@ void TVolumeActor::ExecuteUpdateCheckpointRequest(
     Y_UNUSED(ctx);
 
     TVolumeDatabase db(tx.DB);
-    db.UpdateCheckpointRequest(args.RequestId, args.Completed);
+    db.UpdateCheckpointRequest(
+        args.RequestId,
+        args.Completed,
+        args.ShadowDiskId);
 }
 
 void TVolumeActor::CompleteUpdateCheckpointRequest(

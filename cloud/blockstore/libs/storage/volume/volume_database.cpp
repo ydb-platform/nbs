@@ -451,17 +451,19 @@ void TVolumeDatabase::WriteCheckpointRequest(
             NIceDb::TUpdate<TTable::CheckpointType>(static_cast<ui32>(request.Type)));
 }
 
-void TVolumeDatabase::UpdateCheckpointRequest(ui64 requestId, bool completed)
+void TVolumeDatabase::UpdateCheckpointRequest(
+    ui64 requestId,
+    bool completed,
+    TString shadowDiskId)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
     auto state = completed ? ECheckpointRequestState::Completed
                            : ECheckpointRequestState::Rejected;
-    Table<TTable>()
-        .Key(requestId)
-        .Update(
-            NIceDb::TUpdate<TTable::State>(static_cast<ui32>(state))
-        );
+
+    Table<TTable>().Key(requestId).Update(
+        NIceDb::TUpdate<TTable::State>(static_cast<ui32>(state)),
+        NIceDb::TUpdate<TTable::ShadowDiskId>(std::move(shadowDiskId)));
 }
 
 bool TVolumeDatabase::CollectCheckpointsToDelete(
@@ -526,7 +528,7 @@ bool TVolumeDatabase::ReadCheckpointRequests(
                 static_cast<ECheckpointRequestType>(it.GetValue<TTable::ReqType>()),
                 static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>()),
                 static_cast<ECheckpointType>(it.GetValue<TTable::CheckpointType>()),
-                TString() /* TODO(drbasic) */);
+                it.GetValue<TTable::ShadowDiskId>());
         }
 
         if (!it.Next()) {
