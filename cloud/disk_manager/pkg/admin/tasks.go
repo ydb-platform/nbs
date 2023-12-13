@@ -164,7 +164,7 @@ func newCancelTaskCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type lister func(context.Context, tasks_storage.Storage, uint64) ([]tasks_storage.TaskInfo, error)
+type lister func(context.Context, tasks_storage.Storage, uint64) ([]string, error)
 
 type listTasks struct {
 	clientConfig *client_config.ClientConfig
@@ -182,12 +182,12 @@ func (c *listTasks) run() error {
 	}
 	defer db.Close(ctx)
 
-	taskInfos, err := c.taskLister(ctx, taskStorage, c.limit)
+	tasks, err := c.taskLister(ctx, taskStorage, c.limit)
 	if err != nil {
 		return fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	return printTasks(ctx, taskStorage, taskInfos)
+	return printTasks(ctx, taskStorage, tasks)
 }
 
 func newListTasksCmd(
@@ -224,12 +224,17 @@ func newListReadyToRunCmd(
 		clientConfig,
 		serverConfig,
 		"ready_to_run",
-		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]tasks_storage.TaskInfo, error) {
-			return storage.ListTasksReadyToRun(
+		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
+			taskInfos, err := storage.ListTasksReadyToRun(
 				ctx,
 				limit,
 				nil, // taskTypeWhitelist
 			)
+			if err != nil {
+				return []string{}, err
+			}
+
+			return getTaskIDs(taskInfos), nil
 		},
 	)
 }
@@ -243,12 +248,17 @@ func newListReadyToCancelCmd(
 		clientConfig,
 		serverConfig,
 		"ready_to_cancel",
-		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]tasks_storage.TaskInfo, error) {
-			return storage.ListTasksReadyToCancel(
+		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
+			taskInfos, err := storage.ListTasksReadyToCancel(
 				ctx,
 				limit,
 				nil, // taskTypeWhitelist
 			)
+			if err != nil {
+				return []string{}, err
+			}
+
+			return getTaskIDs(taskInfos), nil
 		},
 	)
 }
@@ -262,7 +272,7 @@ func newListRunningCmd(
 		clientConfig,
 		serverConfig,
 		"running",
-		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]tasks_storage.TaskInfo, error) {
+		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
 			return storage.ListTasksRunning(ctx, limit)
 		},
 	)
@@ -277,7 +287,7 @@ func newListCancellingCmd(
 		clientConfig,
 		serverConfig,
 		"cancelling",
-		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]tasks_storage.TaskInfo, error) {
+		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
 			return storage.ListTasksCancelling(ctx, limit)
 		},
 	)
@@ -285,7 +295,7 @@ func newListCancellingCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type endedLister func(context.Context, tasks_storage.Storage, time.Time) ([]tasks_storage.TaskInfo, error)
+type endedLister func(context.Context, tasks_storage.Storage, time.Time) ([]string, error)
 
 type listEndedTasks struct {
 	clientConfig *client_config.ClientConfig
@@ -310,12 +320,12 @@ func (c *listEndedTasks) run() error {
 	}
 	defer db.Close(ctx)
 
-	taskInfos, err := c.taskLister(ctx, taskStorage, since)
+	tasks, err := c.taskLister(ctx, taskStorage, since)
 	if err != nil {
 		return fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	return printTasks(ctx, taskStorage, taskInfos)
+	return printTasks(ctx, taskStorage, tasks)
 }
 
 func newListEndedTasksCmd(
@@ -357,7 +367,7 @@ func newListFailedCmd(
 		clientConfig,
 		serverConfig,
 		"failed",
-		func(ctx context.Context, storage tasks_storage.Storage, since time.Time) ([]tasks_storage.TaskInfo, error) {
+		func(ctx context.Context, storage tasks_storage.Storage, since time.Time) ([]string, error) {
 			return storage.ListFailedTasks(ctx, since)
 		},
 	)
@@ -365,7 +375,7 @@ func newListFailedCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type slowLister func(context.Context, tasks_storage.Storage, time.Time, time.Duration) ([]tasks_storage.TaskInfo, error)
+type slowLister func(context.Context, tasks_storage.Storage, time.Time, time.Duration) ([]string, error)
 
 type listSlowTasks struct {
 	clientConfig *client_config.ClientConfig
@@ -396,12 +406,12 @@ func (c *listSlowTasks) run() error {
 	}
 	defer db.Close(ctx)
 
-	taskInfos, err := c.taskLister(ctx, taskStorage, since, estimateMiss)
+	tasks, err := c.taskLister(ctx, taskStorage, since, estimateMiss)
 	if err != nil {
 		return fmt.Errorf("failed to list slow tasks: %w", err)
 	}
 
-	return printTasks(ctx, taskStorage, taskInfos)
+	return printTasks(ctx, taskStorage, tasks)
 }
 
 func newListSlowTasksCmd(
@@ -449,7 +459,7 @@ func newListSlowCmd(
 		clientConfig,
 		serverConfig,
 		"slow",
-		func(ctx context.Context, storage tasks_storage.Storage, since time.Time, estimateMiss time.Duration) ([]tasks_storage.TaskInfo, error) {
+		func(ctx context.Context, storage tasks_storage.Storage, since time.Time, estimateMiss time.Duration) ([]string, error) {
 			return storage.ListSlowTasks(ctx, since, estimateMiss)
 		},
 	)
@@ -477,14 +487,22 @@ func newListCmd(
 	return cmd
 }
 
+func getTaskIDs(taskInfos []tasks_storage.TaskInfo) []string {
+	taskIDs := []string{}
+	for _, task := range taskInfos {
+		taskIDs = append(taskIDs, task.ID)
+	}
+	return taskIDs
+}
+
 func printTasks(
 	ctx context.Context,
 	taskStorage tasks_storage.Storage,
-	taskInfos []tasks_storage.TaskInfo,
+	taskIDs []string,
 ) error {
 
-	for _, taskInfo := range taskInfos {
-		task, err := taskStorage.GetTask(ctx, taskInfo.ID)
+	for _, taskID := range taskIDs {
+		task, err := taskStorage.GetTask(ctx, taskID)
 		if err != nil {
 			return fmt.Errorf("failed to get task: %w", err)
 		}

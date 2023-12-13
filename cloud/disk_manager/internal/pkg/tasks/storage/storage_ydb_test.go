@@ -1117,22 +1117,14 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	expectedTaskInfos := []TaskInfo{
-		TaskInfo{
-			ID:           taskIDRunning,
-			GenerationID: generationID,
-			TaskType:     "task1",
-		},
-		TaskInfo{
-			ID:           taskIDStallingWhileRunning,
-			GenerationID: generationID,
-			TaskType:     "task1",
-		},
+	expectedTasks := []string{
+		taskIDRunning,
+		taskIDStallingWhileRunning,
 	}
 
-	taskInfos, err := storage.ListTasksRunning(ctx, 100500)
+	taskIDs, err := storage.ListTasksRunning(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
+	require.ElementsMatch(t, expectedTasks, taskIDs)
 }
 
 func TestStorageYDBListTasksCancelling(t *testing.T) {
@@ -1295,22 +1287,14 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	expectedTaskInfos := []TaskInfo{
-		TaskInfo{
-			ID:           taskIDCancelling,
-			GenerationID: generationID,
-			TaskType:     "task1",
-		},
-		TaskInfo{
-			ID:           taskIDStallingWhileCancelling,
-			GenerationID: generationID,
-			TaskType:     "task1",
-		},
+	expectedTasks := []string{
+		taskIDCancelling,
+		taskIDStallingWhileCancelling,
 	}
 
-	taskInfos, err := storage.ListTasksCancelling(ctx, 100500)
+	taskIDs, err := storage.ListTasksCancelling(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
+	require.ElementsMatch(t, expectedTasks, taskIDs)
 }
 
 func TestStorageYDBListFailedTasks(t *testing.T) {
@@ -1412,21 +1396,17 @@ func TestStorageYDBListFailedTasks(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	taskInfos, err := storage.ListFailedTasks(
+	expectedTasks, err := storage.ListFailedTasks(
 		ctx,
 		modifiedAt.Add(-10*time.Minute),
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(
 		t,
-		[]TaskInfo{
-			TaskInfo{
-				ID:           taskIDWithNonSilentError,
-				GenerationID: generationID + 1,
-				TaskType:     "task1",
-			},
+		[]string{
+			taskIDWithNonSilentError,
 		},
-		taskInfos,
+		expectedTasks,
 	)
 }
 
@@ -1487,40 +1467,40 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 	testCases := []struct {
 		since        time.Time
 		estimateMiss time.Duration
-		expected     []TaskInfo
+		expected     []string
 		comment      string
 	}{
 		{createdAt.Add(-10 * time.Minute),
 			200 * time.Minute,
-			[]TaskInfo{},
+			[]string{},
 			"EstimateMiss is too big, no tasks expected",
 		},
 		{createdAt.Add(2 * time.Hour),
 			10 * time.Minute,
-			[]TaskInfo{},
+			[]string{},
 			"No tasks expected",
 		},
 		{createdAt,
 			10 * time.Minute,
-			[]TaskInfo{largeDelay, mediumDelay, smallDelay},
+			[]string{largeDelay.ID, mediumDelay.ID, smallDelay.ID},
 			"Since limited, 3 tasks expected",
 		},
 		{createdAt.Add(-10 * time.Minute),
 			1 * time.Hour,
-			[]TaskInfo{largeDelay},
+			[]string{largeDelay.ID},
 			"EstimateMiss limited, one task expected",
 		},
 		{createdAt.Add(-25 * time.Hour),
 			10 * time.Minute,
-			[]TaskInfo{largeDelay, mediumDelay, smallDelay, dayBefore},
+			[]string{largeDelay.ID, mediumDelay.ID, smallDelay.ID, dayBefore.ID},
 			"All tasks fit, 4 expected",
 		},
 	}
 
 	for _, tc := range testCases {
-		taskInfos, err := storage.ListSlowTasks(ctx, tc.since, tc.estimateMiss)
+		tasks, err := storage.ListSlowTasks(ctx, tc.since, tc.estimateMiss)
 		require.NoError(t, err)
-		require.ElementsMatchf(t, tc.expected, taskInfos, tc.comment)
+		require.ElementsMatchf(t, tc.expected, tasks, tc.comment)
 	}
 }
 

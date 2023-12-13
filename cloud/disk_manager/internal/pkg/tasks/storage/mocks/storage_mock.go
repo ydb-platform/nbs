@@ -79,20 +79,19 @@ func (s *StorageMock) ListTasksReadyToCancel(
 func (s *StorageMock) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
-) ([]tasks_storage.TaskInfo, error) {
+) ([]string, error) {
 
 	args := s.Called(ctx, limit)
-	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	res, _ := args.Get(0).([]string)
 	return res, args.Error(1)
 }
-
 func (s *StorageMock) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
-) ([]tasks_storage.TaskInfo, error) {
+) ([]string, error) {
 
 	args := s.Called(ctx, limit)
-	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	res, _ := args.Get(0).([]string)
 	return res, args.Error(1)
 }
 
@@ -123,10 +122,10 @@ func (s *StorageMock) ListTasksStallingWhileCancelling(
 func (s *StorageMock) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,
-) ([]tasks_storage.TaskInfo, error) {
+) ([]string, error) {
 
 	args := s.Called(ctx, since)
-	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	res, _ := args.Get(0).([]string)
 	return res, args.Error(1)
 }
 
@@ -134,10 +133,10 @@ func (s *StorageMock) ListSlowTasks(
 	ctx context.Context,
 	since time.Time,
 	estimateMiss time.Duration,
-) ([]tasks_storage.TaskInfo, error) {
+) ([]string, error) {
 
 	args := s.Called(ctx, since, estimateMiss)
-	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	res, _ := args.Get(0).([]string)
 	return res, args.Error(1)
 }
 

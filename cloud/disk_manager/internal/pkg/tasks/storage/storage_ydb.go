@@ -154,15 +154,15 @@ func (s *storageYDB) ListTasksReadyToCancel(
 func (s *storageYDB) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
-) ([]TaskInfo, error) {
+) ([]string, error) {
 
-	var tasks []TaskInfo
+	var tasks []string
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			tasks, err = s.listTasks(
+			tasks, err = s.listTaskIDs(
 				ctx,
 				session,
 				"running",
@@ -178,15 +178,15 @@ func (s *storageYDB) ListTasksRunning(
 func (s *storageYDB) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
-) ([]TaskInfo, error) {
+) ([]string, error) {
 
-	var tasks []TaskInfo
+	var tasks []string
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			tasks, err = s.listTasks(
+			tasks, err = s.listTaskIDs(
 				ctx,
 				session,
 				"cancelling",
@@ -256,9 +256,9 @@ func (s *storageYDB) ListTasksStallingWhileCancelling(
 func (s *storageYDB) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,
-) ([]TaskInfo, error) {
+) ([]string, error) {
 
-	var tasks []TaskInfo
+	var tasks []string
 
 	err := s.db.Execute(
 		ctx,
@@ -275,9 +275,9 @@ func (s *storageYDB) ListSlowTasks(
 	ctx context.Context,
 	since time.Time,
 	estimateMiss time.Duration,
-) ([]TaskInfo, error) {
+) ([]string, error) {
 
-	var tasks []TaskInfo
+	var tasks []string
 
 	err := s.db.Execute(
 		ctx,

@@ -295,10 +295,10 @@ type Storage interface {
 	) ([]TaskInfo, error)
 
 	// Used for SRE tools.
-	ListTasksRunning(ctx context.Context, limit uint64) ([]TaskInfo, error)
+	ListTasksRunning(ctx context.Context, limit uint64) ([]string, error)
 
 	// Used for SRE tools.
-	ListTasksCancelling(ctx context.Context, limit uint64) ([]TaskInfo, error)
+	ListTasksCancelling(ctx context.Context, limit uint64) ([]string, error)
 
 	// Lists tasks that are currently running but don't make any progress for
 	// some time.
@@ -319,8 +319,8 @@ type Storage interface {
 	) ([]TaskInfo, error)
 
 	// Used for SRE tools.
-	ListFailedTasks(ctx context.Context, since time.Time) ([]TaskInfo, error)
-	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]TaskInfo, error)
+	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)
+	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]string, error)
 
 	// Fails with WrongGenerationError, if generationID does not match.
 	LockTaskToRun(

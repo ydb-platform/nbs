@@ -858,18 +858,18 @@ func (s *storageYDB) listTasks(
 		pragma TablePathPrefix = "%v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
-		declare $typeWhitelist as List<Utf8>;
+		declare $type_white_list as List<Utf8>;
 		declare $zone_ids as List<Utf8>;
 
 		select *
 		from %v
 		where
-			(ListLength($typeWhitelist) == 0 or task_type in $typeWhitelist) and
+			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
 			(Len(zone_id) == 0 or zone_id in $zone_ids)
 		limit $limit
 	`, s.tablesPath, tableName),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-		persistence.ValueParam("$typeWhitelist", strListValue(taskTypeWhitelist)),
+		persistence.ValueParam("$type_white_list", strListValue(taskTypeWhitelist)),
 		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
 	)
 	if err != nil {
@@ -880,11 +880,46 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
+func (s *storageYDB) listTaskIDs(
+	ctx context.Context,
+	session *persistence.Session,
+	tableName string,
+	limit uint64,
+	taskTypeWhitelist []string,
+) ([]string, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		pragma AnsiInForEmptyOrNullableItemsCollections;
+		declare $limit as Uint64;
+		declare $type_white_list as List<Utf8>;
+		declare $zone_ids as List<Utf8>;
+
+		select *
+		from %v
+		where
+			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
+			(Len(zone_id) == 0 or zone_id in $zone_ids)
+		limit $limit
+	`, s.tablesPath, tableName),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$type_white_list", strListValue(taskTypeWhitelist)),
+		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	return scanTaskIDsStream(ctx, res)
+}
+
 func (s *storageYDB) listFailedTasks(
 	ctx context.Context,
 	session *persistence.Session,
 	since time.Time,
-) ([]TaskInfo, error) {
+) ([]string, error) {
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -905,7 +940,7 @@ func (s *storageYDB) listFailedTasks(
 	}
 	defer res.Close()
 
-	return scanTaskInfosStream(ctx, res)
+	return scanTaskIDsStream(ctx, res)
 }
 
 func (s *storageYDB) listSlowTasks(
@@ -913,7 +948,7 @@ func (s *storageYDB) listSlowTasks(
 	session *persistence.Session,
 	since time.Time,
 	estimateMiss time.Duration,
-) ([]TaskInfo, error) {
+) ([]string, error) {
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -939,7 +974,7 @@ func (s *storageYDB) listSlowTasks(
 	}
 	defer res.Close()
 
-	return scanTaskInfosStream(ctx, res)
+	return scanTaskIDsStream(ctx, res)
 }
 
 func (s *storageYDB) listTasksStallingWhileExecuting(
@@ -959,19 +994,19 @@ func (s *storageYDB) listTasksStallingWhileExecuting(
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
 		declare $stalling_time as Timestamp;
-		declare $typeWhitelist as List<Utf8>;
+		declare $type_white_list as List<Utf8>;
 		declare $zone_ids as List<Utf8>;
 
 		select * from %v
 		where
 			(modified_at < $stalling_time) and
-			(ListLength($typeWhitelist) == 0 or task_type in $typeWhitelist) and
+			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
 			(Len(zone_id) == 0 or zone_id in $zone_ids)
 		limit $limit
 	`, s.tablesPath, tableName),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam("$stalling_time", persistence.TimestampValue(stallingTime)),
-		persistence.ValueParam("$typeWhitelist", strListValue(taskTypeWhitelist)),
+		persistence.ValueParam("$type_white_list", strListValue(taskTypeWhitelist)),
 		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
 	)
 	if err != nil {

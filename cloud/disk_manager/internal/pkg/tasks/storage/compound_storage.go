@@ -186,27 +186,29 @@ func (s *compoundStorage) ListTasksReadyToCancel(
 func (s *compoundStorage) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
-) (taskInfos []TaskInfo, err error) {
+) ([]string, error) {
 
-	err = s.visit(ctx, func(storage Storage) error {
+	tasks := []string{}
+	err := s.visit(ctx, func(storage Storage) error {
 		values, err := storage.ListTasksRunning(ctx, limit)
-		taskInfos = append(taskInfos, values...)
+		tasks = append(tasks, values...)
 		return err
 	})
-	return taskInfos, err
+	return tasks, err
 }
 
 func (s *compoundStorage) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
-) (taskInfos []TaskInfo, err error) {
+) ([]string, error) {
 
-	err = s.visit(ctx, func(storage Storage) error {
+	tasks := []string{}
+	err := s.visit(ctx, func(storage Storage) error {
 		values, err := storage.ListTasksCancelling(ctx, limit)
-		taskInfos = append(taskInfos, values...)
+		tasks = append(tasks, values...)
 		return err
 	})
-	return taskInfos, err
+	return tasks, err
 }
 
 func (s *compoundStorage) ListTasksStallingWhileRunning(
@@ -252,28 +254,30 @@ func (s *compoundStorage) ListTasksStallingWhileCancelling(
 func (s *compoundStorage) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,
-) (taskInfos []TaskInfo, err error) {
+) ([]string, error) {
 
-	err = s.visit(ctx, func(storage Storage) error {
+	tasks := []string{}
+	err := s.visit(ctx, func(storage Storage) error {
 		values, err := storage.ListFailedTasks(ctx, since)
-		taskInfos = append(taskInfos, values...)
+		tasks = append(tasks, values...)
 		return err
 	})
-	return taskInfos, err
+	return tasks, err
 }
 
 func (s *compoundStorage) ListSlowTasks(
 	ctx context.Context,
 	since time.Time,
 	estimateMiss time.Duration,
-) (taskInfos []TaskInfo, err error) {
+) ([]string, error) {
 
-	err = s.visit(ctx, func(storage Storage) error {
+	tasks := []string{}
+	err := s.visit(ctx, func(storage Storage) error {
 		values, err := storage.ListSlowTasks(ctx, since, estimateMiss)
-		taskInfos = append(taskInfos, values...)
+		tasks = append(tasks, values...)
 		return err
 	})
-	return taskInfos, err
+	return tasks, err
 }
 
 func (s *compoundStorage) LockTaskToRun(

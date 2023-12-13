@@ -82,6 +82,31 @@ func marshalErrorDetails(details *errors.ErrorDetails) []byte {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func scanTaskIDsStream(ctx context.Context, res persistence.Result) ([]string, error) {
+	taskIDs := []string{}
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var id string
+			err := res.ScanNamed(
+				persistence.OptionalWithDefault("id", &id),
+			)
+			if err != nil {
+				return []string{}, err
+			}
+
+			taskIDs = append(taskIDs, id)
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err := res.Err()
+	if err != nil {
+		return []string{}, errors.NewRetriableError(err)
+	}
+
+	return taskIDs, nil
+}
+
 func scanTaskInfosStream(ctx context.Context, res persistence.Result) ([]TaskInfo, error) {
 	taskInfos := []TaskInfo{}
 	for res.NextResultSet(ctx) {

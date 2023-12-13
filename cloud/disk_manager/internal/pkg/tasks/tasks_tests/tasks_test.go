@@ -678,12 +678,18 @@ func TestTasksRunningLimit(t *testing.T) {
 	for {
 		select {
 		case <-ticker.C:
-			runningTasks, _ := s.storage.ListTasksRunning(ctx, uint64(scheduledLongTaskCount))
+			runningTasks, _ := s.storage.ListTasksRunning(
+				ctx,
+				uint64(scheduledLongTaskCount),
+			)
 			require.NoError(t, err)
 
 			runningLongTaskCount := 0
 			for _, task := range runningTasks {
-				if task.TaskType == "long" {
+				taskState, err := s.storage.GetTask(ctx, task)
+				require.NoError(t, err)
+
+				if taskState.TaskType == "long" {
 					runningLongTaskCount++
 				}
 			}
