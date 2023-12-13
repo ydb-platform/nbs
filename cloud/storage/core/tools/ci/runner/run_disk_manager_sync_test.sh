@@ -6,5 +6,7 @@ export disk_size_gib=2
 export disk_block_size=4096
 export disk_write_size_percentage=25
 export test_suite="sync_2gib"
-source "${0%/*}/disk_manager_acceptance_common.sh"
+
+scripts=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+source "${scripts}/disk_manager_acceptance_common.sh"
 run_sync

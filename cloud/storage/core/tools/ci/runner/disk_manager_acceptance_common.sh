@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -eux
 export d="/root"
-export scripts="${d}/runner"
+scripts=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export scripts
 export dm="${d}/disk_manager_acceptance_test/disk_manager_acceptance_tests"
 export cluster="nemax-tests"
 
@@ -36,7 +37,7 @@ function base_shell_args () {
 }
 
 function report_results () {
-    "$scripts/generate_generic_report.py" "disk_manager_${test_name:=acceptance}" $scripts/generic_report.xsl
+    "$scripts/generate_generic_report.py" "disk_manager_${test_name:=acceptance}" "$scripts/generic_report.xsl"
 }
 
 function execute_tests () {
