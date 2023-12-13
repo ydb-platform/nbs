@@ -1,14 +1,9 @@
 RECURSE(
+    access_service
     fio
     pssh-mock
     qemu
     threadpool-test
     unstable-process
+    virtiofs_server
 )
-
-IF (NOT OPENSOURCE)
-    RECURSE(
-        access_service      # NBS-4409
-        virtiofs_server     # NBS-4409
-    )
-ENDIF()
