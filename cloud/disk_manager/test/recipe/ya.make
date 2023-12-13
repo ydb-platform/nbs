@@ -4,7 +4,6 @@ PY3_PROGRAM()
 
 PY_SRCS(
     __main__.py
-    access_service_launcher.py
     compute_launcher.py
     disk_manager_launcher.py
     kikimr_launcher.py

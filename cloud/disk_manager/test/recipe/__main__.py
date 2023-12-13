@@ -5,7 +5,6 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from library.python.testing.recipe import declare_recipe, set_env
 
-from cloud.disk_manager.test.recipe.access_service_launcher import AccessServiceLauncher
 from cloud.disk_manager.test.recipe.compute_launcher import ComputeLauncher
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.kikimr_launcher import KikimrLauncher
@@ -156,10 +155,6 @@ def start(argv):
     metadata_service = MetadataServiceLauncher()
     metadata_service.start()
 
-    access_service = AccessServiceLauncher(cert_file, cert_key_file)
-    access_service.start()
-    set_env("DISK_MANAGER_RECIPE_ACCESS_SERVICE_PORT", str(access_service.port))
-
     working_dir = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
         sub_folder=""
@@ -189,7 +184,7 @@ def start(argv):
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
             nfs_port=nfs.port,
-            access_service_port=access_service.port,
+            access_service_port=os.getenv('DISK_MANAGER_RECIPE_ACCESS_SERVICE_PORT'),
             cert_file=cert_file,
             cert_key_file=cert_key_file,
         )
@@ -224,7 +219,6 @@ def start(argv):
 
 def stop(argv):
     DiskManagerLauncher.stop()
-    AccessServiceLauncher.stop()
     MetadataServiceLauncher.stop()
     NfsLauncher.stop()
     NbsLauncher.stop()

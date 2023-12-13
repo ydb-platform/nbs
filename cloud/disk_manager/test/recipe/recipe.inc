@@ -7,7 +7,6 @@ DEPENDS(
     cloud/disk_manager/cmd/disk-manager
     cloud/disk_manager/cmd/disk-manager-init-db
     cloud/disk_manager/test/images/recipe
-    cloud/disk_manager/test/mocks/accessservice
     cloud/disk_manager/test/mocks/compute
     cloud/disk_manager/test/mocks/kms
     cloud/disk_manager/test/mocks/metadata
