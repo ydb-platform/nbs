@@ -66,7 +66,7 @@ jobs:
 
 
       - name: set up python environment
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5.0.0
         with:
           python-version: "3.10"
 
@@ -110,7 +110,7 @@ jobs:
 
           {
             echo "WORKFLOW_LINT<<EOF"
-            cat $TMP_OUT
+            cat $TMP_OUT | awk -v ORS='\\n' 1
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
