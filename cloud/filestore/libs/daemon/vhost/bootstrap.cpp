@@ -15,7 +15,6 @@
 #include <cloud/filestore/libs/endpoint/service_auth.h>
 #include <cloud/filestore/libs/endpoint_vhost/config.h>
 #include <cloud/filestore/libs/endpoint_vhost/listener.h>
-#include <cloud/filestore/libs/endpoint_vhost/server.h>
 #include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
@@ -28,6 +27,7 @@
 #include <cloud/filestore/libs/service_kikimr/service.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/vfs/probes.h>
+#include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>

@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     config.cpp
+    convert.cpp
     fsync_queue.cpp
     loop.cpp
     probes.cpp
@@ -9,6 +10,9 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/config
+    cloud/filestore/libs/service
+
+    cloud/storage/core/libs/common
 )
 
 END()

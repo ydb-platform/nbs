@@ -746,6 +746,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         UNIT_ASSERT(ctx3->Time(EProcessingStage::Postponed) > TDuration::Seconds(11));
     }
 
+#if !defined(_tsan_enabled_)
     Y_UNIT_TEST(ShouldNotOverflowStack)
     {
         // We are running a very long series of overlapping queries. If the
@@ -783,6 +784,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         // Execute last request
         env.RunWriteService();
     }
+#endif   // !defined(_tsan_enabled_)
 }
 
 }   // namespace NCloud::NBlockStore

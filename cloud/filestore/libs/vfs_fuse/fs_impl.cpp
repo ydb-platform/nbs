@@ -2,6 +2,7 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
 
 namespace {

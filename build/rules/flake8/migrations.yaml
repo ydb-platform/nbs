@@ -3108,7 +3108,6 @@ migrations:
     - yweb/antiporno/scandal_requests/scandal_requests_extractor/test/medium_tests
     - yweb/antiporno/scandal_requests/scandal_requests_extractor_dc/test/medium_tests
     - yweb/antiporno/top_porn_hosts_bno/test/medium_tests
-    - yweb/antispam/laas/upload_regcoords_to_logbroker
     - yweb/antispam/mascot/features/features_for_ranks
     - yweb/antispam/mascot/scripts/proxima_kernel
     - yweb/antispam/mascot/scripts/proxima_kernel/corr
@@ -6757,7 +6756,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-10571
     - yabs/server/test/ft/BSSERVER-4506
     - yabs/server/test/ft/BSSERVER-4669
-    - yabs/server/test/ft/BSSERVER-587
     - yabs/server/test/lib
     - yabs/server/test/qabs_bsserver_pytest
     - yabs/server/tools/grapholomon

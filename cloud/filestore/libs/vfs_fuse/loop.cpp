@@ -1,9 +1,9 @@
 #include "loop.h"
 
 #include "config.h"
-#include "convert.h"
 #include "fs.h"
 #include "fuse.h"
+#include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/vfs/config.h>
+#include <cloud/filestore/libs/vfs/convert.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
@@ -1117,6 +1118,15 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IRequestStatsRegistryPtr requestStats,
     IProfileLogPtr profileLog)
 {
+    struct TInitializer {
+        TInitializer(const ILoggingServicePtr& logging)
+        {
+            InitLog(logging);
+        }
+    };
+
+    static const TInitializer initializer(logging);
+
     return std::make_shared<TFileSystemLoopFactory>(
         std::move(logging),
         std::move(timer),

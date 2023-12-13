@@ -13,6 +13,7 @@ PEERDIR(
 
 RESOURCE(
     configs/config.json test-config.json
+    configs/eternal_load_template.service eternal_load_template.service
     scripts/mysql.sh mysql.sh
     scripts/oltp-custom.lua oltp-custom.lua
     scripts/postgresql.sh postgresql.sh

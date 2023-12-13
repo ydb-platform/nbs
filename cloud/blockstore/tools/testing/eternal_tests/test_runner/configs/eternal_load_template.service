@@ -1,0 +1,13 @@
+[Unit]
+Description=Run eternal_load for dev-${deviceName}.device
+After=dev-${deviceName}.device shutdown.target reboot.target
+BindsTo=dev-${deviceName}.device
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c '${command}'
+TimeoutStopSec=10
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

@@ -10,9 +10,8 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
-    cloud/filestore/libs/endpoint_vhost
-    cloud/filestore/libs/vfs_fuse/fuse_virtio_client
     cloud/filestore/libs/vfs_fuse/vhost
+    cloud/filestore/libs/vhost
 )
 
 END()

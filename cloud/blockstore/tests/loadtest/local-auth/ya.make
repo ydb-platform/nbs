@@ -7,7 +7,7 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/iam/accessservice/mock/python
+    cloud/storage/core/tools/testing/access_service/mock
 )
 
 DATA(

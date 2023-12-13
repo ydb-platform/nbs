@@ -12,6 +12,7 @@ from cloud.blockstore.config.features_pb2 import TFeaturesConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
+from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
 from contrib.ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
@@ -20,7 +21,6 @@ from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from google.protobuf.text_format import MessageToBytes, MessageToString
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
-from .access_service import AccessService
 
 logger = logging.getLogger(__name__)
 

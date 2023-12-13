@@ -40,7 +40,8 @@ const TCheckpointRequest& TCheckpointStore::CreateNew(
         timestamp,
         reqType,
         ECheckpointRequestState::Received,
-        type});
+        type,
+        {}});
 }
 
 void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
@@ -54,7 +55,8 @@ void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
 void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
-    Y_DEBUG_ABORT_UNLESS(checkpointRequest.State == ECheckpointRequestState::Saved);
+    Y_DEBUG_ABORT_UNLESS(
+        checkpointRequest.State == ECheckpointRequestState::Saved);
 
     CheckpointRequestInProgress = requestId;
     CheckpointBeingCreated =
@@ -64,7 +66,8 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 
 void TCheckpointStore::SetCheckpointRequestFinished(
     ui64 requestId,
-    bool success)
+    bool success,
+    TString shadowDiskId)
 {
     Y_DEBUG_ABORT_UNLESS(CheckpointRequestInProgress == requestId);
     if (requestId == CheckpointRequestInProgress) {
@@ -73,6 +76,7 @@ void TCheckpointStore::SetCheckpointRequestFinished(
             checkpointRequest.State == ECheckpointRequestState::Saved);
         checkpointRequest.State = success ? ECheckpointRequestState::Completed
                                           : ECheckpointRequestState::Rejected;
+        checkpointRequest.ShadowDiskId = std::move(shadowDiskId);
         Apply(checkpointRequest);
     }
     CheckpointRequestInProgress = 0;
@@ -89,9 +93,9 @@ bool TCheckpointStore::IsCheckpointBeingCreated() const
     return CheckpointBeingCreated;
 }
 
-bool TCheckpointStore::DoesCheckpointWithDataExist() const
+bool TCheckpointStore::DoesCheckpointBlockingWritesExist() const
 {
-    return CheckpointWithDataExists;
+    return CheckpointBlockingWritesExists;
 }
 
 bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
@@ -122,7 +126,7 @@ bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
 std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(
     const TString& checkpointId) const
 {
-    auto ptr = ActiveCheckpoints.FindPtr(checkpointId);
+    const auto* ptr = ActiveCheckpoints.FindPtr(checkpointId);
     return ptr ? ptr->Type : std::optional<ECheckpointType>{};
 }
 
@@ -204,13 +208,17 @@ void TCheckpointStore::AddCheckpoint(
 {
     ECheckpointData checkpointData =
         checkpointRequest.Type == ECheckpointType::Normal && !forceDataDeleted
-            ? ECheckpointData::DataPresent
+            ? (checkpointRequest.ShadowDiskId ? ECheckpointData::DataPreparing
+                                              : ECheckpointData::DataPresent)
             : ECheckpointData::DataDeleted;
 
     ActiveCheckpoints.emplace(
         checkpointRequest.CheckpointId,
-        TActiveCheckpointsType{checkpointRequest.Type, checkpointData});
-    CalcDoesCheckpointWithDataExist();
+        TActiveCheckpointsType{
+            checkpointRequest.Type,
+            checkpointData,
+            checkpointRequest.ShadowDiskId});
+    CalcCheckpointsState();
 }
 
 void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
@@ -218,21 +226,24 @@ void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
         checkpointData->Data = ECheckpointData::DataDeleted;
     }
-    CalcDoesCheckpointWithDataExist();
+    CalcCheckpointsState();
 }
 
 void TCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
 {
     ActiveCheckpoints.erase(checkpointId);
-    CalcDoesCheckpointWithDataExist();
+    CalcCheckpointsState();
 }
 
-void TCheckpointStore::CalcDoesCheckpointWithDataExist()
+void TCheckpointStore::CalcCheckpointsState()
 {
-    CheckpointWithDataExists = AnyOf(
+    CheckpointBlockingWritesExists = AnyOf(
         ActiveCheckpoints,
         [](const auto& it)
-        { return it.second.Data == ECheckpointData::DataPresent; });
+        {
+            return it.second.Data == ECheckpointData::DataPresent &&
+                   it.second.ShadowDiskId.empty();
+        });
 }
 
 void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
@@ -256,9 +267,6 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
         case ECheckpointRequestType::DeleteData: {
             DeleteCheckpointData(checkpointRequest.CheckpointId);
             break;
-        }
-        default: {
-            Y_DEBUG_ABORT_UNLESS(0);
         }
     }
 }

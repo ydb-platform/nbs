@@ -8,7 +8,6 @@
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
-#include <cloud/filestore/libs/endpoint_vhost/server.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
@@ -16,8 +15,9 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
-#include <cloud/filestore/libs/vfs_fuse/fuse_virtio_client/fuse_virtio_client.h>
-#include <cloud/filestore/libs/vfs_fuse/fuse_virtio_client/request.h>
+#include <cloud/filestore/libs/vhost/client.h>
+#include <cloud/filestore/libs/vhost/request.h>
+#include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -44,8 +44,11 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NThreading;
+
 using namespace NCloud::NFileStore::NClient;
 using namespace NCloud::NFileStore::NVFS;
+using namespace NCloud::NFileStore::NVhost;
+
 using namespace NCloud::NStorage::NUserStats;
 
 namespace {
@@ -252,7 +255,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
 
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
@@ -288,7 +291,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
     }
 
@@ -341,10 +344,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto future1 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto future1 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT(!future1.HasValue());
 
-        auto future2 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file2");
+        auto future2 = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file2", RootNodeId);
         UNIT_ASSERT(!future2.HasValue());
 
         NProto::TCreateHandleResponse result;
@@ -385,7 +388,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.Start();
 
         failSession = true;
-        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
     }
 
@@ -430,7 +433,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(future.GetValue(WaitTimeout), handle);
     }
@@ -662,7 +665,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
     }
 
@@ -837,7 +840,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(response);
         });
 
-        auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>("test");
+        auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>("test", RootNodeId);
         UNIT_ASSERT_EXCEPTION_CONTAINS(
             lookup.GetValue(WaitTimeout),
             yexception,
@@ -898,11 +901,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         });
 
         {
-            auto set = bootstrap.Fuse->SendRequest<TSetXAttrValueRequest>("name", "value");
+            auto set = bootstrap.Fuse->SendRequest<TSetXAttrValueRequest>("name", "value", RootNodeId);
             UNIT_ASSERT(set.Wait(WaitTimeout));
         }
         {
-            auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
+            auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", RootNodeId);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
             UNIT_ASSERT_EQUAL(0, callCount);
@@ -1104,7 +1107,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
         bootstrap.Stop(); // wait till all requests are done writing their stats
 
@@ -1130,7 +1133,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_NO_EXCEPTION(future.Wait(WaitTimeout));
         bootstrap.Stop();
 
@@ -1186,7 +1189,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
 
         UNIT_ASSERT(execute.GetFuture().Wait(WaitTimeout));
         bootstrap.StatsRegistry->UpdateStats(false);
@@ -1222,7 +1225,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.Start();
         bootstrap.InterruptNextRequest();
 
-        auto create = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1");
+        auto create = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_EQUAL(create.GetValueSync(), handleId); // no interrupted
     }
 }

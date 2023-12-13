@@ -18,6 +18,7 @@ enum class ECheckpointRequestState
     Received = 4,    // Request received from the client. Not saved to database.
 };
 
+// The type of checkpoint management request.
 enum class ECheckpointRequestType
 {
     Create = 0,
@@ -26,16 +27,20 @@ enum class ECheckpointRequestType
     CreateWithoutData = 3,
 };
 
+// The type of checkpoint. See documentation in doc/checkpoint.md.
 enum class ECheckpointType
 {
     Normal,
     Light,
 };
 
+// The logical state of the checkpoint data. It is not persistently saved.
 enum class ECheckpointData
 {
-    DataPresent,
-    DataDeleted
+    DataPresent,     // The checkpoint has data and it can be read
+    DataDeleted,     // The checkpoint has no data
+    DataPreparing,   // The checkpoint has data, but it is not ready yet and
+                     // cannot be read
 };
 
 struct TCheckpointRequest
@@ -46,6 +51,7 @@ struct TCheckpointRequest
     ECheckpointRequestType ReqType;
     ECheckpointRequestState State;
     ECheckpointType Type;
+    TString ShadowDiskId;
 
     TCheckpointRequest(
             ui64 requestId,
@@ -53,13 +59,15 @@ struct TCheckpointRequest
             TInstant timestamp,
             ECheckpointRequestType reqType,
             ECheckpointRequestState state,
-            ECheckpointType type)
+            ECheckpointType type,
+            TString shadowDiskId = TString() /* TODO(drbasic) remove */)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
         , ReqType(reqType)
         , State(state)
         , Type(type)
+        , ShadowDiskId(std::move(shadowDiskId))
     {}
 };
 
@@ -67,6 +75,7 @@ struct TActiveCheckpointsType
 {
     ECheckpointType Type;
     ECheckpointData Data;
+    TString ShadowDiskId;
 };
 
 using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointsType>;
@@ -79,7 +88,7 @@ private:
     ui64 LastCheckpointRequestId = 0;
     ui64 CheckpointRequestInProgress = 0;
     bool CheckpointBeingCreated = false;
-    bool CheckpointWithDataExists = false;
+    bool CheckpointBlockingWritesExists = false;
     const TString DiskID;
 
 public:
@@ -96,11 +105,14 @@ public:
 
     void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);
-    void SetCheckpointRequestFinished(ui64 requestId, bool success);
+    void SetCheckpointRequestFinished(
+        ui64 requestId,
+        bool success,
+        TString shadowDiskId);
 
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;
-    [[nodiscard]] bool DoesCheckpointWithDataExist() const;
+    [[nodiscard]] bool DoesCheckpointBlockingWritesExist() const;
     [[nodiscard]] bool DoesCheckpointHaveData(
         const TString& checkpointId) const;
 
@@ -126,7 +138,7 @@ private:
         bool forceDataDeleted);
     void DeleteCheckpoint(const TString& checkpointId);
     void DeleteCheckpointData(const TString& checkpointId);
-    void CalcDoesCheckpointWithDataExist();
+    void CalcCheckpointsState();
     void Apply(const TCheckpointRequest& checkpointRequest);
 };
 

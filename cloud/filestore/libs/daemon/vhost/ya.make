@@ -17,6 +17,7 @@ PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/service_kikimr
     cloud/filestore/libs/vfs_fuse/vhost
+    cloud/filestore/libs/vhost
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon

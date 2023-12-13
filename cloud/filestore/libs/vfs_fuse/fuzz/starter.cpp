@@ -4,7 +4,6 @@
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
-#include <cloud/filestore/libs/endpoint_vhost/server.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -12,6 +11,7 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs_fuse/loop.h>
+#include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -28,6 +28,7 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
+using namespace NCloud::NFileStore::NVhost;
 
 namespace {
 

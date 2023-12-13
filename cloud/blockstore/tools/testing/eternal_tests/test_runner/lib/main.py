@@ -10,7 +10,8 @@ from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper, make_ycp_engine
 
 from .arg_parser import ParseHelper
 from .errors import Error
-from .test_configs import get_test_config
+from .test_configs import ITestConfig, \
+    ITestCreateConfig, LoadConfig, DiskCreateConfig, get_test_config
 
 from library.python import resource
 
@@ -21,7 +22,7 @@ def get_template(name: str) -> Template:
 
 class EternalTestHelper:
     _VM_NAME = '%s-test-vm-%s'
-    _DISK_NAME = '%s-test-disk-%s'
+    _DISK_NAME = '%s-test-disk-%s-%s'
     _FS_NAME = '%s-test-fs-%s'
 
     _REMOTE_PATH = '/usr/bin/eternal-load'
@@ -29,18 +30,24 @@ class EternalTestHelper:
     _LOG_PATH = '/tmp/eternal-load.log'
     _CONFIG_PATH = '/tmp/load-config.json'
 
-    _START_LOAD_CMD = (f'/usr/bin/eternal-load --config-type generated --blocksize %d '
-                       f'--file %s --filesize %d '
-                       f'--iodepth %d --dump-config-path {_CONFIG_PATH} '
-                       f'--write-rate %d '
-                       f'--write-parts %d '
-                       f'>> {_LOG_PATH} 2>&1')
+    _START_LOAD_CMD = ('/usr/bin/eternal-load --config-type generated '
+                       '--blocksize {blocksize} '
+                       '--file {file} '
+                       '--filesize {filesize} '
+                       '--iodepth {io_depth} '
+                       '--dump-config-path {dump_config_path} '
+                       '--write-rate {write_rate} '
+                       '--write-parts {write_parts} '
+                       '>> {log_path} 2>&1')
 
-    _START_LOAD_WITH_CONFIG_CMD = (f'/usr/bin/eternal-load --config-type file --restore-config-path {_CONFIG_PATH} '
-                                   f'--file %s --dump-config-path {_CONFIG_PATH}  >> {_LOG_PATH} 2>&1')
+    _START_LOAD_WITH_CONFIG_CMD = ('/usr/bin/eternal-load --config-type file '
+                                   '--restore-config-path {config_path} '
+                                   '--file {file} '
+                                   '--dump-config-path {config_path}  '
+                                   '>> {log_path} 2>&1')
 
-    _FIO_CMD_TO_FILL_DISK = ('fio --name fill-secondary-disk --filename %s --rw write --bs 4M --iodepth 128'
-                             f' --direct 1 --sync 1 --ioengine libaio --size 100%%  >> {_LOG_PATH} 2>&1')
+    _FIO_CMD_TO_FILL_DISK = ('fio --name fill-secondary-disk --filename {filename} --rw write --bs 4M --iodepth 128'
+                             ' --direct 1 --sync 1 --ioengine libaio --size 100%  >> {log_path} 2>&1')
 
     _DB_TEST_INIT_SCRIPT = '%s.sh'
     _DB_TEST_INIT_SCRIPT_PATH = '/usr/bin'
@@ -98,7 +105,7 @@ class EternalTestHelper:
         if self.args.test_case == 'all':
             self.all_test_configs = get_test_config(self.args, 'db' in self.args.command)
         else:
-            self.test_config = get_test_config(self.args, 'db' in self.args.command)
+            self.test_config: ITestConfig = get_test_config(self.args, 'db' in self.args.command)
 
             if self.test_config is None:
                 raise Error('Unknown test case')
@@ -124,33 +131,81 @@ class EternalTestHelper:
 
         raise RuntimeError("instance {} not found out of {}".format(name, len(instances)))
 
-    def copy_config(self, instance_ip: str):
+    def copy_load_config_to_instance(self, instance_ip: str, test_config: ITestCreateConfig, load_config: LoadConfig):
         json = get_template('test-config.json').substitute(
-            ioDepth=self.test_config.load_config.io_depth,
-            fileSize=(self.test_config.disk_config or self.test_config.fs_config).size * 1024 ** 3,
-            writeRate=self.test_config.load_config.write_rate,
-            blockSize=(self.test_config.disk_config or self.test_config.fs_config).bs,
-            filePath=self.test_config.test_file
+            ioDepth=load_config.io_depth,
+            fileSize=test_config.size * 1024 ** 3,
+            writeRate=load_config.write_rate,
+            blockSize=test_config.bs,
+            filePath=load_config.test_file,
         )
         with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
-            file = sftp.file(self._CONFIG_PATH, 'w')
+            file = sftp.file(load_config.config_path, 'w')
             file.write(json)
             file.flush()
 
-    def generate_run_load_command(self, fill_disk: bool = False) -> str:
+    def create_systemd_load_service_on_instance(self, instance_ip: str, test_config: ITestCreateConfig, load_config: LoadConfig):
+        restore_cmd = self.get_restore_load_command(load_config)
+        generate_cmd = self.get_generate_load_command(test_config, load_config)
+        command = (
+            f'[[ -f {load_config.config_path} ]] && '
+            f'{restore_cmd} || '
+            f'{generate_cmd}'
+        )
+        service_config = get_template('eternal_load_template.service').substitute(
+            deviceName=load_config.device_name,
+            command=command,
+        )
+
+        with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
+            file = sftp.file(f'/etc/systemd/system/{load_config.service_name}', 'w')
+            file.write(service_config)
+            file.flush()
+
+        self.run_command_in_background(
+            instance_ip,
+            f'systemctl daemon-reload && systemctl enable {load_config.service_name}',
+        )
+
+    def get_restore_load_command(self, load_config: LoadConfig) -> str:
+        return self._START_LOAD_WITH_CONFIG_CMD.format(
+            file=load_config.test_file,
+            config_path=load_config.config_path,
+            log_path=load_config.log_path,
+        )
+
+    def get_generate_load_command(self, test_config: ITestCreateConfig, load_config: LoadConfig) -> str:
+        return self._START_LOAD_CMD.format(
+            file=load_config.test_file,
+            dump_config_path=load_config.config_path,
+            log_path=load_config.log_path,
+            blocksize=load_config.bs,
+            filesize=test_config.size,
+            io_depth=load_config.io_depth,
+            write_rate=load_config.write_rate,
+            write_parts=load_config.write_parts,
+        )
+
+    def generate_run_load_command_from_test_config(
+            self,
+            test_config: ITestCreateConfig,
+            load_config: LoadConfig,
+            fill_disk: bool) -> str:
         load_command = ''
+
         if fill_disk:
-            load_command = self._FIO_CMD_TO_FILL_DISK % self.test_config.test_file + ' && '
-        if self.test_config.load_config.use_requests_with_different_sizes:
-            load_command += self._START_LOAD_WITH_CONFIG_CMD
+            load_command = self._FIO_CMD_TO_FILL_DISK.format(
+                filename=load_config.test_file,
+                log_path=load_config.log_path,
+            ) + ' && '
+
+        if load_config.run_in_systemd:
+            load_command += f'systemctl start {load_config.service_name}'
+        elif load_config.use_requests_with_different_sizes:
+            load_command += self.get_restore_load_command(load_config)
         else:
-            load_command += self._START_LOAD_CMD % (
-                self.test_config.load_config.bs,
-                self.test_config.test_file,
-                (self.test_config.disk_config or self.test_config.fs_config).size,
-                self.test_config.load_config.io_depth,
-                self.test_config.load_config.write_rate,
-                self.test_config.load_config.write_parts)
+            load_command += self.get_generate_load_command(test_config, load_config)
+
         return load_command
 
     def run_command_in_background(self, instance_ip: str, command: str):
@@ -169,12 +224,25 @@ class EternalTestHelper:
             if out != "":
                 raise Error(f'{command} is still running')
 
-    def kill_load_on_instance(self, instance_ip: str, command: str):
-        self.logger.info(f'Killing {command} on instance')
+    def exec_pkill_on_instance(self, instance_ip: str, command: str):
+        self.logger.info(f'Rinning pkill {command} on instance <{instance_ip}>')
         with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
             _, stdout, _ = ssh.exec_command(f'pkill {command}')
             stdout.channel.recv_exit_status()
             self._wait_until_killing(instance_ip, command)
+
+    def kill_load_on_instance(self, instance_ip: str):
+        self.logger.info(f'Killing load on instance <{instance_ip}>')
+        for _, load_config in self.test_config.all_tests():
+            load_command = f'-f "^/usr/bin/eternal-load.*{load_config.device_name}"'
+            if load_config.run_in_systemd:
+                self.run_command_in_background(
+                    instance_ip,
+                    f'systemctl stop {load_config.service_name}',
+                )
+                self._wait_until_killing(instance_ip, load_command)
+            else:
+                self.exec_pkill_on_instance(instance_ip, load_command)
 
     def copy_load_to_instance(self, instance_ip: str):
         self.logger.info(f'Copying "{os.path.basename(self.loader_path)}" to instance')
@@ -236,10 +304,9 @@ class EternalTestHelper:
             file.write(resource.find(name).decode('utf8'))
             file.flush()
 
-    def create_disk(self, instance: Ycp.Instance):
+    def create_disk(self, instance: Ycp.Instance, config: DiskCreateConfig, disk_index: int):
         try:
-            name = self._DISK_NAME % (self.args.test_case, self.args.zone_id[-1])
-            config = self.test_config.disk_config
+            name = self._DISK_NAME % (self.args.test_case, self.args.zone_id[-1], disk_index)
 
             placement_group_name = config.placement_group_name
             if placement_group_name:
@@ -286,8 +353,8 @@ class EternalTestHelper:
         with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
             cmd = (f'mkdir -p {config.mount_path} && {{ sudo umount {config.mount_path} || true; }} &&'
                    f' mount -t virtiofs {config.device_name} {config.mount_path}')
-            if hasattr(self.test_config, 'test_file'):
-                cmd += f' && touch {self.test_config.test_file}'
+            if hasattr(self.test_config.load_config, 'test_file'):
+                cmd += f' && touch {self.test_config.load_config.test_file}'
 
             _, _, stderr = ssh.exec_command(cmd)
 
@@ -302,10 +369,8 @@ class EternalTestHelper:
         local_disk_size = None
         placement_group_name = self.test_config.ycp_config.placement_group_name
 
-        if self.test_config.disk_config is not None and \
-                self.test_config.disk_config.type == 'local':
-
-            local_disk_size = self.test_config.disk_config.size * 1024**3
+        if self.test_config.is_local():
+            local_disk_size = self.test_config.disk_tests[0].disk_config.size * 1024**3
             placement_group_name = getattr(self.args, 'placement_group_name', None)
 
         with self.ycp.create_instance(
@@ -324,28 +389,27 @@ class EternalTestHelper:
             self.logger.info(f'Waiting until instance ip=<{instance.ip}> becomes available via ssh')
             self.helpers.wait_until_instance_becomes_available_via_ssh(instance.ip)
 
-            config = self.test_config.disk_config
+            if self.test_config.is_disk_config():
+                for disk_index, (disk_config, _) in enumerate(self.test_config.all_tests()):
+                    if disk_config.type == 'local':
+                        return instance
 
-            if config is not None:
-                if config.type == 'local':
-                    return instance
+                    disk = self.create_disk(instance, disk_config, disk_index)
+                    try:
+                        if disk_config.size > disk_config.initial_size:
+                            self.logger.info(
+                                f'Resize disk {disk.name} from {disk_config.size}GiB to {disk_config.size}GiB')
+                            self.ycp.resize_disk(disk.id, disk_config.size)
 
-                disk = self.create_disk(instance)
-                try:
-                    if config.size > config.initial_size:
-                        self.logger.info(
-                            f'Resize disk {disk.name} from {config.size}GiB to {config.size}GiB')
-                        self.ycp.resize_disk(disk.id, config.size)
+                        kek_sa_id = self.test_config.ycp_config.folder.service_account_id if disk_config.encrypted else None
 
-                    kek_sa_id = self.test_config.ycp_config.folder.service_account_id if config.encrypted else None
-
-                    with self.ycp.attach_disk(instance, disk, kek_sa_id, auto_detach=False):
-                        pass
-                except YcpWrapper.Error as e:
-                    self.logger.info(f'Error occurs while attaching disk {e}')
-                    self.ycp.delete_instance(instance)
-                    self.ycp.delete_disk(disk)
-                    raise Error('Cannot attach disk')
+                        with self.ycp.attach_disk(instance, disk, kek_sa_id, auto_detach=False):
+                            pass
+                    except YcpWrapper.Error as e:
+                        self.logger.info(f'Error occurs while attaching disk {e}')
+                        self.ycp.delete_instance(instance)
+                        self.ycp.delete_disk(disk)
+                        raise Error('Cannot attach disk')
             else:
                 fs = self.create_fs(instance)
                 try:
@@ -369,36 +433,61 @@ class EternalTestHelper:
         instance = self.create_and_configure_vm()
 
         self.copy_load_to_instance(instance.ip)
-        if self.test_config.load_config.use_requests_with_different_sizes:
-            self.copy_config(instance.ip)
 
-        self.run_command_in_background(
-            instance.ip,
-            self.generate_run_load_command(self.test_config.load_config.need_filling))
+        for test_config, load_config in self.test_config.all_tests():
+            if load_config.use_requests_with_different_sizes:
+                self.copy_load_config_to_instance(instance.ip, test_config, load_config)
+
+            if load_config.run_in_systemd:
+                self.create_systemd_load_service_on_instance(instance.ip, test_config, load_config)
+
+            self.run_command_in_background(
+                instance.ip,
+                self.generate_run_load_command_from_test_config(test_config, load_config, load_config.need_filling),
+            )
 
     def handle_continue_load(self):
         self.logger.info('Continuing load')
 
         instance = self.find_instance()
         self.copy_load_to_instance(instance.ip)
-        self.run_command_in_background(instance.ip, self._START_LOAD_WITH_CONFIG_CMD)
+        for _, load_config in self.test_config.all_tests():
+            if load_config.run_in_systemd:
+                cmd = f'systemctl start {load_config.service_name}'
+            else:
+                cmd = self.get_restore_load_command(load_config)
+
+            self.run_command_in_background(
+                instance.ip,
+                cmd,
+            )
 
     def rerun_load_on_instance(self, instance, need_kill: bool):
         self.logger.info(f'Rerunning load for test case {self.args.test_case}')
 
         if need_kill:
-            self.kill_load_on_instance(instance.ip, 'eternal-load')
+            self.kill_load_on_instance(instance.ip)
 
-        if self.test_config.disk_config is None:
+        if not self.test_config.is_disk_config():
             self._mount_fs(instance)
 
         if self.args.scp_binary:
             self.copy_load_to_instance(instance.ip)
 
-        if self.test_config.load_config.use_requests_with_different_sizes:
-            self.copy_config(instance.ip)
+        for test_config, load_config in self.test_config.all_tests():
+            if load_config.run_in_systemd:
+                self.run_command_in_background(
+                    instance.ip,
+                    f'rm {load_config.config_path}'
+                )
 
-        self.run_command_in_background(instance.ip, self.generate_run_load_command(self.args.refill))
+            if load_config.use_requests_with_different_sizes:
+                self.copy_load_config_to_instance(instance.ip, test_config, load_config)
+
+            self.run_command_in_background(
+                instance.ip,
+                self.generate_run_load_command_from_test_config(test_config, load_config, self.args.refill),
+            )
 
     def handle_rerun_load(self):
         if self.args.test_case == 'all':
@@ -421,18 +510,18 @@ class EternalTestHelper:
                     continue
 
                 self.logger.info(f'Found instance id=<{instance.id}> for test case <{test_case}>')
-                if self.args.force_rerun or not self.check_load(instance):
+                if self.args.force_rerun or not self.check_load_on_instance(instance):
                     self.logger.info(f'Rerunning load for test case <{test_case}> on cluster <{self.args.cluster}>')
                     self.rerun_load_on_instance(instance, self.args.force_rerun)
                 else:
                     self.logger.info('Eternal-load is already running')
         else:
-            self.rerun_load_on_instance(self.find_instance(), True)
+            self.rerun_load_on_instance(self.find_instance(), need_kill=True)
 
     def handle_stop_load(self):
         self.logger.info('Stopping load')
         instance = self.find_instance()
-        self.kill_load_on_instance(instance.ip, 'eternal-load')
+        self.kill_load_on_instance(instance.ip)
 
     def handle_delete_test_vm(self):
         self.logger.info('Deleting test')
@@ -443,23 +532,24 @@ class EternalTestHelper:
         self.logger.info('Add auto run')
         instance = self.find_instance()
 
-        crontab_cmd = self.generate_run_load_command()
-        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
-            _, _, stderr = ssh.exec_command(
-                f'(crontab -l 2>/dev/null; echo "@reboot {crontab_cmd}") | crontab -')
-            if stderr.channel.recv_exit_status():
-                raise Error(f'Cannot add crontab job: {"".join(stderr.readlines())}')
+        for test_config, load_config in self.test_config.all_tests():
+            crontab_cmd = self.generate_run_load_command_from_test_config(test_config, load_config, fill_disk=False)
+            with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+                _, _, stderr = ssh.exec_command(
+                    f'(crontab -l 2>/dev/null; echo "@reboot {crontab_cmd}") | crontab -')
+                if stderr.channel.recv_exit_status():
+                    raise Error(f'Cannot add crontab job: {"".join(stderr.readlines())}')
 
     def rerun_db_load_script_on_instance(self, instance: Ycp.Instance):
         self.logger.info(f'Rerun load script for test case <{self.args.test_case}>')
 
         if self.test_config.db == 'mysql':
-            self.kill_load_on_instance(instance.ip, 'sysbench')
+            self.exec_pkill_on_instance(instance.ip, 'sysbench')
             self.run_command_in_background(
                 instance.ip,
                 self._SYSBENCH_TEST_CMD)
         elif self.test_config.db == 'postgresql':
-            self.kill_load_on_instance(instance.ip, 'pgbench')
+            self.exec_pkill_on_instance(instance.ip, 'pgbench')
             self.run_command_in_background(
                 instance.ip,
                 self._PGBENCH_TEST_CMD)
@@ -519,13 +609,21 @@ class EternalTestHelper:
                 instance.ip,
                 self._PGBENCH_INIT_CMD + ' && ' + self._PGBENCH_TEST_CMD)
 
-    def check_load(self, instance: Ycp.Instance) -> bool:
-        self.logger.info(f'Check if eternal load running on instance id=<{instance.id}>')
+    def check_load_on_device(self, instance: Ycp.Instance, device: str):
+        self.logger.info(f'Check if eternal load running on instance id=<{instance.id}>, device=<{device}>')
         with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
-            _, stdout, _ = ssh.exec_command('pgrep eternal-load')
+            _, stdout, _ = ssh.exec_command(f'pgrep -f "^/usr/bin/eternal-load.*{device}"')
             stdout.channel.exit_status_ready()
             out = ''.join(stdout.readlines())
             if not out:
+                return False
+        return True
+
+    def check_load_on_instance(self, instance: Ycp.Instance) -> bool:
+        self.logger.info(f'Check if eternal load running on instance id=<{instance.id}>')
+        for _, load_config in self.test_config.all_tests():
+            if not self.check_load_on_device(instance, load_config.device_name):
+                self.logger.info(f'There is no load on instance id=<{instance.id}> device=<{load_config.device_name}>')
                 return False
         return True
 

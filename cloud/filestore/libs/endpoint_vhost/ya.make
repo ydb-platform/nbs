@@ -3,7 +3,6 @@ LIBRARY()
 SRCS(
     config.cpp
     listener.cpp
-    server.cpp
 )
 
 PEERDIR(

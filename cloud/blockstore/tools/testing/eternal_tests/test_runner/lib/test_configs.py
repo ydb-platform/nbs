@@ -1,4 +1,10 @@
+from abc import ABC, abstractmethod
+from argparse import Namespace as Args
+from os import path
 from dataclasses import dataclass
+from typing import Generator
+
+import typing as tp
 
 from cloud.blockstore.pylibs.clusters.test_config import FolderDesc, get_cluster_test_config
 
@@ -11,9 +17,13 @@ class YcpConfig:
 
 
 @dataclass
-class DiskCreateConfig:
+class ITestCreateConfig(ABC):
     size: int
     bs: int
+
+
+@dataclass
+class DiskCreateConfig(ITestCreateConfig):
     type: str
     encrypted: bool
     placement_group_name: str
@@ -44,9 +54,7 @@ class DiskCreateConfig:
 
 
 @dataclass
-class FsCreateConfig:
-    size: int
-    bs: int
+class FsCreateConfig(ITestCreateConfig):
     type: str
     device_name: str
     mount_path: str
@@ -61,12 +69,21 @@ class FsCreateConfig:
 
 @dataclass
 class LoadConfig:
+    DEFAULT_CONFIG_DIR = '/tmp'
+    DEFAULT_LOG_NAME = 'eternal-load.log'
+    DEFAULT_CONFIG_NAME = 'load-config.json'
+
     use_requests_with_different_sizes: bool
     need_filling: bool
     io_depth: int
     write_rate: int
     bs: int
     write_parts: int
+    run_in_systemd: bool
+    test_file: str
+    config_dir: str
+    config_name: str
+    log_name: str
 
     def __init__(
             self,
@@ -75,7 +92,8 @@ class LoadConfig:
             io_depth,
             write_rate,
             bs,
-            write_parts=1):
+            write_parts=1,
+            run_in_systemd=False):
 
         self.use_requests_with_different_sizes = use_requests_with_different_sizes
         self.need_filling = need_filling
@@ -83,23 +101,29 @@ class LoadConfig:
         self.write_rate = write_rate
         self.bs = bs
         self.write_parts = write_parts
+        self.run_in_systemd = run_in_systemd
+        self.test_file = None
+        self.config_dir = self.DEFAULT_CONFIG_DIR
+        self.config_name = self.DEFAULT_CONFIG_NAME
+        self.log_name = self.DEFAULT_LOG_NAME
 
+    @property
+    def config_path(self) -> str:
+        return path.join(self.config_dir, self.config_name)
 
-@dataclass
-class TestConfig:
-    test_file: str
-    ycp_config: YcpConfig
-    disk_config: DiskCreateConfig
-    fs_config: FsCreateConfig
-    load_config: LoadConfig
+    @property
+    def log_path(self) -> str:
+        return path.join(self.config_dir, self.log_name)
 
+    @property
+    def device_name(self) -> str:
+        return path.basename(self.test_file)
 
-@dataclass
-class DBTestConfig:
-    ycp_config: YcpConfig
-    disk_config: DiskCreateConfig
-    fs_config: FsCreateConfig
-    db: str
+    @property
+    def service_name(self) -> tp.Optional[str]:
+        if self.run_in_systemd:
+            return f'eternalload_{self.device_name}.service'
+        return None
 
 
 _DISK_CONFIGS = {
@@ -283,49 +307,164 @@ _DB = {
 }
 
 
-def select_test_folder(args, test_case: str):
+@dataclass
+class ITestConfig(ABC):
+    ycp_config: YcpConfig
+
+    @abstractmethod
+    def all_tests(self) -> [(ITestCreateConfig, LoadConfig)]:
+        pass
+
+    def is_local(self) -> bool:
+        return False
+
+    @abstractmethod
+    def is_disk_config(self) -> bool:
+        pass
+
+
+@dataclass
+class DiskTestConfig(ITestConfig):
+    @dataclass
+    class DiskTest:
+        disk_config: DiskCreateConfig
+        load_config: LoadConfig
+
+    disk_tests: [DiskTest]
+
+    def is_local(self) -> bool:
+        return self.disk_tests is not None and \
+            len(self.disk_tests) == 1 and \
+            self.disk_tests[0].disk_config.type == 'local'
+
+    def all_tests(self) -> [(ITestCreateConfig, LoadConfig)]:
+        for disk_test in self.disk_tests:
+            yield disk_test.disk_config, disk_test.load_config
+
+    def is_disk_config(self) -> bool:
+        return True
+
+
+@dataclass
+class FSTestConfig(ITestConfig):
+    fs_config: FsCreateConfig
+    load_config: LoadConfig
+
+    def all_tests(self) -> [(ITestCreateConfig, LoadConfig)]:
+        yield self.fs_config, self.load_config
+
+    def is_disk_config(self) -> bool:
+        return False
+
+
+@dataclass
+class DBTestConfig(ITestConfig):
+    disk_config: DiskCreateConfig
+    fs_config: FsCreateConfig
+    db: str
+
+    def all_tests(self) -> [(ITestCreateConfig, LoadConfig)]:
+        if self.disk_config is not None:
+            yield self.disk_config, None
+        else:
+            yield self.fs_config, None
+
+    def is_disk_config(self) -> bool:
+        return self.disk_config is not None
+
+
+def select_test_folder(args: Args, test_case: str):
     config = get_cluster_test_config(args.cluster, args.zone_id, args.cluster_config_path)
 
     ipc_type = _IPC_TYPE.get(test_case, 'grpc')
     return config.ipc_type_to_folder_desc(ipc_type)
 
 
-def generate_test_config(args, test_case: str) -> TestConfig:
+def get_file_path_generator() -> Generator[int, None, None]:
+    i = 0
+    while True:
+        # virtual block devices are named /dev/vdb, /dev/vdc, etc.
+        device_name = f'vd{chr(ord("b") + i)}'
+        yield f'/dev/{device_name}'
+        i += 1
+
+
+def generate_file_path(
+    args: Args,
+    disk_configs: [DiskCreateConfig],
+    disk_index: int,
+    file_path_generator: Generator[int, None, None]
+) -> str:
+    file_path = None
+    if disk_configs[disk_index].type == 'local':
+        assert len(disk_configs) == 1
+        file_path = '/dev/disk/by-id/virtio-nvme-disk-0'
+    if args.file_path:
+        file_path = args.file_path.split(',')[disk_index]
+    if file_path is None:
+        file_path = next(file_path_generator)
+
+    return file_path
+
+
+def generate_test_config(args: Args, test_case: str) -> ITestConfig:
     if test_case not in _LOAD_CONFIGS:
         return None
 
     folder_descr = select_test_folder(args, test_case)
     if folder_descr is None:
         return None
+    ycp_config = YcpConfig(
+        folder=folder_descr,
+        placement_group_name=getattr(
+            args,
+            'placement_group_name',
+            None
+        ) or "nbs-eternal-tests",
+        image_name=None,
+    )
 
-    disk_config = _DISK_CONFIGS.get(test_case)
+    load_configs = _LOAD_CONFIGS.get(test_case)
+    disk_configs = _DISK_CONFIGS.get(test_case)
     fs_config = _FS_CONFIGS.get(test_case)
-    load_config = _LOAD_CONFIGS.get(test_case)
-    if disk_config is not None:
-        file_path = '/dev/vdb'
-        if disk_config.type == 'local':
-            file_path = '/dev/disk/by-id/virtio-nvme-disk-0'
-        if args.file_path:
-            file_path = args.file_path
+
+    if disk_configs is not None:
+        if not isinstance(disk_configs, list):
+            disk_configs = [disk_configs]
+        if not isinstance(load_configs, list):
+            load_configs = [load_configs]
+
+        assert len(disk_configs) == len(load_configs)
+
+        disk_tests = []
+        file_path_generator = get_file_path_generator()
+        for i in range(len(disk_configs)):
+            load_configs[i].test_file = generate_file_path(args, disk_configs, i, file_path_generator)
+            if len(disk_configs) > 1:
+                load_configs[i].log_name = f'eternal-load-{load_configs[i].device_name}.log'
+                load_configs[i].config_name = f'load-config-{load_configs[i].device_name}.json'
+            if load_configs[i].run_in_systemd:
+                load_configs[i].config_dir = '/root'
+            disk_tests.append(
+                DiskTestConfig.DiskTest(disk_configs[i], load_configs[i])
+            )
+
+        return DiskTestConfig(
+            ycp_config=ycp_config,
+            disk_tests=disk_tests,
+        )
     elif fs_config is not None:
-        file_path = args.file_path or '/test/test.txt'
-    else:
-        raise Exception('Unknown test case')
+        load_configs.test_file = args.file_path or '/test/test.txt'
+        return FSTestConfig(
+            ycp_config=ycp_config,
+            fs_config=fs_config,
+            load_config=load_configs,
+        )
 
-    return TestConfig(
-        file_path,
-        YcpConfig(
-            folder=folder_descr,
-            placement_group_name=getattr(args, 'placement_group_name', None) or
-            "nbs-eternal-tests",
-            image_name=None,
-        ),
-        disk_config,
-        fs_config,
-        load_config)
+    raise Exception('Unknown test case')
 
 
-def generate_db_test_config(args, test_case: str) -> DBTestConfig:
+def generate_db_test_config(args: Args, test_case: str) -> ITestConfig:
     if test_case not in _DB:
         return None
 
@@ -349,7 +488,7 @@ def generate_db_test_config(args, test_case: str) -> DBTestConfig:
     )
 
 
-def generate_all_test_configs(args) -> [(str, TestConfig)]:
+def generate_all_test_configs(args: Args) -> [(str, ITestConfig)]:
     configs = []
     for test_case in _LOAD_CONFIGS.keys():
         generated_config = generate_test_config(args, test_case)
@@ -359,7 +498,7 @@ def generate_all_test_configs(args) -> [(str, TestConfig)]:
     return configs
 
 
-def generate_all_db_test_configs(args) -> [(str, DBTestConfig)]:
+def generate_all_db_test_configs(args: Args) -> [(str, ITestConfig)]:
     configs = []
     for test_case in _DB.keys():
         configs.append((test_case, generate_db_test_config(args, test_case)))
@@ -367,7 +506,7 @@ def generate_all_db_test_configs(args) -> [(str, DBTestConfig)]:
     return configs
 
 
-def get_test_config(args, db: bool):
+def get_test_config(args: Args, db: bool) -> [(str, ITestConfig)]:
     if db:
         if args.test_case == 'all':
             return generate_all_db_test_configs(args)

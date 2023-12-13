@@ -1,7 +1,6 @@
 SRCS(
     cache.cpp
     config.cpp
-    convert.cpp
     fs.cpp
     fs_impl.cpp
     fs_impl_attr.cpp

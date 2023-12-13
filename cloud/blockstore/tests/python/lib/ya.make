@@ -7,6 +7,7 @@ PEERDIR(
     cloud/blockstore/public/sdk/python/protos
 
     cloud/storage/core/tools/common/python
+    cloud/storage/core/tools/testing/access_service/lib
     cloud/storage/core/tools/testing/qemu/lib
 
     contrib/ydb/core/protos
@@ -19,7 +20,6 @@ PEERDIR(
 
 PY_SRCS(
     __init__.py
-    access_service.py
     client.py
     config.py
     daemon.py

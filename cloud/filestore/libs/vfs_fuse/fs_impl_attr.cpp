@@ -142,9 +142,9 @@ void TFileSystem::SetXAttr(
     TString value,
     int xflags)
 {
-    STORAGE_DEBUG("SetXAttr #" << ino << " " << name.Quote()
-        << " value:" << value.Quote()
-        << " flags:" << xflags);
+    STORAGE_DEBUG("SetXAttr #" << ino << " name: " << name.Quote()
+        << ", value:" << value.Quote()
+        << ", flags:" << xflags);
 
     if (UnsupportedXAttrs.count(name)) {
         ReplyError(*callContext, req, ENOTSUP);

@@ -22,7 +22,7 @@ void TFileSystem::StatFs(
                 const auto& stats = response.GetStats();
 
                 struct statvfs st;
-                ConvertStat(info, stats, st);
+                NVFS::ConvertStat(info, stats, st);
 
                 self->ReplyStatFs(
                     *callContext,

@@ -525,7 +525,8 @@ bool TVolumeDatabase::ReadCheckpointRequests(
                 TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>()),
                 static_cast<ECheckpointRequestType>(it.GetValue<TTable::ReqType>()),
                 static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>()),
-                static_cast<ECheckpointType>(it.GetValue<TTable::CheckpointType>()));
+                static_cast<ECheckpointType>(it.GetValue<TTable::CheckpointType>()),
+                TString() /* TODO(drbasic) */);
         }
 
         if (!it.Next()) {

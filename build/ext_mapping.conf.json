@@ -3,6 +3,8 @@
     "resources": {
         "4081472014": "https://storage.nemax.nebius.cloud/nbs-oss-resources/short.log",
         "5074323334": "https://storage.nemax.nebius.cloud/nbs-oss-resources/rootfs-compressed.img",
+        "4399070549": "https://storage.nemax.nebius.cloud/nbs-oss-resources/blockstore-plugin-stable-23-1.tar.gz",
+        "3240550068": "https://storage.nemax.nebius.cloud/nbs-oss-resources/blockstore-plugin-stable-22-2.tar.gz",
         "2326530962": "https://storage.nemax.nebius.cloud/nbs-oss-resources/fio-static.tgz",
         "4449551218": "https://storage.nemax.nebius.cloud/nbs-oss-resources/qemu-bin.tar.gz",
         "3307630510": "https://storage.nemax.nebius.cloud/nbs-oss-resources/rootfs.img"
@@ -10,6 +12,8 @@
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
         "5074323334": "cloud/blockstore/tests/rdma/image",
+        "4399070549": "cloud/blockstore/tools/testing/stable-plugin",
+        "3240550068": "cloud/blockstore/tools/testing/stable-plugin",
         "2326530962": "cloud/storage/core/tools/testing/fio/bin",
         "4449551218": "cloud/storage/core/tools/testing/qemu/bin",
         "3307630510": "cloud/storage/core/tools/testing/qemu/image"

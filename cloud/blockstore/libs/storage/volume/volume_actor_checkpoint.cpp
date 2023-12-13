@@ -1036,18 +1036,15 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
 
 bool TVolumeActor::CanExecuteWriteRequest() const
 {
-    const bool doesCheckpointExist =
-        State->GetCheckpointStore().DoesCheckpointWithDataExist();
     const bool isCheckpointBeingCreated =
         State->GetCheckpointStore().IsCheckpointBeingCreated();
-
-    const bool isSinglePartition = State->GetPartitions().size() < 2;
 
     // If our volume is DiskRegistry-based, write requests are allowed only if
     // there are no active checkpoints
     if (State->GetDiskRegistryBasedPartitionActor()) {
         const bool checkpointExistsOrCreatingNow =
-            doesCheckpointExist || isCheckpointBeingCreated;
+            State->GetCheckpointStore().DoesCheckpointBlockingWritesExist() ||
+            isCheckpointBeingCreated;
 
         return !checkpointExistsOrCreatingNow;
     }
@@ -1055,6 +1052,7 @@ bool TVolumeActor::CanExecuteWriteRequest() const
     // If our volume is BlobStorage-based, write requests are allowed only if we
     // have only one partition or there is no checkpoint creation request in
     // flight
+    const bool isSinglePartition = State->GetPartitions().size() == 1;
     return isSinglePartition || !isCheckpointBeingCreated;
 }
 

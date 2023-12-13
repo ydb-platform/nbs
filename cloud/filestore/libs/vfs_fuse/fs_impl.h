@@ -4,7 +4,6 @@
 
 #include "cache.h"
 #include "config.h"
-#include "convert.h"
 #include "fs.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -12,6 +11,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/vfs/config.h>
+#include <cloud/filestore/libs/vfs/convert.h>
 #include <cloud/filestore/libs/vfs/fsync_queue.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -320,6 +320,13 @@ private:
         request->SetNodeId(node);
 
         return request;
+    }
+
+    template <typename T>
+    void SetUserNGroup(T& request, const fuse_ctx* ctx)
+    {
+        request.SetUid(ctx->uid);
+        request.SetGid(ctx->gid);
     }
 
     template<typename T>

@@ -819,9 +819,11 @@ void TVolumeState::SetCheckpointRequestFinished(
     const TCheckpointRequest& request,
     bool success)
 {
+    TString shadowDiskId; // TODO(drbasic) make argument
     GetCheckpointStore().SetCheckpointRequestFinished(
         request.RequestId,
-        success);
+        success,
+        std::move(shadowDiskId));
     if (GetCheckpointStore().GetLightCheckpoints().empty()) {
         StopCheckpointLight();
     }

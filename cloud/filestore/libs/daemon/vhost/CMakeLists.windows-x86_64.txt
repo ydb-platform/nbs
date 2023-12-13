@@ -21,6 +21,7 @@ target_link_libraries(libs-daemon-vhost PUBLIC
   filestore-libs-service
   filestore-libs-service_kikimr
   libs-vfs_fuse-vhost
+  filestore-libs-vhost
   core-libs-common
   core-libs-daemon
   core-libs-diagnostics

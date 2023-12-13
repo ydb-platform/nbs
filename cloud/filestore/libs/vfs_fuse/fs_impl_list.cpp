@@ -9,6 +9,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+using namespace NCloud::NFileStore::NVFS;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
