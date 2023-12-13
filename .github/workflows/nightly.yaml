@@ -3,10 +3,6 @@ on:
   schedule:
     - cron: "0 1 * * *"
   workflow_dispatch:
-    inputs:
-      test_label_regexp:
-        required: false
-        type: string
 
 jobs:
   ya_x86_64:

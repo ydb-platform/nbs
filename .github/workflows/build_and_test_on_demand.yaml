@@ -26,7 +26,7 @@ on:
         description: "Update remote cache"
       test_size:
         type: choice
-        default: "small,medium,large"
+        default: "small"
         description: "test size to run"
         options:
           - small
@@ -34,7 +34,7 @@ on:
           - small,medium,large
       test_type:
         type: choice
-        default: "unittest,py3test,py2test,pytest"
+        default: "unittest"
         description: "type of tests to run"
         options:
           - unittest

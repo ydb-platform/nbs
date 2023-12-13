@@ -1,0 +1,127 @@
+name: Check github workflow
+
+on:
+  push:
+    paths:
+      - ".github/**"
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    paths:
+    - ".github/**"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: get reporter name
+        uses: haya14busa/action-cond@v1
+        id: reporter
+        with:
+          cond: ${{ github.event_name == 'pull_request' }}
+          if_true: "github-pr-review"
+          if_false: "github-check"
+
+      - name: shellcheck
+        uses: reviewdog/action-shellcheck@v1.19.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: ${{ steps.reporter.outputs.value }}
+          path: |
+            .github/
+            cloud/storage/core/tools/ci/
+          pattern: "*.sh"
+
+      - name: shfmt
+        uses: reviewdog/action-shfmt@v1.0.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workdir: .github/
+
+  python:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: get reporter name
+        uses: haya14busa/action-cond@v1
+        id: reporter
+        with:
+          cond: ${{ github.event_name == 'pull_request' }}
+          if_true: "github-pr-review"
+          if_false: "github-check"
+
+
+      - name: set up python environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+
+      - name: set up dependencies
+        run: pip install flake8 black[jupyter] flake8-docstrings flake8-simplify flake8-unused-arguments flake8-quotes
+
+
+      - name: flake8
+        uses: reviewdog/action-flake8@v3.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workdir: .github/
+          reporter: ${{ steps.reporter.outputs.value }}
+
+      - name: black
+        uses: reviewdog/action-black@v3.10.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workdir: .github/
+          reporter: ${{ steps.reporter.outputs.value }}
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: install action-validator with asdf
+        uses: asdf-vm/actions/install@v3
+        with:
+          tool_versions: |
+            action-validator 0.5.4
+
+      - name: check workflows syntax
+        id: lint
+        run: |
+          set -x
+          export TMP_OUT=$(mktemp)
+          find .github/workflows -type f \( -iname \*.yaml -o -iname \*.yml \) \
+            | xargs -I {} action-validator --verbose {} > $TMP_OUT
+
+          {
+            echo "WORKFLOW_LINT<<EOF"
+            cat $TMP_OUT
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
+      - name: comment on issue
+        uses: actions/github-script@v7.0.1
+        if:  ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '${{ steps.lint.outputs.WORKFLOW_LINT }}'
+            })

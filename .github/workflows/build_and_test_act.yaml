@@ -1,26 +1,53 @@
-name: Build and test
+name: Debug workflows using act
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       build_target:
         type: string
         default: "cloud/blockstore/apps/"
-        description: "limit build and test to specific target"
+        description: "limit build to specific target"
       test_target:
         type: string
         default: "cloud/blockstore/"
-        description: "limit build and test to specific target"
+        description: "limit test to specific target"
       build_preset:
+        type: choice
+        default: "relwithdebinfo"
+        description: "Build preset"
+        options:
+          - debug
+          - relwithdebinfo
+          - release-asan
+          - release-tsan
+      update_bazel_cache:
+        type: boolean
+        default: false
+        description: "Update remote cache"
+      test_size:
+        type: choice
+        default: "small"
+        description: "test size to run"
+        options:
+          - small
+          - small,medium
+          - small,medium,large
+      test_type:
+        type: choice
+        default: "unittest"
+        description: "type of tests to run"
+        options:
+          - unittest
+          - py3test,py2test,pytest
+          - unittest,py3test,py2test,pytest
+      test_threads:
         type: string
-      runner_kind:
+        default: "64"
+        description: "Test threads count"
+      link_threads:
         type: string
-        required: true
-        description: "self-hosted or provisioned"
-      runner_label:
-        type: string
-        default: "linux"
-        description: "runner label"
+        default: "16"
+        description: "link threads count"
       run_build:
         type: boolean
         default: true
@@ -29,36 +56,48 @@ on:
         type: boolean
         default: true
         description: "run tests"
+  workflow_call:
+    inputs:
+      build_target:
+        type: string
+        default: "cloud/blockstore/apps/"
+        description: "limit build to specific target"
+      test_target:
+        type: string
+        default: "cloud/blockstore/"
+        description: "limit test to specific target"
+      build_preset:
+        type: string
+        default: "relwithdebinfo"
+      test_size:
+        type: string
+        default: "small"
+      test_type:
+        type: string
+        default: "unittest"
+      run_build:
+        type: boolean
+        default: true
+      run_tests:
+        type: boolean
+        default: true
       test_threads:
         type: string
-        default: '60'
+        default: '28'
         description: "Test threads count"
       link_threads:
         type: string
-        default: '16'
+        default: '8'
         description: "link threads count"
-      test_size:
-        type: string
-        default: "small,medium,large"
-      test_type:
-        type: string
-        default: "unittest,py3test,py2test,pytest"
-      folder_prefix:
-        type: string
-        default: "nebius-"
       update_bazel_cache:
         type: boolean
         default: false
         description: "Update remote cache"
-      cache_tests:
-        type: boolean
-        default: false
-        description: "Use cache for tests"
 
 jobs:
-  build-and-test:
-    name: Build and test ${{ inputs.build_preset }}
-    runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "${{ inputs.runner_label }}" ]
+  checkout:
+    name: Checkout ${{ inputs.build_preset }}
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout PR
       uses: actions/checkout@v3
@@ -69,6 +108,8 @@ jobs:
       uses: actions/checkout@v3
       if: github.event.pull_request.head.sha == ''
 
+    - name: Prepare VM
+      uses: ./.github/actions/prepare
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
@@ -103,3 +144,5 @@ jobs:
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
+
+
