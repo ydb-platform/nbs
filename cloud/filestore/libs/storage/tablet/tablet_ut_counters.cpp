@@ -11,7 +11,6 @@
 
 #include <memory>
 
-
 namespace NCloud::NFileStore::NStorage {
 
 namespace {

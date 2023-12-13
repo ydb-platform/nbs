@@ -55,7 +55,6 @@
 #include <util/system/fs.h>
 #include <util/system/hostname.h>
 
-
 namespace NCloud::NFileStore::NDaemon {
 
 using namespace NCloud::NFileStore::NVhost;
