@@ -6,9 +6,6 @@ PY_SRCS(
 
 PEERDIR(
     contrib/python/requests/py3
-    contrib/python/retrying
-    devtools/ya/core/config
-    library/python/testing/recipe
     contrib/ydb/tests/library
 )
 

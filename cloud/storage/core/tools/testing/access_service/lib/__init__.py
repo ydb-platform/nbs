@@ -1,7 +1,8 @@
 import logging
 import requests
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
 import time
+
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
