@@ -227,6 +227,7 @@ def run_acceptance_test(
         except ResourceExhaustedError as e:
             # If ResourceExhaustedError occurred try another zone.
             _logger.fatal(f'Failed to run test suite: {e}')
+            raise
         except Error as e:
             # If Error occurred finish test with non-zero code.
             _logger.fatal(f'Failed to run test suite: {e}')
@@ -240,5 +241,9 @@ def run_acceptance_tests(module_factory: common.ModuleFactories):
     for zone_id in args.zone_ids:
         try:
             run_acceptance_test(zone_id, args, module_factory)
+            return
         except RuntimeError:
             sys.exit(1)
+        except ResourceExhaustedError:
+            continue
+    sys.exit(1)
