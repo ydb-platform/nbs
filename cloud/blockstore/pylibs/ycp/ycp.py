@@ -91,6 +91,7 @@ class YcpTestEngine:
             'ycp/compute/instance/list': 'fake-instance-list.json',
             'ycp/compute/instance/start': 'fake-instance.json',
             'ycp/compute/instance/stop': '',
+            'ycp/compute/instance/relocate': '',
             'ycp/compute/placement-group/create': 'fake-placement-group.json',
             'ycp/compute/placement-group/list': 'fake-placement-group-list.json',
             'ycp/iam/iam-token/create-for-service-account': 'fake-iam-token.json',

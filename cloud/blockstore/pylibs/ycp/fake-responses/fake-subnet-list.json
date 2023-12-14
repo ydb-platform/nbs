@@ -1,18 +1,22 @@
 [
   {
     "id": "fake-id",
+    "created_at": "01-01-2000",
     "name": "testnets-ru-central1-a"
   },
   {
     "id": "fake-id2",
+    "created_at": "01-01-2000",
     "name": "testnets-ru-central1-c"
   },
   {
     "id": "fake-id3",
+    "created_at": "01-01-2000",
     "name": "testnets-ru-central1-b"
   },
   {
     "id": "fake-id",
+    "created_at": "01-01-2000",
     "name": "fake-name1"
   }
 ]

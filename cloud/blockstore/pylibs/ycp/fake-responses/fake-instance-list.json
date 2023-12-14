@@ -13,6 +13,7 @@
       }
     }
   ],
+  "zone_id": "ru-central1-a",
   "compute_node": "fake"
 },
 {
@@ -30,6 +31,7 @@
       }
     }
   ],
+  "zone_id": "ru-central1-b",
   "compute_node": "fake"
 }
 ]
