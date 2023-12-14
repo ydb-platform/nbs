@@ -1,4 +1,4 @@
-#include "request.h"
+#include "request_aio.h"
 
 #include <cloud/contrib/vhost/bio.h>
 
@@ -33,7 +33,7 @@ void Free(TVector<iocb*>& batch)
     }
 }
 
-void Free(TCompoundRequest* req)
+void Free(TAioCompoundRequest* req)
 {
     std::free(req->Buffer);
     std::free(req);
@@ -46,7 +46,7 @@ struct TTestBackend
 {
     constexpr static int SplitFileHandle = 42;
 
-    TVector<TDevice> Devices;
+    TVector<TAioDevice> Devices;
     TLog Log;
 
     ~TTestBackend()
@@ -109,7 +109,7 @@ struct TTestBackend
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TRequestTest)
+Y_UNIT_TEST_SUITE(TAioRequestTest)
 {
     Y_UNIT_TEST_F(ShouldPrepareIO, TTestBackend)
     {
@@ -147,7 +147,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
         PrepareIO(Log, Devices, &bio.io, batch, now);
 
         UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-        auto* req = static_cast<TRequest*>(batch[0]);
+        auto* req = static_cast<TAioRequest*>(batch[0]);
         Y_SCOPE_EXIT(req) {
             std::free(req);
         };
@@ -205,7 +205,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
         PrepareIO(Log, Devices, &bio.io, batch, now);
 
         UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-        auto* req = static_cast<TRequest*>(batch[0]);
+        auto* req = static_cast<TAioRequest*>(batch[0]);
         Y_SCOPE_EXIT(req) {
             std::free(req->Data[0].iov_base);
             std::free(req);
@@ -266,7 +266,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(2, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
 
-        auto* req = static_cast<TCompoundRequest*>(batch[0]->data);
+        auto* req = static_cast<TAioCompoundRequest*>(batch[0]->data);
         Y_SCOPE_EXIT(req) { Free(req); };
 
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -334,7 +334,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(3, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
 
-        auto* req = static_cast<TCompoundRequest*>(batch[0]->data);
+        auto* req = static_cast<TAioCompoundRequest*>(batch[0]->data);
         Y_SCOPE_EXIT(req) { Free(req); };
 
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -416,7 +416,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
             PrepareIO(Log, Devices, &bio.io, batch, now);
 
             UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-            auto* req = static_cast<TRequest*>(batch[0]);
+            auto* req = static_cast<TAioRequest*>(batch[0]);
 
             UNIT_ASSERT_VALUES_EQUAL(nullptr, req->data);
             UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -471,7 +471,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
             PrepareIO(Log, Devices, &bio.io, batch, now);
 
             UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-            auto* req = static_cast<TRequest*>(batch[0]);
+            auto* req = static_cast<TAioRequest*>(batch[0]);
 
             UNIT_ASSERT_VALUES_EQUAL(nullptr, req->data);
             UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -538,7 +538,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(3, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
 
-        auto* req = static_cast<TCompoundRequest*>(batch[0]->data);
+        auto* req = static_cast<TAioCompoundRequest*>(batch[0]->data);
 
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
         UNIT_ASSERT_VALUES_EQUAL(req, batch[1]->data);
@@ -549,7 +549,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
 
         {
             iocb* sub = batch[0];
-            TDevice& device = Devices[0];
+            TAioDevice& device = Devices[0];
 
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(SplitFileHandle, sub->aio_fildes);
@@ -563,7 +563,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
 
         {
             iocb* sub = batch[1];
-            TDevice& device = Devices[1];
+            TAioDevice& device = Devices[1];
 
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(SplitFileHandle, sub->aio_fildes);
@@ -575,7 +575,7 @@ Y_UNIT_TEST_SUITE(TRequestTest)
 
         {
             iocb* sub = batch[2];
-            TDevice& device = Devices[2];
+            TAioDevice& device = Devices[2];
 
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(SplitFileHandle, sub->aio_fildes);

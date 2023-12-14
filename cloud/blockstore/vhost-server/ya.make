@@ -3,9 +3,12 @@ PROGRAM(blockstore-vhost-server)
 SRCS(
     main.cpp
 
+    backend.cpp
+    backend_aio.cpp
+    backend_null.cpp
     histogram.cpp
     options.cpp
-    request.cpp
+    request_aio.cpp
     server.cpp
     stats.cpp
 )
@@ -17,6 +20,7 @@ ADDINCL(
 
 PEERDIR(
     cloud/contrib/vhost
+
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 

@@ -1,4 +1,4 @@
-#include "request.h"
+#include "request_aio.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,7 +13,7 @@ namespace {
 
 void PrepareCompoundIO(
     TLog& Log,
-    const TVector<TDevice>& devices,
+    const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now)
@@ -26,7 +26,7 @@ void PrepareCompoundIO(
         devices.begin(),
         devices.end(),
         logicalOffset,
-        [] (const TDevice& device, i64 offset) {
+        [] (const TAioDevice& device, i64 offset) {
             return device.EndOffset <= offset;
         });
 
@@ -34,7 +34,7 @@ void PrepareCompoundIO(
         it,
         devices.end(),
         logicalOffset + totalBytes,
-        [] (const TDevice& device, i64 offset) {
+        [] (const TAioDevice& device, i64 offset) {
             return device.StartOffset < offset;
         });
 
@@ -49,8 +49,8 @@ void PrepareCompoundIO(
         bio->first_sector,
         bio->total_sectors);
 
-    auto* req = static_cast<TCompoundRequest*>(
-        std::calloc(1, sizeof(TCompoundRequest)));
+    auto* req = static_cast<TAioCompoundRequest*>(
+        std::calloc(1, sizeof(TAioCompoundRequest)));
 
     req->Inflight = n;
     req->Io = io;
@@ -116,7 +116,7 @@ void SgListCopy(const vhd_sglist& src, char* dst)
 
 void PrepareIO(
     TLog& Log,
-    const TVector<TDevice>& devices,
+    const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now)
@@ -129,7 +129,7 @@ void PrepareIO(
         devices.begin(),
         devices.end(),
         logicalOffset,
-        [] (const TDevice& device, i64 offset) {
+        [] (const TAioDevice& device, i64 offset) {
             return device.EndOffset <= offset;
         });
 
@@ -149,8 +149,8 @@ void PrepareIO(
 
     auto [nbufs, buffers] = bio->sglist;
 
-    auto* req = static_cast<TRequest*>(std::calloc(1,
-        sizeof(TRequest) + sizeof(iovec) * nbufs));
+    auto* req = static_cast<TAioRequest*>(std::calloc(1,
+        sizeof(TAioRequest) + sizeof(iovec) * nbufs));
 
     req->Io = io;
     req->SubmitTs = now;

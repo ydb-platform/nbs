@@ -1,5 +1,7 @@
 #pragma once
 
+#include "stats.h"
+
 #include <cloud/contrib/vhost/include/vhost/blockdev.h>
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/contrib/vhost/include/vhost/types.h>
@@ -19,9 +21,7 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCpuCycles = ui64;
-
-struct TDevice
+struct TAioDevice
 {
     i64 StartOffset = 0;
     i64 EndOffset = 0;
@@ -30,7 +30,7 @@ struct TDevice
 };
 
 // Single IO request. Also map libvhost's vhd_buffer to iovec.
-struct TRequest
+struct TAioRequest
     : iocb
 {
     vhd_io* Io;
@@ -40,7 +40,7 @@ struct TRequest
 };
 
 // Compound IO request.
-struct TCompoundRequest
+struct TAioCompoundRequest
 {
     std::atomic<int> Inflight;
     std::atomic<int> Errors;
@@ -53,7 +53,7 @@ struct TCompoundRequest
 
 void PrepareIO(
     TLog& log,
-    const TVector<TDevice>& devices,
+    const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now);

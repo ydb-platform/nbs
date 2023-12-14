@@ -1,0 +1,454 @@
+#include "backend_aio.h"
+
+#include "backend.h"
+#include "request_aio.h"
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
+#include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <libaio.h>
+
+#include <thread>
+
+namespace NCloud::NBlockStore::NVHostServer {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef NDEBUG
+
+TString ToString(std::span<iocb*> batch)
+{
+    TStringStream ss;
+
+    const char* op[]{
+        "pread",
+        "pwrite",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "preadv",
+        "pwritev",
+    };
+
+    ss << "[ ";
+    for (iocb* cb: batch) {
+        ss << "{ " << op[cb->aio_lio_opcode] << ":" << cb->aio_fildes << " ";
+        switch (cb->aio_lio_opcode) {
+            case IO_CMD_PREAD:
+            case IO_CMD_PWRITE:
+                ss << cb->u.c.buf << " " << cb->u.c.nbytes << ":"
+                   << cb->u.c.offset;
+                break;
+            case IO_CMD_PREADV:
+            case IO_CMD_PWRITEV: {
+                iovec* iov = static_cast<iovec*>(cb->u.c.buf);
+                for (unsigned i = 0; i != cb->u.c.nbytes; ++i) {
+                    ss << "(" << iov[i].iov_base << " " << iov[i].iov_len
+                       << ") ";
+                }
+                break;
+            }
+        }
+        ss << "} ";
+    }
+
+    ss << "]";
+
+    return ss.Str();
+}
+
+#endif   // NDEBUG
+
+////////////////////////////////////////////////////////////////////////////////
+
+void CompleteRequest(
+    TAioRequest* req,
+    vhd_bdev_io_result status,
+    TSimpleStats& stats,
+    TCpuCycles now)
+{
+    auto* bio = vhd_get_bdev_io(req->Io);
+    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+
+    stats.Requests[bio->type].Errors += status != VHD_BDEV_SUCCESS;
+    stats.Requests[bio->type].Count += status == VHD_BDEV_SUCCESS;
+    stats.Requests[bio->type].Bytes += bytes;
+    stats.Requests[bio->type].Unaligned += req->BounceBuf;
+
+    if (status == VHD_BDEV_SUCCESS) {
+        stats.Times[bio->type].Increment(now - req->SubmitTs);
+        stats.Sizes[bio->type].Increment(bytes);
+    }
+
+    if (req->BounceBuf) {
+        if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
+            SgListCopy(
+                static_cast<const char*>(req->Data[0].iov_base),
+                bio->sglist);
+        }
+        std::free(req->Data[0].iov_base);
+    }
+    vhd_complete_bio(req->Io, status);
+    std::free(req);
+}
+
+void CompleteRequest(
+    iocb* sub,
+    TAioCompoundRequest* req,
+    vhd_bdev_io_result status,
+    TSimpleStats& stats,
+    TCpuCycles now)
+{
+    req->Errors += status != VHD_BDEV_SUCCESS;
+
+    auto* bio = vhd_get_bdev_io(req->Io);
+
+    if (req->Inflight.fetch_sub(1) == 1) {
+        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+
+        stats.Requests[bio->type].Errors += req->Errors != 0;
+        stats.Requests[bio->type].Count += 1;
+        stats.Requests[bio->type].Bytes += bytes;
+
+        if (status == VHD_BDEV_SUCCESS) {
+            stats.Times[bio->type].Increment(now - req->SubmitTs);
+            stats.Sizes[bio->type].Increment(bytes);
+        }
+
+        if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
+            SgListCopy(req->Buffer, bio->sglist);
+        }
+        std::free(req->Buffer);
+
+        vhd_complete_bio(req->Io, status);
+        std::free(req);
+    }
+
+    std::free(sub);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAioBackend final: public IBackend
+{
+private:
+    const ILoggingServicePtr Logging;
+    TLog Log;
+
+    TVector<TAioDevice> Devices;
+
+    io_context_t Io = {};
+
+    ui32 BatchSize = 0;
+    TVector<iocb*> Batch;
+
+    std::thread CompletionThread;
+
+    ICompletionStatsPtr CompletionStats;
+
+public:
+    explicit TAioBackend(ILoggingServicePtr logging);
+
+    void Init(const TOptions& options, vhd_bdev_info& devInfo) override;
+    void Start() override;
+    void Stop() override;
+    void ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats) override;
+    std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
+
+private:
+    size_t PrepareBatch(
+        vhd_request_queue* queue,
+        TVector<iocb*>& batch,
+        TCpuCycles now);
+    void CompletionThreadFunc();
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TAioBackend::TAioBackend(ILoggingServicePtr logging)
+    : Logging{std::move(logging)}
+    , CompletionStats(CreateCompletionStats())
+{
+    Log = Logging->CreateLog("AIO");
+}
+
+void TAioBackend::Init(
+    const TOptions& options,
+    vhd_bdev_info& devInfo)
+{
+    STORAGE_INFO("Initializing AIO backend");
+
+    BatchSize = options.BatchSize;
+
+    Y_ABORT_UNLESS(io_setup(BatchSize, &Io) >= 0, "io_setup");
+
+    Batch.reserve(BatchSize);
+
+    EOpenMode flags =
+        EOpenModeFlag::OpenExisting | EOpenModeFlag::DirectAligned |
+        (options.ReadOnly ? EOpenModeFlag::RdOnly : EOpenModeFlag::RdWr);
+
+    if (!options.NoSync) {
+        flags |= EOpenModeFlag::Sync;
+    }
+
+    Devices.reserve(options.Layout.size());
+
+    i64 totalBytes = 0;
+
+    for (auto& chunk: options.Layout) {
+        TFileHandle file{chunk.DevicePath, flags};
+
+        if (!file.IsOpen()) {
+            int ret = errno;
+            Y_ABORT("can't open %s: %s", chunk.DevicePath.c_str(), strerror(ret));
+        }
+
+        i64 fileLen = file.Seek(0, sEnd);
+
+        Y_ABORT_UNLESS(
+            fileLen,
+            "unable to retrive size of file %s",
+            chunk.DevicePath.Quote().c_str());
+
+        Y_ABORT_UNLESS(
+            !chunk.Offset || fileLen > chunk.Offset,
+            "%s: file is too small (%ld B) or the offset is too big (%ld B)",
+            chunk.DevicePath.Quote().c_str(),
+            fileLen,
+            chunk.Offset);
+
+        fileLen -= chunk.Offset;
+
+        if (chunk.ByteCount) {
+            Y_ABORT_UNLESS(
+                fileLen >= chunk.ByteCount,
+                "%s: file is too small (%ld B) expected at least %ld B",
+                chunk.DevicePath.Quote().c_str(),
+                fileLen,
+                chunk.ByteCount);
+
+            fileLen = chunk.ByteCount;
+        }
+
+        Y_ABORT_UNLESS(
+            fileLen % VHD_SECTOR_SIZE == 0,
+            "%s: file size is not a multiple of the block size.",
+            chunk.DevicePath.Quote().c_str());
+
+        STORAGE_INFO(
+            "File %s (%s) %s, offset: %ld",
+            chunk.DevicePath.Quote().c_str(),
+            DecodeOpenMode(flags).c_str(),
+            FormatByteSize(fileLen).c_str(),
+            chunk.Offset);
+
+        Devices.push_back(TAioDevice{
+            .StartOffset = totalBytes,
+            .EndOffset = totalBytes + fileLen,
+            .File = std::move(file),
+            .FileOffset = chunk.Offset});
+
+        totalBytes += fileLen;
+    }
+
+    devInfo = {
+        .serial = options.Serial.c_str(),
+        .socket_path = options.SocketPath.c_str(),
+        .block_size = VHD_SECTOR_SIZE,
+        .num_queues = options.QueueCount,   // Max count of virtio queues
+        .total_blocks = totalBytes / VHD_SECTOR_SIZE,
+        .features = options.ReadOnly ? VHD_BDEV_F_READONLY : 0};
+}
+
+void TAioBackend::Start()
+{
+    STORAGE_INFO("Starting AIO backend");
+
+    CompletionThread = std::thread([this] { CompletionThreadFunc(); });
+}
+
+void TAioBackend::Stop()
+{
+    STORAGE_INFO("Stopping AIO backend");
+
+    pthread_kill(CompletionThread.native_handle(), SIGUSR2);
+    CompletionThread.join();
+
+    io_destroy(Io);
+    Devices.clear();
+}
+
+void TAioBackend::ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats)
+{
+    int ret;
+
+    for (;;) {
+        const TCpuCycles now = GetCycleCount();
+
+        // append new requests to the tail of the batch
+        queueStats.Dequeued += PrepareBatch(queue, Batch, now);
+
+        if (Batch.empty()) {
+            break;
+        }
+
+        do {
+            ret = io_submit(Io, Batch.size(), Batch.data());
+        } while (ret == -EINTR);
+
+        // kernel queue full, punt the re-submission to later event loop
+        // iterations, woken up by completions
+        if (ret == -EAGAIN) {
+            break;
+        }
+
+        // submission failed for other reasons, fail the first request but
+        // keep the rest of the batch
+        if (ret < 0) {
+            STORAGE_ERROR("io_submit: %s", strerror(-ret));
+
+            queueStats.SubFailed++;
+
+            if (Batch[0]->data) {
+                CompleteRequest(
+                    Batch[0],
+                    static_cast<TAioCompoundRequest*>(Batch[0]->data),
+                    VHD_BDEV_IOERR,
+                    queueStats,
+                    now);
+            } else {
+                CompleteRequest(
+                    static_cast<TAioRequest*>(Batch[0]),
+                    VHD_BDEV_IOERR,
+                    queueStats,
+                    now);
+            }
+
+            ret = 1;
+        }
+
+        queueStats.Submitted += ret;
+
+#ifndef NDEBUG
+        STORAGE_DEBUG(
+            "submitted " << ret << ": "
+                         << ToString(std::span(Batch.data(), ret)));
+#endif
+        // remove submitted items from the batch
+        Batch.erase(Batch.begin(), Batch.begin() + ret);
+    }
+}
+
+std::optional<TSimpleStats> TAioBackend::GetCompletionStats(TDuration timeout)
+{
+    return CompletionStats->Get(timeout);
+}
+
+size_t TAioBackend::PrepareBatch(
+    vhd_request_queue* queue,
+    TVector<iocb*>& batch,
+    TCpuCycles now)
+{
+    const size_t size = batch.size();
+
+    vhd_request req;
+    while (batch.size() < BatchSize && vhd_dequeue_request(queue, &req)) {
+        Y_DEBUG_ABORT_UNLESS(vhd_vdev_get_priv(req.vdev) == this);
+
+        PrepareIO(Log, Devices, req.io, batch, now);
+    }
+
+    return batch.size() - size;
+}
+
+void TAioBackend::CompletionThreadFunc()
+{
+    NCloud::SetCurrentThreadName("AIO");
+
+    thread_local sig_atomic_t shouldStop;
+
+    struct sigaction stopAction = {};
+    stopAction.sa_handler = [](int) { shouldStop = 1; };
+    sigaction(SIGUSR2, &stopAction, nullptr);
+
+    TVector<io_event> events(BatchSize);
+
+    TSimpleStats stats;
+    timespec timeout{.tv_sec = 1};
+
+    for (;;) {
+        // TODO: try AIO_RING_MAGIC trick
+        // (https://github.com/axboe/fio/blob/master/engines/libaio.c#L272)
+        int ret = io_getevents(Io, 1, events.size(), events.data(), &timeout);
+
+        if (ret < 0 && ret != -EINTR) {
+            Y_ABORT("io_getevents: %s", strerror(-ret));
+        }
+
+        CompletionStats->Sync(stats);
+
+        if (shouldStop) {
+            break;
+        }
+
+        if (ret == -EINTR) {
+            continue;
+        }
+
+        const TCpuCycles now = GetCycleCount();
+
+        for (int i = 0; i != ret; ++i) {
+            if (events[i].data) {
+                auto* req = static_cast<TAioCompoundRequest*>(events[i].data);
+                iocb* sub = events[i].obj;
+
+                vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
+
+                if (events[i].res2 != 0 || events[i].res != sub->u.c.nbytes) {
+                    stats.CompFailed += 1;
+                    result = VHD_BDEV_IOERR;
+                    STORAGE_ERROR("IO request: %s", strerror(-events[i].res));
+                }
+
+                CompleteRequest(sub, req, result, stats, now);
+
+                continue;
+            }
+
+            auto* req = static_cast<TAioRequest*>(events[i].obj);
+
+            vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
+            auto* bio = vhd_get_bdev_io(req->Io);
+
+            if (events[i].res2 != 0 ||
+                events[i].res != bio->total_sectors * VHD_SECTOR_SIZE)
+            {
+                stats.CompFailed += 1;
+                result = VHD_BDEV_IOERR;
+                STORAGE_ERROR("IO request: %s", strerror(-events[i].res));
+            }
+
+            CompleteRequest(req, result, stats, now);
+        }
+
+        stats.Completed += ret;
+    }
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+IBackendPtr CreateAioBackend(ILoggingServicePtr logging)
+{
+    return std::make_shared<TAioBackend>(std::move(logging));
+}
+
+}   // namespace NCloud::NBlockStore::NVHostServer

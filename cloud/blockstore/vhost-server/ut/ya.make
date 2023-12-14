@@ -3,14 +3,17 @@ UNITTEST_FOR(cloud/blockstore/vhost-server)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    backend.cpp
+    backend_aio.cpp
+
     histogram.cpp
     histogram_ut.cpp
 
     options.cpp
     options_ut.cpp
 
-    request.cpp
-    request_ut.cpp
+    request_aio.cpp
+    request_aio_ut.cpp
 
     server.cpp
     server_ut.cpp

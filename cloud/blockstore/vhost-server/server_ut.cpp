@@ -1,5 +1,7 @@
 #include "server.h"
 
+#include "backend_aio.h"
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/vhost-client/vhost-client.h>
 #include <cloud/storage/core/libs/vhost-client/monotonic_buffer_resource.h>
@@ -37,6 +39,7 @@ struct TFixture
     const TString SocketPath = "server_ut.vhost";
     const TString Serial = "server_ut";
 
+    NCloud::ILoggingServicePtr Logging;
     std::shared_ptr<IServer> Server;
     TVector<TFile> Files;
 
@@ -55,9 +58,7 @@ struct TFixture
 public:
     void StartServer()
     {
-        Server = CreateServer(NCloud::CreateLoggingService("console", {
-            .FiltrationLevel = TLOG_DEBUG
-        }));
+        Server = CreateServer(Logging, CreateAioBackend(Logging));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -67,7 +68,7 @@ public:
                 EOpenModeFlag::CreateAlways);
 
             Options.Layout.push_back({
-                .FilePath = file.GetName(),
+                .DevicePath = file.GetName(),
                 .ByteCount = ChunkByteCount
             });
 
@@ -83,9 +84,7 @@ public:
 
     void StartServerWithSplitDevices()
     {
-        Server = CreateServer(NCloud::CreateLoggingService("console", {
-            .FiltrationLevel = TLOG_DEBUG
-        }));
+        Server = CreateServer(Logging, CreateAioBackend(Logging));
 
         // H - header
         // D - device
@@ -135,7 +134,7 @@ public:
 
         for (ui32 i = 0; i != ChunkCount; ++i) {
             Options.Layout.push_back({
-                .FilePath = file.GetName(),
+                .DevicePath = file.GetName(),
                 .ByteCount = ChunkByteCount,
                 .Offset = offsets[i]
             });
@@ -146,6 +145,15 @@ public:
         UNIT_ASSERT(Client.Init());
 
         Memory = TMonotonicBufferResource {Client.GetMemory()};
+    }
+
+    void SetUp(NUnitTest::TTestContext& context) override
+    {
+        Y_UNUSED(context);
+
+        Logging = NCloud::CreateLoggingService(
+            "console",
+            {.FiltrationLevel = TLOG_DEBUG});
     }
 
     void TearDown(NUnitTest::TTestContext& context) override
@@ -243,7 +251,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT_VALUES_EQUAL(expectedData, buffer);
         }
 
-        auto stats = Server->GetStats();
+        TSimpleStats prevStats;
+        auto stats = Server->GetStats(prevStats);
 
         UNIT_ASSERT_VALUES_EQUAL(0, stats.CompFailed);
         UNIT_ASSERT_VALUES_EQUAL(0, stats.SubFailed);

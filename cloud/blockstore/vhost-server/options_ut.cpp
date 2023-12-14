@@ -37,9 +37,9 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(1024, options.BatchSize);
         UNIT_ASSERT_VALUES_EQUAL(3, options.QueueCount);
         UNIT_ASSERT_VALUES_EQUAL(3, options.Layout.size());
-        UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-1", options.Layout[0].FilePath);
-        UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-2", options.Layout[1].FilePath);
-        UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-3", options.Layout[2].FilePath);
+        UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-1", options.Layout[0].DevicePath);
+        UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-2", options.Layout[1].DevicePath);
+        UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-3", options.Layout[2].DevicePath);
 
         UNIT_ASSERT_VALUES_EQUAL(1000000, options.Layout[0].ByteCount);
         UNIT_ASSERT_VALUES_EQUAL(2000042, options.Layout[1].ByteCount);

@@ -4,9 +4,60 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/stream/output.h>
+#include <util/system/event.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TCompletionStats
+    : public ICompletionStats
+{
+private:
+    TSimpleStats CompletionStats;
+    bool IsCompletionStatsWaitTimeout = false;
+    std::atomic_bool NeedUpdateCompletionStats = false;
+    TAutoEvent CompletionStatsEvent;
+
+public:
+    virtual ~TCompletionStats() = default;
+
+    std::optional<TSimpleStats> Get(TDuration timeout) override
+    {
+        if (!IsCompletionStatsWaitTimeout) {
+            NeedUpdateCompletionStats = true;
+        }
+
+        bool signaled =
+            CompletionStatsEvent.WaitT(timeout);
+        if (!signaled) {
+            IsCompletionStatsWaitTimeout = true;
+            return {};
+        }
+
+        IsCompletionStatsWaitTimeout = false;
+
+        return CompletionStats;
+    }
+
+    void Sync(const TSimpleStats& stats) override
+    {
+        if (!NeedUpdateCompletionStats) {
+            return;
+        }
+
+        CompletionStats.Completed = stats.Completed;
+        CompletionStats.CompFailed = stats.CompFailed;
+
+        CompletionStats.Requests = stats.Requests;
+        CompletionStats.Times = stats.Times;
+        CompletionStats.Sizes = stats.Sizes;
+
+        NeedUpdateCompletionStats = false;
+        CompletionStatsEvent.Signal();
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -119,6 +170,11 @@ void DumpStats(
     stream << Endl;
 
     old = stats;
+}
+
+ICompletionStatsPtr CreateCompletionStats()
+{
+    return std::make_shared<TCompletionStats>();
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

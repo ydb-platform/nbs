@@ -1,3 +1,5 @@
+#include "backend_aio.h"
+#include "backend_null.h"
 #include "server.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -49,12 +51,12 @@ struct TCerrJsonLogBackend
     {}
 };
 
-struct TLoggingService
+struct TDefaultLoggingService
     : public NCloud::ILoggingService
 {
     const ELogPriority LogPriority;
 
-    TLoggingService(ELogPriority logPriority)
+    TDefaultLoggingService(ELogPriority logPriority)
         : LogPriority {logPriority}
     {}
 
@@ -75,6 +77,33 @@ struct TLoggingService
         // nothing to do
     }
 };
+
+NCloud::ILoggingServicePtr CreateLogService(const TOptions& options)
+{
+    auto logLevel = NCloud::GetLogLevel(options.VerboseLevel).GetRef();
+    if (options.LogType == "console") {
+        return NCloud::CreateLoggingService(
+            "console",
+            NCloud::TLogSettings{.FiltrationLevel = logLevel});
+    }
+
+    return std::make_shared<TDefaultLoggingService>(logLevel);
+}
+
+IBackendPtr CreateBackend(
+    const TOptions& options,
+    NCloud::ILoggingServicePtr logging)
+{
+    if (options.DeviceBackend == "aio") {
+        return CreateAioBackend(logging);
+    } else if (options.DeviceBackend == "null") {
+        return CreateNullBackend(logging);
+    }
+
+    Y_ABORT(
+        "Failed to create %s device backend",
+        options.DeviceBackend.c_str());
+}
 
 }   // namespace
 
@@ -98,9 +127,9 @@ int main(int argc, char** argv)
     sigaddset(&sigset, SIGUSR1);
     pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
-    auto server = CreateServer(std::make_shared<TLoggingService>(
-        NCloud::GetLogLevel(options.VerboseLevel).GetRef()
-    ));
+    auto logService = CreateLogService(options);
+    auto backend = CreateBackend(options, logService);
+    auto server = CreateServer(logService, backend);
 
     server->Start(options);
 
@@ -110,7 +139,7 @@ int main(int argc, char** argv)
     // wait for signal to stop the server (Ctrl+C)
     int sig;
     while (!sigwait(&sigset, &sig) && sig != SIGINT) {
-        auto stats = server->GetStats();
+        auto stats = server->GetStats(prevStats);
         auto now = Now();
         DumpStats(
             stats,

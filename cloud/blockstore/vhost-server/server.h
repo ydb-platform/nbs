@@ -1,5 +1,7 @@
 #pragma once
 
+#include "public.h"
+
 #include "options.h"
 #include "stats.h"
 
@@ -19,11 +21,13 @@ struct IServer
 
     virtual void Start(const TOptions& options) = 0;
     virtual void Stop() = 0;
-    virtual TSimpleStats GetStats() = 0;
+    virtual TSimpleStats GetStats(const TSimpleStats& prevStats) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::shared_ptr<IServer> CreateServer(ILoggingServicePtr logging);
+std::shared_ptr<IServer> CreateServer(
+    ILoggingServicePtr logging,
+    IBackendPtr backend);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

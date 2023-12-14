@@ -1,5 +1,7 @@
 #pragma once
 
+#include "public.h"
+
 #include "histogram.h"
 
 #include <util/datetime/base.h>
@@ -7,6 +9,7 @@
 
 #include <array>
 #include <atomic>
+#include <optional>
 #include <span>
 
 class IOutputStream;
@@ -15,6 +18,7 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TCpuCycles = ui64;
 using TTimeHistogram = THistogram<7>;
 using TSizeHistogram = THistogram<3>;
 
@@ -30,14 +34,14 @@ struct TRequestStats
 
     template <typename U>
     TRequestStats(const TRequestStats<U>& rhs) noexcept
-        : Count {rhs.Count}
-        , Bytes {rhs.Bytes}
-        , Errors {rhs.Errors}
-        , Unaligned {rhs.Unaligned}
+        : Count{rhs.Count}
+        , Bytes{rhs.Bytes}
+        , Errors{rhs.Errors}
+        , Unaligned{rhs.Unaligned}
     {}
 
     template <typename U>
-    TRequestStats& operator = (const TRequestStats<U>& rhs) noexcept
+    TRequestStats& operator=(const TRequestStats<U>& rhs) noexcept
     {
         Count = rhs.Count;
         Bytes = rhs.Bytes;
@@ -48,7 +52,7 @@ struct TRequestStats
     }
 
     template <typename U>
-    TRequestStats& operator += (const TRequestStats<U>& rhs) noexcept
+    TRequestStats& operator+=(const TRequestStats<U>& rhs) noexcept
     {
         Count += rhs.Count;
         Bytes += rhs.Bytes;
@@ -60,7 +64,7 @@ struct TRequestStats
 };
 
 template <typename T>
-TRequestStats<T> operator - (TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
+TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
 {
     lhs.Count -= rhs.Count;
     lhs.Bytes -= rhs.Bytes;
@@ -87,27 +91,21 @@ struct TStats
 
     template <typename U>
     TStats(const TStats<U>& rhs) noexcept
-        : Dequeued {rhs.Dequeued}
-        , Submitted {rhs.Submitted}
-        , SubFailed {rhs.SubFailed}
-        , Completed {rhs.Completed}
-        , CompFailed {rhs.CompFailed}
-        , Requests {
-            rhs.Requests[0],
-            rhs.Requests[1]
-        },
-        Times {
-            rhs.Times[0],
-            rhs.Times[1]
-        },
-        Sizes {
-            rhs.Sizes[0],
-            rhs.Sizes[1],
-        }
+        : Dequeued{rhs.Dequeued}
+        , Submitted{rhs.Submitted}
+        , SubFailed{rhs.SubFailed}
+        , Completed{rhs.Completed}
+        , CompFailed{rhs.CompFailed}
+        , Requests{rhs.Requests[0], rhs.Requests[1]}
+        , Times{rhs.Times[0], rhs.Times[1]}
+        , Sizes{
+              rhs.Sizes[0],
+              rhs.Sizes[1],
+          }
     {}
 
     template <typename U>
-    TStats& operator = (const TStats<U>& rhs) noexcept
+    TStats& operator=(const TStats<U>& rhs) noexcept
     {
         Dequeued = rhs.Dequeued;
         Submitted = rhs.Submitted;
@@ -122,7 +120,7 @@ struct TStats
     }
 
     template <typename U>
-    TStats& operator += (const TStats<U>& rhs) noexcept
+    TStats& operator+=(const TStats<U>& rhs) noexcept
     {
         Dequeued += rhs.Dequeued;
         Submitted += rhs.Submitted;
@@ -150,6 +148,19 @@ using TAtomicStats = TStats<std::atomic<ui64>>;
 using TSimpleStats = TStats<ui64>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct ICompletionStats
+{
+    virtual ~ICompletionStats() = default;
+
+    virtual std::optional<TSimpleStats> Get(TDuration timeout) = 0;
+
+    virtual void Sync(const TSimpleStats& stats) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ICompletionStatsPtr CreateCompletionStats();
 
 void DumpStats(
     const TSimpleStats& stats,
