@@ -1,6 +1,8 @@
 #include <cloud/blockstore/libs/daemon/ydb/bootstrap.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
+#include <cloud/blockstore/libs/kms/impl/compute_client.h>
+#include <cloud/blockstore/libs/kms/impl/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
@@ -52,8 +54,12 @@ int main(int argc, char** argv)
         NProto::TGrpcClientConfig config,
         NCloud::ILoggingServicePtr logging)
     {
-        Y_UNUSED(config);
-        Y_UNUSED(logging);
+        if (config.GetAddress()) {
+            return NCloud::NBlockStore::CreateComputeClient(
+                std::move(logging),
+                std::move(config));
+        }
+
         return NCloud::NBlockStore::CreateComputeClientStub();
     };
 
@@ -61,8 +67,12 @@ int main(int argc, char** argv)
         NProto::TGrpcClientConfig config,
         NCloud::ILoggingServicePtr logging)
     {
-        Y_UNUSED(config);
-        Y_UNUSED(logging);
+        if (config.GetAddress()) {
+            return NCloud::NBlockStore::CreateKmsClient(
+                std::move(logging),
+                std::move(config));
+        }
+
         return NCloud::NBlockStore::CreateKmsClientStub();
     };
 

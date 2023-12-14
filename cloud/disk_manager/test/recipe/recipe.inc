@@ -1,6 +1,6 @@
 DEPENDS(
     cloud/blockstore/apps/client
-    cloud/nbs_internal/blockstore/daemon
+    cloud/blockstore/apps/server
 
     cloud/filestore/apps/server
 

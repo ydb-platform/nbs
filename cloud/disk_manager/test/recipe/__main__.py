@@ -60,7 +60,7 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
-    nbs_binary_path = yatest_common.binary_path("cloud/nbs_internal/blockstore/daemon/blockstore-server")
+    nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
     disk_manager_binary_path = yatest_common.binary_path(args.disk_manager_binary_path)
 

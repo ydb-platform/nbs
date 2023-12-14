@@ -7,32 +7,28 @@
 
 
 
-add_executable(nbsd)
-target_compile_options(nbsd PRIVATE
-  -DUSE_CURRENT_UDF_ABI_VERSION
-)
-target_link_libraries(nbsd PUBLIC
+add_executable(kms-example)
+target_link_libraries(kms-example PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
-  libs-daemon-ydb
-  libs-kms-iface
   libs-kms-impl
-  libs-logbroker-iface
-  libs-rdma-impl
-  blockstore-libs-service
-  libs-spdk-iface
-  core-libs-daemon
-  libs-iam-iface
-  run
-  ydb-core-security
+  core-libs-common
+  core-libs-diagnostics
   library-cpp-getopt
+  cpp-string_utils-base64
 )
-target_sources(nbsd PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/server/main.cpp
+target_link_options(kms-example PRIVATE
+  -Wl,-platform_version,macos,11.0,11.0
+  -fPIC
+  -fPIC
+  -framework
+  CoreFoundation
 )
-target_allocator(nbsd
-  cpp-malloc-tcmalloc
-  libs-tcmalloc-no_percpu_cache
+target_sources(kms-example PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/kms/impl/example/main.cpp
 )
-vcs_info(nbsd)
+target_allocator(kms-example
+  system_allocator
+)
+vcs_info(kms-example)
