@@ -5,6 +5,7 @@ SRCS(
     buffer.cpp
     client.cpp
     event.cpp
+    log.cpp
     server.cpp
     test_verbs.cpp
     verbs.cpp

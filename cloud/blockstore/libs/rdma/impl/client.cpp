@@ -1,10 +1,11 @@
 #include "client.h"
 
+#include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
+#include "log.h"
 #include "verbs.h"
 #include "work_queue.h"
-#include "adaptive_wait.h"
 
 #include <cloud/blockstore/libs/rdma/iface/error.h>
 #include <cloud/blockstore/libs/rdma/iface/list.h>
@@ -514,13 +515,18 @@ TClientEndpoint::TClientEndpoint(
     // user data attached to connection events
     Connection->context = this;
 
-    STORAGE_INFO("[%" PRIu64 "] start new session "
-        "[send_magic=%X recv_magic=%X]", Id, SendMagic, RecvMagic);
+    Log.SetFormatter([=](ELogPriority p, TStringBuf msg) {
+        Y_UNUSED(p);
+        return TStringBuilder() << "[" << Id << "] " << msg;
+    });
+
+    RDMA_INFO("new session [send_magic=" << Hex(SendMagic, 0)
+        << " recv_magic=" << Hex(RecvMagic, 0) << "]");
 }
 
 TClientEndpoint::~TClientEndpoint()
 {
-    STORAGE_INFO("[" << Id << "] close session");
+    RDMA_INFO("close session");
 
     if (SendBuffers.Initialized()) {
         SendBuffers.ReleaseBuffer(SendBuffer);
@@ -551,7 +557,7 @@ void TClientEndpoint::ChangeState(
         GetEndpointStateName(actualState));
 
     // FIXME change back to DEBUG when NBS-4644 is resolved
-    STORAGE_INFO("[" << Id << "] " << GetEndpointStateName(expectedState)
+    RDMA_INFO(GetEndpointStateName(expectedState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -559,7 +565,7 @@ void TClientEndpoint::ChangeState(EEndpointState newState) noexcept
 {
     auto currentState = State.exchange(newState);
 
-    STORAGE_INFO("[" << Id << "] " << GetEndpointStateName(currentState)
+    RDMA_INFO(GetEndpointStateName(currentState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -617,7 +623,7 @@ void TClientEndpoint::CreateQP()
     RecvWrs.resize(Config.QueueSize);
 
     Generation++;
-    STORAGE_INFO("[" << Id << "] new generation " << Generation);
+    RDMA_INFO("new generation " << Generation);
 
     ui32 i = 0;
     ui64 requestMsg = SendBuffer.Address;
@@ -877,12 +883,12 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
 
-    STORAGE_TRACE("[" << Id << "] " << NVerbs::GetOpcodeName(wc->opcode)
-        << " " << id << " complete: " << NVerbs::GetStatusString(wc->status));
+    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
+        << " " << NVerbs::GetStatusString(wc->status));
 
     if (!IsWorkRequestValid(id)) {
-        STORAGE_ERROR_T(LogThrottler.Unexpected, "[" << Id
-            << "] unexpected completion " << NVerbs::PrintCompletion(wc));
+        RDMA_ERROR(LogThrottler.Unexpected, Log,
+            "unexpected completion " << NVerbs::PrintCompletion(wc));
 
         Counters->UnexpectedCompletion();
         return;
@@ -903,8 +909,8 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
             break;
 
         default:
-            STORAGE_ERROR_T(LogThrottler.Unexpected, "[" << id
-                << "] unexpected completion " << NVerbs::PrintCompletion(wc));
+            RDMA_ERROR(LogThrottler.Unexpected, Log,
+                "unexpected completion " << NVerbs::PrintCompletion(wc));
 
             Counters->UnexpectedCompletion();
     }
@@ -923,7 +929,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    STORAGE_TRACE("[" << Id << "] SEND " << TWorkRequestId(send->wr.wr_id));
+    RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id));
     Verbs->PostSend(Connection->qp, &send->wr);
 
     LWTRACK(
@@ -947,7 +953,7 @@ void TClientEndpoint::SendRequestCompleted(
     };
 
     if (status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("[" << Id << "] SEND " << TWorkRequestId(send->wr.wr_id)
+        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
             << " error: " << NVerbs::GetStatusString(status));
 
         Counters->SendRequestError();
@@ -959,8 +965,8 @@ void TClientEndpoint::SendRequestCompleted(
     auto* req = static_cast<TRequest*>(send->context);
 
     if (!ActiveRequests.Contains(req)) {
-        STORAGE_WARN("[" << Id << "] SEND " << TWorkRequestId(send->wr.wr_id)
-            << " error: request " << reinterpret_cast<void*>(req) << " not found")
+        RDMA_WARN("SEND " << TWorkRequestId(send->wr.wr_id) << " error: "
+            << "request " << reinterpret_cast<void*>(req) << " not found")
 
         Counters->UnknownRequest();
         return;
@@ -977,7 +983,7 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     auto* responseMsg = recv->Message<TResponseMessage>();
     Zero(*responseMsg);
 
-    STORAGE_TRACE("[" << Id << "] RECV " << TWorkRequestId(recv->wr.wr_id));
+    RDMA_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id));
     Verbs->PostRecv(Connection->qp, &recv->wr);
 
     Counters->RecvResponseStarted();
@@ -988,7 +994,7 @@ void TClientEndpoint::RecvResponseCompleted(
     ibv_wc_status wc_status)
 {
     if (wc_status != IBV_WC_SUCCESS) {
-        STORAGE_ERROR("[" << Id << "] RECV " << TWorkRequestId(recv->wr.wr_id)
+        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
             << " error: " << NVerbs::GetStatusString(wc_status));
 
         Counters->RecvResponseError();
@@ -1001,9 +1007,8 @@ void TClientEndpoint::RecvResponseCompleted(
     auto* msg = recv->Message<TResponseMessage>();
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
-        STORAGE_ERROR("[" << Id << "] RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: incompatible protocol version (expected "
-            << int(RDMA_PROTO_VERSION) << ", got " << version << ")");
+        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
+            << " error: unrecognized protocol version")
 
         Counters->RecvResponseError();
         RecvResponse(recv);
@@ -1018,7 +1023,7 @@ void TClientEndpoint::RecvResponseCompleted(
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        STORAGE_ERROR("[" << Id << "] RECV " << TWorkRequestId(recv->wr.wr_id)
+        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
             << " error: request " << reqId << " not found");
 
         Counters->UnknownRequest();
@@ -1082,7 +1087,7 @@ void TClientEndpoint::SetError() noexcept
                 FlushStartCycles = GetCycleCount();
 
             } catch (const TServiceError& e) {
-                STORAGE_ERROR("[" << Id << "] flush error: " << e.what());
+                RDMA_ERROR("flush error: " << e.what());
             }
 
             if (Config.WaitMode == EWaitMode::Poll) {
@@ -1243,7 +1248,7 @@ private:
             return Verbs->GetConnectionEvent(EventChannel.get());
 
         } catch (const TServiceError &e) {
-            STORAGE_ERROR(e.what());
+            RDMA_ERROR(e.what());
             return NVerbs::NullPtr;
         }
     }
@@ -1405,7 +1410,7 @@ private:
                     break;
             }
         } catch (const TServiceError& e) {
-            STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+            RDMA_ERROR(endpoint->Log, e.what());
             endpoint->SetError();
         }
     }
@@ -1440,7 +1445,7 @@ private:
                     hasWork |= endpoint->AbortRequests();
                 }
             } catch (const TServiceError& e) {
-                STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+                RDMA_ERROR(endpoint->Log, e.what());
                 endpoint->SetError();
             }
         }
@@ -1482,7 +1487,7 @@ private:
                 if (!endpoint->FlushHanging()) {
                     continue;
                 }
-                STORAGE_ERROR("[" << endpoint->Id << "] flush timeout "
+                RDMA_ERROR(endpoint->Log, "flush timeout "
                     << "(send_queue.size=" << endpoint->SendQueue.Size()
                     << " recv_queue.size=" << endpoint->RecvQueue.Size() << ")");
             }
@@ -1600,7 +1605,7 @@ void TClient::Start() noexcept
 {
     Log = Logging->CreateLog("BLOCKSTORE_RDMA");
 
-    STORAGE_DEBUG("start client");
+    RDMA_DEBUG("start client");
 
     auto counters = Monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
@@ -1620,14 +1625,14 @@ void TClient::Start() noexcept
         ConnectionPoller->Start();
 
     } catch (const TServiceError &e) {
-        STORAGE_ERROR("unable to start client: " << e.what());
+        RDMA_ERROR("unable to start client: " << e.what());
         Stop();
     }
 }
 
 void TClient::Stop() noexcept
 {
-    STORAGE_DEBUG("stop client");
+    RDMA_DEBUG("stop client");
 
     if (ConnectionPoller) {
         ConnectionPoller->Stop();
@@ -1682,8 +1687,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
     TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
 
-    STORAGE_INFO("[" << endpoint->Id << "] received "
-        << NVerbs::GetEventName(event->event));
+    RDMA_INFO(endpoint->Log, "received " << NVerbs::GetEventName(event->event));
 
     switch (event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -1747,7 +1751,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         // otherwise keep trying
     }
 
-    STORAGE_DEBUG("[" << endpoint->Id << "] reconnect timer hit in "
+    RDMA_DEBUG(endpoint->Log, "reconnect timer hit in "
         << GetEndpointStateName(endpoint->State) << " state");
 
     switch (endpoint->State) {
@@ -1771,7 +1775,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
                 endpoint->ResetConnection(std::move(connection));
 
             } catch (const TServiceError& e) {
-                STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+                RDMA_ERROR(endpoint->Log, e.what());
                 endpoint->Reconnect.Schedule();
                 return;
             }
@@ -1779,8 +1783,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 
         // shouldn't happen
         case EEndpointState::Connected:
-            STORAGE_WARN("[" << endpoint->Id
-                << "] attempting to reconnect in Connected state");
+            RDMA_WARN(endpoint->Log, "attempting to reconnect in Connected state");
             return;
     }
 
@@ -1799,12 +1802,12 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             endpoint->Host, endpoint->Port, &hints);
 
         if (addrinfo->ai_src_addr) {
-            STORAGE_INFO("[" << endpoint->Id << "] resolve source address "
+            RDMA_INFO(endpoint->Log, "resolve source address "
                 << NVerbs::PrintAddress(addrinfo->ai_src_addr));
         }
 
         if (addrinfo->ai_dst_addr) {
-            STORAGE_INFO("[" << endpoint->Id << "] resolve destination address "
+            RDMA_INFO(endpoint->Log, "resolve destination address "
                 << NVerbs::PrintAddress(addrinfo->ai_dst_addr));
         }
 
@@ -1816,14 +1819,14 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);
 
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+        RDMA_ERROR(endpoint->Log, e.what());
         endpoint->SetError();
     }
 }
 
 void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 {
-    STORAGE_INFO("[" << endpoint->Id << "] resolve route to "
+    RDMA_INFO(endpoint->Log, "resolve route to "
         << endpoint->PeerAddress());
 
     endpoint->ChangeState(
@@ -1834,7 +1837,7 @@ void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
         Verbs->ResolveRoute(endpoint->Connection.get(), RESOLVE_TIMEOUT);
 
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+        RDMA_ERROR(endpoint->Log, e.what());
         endpoint->SetError();
     }
 }
@@ -1868,14 +1871,14 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .rnr_retry_count = 7,
         };
 
-        STORAGE_INFO("[" << endpoint->Id << "] connect to "
+        RDMA_INFO(endpoint->Log, "connect to "
             << endpoint->PeerAddress() << " "
             << NVerbs::PrintConnectionParams(&param));
 
         Verbs->Connect(endpoint->Connection.get(), &param);
 
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+        RDMA_ERROR(endpoint->Log, e.what());
         endpoint->SetError();
     }
 }
@@ -1886,7 +1889,7 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    STORAGE_INFO("[" << endpoint->Id << "] validate connection from "
+    RDMA_INFO(endpoint->Log, "validate connection from "
         << endpoint->PeerAddress() << " "
         << NVerbs::PrintConnectionParams(param));
 
@@ -1894,8 +1897,7 @@ void TClient::HandleConnected(
         param->private_data_len < sizeof(TAcceptMessage) ||
         ParseMessageHeader(param->private_data) != RDMA_PROTO_VERSION)
     {
-        STORAGE_ERROR("[" << endpoint->Id
-            << "] unable to parse accept message");
+        RDMA_ERROR(endpoint->Log, "unable to parse accept message");
         endpoint->SetError();
         return;
     }
@@ -1911,7 +1913,7 @@ void TClient::HandleConnected(
         endpoint->StartReceive();
 
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("[" << endpoint->Id << "] " << e.what());
+        RDMA_ERROR(endpoint->Log, e.what());
         endpoint->SetError();
         return;
     }
@@ -1941,17 +1943,15 @@ void TClient::HandleRejected(
 
     if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
         if (endpoint->Config.QueueSize > msg->QueueSize) {
-            STORAGE_INFO("[" << endpoint->Id << "] set QueueSize="
-                << msg->QueueSize << " supported by server "
-                << endpoint->PeerAddress());
+            RDMA_INFO(endpoint->Log, "set QueueSize=" << msg->QueueSize
+                << " supported by server " << endpoint->PeerAddress());
 
             endpoint->Config.QueueSize = msg->QueueSize;
         }
 
         if (endpoint->Config.MaxBufferSize > msg->MaxBufferSize) {
-            STORAGE_INFO("[" << endpoint->Id << "] set MaxBufferSize="
-                << msg->MaxBufferSize << " supported by server "
-                << endpoint->PeerAddress());
+            RDMA_INFO(endpoint->Log, "set MaxBufferSize=" << msg->MaxBufferSize
+                << " supported by server " << endpoint->PeerAddress());
 
             endpoint->Config.MaxBufferSize = msg->MaxBufferSize;
         }
