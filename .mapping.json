@@ -77,7 +77,6 @@
   "clang-format.config":"cloud/blockstore/github_toplevel/clang-format.config",
   "clang.toolchain":"cloud/blockstore/github_toplevel/clang.toolchain",
   "cloud/CMakeLists.txt":"",
-  "cloud/api/operation.proto":"cloud/disk_manager/github_toplevel/cloud/api/operation.proto",
   "cloud/blockstore/CMakeLists.txt":"",
   "cloud/blockstore/apps/CMakeLists.txt":"",
   "cloud/blockstore/apps/client/CMakeLists.darwin-x86_64.txt":"",
