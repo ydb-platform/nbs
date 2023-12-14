@@ -591,12 +591,6 @@ migrations:
     - maps/automotive/tools/statistics_auto/pylib/calc_hu_offline
     - maps/b2bgeo/mvrp_solver/backend/tools/failed_tasks/task
     - maps/b2bgeo/test_lib
-    - maps/garden/libs/coverage
-    - maps/garden/libs/geocoder/export
-    - maps/garden/libs/geocoder/indexer
-    - maps/garden/libs/search_data_validation/modules_lib
-    - maps/garden/modules/offline_search_cache_validator/lib
-    - maps/garden/sandbox/yt_stats_collector/lib
     - maps/garden/sdk/core
     - maps/geoq/experiments/check_poi_rendering
     - maps/geoq/hypotheses/entrance/lib
@@ -1124,7 +1118,6 @@ migrations:
     - mail/ohio/ohio/storage/mappers
     - maps/automotive/tools/statistics_auto/pylib/import_metrics
     - maps/doc/proto/yandex/maps/proto/bizdir/sps/tests
-    - maps/garden/libs/geocoder/indexer
     - maps/garden/libs/search_data_validation/common/test_utils
     - maps/garden/libs/search_data_validation/geocoder_validator/lib
     - maps/garden/modules/mtr_mpro_export_src/lib
@@ -4099,7 +4092,6 @@ migrations:
     - entity/ontodb/tasks/extdata_import/wikidata/lib
     - entity/ontodb/tasks/extdata_import/yandex_market/lib
     - entity/ontodb/tasks/fast_death_pipeline
-    - entity/ontodb/tasks/fast_death_pipeline/end_date_parser
     - entity/ontodb/tasks/import_persons/lib
     - entity/ontodb/tasks/import_wikipedia_incremental/lib
     - entity/ontodb/tasks/merged_ids_update/lib
