@@ -1,20 +1,20 @@
 #include "app.h"
 
+#include "action_graph.h"
+#include "aliased_volumes.h"
+#include "app_context.h"
 #include "bootstrap.h"
+#include "compare_data_action_runner.h"
+#include "control_plane_action_runner.h"
+#include "countdown_latch.h"
+#include "helpers.h"
+#include "load_test_runner.h"
 #include "options.h"
+#include "request_generator.h"
+#include "suite_runner.h"
+#include "test_runner.h"
+#include "volume_infos.h"
 
-#include <cloud/blockstore/tools/testing/loadtest/lib/action_graph.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/aliased_volumes.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/app_context.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/compare_data_action_runner.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/control_plane_action_runner.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/countdown_latch.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/helpers.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/load_test_runner.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/request_generator.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/suite_runner.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/test_runner.h>
-#include <cloud/blockstore/tools/testing/loadtest/lib/volume_infos.h>
 #include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
 
 #include <cloud/blockstore/libs/storage/model/public.h>
@@ -31,6 +31,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/singleton.h>
+#include <util/generic/yexception.h>
 #include <util/system/thread.h>
 
 namespace NCloud::NBlockStore::NLoadTest {
@@ -409,6 +410,40 @@ int AppMain(TBootstrap& bootstrap)
 void AppStop(int exitCode)
 {
     TApp::GetInstance()->Stop(exitCode);
+}
+
+int DoMain(int argc, char** argv,
+    std::shared_ptr<TModuleFactories> moduleFactories)
+{
+    ConfigureSignals();
+
+    auto options = std::make_shared<TOptions>();
+    try {
+        options->Parse(argc, argv);
+    } catch (...) {
+        Cerr << CurrentExceptionMessage() << Endl;
+        return 1;
+    }
+
+    TBootstrap bootstrap(std::move(options), std::move(moduleFactories));
+    try {
+        bootstrap.Init();
+        bootstrap.Start();
+    } catch (...) {
+        Cerr << CurrentExceptionMessage() << Endl;
+        return 1;
+    }
+
+    int exitCode = AppMain(bootstrap);
+
+    try {
+        bootstrap.Stop();
+    } catch (...) {
+        Cerr << CurrentExceptionMessage() << Endl;
+        return 1;
+    }
+
+    return exitCode;
 }
 
 }   // namespace NCloud::NBlockStore::NLoadTest

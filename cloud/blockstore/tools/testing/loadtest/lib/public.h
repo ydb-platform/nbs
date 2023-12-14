@@ -6,6 +6,13 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TBootstrap;
+
+struct TModuleFactories;
+
+struct TOptions;
+using TOptionsPtr = std::shared_ptr<TOptions>;
+
 struct IRequestGenerator;
 using IRequestGeneratorPtr = std::shared_ptr<IRequestGenerator>;
 

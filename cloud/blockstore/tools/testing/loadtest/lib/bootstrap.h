@@ -1,8 +1,8 @@
 #pragma once
 
-#include "private.h"
+#include "public.h"
 
-#include <cloud/blockstore/tools/testing/loadtest/lib/client_factory.h>
+#include "client_factory.h"
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -20,11 +20,25 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSpdkParts
+{
+    NSpdk::ISpdkEnvPtr Env;
+    std::function<void(TLog& log)> LogInitializer;
+};
+
+struct TModuleFactories
+{
+    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TBootstrap final
     : public IClientFactory
 {
 private:
     const TOptionsPtr Options;
+    const std::shared_ptr<TModuleFactories> ModuleFactories;
 
     NClient::TClientAppConfigPtr ClientConfig;
 
@@ -32,16 +46,20 @@ private:
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     TLog GrpcLog;
+    TLog SpdkLog;
     IMonitoringServicePtr Monitoring;
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
     IServerStatsPtr ClientStats;
     NSpdk::ISpdkEnvPtr Spdk;
+    std::function<void(TLog& log)> SpdkLogInitializer;
 
     TLockFreeStack<IStartablePtr> Clients;
 
 public:
-    TBootstrap(TOptionsPtr options);
+    TBootstrap(
+        TOptionsPtr options,
+        std::shared_ptr<TModuleFactories> moduleFactories);
     ~TBootstrap();
 
     void Init();

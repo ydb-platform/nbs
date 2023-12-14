@@ -12,27 +12,8 @@ target_link_libraries(blockstore-loadtest PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  public-api-protos
-  testing-loadtest-lib
-  testing-loadtest-protos
-  blockstore-libs-client
-  blockstore-libs-client_rdma
-  blockstore-libs-client_spdk
-  blockstore-libs-common
-  blockstore-libs-diagnostics
-  blockstore-libs-nbd
-  blockstore-libs-rdma_test
-  libs-rdma-iface
-  libs-rdma-impl
   libs-spdk-iface
-  core-libs-grpc
-  core-libs-version
-  cpp-deprecated-atomic
-  library-cpp-getopt
-  library-cpp-logger
-  cpp-protobuf-json
-  cpp-protobuf-util
-  library-cpp-sighandler
+  testing-loadtest-lib
 )
 target_link_options(blockstore-loadtest PRIVATE
   -ldl
@@ -45,10 +26,7 @@ target_link_options(blockstore-loadtest PRIVATE
   -ldl
 )
 target_sources(blockstore-loadtest PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/loadtest/bin/app.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/loadtest/bin/bootstrap.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/loadtest/bin/main.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/testing/loadtest/bin/options.cpp
 )
 target_allocator(blockstore-loadtest
   cpp-malloc-tcmalloc

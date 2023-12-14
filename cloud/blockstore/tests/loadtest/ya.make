@@ -18,7 +18,6 @@ RECURSE(
     local-null
     local-overflow
     local-overlay
-    local-endpoints-spdk
     local-throttling
     local-user-metrics
     local-v2

@@ -1,42 +1,21 @@
-#include "app.h"
-#include "bootstrap.h"
-#include "options.h"
-
-#include <util/generic/yexception.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/tools/testing/loadtest/lib/app.h>
+#include <cloud/blockstore/tools/testing/loadtest/lib/bootstrap.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
 {
-    using namespace NCloud::NBlockStore::NLoadTest;
+    using namespace NCloud::NBlockStore;
 
-    ConfigureSignals();
+    auto moduleFactories = std::make_shared<NLoadTest::TModuleFactories>();
+    moduleFactories->SpdkFactory = [] (NSpdk::TSpdkEnvConfigPtr config) {
+        Y_UNUSED(config);
+        return NLoadTest::TSpdkParts {
+            .Env = NSpdk::CreateEnvStub(),
+            .LogInitializer = {},
+        };
+    };
 
-    auto options = std::make_shared<TOptions>();
-    try {
-        options->Parse(argc, argv);
-    } catch (...) {
-        Cerr << CurrentExceptionMessage() << Endl;
-        return 1;
-    }
-
-    TBootstrap bootstrap(std::move(options));
-    try {
-        bootstrap.Init();
-        bootstrap.Start();
-    } catch (...) {
-        Cerr << CurrentExceptionMessage() << Endl;
-        return 1;
-    }
-
-    int exitCode = AppMain(bootstrap);
-
-    try {
-        bootstrap.Stop();
-    } catch (...) {
-        Cerr << CurrentExceptionMessage() << Endl;
-        return 1;
-    }
-
-    return exitCode;
+    return NLoadTest::DoMain(argc, argv, std::move(moduleFactories));
 }

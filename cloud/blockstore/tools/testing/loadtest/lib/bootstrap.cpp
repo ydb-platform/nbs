@@ -1,9 +1,9 @@
 #include "bootstrap.h"
 
+#include "filesystem_client.h"
 #include "options.h"
 
-#include <cloud/blockstore/tools/testing/loadtest/lib/filesystem_client.h>
-
+#include <cloud/blockstore/config/spdk.pb.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -21,14 +21,9 @@
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
-#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/validation/validation.h>
-
-#if NBS_INTERNAL_BUILD
-#include <cloud/nbs_internal/blockstore/libs/spdk/impl/env.h>
-#endif
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -147,8 +142,11 @@ TRdmaEndpointConfig CreateRdmaEndpointConfig(const TClientAppConfig& config)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBootstrap::TBootstrap(TOptionsPtr options)
+TBootstrap::TBootstrap(
+        TOptionsPtr options,
+        std::shared_ptr<TModuleFactories> moduleFactories)
     : Options(std::move(options))
+    , ModuleFactories(std::move(moduleFactories))
 {}
 
 TBootstrap::~TBootstrap()
@@ -222,17 +220,14 @@ void TBootstrap::Init()
         Timer);
 
     if (Options->SpdkConfig) {
-#if NBS_INTERNAL_BUILD
-        NSpdk::InitLogging(Logging->CreateLog("BLOCKSTORE_SPDK"));
-
         NProto::TSpdkEnvConfig config;
         ParseFromTextFormat(Options->SpdkConfig, config);
-
         auto spdkConfig = std::make_shared<NSpdk::TSpdkEnvConfig>(config);
-        Spdk = NSpdk::CreateEnv(spdkConfig);
-#else
-        Spdk = NSpdk::CreateEnvStub();
-#endif
+
+        auto spdkParts = ModuleFactories->SpdkFactory(spdkConfig);
+        Spdk = std::move(spdkParts.Env);
+        SpdkLog = Logging->CreateLog("BLOCKSTORE_SPDK");
+        spdkParts.LogInitializer(SpdkLog);
     }
 }
 
