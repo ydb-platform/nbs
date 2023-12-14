@@ -28,5 +28,12 @@ SHELL=/bin/sh
 0  9	* * *	root	/root/runner/run_check_emptiness.sh
 0  10	* * *	root	/root/runner/run_nfs_coreutils.sh
 0  4	* * *	root	/root/runner/run_disk_manager_acceptance_small.sh
+0  5	* * *	root	/root/runner/run_disk_manager_acceptance_medium.sh
+0  6	* * *	root	/root/runner/run_disk_manager_acceptance_enormous.sh
+0  8	* * *	root	/root/runner/run_disk_manager_eternal_8_gib.sh
+0  9	* * *	root	/root/runner/run_disk_manager_eternal_256_gib.sh
+0  10	* * *	root	/root/runner/run_disk_manager_eternal_8_tib.sh
+0  12	* * *	root	/root/runner/run_disk_manager_sync_test.sh
+
 */1 *	* * *	root	/root/runner/generate_index.py /root/runner/index.xsl
 #
