@@ -261,7 +261,7 @@ def _lay_out_files(directory, name, jobs, size):
         _lay_out_file('{}/{}.{}.0'.format(directory, name, i), size)
 
 
-def _execute_command(cmd):
+def _execute_command(cmd, fail_on_errors):
     logger.info("execute " + " ".join(cmd))
     ex = common.execute(
         cmd,
@@ -274,10 +274,12 @@ def _execute_command(cmd):
     errors = 0
     for job in results["jobs"]:
         errors += int(job["error"])
+    if fail_on_errors:
+        assert errors == 0
     return "errors: " + str(errors)
 
 
-def run_test(file_name, test):
+def run_test(file_name, test, fail_on_errors=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
     logger.info("laying out file " + file_name)
@@ -287,10 +289,10 @@ def run_test(file_name, test):
     fio_bin = _get_fio_bin()
     cmd = _get_fio_cmd(fio_bin, file_name, test)
 
-    return _execute_command(cmd)
+    return _execute_command(cmd, fail_on_errors)
 
 
-def run_index_test(directory, test):
+def run_index_test(directory, test, fail_on_errors=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
     logger.info("laying out files in directory " + directory)
@@ -300,4 +302,4 @@ def run_index_test(directory, test):
     fio_bin = _get_fio_bin()
     cmd = _get_index_fio_cmd(fio_bin, directory, test)
 
-    return _execute_command(cmd)
+    return _execute_command(cmd, fail_on_errors)
