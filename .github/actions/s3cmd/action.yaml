@@ -13,6 +13,9 @@ inputs:
   s3_endpoint:
     required: true
     description: "s3 endpoint"
+  s3_website_suffix:
+    required: true
+    description: "s3 website suffix"
   folder_prefix:
     required: true
     description: "folder prefix"
@@ -20,13 +23,19 @@ inputs:
     required: true
     description: "build preset like relwithdebinfo"
 runs:
-  using: "composite"
+  using: composite
   steps:
+    - name: install s3cmd
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends  s3cmd
     - name: configure s3cmd
       shell: bash
       run: |
         export S3CMD_CONFIG=$(mktemp)
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
+        export GITHUB_WORKFLOW_NO_SPACES=${GITHUB_WORKFLOW// /-}
         cat <<EOF > $S3CMD_CONFIG
         [default]
         access_key = ${s3_key_id}
@@ -56,8 +65,9 @@ runs:
             ;;
         esac
 
-        echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${{github.workflow}}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
-        echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${{ github.workflow }}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_WEBSITE_PREFIX=https://${{ inputs.s3_bucket }}.${{ inputs.s3_website_suffix }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
       env:
         s3_key_id: ${{ inputs.s3_key_id }}
         s3_secret_access_key: ${{ inputs.s3_key_secret }}

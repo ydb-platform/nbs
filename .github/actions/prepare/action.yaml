@@ -1,7 +1,7 @@
-name: Prepare VM for build
+name: Prepare VM for build (used only in act)
 description: Install required packages
 runs:
-  using: "composite"
+  using: composite
   steps:
     - name: add cmake
       shell: bash
@@ -27,9 +27,3 @@ runs:
         curl -L https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${OS_ARCH}.tar.xz \
           | tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner ccache-${CCACHE_VERSION}-linux-${OS_ARCH}/ccache
         ls -la /usr/local/bin/ccache
-    - name: mount ccache shared folder
-      shell: bash
-      run: |
-        sudo mkdir /mnt/ccache
-        sudo chmod 777 /mnt/ccache
-        sudo mount -t virtiofs ccache /mnt/ccache/

@@ -27,7 +27,7 @@ inputs:
     description: "link threads count"
 
 runs:
-  using: "composite"
+  using: composite
   steps:
     - name: Init
       id: init

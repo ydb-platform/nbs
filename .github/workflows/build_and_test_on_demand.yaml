@@ -26,7 +26,7 @@ on:
         description: "Update remote cache"
       test_size:
         type: choice
-        default: "small,medium,large"
+        default: "small"
         description: "test size to run"
         options:
           - small
@@ -34,7 +34,7 @@ on:
           - small,medium,large
       test_type:
         type: choice
-        default: "unittest,py3test,py2test,pytest"
+        default: "unittest"
         description: "type of tests to run"
         options:
           - unittest
@@ -42,11 +42,11 @@ on:
           - unittest,py3test,py2test,pytest
       test_threads:
         type: string
-        default: "28"
+        default: "64"
         description: "Test threads count"
       link_threads:
         type: string
-        default: "8"
+        default: "16"
         description: "link threads count"
       run_build:
         type: boolean
@@ -111,12 +111,12 @@ jobs:
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           folder-id: bjeuq5o166dq4ukv3eec
-          image-id: arlng9uhmtlat6q5pqlv
+          image-id: ${{ vars.IMAGE_ID_2204 }}
           disk-size: '1023GB'
           disk-type: network-ssd-nonreplicated
           platform-id: standard-v2
-          cores: 32
-          memory: 128GB
+          cores: 60
+          memory: 120GB
           core-fraction: 100
           zone-id: eu-north1-c
           subnet-id: f8uh0ml4rhb45nde9p75
