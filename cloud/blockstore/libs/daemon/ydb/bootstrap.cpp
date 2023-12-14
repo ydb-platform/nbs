@@ -417,7 +417,9 @@ void TBootstrapYdb::InitKikimrService()
         AioStorageProvider = CreateAioStorageProvider(
             FileIOService,
             NvmeManager,
-            !Configs->DiskAgentConfig->GetDirectIoFlagDisabled());
+            !Configs->DiskAgentConfig->GetDirectIoFlagDisabled(),
+            EAioSubmitQueueOpt::DontUse
+        );
 
         STORAGE_INFO("AioStorageProvider initialized");
     }

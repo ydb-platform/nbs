@@ -652,7 +652,8 @@ IStorageProviderPtr CreateTestStorageProvider(
         NServer::CreateAioStorageProvider(
             std::move(fileIO),
             std::move(nvmeManager),
-            false   // directIO
+            false,  // directIO
+            NServer::EAioSubmitQueueOpt::DontUse
         ));
 }
 

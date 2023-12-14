@@ -51,7 +51,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(),
-            true    // directIO
+            true,   // directIO
+            EAioSubmitQueueOpt::DontUse
         );
 
         NProto::TVolume volume;

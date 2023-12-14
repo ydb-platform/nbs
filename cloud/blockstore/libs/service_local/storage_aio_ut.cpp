@@ -108,7 +108,9 @@ TFsPath TryGetRamDrivePath()
 
 Y_UNIT_TEST_SUITE(TAioStorageTest)
 {
-    void ShouldHandleLocalReadWriteRequestsImpl(ui32 blockSize)
+    void ShouldHandleLocalReadWriteRequestsImpl(
+        ui32 blockSize,
+        EAioSubmitQueueOpt submitQueueOpt)
     {
         const ui64 blockCount = 1024;
         const ui64 startIndex = 10;
@@ -124,7 +126,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(),
-            false   // directIO
+            false,  // directIO
+            submitQueueOpt
         );
 
         NProto::TVolume volume;
@@ -216,22 +219,7 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 0), buffer);
     }
 
-    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_512)
-    {
-        ShouldHandleLocalReadWriteRequestsImpl(512);
-    }
-
-    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_1024)
-    {
-        ShouldHandleLocalReadWriteRequestsImpl(1024);
-    }
-
-    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_4096)
-    {
-        ShouldHandleLocalReadWriteRequestsImpl(DefaultBlockSize);
-    }
-
-    Y_UNIT_TEST(ShouldHandleZeroBlocksRequests)
+    void ShouldHandleZeroBlocksRequestsImpl(EAioSubmitQueueOpt submitQueueOpt)
     {
         const ui32 blockSize = 4096;
         const ui64 blockCount = 32_MB / blockSize;
@@ -255,7 +243,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(),
-            false   // directIO
+            false,  // directIO
+            submitQueueOpt
         );
 
         NProto::TVolume volume;
@@ -302,6 +291,43 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         verifyData('\0');
     }
 
+
+    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_512)
+    {
+        ShouldHandleLocalReadWriteRequestsImpl(
+            512,
+            EAioSubmitQueueOpt::DontUse);
+    }
+
+    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_512_withSubmitQueue)
+    {
+        ShouldHandleLocalReadWriteRequestsImpl(512, EAioSubmitQueueOpt::Use);
+    }
+
+    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_1024)
+    {
+        ShouldHandleLocalReadWriteRequestsImpl(
+            1024,
+            EAioSubmitQueueOpt::DontUse);
+    }
+
+    Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_4096)
+    {
+        ShouldHandleLocalReadWriteRequestsImpl(
+            DefaultBlockSize,
+            EAioSubmitQueueOpt::DontUse);
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroBlocksRequests)
+    {
+        ShouldHandleZeroBlocksRequestsImpl(EAioSubmitQueueOpt::DontUse);
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroBlocksRequests_withSubmitQueue)
+    {
+        ShouldHandleZeroBlocksRequestsImpl(EAioSubmitQueueOpt::Use);
+    }
+
     Y_UNIT_TEST(ShouldHandleZeroBlocksRequestsForBigFiles)
     {
         const ui32 blockSize = 4_KB;
@@ -318,7 +344,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(),
-            false   // directIO
+            false,  // directIO
+            EAioSubmitQueueOpt::DontUse
         );
 
         NProto::TVolume volume;
@@ -451,7 +478,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(),
-            true   // directIO
+            true,  // directIO
+            EAioSubmitQueueOpt::DontUse
         );
 
         NProto::TVolume volume;
@@ -515,7 +543,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(false /* not ssd */),
-            true   // directIO
+            true,  // directIO
+            EAioSubmitQueueOpt::DontUse
         );
 
         NProto::TVolume volume;
@@ -577,7 +606,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(),
-            false   // directIO
+            false,  // directIO
+            EAioSubmitQueueOpt::DontUse
         );
 
         NProto::TVolume volume;

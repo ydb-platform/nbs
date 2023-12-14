@@ -674,7 +674,8 @@ void TBootstrapBase::InitLocalService()
         CreateAioStorageProvider(
             FileIOService,
             NvmeManager,
-            false   // directIO
+            false,  // directIO
+            EAioSubmitQueueOpt::DontUse
         ));
 }
 

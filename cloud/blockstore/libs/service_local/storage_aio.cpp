@@ -10,7 +10,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/sglist.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 
 #include <util/generic/array_ref.h>
 #include <util/generic/noncopyable.h>
@@ -162,6 +164,7 @@ struct TStorageContext
     : TNonCopyable
     , std::enable_shared_from_this<TStorageContext>
 {
+    const ITaskQueuePtr SubmitQueue;
     const IFileIOServicePtr FileIOService;
     const INvmeManagerPtr NvmeManager;
 
@@ -173,6 +176,7 @@ struct TStorageContext
     bool DirectIO;
 
     TStorageContext(
+            ITaskQueuePtr submitQueue,
             IFileIOServicePtr fileIO,
             INvmeManagerPtr nvmeManager,
             ui32 blockSize,
@@ -180,7 +184,8 @@ struct TStorageContext
             ui64 blockCount,
             TFile file,
             bool directIO)
-        : FileIOService(std::move(fileIO))
+        : SubmitQueue(std::move(submitQueue))
+        , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
         , BlockSize(blockSize)
         , StorageStartIndex(startIndex)
@@ -504,6 +509,19 @@ public:
 
 private:
     TFuture<NProto::TError> SafeDeallocateDevice();
+
+    TFuture<NProto::TZeroBlocksResponse> DoZeroBlocks(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TZeroBlocksRequest> request);
+
+    TFuture<NProto::TReadBlocksLocalResponse> DoReadBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadBlocksLocalRequest> request);
+
+    TFuture<NProto::TWriteBlocksLocalResponse> DoWriteBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request);
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -534,7 +552,7 @@ NProto::TError MakeTooBigRequestError(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
+TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::DoReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
@@ -573,7 +591,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
         byteCount);
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
+TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::DoWriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -612,7 +630,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
         byteCount);
 }
 
-TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
+TFuture<NProto::TZeroBlocksResponse> TAioStorage::DoZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
@@ -636,6 +654,36 @@ TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
         StorageStartIndex + request->GetStartIndex(),
         request->GetBlocksCount(),
         BlockSize);
+}
+
+TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TZeroBlocksRequest> request)
+{
+    return SubmitQueue->Execute(
+        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
+            return DoZeroBlocks(std::move(ctx), std::move(req));
+        });
+}
+
+TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+{
+    return SubmitQueue->Execute(
+        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
+            return DoReadBlocksLocal(std::move(ctx), std::move(req));
+        });
+}
+
+TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+{
+    return SubmitQueue->Execute(
+        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
+            return DoWriteBlocksLocal(std::move(ctx), std::move(req));
+        });
 }
 
 TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod method)
@@ -844,16 +892,19 @@ class TAioStorageProvider final
     : public IStorageProvider
 {
 private:
+    ITaskQueuePtr SubmitQueue;
     IFileIOServicePtr FileIOService;
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
 
 public:
     explicit TAioStorageProvider(
+            ITaskQueuePtr submitQueue,
             IFileIOServicePtr fileIO,
             INvmeManagerPtr nvmeManager,
             bool directIO)
-        : FileIOService(std::move(fileIO))
+        : SubmitQueue(std::move(submitQueue))
+        , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
     {}
@@ -882,6 +933,7 @@ public:
                     : EOpenModeFlag());
 
         auto storage = std::make_shared<TAioStorage>(
+            SubmitQueue,
             FileIOService,
             NvmeManager,
             blockSize,
@@ -901,9 +953,16 @@ public:
 IStorageProviderPtr CreateAioStorageProvider(
     IFileIOServicePtr fileIO,
     INvmeManagerPtr nvmeManager,
-    bool directIO)
+    bool directIO,
+    EAioSubmitQueueOpt submitQueueOpt)
 {
+    ITaskQueuePtr submitQueue = submitQueueOpt == EAioSubmitQueueOpt::Use
+                                    ? CreateThreadPool("AIO.SQ", 1)
+                                    : CreateTaskQueueStub();
+    submitQueue->Start();
+
     return std::make_shared<TAioStorageProvider>(
+        std::move(submitQueue),
         std::move(fileIO),
         std::move(nvmeManager),
         directIO);

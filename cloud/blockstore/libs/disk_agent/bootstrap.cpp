@@ -366,7 +366,9 @@ void TBootstrap::InitKikimrService()
                 AioStorageProvider = CreateAioStorageProvider(
                     FileIOService,
                     NvmeManager,
-                    !config.GetDirectIoFlagDisabled());
+                    !config.GetDirectIoFlagDisabled(),
+                    EAioSubmitQueueOpt::Use
+                );
 
                 STORAGE_INFO("Aio backend initialized");
                 break;
