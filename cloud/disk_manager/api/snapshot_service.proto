@@ -3,7 +3,6 @@ syntax = "proto3";
 package cloud.disk_manager;
 
 import "google/protobuf/timestamp.proto";
-import "cloud/api/operation.proto";
 import "cloud/disk_manager/disk.proto";
 import "cloud/disk_manager/operation/operation.proto";
 
@@ -14,19 +13,15 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 // to incremental snapshotting. Also, since we checkpoint the disk, it's possible to resume the VM
 // right after we create the checkpoint (very quick operation) and continue data copying in the background.
 service SnapshotService {
-    rpc Create(CreateSnapshotRequest) returns (operation.Operation) {
-        option (cloud.api.operation) = {
-            metadata: "CreateSnapshotMetadata"
-            response: "CreateSnapshotResponse"
-        };
-    }
+    // Returns operation with:
+    // metadata: CreateSnapshotMetadata
+    // response: CreateSnapshotResponse
+    rpc Create(CreateSnapshotRequest) returns (operation.Operation);
 
-    rpc Delete(DeleteSnapshotRequest) returns (operation.Operation) {
-        option (cloud.api.operation) = {
-            metadata: "DeleteSnapshotMetadata"
-            response: "DeleteSnapshotResponse"
-        };
-    }
+    // Returns operation with:
+    // metadata: DeleteSnapshotMetadata
+    // response: DeleteSnapshotResponse
+    rpc Delete(DeleteSnapshotRequest) returns (operation.Operation);
 }
 
 message CreateSnapshotRequest {

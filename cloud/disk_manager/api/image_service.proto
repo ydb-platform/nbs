@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package cloud.disk_manager;
 
-import "cloud/api/operation.proto";
 import "cloud/disk_manager/disk.proto";
 import "cloud/disk_manager/image.proto";
 import "cloud/disk_manager/operation/operation.proto";
@@ -12,26 +11,20 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 // Images are stored in global AZ and there's also a pool of base disks in each regional AZ.
 // Size of pools are managed automatically, these disks are assigned to a special cloud+folder.
 service ImageService {
-    rpc Create(CreateImageRequest) returns (operation.Operation) {
-        option (cloud.api.operation) = {
-            metadata: "CreateImageMetadata"
-            response: "CreateImageResponse"
-        };
-    }
+    // Returns operation with:
+    // metadata: CreateImageMetadata
+    // response: CreateImageResponse
+    rpc Create(CreateImageRequest) returns (operation.Operation);
 
-    rpc Update(UpdateImageRequest) returns (operation.Operation) {
-        option (cloud.api.operation) = {
-            metadata: "UpdateImageMetadata"
-            response: "google.protobuf.Empty"
-        };
-    }
+    // Returns operation with:
+    // metadata: UpdateImageMetadata
+    // response: google.protobuf.Empty
+    rpc Update(UpdateImageRequest) returns (operation.Operation);
 
-    rpc Delete(DeleteImageRequest) returns (operation.Operation) {
-        option (cloud.api.operation) = {
-            metadata: "DeleteImageMetadata"
-            response: "google.protobuf.Empty"
-        };
-    }
+    // Returns operation with:
+    // metadata: DeleteImageMetadata
+    // response: google.protobuf.Empty
+    rpc Delete(DeleteImageRequest) returns (operation.Operation);
 }
 
 message CreateImageRequest {
