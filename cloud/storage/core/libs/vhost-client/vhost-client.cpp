@@ -96,7 +96,7 @@ bool TClient::Connect()
             errorCode);
         Logger.AddLog(
             ELogPriority::TLOG_ERR,
-            "errno: %d, errnostr: %s",
+            "errno: %d, errnostr: %s\n",
             errno,
             strerror(errno)
         );
