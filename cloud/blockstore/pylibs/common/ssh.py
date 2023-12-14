@@ -97,6 +97,9 @@ class SftpTestClient:
     def rmdir(self, path):
         sys.stdout.write(f'SFTP RMDIR {self.ip} dir={path}\n')
 
+    def get(self, remotepath, localpath):
+        sys.stdout.write(f'SFTP GET {self.ip} remotepath={remotepath} localpath={localpath}')
+
     def __enter__(self):
         return self
 
