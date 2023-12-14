@@ -4,7 +4,7 @@ package cloud.disk_manager;
 
 import "google/protobuf/empty.proto";
 import "cloud/disk_manager/placement_group.proto";
-import "cloud/disk_manager/operation/operation.proto";
+import "cloud/api/operation/operation.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 

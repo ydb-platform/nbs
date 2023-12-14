@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api/operation"
+	"github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 )
 

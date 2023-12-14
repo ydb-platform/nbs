@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package cloud.disk_manager.operation;
+package cloud.api.operation;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/operation;operation";
+option go_package = "github.com/ydb-platform/nbs/cloud/api/operation;operation";
 
 message Operation {
     string id = 1;

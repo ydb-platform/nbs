@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	operation_proto "github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	operation_proto "github.com/ydb-platform/nbs/cloud/disk_manager/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"

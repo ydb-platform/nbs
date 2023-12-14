@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api/operation"
+	"github.com/ydb-platform/nbs/cloud/api/operation"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
