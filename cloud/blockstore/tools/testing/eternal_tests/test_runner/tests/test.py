@@ -41,6 +41,7 @@ def run_test(cluster, test_case, command, expected_result):
 @pytest.mark.parametrize('cluster', ['cluster1'])
 @pytest.mark.parametrize('test_case', [
     'eternal-4tb',
+    'eternal-relocation-network-ssd',
     'eternal-1023gb-nonrepl',
     'eternal-big-hdd-nonrepl-diff-size-reqs-1',
     'eternal-640gb-verify-checkpoint'])

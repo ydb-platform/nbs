@@ -241,6 +241,7 @@ _DISK_CONFIGS = {
             type='network-ssd-nonreplicated',
             placement_group_name='eternal-pg',
             encrypted=True),
+    'eternal-relocation-network-ssd': DiskCreateConfig(size=32, bs=4096, type='network-ssd'),
 }
 
 _FS_CONFIGS = {
@@ -287,6 +288,7 @@ _LOAD_CONFIGS = {
 
     'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 4096),
     'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 4096),
+    'eternal-relocation-network-ssd': LoadConfig(False, False, 32, 50, 4096, run_in_systemd=True),
 }
 
 _IPC_TYPE = {

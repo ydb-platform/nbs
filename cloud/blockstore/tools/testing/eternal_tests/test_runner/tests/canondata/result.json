@@ -11,6 +11,9 @@
     "test.test_eternal_load_test[add-auto-run-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
         "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
+    "test.test_eternal_load_test[add-auto-run-eternal-relocation-network-ssd-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-relocation-network-ssd-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[continue-load-eternal-1023gb-nonrepl-cluster1]": {
         "uri": "file://test.test_eternal_load_test_continue-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
@@ -22,6 +25,9 @@
     },
     "test.test_eternal_load_test[continue-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
         "uri": "file://test.test_eternal_load_test_continue-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_test[continue-load-eternal-relocation-network-ssd-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_continue-load-eternal-relocation-network-ssd-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[delete-test-eternal-1023gb-nonrepl-cluster1]": {
         "uri": "file://test.test_eternal_load_test_delete-test-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
@@ -35,6 +41,9 @@
     "test.test_eternal_load_test[delete-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
         "uri": "file://test.test_eternal_load_test_delete-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
+    "test.test_eternal_load_test[delete-test-eternal-relocation-network-ssd-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_delete-test-eternal-relocation-network-ssd-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[rerun-load-eternal-1023gb-nonrepl-cluster1]": {
         "uri": "file://test.test_eternal_load_test_rerun-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
@@ -46,6 +55,9 @@
     },
     "test.test_eternal_load_test[rerun-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
         "uri": "file://test.test_eternal_load_test_rerun-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_test[rerun-load-eternal-relocation-network-ssd-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_rerun-load-eternal-relocation-network-ssd-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[setup-test-eternal-1023gb-nonrepl-cluster1]": {
         "uri": "file://test.test_eternal_load_test_setup-test-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
@@ -59,6 +71,9 @@
     "test.test_eternal_load_test[setup-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
         "uri": "file://test.test_eternal_load_test_setup-test-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
     },
+    "test.test_eternal_load_test[setup-test-eternal-relocation-network-ssd-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_setup-test-eternal-relocation-network-ssd-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[stop-load-eternal-1023gb-nonrepl-cluster1]": {
         "uri": "file://test.test_eternal_load_test_stop-load-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
@@ -70,6 +85,9 @@
     },
     "test.test_eternal_load_test[stop-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1]": {
         "uri": "file://test.test_eternal_load_test_stop-load-eternal-big-hdd-nonrepl-diff-size-reqs-1-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_test[stop-load-eternal-relocation-network-ssd-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_stop-load-eternal-relocation-network-ssd-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test_case_all_fail[add-auto-run-all-cluster1]": {
         "uri": "file://test.test_eternal_load_test_case_all_fail_add-auto-run-all-cluster1_/testing_out_stuff_results.txt"

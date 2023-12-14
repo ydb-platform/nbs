@@ -1,0 +1,5 @@
+Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+Input=
+SFTP PUT 1:1:1:1:1:1:1:1/../eternal-load/bin/eternal-load -> /usr/bin/eternal-load
+SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/eternal-load f=493
+Execute command systemctl start eternalload_vdb.service
