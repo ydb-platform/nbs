@@ -151,54 +151,6 @@ func (s *storageYDB) ListTasksReadyToCancel(
 	return tasks, err
 }
 
-func (s *storageYDB) ListTasksRunning(
-	ctx context.Context,
-	limit uint64,
-) ([]string, error) {
-
-	var tasks []string
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			tasks, err = s.listTaskIDs(
-				ctx,
-				session,
-				"running",
-				limit,
-				nil, // taskTypeWhitelist
-			)
-			return err
-		},
-	)
-	return tasks, err
-}
-
-func (s *storageYDB) ListTasksCancelling(
-	ctx context.Context,
-	limit uint64,
-) ([]string, error) {
-
-	var tasks []string
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			tasks, err = s.listTaskIDs(
-				ctx,
-				session,
-				"cancelling",
-				limit,
-				nil, // taskTypeWhitelist
-			)
-			return err
-		},
-	)
-	return tasks, err
-}
-
 func (s *storageYDB) ListTasksStallingWhileRunning(
 	ctx context.Context,
 	excludingHostname string,
@@ -246,6 +198,54 @@ func (s *storageYDB) ListTasksStallingWhileCancelling(
 				"cancelling",
 				limit,
 				taskTypeWhitelist,
+			)
+			return err
+		},
+	)
+	return tasks, err
+}
+
+func (s *storageYDB) ListTasksRunning(
+	ctx context.Context,
+	limit uint64,
+) ([]string, error) {
+
+	var tasks []string
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			tasks, err = s.listTaskIDs(
+				ctx,
+				session,
+				"running",
+				limit,
+				nil, // taskTypeWhitelist
+			)
+			return err
+		},
+	)
+	return tasks, err
+}
+
+func (s *storageYDB) ListTasksCancelling(
+	ctx context.Context,
+	limit uint64,
+) ([]string, error) {
+
+	var tasks []string
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			tasks, err = s.listTaskIDs(
+				ctx,
+				session,
+				"cancelling",
+				limit,
+				nil, // taskTypeWhitelist
 			)
 			return err
 		},

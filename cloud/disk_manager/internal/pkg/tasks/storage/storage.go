@@ -294,12 +294,6 @@ type Storage interface {
 		taskTypeWhitelist []string,
 	) ([]TaskInfo, error)
 
-	// Used for SRE tools.
-	ListTasksRunning(ctx context.Context, limit uint64) ([]string, error)
-
-	// Used for SRE tools.
-	ListTasksCancelling(ctx context.Context, limit uint64) ([]string, error)
-
 	// Lists tasks that are currently running but don't make any progress for
 	// some time.
 	ListTasksStallingWhileRunning(
@@ -319,6 +313,8 @@ type Storage interface {
 	) ([]TaskInfo, error)
 
 	// Used for SRE tools.
+	ListTasksRunning(ctx context.Context, limit uint64) ([]string, error)
+	ListTasksCancelling(ctx context.Context, limit uint64) ([]string, error)
 	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)
 	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]string, error)
 

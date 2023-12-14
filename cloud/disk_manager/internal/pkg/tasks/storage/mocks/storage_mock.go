@@ -76,25 +76,6 @@ func (s *StorageMock) ListTasksReadyToCancel(
 	return res, args.Error(1)
 }
 
-func (s *StorageMock) ListTasksRunning(
-	ctx context.Context,
-	limit uint64,
-) ([]string, error) {
-
-	args := s.Called(ctx, limit)
-	res, _ := args.Get(0).([]string)
-	return res, args.Error(1)
-}
-func (s *StorageMock) ListTasksCancelling(
-	ctx context.Context,
-	limit uint64,
-) ([]string, error) {
-
-	args := s.Called(ctx, limit)
-	res, _ := args.Get(0).([]string)
-	return res, args.Error(1)
-}
-
 func (s *StorageMock) ListTasksStallingWhileRunning(
 	ctx context.Context,
 	hostname string,
@@ -116,6 +97,25 @@ func (s *StorageMock) ListTasksStallingWhileCancelling(
 
 	args := s.Called(ctx, hostname, limit, taskTypeWhitelist)
 	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	return res, args.Error(1)
+}
+
+func (s *StorageMock) ListTasksRunning(
+	ctx context.Context,
+	limit uint64,
+) ([]string, error) {
+
+	args := s.Called(ctx, limit)
+	res, _ := args.Get(0).([]string)
+	return res, args.Error(1)
+}
+func (s *StorageMock) ListTasksCancelling(
+	ctx context.Context,
+	limit uint64,
+) ([]string, error) {
+
+	args := s.Called(ctx, limit)
+	res, _ := args.Get(0).([]string)
 	return res, args.Error(1)
 }
 

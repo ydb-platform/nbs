@@ -183,34 +183,6 @@ func (s *compoundStorage) ListTasksReadyToCancel(
 	return taskInfos, err
 }
 
-func (s *compoundStorage) ListTasksRunning(
-	ctx context.Context,
-	limit uint64,
-) ([]string, error) {
-
-	tasks := []string{}
-	err := s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksRunning(ctx, limit)
-		tasks = append(tasks, values...)
-		return err
-	})
-	return tasks, err
-}
-
-func (s *compoundStorage) ListTasksCancelling(
-	ctx context.Context,
-	limit uint64,
-) ([]string, error) {
-
-	tasks := []string{}
-	err := s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksCancelling(ctx, limit)
-		tasks = append(tasks, values...)
-		return err
-	})
-	return tasks, err
-}
-
 func (s *compoundStorage) ListTasksStallingWhileRunning(
 	ctx context.Context,
 	excludingHostname string,
@@ -249,6 +221,34 @@ func (s *compoundStorage) ListTasksStallingWhileCancelling(
 		return err
 	})
 	return taskInfos, err
+}
+
+func (s *compoundStorage) ListTasksRunning(
+	ctx context.Context,
+	limit uint64,
+) ([]string, error) {
+
+	tasks := []string{}
+	err := s.visit(ctx, func(storage Storage) error {
+		values, err := storage.ListTasksRunning(ctx, limit)
+		tasks = append(tasks, values...)
+		return err
+	})
+	return tasks, err
+}
+
+func (s *compoundStorage) ListTasksCancelling(
+	ctx context.Context,
+	limit uint64,
+) ([]string, error) {
+
+	tasks := []string{}
+	err := s.visit(ctx, func(storage Storage) error {
+		values, err := storage.ListTasksCancelling(ctx, limit)
+		tasks = append(tasks, values...)
+		return err
+	})
+	return tasks, err
 }
 
 func (s *compoundStorage) ListFailedTasks(
