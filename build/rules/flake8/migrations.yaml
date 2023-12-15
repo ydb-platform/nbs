@@ -5557,7 +5557,6 @@ migrations:
     - yweb/sitelinks/astrolabe/build_bna/candidates/navigations/build_bna
     - yweb/sitelinks/astrolabe/build_bna/naming
     - yweb/sitelinks/scripts/sitelinks
-    - yweb/tellurium/tools/store_history_to_yt
     - yweb/verticals/scripts/blender/fstr_extractor
     - yweb/verticals/scripts/build_programming_landings
     - yweb/verticals/scripts/mushroom_surplus
