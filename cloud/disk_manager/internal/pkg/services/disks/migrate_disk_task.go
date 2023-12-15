@@ -221,26 +221,44 @@ func (t *migrateDiskTask) start(
 		}
 	}
 
-	if !t.state.IsDiskCloned {
-		t.state.RelocateInfo = &protos.RelocateInfo{}
+	if t.state.RelocateInfo == nil &&
+		t.disksConfig.GetEnableOptimizationForOverlayDiskRelocation() {
 
-		if t.disksConfig.GetEnableOptimizationForOverlayDiskRelocation() {
-			relocateInfo, err := t.poolStorage.OverlayDiskRelocating(
-				ctx,
-				t.request.Disk,
-				t.request.DstZoneId,
-			)
-			if err != nil {
-				return err
-			}
+		err := execCtx.SaveStateWithCallback(
+			ctx,
+			func(ctx context.Context, tx *persistence.Transaction) error {
+				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
+					ctx,
+					tx,
+					t.request.Disk,
+					t.request.DstZoneId,
+				)
+				if err != nil {
+					return err
+				}
 
-			t.state.RelocateInfo = &protos.RelocateInfo{
-				BaseDiskID:       relocateInfo.BaseDiskID,
-				TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
-				SlotGeneration:   relocateInfo.SlotGeneration,
-			}
+				t.state.RelocateInfo = &protos.RelocateInfo{
+					BaseDiskID:       relocateInfo.BaseDiskID,
+					TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+					SlotGeneration:   relocateInfo.SlotGeneration,
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			return err
 		}
 
+		// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	} else {
+		t.state.RelocateInfo = &protos.RelocateInfo{}
+	}
+
+	if !t.state.IsDiskCloned {
 		multiZoneClient, err := t.nbsFactory.GetMultiZoneClient(
 			t.request.Disk.ZoneId,
 			t.request.DstZoneId,
@@ -496,19 +514,8 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
-	err = client.Delete(ctx, t.request.Disk.DiskId)
-	if err != nil {
-		return err
-	}
-	t.logInfo(ctx, execCtx, "deleted src disk")
-
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
-		err = t.poolStorage.OverlayDiskRelocated(
+		err = t.poolStorage.OverlayDiskRebased(
 			ctx,
 			storage.RebaseInfo{
 				OverlayDisk:      t.request.Disk,
@@ -521,7 +528,22 @@ func (t *migrateDiskTask) finishMigration(
 		if err != nil {
 			return err
 		}
-	} else {
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	err = client.Delete(ctx, t.request.Disk.DiskId)
+	if err != nil {
+		return err
+	}
+	t.logInfo(ctx, execCtx, "deleted src disk")
+
+	// If RelocateInfo.TargetBaseDiskID is not empty we do not need to release base
+	// disk slot because it was rebased during relocation.
+	if len(t.state.RelocateInfo.TargetBaseDiskID) == 0 {
 		err = t.releaseBaseDisk(ctx, execCtx)
 		if err != nil {
 			return err

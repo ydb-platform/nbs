@@ -69,45 +69,14 @@ func (s *storageYDB) ReleaseBaseDiskSlot(
 	return baseDisk, err
 }
 
-func (s *storageYDB) OverlayDiskRelocating(
+func (s *storageYDB) RelocateOverlayDiskTx(
 	ctx context.Context,
+	tx *persistence.Transaction,
 	overlayDisk *types.Disk,
 	targetZoneID string,
 ) (RebaseInfo, error) {
 
-	var rebaseInfo RebaseInfo
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			rebaseInfo, err = s.overlayDiskRelocating(
-				ctx,
-				session,
-				overlayDisk,
-				targetZoneID,
-			)
-			return err
-		},
-	)
-	return rebaseInfo, err
-}
-
-func (s *storageYDB) OverlayDiskRelocated(
-	ctx context.Context,
-	info RebaseInfo,
-) error {
-
-	return s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			return s.overlayDiskRelocated(
-				ctx,
-				session,
-				info,
-			)
-		},
-	)
+	return s.relocateOverlayDiskTx(ctx, tx, overlayDisk, targetZoneID)
 }
 
 func (s *storageYDB) OverlayDiskRebasing(

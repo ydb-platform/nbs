@@ -19,7 +19,7 @@ PEERDIR(
     cloud/blockstore/tests/python/lib
     cloud/disk_manager/test/common
     cloud/filestore/tests/python/lib
-    kikimr/ci/libraries
+    contrib/ydb/tests/library
     library/python/testing/recipe
 )
 

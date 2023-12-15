@@ -143,6 +143,10 @@ ImagesConfig: <
         <
             ZoneId: "zone-b"
             Capacity: 1
+        >,
+        <
+            ZoneId: "zone-c"
+            Capacity: 0
         >
     ]
 >

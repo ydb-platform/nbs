@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
@@ -34,23 +35,15 @@ func (s *StorageMock) ReleaseBaseDiskSlot(
 	return args.Get(0).(storage.BaseDisk), args.Error(1)
 }
 
-func (s *StorageMock) OverlayDiskRelocating(
+func (s *StorageMock) RelocateOverlayDiskTx(
 	ctx context.Context,
+	tx *persistence.Transaction,
 	overlayDisk *types.Disk,
 	targetZoneID string,
 ) (storage.RebaseInfo, error) {
 
 	args := s.Called(ctx, overlayDisk, targetZoneID)
 	return args.Get(0).(storage.RebaseInfo), args.Error(1)
-}
-
-func (s *StorageMock) OverlayDiskRelocated(
-	ctx context.Context,
-	info storage.RebaseInfo,
-) error {
-
-	args := s.Called(ctx, info)
-	return args.Error(0)
 }
 
 func (s *StorageMock) OverlayDiskRebasing(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
@@ -64,13 +65,17 @@ type Storage interface {
 		overlayDisk *types.Disk,
 	) (baseDisk BaseDisk, err error)
 
-	OverlayDiskRelocating(
+	// Returns RebaseInfo for base disk slot rebasing during relocation.
+	// Overlay disk relocation contains two steps: RelocateOverlayDiskTx and
+	// OverlayDiskRebased.
+	// RelocateOverlayDiskTx starts relocation of base disk slot and drops old one
+	// if it exists.
+	RelocateOverlayDiskTx(
 		ctx context.Context,
+		tx *persistence.Transaction,
 		overlayDisk *types.Disk,
 		targetZoneID string,
 	) (RebaseInfo, error)
-
-	OverlayDiskRelocated(ctx context.Context, info RebaseInfo) error
 
 	OverlayDiskRebasing(ctx context.Context, info RebaseInfo) error
 

@@ -358,6 +358,122 @@ func successfullyMigrateEmptyOverlayDisk(
 	require.Equal(t, expectedStorageSize, changedBytes)
 }
 
+func migrateDiskInParallel(
+	t *testing.T,
+	ctx context.Context,
+	client sdk_client.Client,
+	params migrationTestParams,
+	migrateWithDifferentDstZoneIDs bool,
+) {
+
+	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+
+	// Writing some additional data to disk in parallel with migrations.
+	waitForWrite, err := testcommon.GoWriteRandomBlocksToNbsDisk(
+		ctx,
+		srcZoneNBSClient,
+		params.DiskID,
+	)
+	require.NoError(t, err)
+
+	var operations []*operation_proto.Operation
+	zoneByOperationID := make(map[string]string)
+
+	for i := 0; i < 6; i++ {
+		var dstZoneID string
+		if !migrateWithDifferentDstZoneIDs || i%2 == 0 {
+			dstZoneID = "zone-b"
+		} else {
+			dstZoneID = "zone-c"
+		}
+
+		reqCtx := testcommon.GetRequestContext(t, ctx)
+		operation, err := client.MigrateDisk(reqCtx, &disk_manager.MigrateDiskRequest{
+			DiskId: &disk_manager.DiskId{
+				DiskId: params.DiskID,
+				ZoneId: params.SrcZoneID,
+			},
+			DstZoneId: dstZoneID,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, operation)
+
+		zoneByOperationID[operation.Id] = dstZoneID
+		operations = append(operations, operation)
+	}
+
+	// Need to add some variance for better testing.
+	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+
+	err = waitForWrite()
+	require.NoError(t, err)
+
+	diskSize := uint64(params.DiskSize)
+
+	srcCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	require.NoError(t, err)
+
+	for _, operation := range operations {
+		waitForMigrationStatusOrError(
+			t,
+			ctx,
+			client,
+			operation,
+			disk_manager.MigrateDiskMetadata_REPLICATING,
+		)
+	}
+
+	for _, operation := range operations {
+		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
+			OperationId: operation.Id,
+			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION,
+		})
+	}
+
+	// Need to add some variance for better testing.
+	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+
+	for _, operation := range operations {
+		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
+			OperationId: operation.Id,
+			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_MIGRATION,
+		})
+	}
+
+	successCount := 0
+	var dstZoneID string
+
+	for _, operation := range operations {
+		err = internal_client.WaitOperation(ctx, client, operation.Id)
+		if err == nil {
+			successCount++
+			dstZoneID = zoneByOperationID[operation.Id]
+		}
+	}
+
+	if migrateWithDifferentDstZoneIDs {
+		require.LessOrEqual(t, successCount, 1)
+	} else {
+		require.Equal(t, successCount, 1)
+	}
+
+	if successCount > 0 {
+		_, err = srcZoneNBSClient.Describe(ctx, params.DiskID)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "Path not found")
+
+		dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, dstZoneID)
+		dstCrc32, err := dstZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+		require.NoError(t, err)
+		require.Equal(t, srcCrc32, dstCrc32)
+	} else {
+		// All migrations are cancelled. Check that src disk is not affected.
+		crc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+		require.NoError(t, err)
+		require.Equal(t, srcCrc32, crc32)
+	}
+}
+
 func successfullyMigrateEmptyDisk(
 	t *testing.T,
 	ctx context.Context,
@@ -1008,107 +1124,112 @@ func TestDiskServiceMigrateDiskInParallel(t *testing.T) {
 	ctx, client := setupMigrationTest(t, params)
 	defer client.Close()
 
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
-
-	// Writing some additional data to disk in parallel with migrations.
-	waitForWrite, err := testcommon.GoWriteRandomBlocksToNbsDisk(
+	migrateDiskInParallel(
+		t,
 		ctx,
-		srcZoneNBSClient,
-		params.DiskID,
+		client,
+		params,
+		false, // migrateWithDifferentDstZoneIDs
 	)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceMigrateOverlayDiskInParallel(t *testing.T) {
+	params := migrationTestParams{
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  true,
+	}
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
+	defer client.Close()
 
-	var operations []*operation_proto.Operation
-	zoneByOperationID := make(map[string]string)
+	_ = setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
+		true, // withAliveSrcImage
+	)
 
-	for i := 0; i < 6; i++ {
-		var dstZoneID string
-		if i%2 == 0 {
-			dstZoneID = "zone-b"
-		} else {
-			dstZoneID = "zone-c"
-		}
+	migrateDiskInParallel(
+		t,
+		ctx,
+		client,
+		params,
+		false, // migrateWithDifferentDstZoneIDs
+	)
 
-		reqCtx := testcommon.GetRequestContext(t, ctx)
-		operation, err := client.MigrateDisk(reqCtx, &disk_manager.MigrateDiskRequest{
-			DiskId: &disk_manager.DiskId{
-				DiskId: params.DiskID,
-				ZoneId: params.SrcZoneID,
-			},
-			DstZoneId: dstZoneID,
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, operation)
+	testcommon.CheckConsistency(t, ctx)
+}
 
-		zoneByOperationID[operation.Id] = dstZoneID
-		operations = append(operations, operation)
+func TestDiskServiceMigrateDiskInParallelWithDifferentDstZoneIDs(
+	t *testing.T,
+) {
+
+	params := migrationTestParams{
+		SrcZoneID: "zone-a",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  true,
 	}
 
-	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+	ctx, client := setupMigrationTest(t, params)
+	defer client.Close()
 
-	err = waitForWrite()
+	migrateDiskInParallel(
+		t,
+		ctx,
+		client,
+		params,
+		true, // migrateWithDifferentDstZoneIDs
+	)
+
+	testcommon.CheckConsistency(t, ctx)
+
+}
+func TestDiskServiceMigrateOverlayDiskInParallelWithDifferentDstZoneIDs(
+	t *testing.T,
+) {
+
+	params := migrationTestParams{
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize,
+		FillDisk:  true,
+	}
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
+	defer client.Close()
 
-	diskSize := uint64(params.DiskSize)
+	_ = setupMigrateEmptyOverlayDiskTest(
+		t,
+		ctx,
+		client,
+		params,
+		true, // withAliveSrcImage
+	)
 
-	srcCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
-	require.NoError(t, err)
-
-	for _, operation := range operations {
-		waitForMigrationStatusOrError(
-			t,
-			ctx,
-			client,
-			operation,
-			disk_manager.MigrateDiskMetadata_REPLICATING,
-		)
-	}
-
-	for _, operation := range operations {
-		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
-			OperationId: operation.Id,
-			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION,
-		})
-	}
-
-	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
-
-	for _, operation := range operations {
-		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
-			OperationId: operation.Id,
-			Signal:      disk_manager.SendMigrationSignalRequest_FINISH_MIGRATION,
-		})
-	}
-
-	successCount := 0
-	var dstZoneID string
-
-	for _, operation := range operations {
-		err = internal_client.WaitOperation(ctx, client, operation.Id)
-		if err == nil {
-			successCount++
-			dstZoneID = zoneByOperationID[operation.Id]
-		}
-	}
-
-	require.LessOrEqual(t, successCount, 1)
-	if successCount > 0 {
-		_, err = srcZoneNBSClient.Describe(ctx, params.DiskID)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "Path not found")
-
-		dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, dstZoneID)
-		dstCrc32, err := dstZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
-		require.NoError(t, err)
-		require.Equal(t, srcCrc32, dstCrc32)
-	} else {
-		// All migrations are cancelled. Check that src disk is not affected.
-		crc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
-		require.NoError(t, err)
-		require.Equal(t, srcCrc32, crc32)
-	}
+	migrateDiskInParallel(
+		t,
+		ctx,
+		client,
+		params,
+		true, // migrateWithDifferentDstZoneIDs
+	)
 
 	testcommon.CheckConsistency(t, ctx)
 }

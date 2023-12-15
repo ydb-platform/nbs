@@ -110,6 +110,39 @@ func baseDiskShouldBeDeletedSoon(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func relocateOverlayDisk(
+	ctx context.Context,
+	db *persistence.YDBClient,
+	storage Storage,
+	overlayDisk *types.Disk,
+	targetZoneID string,
+) (RebaseInfo, error) {
+
+	var rebaseInfo RebaseInfo
+
+	err := db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			tx, err := session.BeginRWTransaction(ctx)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback(ctx)
+
+			rebaseInfo, err = storage.RelocateOverlayDiskTx(ctx, tx, overlayDisk, targetZoneID)
+			if err != nil {
+				return err
+			}
+
+			return tx.Commit(ctx)
+		},
+	)
+
+	return rebaseInfo, err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestStorageYDBReleaseNonExistent(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -1115,10 +1148,6 @@ func TestStorageYDBRelocateOverlayDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, baseDisks, source)
 
-	_, err = storage.OverlayDiskRelocating(ctx, slot.OverlayDisk, "other")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
 		require.NoError(t, err)
@@ -1135,33 +1164,50 @@ func TestStorageYDBRelocateOverlayDisk(t *testing.T) {
 		}
 	}
 
-	relocateInfo, err := storage.OverlayDiskRelocating(ctx, slot.OverlayDisk, "other")
+	relocateInfo, err := relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
 	require.NoError(t, err)
 	require.Contains(t, baseDisksInOtherZoneIds, relocateInfo.TargetBaseDiskID)
 
-	targetBaseDiskID := relocateInfo.TargetBaseDiskID
-
 	// Check idempotency.
-	relocateInfo, err = storage.OverlayDiskRelocating(ctx, slot.OverlayDisk, "other")
+	relocateInfo, err = relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
 	require.NoError(t, err)
-	require.EqualValues(t, targetBaseDiskID, relocateInfo.TargetBaseDiskID)
+	require.Contains(t, baseDisksInOtherZoneIds, relocateInfo.TargetBaseDiskID)
 
-	err = storage.DeletePool(ctx, "image", "zone")
-	require.NoError(t, err)
-
-	err = storage.DeletePool(ctx, "image", "other")
-	require.NoError(t, err)
-
-	// Check idempotency.
-	relocateInfo, err = storage.OverlayDiskRelocating(ctx, slot.OverlayDisk, "other")
-	require.NoError(t, err)
-	require.EqualValues(t, targetBaseDiskID, relocateInfo.TargetBaseDiskID)
-
-	err = storage.OverlayDiskRebased(ctx, relocateInfo)
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.OverlayDiskRebased(ctx, relocateInfo)
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
+
+	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
 	require.NoError(t, err)
 }
 
@@ -1214,10 +1260,6 @@ func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, baseDisks, source)
 
-	_, err = storage.OverlayDiskRelocating(ctx, slot.OverlayDisk, "other")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
 		require.NoError(t, err)
@@ -1237,9 +1279,23 @@ func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {
 		}
 	}
 
-	relocateInfo, err := storage.OverlayDiskRelocating(ctx, slot.OverlayDisk, "other")
+	relocateInfo, err := relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
 	require.NoError(t, err)
 	require.Contains(t, baseDisksInOtherZoneIds, relocateInfo.TargetBaseDiskID)
+
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
 
 	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
 		OverlayDisk:      slot.OverlayDisk,
@@ -1247,7 +1303,152 @@ func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.ErrorContains(t, err, "wrong generation")
+
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      slot.OverlayDisk,
+		TargetBaseDiskID: targetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "another rebase or relocate is in progress for slot")
+}
+
+func TestStorageYDBRelocatingOverlayDiskAfterRelocatingToAnotherZone(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(
+		ctx,
+		"image",
+		"zone",
+		makeDefaultConfig().GetMaxActiveSlots()+1,
+		0,
+	)
+	require.NoError(t, err)
+
+	err = storage.ConfigurePool(
+		ctx,
+		"image",
+		"other",
+		makeDefaultConfig().GetMaxActiveSlots()+1,
+		0,
+	)
+	require.NoError(t, err)
+
+	err = storage.ConfigurePool(
+		ctx,
+		"image",
+		"another",
+		makeDefaultConfig().GetMaxActiveSlots()+1,
+		0,
+	)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 6, len(baseDisks))
+
+	for i := 0; i < len(baseDisks); i++ {
+		baseDisks[i].CreateTaskID = "create"
+	}
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	slot := Slot{
+		OverlayDisk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "overlay",
+		},
+	}
+
+	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.NoError(t, err)
+	require.Contains(t, baseDisks, source)
+
+	for _, baseDisk := range baseDisks {
+		err = storage.BaseDiskCreated(ctx, baseDisk)
+		require.NoError(t, err)
+	}
+
+	for i := 0; i < len(baseDisks); i++ {
+		baseDisks[i].Ready = true
+	}
+
+	var baseDisksInOtherZoneIds []string
+	var baseDisksInAnotherZoneIds []string
+	for _, baseDisk := range baseDisks {
+		if baseDisk.ZoneID == "other" {
+			baseDisksInOtherZoneIds = append(baseDisksInOtherZoneIds, baseDisk.ID)
+		} else if baseDisk.ZoneID == "another" {
+			baseDisksInAnotherZoneIds = append(baseDisksInAnotherZoneIds, baseDisk.ID)
+		}
+	}
+
+	relocateInfo, err := relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
+	require.NoError(t, err)
+	require.Contains(t, baseDisksInOtherZoneIds, relocateInfo.TargetBaseDiskID)
+
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
+	outdatedRelocateInfo := relocateInfo
+
+	relocateInfo, err = relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"another",
+	)
+	require.NoError(t, err)
+	require.Contains(t, baseDisksInAnotherZoneIds, relocateInfo.TargetBaseDiskID)
+
+	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
+		OverlayDisk:      outdatedRelocateInfo.OverlayDisk,
+		TargetZoneID:     outdatedRelocateInfo.TargetZoneID,
+		TargetBaseDiskID: outdatedRelocateInfo.TargetBaseDiskID,
+		SlotGeneration:   outdatedRelocateInfo.SlotGeneration,
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.ErrorContains(t, err, "wrong generation")
+
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
+
+	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
 }
 
 func TestStorageYDBAbortOverlayDiskRebasing(t *testing.T) {

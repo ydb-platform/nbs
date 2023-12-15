@@ -1257,44 +1257,14 @@ func (s *storageYDB) getAcquiredSlot(
 	return nil, nil
 }
 
-func (s *storageYDB) overlayDiskRelocatingIdempotent(
+func (s *storageYDB) relocateOverlayDiskTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
-	overlayDisk *types.Disk,
-	acquiredSlot slot,
-	targetZoneID string,
-) (RebaseInfo, error) {
-
-	rebaseInfo := RebaseInfo{
-		OverlayDisk:      overlayDisk,
-		BaseDiskID:       acquiredSlot.baseDiskID,
-		TargetZoneID:     acquiredSlot.targetZoneID,
-		TargetBaseDiskID: acquiredSlot.targetBaseDiskID,
-		SlotGeneration:   acquiredSlot.generation,
-	}
-
-	err := s.overlayDiskRebasingTx(ctx, tx, rebaseInfo)
-	if err != nil {
-		return RebaseInfo{}, err
-	}
-
-	return rebaseInfo, nil
-}
-
-func (s *storageYDB) overlayDiskRelocating(
-	ctx context.Context,
-	session *persistence.Session,
 	overlayDisk *types.Disk,
 	targetZoneID string,
 ) (RebaseInfo, error) {
 
 	overlayDiskID := overlayDisk.DiskId
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return RebaseInfo{}, err
-	}
-	defer tx.Rollback(ctx)
 
 	acquiredSlot, err := s.getAcquiredSlot(ctx, tx, overlayDiskID)
 	if err != nil {
@@ -1302,7 +1272,7 @@ func (s *storageYDB) overlayDiskRelocating(
 	}
 
 	if acquiredSlot == nil {
-		return RebaseInfo{}, tx.Commit(ctx)
+		return RebaseInfo{}, nil
 	}
 
 	if len(acquiredSlot.targetBaseDiskID) != 0 {
@@ -1314,24 +1284,21 @@ func (s *storageYDB) overlayDiskRelocating(
 
 			// Should wait until end of rebase within current zone.
 			return RebaseInfo{}, errors.NewInterruptExecutionError()
-		} else {
-			rebaseInfo, err := s.overlayDiskRelocatingIdempotent(
-				ctx,
-				tx,
-				overlayDisk,
-				*acquiredSlot,
-				targetZoneID,
-			)
+		} else if acquiredSlot.targetZoneID == targetZoneID {
+			rebaseInfo := RebaseInfo{
+				OverlayDisk:      overlayDisk,
+				BaseDiskID:       acquiredSlot.baseDiskID,
+				TargetZoneID:     targetZoneID,
+				TargetBaseDiskID: acquiredSlot.targetBaseDiskID,
+				SlotGeneration:   acquiredSlot.generation,
+			}
+
+			err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo, *acquiredSlot)
 			if err != nil {
 				return RebaseInfo{}, err
 			}
 
-			err = tx.Commit(ctx)
-			if err != nil {
-				return RebaseInfo{}, err
-			}
-
-			logging.Info(ctx, "Overlay disk relocating for RebaseInfo %+v", rebaseInfo)
+			logging.Info(ctx, "Overlay disk relocating with RebaseInfo %+v", rebaseInfo)
 			return rebaseInfo, nil
 		}
 	}
@@ -1343,7 +1310,7 @@ func (s *storageYDB) overlayDiskRelocating(
 	}
 
 	if !isPoolConfigured {
-		return RebaseInfo{}, tx.Commit(ctx)
+		return RebaseInfo{}, nil
 	}
 
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
@@ -1358,6 +1325,14 @@ func (s *storageYDB) overlayDiskRelocating(
 			continue
 		}
 
+		acquiredSlot.generation += 1
+
+		// Abort previous relocation.
+		acquiredSlot.targetZoneID = ""
+		acquiredSlot.targetBaseDiskID = ""
+		acquiredSlot.targetAllottedSlots = 0
+		acquiredSlot.targetAllottedUnits = 0
+
 		rebaseInfo := RebaseInfo{
 			OverlayDisk:      overlayDisk,
 			BaseDiskID:       acquiredSlot.baseDiskID,
@@ -1366,17 +1341,12 @@ func (s *storageYDB) overlayDiskRelocating(
 			SlotGeneration:   acquiredSlot.generation,
 		}
 
-		err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo)
+		err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo, *acquiredSlot)
 		if err != nil {
 			return RebaseInfo{}, err
 		}
 
-		err = tx.Commit(ctx)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
-
-		logging.Info(ctx, "Overlay disk relocating for RebaseInfo %+v", rebaseInfo)
+		logging.Info(ctx, "Overlay disk relocating with RebaseInfo %+v", rebaseInfo)
 		return rebaseInfo, nil
 	}
 
@@ -1394,59 +1364,15 @@ func (s *storageYDB) overlayDiskRelocating(
 	return RebaseInfo{}, errors.NewInterruptExecutionError()
 }
 
-func (s *storageYDB) overlayDiskRelocated(
-	ctx context.Context,
-	session *persistence.Session,
-	info RebaseInfo,
-) error {
-
-	return s.overlayDiskRebased(ctx, session, info)
-}
-
 func (s *storageYDB) overlayDiskRebasingTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	info RebaseInfo,
+	slot slot,
 ) error {
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $overlay_disk_id as Utf8;
-
-		select *
-		from slots
-		where overlay_disk_id = $overlay_disk_id
-	`, s.tablesPath),
-		persistence.ValueParam(
-			"$overlay_disk_id",
-			persistence.UTF8Value(info.OverlayDisk.DiskId),
-		),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return err
-		}
-
-		return errors.NewSilentNonRetriableErrorf(
-			"failed to find slot with id %v",
-			info.OverlayDisk.DiskId,
-		)
-	}
-
-	slot, err := scanSlot(res)
-	if err != nil {
-		return err
-	}
-
 	if slot.status == slotStatusReleased {
-		err = tx.Commit(ctx)
+		err := tx.Commit(ctx)
 		if err != nil {
 			return err
 		}
@@ -1458,7 +1384,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 	}
 
 	if slot.generation != info.SlotGeneration {
-		err = tx.Commit(ctx)
+		err := tx.Commit(ctx)
 		if err != nil {
 			return err
 		}
@@ -1471,7 +1397,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 	}
 
 	if len(slot.targetBaseDiskID) != 0 && slot.targetBaseDiskID != info.TargetBaseDiskID {
-		err = tx.Commit(ctx)
+		err := tx.Commit(ctx)
 		if err != nil {
 			return err
 		}
@@ -1663,8 +1589,9 @@ func (s *storageYDB) overlayDiskRebasedTx(
 		}
 
 		return errors.NewNonRetriableErrorf(
-			"another rebase or relocate is in progress for slot %+v",
+			"another rebase or relocate is in progress for slot %+v with info %v",
 			slot,
+			info,
 		)
 	}
 
@@ -1721,7 +1648,24 @@ func (s *storageYDB) overlayDiskRebasing(
 	}
 	defer tx.Rollback(ctx)
 
-	err = s.overlayDiskRebasingTx(ctx, tx, info)
+	slot, err := s.getAcquiredSlot(ctx, tx, info.OverlayDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	if slot == nil {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewSilentNonRetriableErrorf(
+			"failed to find slot with id %v",
+			info.OverlayDisk.DiskId,
+		)
+	}
+
+	err = s.overlayDiskRebasingTx(ctx, tx, info, *slot)
 	if err != nil {
 		return err
 	}

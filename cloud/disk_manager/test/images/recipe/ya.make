@@ -11,7 +11,7 @@ PY_SRCS(
 PEERDIR(
     cloud/disk_manager/test/common
     cloud/storage/core/tools/common/python
-    kikimr/ci/libraries
+    contrib/ydb/tests/library
     library/python/testing/recipe
 )
 
