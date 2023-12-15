@@ -6788,6 +6788,7 @@
   "contrib/ydb/services/ydb/CMakeLists.linux-x86_64.txt":"",
   "contrib/ydb/services/ydb/CMakeLists.txt":"",
   "contrib/ydb/services/ydb/CMakeLists.windows-x86_64.txt":"",
+  "doc/checkpoint.md":"cloud/blockstore/github_toplevel/doc/checkpoint.md",
   "doc/diagnostics/performance.md":"cloud/blockstore/github_toplevel/doc/diagnostics/performance.md",
   "doc/disk_registry/cms.md":"cloud/blockstore/github_toplevel/doc/disk_registry/cms.md",
   "example/0-setup.sh":"cloud/blockstore/github_toplevel/example/0-setup.sh",
