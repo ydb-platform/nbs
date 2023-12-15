@@ -63,6 +63,56 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 {
+    Y_UNIT_TEST_F(ShouldLimitSplitDevices, TFixture)
+    {
+        PrepareFiles({{ "dev/disk/by-partlabel/NVMENBS01", 100_KB }});
+
+        auto& nvme = *Config.AddPathConfigs();
+        nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
+        nvme.SetMaxDeviceCount(42);
+
+        auto& def = *nvme.AddPoolConfigs();
+        def.SetMinSize(100_KB);
+        def.SetMaxSize(100_KB);
+        def.SetMaxDeviceCount(10);
+
+        auto& layout = *def.MutableLayout();
+        layout.SetDeviceSize(1_KB);
+
+        TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
+
+        auto error = FindDevices(Config, [&] (
+            auto& path,
+            auto& pool,
+            auto pathIndex,
+            auto maxDeviceCount,
+            auto blockSize,
+            auto fileSize)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(def.GetMaxDeviceCount(), maxDeviceCount);
+
+            NProto::TFileDeviceArgs f;
+            f.SetPath(path);
+            f.SetPoolName(pool.GetPoolName());
+            f.SetBlockSize(blockSize);
+            f.SetFileSize(fileSize);
+
+            r.emplace_back(std::move(f), pathIndex);
+
+            return MakeError(S_OK);
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+
+        auto [file, index] = r[0];
+
+        UNIT_ASSERT_VALUES_EQUAL(1, index);
+        UNIT_ASSERT_VALUES_EQUAL(
+            RootDir / "dev/disk/by-partlabel/NVMENBS01",
+            file.GetPath());
+    }
+
     Y_UNIT_TEST_F(ShouldScanDevices, TFixture)
     {
         PrepareFiles({

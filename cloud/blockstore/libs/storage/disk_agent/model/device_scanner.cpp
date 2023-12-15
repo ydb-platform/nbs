@@ -123,7 +123,9 @@ NProto::TError FindDevices(
                     TString {path.string()},
                     *pool,
                     deviceNumber,
-                    p.GetMaxDeviceCount(),
+                    pool->GetMaxDeviceCount()
+                        ? pool->GetMaxDeviceCount()
+                        : p.GetMaxDeviceCount(),
                     GetBlockSize(path),
                     size);
                 if (HasError(error)) {

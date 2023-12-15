@@ -114,6 +114,9 @@ message TStorageDiscoveryConfig
 
         // Used to calculate the device ids.
         optional string HashSuffix = 5;
+
+        // The maximum number of devices.
+        optional uint32 MaxDeviceCount = 6;
     }
 
     message TPathConfig
