@@ -75,6 +75,9 @@ class SftpTestClient:
         def readlines(self):
             return self.read()
 
+        def close(self):
+            sys.stdout.write(f'SFTP CLOSE FILE {self.ip}')
+
     def __init__(self, ip):
         self.ip = ip
 
