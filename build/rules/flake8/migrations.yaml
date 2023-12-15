@@ -319,7 +319,6 @@ migrations:
     - adfox/amacs/tests/functional/tests_amacs/limits/utils
     - adfox/amacs/tests/functional/tests_amacs/match_id
     - adfox/amacs/tests/functional/tests_amacs/pgpl
-    - adfox/amacs/tests/functional/tests_amacs/session_json
     - adfox/amacs/tests/functional/tests_amacs/sessions
     - adfox/amacs/tests/functional/tests_amacs/targeting/browser
     - adfox/amacs/tests/functional/tests_amacs/targeting/frequency
@@ -1966,7 +1965,6 @@ migrations:
     - rt-research/broadmatching/scripts/pylib/bmyt
     - saas/library/python/logbroker/cluster_api
     - sandbox/projects/clickhouse/ClickhouseTimerTrigger
-    - sandbox/projects/goods/BuildGoodsIndex
     - sandbox/projects/media/admins/ClickHouseDropDetachedParts
     - sandbox/projects/media/admins/MediaCheckDeployRelease
     - sandbox/projects/media/admins/MediaItsWeightManagement
