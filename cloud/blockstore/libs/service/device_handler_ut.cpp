@@ -746,7 +746,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         UNIT_ASSERT(ctx3->Time(EProcessingStage::Postponed) > TDuration::Seconds(11));
     }
 
-#if !defined(_tsan_enabled_)
     Y_UNIT_TEST(ShouldNotOverflowStack)
     {
         // We are running a very long series of overlapping queries. If the
@@ -754,11 +753,15 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         // end of the cycle, stack overflow will occur. Therefore, let's choose
         // the number of iterations large enough so that stack overflow is
         // guaranteed to happen.
+#if defined(_tsan_enabled_) || defined(_asan_enabled_)
+        constexpr ui32 RequestCount = 1000;
+#else
 #if defined(NDEBUG)
         constexpr ui32 RequestCount = 1000000;
 #else
         constexpr ui32 RequestCount = 100000;
-#endif
+#endif   // defined(NDEBUG)
+#endif   // defined(_tsan_enabled_) || defined(_asan_enabled_)
 
         TTestEnvironment env(2, DefaultBlockSize, 8);
 
@@ -784,7 +787,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         // Execute last request
         env.RunWriteService();
     }
-#endif   // !defined(_tsan_enabled_)
 }
 
 }   // namespace NCloud::NBlockStore
