@@ -13,6 +13,9 @@
 #include <util/generic/overloaded.h>
 #include <util/stream/file.h>
 
+#include <mutex>
+#include <optional>
+
 namespace NCloud::NBlockStore::NLogbroker {
 
 using namespace NThreading;
@@ -119,6 +122,9 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
+    std::optional<NYdb::TDriver> Driver;
+    std::mutex DriverMutex;
+
 public:
     TService(
             TLogbrokerConfigPtr config,
@@ -129,8 +135,7 @@ public:
 
     TFuture<NProto::TError> Write(TVector<TMessage> messages, TInstant now) override
     {
-        NYdb::TDriver driver = CreateDriver();
-        NYdb::NTopic::TTopicClient client {driver};
+        NYdb::NTopic::TTopicClient client {GetDriver()};
 
         auto batch = std::make_shared<TBatch>();
         batch->Messages = std::move(messages);
@@ -152,7 +157,13 @@ public:
     }
 
     void Stop() override
-    {}
+    {
+        std::unique_lock lock {DriverMutex};
+        if (Driver) {
+            Driver->Stop(false);
+            Driver.reset();
+        }
+    }
 
 private:
     void WaitEvent(std::shared_ptr<TBatch> batch)
@@ -197,7 +208,7 @@ private:
         }
     }
 
-    NYdb::TDriver CreateDriver()
+    NYdb::TDriverConfig CreateDriverConfig() const
     {
         auto cfg = NYdb::TDriverConfig()
             .SetEndpoint(TStringBuilder()
@@ -224,7 +235,18 @@ private:
                     : TString());
         }
 
-        return NYdb::TDriver {cfg};
+        return cfg;
+    }
+
+    NYdb::TDriver GetDriver()
+    {
+        std::unique_lock lock {DriverMutex};
+
+        if (!Driver) {
+            Driver.emplace(CreateDriverConfig());
+        }
+
+        return *Driver;
     }
 };
 

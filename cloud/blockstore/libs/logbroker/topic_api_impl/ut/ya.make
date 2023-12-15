@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/blockstore/libs/logbroker/topic_api_impl)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     topic_api_ut.cpp

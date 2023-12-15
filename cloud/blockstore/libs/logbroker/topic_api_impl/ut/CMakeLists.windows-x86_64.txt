@@ -31,7 +31,7 @@ set_property(
   cloud-blockstore-libs-logbroker-topic_api_impl-ut
   PROPERTY
   SPLIT_FACTOR
-  15
+  10
 )
 add_yunittest(
   NAME
@@ -50,21 +50,21 @@ set_yunittest_property(
   cloud-blockstore-libs-logbroker-topic_api_impl-ut
   PROPERTY
   LABELS
-  SMALL
+  MEDIUM
 )
 set_yunittest_property(
   TEST
   cloud-blockstore-libs-logbroker-topic_api_impl-ut
   PROPERTY
   PROCESSORS
-  2
+  4
 )
 set_yunittest_property(
   TEST
   cloud-blockstore-libs-logbroker-topic_api_impl-ut
   PROPERTY
   TIMEOUT
-  60
+  600
 )
 target_allocator(cloud-blockstore-libs-logbroker-topic_api_impl-ut
   system_allocator
