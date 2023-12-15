@@ -518,6 +518,12 @@ TDuration ConvertValue<TDuration, ui64>(const ui64& value)
 }
 
 template <>
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
+{
+    return TDuration::MilliSeconds(value);
+}
+
+template <>
 TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
@@ -581,13 +587,30 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TValue>
+constexpr TAtomicBase ConvertToAtomicBase(const TValue& value, const TValue& defVal)
+{
+    if constexpr (std::is_nothrow_convertible<TValue, TAtomicBase>::value) {
+        return (value != TValue{} ? value : defVal);
+    }
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
     TFeaturesConfigPtr FeaturesConfig;
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
-    TControlWrapper Control##name { 0, 0, Max() };                             \
+    TControlWrapper Control##name {                                            \
+        ConvertToAtomicBase<type>(                                             \
+            ConvertValue<type>(StorageServiceConfig.Get##name()),              \
+            value),                                                            \
+        0,                                                                     \
+        Max()                                                                  \
+    };                                                                         \
 // BLOCKSTORE_CONFIG_CONTROL
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
