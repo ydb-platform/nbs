@@ -30,10 +30,12 @@ type ConfigDescription struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 type CfgFileOverride struct {
-	Domain     string `yaml:"domain"`
-	MonAddress string `yaml:"monAddress"`
-	MonPort    string `yaml:"monPort"`
-	IcPort     string `yaml:"icPort"`
+	Domain          string `yaml:"domain"`
+	MonAddress      string `yaml:"monAddress"`
+	MonPort         string `yaml:"monPort"`
+	IcPort          string `yaml:"icPort"`
+	IcDiskAgentPort string `yaml:"icDiskAgentPort"`
+	VHostIcPort     string `yaml:"vHostIcPort"`
 }
 
 type ClusterSpec struct {
@@ -468,6 +470,12 @@ func (g *ConfigGenerator) constructCfgOverride(
 	}
 	if zoneConfig.IcPort != "" {
 		override.IcPort = zoneConfig.IcPort
+	}
+	if zoneConfig.IcDiskAgentPort != "" {
+		override.IcDiskAgentPort = zoneConfig.IcDiskAgentPort
+	}
+	if zoneConfig.VHostIcPort != "" {
+		override.VHostIcPort = zoneConfig.VHostIcPort
 	}
 
 	// cfg file overrides for seed
