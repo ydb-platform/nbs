@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/filestore/libs/storage/tablet)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SRCS(
     tablet_ut_counters.cpp

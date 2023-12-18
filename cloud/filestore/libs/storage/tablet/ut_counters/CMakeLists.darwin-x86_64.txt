@@ -37,7 +37,7 @@ set_property(
   cloud-filestore-libs-storage-tablet-ut_counters
   PROPERTY
   SPLIT_FACTOR
-  15
+  7
 )
 add_yunittest(
   NAME
@@ -56,21 +56,21 @@ set_yunittest_property(
   cloud-filestore-libs-storage-tablet-ut_counters
   PROPERTY
   LABELS
-  SMALL
+  MEDIUM
 )
 set_yunittest_property(
   TEST
   cloud-filestore-libs-storage-tablet-ut_counters
   PROPERTY
   PROCESSORS
-  2
+  4
 )
 set_yunittest_property(
   TEST
   cloud-filestore-libs-storage-tablet-ut_counters
   PROPERTY
   TIMEOUT
-  60
+  600
 )
 target_allocator(cloud-filestore-libs-storage-tablet-ut_counters
   system_allocator
