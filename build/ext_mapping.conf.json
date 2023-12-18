@@ -6,7 +6,7 @@
         "4399070549": "https://storage.nemax.nebius.cloud/nbs-oss-resources/blockstore-plugin-stable-23-1.tar.gz",
         "3240550068": "https://storage.nemax.nebius.cloud/nbs-oss-resources/blockstore-plugin-stable-22-2.tar.gz",
         "2326530962": "https://storage.nemax.nebius.cloud/nbs-oss-resources/fio-static.tgz",
-        "4449551218": "https://storage.nemax.nebius.cloud/nbs-oss-resources/qemu-bin.tar.gz",
+        "4449551218": "https://storage.nemax.nebius.cloud/nbs-oss-resources/qemu-static.tgz",
         "3307630510": "https://storage.nemax.nebius.cloud/nbs-oss-resources/rootfs.img",
         "4556399018": "https://storage.nemax.nebius.cloud/nbs-oss-resources/virtiofs-server"
     },
