@@ -1,5 +1,6 @@
 {
   ".":"cloud/blockstore/github_toplevel",
+  ".clang-tidy":"cloud/blockstore/github_toplevel/.clang-tidy",
   ".github/.arcignore":"cloud/blockstore/github_toplevel/.github/.arcignore",
   ".github/.gitignore":"cloud/blockstore/github_toplevel/.github/.gitignore",
   ".github/README.md":"cloud/blockstore/github_toplevel/.github/README.md",
