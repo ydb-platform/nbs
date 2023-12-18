@@ -103,19 +103,6 @@ func successfullyMigrateDisk(
 	err = waitForWrite()
 	require.NoError(t, err)
 
-	// TODO: NBS-4487 - uncomment this code.
-	/* writeCtx, cancelWrite := context.WithCancel(ctx)
-	waitForWrite, err = testcommon.GoWriteRandomBlocksToNbsDisk(
-		writeCtx,
-		srcZoneNBSClient,
-		params.DiskID,
-	)
-	require.NoError(t, err)
-	defer func() {
-		cancelWrite()
-		_ = waitForWrite()
-	}() */
-
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
 		OperationId: operation.Id,
 		Signal:      disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION,
@@ -191,74 +178,6 @@ func startAndCancelMigration(
 	})
 	require.NoError(t, err)
 }
-
-// TODO: NBS-4487 - uncomment this code.
-/*
-func checkFreezeAndUnfreezeDuringMigration(
-	t *testing.T,
-	ctx context.Context,
-	client sdk_client.Client,
-	srcDiskID string,
-	srcZoneID string,
-	dstZoneID string,
-) {
-
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	operation, err := client.MigrateDisk(reqCtx, &disk_manager.MigrateDiskRequest{
-		DiskId: &disk_manager.DiskId{
-			DiskId: srcDiskID,
-			ZoneId: srcZoneID,
-		},
-		DstZoneId: dstZoneID,
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-
-	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATING)
-
-	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
-		OperationId: operation.Id,
-		Signal:      disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION,
-	})
-	require.NoError(t, err)
-
-	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_REPLICATION_FINISHED)
-
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, srcZoneID)
-
-	waitForWrite, err := testcommon.GoWriteRandomBlocksToNbsDisk(
-		ctx,
-		srcZoneNBSClient,
-		srcDiskID,
-	)
-	require.NoError(t, err)
-
-	err = waitForWrite()
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
-
-	_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
-		OperationId: operation.Id,
-	})
-	require.NoError(t, err)
-
-	waitForWrite, err = testcommon.GoWriteRandomBlocksToNbsDisk(
-		ctx,
-		srcZoneNBSClient,
-		srcDiskID,
-	)
-	require.NoError(t, err)
-
-	err = waitForWrite()
-	require.NoError(t, err)
-
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "Cancelled by client")
-
-	waitForMigrationStatus(t, ctx, client, operation, disk_manager.MigrateDiskMetadata_STATUS_UNSPECIFIED)
-}
-*/
 
 // Returns size in bytes that was transferred during replication.
 func setupMigrateEmptyOverlayDiskTest(
@@ -777,32 +696,6 @@ func TestDiskServiceMigrateDiskAfterCancel(t *testing.T) {
 
 	testcommon.CheckConsistency(t, ctx)
 }
-
-// TODO: NBS-4487 - uncomment this code.
-/* func TestDiskServiceMigrateDiskFreezeAndUnfreeze(t *testing.T) {
-	params := migrationTestParams{
-		SrcZoneID: "zone-a",
-		DstZoneID: "zone-b",
-		DiskID:    t.Name(),
-		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
-		DiskSize:  migrationTestsDiskSize,
-		FillDisk:  true,
-	}
-
-	ctx, client := setupMigrationTest(t, params)
-	defer client.Close()
-
-	checkFreezeAndUnfreezeDuringMigration(
-		t,
-		ctx,
-		client,
-		params.DiskID,
-		params.SrcZoneID,
-		params.DstZoneID,
-	)
-
-	testcommon.CheckConsistency(t, ctx)
-} */
 
 func TestDiskServiceMigrateOverlayDisk(t *testing.T) {
 	ctx := testcommon.NewContext()

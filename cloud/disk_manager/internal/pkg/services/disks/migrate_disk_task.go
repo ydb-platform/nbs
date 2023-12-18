@@ -147,8 +147,6 @@ func (t *migrateDiskTask) Cancel(
 		t.logInfo(ctx, execCtx, "deleted dst disk")
 	}
 
-	// TODO: NBS-4487 - uncomment this code.
-	/* return t.unfreezeSrcDisk(ctx, execCtx) */
 	return nil
 }
 
@@ -418,60 +416,6 @@ func (t *migrateDiskTask) incrementFillGeneration(
 	)
 
 	return fillGeneration, nil
-}
-
-func (t *migrateDiskTask) freezeSrcDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	t.logInfo(ctx, execCtx, "freezing src disk")
-
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
-	err = client.Freeze(
-		ctx,
-		func() error {
-			return execCtx.SaveState(ctx)
-		},
-		t.request.Disk.DiskId,
-	)
-	if err != nil {
-		return err
-	}
-
-	t.logInfo(ctx, execCtx, "src disk is frozen")
-	return nil
-}
-
-func (t *migrateDiskTask) unfreezeSrcDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	t.logInfo(ctx, execCtx, "unfreezing src disk")
-
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
-	err = client.Unfreeze(
-		ctx,
-		func() error {
-			return execCtx.SaveState(ctx)
-		},
-		t.request.Disk.DiskId,
-	)
-	if err != nil {
-		return err
-	}
-
-	t.logInfo(ctx, execCtx, "src disk is unfrozen")
-	return nil
 }
 
 func (t *migrateDiskTask) finishFillDisk(
