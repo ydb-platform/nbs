@@ -1,7 +1,5 @@
 {
     "test.test_relocation_test[cluster1]": {
-        "checksum": "6bb28cb1ea8545c1c7cb70f07e3e6ad0",
-        "size": 616,
-        "uri": "https://storage.yandex-team.ru/get-devtools/1871182/21454bdf49ba91f2bc311f48be12eb30e84e7a3a/resource.tar.gz#test.test_relocation_test_cluster1_/testing_out_stuff_results.txt"
+        "uri": "file://test.test_relocation_test_cluster1_/testing_out_stuff_results.txt"
     }
 }

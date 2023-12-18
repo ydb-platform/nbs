@@ -1,0 +1,10 @@
+Command=ycp --format json --profile cluster1-tests compute instance list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile cluster1-tests vpc subnet list --folder-id fake-folder
+Input=
+SSH 1:1:1:1:1:1:1:1: systemctl list-units --no-legend --output=json --full --all "eternalload_vd*.service"
+Command=ycp --format json --profile cluster1-tests compute instance relocate --request -
+Input=
+Command=ycp --format json --profile cluster1-tests compute instance list --folder-id fake-folder
+Input=
+SSH 1:1:1:1:1:1:1:1: systemctl list-units --no-legend --output=json --full --all "eternalload_vd*.service"
