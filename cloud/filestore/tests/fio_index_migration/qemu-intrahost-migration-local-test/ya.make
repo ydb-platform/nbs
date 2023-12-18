@@ -1,0 +1,32 @@
+PY3TEST()
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
+
+DEPENDS(
+    cloud/storage/core/tools/testing/fio/bin
+    cloud/storage/core/tools/testing/qemu/bin
+    cloud/storage/core/tools/testing/qemu/image
+)
+
+PEERDIR(
+    cloud/filestore/tests/python/lib
+    cloud/storage/core/tools/common/python
+    cloud/storage/core/tools/testing/fio/lib
+    cloud/storage/core/tools/testing/qemu/lib
+)
+
+DATA(arcadia/cloud/storage/core/tools/testing/qemu/keys)
+
+TEST_SRCS(
+    test.py
+)
+
+SET(QEMU_VIRTIO fs)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-local.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-local.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
+
+END()
+

@@ -1,0 +1,16 @@
+NFS profile:
+CreateFileStore
+VHOST profile:
+AcquireLock
+CreateHandle
+CreateNode
+DestroyHandle
+Flush
+GetNodeAttr
+GetNodeXAttr
+ListNodes
+ReadLink
+RenameNode
+SetNodeAttr
+UnlinkNode
+WriteData

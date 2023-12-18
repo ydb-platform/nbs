@@ -6,6 +6,8 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
+add_subdirectory(ut_stress)
 
 add_library(filestore-libs-service_local)
 target_link_libraries(filestore-libs-service_local PUBLIC

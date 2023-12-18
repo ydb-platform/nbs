@@ -1,0 +1,14 @@
+{
+    "test.test_create_destroy": {
+        "uri": "file://test.test_create_destroy/results.txt"
+    },
+    "test.test_create_mkdir_ls_destroy": {
+        "uri": "file://test.test_create_mkdir_ls_destroy/results.txt"
+    },
+    "test.test_create_mkdir_ls_write_destroy": {
+        "uri": "file://test.test_create_mkdir_ls_write_destroy/results.txt"
+    },
+    "test.test_list_filestores": {
+        "uri": "file://test.test_list_filestores/results.txt"
+    }
+}

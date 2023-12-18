@@ -1,0 +1,3 @@
+RECURSE(
+    event-log
+)

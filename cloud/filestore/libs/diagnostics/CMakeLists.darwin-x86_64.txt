@@ -8,6 +8,7 @@
 
 add_subdirectory(events)
 add_subdirectory(metrics)
+add_subdirectory(ut)
 
 add_library(filestore-libs-diagnostics)
 target_link_libraries(filestore-libs-diagnostics PUBLIC

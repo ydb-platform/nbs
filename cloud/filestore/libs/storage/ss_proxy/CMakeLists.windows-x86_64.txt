@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
 
 add_library(filestore-libs-storage-ss_proxy)
 target_link_libraries(filestore-libs-storage-ss_proxy PUBLIC

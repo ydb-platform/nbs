@@ -1,0 +1,500 @@
+TEST SUITE[rename, 00.t] 1..79
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+ok 15
+ok 16
+ok 17
+ok 18
+ok 19
+ok 20
+ok 21
+ok 22
+ok 23
+ok 24
+ok 25
+ok 26
+ok 27
+ok 28
+ok 29
+ok 30
+ok 31
+ok 32
+ok 33
+ok 34
+ok 35
+ok 36
+ok 37
+ok 38
+ok 39
+ok 40
+ok 41
+ok 42
+ok 43
+ok 44
+ok 45
+ok 46
+ok 47
+ok 48
+ok 49
+ok 50
+ok 51
+ok 52
+ok 53
+ok 54
+ok 55
+ok 56
+ok 57
+ok 58
+ok 59
+ok 60
+ok 61
+ok 62
+ok 63
+ok 64
+ok 65
+ok 66
+ok 67
+ok 68
+ok 69
+ok 70
+ok 71
+ok 72
+ok 73
+ok 74
+ok 75
+ok 76
+ok 77
+ok 78
+ok 79
+TEST SUITE[rename, 01.t] 1..8
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+not ok 8
+TEST SUITE[rename, 02.t] 1..14
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+TEST SUITE[rename, 03.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+TEST SUITE[rename, 04.t] 1..18
+ok 1
+ok 2
+not ok 3
+ok 4
+not ok 5
+not ok 6
+not ok 7
+not ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+not ok 15
+ok 16
+ok 17
+ok 18
+TEST SUITE[rename, 05.t] 1..17
+ok 1
+ok 2
+not ok 3
+ok 4
+not ok 5
+not ok 6
+not ok 7
+not ok 8
+ok 9
+not ok 10
+ok 11
+not ok 12
+ok 13
+not ok 14
+ok 15
+ok 16
+ok 17
+TEST SUITE[rename, 06.t] 1..1
+ok 1
+TEST SUITE[rename, 07.t] 1..1
+ok 1
+TEST SUITE[rename, 08.t] 1..1
+ok 1
+TEST SUITE[rename, 09.t] 1..56
+ok 1
+ok 2
+not ok 3
+ok 4
+ok 5
+not ok 6
+ok 7
+not ok 8
+not ok 9
+not ok 10
+not ok 11
+not ok 12
+not ok 13
+not ok 14
+not ok 15
+not ok 16
+not ok 17
+not ok 18
+not ok 19
+ok 20
+ok 21
+not ok 22
+ok 23
+not ok 24
+not ok 25
+not ok 26
+not ok 27
+not ok 28
+not ok 29
+not ok 30
+not ok 31
+not ok 32
+not ok 33
+not ok 34
+not ok 35
+ok 36
+ok 37
+not ok 38
+ok 39
+not ok 40
+not ok 41
+not ok 42
+not ok 43
+not ok 44
+not ok 45
+not ok 46
+not ok 47
+not ok 48
+not ok 49
+not ok 50
+not ok 51
+ok 52
+ok 53
+ok 54
+ok 55
+ok 56
+TEST SUITE[rename, 10.t] 1..188
+ok 1
+ok 2
+not ok 3
+ok 4
+ok 5
+not ok 6
+not ok 7
+ok 8
+not ok 9
+ok 10
+not ok 11
+not ok 12
+not ok 13
+ok 14
+not ok 15
+not ok 16
+not ok 17
+ok 18
+not ok 19
+ok 20
+not ok 21
+not ok 22
+ok 23
+not ok 24
+ok 25
+not ok 26
+not ok 27
+not ok 28
+ok 29
+not ok 30
+not ok 31
+not ok 32
+ok 33
+not ok 34
+ok 35
+not ok 36
+not ok 37
+ok 38
+not ok 39
+ok 40
+not ok 41
+not ok 42
+not ok 43
+ok 44
+not ok 45
+not ok 46
+not ok 47
+ok 48
+not ok 49
+ok 50
+not ok 51
+not ok 52
+ok 53
+not ok 54
+ok 55
+not ok 56
+ok 57
+not ok 58
+not ok 59
+ok 60
+not ok 61
+ok 62
+ok 63
+not ok 64
+not ok 65
+ok 66
+not ok 67
+ok 68
+ok 69
+not ok 70
+not ok 71
+ok 72
+not ok 73
+ok 74
+ok 75
+not ok 76
+not ok 77
+ok 78
+not ok 79
+not ok 80
+ok 81
+not ok 82
+not ok 83
+ok 84
+not ok 85
+ok 86
+not ok 87
+not ok 88
+not ok 89
+ok 90
+not ok 91
+not ok 92
+not ok 93
+ok 94
+not ok 95
+ok 96
+not ok 97
+not ok 98
+ok 99
+not ok 100
+ok 101
+not ok 102
+not ok 103
+not ok 104
+ok 105
+not ok 106
+not ok 107
+not ok 108
+ok 109
+not ok 110
+ok 111
+not ok 112
+not ok 113
+ok 114
+not ok 115
+ok 116
+not ok 117
+not ok 118
+not ok 119
+ok 120
+not ok 121
+not ok 122
+not ok 123
+ok 124
+not ok 125
+ok 126
+not ok 127
+not ok 128
+ok 129
+not ok 130
+ok 131
+not ok 132
+ok 133
+not ok 134
+not ok 135
+ok 136
+not ok 137
+ok 138
+not ok 139
+not ok 140
+not ok 141
+ok 142
+not ok 143
+not ok 144
+not ok 145
+ok 146
+not ok 147
+ok 148
+not ok 149
+not ok 150
+ok 151
+not ok 152
+ok 153
+not ok 154
+not ok 155
+not ok 156
+ok 157
+not ok 158
+not ok 159
+not ok 160
+ok 161
+not ok 162
+ok 163
+not ok 164
+not ok 165
+ok 166
+not ok 167
+ok 168
+not ok 169
+not ok 170
+not ok 171
+ok 172
+not ok 173
+not ok 174
+not ok 175
+ok 176
+not ok 177
+ok 178
+not ok 179
+not ok 180
+ok 181
+not ok 182
+ok 183
+not ok 184
+ok 185
+ok 186
+ok 187
+ok 188
+TEST SUITE[rename, 11.t] 1..10
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+TEST SUITE[rename, 12.t] 1..8
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+TEST SUITE[rename, 13.t] 1..17
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+not ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+ok 15
+ok 16
+ok 17
+TEST SUITE[rename, 14.t] 1..17
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+not ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+ok 15
+ok 16
+ok 17
+TEST SUITE[rename, 15.t] 1..1
+ok 1
+TEST SUITE[rename, 16.t] 1..1
+ok 1
+TEST SUITE[rename, 17.t] 1..8
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+TEST SUITE[rename, 18.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+TEST SUITE[rename, 19.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+TEST SUITE[rename, 20.t] 1..16
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+ok 15
+ok 16

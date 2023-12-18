@@ -7,6 +7,8 @@
 
 
 add_subdirectory(protos)
+add_subdirectory(tests)
+add_subdirectory(ut)
 
 add_library(filestore-libs-vfs)
 target_link_libraries(filestore-libs-vfs PUBLIC

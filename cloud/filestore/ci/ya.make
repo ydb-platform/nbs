@@ -1,0 +1,4 @@
+RECURSE(
+    loadtests
+    tests
+)

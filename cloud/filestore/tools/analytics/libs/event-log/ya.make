@@ -1,0 +1,21 @@
+LIBRARY()
+
+SRCS(
+    dump.cpp
+    request_filter.cpp
+    request_printer.cpp
+)
+
+PEERDIR(
+    cloud/filestore/libs/diagnostics/events
+    cloud/filestore/libs/service
+    cloud/filestore/libs/storage/tablet
+
+    cloud/storage/core/libs/common
+)
+
+END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

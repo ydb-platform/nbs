@@ -1,0 +1,16 @@
+RECURSE(
+    client
+    daemon
+    diagnostics
+    endpoint
+    endpoint_vhost
+    server
+    service
+    service_kikimr
+    service_local
+    service_null
+    storage
+    vfs
+    vfs_fuse
+    vhost
+)

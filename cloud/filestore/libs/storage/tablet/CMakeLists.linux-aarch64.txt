@@ -8,6 +8,9 @@
 
 add_subdirectory(model)
 add_subdirectory(protos)
+add_subdirectory(ut)
+add_subdirectory(ut_counters)
+add_subdirectory(ut_stress)
 get_built_tool_path(
   TOOL_enum_parser_bin
   TOOL_enum_parser_dependency

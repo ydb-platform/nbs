@@ -1,0 +1,16 @@
+[
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "aaa",
+        "Mode": 511,
+        "Id": 2
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "bbb",
+        "Mode": 511,
+        "Id": 3
+    }
+]

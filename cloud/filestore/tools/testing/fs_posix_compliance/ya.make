@@ -1,0 +1,4 @@
+RECURSE(
+    pylib
+    suite
+)

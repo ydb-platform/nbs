@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(ut)
 
 add_library(filestore-libs-service_kikimr)
 target_link_libraries(filestore-libs-service_kikimr PUBLIC

@@ -1,0 +1,28 @@
+Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance create --request -
+Input=
+Waiting for instance 1:1:1:1:1:1:1:1
+Command=ycp --format json --profile fake-cluster1 compute filesystem create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-filesystem --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute filesystem create --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance attach-filesystem --request -
+Input=
+SFTP FILE 1:1:1:1:1:1:1:1//root/default.sh f=w
+SFTP WRITE FILE 1:1:1:1:1:1:1:1SFTP FLUSH FILE 1:1:1:1:1:1:1:1SFTP CHMOD 1:1:1:1:1:1:1:1//root/default.sh f=493
+SSH 1:1:1:1:1:1:1:1: /root/default.sh
+Command=ycp --format json --profile fake-cluster1 compute instance detach-filesystem --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute filesystem delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance detach-filesystem --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute filesystem delete --request -
+Input=
+Command=ycp --format json --profile fake-cluster1 compute instance delete --request -
+Input=

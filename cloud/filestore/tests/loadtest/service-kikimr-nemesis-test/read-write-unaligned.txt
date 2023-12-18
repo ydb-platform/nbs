@@ -1,0 +1,27 @@
+Tests {
+    LoadTest {
+        Name: "smoke"
+        CreateFileStoreRequest: {
+            FileSystemId: "smoke"
+            FolderId: "folder"
+            CloudId: "cloud"
+            BlocksCount: 10241024
+            BlockSize: 4096
+        }
+        DataLoadSpec {
+            ReadBytes: 4096
+            WriteBytes: 123
+            AppendPercentage: 50
+            Actions {
+                Action: ACTION_READ
+                Rate: 33
+            }
+            Actions {
+                Action: ACTION_WRITE
+                Rate: 33
+            }
+        }
+        IODepth: 4
+        TestDuration: 60
+    }
+}
