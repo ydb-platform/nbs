@@ -7,6 +7,7 @@ import (
 
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 )
 
@@ -15,7 +16,7 @@ import (
 func NewS3Client() (*persistence.S3Client, error) {
 	endpoint := fmt.Sprintf("http://localhost:%s", os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"))
 	credentials := persistence.NewS3Credentials("test", "test")
-	return persistence.NewS3Client(endpoint, "test", credentials)
+	return persistence.NewS3Client(endpoint, "test", credentials, metrics.NewEmptyRegistry())
 }
 
 func NewContext() context.Context {

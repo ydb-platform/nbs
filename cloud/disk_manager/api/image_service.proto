@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package cloud.disk_manager;
 
+import "cloud/api/operation/operation.proto";
 import "cloud/disk_manager/disk.proto";
 import "cloud/disk_manager/image.proto";
-import "cloud/api/operation/operation.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 

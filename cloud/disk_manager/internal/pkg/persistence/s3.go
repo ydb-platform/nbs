@@ -13,19 +13,22 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type S3Client struct {
-	s3 *aws_s3.S3
+	s3      *aws_s3.S3
+	metrics *s3Metrics
 }
 
 func NewS3Client(
 	endpoint string,
 	region string,
 	credentials S3Credentials,
+	registry metrics.Registry,
 ) (*S3Client, error) {
 
 	sessionConfig := &aws.Config{
@@ -45,12 +48,14 @@ func NewS3Client(
 	}
 
 	return &S3Client{
-		s3: aws_s3.New(session),
+		s3:      aws_s3.New(session),
+		metrics: newS3Metrics(registry),
 	}, nil
 }
 
 func NewS3ClientFromConfig(
 	config *persistence_config.S3Config,
+	registry metrics.Registry,
 ) (*S3Client, error) {
 
 	credentials, err := NewS3CredentialsFromFile(config.GetCredentialsFilePath())
@@ -58,7 +63,7 @@ func NewS3ClientFromConfig(
 		return nil, err
 	}
 
-	return NewS3Client(config.GetEndpoint(), config.GetRegion(), credentials)
+	return NewS3Client(config.GetEndpoint(), config.GetRegion(), credentials, registry)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,9 +71,11 @@ func NewS3ClientFromConfig(
 func (c *S3Client) CreateBucket(
 	ctx context.Context,
 	bucket string,
-) error {
+) (err error) {
 
-	_, err := c.s3.CreateBucketWithContext(ctx, &aws_s3.CreateBucketInput{
+	defer c.metrics.StatRequest("CreateBucket")(&err)
+
+	_, err = c.s3.CreateBucketWithContext(ctx, &aws_s3.CreateBucketInput{
 		Bucket: &bucket,
 	})
 	if err != nil {
@@ -92,7 +99,9 @@ func (c *S3Client) GetObject(
 	ctx context.Context,
 	bucket string,
 	key string,
-) (S3Object, error) {
+) (o S3Object, err error) {
+
+	defer c.metrics.StatRequest("GetObject")(&err)
 
 	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
 		Bucket: &bucket,
@@ -130,9 +139,11 @@ func (c *S3Client) PutObject(
 	bucket string,
 	key string,
 	object S3Object,
-) error {
+) (err error) {
 
-	_, err := c.s3.PutObjectWithContext(ctx, &aws_s3.PutObjectInput{
+	defer c.metrics.StatRequest("PutObject")(&err)
+
+	_, err = c.s3.PutObjectWithContext(ctx, &aws_s3.PutObjectInput{
 		Bucket:          &bucket,
 		Key:             &key,
 		Body:            bytes.NewReader(object.Data),
@@ -157,9 +168,11 @@ func (c *S3Client) DeleteObject(
 	ctx context.Context,
 	bucket string,
 	key string,
-) error {
+) (err error) {
 
-	_, err := c.s3.DeleteObjectWithContext(ctx, &aws_s3.DeleteObjectInput{
+	defer c.metrics.StatRequest("DeleteObject")(&err)
+
+	_, err = c.s3.DeleteObjectWithContext(ctx, &aws_s3.DeleteObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
 	})

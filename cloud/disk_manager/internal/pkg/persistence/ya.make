@@ -4,6 +4,7 @@ GO_LIBRARY()
 
 SRCS(
     s3.go
+    s3_metrics.go
     ydb.go
     ydb_logger.go
     ydb_metrics.go

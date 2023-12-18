@@ -48,7 +48,7 @@ func initDataplane(
 	var s3 *persistence.S3Client
 	// TODO: remove when s3 will always be initialized.
 	if s3Config != nil {
-		s3, err = persistence.NewS3ClientFromConfig(s3Config)
+		s3, err = persistence.NewS3ClientFromConfig(s3Config, metrics.NewEmptyRegistry())
 		if err != nil {
 			return err
 		}
