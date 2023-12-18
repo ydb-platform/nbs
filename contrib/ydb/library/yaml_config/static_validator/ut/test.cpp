@@ -4,6 +4,8 @@
 #include <contrib/ydb/library/yaml_config/validator/validator.h>
 #include <contrib/ydb/library/yaml_config/validator/validator_builder.h>
 
+namespace NKikimr {
+
 using namespace NYamlConfig::NValidator;
 using TIssue = TValidationResult::TIssue;
 
@@ -316,3 +318,5 @@ Y_UNIT_TEST_SUITE(StaticValidator) {
         }));
     }
 }
+
+} // namesapce NKikimr
