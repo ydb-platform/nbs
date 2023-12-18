@@ -11,7 +11,7 @@ from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper, make_ycp_engine
 from .arg_parser import ParseHelper
 from .errors import Error
 from .test_configs import ITestConfig, \
-    ITestCreateConfig, LoadConfig, DiskCreateConfig, get_test_config
+    LoadConfig, DiskCreateConfig, get_test_config
 
 from library.python import resource
 
@@ -131,12 +131,12 @@ class EternalTestHelper:
 
         raise RuntimeError("instance {} not found out of {}".format(name, len(instances)))
 
-    def copy_load_config_to_instance(self, instance_ip: str, test_config: ITestCreateConfig, load_config: LoadConfig):
+    def copy_load_config_to_instance(self, instance_ip: str, load_config: LoadConfig):
         json = get_template('test-config.json').substitute(
             ioDepth=load_config.io_depth,
-            fileSize=test_config.size * 1024 ** 3,
+            fileSize=load_config.size * 1024 ** 3,
             writeRate=load_config.write_rate,
-            blockSize=test_config.bs,
+            blockSize=load_config.bs,
             filePath=load_config.test_file,
         )
         with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
@@ -144,9 +144,9 @@ class EternalTestHelper:
             file.write(json)
             file.flush()
 
-    def create_systemd_load_service_on_instance(self, instance_ip: str, test_config: ITestCreateConfig, load_config: LoadConfig):
+    def create_systemd_load_service_on_instance(self, instance_ip: str, load_config: LoadConfig):
         restore_cmd = self.get_restore_load_command(load_config)
-        generate_cmd = self.get_generate_load_command(test_config, load_config)
+        generate_cmd = self.get_generate_load_command(load_config)
         command = (
             f'[[ -f {load_config.config_path} ]] && '
             f'{restore_cmd} || '
@@ -174,23 +174,19 @@ class EternalTestHelper:
             log_path=load_config.log_path,
         )
 
-    def get_generate_load_command(self, test_config: ITestCreateConfig, load_config: LoadConfig) -> str:
+    def get_generate_load_command(self, load_config: LoadConfig) -> str:
         return self._START_LOAD_CMD.format(
             file=load_config.test_file,
             dump_config_path=load_config.config_path,
             log_path=load_config.log_path,
             blocksize=load_config.bs,
-            filesize=test_config.size,
+            filesize=load_config.size,
             io_depth=load_config.io_depth,
             write_rate=load_config.write_rate,
             write_parts=load_config.write_parts,
         )
 
-    def generate_run_load_command_from_test_config(
-            self,
-            test_config: ITestCreateConfig,
-            load_config: LoadConfig,
-            fill_disk: bool) -> str:
+    def generate_run_load_command_from_test_config(self, load_config: LoadConfig, fill_disk: bool) -> str:
         load_command = ''
 
         if fill_disk:
@@ -204,7 +200,7 @@ class EternalTestHelper:
         elif load_config.use_requests_with_different_sizes:
             load_command += self.get_restore_load_command(load_config)
         else:
-            load_command += self.get_generate_load_command(test_config, load_config)
+            load_command += self.get_generate_load_command(load_config)
 
         return load_command
 
@@ -436,14 +432,14 @@ class EternalTestHelper:
 
         for test_config, load_config in self.test_config.all_tests():
             if load_config.use_requests_with_different_sizes:
-                self.copy_load_config_to_instance(instance.ip, test_config, load_config)
+                self.copy_load_config_to_instance(instance.ip, load_config)
 
             if load_config.run_in_systemd:
-                self.create_systemd_load_service_on_instance(instance.ip, test_config, load_config)
+                self.create_systemd_load_service_on_instance(instance.ip, load_config)
 
             self.run_command_in_background(
                 instance.ip,
-                self.generate_run_load_command_from_test_config(test_config, load_config, load_config.need_filling),
+                self.generate_run_load_command_from_test_config(load_config, load_config.need_filling),
             )
 
     def handle_continue_load(self):
@@ -482,11 +478,11 @@ class EternalTestHelper:
                 )
 
             if load_config.use_requests_with_different_sizes:
-                self.copy_load_config_to_instance(instance.ip, test_config, load_config)
+                self.copy_load_config_to_instance(instance.ip, load_config)
 
             self.run_command_in_background(
                 instance.ip,
-                self.generate_run_load_command_from_test_config(test_config, load_config, self.args.refill),
+                self.generate_run_load_command_from_test_config(load_config, self.args.refill),
             )
 
     def handle_rerun_load(self):
@@ -533,7 +529,7 @@ class EternalTestHelper:
         instance = self.find_instance()
 
         for test_config, load_config in self.test_config.all_tests():
-            crontab_cmd = self.generate_run_load_command_from_test_config(test_config, load_config, fill_disk=False)
+            crontab_cmd = self.generate_run_load_command_from_test_config(load_config, False)
             with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
                 _, _, stderr = ssh.exec_command(
                     f'(crontab -l 2>/dev/null; echo "@reboot {crontab_cmd}") | crontab -')

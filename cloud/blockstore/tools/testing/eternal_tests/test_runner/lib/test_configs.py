@@ -68,7 +68,7 @@ class FsCreateConfig(ITestCreateConfig):
 
 
 @dataclass
-class LoadConfig:
+class LoadConfig(ITestCreateConfig):
     DEFAULT_CONFIG_DIR = '/tmp'
     DEFAULT_LOG_NAME = 'eternal-load.log'
     DEFAULT_CONFIG_NAME = 'load-config.json'
@@ -77,7 +77,6 @@ class LoadConfig:
     need_filling: bool
     io_depth: int
     write_rate: int
-    bs: int
     write_parts: int
     run_in_systemd: bool
     test_file: str
@@ -91,14 +90,15 @@ class LoadConfig:
             need_filling,
             io_depth,
             write_rate,
+            size,
             bs,
             write_parts=1,
             run_in_systemd=False):
-
         self.use_requests_with_different_sizes = use_requests_with_different_sizes
         self.need_filling = need_filling
         self.io_depth = io_depth
         self.write_rate = write_rate
+        self.size = size
         self.bs = bs
         self.write_parts = write_parts
         self.run_in_systemd = run_in_systemd
@@ -245,50 +245,93 @@ _DISK_CONFIGS = {
 }
 
 _FS_CONFIGS = {
-    'eternal-100gb-nfs-different-size-requests': FsCreateConfig(100, 4096, 'network-ssd'),
+    # Tablet throttler tests
     'eternal-100gb-nfs': FsCreateConfig(100, 4096, 'network-ssd'),
+    'eternal-100gb-nfs-different-size-requests': FsCreateConfig(100, 4096, 'network-ssd'),
+
+    # Fio read tests with 1MiB request
+    'eternal-1tb-4kib-nfs': FsCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-1tb-8kib-nfs': FsCreateConfig(1024, 8192, 'network-ssd'),
+    'eternal-1tb-16kib-nfs': FsCreateConfig(1024, 16384, 'network-ssd'),
+    'eternal-1tb-32kib-nfs': FsCreateConfig(1024, 32768, 'network-ssd'),
+    'eternal-1tb-64kib-nfs': FsCreateConfig(1024, 65536, 'network-ssd'),
+    'eternal-1tb-128kib-nfs': FsCreateConfig(1024, 131072, 'network-ssd'),
+
+    # Fio read tests with multiple of 512 request
+    'eternal-1tb-4kib-nfs-different-size-requests': FsCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-1tb-8kib-nfs-different-size-requests': FsCreateConfig(1024, 8192, 'network-ssd'),
+    'eternal-1tb-16kib-nfs-different-size-requests': FsCreateConfig(1024, 16384, 'network-ssd'),
+    'eternal-1tb-32kib-nfs-different-size-requests': FsCreateConfig(1024, 32768, 'network-ssd'),
+    'eternal-1tb-64kib-nfs-different-size-requests': FsCreateConfig(1024, 65536, 'network-ssd'),
+    'eternal-1tb-128kib-nfs-different-size-requests': FsCreateConfig(1024, 131072, 'network-ssd'),
+
+    # Fio canonical tests with 1MiB request
+    'eternal-1tb-4kib-nfs-canonical': FsCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-1tb-4kib-1io-nfs-canonical': FsCreateConfig(1024, 4096, 'network-ssd'),
+
+    # DBs
     'eternal-1tb-nfs-postgresql': FsCreateConfig(1024, 4096, 'network-ssd', 'nfs', '/DB'),
     'eternal-1tb-nfs-mysql': FsCreateConfig(1024, 4096, 'network-ssd', 'nfs', '/DB'),
 }
 
 _LOAD_CONFIGS = {
-    'eternal-640gb-verify-checkpoint': LoadConfig(False, True, 32, 50, 4096),
-    'eternal-320gb': LoadConfig(False, True, 32, 50, 4096),
-    'eternal-4tb': LoadConfig(False, True, 32, 50, 4096),
-    'eternal-4tb-one-partition': LoadConfig(False, True, 32, 50, 4096),
-    'eternal-320gb-mirror-3of4-no-throttling':
-        LoadConfig(False, True, 32, 50, 4096),
-    'eternal-1024gb-hdd-no-throttling': LoadConfig(False, True, 8, 50, 4096),
-    'eternal-1024gb-mirror-3of4-hdd-no-throttling':
-        LoadConfig(False, True, 8, 50, 4096),
-    'eternal-1023gb-nonrepl': LoadConfig(False, False, 32, 50, 4096),
-    'eternal-1023gb-nonrepl-vhost': LoadConfig(False, False, 32, 50, 4096),
-    'eternal-1023gb-nonrepl-rdma': LoadConfig(False, False, 32, 50, 4096),
-    'eternal-1023gb-nonrepl-different-size-requests': LoadConfig(True, False, 32, 50, 4096),
+    'eternal-640gb-verify-checkpoint': LoadConfig(False, True, 32, 50, 640, 4096),
+    'eternal-320gb': LoadConfig(False, True, 32, 50, 320, 4096),
+    'eternal-4tb': LoadConfig(False, True, 32, 50, 4096, 4096),
+    'eternal-4tb-one-partition': LoadConfig(False, True, 32, 50, 4096, 4096),
+    'eternal-320gb-mirror-3of4-no-throttling': LoadConfig(False, True, 32, 50, 320, 4096),
+    'eternal-1024gb-hdd-no-throttling': LoadConfig(False, True, 8, 50, 1024, 4096),
+    'eternal-1024gb-mirror-3of4-hdd-no-throttling': LoadConfig(False, True, 8, 50, 1024, 4096),
+    'eternal-1023gb-nonrepl': LoadConfig(False, False, 32, 50, 1023, 4096),
+    'eternal-1023gb-nonrepl-vhost': LoadConfig(False, False, 32, 50, 1023, 4096),
+    'eternal-1023gb-nonrepl-rdma': LoadConfig(False, False, 32, 50, 1023, 4096),
+    'eternal-1023gb-nonrepl-different-size-requests': LoadConfig(True, False, 32, 50, 1023, 4096),
 
-    'eternal-big-hdd-nonrepl-diff-size-reqs-1': LoadConfig(True, False, 16, 50, 4096),
-    'eternal-big-hdd-nonrepl-diff-size-reqs-2': LoadConfig(True, False, 16, 50, 4096),
+    'eternal-big-hdd-nonrepl-diff-size-reqs-1': LoadConfig(True, False, 16, 50, 93 * 80, 4096),
+    'eternal-big-hdd-nonrepl-diff-size-reqs-2': LoadConfig(True, False, 16, 50, 93 * 80, 4096),
 
-    'eternal-1023gb-mirror2': LoadConfig(False, False, 32, 50, 4096),
-    'eternal-1023gb-mirror2-different-size-requests': LoadConfig(True, False, 32, 50, 4096),
-    'eternal-1023gb-mirror3': LoadConfig(False, False, 32, 50, 4096),
-    'eternal-1023gb-mirror3-rdma': LoadConfig(False, False, 32, 50, 4096),
+    'eternal-1023gb-mirror2': LoadConfig(False, False, 32, 50, 1023, 4096),
+    'eternal-1023gb-mirror2-different-size-requests': LoadConfig(True, False, 32, 50, 1023, 4096),
+    'eternal-1023gb-mirror3': LoadConfig(False, False, 32, 50, 1023, 4096),
+    'eternal-1023gb-mirror3-rdma': LoadConfig(False, False, 32, 50, 1023, 4096),
 
-    'eternal-512gb-different-size-requests': LoadConfig(True, True, 32, 50, 4096),
-    'eternal-1tb-different-size-requests': LoadConfig(True, True, 32, 50, 4096),
+    'eternal-512gb-different-size-requests': LoadConfig(True, True, 32, 50, 512, 4096),
+    'eternal-1tb-different-size-requests': LoadConfig(True, True, 32, 50, 1024, 4096),
 
-    'eternal-100gb-nfs-different-size-requests': LoadConfig(True, False, 32, 10, 4096),
-    'eternal-100gb-nfs': LoadConfig(False, False, 32, 10, 1048576),
+    'eternal-320gb-overlay': LoadConfig(True, False, 32, 25, 320, 4096),
 
-    'eternal-320gb-overlay': LoadConfig(True, False, 32, 25, 4096),
+    'eternal-186gb-ssd-local': LoadConfig(False, False, 128, 50, 186, 4096),
+    'eternal-279gb-ssd-local-different-size-requests': LoadConfig(True, False, 64, 50, 279, 4096),
 
-    'eternal-186gb-ssd-local': LoadConfig(False, False, 128, 50, 4096),
-    'eternal-279gb-ssd-local-different-size-requests':
-        LoadConfig(True, False, 64, 50, 4096),
+    'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 320, 4096),
+    'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 1023, 4096),
+    'eternal-relocation-network-ssd': LoadConfig(False, False, 32, 50, 32, 4096, run_in_systemd=True),
 
-    'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 4096),
-    'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 4096),
-    'eternal-relocation-network-ssd': LoadConfig(False, False, 32, 50, 4096, run_in_systemd=True),
+    # NFS
+
+    # Tablet throttler tests
+    'eternal-100gb-nfs': LoadConfig(False, False, 32, 25, 100, 1048576),
+    'eternal-100gb-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 100, 512),
+
+    # Fio read tests with 1MiB request
+    'eternal-1tb-4kib-nfs': LoadConfig(False, False, 32, 25, 256, 1048576),
+    'eternal-1tb-8kib-nfs': LoadConfig(False, False, 32, 25, 512, 1048576),
+    'eternal-1tb-16kib-nfs': LoadConfig(False, False, 32, 25, 512, 1048576),
+    'eternal-1tb-32kib-nfs': LoadConfig(False, False, 32, 25, 512, 1048576),
+    'eternal-1tb-64kib-nfs': LoadConfig(False, False, 32, 25, 512, 1048576),
+    'eternal-1tb-128kib-nfs': LoadConfig(False, False, 32, 25, 512, 1048576),
+
+    # Fio read tests with multiple of 512 request
+    'eternal-1tb-4kib-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 256, 512),
+    'eternal-1tb-8kib-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 512, 512),
+    'eternal-1tb-16kib-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 512, 512),
+    'eternal-1tb-32kib-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 512, 512),
+    'eternal-1tb-64kib-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 512, 512),
+    'eternal-1tb-128kib-nfs-different-size-requests': LoadConfig(True, False, 32, 25, 512, 512),
+
+    # Fio canonical tests with 1MiB request
+    'eternal-1tb-4kib-nfs-canonical': LoadConfig(False, False, 32, 50, 256, 1048576),
+    'eternal-1tb-4kib-1io-nfs-canonical': LoadConfig(False, False, 1, 50, 256, 1048576),
 }
 
 _IPC_TYPE = {
