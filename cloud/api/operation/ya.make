@@ -1,15 +1,8 @@
-OWNER(g:cloud-nbs)
-
+OWNER(g:cloud-api)
 PROTO_LIBRARY()
 
 GRPC()
 ONLY_TAGS(GO_PROTO)
-
-PROTO_NAMESPACE(cloud/api/operation)
-
-SRCS(
-    operation.proto
-)
 
 USE_COMMON_GOOGLE_APIS(
     api/annotations
@@ -18,6 +11,10 @@ USE_COMMON_GOOGLE_APIS(
     rpc/status
     type/timeofday
     type/dayofweek
+)
+
+SRCS(
+    operation.proto
 )
 
 END()
