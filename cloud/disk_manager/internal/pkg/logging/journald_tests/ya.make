@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/logging)
 
 GO_XTEST_SRCS(

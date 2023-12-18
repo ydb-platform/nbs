@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/clients/nbs)
 
 SET(RECIPE_ARGS --nbs-only)

@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 PY3_PROGRAM(disk-manager-ci-acceptance-test-suite)
 
 PY_SRCS(

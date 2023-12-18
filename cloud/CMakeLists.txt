@@ -8,6 +8,7 @@
 
 add_subdirectory(blockstore)
 add_subdirectory(contrib)
+add_subdirectory(disk_manager)
 add_subdirectory(filestore)
 add_subdirectory(storage)
 add_subdirectory(vm)

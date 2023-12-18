@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 PY3_PROGRAM()
 
 PY_SRCS(

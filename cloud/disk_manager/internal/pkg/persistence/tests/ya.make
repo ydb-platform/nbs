@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/persistence)
 
 SET(RECIPE_ARGS --kikimr-only)

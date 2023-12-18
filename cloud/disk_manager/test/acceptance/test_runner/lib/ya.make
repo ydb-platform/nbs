@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 PY3_LIBRARY()
 
 PY_SRCS(

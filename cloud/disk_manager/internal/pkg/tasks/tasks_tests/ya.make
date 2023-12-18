@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 GO_TEST()
 
 SET(RECIPE_ARGS --kikimr-only)

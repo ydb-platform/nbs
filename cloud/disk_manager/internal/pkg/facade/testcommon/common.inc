@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 SET_APPEND(RECIPE_ARGS --multiple-disk-managers)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 

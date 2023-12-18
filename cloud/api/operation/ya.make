@@ -1,4 +1,3 @@
-OWNER(g:cloud-api)
 PROTO_LIBRARY()
 
 GRPC()

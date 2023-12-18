@@ -1,0 +1,250 @@
+package topicoptions
+
+import (
+	"time"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/config"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreaderinternal"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topictypes"
+	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
+)
+
+// ReadSelector set rules for reader: set of topic, partitions, start time filted, etc.
+type ReadSelector = topicreaderinternal.PublicReadSelector
+
+// ReadSelectors slice of rules for topic reader
+type ReadSelectors []ReadSelector
+
+// ReadTopic create simple selector for read topics, if no need special settings.
+func ReadTopic(path string) ReadSelectors {
+	return ReadSelectors{{Path: path}}
+}
+
+// ReaderOption options for topic reader
+type ReaderOption = topicreaderinternal.PublicReaderOption
+
+// WithReaderOperationTimeout
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
+func WithReaderOperationTimeout(timeout time.Duration) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		config.SetOperationTimeout(&cfg.Common, timeout)
+	}
+}
+
+// WithReaderStartTimeout mean timeout for connect to reader stream and work some time without errors
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
+func WithReaderStartTimeout(timeout time.Duration) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.RetrySettings.StartTimeout = timeout
+	}
+}
+
+// WithReaderCheckRetryErrorFunction can override default error retry policy
+// use CheckErrorRetryDecisionDefault for use default behavior for the error
+// callback func must be fast and deterministic: always result same result for same error - it can be called
+// few times for every error
+func WithReaderCheckRetryErrorFunction(callback CheckErrorRetryFunction) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.RetrySettings.CheckError = callback
+	}
+}
+
+// WithReaderOperationCancelAfter
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
+func WithReaderOperationCancelAfter(cancelAfter time.Duration) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		config.SetOperationCancelAfter(&cfg.Common, cancelAfter)
+	}
+}
+
+// WithCommonConfig
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
+func WithCommonConfig(common config.Common) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.Common = common
+	}
+}
+
+// WithCommitTimeLagTrigger
+// Deprecated: (was experimental) will be removed soon.
+// Use WithReaderCommitTimeLagTrigger instead
+func WithCommitTimeLagTrigger(lag time.Duration) ReaderOption {
+	return WithReaderCommitTimeLagTrigger(lag)
+}
+
+// WithReaderCommitTimeLagTrigger set time lag from first commit message before send commit to server
+// for accumulate many similar-time commits to one server request
+// 0 mean no additional lag and send commit soon as possible
+// Default value: 1 second
+func WithReaderCommitTimeLagTrigger(lag time.Duration) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.CommitterBatchTimeLag = lag
+	}
+}
+
+// WithCommitCountTrigger
+// Deprecated: (was experimental) will be removed soon.
+// Use WithReaderCommitCountTrigger instead
+func WithCommitCountTrigger(count int) ReaderOption {
+	return WithReaderCommitCountTrigger(count)
+}
+
+// WithReaderCommitCountTrigger set count trigger for send batch to server
+// if count > 0 and sdk count of buffered commits >= count - send commit request to server
+// 0 mean no count limit and use timer lag trigger only
+func WithReaderCommitCountTrigger(count int) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.CommitterBatchCounterTrigger = count
+	}
+}
+
+// WithBatchReadMinCount
+// prefer min count messages in batch
+// sometimes batch can contain fewer messages, for example if local buffer is full and SDK can't receive more messages
+//
+// Deprecated: (was experimental) the method will be removed soon.
+//
+// The option will be removed for simplify code internals
+func WithBatchReadMinCount(count int) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.DefaultBatchConfig.MinCount = count
+	}
+}
+
+// WithBatchReadMaxCount
+// Deprecated: (was experimental) will be removed soon.
+// Use WithReaderBatchMaxCount instead.
+func WithBatchReadMaxCount(count int) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.DefaultBatchConfig.MaxCount = count
+	}
+}
+
+// WithReaderBatchMaxCount set max messages count, returned by topic.TopicReader.ReadBatch method
+func WithReaderBatchMaxCount(count int) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.DefaultBatchConfig.MaxCount = count
+	}
+}
+
+// WithMessagesBufferSize
+// Deprecated: (was experimental) will be removed soon
+// Use WithReaderBufferSizeBytes instead.
+func WithMessagesBufferSize(size int) ReaderOption {
+	return WithReaderBufferSizeBytes(size)
+}
+
+// WithReaderBufferSizeBytes set size of internal buffer for read ahead messages.
+func WithReaderBufferSizeBytes(size int) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.BufferSizeProtoBytes = size
+	}
+}
+
+// CreateDecoderFunc interface for fabric of message decoders
+type CreateDecoderFunc = topicreaderinternal.PublicCreateDecoderFunc
+
+// WithAddDecoder add decoder for a codec.
+// It allows to set decoders fabric for custom codec and replace internal decoders.
+func WithAddDecoder(codec topictypes.Codec, decoderCreate CreateDecoderFunc) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.Decoders.AddDecoder(rawtopiccommon.Codec(codec), decoderCreate)
+	}
+}
+
+// CommitMode variants of commit mode of the reader
+type CommitMode = topicreaderinternal.PublicCommitMode
+
+const (
+	// CommitModeAsync - commit return true if commit success add to internal send buffer (but not sent to server)
+	// now it is grpc buffer, in feature it may be internal sdk buffer
+	CommitModeAsync = topicreaderinternal.CommitModeAsync // default
+
+	// CommitModeNone - reader will not be commit operation
+	CommitModeNone = topicreaderinternal.CommitModeNone
+
+	// CommitModeSync - commit return true when sdk receive ack of commit from server
+	// The mode needs strong ordering client code for prevent deadlock.
+	// Example:
+	// Good:
+	// CommitOffset(1)
+	// CommitOffset(2)
+	//
+	// Error:
+	// CommitOffset(2) - server will wait commit offset 1 before send ack about offset 1 and 2 committed.
+	// CommitOffset(1)
+	// SDK will detect the problem and return error instead of deadlock.
+	CommitModeSync = topicreaderinternal.CommitModeSync
+)
+
+// WithCommitMode
+// Deprecated: (was experimental) will be removed soon.
+// Use WithReaderCommitMode instead.
+func WithCommitMode(mode CommitMode) ReaderOption {
+	return WithReaderCommitMode(mode)
+}
+
+// WithReaderCommitMode set commit mode to the reader
+func WithReaderCommitMode(mode CommitMode) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.CommitMode = mode
+	}
+}
+
+type (
+	// GetPartitionStartOffsetFunc callback function for optional handle start partition event and manage read progress
+	// at own side. It can call multiply times in parallel.
+	GetPartitionStartOffsetFunc = topicreaderinternal.PublicGetPartitionStartOffsetFunc
+
+	// GetPartitionStartOffsetRequest info about the partition
+	GetPartitionStartOffsetRequest = topicreaderinternal.PublicGetPartitionStartOffsetRequest
+
+	// GetPartitionStartOffsetResponse optional set offset for start reade messages for the partition
+	GetPartitionStartOffsetResponse = topicreaderinternal.PublicGetPartitionStartOffsetResponse
+)
+
+// WithGetPartitionStartOffset
+// Deprecated: (was experimental) will be removed soon.
+// Use WithReaderGetPartitionStartOffset instead
+func WithGetPartitionStartOffset(f GetPartitionStartOffsetFunc) ReaderOption {
+	return WithReaderGetPartitionStartOffset(f)
+}
+
+// WithReaderGetPartitionStartOffset set optional handler for own manage progress of read partitions
+// instead of/additional to commit messages
+func WithReaderGetPartitionStartOffset(f GetPartitionStartOffsetFunc) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.GetPartitionStartOffsetCallback = f
+	}
+}
+
+// WithReaderTrace set tracer for the topic reader
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
+func WithReaderTrace(t trace.Topic) ReaderOption { //nolint:gocritic
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.Trace = cfg.Trace.Compose(&t)
+	}
+}
+
+// WithReaderUpdateTokenInterval set custom interval for send update token message to the server
+func WithReaderUpdateTokenInterval(interval time.Duration) ReaderOption {
+	return func(cfg *topicreaderinternal.ReaderConfig) {
+		cfg.CredUpdateInterval = interval
+	}
+}
