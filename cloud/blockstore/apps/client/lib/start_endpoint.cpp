@@ -108,6 +108,7 @@ private:
     NProto::EEncryptionMode EncryptionMode = NProto::NO_ENCRYPTION;
     TString EncryptionKeyPath;
     TString EncryptionKeyHash;
+    bool Persistent = false;
 
 public:
     TStartEndpointCommand(IBlockStorePtr client)
@@ -175,6 +176,10 @@ public:
         Opts.AddLongOption("encryption-key-hash", "key hash for snapshot mode")
             .RequiredArgument("STR")
             .StoreResult(&EncryptionKeyHash);
+
+        Opts.AddLongOption("persistent", "add endpoint to keyring")
+            .NoArgument()
+            .SetFlag(&Persistent);
     }
 
 protected:
@@ -219,6 +224,7 @@ protected:
                     EncryptionMode,
                     EncryptionKeyPath,
                     EncryptionKeyHash));
+            request->SetPersistent(Persistent);
         }
 
         STORAGE_DEBUG("Sending StartEndpoint request");

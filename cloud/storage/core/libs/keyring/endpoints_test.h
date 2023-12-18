@@ -35,19 +35,4 @@ IMutableEndpointStoragePtr CreateKeyringMutableEndpointStorage(
 
 IMutableEndpointStoragePtr CreateFileMutableEndpointStorage(TString dirPath);
 
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TRequest>
-TString SerializeEndpoint(const TRequest& request)
-{
-    auto data = TString::Uninitialized(request.ByteSize());
-
-    if (!request.SerializeToArray(const_cast<char*>(data.data()), data.size())) {
-        Y_ABORT("Could not serialize endpoint: %s",
-            request.ShortDebugString().c_str());
-    }
-
-    return data;
-}
-
 }   // namespace NCloud

@@ -93,9 +93,12 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         for (size_t i = 0; i < 3; ++i) {
             TString diskId = "TestDisk" + ToString(i);
             auto request = CreateTestProtoMessage(diskId);
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
             auto keyOrError = mutableStorage->AddEndpoint(
                 diskId,
-                SerializeEndpoint(request));
+                strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetResult());
             loadedEndpoints.emplace(diskId, request);
         }
@@ -147,9 +150,12 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         const TString diskId = "TestDiskId";
 
         auto request = CreateTestProtoMessage(diskId);
+        auto strOrError = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
         auto keyOrError = mutableStorage->AddEndpoint(
             diskId,
-            SerializeEndpoint(request));
+            strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto requestOrError = endpointStorage->GetEndpoint(keyOrError.GetResult());
@@ -188,9 +194,12 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         const TString diskId = "TestDiskId";
 
         auto request = CreateTestProtoMessage(diskId);
+        auto strOrError = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
         auto keyOrError = mutableStorage->AddEndpoint(
             diskId,
-            SerializeEndpoint(request));
+            strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto wrongKeyringId = keyOrError.GetResult() + 42;

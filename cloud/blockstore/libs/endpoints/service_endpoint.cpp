@@ -346,6 +346,31 @@ public:
         return RestoringClient->CollectRequests(collector);
     }
 
+    TFuture<NProto::TStartEndpointResponse> StartEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStartEndpointRequest> request) override
+    {
+        auto req = *request;
+        auto future = TServiceWrapper::StartEndpoint(
+            std::move(ctx),
+            std::move(request));
+
+        auto weakPtr = weak_from_this();
+        return future.Apply([weakPtr, req] (const auto& f) {
+            auto response = f.GetValue();
+            if (HasError(response)) {
+                return response;
+            }
+
+            if (auto ptr = weakPtr.lock()) {
+                if (req.GetPersistent()) {
+                    ptr->AddEndpointToStorage(req);
+                }
+            }
+            return response;
+        });
+    }
+
     TFuture<NProto::TListEndpointsResponse> ListEndpoints(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TListEndpointsRequest> request) override
@@ -437,6 +462,22 @@ private:
     NProto::TListKeyringsResponse ListKeyringsImpl();
 
     TFuture<void> RestoreEndpointsImpl();
+
+    NProto::TError AddEndpointToStorage(
+        const NProto::TStartEndpointRequest& request)
+    {
+        auto strOrError = SerializeEndpoint(request);
+        if (HasError(strOrError)) {
+            return strOrError.GetError();
+        }
+
+        auto idOrError = EndpointStorage->AddEndpoint(strOrError.GetResult());
+        if (HasError(idOrError)) {
+            return idOrError.GetError();
+        }
+
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

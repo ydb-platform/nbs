@@ -62,6 +62,13 @@ public:
             << "Failed to find endpoint with keyringId " << keyringId);
     }
 
+    TResultOrError<ui32> AddEndpoint(const TString& endpoint) override
+    {
+        Y_UNUSED(endpoint);
+        // TODO:
+        return MakeError(E_NOT_IMPLEMENTED, "Failed to add endpoint to storage");
+    }
+
 private:
     TResultOrError<TVector<TKeyring>> GetEndpointKeyrings()
     {
@@ -140,6 +147,15 @@ public:
         return ReadFile(endpointFile);
     }
 
+    TResultOrError<ui32> AddEndpoint(const TString& data) override
+    {
+        auto id = GetFreeId();
+        auto filepath = DirPath.Child(ToString(id));
+        TFile file(filepath, EOpenModeFlag::CreateAlways);
+        TFileOutput(file).Write(data);
+        return id;
+    }
+
 private:
     TResultOrError<TString> ReadFile(const TFsPath& filepath)
     {
@@ -158,6 +174,25 @@ private:
         }
 
         return Strip(TFileInput(file).ReadAll());
+    }
+
+    ui32 GetFreeId()
+    {
+        auto idsOrError = GetEndpointIds();
+        if (HasError(idsOrError)) {
+            return 0;
+        }
+
+        auto ids = idsOrError.GetResult();
+        std::sort(ids.begin(), ids.end());
+
+        ui32 freeId = 1;
+        for (size_t i = 0; i < ids.size(); ++i, ++freeId) {
+            if (ids[i] != freeId) {
+                break;
+            }
+        }
+        return freeId;
     }
 };
 

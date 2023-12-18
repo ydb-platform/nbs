@@ -177,9 +177,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         request.SetClientId("testClientId");
         request.SetIpcType(ipcType);
 
+        auto strOrError = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
         auto keyOrError = mutableStorage->AddEndpoint(
             diskId,
-            SerializeEndpoint(request));
+            strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         {
@@ -328,9 +331,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             startRequest.SetDiskId(diskId);
             startRequest.SetUnixSocketPath(socketPath);
 
+            auto strOrError = SerializeEndpoint(startRequest);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
             auto keyOrError = mutableStorage->AddEndpoint(
                 diskId,
-                SerializeEndpoint(startRequest));
+                strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
@@ -418,9 +424,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             NProto::TStartEndpointRequest request;
             request.SetUnixSocketPath(wrongSocketPath);
 
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
             auto keyOrError = mutableStorage->AddEndpoint(
                 TStringBuilder() << "endpoint" << ++num,
-                SerializeEndpoint(request));
+                strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -428,9 +437,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             NProto::TStartEndpointRequest request;
             request.SetUnixSocketPath("endpoint.sock");
 
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
             auto keyOrError = mutableStorage->AddEndpoint(
                 TStringBuilder() << "endpoint" << ++num,
-                SerializeEndpoint(request));
+                strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -548,9 +560,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             NProto::TStartEndpointRequest request;
             request.SetUnixSocketPath("endpoint.sock");
 
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
             auto keyOrError = mutableStorage->AddEndpoint(
                 TStringBuilder() << "endpoint" << i,
-                SerializeEndpoint(request));
+                strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -591,6 +606,14 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
     Y_UNIT_TEST(ShouldListKeyrings)
     {
+        auto endpointManager = std::make_shared<TTestEndpointManager>();
+        endpointManager->StartEndpointHandler = [&] (
+            std::shared_ptr<NProto::TStartEndpointRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TStartEndpointResponse());
+        };
+
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
         auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
@@ -603,7 +626,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
-        const ui32 endpointCount = 42;
+        ui32 endpointCount = 42;
         THashMap<ui32, NProto::TStartEndpointRequest> requests;
 
         for (size_t i = 0; i < endpointCount; ++i) {
@@ -612,9 +635,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             request.SetDiskId("testDiskId" + ToString(i + 1));
             request.SetIpcType(NProto::IPC_GRPC);
 
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
             auto keyOrError = mutableStorage->AddEndpoint(
                 request.GetDiskId(),
-                SerializeEndpoint(request));
+                strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
             requests.emplace(keyOrError.GetResult(), request);
@@ -629,7 +655,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
             endpointStorage,
-            std::make_shared<TTestEndpointManager>(),
+            endpointManager,
             {});
 
         auto future = endpointService->ListKeyrings(
@@ -648,6 +674,55 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
             google::protobuf::util::MessageDifferencer comparator;
             UNIT_ASSERT(comparator.Equals(it->second, endpoint.GetRequest()));
+        }
+
+        for (size_t i = 0; i < 5; ++i) {
+            auto request = std::make_shared<NProto::TStartEndpointRequest>();
+            request->SetUnixSocketPath("testPersistentSocket" + ToString(i + 1));
+            request->SetDiskId("testPersistentDiskId" + ToString(i + 1));
+            request->SetIpcType(NProto::IPC_GRPC);
+            request->SetPersistent(true);
+            ++endpointCount;
+
+            auto future = endpointService->StartEndpoint(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        {
+            auto future = endpointService->ListKeyrings(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TListKeyringsRequest>());
+
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response);
+            UNIT_ASSERT_VALUES_EQUAL(endpointCount, response.GetEndpoints().size());
+        }
+
+        for (size_t i = 0; i < 5; ++i) {
+            auto request = std::make_shared<NProto::TStartEndpointRequest>();
+            request->SetUnixSocketPath("testTemporarySocket" + ToString(i + 1));
+            request->SetDiskId("testTemporaryDiskId" + ToString(i + 1));
+            request->SetIpcType(NProto::IPC_GRPC);
+            request->SetPersistent(false);
+
+            auto future = endpointService->StartEndpoint(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        {
+            auto future = endpointService->ListKeyrings(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TListKeyringsRequest>());
+
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response);
+            UNIT_ASSERT_VALUES_EQUAL(endpointCount, response.GetEndpoints().size());
         }
     }
 
@@ -801,9 +876,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         auto ctx = MakeIntrusive<TCallContext>();
 
+        auto strOrError = SerializeEndpoint(*startRequest);
+        UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
         auto keyOrError = mutableStorage->AddEndpoint(
             "endpoint",
-            SerializeEndpoint(*startRequest));
+            strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto restoreFuture = endpointService->RestoreEndpoints();

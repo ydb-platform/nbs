@@ -6,6 +6,7 @@
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/string/builder.h>
 
 namespace NCloud {
 
@@ -18,6 +19,8 @@ struct IEndpointStorage
     virtual TResultOrError<TVector<ui32>> GetEndpointIds() = 0;
 
     virtual TResultOrError<TString> GetEndpoint(ui32 keyringId) = 0;
+
+    virtual TResultOrError<ui32> AddEndpoint(const TString& endpoint) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +41,19 @@ std::shared_ptr<TRequest> DeserializeEndpoint(const TString& data)
         return nullptr;
     }
     return request;
+}
+
+template <typename TRequest>
+TResultOrError<TString> SerializeEndpoint(const TRequest& request)
+{
+    auto data = TString::Uninitialized(request.ByteSize());
+
+    if (!request.SerializeToArray(const_cast<char*>(data.data()), data.size())) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "Could not serialize endpoint: " << request.ShortDebugString());
+    }
+
+    return data;
 }
 
 }   // namespace NCloud

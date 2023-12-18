@@ -14,6 +14,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/keyring/endpoints.h>
 #include <cloud/storage/core/libs/keyring/endpoints_test.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -260,9 +261,12 @@ void TLoadTestRunner::SetupTest(
             auto error = EndpointStorage->Init();
             Y_ABORT_UNLESS(!HasError(error));
 
+            auto strOrError = SerializeEndpoint(*request);
+            Y_ABORT_UNLESS(!HasError(strOrError));
+
             auto keyOrError = EndpointStorage->AddEndpoint(
                 request->GetUnixSocketPath(),
-                SerializeEndpoint(*request));
+                strOrError.GetResult());
             Y_ABORT_UNLESS(!HasError(keyOrError));
         }
 
