@@ -4,6 +4,7 @@
 
 #include <util/generic/strbuf.h>
 #include <util/string/cast.h>
+#include <util/string/join.h>
 #include <util/string/split.h>
 
 using namespace NLastGetopt;
