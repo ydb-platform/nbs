@@ -42,7 +42,7 @@ class YaMuteCheck:
             log_print(f"Unable to compile regex {pattern!r}")
 
     def __call__(self, suitename, testname):
-        for r in self.regexps:
+        for r in self.regexps:  # noqa: SIM110
             if r.match(f"{suitename}/{testname}"):
                 return True
         return False
@@ -172,9 +172,7 @@ def transform(fp, mute_check: YaMuteCheck, ya_out_dir, save_inplace, log_url_pre
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i", action="store_true", dest="save_inplace", default=False, help="modify input file in-place"
-    )
+    parser.add_argument("-i", action="store_true", dest="save_inplace", default=False, help="modify input file in-place")
     parser.add_argument("--mu", help="unittest mute config")
     parser.add_argument("--mf", help="functional test mute config")
     parser.add_argument("--log-url-prefix", default="./", help="url prefix for logs")

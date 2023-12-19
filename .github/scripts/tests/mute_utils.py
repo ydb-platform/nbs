@@ -7,8 +7,8 @@ from junit_utils import add_junit_property
 def pattern_to_re(pattern):
     res = []
     for c in pattern:
-        if c == '*':
-            res.append('.*')
+        if c == "*":
+            res.append(".*")
         else:
             res.append(re.escape(c))
 
@@ -19,7 +19,7 @@ class MuteTestCheck:
     def __init__(self, fn):
         self.regexps = []
 
-        with open(fn, 'r') as fp:
+        with open(fn, "r") as fp:
             for line in fp:
                 line = line.strip()
                 pattern = pattern_to_re(line)
@@ -31,7 +31,7 @@ class MuteTestCheck:
                     raise
 
     def __call__(self, fullname):
-        for r in self.regexps:
+        for r in self.regexps:  # noqa: SIM110
             if r.match(fullname):
                 return True
         return False
@@ -42,13 +42,13 @@ def mute_target(testcase):
     err_msg = None
     found = False
 
-    for node_name in ('failure', 'error'):
+    for node_name in ("failure", "error"):
         while 1:
             err_node = testcase.find(node_name)
             if err_node is None:
                 break
 
-            msg = err_node.get('message')
+            msg = err_node.get("message")
             if msg:
                 if err_msg is None:
                     err_msg = msg
@@ -67,10 +67,10 @@ def mute_target(testcase):
     skipped = ET.Element("skipped")
 
     if err_msg:
-        skipped.set('message', err_msg)
+        skipped.set("message", err_msg)
 
     if err_text:
-        skipped.text = '\n'.join(err_text)
+        skipped.text = "\n".join(err_text)
     testcase.append(skipped)
 
     add_junit_property(testcase, "mute", "automatically muted based on rules")
