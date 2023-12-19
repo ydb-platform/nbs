@@ -1,15 +1,13 @@
 #pragma once
 
-#include "write_data.h"
-
 #include <library/cpp/lwtrace/shuttle.h>
 
 #include <contrib/ydb/core/protos/data_events.pb.h>
 #include <contrib/ydb/core/base/events.h>
 
+#include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/log.h>
-
 
 namespace NKikimr::NEvents {
 

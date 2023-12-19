@@ -4,6 +4,7 @@
 #include "datashard_s3_upload.h"
 
 #include <contrib/ydb/core/tx/tx.h>
+#include <contrib/ydb/core/tx/data_events/events.h>
 #include <contrib/ydb/core/tx/message_seqno.h>
 #include <contrib/ydb/core/base/domain.h>
 #include <contrib/ydb/core/base/row_version.h>
