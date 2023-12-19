@@ -14,7 +14,7 @@ struct IBackend: public IStartable
 {
     virtual ~IBackend() = default;
 
-    virtual void Init(const TOptions& options, vhd_bdev_info& devInfo) = 0;
+    virtual vhd_bdev_info Init(const TOptions& options) = 0;
     virtual void ProcessQueue(
         vhd_request_queue* queue,
         TSimpleStats& queueStats) = 0;

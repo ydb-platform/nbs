@@ -129,7 +129,7 @@ void TServer::Start(const TOptions& options)
 
     SocketPath = options.SocketPath;
 
-    Backend->Init(options, Info);
+    Info = Backend->Init(options);
 
     for (ui32 i = 0; i != options.QueueCount; ++i) {
         auto* queue = vhd_create_request_queue();

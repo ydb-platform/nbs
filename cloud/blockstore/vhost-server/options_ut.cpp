@@ -15,6 +15,7 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         TVector<TString> params {
             "binary-path",
             "--socket-path", "vhost.sock",
+            "--disk-id", "disk-id",
             "--serial", "id",
             "--device", "path-nvme:v3-1:1000000:0",
             "--device", "path-nvme:v3-2:2000042:1111111",
@@ -31,6 +32,7 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vhost.sock", options.SocketPath);
         UNIT_ASSERT_VALUES_EQUAL("id", options.Serial);
+        UNIT_ASSERT_VALUES_EQUAL("disk-id", options.DiskId);
         UNIT_ASSERT(options.ReadOnly);
         UNIT_ASSERT(!options.NoSync);
         UNIT_ASSERT(!options.NoChmod);

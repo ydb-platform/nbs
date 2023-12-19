@@ -155,7 +155,7 @@ private:
 public:
     explicit TAioBackend(ILoggingServicePtr logging);
 
-    void Init(const TOptions& options, vhd_bdev_info& devInfo) override;
+    vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
     void Stop() override;
     void ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats) override;
@@ -178,9 +178,7 @@ TAioBackend::TAioBackend(ILoggingServicePtr logging)
     Log = Logging->CreateLog("AIO");
 }
 
-void TAioBackend::Init(
-    const TOptions& options,
-    vhd_bdev_info& devInfo)
+vhd_bdev_info TAioBackend::Init(const TOptions& options)
 {
     STORAGE_INFO("Initializing AIO backend");
 
@@ -258,7 +256,7 @@ void TAioBackend::Init(
         totalBytes += fileLen;
     }
 
-    devInfo = {
+    return {
         .serial = options.Serial.c_str(),
         .socket_path = options.SocketPath.c_str(),
         .block_size = VHD_SECTOR_SIZE,
@@ -314,7 +312,7 @@ void TAioBackend::ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStat
         if (ret < 0) {
             STORAGE_ERROR("io_submit: %s", strerror(-ret));
 
-            queueStats.SubFailed++;
+            ++queueStats.SubFailed;
 
             if (Batch[0]->data) {
                 CompleteRequest(

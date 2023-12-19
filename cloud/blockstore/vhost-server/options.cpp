@@ -40,10 +40,18 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&Serial);
 
+    opts.AddLongOption("disk-id", "disk id")
+        .RequiredArgument("STR")
+        .StoreResultDef(&DiskId);
+
+    opts.AddLongOption("client-id", "client id")
+        .RequiredArgument("STR")
+        .StoreResultDef(&ClientId);
+
     opts.AddLongOption(
             "device",
             "specify device string path:size:offset "
-            "(e.g. /dev/vda:1000000:0)")
+            "(e.g. /dev/vda:1000000:0, rdma://host:10020/abcdef:1000000:0)")
         .Required()
         .RequiredArgument("STR")
         .Handler1T<TString>(
@@ -67,7 +75,7 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
             "device-backend",
-            "specify device backend (aio, null)")
+            "specify device backend (aio, rdma, null)")
         .RequiredArgument("STR")
         .StoreResultDef(&DeviceBackend);
 
@@ -99,6 +107,14 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResultDef(&LogType);
 
+    opts.AddLongOption("rdma-queue-size", "Rdma client queue size")
+        .RequiredArgument("INT")
+        .StoreResultDef(&RdmaClient.QueueSize);
+
+    opts.AddLongOption("rdma-max-buffer-size", "Rdma client queue size")
+        .RequiredArgument("INT")
+        .StoreResultDef(&RdmaClient.MaxBufferSize);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {
@@ -111,9 +127,13 @@ void TOptions::Parse(int argc, char** argv)
 
     if (res.FindLongOptParseResult("device-backend")) {
         CheckOneOf(
-            {"aio", "null"},
+            {"aio", "rdma", "null"},
             DeviceBackend,
             "invalid device-backend");
+    }
+
+    if (DiskId.empty()) {
+        DiskId = Serial;
     }
 
     if (!QueueCount) {

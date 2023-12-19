@@ -14,6 +14,8 @@ target_link_libraries(blockstore-vhost-server PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
+  libs-rdma-impl
+  blockstore-libs-service_local
   vhost-server
   core-libs-common
   core-libs-diagnostics
@@ -37,6 +39,7 @@ target_sources(blockstore-vhost-server PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/main.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/backend.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/backend_aio.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/backend_rdma.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/backend_null.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/histogram.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/options.cpp

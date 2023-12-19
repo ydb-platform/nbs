@@ -596,16 +596,21 @@ public:
 
 IStorageProviderPtr CreateRdmaStorageProvider(
     IServerStatsPtr serverStats,
-    NRdma::IClientPtr client)
+    NRdma::IClientPtr client,
+    ERdmaTaskQueueOpt taskQueueOpt)
 {
-    // TODO
-    auto threadPool = CreateThreadPool("RDMA", 1);
-    threadPool->Start();
+    ITaskQueuePtr taskQueue;
+    if (taskQueueOpt == ERdmaTaskQueueOpt::Use) {
+        taskQueue = CreateThreadPool("RDMA", 1);
+        taskQueue->Start();
+    } else {
+        taskQueue = CreateTaskQueueStub();
+    }
 
     return std::make_shared<TRdmaStorageProvider>(
         std::move(serverStats),
         std::move(client),
-        std::move(threadPool));
+        std::move(taskQueue));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

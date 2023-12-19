@@ -308,7 +308,8 @@ void TBootstrapBase::Init()
     if (!Configs->GetUseNonreplicatedRdmaActor() && RdmaClient) {
         storageProviders.push_back(CreateRdmaStorageProvider(
             ServerStats,
-            RdmaClient));
+            RdmaClient,
+            ERdmaTaskQueueOpt::Use));
     }
 
     storageProviders.push_back(CreateDefaultStorageProvider(Service));

@@ -20,7 +20,7 @@ private:
 public:
     explicit TNullBackend(ILoggingServicePtr logging);
 
-    void Init(const TOptions& options, vhd_bdev_info& devInfo) override;
+    vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
     void Stop() override;
     void ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats) override;
@@ -35,10 +35,9 @@ TNullBackend::TNullBackend(ILoggingServicePtr logging)
     Log = Logging->CreateLog("NULL");
 }
 
-void TNullBackend::Init(const TOptions& options, vhd_bdev_info& devInfo)
+vhd_bdev_info TNullBackend::Init(const TOptions& options)
 {
     Y_UNUSED(options);
-    Y_UNUSED(devInfo);
 
     i64 totalBytes = 0;
 
@@ -46,7 +45,7 @@ void TNullBackend::Init(const TOptions& options, vhd_bdev_info& devInfo)
         totalBytes += chunk.ByteCount;
     }
 
-    devInfo = {
+    return {
         .serial = options.Serial.c_str(),
         .socket_path = options.SocketPath.c_str(),
         .block_size = VHD_SECTOR_SIZE,

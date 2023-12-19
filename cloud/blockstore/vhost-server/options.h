@@ -20,6 +20,7 @@ struct TDeviceChunk
 struct TOptions
 {
     TString SocketPath;
+    TString DiskId;
     TString Serial;
     TString DeviceBackend = "aio";
     TVector<TDeviceChunk> Layout;
@@ -31,6 +32,14 @@ struct TOptions
 
     TString LogType = "json";
     TString VerboseLevel = "info";
+
+    TString ClientId = "vhost-server";
+
+    struct
+    {
+        ui32 QueueSize = 256;
+        ui32 MaxBufferSize = 4_MB + 4_KB;
+    } RdmaClient;
 
     void Parse(int argc, char** argv);
 };

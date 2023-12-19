@@ -1,5 +1,6 @@
 #include "backend_aio.h"
 #include "backend_null.h"
+#include "backend_rdma.h"
 #include "server.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -96,6 +97,8 @@ IBackendPtr CreateBackend(
 {
     if (options.DeviceBackend == "aio") {
         return CreateAioBackend(logging);
+    } else if (options.DeviceBackend == "rdma") {
+        return CreateRdmaBackend(logging);
     } else if (options.DeviceBackend == "null") {
         return CreateNullBackend(logging);
     }

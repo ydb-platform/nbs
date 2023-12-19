@@ -5,6 +5,7 @@ SRCS(
 
     backend.cpp
     backend_aio.cpp
+    backend_rdma.cpp
     backend_null.cpp
     histogram.cpp
     options.cpp
@@ -19,6 +20,9 @@ ADDINCL(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/rdma/impl
+    cloud/blockstore/libs/service_local
+
     cloud/contrib/vhost
 
     cloud/storage/core/libs/common
