@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/api/operation"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
@@ -121,6 +122,7 @@ func TestSchedulerScheduleTask(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -174,6 +176,7 @@ func TestSchedulerScheduleZonalTask(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -228,6 +231,7 @@ func TestSchedulerScheduleTaskFailOnCreateTask(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -261,6 +265,7 @@ func TestSchedulerCancelTask(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -283,6 +288,7 @@ func TestSchedulerGetTaskMetadata(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -316,6 +322,7 @@ func TestSchedulerGetOperationReadyToRun(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -371,6 +378,7 @@ func TestSchedulerGetOperationRunning(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -426,6 +434,7 @@ func TestSchedulerGetOperationFinished(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -486,6 +495,7 @@ func TestSchedulerGetOperationReadyToCancel(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -547,6 +557,7 @@ func TestSchedulerGetOperationCancelling(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -608,6 +619,7 @@ func TestSchedulerGetOperationCancelled(t *testing.T) {
 		registry,
 		storage,
 		defaultConfig(),
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 

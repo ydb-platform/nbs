@@ -161,7 +161,13 @@ func createServicesWithConfig(
 		metrics.NewEmptyRegistry(),
 	)
 
-	scheduler, err := tasks.NewScheduler(ctx, registry, storage, config)
+	scheduler, err := tasks.NewScheduler(
+		ctx,
+		registry,
+		storage,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
 	require.NoError(t, err)
 
 	return services{
@@ -952,7 +958,9 @@ func TestTasksRunningTwoConcurrentTasksReverseWaiting(t *testing.T) {
 	require.EqualValues(t, 2*123, response)
 }
 
-func TestTasksRunningTwoConcurrentTasksOnOneRunner(t *testing.T) {
+// Need at least two runners here because we have infinitely long
+// CollectListerMetrics task.
+func TestTasksRunningTwoConcurrentTasksOnTwoRunners(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -960,7 +968,7 @@ func TestTasksRunningTwoConcurrentTasksOnOneRunner(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 1)
+	s := createServices(t, ctx, db, 2)
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -985,7 +993,9 @@ func TestTasksRunningTwoConcurrentTasksOnOneRunner(t *testing.T) {
 	require.EqualValues(t, 2*456, response)
 }
 
-func TestTasksRunningTwoConcurrentTasksOnOneRunnerReverseWaiting(t *testing.T) {
+// Need at least two runners here because we have infinitely long
+// CollectListerMetrics task.
+func TestTasksRunningTwoConcurrentTasksOnTwoRunnersReverseWaiting(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -993,7 +1003,7 @@ func TestTasksRunningTwoConcurrentTasksOnOneRunnerReverseWaiting(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 1)
+	s := createServices(t, ctx, db, 2)
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -1046,7 +1056,9 @@ func TestTasksRunningDependentTask(t *testing.T) {
 	require.EqualValues(t, 6*123, response)
 }
 
-func TestTasksRunningDependentTaskOnOneRunner(t *testing.T) {
+// Need at least two runners here because we have infinitely long
+// CollectListerMetrics task.
+func TestTasksRunningDependentTaskOnTwoRunners(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -1054,7 +1066,7 @@ func TestTasksRunningDependentTaskOnOneRunner(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 1)
+	s := createServices(t, ctx, db, 2)
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)

@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
@@ -511,6 +512,7 @@ func NewScheduler(
 	registry *Registry,
 	storage tasks_storage.Storage,
 	config *tasks_config.TasksConfig,
+	metricsRegistry metrics.Registry,
 ) (Scheduler, error) {
 
 	pollForTaskUpdatesPeriod, err := time.ParseDuration(
@@ -580,5 +582,41 @@ func NewScheduler(
 		clearEndedTasksTaskScheduleInterval,
 		1,
 	)
+
+	listerMetricsCollectionInterval, err := time.ParseDuration(
+		config.GetListerMetricsCollectionInterval(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = registry.RegisterForExecution(
+		"tasks.CollectListerMetrics", func() Task {
+			return &collectListerMetricsTask{
+				registry:                  metricsRegistry,
+				storage:                   storage,
+				metricsCollectionInterval: listerMetricsCollectionInterval,
+			}
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	collectListerMetricsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectListerMetricsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s.ScheduleRegularTasks(
+		ctx,
+		"tasks.CollectListerMetrics",
+		"",
+		collectListerMetricsTaskScheduleInterval,
+		1,
+	)
+
 	return s, nil
 }

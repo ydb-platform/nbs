@@ -46,4 +46,7 @@ message TasksConfig {
     optional bool NodeEvictionEnabled = 26 [default = false];
 
     map<string, int64> InflightTaskPerNodeLimits = 27; // by task type
+
+    optional string CollectListerMetricsTaskScheduleInterval = 28 [default = "10m"];
+    optional string ListerMetricsCollectionInterval = 29 [default = "1m"];
 }

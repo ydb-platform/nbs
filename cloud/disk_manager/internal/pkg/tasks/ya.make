@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     blank_task.go
     clear_ended_tasks_task.go
+    collect_lister_metrics_task.go
     controller.go
     execution_context.go
     headers.go

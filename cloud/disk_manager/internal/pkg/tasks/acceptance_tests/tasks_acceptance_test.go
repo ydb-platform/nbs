@@ -86,6 +86,7 @@ func newClient(ctx context.Context) (*client, error) {
 		registry,
 		storage,
 		config.TasksConfig,
+		metrics.NewEmptyRegistry(),
 	)
 	if err != nil {
 		return nil, err
