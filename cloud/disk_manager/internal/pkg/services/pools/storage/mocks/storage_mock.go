@@ -245,6 +245,14 @@ func (s *StorageMock) GetReadyPoolInfos(
 	return args.Get(0).([]storage.PoolInfo), args.Error(1)
 }
 
+func (s *StorageMock) CheckSlotsConsistency(
+	ctx context.Context,
+) error {
+
+	args := s.Called(ctx)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

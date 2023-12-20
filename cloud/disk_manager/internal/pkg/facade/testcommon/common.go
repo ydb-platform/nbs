@@ -24,6 +24,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
+	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
+	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
@@ -561,6 +565,45 @@ func CreateImage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_KIKIMR_PORT"),
+	)
+
+	// Should be in sync with settings from PersistenceConfig in test recipe.
+	database := "/Root"
+	rootPath := "disk_manager/recipe"
+
+	return persistence.NewYDBClient(
+		ctx,
+		&persistence_config.PersistenceConfig{
+			Endpoint: &endpoint,
+			Database: &database,
+			RootPath: &rootPath,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Should be in sync with settings from PoolsConfig in test recipe.
+	cloudID := "cloud"
+	folderID := "pools"
+
+	return pools_storage.NewStorage(&pools_config.PoolsConfig{
+		CloudId:  &cloudID,
+		FolderId: &folderID,
+	}, db)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func isValidUUID(s string) bool {
 	_, err := uuid.Parse(s)
 	return err == nil
@@ -608,6 +651,12 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 
 		time.Sleep(time.Second)
 	}
+
+	poolStorage, err := newPoolStorage(ctx)
+	require.NoError(t, err)
+
+	err = poolStorage.CheckSlotsConsistency(ctx)
+	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
 }

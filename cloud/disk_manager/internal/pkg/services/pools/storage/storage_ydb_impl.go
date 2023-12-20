@@ -3448,3 +3448,40 @@ func (s *storageYDB) unlockPool(
 
 	return tx.Commit(ctx)
 }
+
+func (s *storageYDB) checkSlotsConsistency(
+	ctx context.Context,
+	session *persistence.Session,
+) error {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select *
+		from slots;
+	`, s.tablesPath))
+	if err != nil {
+		return err
+	}
+
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			slot, err := scanSlot(res)
+			if err != nil {
+				return err
+			}
+
+			if len(slot.targetBaseDiskID) != 0 {
+				return errors.NewNonRetriableErrorf(
+					"slot %v is in inconsistent state",
+					slot,
+				)
+			}
+		}
+	}
+
+	return nil
+}
