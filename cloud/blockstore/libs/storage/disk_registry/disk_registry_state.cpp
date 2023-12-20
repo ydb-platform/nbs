@@ -3608,8 +3608,15 @@ THashMap<TString, TBrokenGroupInfo> TDiskRegistryState::GatherBrokenGroupsInfo(
             continue;
         }
 
-        const auto& config = PlacementGroups.at(groupId).Config;
-        auto res = groups.try_emplace(groupId, config.GetPlacementStrategy());
+        const auto* pg = PlacementGroups.FindPtr(disk.PlacementGroupId);
+        if (!pg) {
+            ReportDiskRegistryPlacementGroupNotFound(
+                TStringBuilder() << "GatherBrokenGroupsInfo:DiskId: " << diskId
+                << ", PlacementGroupId: " << disk.PlacementGroupId);
+            continue;
+        }
+
+        auto res = groups.try_emplace(groupId, pg->Config.GetPlacementStrategy());
         TBrokenGroupInfo& info = res.first->second;
 
         info.Total.Increment(disk.PlacementPartitionIndex);
@@ -3885,8 +3892,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         StorageConfig->GetPlacementGroupAlertPeriod());
 
     for (const auto& [groupId, bg]: brokenGroups) {
-        const auto recently = bg.Recently.GetBrokenPartitionsCount();
-        const auto total = bg.Total.GetBrokenPartitionsCount();
+        const auto recently = bg.Recently.GetBrokenPartitionCount();
+        const auto total = bg.Total.GetBrokenPartitionCount();
 
         placementGroupsWithRecentlyBrokenSinglePartition += recently == 1;
         placementGroupsWithRecentlyBrokenTwoOrMorePartitions += recently > 1;

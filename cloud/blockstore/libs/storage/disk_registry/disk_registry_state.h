@@ -105,27 +105,33 @@ public:
         : Strategy(strategy)
     {}
 
-    void Increment(ui32 partitionIndex) {
-        ++BrokenDisksCount;
+    void Increment(ui32 partitionIndex)
+    {
+        ++BrokenDiskCount;
         if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
             BrokenPartitions.insert(partitionIndex);
         }
     }
 
-    [[nodiscard]] ui32 GetBrokenPartitionsCount() const {
+    [[nodiscard]] ui32 GetBrokenPartitionCount() const
+    {
         switch (Strategy) {
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD:
-                return BrokenDisksCount;
+                return BrokenDiskCount;
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION:
                 return BrokenPartitions.size();
             default:
-                Y_FAIL("Unknown partition strategy");
+                Y_DEBUG_ABORT_UNLESS(
+                    0,
+                    "Unknown partition strategy: %s",
+                    EPlacementStrategy_Name(Strategy).c_str());
+                return 0;
         }
     }
 
 private:
     NProto::EPlacementStrategy Strategy;
-    ui32 BrokenDisksCount = 0;
+    ui32 BrokenDiskCount = 0;
     THashSet<ui32> BrokenPartitions;
 };
 
