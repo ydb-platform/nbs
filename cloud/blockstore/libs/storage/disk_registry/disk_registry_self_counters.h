@@ -68,10 +68,17 @@ struct TDiskRegistrySelfCounters
     TCounterPtr Mirror3DisksMinus1;
     TCounterPtr Mirror3DisksMinus2;
     TCounterPtr Mirror3DisksMinus3;
+    // TODO(dvrazumov): "*Disk*" counters are replaced with "*Partitions" counters.
+    // They are left for compatibility and should be removed later (NBSNEBIUS-26)
     TCounterPtr PlacementGroupsWithRecentlyBrokenSingleDisk;
     TCounterPtr PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks;
     TCounterPtr PlacementGroupsWithBrokenSingleDisk;
     TCounterPtr PlacementGroupsWithBrokenTwoOrMoreDisks;
+    // remove above ^^^
+    TCounterPtr PlacementGroupsWithRecentlyBrokenSinglePartition;
+    TCounterPtr PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions;
+    TCounterPtr PlacementGroupsWithBrokenSinglePartition;
+    TCounterPtr PlacementGroupsWithBrokenTwoOrMorePartitions;
     TCounterPtr MeanTimeBetweenFailures;
     TCounterPtr AutomaticallyReplacedDevices;
 

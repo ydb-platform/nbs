@@ -1424,11 +1424,11 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                         auto it = brokenGroups.find(x.first);
 
                         if (it != brokenGroups.end()) {
-                            if (it->second.RecentlyBrokenDiskCount == 1) {
+                            if (it->second.Recently.GetBrokenPartitionsCount() == 1) {
                                 out << "<font color=yellow>&#9632;&nbsp;</font>";
                             }
 
-                            if (it->second.RecentlyBrokenDiskCount > 1) {
+                            if (it->second.Recently.GetBrokenPartitionsCount() > 1) {
                                 out << "<font color=red>&#9632;&nbsp;</font>";
                             }
                         }

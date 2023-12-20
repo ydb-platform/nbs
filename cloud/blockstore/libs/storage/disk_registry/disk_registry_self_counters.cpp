@@ -50,6 +50,14 @@ void TDiskRegistrySelfCounters::Init(
         counters->GetCounter("PlacementGroupsWithBrokenSingleDisk");
     PlacementGroupsWithBrokenTwoOrMoreDisks =
         counters->GetCounter("PlacementGroupsWithBrokenTwoOrMoreDisks");
+    PlacementGroupsWithRecentlyBrokenSinglePartition =
+        counters->GetCounter("PlacementGroupsWithRecentlyBrokenSinglePartition");
+    PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions =
+        counters->GetCounter("PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions");
+    PlacementGroupsWithBrokenSinglePartition =
+        counters->GetCounter("PlacementGroupsWithBrokenSinglePartition");
+    PlacementGroupsWithBrokenTwoOrMorePartitions =
+        counters->GetCounter("PlacementGroupsWithBrokenTwoOrMorePartitions");
     MeanTimeBetweenFailures =
         counters->GetCounter("MeanTimeBetweenFailures");
     AutomaticallyReplacedDevices =

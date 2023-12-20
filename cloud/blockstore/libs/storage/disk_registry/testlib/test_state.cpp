@@ -95,6 +95,43 @@ NProto::TAgentConfig AgentConfig(
     return AgentConfig(nodeId, agentId, 0, devices);
 }
 
+NProto::TPlacementGroupConfig SpreadPlacementGroup(
+    TString id,
+    TVector<TString> disks)
+{
+    NProto::TPlacementGroupConfig config;
+    config.SetGroupId(std::move(id));
+    config.SetPlacementStrategy(
+        NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD);
+
+    for (auto& diskId: disks) {
+        config.AddDisks()->SetDiskId(std::move(diskId));
+    }
+
+    return config;
+}
+
+NProto::TPlacementGroupConfig PartitionPlacementGroup(
+    TString id,
+    TVector<TVector<TString>> partitions)
+{
+    NProto::TPlacementGroupConfig config;
+    config.SetGroupId(std::move(id));
+    config.SetPlacementStrategy(
+        NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION);
+    config.SetPlacementPartitionCount(partitions.size());
+
+    for (size_t i = 0; i < partitions.size(); ++i) {
+        for (auto& diskId: partitions[i]) {
+            auto* disk = config.AddDisks();
+            disk->SetDiskId(std::move(diskId));
+            disk->SetPlacementPartitionIndex(i + 1);
+        }
+    }
+
+    return config;
+}
+
 NProto::TDiskRegistryConfig MakeConfig(
     const TVector<NProto::TAgentConfig>& agents,
     const TVector<NProto::TDeviceOverride>& deviceOverrides)
@@ -534,12 +571,12 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithDirtyDevices(
     return *this;
 }
 
-TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithPlacementGroups(
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSpreadPlacementGroups(
     TVector<TString> groupIds)
 {
     for (auto& id: groupIds) {
         NProto::TPlacementGroupConfig config;
-        config.SetGroupId(id);
+        config.SetGroupId(std::move(id));
 
         PlacementGroups.push_back(config);
     }
@@ -547,22 +584,15 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithPlacementGroups(
     return *this;
 }
 
-TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::AddPlacementGroup(
-    TString id,
-    TVector<TString> disks)
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithPlacementGroups(
+    TVector<NProto::TPlacementGroupConfig> groups)
 {
-    NProto::TPlacementGroupConfig config;
-    config.SetGroupId(std::move(id));
-
-    for (auto& diskId: disks) {
-        config.AddDisks()->SetDiskId(std::move(diskId));
+    for (auto& group: groups) {
+        PlacementGroups.push_back(std::move(group));
     }
-
-    PlacementGroups.push_back(config);
 
     return *this;
 }
-
 
 TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::AddDevicePoolConfig(
     TString name,
