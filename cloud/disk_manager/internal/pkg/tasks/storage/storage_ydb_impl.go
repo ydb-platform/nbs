@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	grpc_codes "google.golang.org/grpc/codes"
 )

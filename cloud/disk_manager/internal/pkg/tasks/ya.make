@@ -25,6 +25,7 @@ GO_TEST_SRCS(
 END()
 
 RECURSE(
+    common
     config
     errors
     storage

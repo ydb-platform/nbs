@@ -1,7 +1,7 @@
 package common
 
 import (
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/common/protos"
 	"google.golang.org/protobuf/proto"
 )
 

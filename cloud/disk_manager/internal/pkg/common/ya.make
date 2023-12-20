@@ -6,7 +6,6 @@ SRCS(
     channel_with_inflight_queue.go
     cond.go
     inflight_queue.go
-    marshal.go
     progress_saver.go
     util.go
 )
@@ -16,10 +15,6 @@ GO_TEST_SRCS(
 )
 
 END()
-
-RECURSE(
-    protos
-)
 
 RECURSE_FOR_TESTS(
     tests

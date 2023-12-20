@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package common;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common/protos";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/common/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 
