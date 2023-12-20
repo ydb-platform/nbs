@@ -87,6 +87,11 @@ void ProcessAsyncSignal(int signum)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void AppCreate()
+{
+    TMainThread::GetInstance();
+}
+
 int AppMain(TProgramShouldContinue& shouldContinue)
 {
     return TMainThread::GetInstance()->Run(shouldContinue);
