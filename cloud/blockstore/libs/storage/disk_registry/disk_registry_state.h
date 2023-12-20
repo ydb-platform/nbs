@@ -92,16 +92,52 @@ struct TRackInfo
     using TPlacementPartitionInfo = TSet<ui32>;
     TMap<TString, TPlacementPartitionInfo> PlacementGroups;
 
-    TRackInfo(TString name)
+    explicit TRackInfo(TString name)
         : Name(std::move(name))
     {
     }
 };
 
+class TBrokenCounter
+{
+public:
+    explicit TBrokenCounter(NProto::EPlacementStrategy strategy)
+        : Strategy(strategy)
+    {}
+
+    void Increment(ui32 partitionIndex) {
+        ++BrokenDisksCount;
+        if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
+            BrokenPartitions.insert(partitionIndex);
+        }
+    }
+
+    [[nodiscard]] ui32 GetBrokenPartitionsCount() const {
+        switch (Strategy) {
+            case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD:
+                return BrokenDisksCount;
+            case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION:
+                return BrokenPartitions.size();
+            default:
+                Y_FAIL("Unknown partition strategy");
+        }
+    }
+
+private:
+    NProto::EPlacementStrategy Strategy;
+    ui32 BrokenDisksCount = 0;
+    THashSet<ui32> BrokenPartitions;
+};
+
 struct TBrokenGroupInfo
 {
-    ui32 TotalBrokenDiskCount = 0;
-    ui32 RecentlyBrokenDiskCount = 0;
+    explicit TBrokenGroupInfo(NProto::EPlacementStrategy strategy)
+        : Total(strategy)
+        , Recently(strategy)
+    {}
+
+    TBrokenCounter Total;
+    TBrokenCounter Recently;
 };
 
 struct TCheckpointInfo
@@ -289,7 +325,6 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
-public:
     NProto::TError RegisterAgent(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig config,

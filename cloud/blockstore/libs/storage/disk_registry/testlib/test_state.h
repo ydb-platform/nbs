@@ -105,11 +105,6 @@ NProto::TAgentConfig AgentConfig(
 
 NProto::TAgentConfig AgentConfig(
     ui32 nodeId,
-    NProto::EAgentState state,
-    std::initializer_list<TDeviceConfig> devices);
-
-NProto::TAgentConfig AgentConfig(
-    ui32 nodeId,
     std::initializer_list<TDeviceConfig> devices);
 
 NProto::TAgentConfig AgentConfig(
@@ -130,6 +125,14 @@ NProto::TDiskRegistryConfig MakeConfig(
 NProto::TDiskRegistryConfig MakeConfig(
     ui32 version,
     const TVector<NProto::TAgentConfig>& agents);
+
+NProto::TPlacementGroupConfig SpreadPlacementGroup(
+    TString id,
+    TVector<TString> disks);
+
+NProto::TPlacementGroupConfig PartitionPlacementGroup(
+    TString id,
+    TVector<TVector<TString>> partitions);
 
 NProto::TDiskConfig Disk(
     const TString& diskId,
@@ -273,11 +276,11 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& WithDirtyDevices(TVector<TString> dirtyDevices);
 
-    TDiskRegistryStateBuilder& WithPlacementGroups(TVector<TString> groupIds);
+    TDiskRegistryStateBuilder& WithSpreadPlacementGroups(
+        TVector<TString> groupIds);
 
-    TDiskRegistryStateBuilder& AddPlacementGroup(
-        TString id,
-        TVector<TString> disks);
+    TDiskRegistryStateBuilder& WithPlacementGroups(
+        TVector<NProto::TPlacementGroupConfig> groups);
 
     TDiskRegistryStateBuilder& AddDevicePoolConfig(
         TString name,

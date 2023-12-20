@@ -3596,22 +3596,25 @@ THashMap<TString, TBrokenGroupInfo> TDiskRegistryState::GatherBrokenGroupsInfo(
 {
     THashMap<TString, TBrokenGroupInfo> groups;
 
-    for (const auto& x: Disks) {
-        if (x.second.State != NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE &&
-            x.second.State != NProto::DISK_STATE_ERROR)
+    for (const auto& [diskId, disk]: Disks) {
+        if (disk.State != NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE &&
+            disk.State != NProto::DISK_STATE_ERROR)
         {
             continue;
         }
 
-        if (x.second.PlacementGroupId.empty()) {
+        const auto& groupId = disk.PlacementGroupId;
+        if (groupId.empty()) {
             continue;
         }
 
-        TBrokenGroupInfo& info = groups[x.second.PlacementGroupId];
+        const auto& config = PlacementGroups.at(groupId).Config;
+        auto res = groups.try_emplace(groupId, config.GetPlacementStrategy());
+        TBrokenGroupInfo& info = res.first->second;
 
-        ++info.TotalBrokenDiskCount;
-        if (now - period < x.second.StateTs) {
-            ++info.RecentlyBrokenDiskCount;
+        info.Total.Increment(disk.PlacementPartitionIndex);
+        if (now - period < disk.StateTs) {
+            info.Recently.Increment(disk.PlacementPartitionIndex);
         }
     }
 
@@ -3872,35 +3875,51 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             TimeBetweenFailures.GetBrokenCount()
         : 0);
 
-    ui32 placementGroupsWithRecentlyBrokenSingleDisk = 0;
-    ui32 placementGroupsWithRecentlyBrokenTwoOrMoreDisks = 0;
-    ui32 placementGroupsWithBrokenSingleDisk = 0;
-    ui32 placementGroupsWithBrokenTwoOrMoreDisks = 0;
+    ui32 placementGroupsWithRecentlyBrokenSinglePartition = 0;
+    ui32 placementGroupsWithRecentlyBrokenTwoOrMorePartitions = 0;
+    ui32 placementGroupsWithBrokenSinglePartition = 0;
+    ui32 placementGroupsWithBrokenTwoOrMorePartitions = 0;
 
     auto brokenGroups = GatherBrokenGroupsInfo(
         now,
         StorageConfig->GetPlacementGroupAlertPeriod());
 
-    for (const auto& kv: brokenGroups) {
-        const auto [total, recently] = kv.second;
+    for (const auto& [groupId, bg]: brokenGroups) {
+        const auto recently = bg.Recently.GetBrokenPartitionsCount();
+        const auto total = bg.Total.GetBrokenPartitionsCount();
 
-        placementGroupsWithRecentlyBrokenSingleDisk += recently == 1;
-        placementGroupsWithRecentlyBrokenTwoOrMoreDisks += recently > 1;
-        placementGroupsWithBrokenSingleDisk += total == 1;
-        placementGroupsWithBrokenTwoOrMoreDisks += total > 1;
+        placementGroupsWithRecentlyBrokenSinglePartition += recently == 1;
+        placementGroupsWithRecentlyBrokenTwoOrMorePartitions += recently > 1;
+
+        placementGroupsWithBrokenSinglePartition += total == 1;
+        placementGroupsWithBrokenTwoOrMorePartitions += total > 1;
     }
 
+    // TODO(dvrazumov): left for compatibility (NBSNEBIUS-26)
     SelfCounters.PlacementGroupsWithRecentlyBrokenSingleDisk->Set(
-        placementGroupsWithRecentlyBrokenSingleDisk);
+        placementGroupsWithRecentlyBrokenSinglePartition);
 
     SelfCounters.PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks->Set(
-        placementGroupsWithRecentlyBrokenTwoOrMoreDisks);
+        placementGroupsWithRecentlyBrokenTwoOrMorePartitions);
 
     SelfCounters.PlacementGroupsWithBrokenSingleDisk->Set(
-        placementGroupsWithBrokenSingleDisk);
+        placementGroupsWithBrokenSinglePartition);
 
     SelfCounters.PlacementGroupsWithBrokenTwoOrMoreDisks->Set(
-        placementGroupsWithBrokenTwoOrMoreDisks);
+        placementGroupsWithBrokenTwoOrMorePartitions);
+    // remove above ^^^^
+
+    SelfCounters.PlacementGroupsWithRecentlyBrokenSinglePartition->Set(
+        placementGroupsWithRecentlyBrokenSinglePartition);
+
+    SelfCounters.PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions->Set(
+        placementGroupsWithRecentlyBrokenTwoOrMorePartitions);
+
+    SelfCounters.PlacementGroupsWithBrokenSinglePartition->Set(
+        placementGroupsWithBrokenSinglePartition);
+
+    SelfCounters.PlacementGroupsWithBrokenTwoOrMorePartitions->Set(
+        placementGroupsWithBrokenTwoOrMorePartitions);
 
     auto replicaCountStats = ReplicaTable.CalculateReplicaCountStats();
     SelfCounters.Mirror2Disks->Set(replicaCountStats.Mirror2DiskMinus0);
