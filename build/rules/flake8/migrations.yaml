@@ -67,7 +67,6 @@ migrations:
     - education/schoolbook/analytics/ml/lib/ut
     - education/services/checking_system/marker_checker/it/api/v1
     - education/services/checking_system/marker_checker/it/api/v1/check_data
-    - entity/ontodb/tasks/fast_death_pipeline
     - extsearch/images/money/scripts
     - extsearch/images/robot/index/shardpreparer/it/pack
     - extsearch/images/robot/mrdb/mkurldb/it/pack
@@ -252,7 +251,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-2214
     - yabs/server/test/ft/BSSERVER-22647
     - yabs/server/test/ft/BSSERVER-2306
-    - yabs/server/test/ft/BSSERVER-3143
     - yabs/server/test/ft/BSSERVER-8275
     - yabs/server/test/ft/BSSERVER-9277
     - yabs/server/test/ft/supply_chain
@@ -922,7 +920,6 @@ migrations:
     - yabs/server/test/ft/BSSERVER-17702
     - yabs/server/test/ft/BSSERVER-2977
     - yabs/server/test/ft/BSSERVER-3108
-    - yabs/server/test/ft/BSSERVER-3143
     - yabs/server/test/ft/BSSERVER-3734
     - yabs/server/test/ft/BSSERVER-5039
     - yabs/server/test/ft/BSSERVER-5360
@@ -1082,7 +1079,6 @@ migrations:
     - education/services/checking_system/marker_checker/lib/markers/columncalc/generators
     - education/services/checking_system/marker_checker/lib/markers/ut
     - entity/analytics/tools/ner2/eval/lib
-    - entity/ontodb/tasks/fast_death_pipeline
     - entity/recommender/nirvana/operations/abt_experiments_launcher
     - entity/recommender/python_config
     - extsearch/audio/generative/ableton_api_client/contrib/aiolo
@@ -1491,7 +1487,6 @@ migrations:
     - maps/statistics/hypgen/masstransit_hypothesis/libs/draw_on_map
     - maps/statistics/validator/task
     - maps/tools/navi-stat-vis/bin
-    - maps/tools/navimatcher_quality/lib
     - maps/tools/track_selection/toloka/split_tasks
     - maps/wikimap/feedback/pushes/addresses/make_pushes/lib
     - maps/wikimap/mapspro/services/mrc/eye/experiments/signs_map/car_mask
@@ -4089,7 +4084,6 @@ migrations:
     - education/yaschool/services/sections/app/utils
     - entity/ontodb/tasks/extdata_import/wikidata/lib
     - entity/ontodb/tasks/extdata_import/yandex_market/lib
-    - entity/ontodb/tasks/fast_death_pipeline
     - entity/ontodb/tasks/import_persons/lib
     - entity/ontodb/tasks/import_wikipedia_incremental/lib
     - entity/ontodb/tasks/merged_ids_update/lib
@@ -6425,7 +6419,6 @@ migrations:
     - maps/statistics/external/traffic_lights/geometry_lib
     - maps/tools/matcher_quality/lib
     - maps/tools/naviguide/tools/optimize_config/lib
-    - maps/tools/navimatcher_quality/lib
     - maps/wikimap/mapspro/libs/python/pymod/yandex/maps/wiki/tasks
     - maps/wikimap/mapspro/libs/python/tests/export
     - maps/wikimap/mapspro/services/mrc/eye/experiments/signs_map/matcher/pylibs
@@ -7378,8 +7371,6 @@ migrations:
     - sandbox/projects/tycoon/TycoonAdverts
     - vcs/svn/flat
     - vcs/svn/hooks/test
-    - yweb/tellurium/tools/store_history_to_yt
-    - yweb/tellurium/ui
   F722:
     ignore:
     - F722
@@ -7810,7 +7801,6 @@ migrations:
     - sandbox/projects/sdc/common
     - search/mon/bot/bot/modules/protocols
     - search/tools/setrace/tools/evlogdump_for_ua/lib
-    - sprav/protos/model
     - taxi/robowarehouse/lib/concepts/solomon
     - travel/avia/subscriptions/app/api
     - travel/hotels/content_manager/lib
@@ -10369,7 +10359,6 @@ migrations:
     - yweb/freshness/rtmr_metrics/fresh_surplus/tools/dump_state
     - yweb/freshness/scripts/rem
     - yweb/incproc/komutator/python
-    - yweb/mail/webmail-search-quality
     - yweb/music/pylib
     - yweb/news/app_host/api_responder/recipe
     - yweb/news/python/contrib/yasmapi
@@ -10378,7 +10367,6 @@ migrations:
     - yweb/robot/ukrop/nirvana_tools/crawl_result
     - yweb/robot/ukrop/nirvana_tools/graph_starter
     - yweb/sitelinks/astrolabe/build_bna/candidates/bno_clicks_squeeze
-    - yweb/tellurium/lib
     - yweb/webscripts/video/common/sandbox
     - yweb/webscripts/video/docker/cm_tool
     - yweb/yasap/answers/3rdparty/apns
