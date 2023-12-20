@@ -7,21 +7,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func OnTaskCreated(taskType string, cloudID string, folderID string, taskCount int) {
-	m := getMetrics()
-	if m == nil {
-		return
-	}
-
-	m.tasksCreateCount.With(map[string]string{
-		"taskType": taskType,
-		"cloudID":  cloudID,
-		"folderID": folderID,
-	}).Add(int64(taskCount))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func OnSnapshotRead(snapshotID string, bytesCount int) {
 	m := getMetrics()
 	if m == nil {

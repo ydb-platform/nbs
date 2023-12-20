@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 )
@@ -67,8 +66,6 @@ func (m *storageMetricsImpl) getOrNewMetrics(taskType string) *taskMetrics {
 func (m *storageMetricsImpl) OnTaskCreated(state TaskState, taskCount int) {
 	metrics := m.getOrNewMetrics(state.TaskType)
 	metrics.created.Add(int64(taskCount))
-
-	accounting.OnTaskCreated(state.TaskType, state.CloudID, state.FolderID, taskCount)
 }
 
 func (m *storageMetricsImpl) OnTaskUpdated(

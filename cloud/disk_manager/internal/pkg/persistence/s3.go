@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -20,14 +21,16 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type S3Client struct {
-	s3      *aws_s3.S3
-	metrics *s3Metrics
+	s3          *aws_s3.S3
+	callTimeout time.Duration
+	metrics     *s3Metrics
 }
 
 func NewS3Client(
 	endpoint string,
 	region string,
 	credentials S3Credentials,
+	callTimeout time.Duration,
 	registry metrics.Registry,
 ) (*S3Client, error) {
 
@@ -48,8 +51,9 @@ func NewS3Client(
 	}
 
 	return &S3Client{
-		s3:      aws_s3.New(session),
-		metrics: newS3Metrics(registry),
+		s3:          aws_s3.New(session),
+		callTimeout: callTimeout,
+		metrics:     newS3Metrics(registry, callTimeout),
 	}, nil
 }
 
@@ -63,7 +67,21 @@ func NewS3ClientFromConfig(
 		return nil, err
 	}
 
-	return NewS3Client(config.GetEndpoint(), config.GetRegion(), credentials, registry)
+	callTimeout, err := time.ParseDuration(config.GetCallTimeout())
+	if err != nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"failed to parse callTimeout: %w",
+			err,
+		)
+	}
+
+	return NewS3Client(
+		config.GetEndpoint(),
+		config.GetRegion(),
+		credentials,
+		callTimeout,
+		registry,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,7 +91,10 @@ func (c *S3Client) CreateBucket(
 	bucket string,
 ) (err error) {
 
-	defer c.metrics.StatRequest("CreateBucket")(&err)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "CreateBucket")(&err)
 
 	_, err = c.s3.CreateBucketWithContext(ctx, &aws_s3.CreateBucketInput{
 		Bucket: &bucket,
@@ -101,7 +122,10 @@ func (c *S3Client) GetObject(
 	key string,
 ) (o S3Object, err error) {
 
-	defer c.metrics.StatRequest("GetObject")(&err)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "GetObject")(&err)
 
 	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
 		Bucket: &bucket,
@@ -141,7 +165,10 @@ func (c *S3Client) PutObject(
 	object S3Object,
 ) (err error) {
 
-	defer c.metrics.StatRequest("PutObject")(&err)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "PutObject")(&err)
 
 	_, err = c.s3.PutObjectWithContext(ctx, &aws_s3.PutObjectInput{
 		Bucket:          &bucket,
@@ -170,7 +197,10 @@ func (c *S3Client) DeleteObject(
 	key string,
 ) (err error) {
 
-	defer c.metrics.StatRequest("DeleteObject")(&err)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "DeleteObject")(&err)
 
 	_, err = c.s3.DeleteObjectWithContext(ctx, &aws_s3.DeleteObjectInput{
 		Bucket: &bucket,
