@@ -20,7 +20,7 @@ target_link_libraries(blockstore-libs-storage-disk_registry_proxy-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-disk_registry_proxy
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_sources(blockstore-libs-storage-disk_registry_proxy-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry_proxy/disk_registry_proxy_ut.cpp

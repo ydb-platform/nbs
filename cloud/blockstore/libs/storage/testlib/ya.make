@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(blockstore-libs-storage-testlib)
 
 SRCS(
     disk_agent_mock.cpp

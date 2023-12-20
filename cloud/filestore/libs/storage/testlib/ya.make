@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(filestore-libs-storage-testlib)
 
 SRCS(
     helpers.cpp

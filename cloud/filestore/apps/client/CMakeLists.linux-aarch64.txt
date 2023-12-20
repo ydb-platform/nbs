@@ -13,7 +13,7 @@ target_link_libraries(filestore-client PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  apps-client-lib
+  filestore-apps-client-lib
   library-cpp-getopt
 )
 target_link_options(filestore-client PRIVATE

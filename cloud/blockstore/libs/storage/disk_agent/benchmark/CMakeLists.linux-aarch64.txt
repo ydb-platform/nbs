@@ -15,7 +15,7 @@ target_link_libraries(benchmark PUBLIC
   cpp-testing-gbenchmark
   blockstore-libs-rdma_test
   libs-storage-disk_agent
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_link_options(benchmark PRIVATE
   -ldl

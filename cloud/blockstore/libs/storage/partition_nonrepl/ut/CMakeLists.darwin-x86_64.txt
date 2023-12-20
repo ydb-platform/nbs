@@ -20,7 +20,7 @@ target_link_libraries(blockstore-libs-storage-partition_nonrepl-ut PUBLIC
   cloud-blockstore-config
   blockstore-libs-diagnostics
   blockstore-libs-rdma_test
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_link_options(blockstore-libs-storage-partition_nonrepl-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0

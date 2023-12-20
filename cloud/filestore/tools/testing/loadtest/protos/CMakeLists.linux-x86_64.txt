@@ -19,18 +19,18 @@ get_built_tool_path(
   cpp_styleguide
 )
 
-add_library(testing-loadtest-protos)
-target_link_libraries(testing-loadtest-protos PUBLIC
+add_library(filestore-testing-loadtest-protos)
+target_link_libraries(filestore-testing-loadtest-protos PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   filestore-public-api-protos
   contrib-libs-protobuf
 )
-target_proto_messages(testing-loadtest-protos PRIVATE
+target_proto_messages(filestore-testing-loadtest-protos PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/testing/loadtest/protos/loadtest.proto
 )
-target_proto_addincls(testing-loadtest-protos
+target_proto_addincls(filestore-testing-loadtest-protos
   ./
   ${CMAKE_SOURCE_DIR}/
   ${CMAKE_BINARY_DIR}
@@ -39,7 +39,7 @@ target_proto_addincls(testing-loadtest-protos
   ${CMAKE_BINARY_DIR}
   ${CMAKE_SOURCE_DIR}/contrib/libs/protobuf/src
 )
-target_proto_outs(testing-loadtest-protos
+target_proto_outs(filestore-testing-loadtest-protos
   --cpp_out=${CMAKE_BINARY_DIR}/
   --cpp_styleguide_out=${CMAKE_BINARY_DIR}/
 )

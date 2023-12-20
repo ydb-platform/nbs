@@ -21,7 +21,7 @@ target_link_libraries(cloud-filestore-libs-storage-ss_proxy-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   filestore-libs-storage-ss_proxy
-  libs-storage-testlib
+  filestore-libs-storage-testlib
 )
 target_link_options(cloud-filestore-libs-storage-ss_proxy-ut PRIVATE
   -ldl

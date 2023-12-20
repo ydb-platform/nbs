@@ -16,7 +16,7 @@ target_link_libraries(cloud-filestore-tools-analytics-libs-event-log-ut PUBLIC
   yutil
   library-cpp-cpuid_check
   cpp-testing-unittest_main
-  analytics-libs-event-log
+  filestore-analytics-libs-event-log
 )
 target_link_options(cloud-filestore-tools-analytics-libs-event-log-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0

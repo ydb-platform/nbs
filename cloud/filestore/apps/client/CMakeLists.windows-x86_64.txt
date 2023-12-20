@@ -13,7 +13,7 @@ target_link_libraries(filestore-client PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
-  apps-client-lib
+  filestore-apps-client-lib
   library-cpp-getopt
 )
 target_sources(filestore-client PRIVATE

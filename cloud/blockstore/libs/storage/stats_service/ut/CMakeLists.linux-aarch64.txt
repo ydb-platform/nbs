@@ -20,7 +20,7 @@ target_link_libraries(cloud-blockstore-libs-storage-stats_service-ut PUBLIC
   yutil
   cpp-testing-unittest_main
   libs-storage-stats_service
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_link_options(cloud-blockstore-libs-storage-stats_service-ut PRIVATE
   -ldl

@@ -20,7 +20,7 @@ target_link_libraries(cloud-blockstore-libs-storage-stats_service-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-stats_service
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_sources(cloud-blockstore-libs-storage-stats_service-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_ut.cpp

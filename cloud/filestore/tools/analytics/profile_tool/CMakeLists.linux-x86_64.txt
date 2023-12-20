@@ -14,7 +14,7 @@ target_link_libraries(filestore-profile-tool PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
-  analytics-libs-event-log
+  filestore-analytics-libs-event-log
   analytics-profile_tool-lib
   cpp-eventlog-dumper
 )

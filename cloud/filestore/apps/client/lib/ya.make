@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(filestore-apps-client-lib)
 
 SRCS(
     add_cluster_node.cpp

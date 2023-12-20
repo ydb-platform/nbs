@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(filestore-testing-loadtest-lib)
 
 SRCS(
     client.cpp

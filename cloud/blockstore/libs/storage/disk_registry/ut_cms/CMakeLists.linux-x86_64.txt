@@ -21,7 +21,7 @@ target_link_libraries(blockstore-libs-storage-disk_registry-ut_cms PUBLIC
   cloud-blockstore-config
   libs-storage-api
   storage-disk_registry-testlib
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
   cpp-testing-unittest
   core-testlib-basics
 )

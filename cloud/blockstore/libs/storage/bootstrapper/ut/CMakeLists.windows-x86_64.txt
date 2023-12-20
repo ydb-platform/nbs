@@ -17,7 +17,7 @@ target_link_libraries(cloud-blockstore-libs-storage-bootstrapper-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-bootstrapper
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_sources(cloud-blockstore-libs-storage-bootstrapper-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/bootstrapper/bootstrapper_ut.cpp

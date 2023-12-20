@@ -8,8 +8,8 @@
 
 add_subdirectory(ut)
 
-add_library(apps-client-lib)
-target_link_libraries(apps-client-lib PUBLIC
+add_library(filestore-apps-client-lib)
+target_link_libraries(filestore-apps-client-lib PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
@@ -25,7 +25,7 @@ target_link_libraries(apps-client-lib PUBLIC
   cpp-protobuf-json
   cpp-threading-future
 )
-target_sources(apps-client-lib PRIVATE
+target_sources(filestore-apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/add_cluster_node.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/command.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/create.cpp

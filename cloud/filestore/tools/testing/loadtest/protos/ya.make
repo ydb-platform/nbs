@@ -1,4 +1,4 @@
-PROTO_LIBRARY()
+PROTO_LIBRARY(filestore-testing-loadtest-protos)
 
 ONLY_TAGS(CPP_PROTO)
 

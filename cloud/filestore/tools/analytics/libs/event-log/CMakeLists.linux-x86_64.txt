@@ -8,8 +8,8 @@
 
 add_subdirectory(ut)
 
-add_library(analytics-libs-event-log)
-target_link_libraries(analytics-libs-event-log PUBLIC
+add_library(filestore-analytics-libs-event-log)
+target_link_libraries(filestore-analytics-libs-event-log PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
@@ -18,7 +18,7 @@ target_link_libraries(analytics-libs-event-log PUBLIC
   libs-storage-tablet
   core-libs-common
 )
-target_sources(analytics-libs-event-log PRIVATE
+target_sources(filestore-analytics-libs-event-log PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/libs/event-log/dump.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/libs/event-log/request_filter.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/libs/event-log/request_printer.cpp

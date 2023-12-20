@@ -7,8 +7,8 @@
 
 
 
-add_library(testing-loadtest-lib)
-target_link_libraries(testing-loadtest-lib PUBLIC
+add_library(filestore-testing-loadtest-lib)
+target_link_libraries(filestore-testing-loadtest-lib PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
@@ -18,10 +18,10 @@ target_link_libraries(testing-loadtest-lib PUBLIC
   filestore-libs-service
   core-libs-common
   core-libs-diagnostics
-  testing-loadtest-protos
+  filestore-testing-loadtest-protos
   cpp-deprecated-atomic
 )
-target_sources(testing-loadtest-lib PRIVATE
+target_sources(filestore-testing-loadtest-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/testing/loadtest/lib/client.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/testing/loadtest/lib/executor.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/testing/loadtest/lib/request_data.cpp

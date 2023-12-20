@@ -21,7 +21,7 @@ target_link_libraries(cloud-blockstore-libs-storage-partition-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-partition
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_link_options(cloud-blockstore-libs-storage-partition-ut PRIVATE
   -ldl
