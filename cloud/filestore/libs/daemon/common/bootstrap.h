@@ -15,7 +15,7 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <library/cpp/actors/util/should_continue.h>
 #include <library/cpp/logger/log.h>
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>

@@ -31,7 +31,7 @@ target_link_libraries(libs-storage-volume PUBLIC
   storage-volume-model
   storage-volume-actors
   core-libs-common
-  library-actors-core
+  cpp-actors-core
   library-cpp-lwtrace
   monlib-service-pages
   cpp-protobuf-util

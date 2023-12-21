@@ -30,10 +30,10 @@ set_property(TARGET public-api-grpc PROPERTY
   PROTOC_EXTRA_OUTS .grpc.pb.cc .grpc.pb.h
 )
 target_link_libraries(public-api-grpc PUBLIC
-  contrib-libs-googleapis-common-protos
   contrib-libs-cxxsupp
   yutil
   contrib-libs-grpc
+  contrib-libs-googleapis-common-protos
   public-api-protos
   contrib-libs-protobuf
 )

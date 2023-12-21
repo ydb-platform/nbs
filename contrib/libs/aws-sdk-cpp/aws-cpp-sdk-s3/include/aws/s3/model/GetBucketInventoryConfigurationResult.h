@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketInventoryConfigurationResult
+  class AWS_S3_API GetBucketInventoryConfigurationResult
   {
   public:
-    AWS_S3_API GetBucketInventoryConfigurationResult();
-    AWS_S3_API GetBucketInventoryConfigurationResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetBucketInventoryConfigurationResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketInventoryConfigurationResult();
+    GetBucketInventoryConfigurationResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketInventoryConfigurationResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

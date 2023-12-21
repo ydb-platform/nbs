@@ -72,7 +72,9 @@ namespace Aws
                 assert(handler);
                 if (!handler)
                 {
-                    AWS_LOGSTREAM_ERROR(EVENT_STREAM_DECODER_CLASS_TAG, "Payload received, but handler is null.");
+                    AWS_LOGSTREAM_ERROR(EVENT_STREAM_DECODER_CLASS_TAG, "Payload received, but decoder encountered internal errors before."
+                        "ErrorCode: " << EventStreamErrorsMapper::GetNameForError(handler->GetInternalError()) << ", "
+                        "ErrorMessage: " << handler->GetEventPayloadAsString());
                     return;
                 }
                 handler->WriteMessageEventPayload(static_cast<unsigned char*>(payload->buffer), payload->len);
@@ -127,7 +129,9 @@ namespace Aws
                 assert(handler);
                 if (!handler)
                 {
-                    AWS_LOGSTREAM_ERROR(EVENT_STREAM_DECODER_CLASS_TAG, "Header received, but handler is null.");
+                    AWS_LOGSTREAM_ERROR(EVENT_STREAM_DECODER_CLASS_TAG, "Payload received, but decoder encountered internal errors before."
+                        "ErrorCode: " << EventStreamErrorsMapper::GetNameForError(handler->GetInternalError()) << ", "
+                        "ErrorMessage: " << handler->GetEventPayloadAsString());
                     return;
                 }
 

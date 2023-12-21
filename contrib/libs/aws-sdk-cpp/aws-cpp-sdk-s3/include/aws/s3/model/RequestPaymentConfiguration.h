@@ -27,14 +27,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/RequestPaymentConfiguration">AWS
    * API Reference</a></p>
    */
-  class RequestPaymentConfiguration
+  class AWS_S3_API RequestPaymentConfiguration
   {
   public:
-    AWS_S3_API RequestPaymentConfiguration();
-    AWS_S3_API RequestPaymentConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API RequestPaymentConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    RequestPaymentConfiguration();
+    RequestPaymentConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    RequestPaymentConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -70,7 +70,7 @@ namespace Model
   private:
 
     Payer m_payer;
-    bool m_payerHasBeenSet = false;
+    bool m_payerHasBeenSet;
   };
 
 } // namespace Model

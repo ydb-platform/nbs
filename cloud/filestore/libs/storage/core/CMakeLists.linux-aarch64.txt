@@ -17,7 +17,7 @@ target_link_libraries(filestore-libs-storage-core PUBLIC
   filestore-libs-service
   filestore-public-api-protos
   core-libs-common
-  library-actors-core
+  cpp-actors-core
   cpp-deprecated-atomic
   library-cpp-lwtrace
   ydb-core-base

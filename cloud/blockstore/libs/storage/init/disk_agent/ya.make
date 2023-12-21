@@ -18,7 +18,7 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/hive_proxy
 
-    contrib/ydb/library/actors/core
+    library/cpp/actors/core
 )
 
 YQL_LAST_ABI_VERSION()

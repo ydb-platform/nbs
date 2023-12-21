@@ -250,7 +250,7 @@ namespace NBus {
 
     int TBusLocator::LocateAll(TBusService service, TBusKey key, TVector<TNetAddr>& addrs) {
         TGuard<TMutex> G(Lock);
-        Y_ABORT_UNLESS(addrs.empty(), "Non emtpy addresses");
+        Y_VERIFY(addrs.empty(), "Non emtpy addresses");
 
         TServiceId serviceId = GetServiceId(service);
         TItems::const_iterator it;
@@ -361,7 +361,7 @@ namespace NBus {
 
     int TBusLocator::LocateKeys(TBusService service, TBusKeyVec& keys, bool onlyLocal) {
         TGuard<TMutex> G(Lock);
-        Y_ABORT_UNLESS(keys.empty(), "Non empty keys");
+        Y_VERIFY(keys.empty(), "Non empty keys");
 
         TServiceId serviceId = GetServiceId(service);
         TItems::const_iterator it;
@@ -409,7 +409,7 @@ namespace NBus {
                 return 0;
             }
             if ((item.Start < start && start < item.End) || (item.Start < end && end < item.End)) {
-                Y_ABORT("Overlap in registered keys with non-identical range");
+                Y_FAIL("Overlap in registered keys with non-identical range");
             }
         }
 

@@ -32,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/TopicConfiguration">AWS
    * API Reference</a></p>
    */
-  class TopicConfiguration
+  class AWS_S3_API TopicConfiguration
   {
   public:
-    AWS_S3_API TopicConfiguration();
-    AWS_S3_API TopicConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API TopicConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    TopicConfiguration();
+    TopicConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    TopicConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     
@@ -202,16 +202,16 @@ namespace Model
   private:
 
     Aws::String m_id;
-    bool m_idHasBeenSet = false;
+    bool m_idHasBeenSet;
 
     Aws::String m_topicArn;
-    bool m_topicArnHasBeenSet = false;
+    bool m_topicArnHasBeenSet;
 
     Aws::Vector<Event> m_events;
-    bool m_eventsHasBeenSet = false;
+    bool m_eventsHasBeenSet;
 
     NotificationConfigurationFilter m_filter;
-    bool m_filterHasBeenSet = false;
+    bool m_filterHasBeenSet;
   };
 
 } // namespace Model

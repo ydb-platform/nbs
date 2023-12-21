@@ -43,15 +43,6 @@ YT_RUN_TEST_TAR_NAME = "yt_run_test.tar"
 COVERAGE_CFLAGS = ["-fprofile-instr-generate", "-fcoverage-mapping", "-DCLANG_COVERAGE"]
 COVERAGE_LDFLAGS = ["-fprofile-instr-generate", "-fcoverage-mapping"]
 
-CANON_BACKEND_KEY = "{canondata_backend}"
-DEFAULT_CANONIZATION_BACKEND = "storage.yandex-team.ru/get-devtools"
-MDS_URI_PREFIX = 'https://storage.yandex-team.ru/get-devtools/'
-BACKEND_URI_PREFIX = 'https://' + CANON_BACKEND_KEY + '/'
-MDS_SCHEME = 'mds'
-CANON_MDS_RESOURCE_REGEX = re.compile(re.escape(MDS_URI_PREFIX) + r'(.*?)($|#)')
-CANON_BACKEND_RESOURCE_REGEX = re.compile(re.escape(BACKEND_URI_PREFIX) + r'(.*?)($|#)')
-CANON_SBR_RESOURCE_REGEX = re.compile(r'(sbr:/?/?(\d+))')
-
 MANDATORY_ENV_VAR_NAME = 'YA_MANDATORY_ENV_VARS'
 
 BUILD_FLAGS_ALLOWED_IN_CONTEXT = {
@@ -70,9 +61,7 @@ STYLE_TEST_TYPES = [
     "govet",
     "java.style",
     "ktlint",
-    "py2_flake8",
-    "flake8",
-    "black",
+    "custom_lint",
 ]
 
 REGULAR_TEST_TYPES = [
@@ -85,6 +74,7 @@ REGULAR_TEST_TYPES = [
     "go_test",
     "gtest",
     "hermione",
+    "hermione_beta",
     "java",
     "jest",
     "py2test",
@@ -394,12 +384,10 @@ class YaTestTags(Enum):
     SequentialRun = "ya:sequential_run"
     TraceOutput = "ya:trace_output"
     YtRunner = "ya:yt"
-    CopyData = "ya:copydata"
-    CopyDataRO = "ya:copydataro"
 
 
 class ServiceTags(Enum):
-    AnyTag = "ya:anytag"
+    AnyTag = "ya:__any_tag"
 
 
 class Status(object):
@@ -449,6 +437,7 @@ class Status(object):
 
 
 class _Colors(object):
+
     _NAMES = [
         "blue",
         "cyan",
@@ -481,6 +470,7 @@ Colors = _Colors()
 
 
 class _Highlight(object):
+
     _MARKERS = {
         # special
         "RESET": "rst",

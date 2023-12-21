@@ -28,53 +28,46 @@ namespace S3
 {
 namespace Model
 {
-  class ListMultipartUploadsResult
+  class AWS_S3_API ListMultipartUploadsResult
   {
   public:
-    AWS_S3_API ListMultipartUploadsResult();
-    AWS_S3_API ListMultipartUploadsResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API ListMultipartUploadsResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    ListMultipartUploadsResult();
+    ListMultipartUploadsResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    ListMultipartUploadsResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline const Aws::String& GetBucket() const{ return m_bucket; }
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline void SetBucket(const Aws::String& value) { m_bucket = value; }
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline void SetBucket(Aws::String&& value) { m_bucket = std::move(value); }
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline void SetBucket(const char* value) { m_bucket.assign(value); }
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline ListMultipartUploadsResult& WithBucket(const Aws::String& value) { SetBucket(value); return *this;}
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline ListMultipartUploadsResult& WithBucket(Aws::String&& value) { SetBucket(std::move(value)); return *this;}
 
     /**
-     * <p>The name of the bucket to which the multipart upload was initiated. Does not
-     * return the access point ARN or access point alias if used.</p>
+     * <p>The name of the bucket to which the multipart upload was initiated.</p>
      */
     inline ListMultipartUploadsResult& WithBucket(const char* value) { SetBucket(value); return *this;}
 

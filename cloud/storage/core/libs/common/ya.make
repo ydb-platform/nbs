@@ -46,7 +46,7 @@ PEERDIR(
     library/cpp/protobuf/util
     library/cpp/threading/future
 
-    contrib/ydb/library/actors/prof
+    library/cpp/actors/prof
 )
 
 END()

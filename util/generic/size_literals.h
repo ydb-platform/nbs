@@ -6,10 +6,6 @@
 
 // Unsigned literals
 
-constexpr ui64 operator"" _B(unsigned long long value) noexcept {
-    return value;
-}
-
 constexpr ui64 operator"" _KB(unsigned long long value) noexcept {
     return value * 1024;
 }

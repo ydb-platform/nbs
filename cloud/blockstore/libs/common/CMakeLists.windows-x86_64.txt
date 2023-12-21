@@ -17,7 +17,7 @@ target_link_libraries(blockstore-libs-common PUBLIC
   cpp-digest-crc32c
   cpp-threading-future
   cpp-deprecated-atomic
-  library-actors-prof
+  cpp-actors-prof
 )
 target_sources(blockstore-libs-common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_checksum.cpp

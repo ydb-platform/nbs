@@ -254,7 +254,7 @@
   includes:
   - timers.h
 
-- source_filter: "^contrib/libs/curl"
+- source_filter: "^(contrib/libs/curl|taxi/external/curl)"
   includes:
   - lwip/init.h
   - lwip/netdb.h
@@ -795,6 +795,7 @@
   - alias.h
   - calendar.h
   - fetch.h
+  - gelf.h
   - gnuregex.h
   - kafs.h
   - login_cap.h

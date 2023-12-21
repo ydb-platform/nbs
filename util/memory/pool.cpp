@@ -28,10 +28,8 @@ void TMemoryPool::AddChunk(size_t hint) {
     Chunks_.PushBack(Current_);
 }
 
-size_t TMemoryPool::DoClear(bool keepfirst) noexcept {
-    size_t chunksUsed = 0;
+void TMemoryPool::DoClear(bool keepfirst) noexcept {
     while (!Chunks_.Empty()) {
-        chunksUsed += 1;
         TChunk* c = Chunks_.PopBack();
 
         if (keepfirst && Chunks_.Empty()) {
@@ -41,7 +39,7 @@ size_t TMemoryPool::DoClear(bool keepfirst) noexcept {
             BlockSize_ = c->BlockLength() - sizeof(TChunk);
             MemoryAllocatedBeforeCurrent_ = 0;
             MemoryWasteBeforeCurrent_ = 0;
-            return chunksUsed;
+            return;
         }
 
         TBlock b = {c, c->BlockLength()};
@@ -54,5 +52,4 @@ size_t TMemoryPool::DoClear(bool keepfirst) noexcept {
     BlockSize_ = Origin_;
     MemoryAllocatedBeforeCurrent_ = 0;
     MemoryWasteBeforeCurrent_ = 0;
-    return chunksUsed;
 }

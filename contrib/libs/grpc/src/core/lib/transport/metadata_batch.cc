@@ -26,14 +26,6 @@
 
 #include "src/core/lib/transport/timeout_encoding.h"
 
-template<>
-void Out<grpc_status_code>(IOutputStream& os, grpc_status_code t) {
-    // We use ::ToString for convertation of status code to string,
-    // but it requries definition of the void Out<T>
-    // see util/stream/output.h for details
-    os << static_cast<int>(t);
-}
-
 namespace grpc_core {
 namespace metadata_detail {
 
@@ -101,7 +93,7 @@ StaticSlice ContentTypeMetadata::Encode(ValueType x) {
       return StaticSlice::FromStaticString("unrepresentable value"));
 }
 
-const char* ContentTypeMetadata::DisplayValue(ValueType content_type) {
+const char* ContentTypeMetadata::DisplayValue(MementoType content_type) {
   switch (content_type) {
     case ValueType::kApplicationGrpc:
       return "application/grpc";
@@ -145,7 +137,7 @@ TeMetadata::MementoType TeMetadata::ParseMemento(
   return out;
 }
 
-const char* TeMetadata::DisplayValue(ValueType te) {
+const char* TeMetadata::DisplayValue(MementoType te) {
   switch (te) {
     case ValueType::kTrailers:
       return "trailers";
@@ -176,18 +168,7 @@ StaticSlice HttpSchemeMetadata::Encode(ValueType x) {
   }
 }
 
-size_t EncodedSizeOfKey(HttpSchemeMetadata, HttpSchemeMetadata::ValueType x) {
-  switch (x) {
-    case HttpSchemeMetadata::kHttp:
-      return 4;
-    case HttpSchemeMetadata::kHttps:
-      return 5;
-    default:
-      return 0;
-  }
-}
-
-const char* HttpSchemeMetadata::DisplayValue(ValueType content_type) {
+const char* HttpSchemeMetadata::DisplayValue(MementoType content_type) {
   switch (content_type) {
     case kHttp:
       return "http";
@@ -223,14 +204,11 @@ StaticSlice HttpMethodMetadata::Encode(ValueType x) {
     case kGet:
       return StaticSlice::FromStaticString("GET");
     default:
-      // TODO(ctiller): this should be an abort, we should split up the debug
-      // string generation from the encode string generation so that debug
-      // strings can always succeed and encode strings can crash.
-      return StaticSlice::FromStaticString("<<INVALID METHOD>>");
+      abort();
   }
 }
 
-const char* HttpMethodMetadata::DisplayValue(ValueType content_type) {
+const char* HttpMethodMetadata::DisplayValue(MementoType content_type) {
   switch (content_type) {
     case kPost:
       return "POST";
@@ -272,7 +250,7 @@ Slice LbCostBinMetadata::Encode(const ValueType& x) {
   return Slice(std::move(slice));
 }
 
-TString LbCostBinMetadata::DisplayValue(ValueType x) {
+TString LbCostBinMetadata::DisplayValue(MementoType x) {
   return y_absl::StrCat(x.name, ":", x.cost);
 }
 
@@ -300,10 +278,7 @@ TString GrpcStreamNetworkState::DisplayValue(ValueType x) {
   GPR_UNREACHABLE_CODE(return "unknown value");
 }
 
-TString PeerString::DisplayValue(const ValueType& x) {
-  return TString(x.as_string_view());
-}
-
+TString PeerString::DisplayValue(ValueType x) { return TString(x); }
 const TString& GrpcStatusContext::DisplayValue(const TString& x) {
   return x;
 }

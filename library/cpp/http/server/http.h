@@ -137,10 +137,6 @@ private:
      * 'true' otherwise ('this' will be deleted)
      */
     virtual bool Reply(void* ThreadSpecificResource);
-    virtual bool BeforeParseRequestOk(void* ThreadSpecificResource) {
-        Y_UNUSED(ThreadSpecificResource);
-        return true;
-    }
     void Process(void* ThreadSpecificResource) override;
 
 public:

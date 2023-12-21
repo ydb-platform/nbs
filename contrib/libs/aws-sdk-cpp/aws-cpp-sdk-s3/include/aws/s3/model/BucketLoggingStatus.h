@@ -27,14 +27,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/BucketLoggingStatus">AWS
    * API Reference</a></p>
    */
-  class BucketLoggingStatus
+  class AWS_S3_API BucketLoggingStatus
   {
   public:
-    AWS_S3_API BucketLoggingStatus();
-    AWS_S3_API BucketLoggingStatus(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API BucketLoggingStatus& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    BucketLoggingStatus();
+    BucketLoggingStatus(const Aws::Utils::Xml::XmlNode& xmlNode);
+    BucketLoggingStatus& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     
@@ -58,7 +58,7 @@ namespace Model
   private:
 
     LoggingEnabled m_loggingEnabled;
-    bool m_loggingEnabledHasBeenSet = false;
+    bool m_loggingEnabledHasBeenSet;
   };
 
 } // namespace Model

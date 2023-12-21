@@ -26,14 +26,15 @@
 #include <utility>
 #include <vector>
 
+#include "y_absl/memory/memory.h"
 #include "y_absl/status/status.h"
 #include "y_absl/status/statusor.h"
 #include "y_absl/strings/str_cat.h"
 #include "y_absl/strings/string_view.h"
 #include "y_absl/types/optional.h"
 
-#include <grpc/grpc.h>
-#include <grpc/impl/connectivity_state.h>
+#include <grpc/impl/codegen/connectivity_state.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/log.h>
 
 #include "src/core/ext/filters/client_channel/lb_policy/subchannel_list.h"
@@ -46,6 +47,7 @@
 #include "src/core/lib/json/json.h"
 #include "src/core/lib/load_balancing/lb_policy.h"
 #include "src/core/lib/load_balancing/lb_policy_factory.h"
+#include "src/core/lib/load_balancing/lb_policy_registry.h"
 #include "src/core/lib/load_balancing/subchannel_interface.h"
 #include "src/core/lib/resolver/server_address.h"
 #include "src/core/lib/transport/connectivity_state.h"
@@ -129,6 +131,13 @@ class PickFirst : public LoadBalancingPolicy {
 
     size_t attempting_index() const { return attempting_index_; }
     void set_attempting_index(size_t index) { attempting_index_ = index; }
+
+    bool AllSubchannelsSeenInitialState() {
+      for (size_t i = 0; i < num_subchannels(); ++i) {
+        if (!subchannel(i)->connectivity_state().has_value()) return false;
+      }
+      return true;
+    }
 
    private:
     bool in_transient_failure_ = false;
@@ -233,14 +242,14 @@ void PickFirst::AttemptToConnectUsingLatestUpdateArgsLocked() {
             : latest_update_args_.addresses.status();
     channel_control_helper()->UpdateState(
         GRPC_CHANNEL_TRANSIENT_FAILURE, status,
-        MakeRefCounted<TransientFailurePicker>(status));
+        y_absl::make_unique<TransientFailurePicker>(status));
     channel_control_helper()->RequestReresolution();
   }
   // Otherwise, if this is the initial update, report CONNECTING.
   else if (subchannel_list_.get() == nullptr) {
     channel_control_helper()->UpdateState(
         GRPC_CHANNEL_CONNECTING, y_absl::Status(),
-        MakeRefCounted<QueuePicker>(Ref(DEBUG_LOCATION, "QueuePicker")));
+        y_absl::make_unique<QueuePicker>(Ref(DEBUG_LOCATION, "QueuePicker")));
   }
   // If the new update is empty or we don't yet have a selected subchannel in
   // the current list, replace the current subchannel list immediately.
@@ -332,11 +341,12 @@ void PickFirst::PickFirstSubchannelData::ProcessConnectivityChangeLocked(
                 .ToString()));
         p->channel_control_helper()->UpdateState(
             GRPC_CHANNEL_TRANSIENT_FAILURE, status,
-            MakeRefCounted<TransientFailurePicker>(status));
+            y_absl::make_unique<TransientFailurePicker>(status));
       } else {
         p->channel_control_helper()->UpdateState(
             GRPC_CHANNEL_CONNECTING, y_absl::Status(),
-            MakeRefCounted<QueuePicker>(p->Ref(DEBUG_LOCATION, "QueuePicker")));
+            y_absl::make_unique<QueuePicker>(
+                p->Ref(DEBUG_LOCATION, "QueuePicker")));
       }
       return;
     }
@@ -353,7 +363,7 @@ void PickFirst::PickFirstSubchannelData::ProcessConnectivityChangeLocked(
     p->subchannel_list_.reset();
     p->channel_control_helper()->UpdateState(
         GRPC_CHANNEL_IDLE, y_absl::Status(),
-        MakeRefCounted<QueuePicker>(p->Ref(DEBUG_LOCATION, "QueuePicker")));
+        y_absl::make_unique<QueuePicker>(p->Ref(DEBUG_LOCATION, "QueuePicker")));
     return;
   }
   // If we get here, there are two possible cases:
@@ -427,7 +437,7 @@ void PickFirst::PickFirstSubchannelData::ProcessConnectivityChangeLocked(
                            connectivity_status().ToString()));
           p->channel_control_helper()->UpdateState(
               GRPC_CHANNEL_TRANSIENT_FAILURE, status,
-              MakeRefCounted<TransientFailurePicker>(status));
+              y_absl::make_unique<TransientFailurePicker>(status));
         }
       }
       // If the next subchannel is in IDLE, trigger a connection attempt.
@@ -453,7 +463,8 @@ void PickFirst::PickFirstSubchannelData::ProcessConnectivityChangeLocked(
           !subchannel_list()->in_transient_failure()) {
         p->channel_control_helper()->UpdateState(
             GRPC_CHANNEL_CONNECTING, y_absl::Status(),
-            MakeRefCounted<QueuePicker>(p->Ref(DEBUG_LOCATION, "QueuePicker")));
+            y_absl::make_unique<QueuePicker>(
+                p->Ref(DEBUG_LOCATION, "QueuePicker")));
       }
       break;
     }
@@ -493,7 +504,7 @@ void PickFirst::PickFirstSubchannelData::ProcessUnselectedReadyLocked() {
   p->selected_ = this;
   p->channel_control_helper()->UpdateState(
       GRPC_CHANNEL_READY, y_absl::Status(),
-      MakeRefCounted<Picker>(subchannel()->Ref()));
+      y_absl::make_unique<Picker>(subchannel()->Ref()));
   for (size_t i = 0; i < subchannel_list()->num_subchannels(); ++i) {
     if (i != Index()) {
       subchannel_list()->subchannel(i)->ShutdownLocked();
@@ -529,7 +540,7 @@ class PickFirstFactory : public LoadBalancingPolicyFactory {
 
 void RegisterPickFirstLbPolicy(CoreConfiguration::Builder* builder) {
   builder->lb_policy_registry()->RegisterLoadBalancingPolicyFactory(
-      std::make_unique<PickFirstFactory>());
+      y_absl::make_unique<PickFirstFactory>());
 }
 
 }  // namespace grpc_core

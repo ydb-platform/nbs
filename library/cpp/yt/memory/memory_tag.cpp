@@ -1,14 +1,12 @@
 #include "memory_tag.h"
 
-#include <library/cpp/yt/misc/tls.h>
-
 #include <util/system/compiler.h>
 
 namespace NYT {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-YT_THREAD_LOCAL(TMemoryTag) CurrentMemoryTag;
+thread_local TMemoryTag CurrentMemoryTag;
 
 Y_WEAK TMemoryTag GetCurrentMemoryTag()
 {

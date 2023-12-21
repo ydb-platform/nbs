@@ -591,7 +591,7 @@ namespace NYson {
                     throwIncorrectBoolean();
                 }
 
-                Y_ABORT("unreachable");
+                Y_FAIL("unreachable");
                 ;
             }
 
@@ -735,7 +735,7 @@ namespace NYson {
         }
 
         void RefreshBlock() {
-            Y_ABORT("unreachable");
+            Y_FAIL("unreachable");
         }
 
         void Advance(size_t bytes) {

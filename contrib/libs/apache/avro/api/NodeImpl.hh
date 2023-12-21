@@ -32,7 +32,7 @@
 
 #include "Node.hh"
 #include "NodeConcepts.hh"
-#include "CustomAttributes.hh"
+#include "CustomFields.hh"
 
 namespace avro {
 
@@ -160,8 +160,8 @@ protected:
 
     void setLeafToSymbolic(size_t index, const NodePtr &node) override;
 
-    void doAddCustomAttribute(const CustomAttributes &customAttributes) override {
-      customAttributes_.add(customAttributes);
+    void doAddCustomAttribute(const CustomFields &customfields) override {
+      customAttributes_.add(customfields);
     }
 
     SchemaResolution furtherResolution(const Node &reader) const {
@@ -223,8 +223,8 @@ using MultiLeaves = concepts::MultiAttribute<NodePtr>;
 
 using NoLeafNames = concepts::NoAttribute<std::string>;
 using LeafNames = concepts::MultiAttribute<std::string>;
-using MultiAttributes = concepts::MultiAttribute<CustomAttributes>;
-using NoAttributes = concepts::NoAttribute<CustomAttributes>;
+using MultiAttributes = concepts::MultiAttribute<CustomFields>;
+using NoAttributes = concepts::NoAttribute<CustomFields>;
 
 using NoSize = concepts::NoAttribute<int>;
 using HasSize = concepts::SingleAttribute<int>;
@@ -544,9 +544,9 @@ NodeImpl<A, B, C, D, E>::printBasicInfo(std::ostream &os) const {
         os << " " << sizeAttribute_.get();
     }
     os << '\n';
-    size_t count = leaves();
+    int count = leaves();
     count = count ? count : names();
-    for (size_t i = 0; i < count; ++i) {
+    for (int i = 0; i < count; ++i) {
         if (C::hasAttribute) {
             os << "name " << nameAt(i) << '\n';
         }

@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+find_package(OpenSSL REQUIRED)
 add_subdirectory(ut)
 add_subdirectory(ut_keyring)
 
@@ -20,7 +21,7 @@ target_link_libraries(blockstore-libs-encryption PUBLIC
   blockstore-libs-service
   core-libs-common
   core-libs-keyring
-  contrib-libs-openssl
+  OpenSSL::OpenSSL
 )
 target_sources(blockstore-libs-encryption PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryption_client.cpp

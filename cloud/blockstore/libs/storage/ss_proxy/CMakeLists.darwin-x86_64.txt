@@ -21,7 +21,7 @@ target_link_libraries(libs-storage-ss_proxy PUBLIC
   ydb-core-tablet
   core-tx-schemeshard
   core-tx-tx_proxy
-  library-actors-core
+  cpp-actors-core
   library-cpp-aio
 )
 target_sources(libs-storage-ss_proxy PRIVATE

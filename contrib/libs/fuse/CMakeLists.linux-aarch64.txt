@@ -7,7 +7,37 @@
 
 
 
-add_library(contrib-libs-fuse INTERFACE)
-target_link_libraries(contrib-libs-fuse INTERFACE
+add_library(contrib-libs-fuse)
+target_compile_options(contrib-libs-fuse PRIVATE
+  -fpic
+  -D_FILE_OFFSET_BITS=64
+  -DFUSE_USE_VERSION=29
+  $<IF:$<CXX_COMPILER_ID:MSVC>,,-Wno-everything>
+)
+target_include_directories(contrib-libs-fuse PUBLIC
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/include
+)
+target_include_directories(contrib-libs-fuse PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/libs/libiconv/include
+)
+target_link_libraries(contrib-libs-fuse PUBLIC
   contrib-libs-linux-headers
+)
+target_sources(contrib-libs-fuse PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_mt.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_kern_chan.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_loop.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_loop_mt.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_lowlevel.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_opt.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_session.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/fuse_signals.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/mount.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/mount_util.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/buffer.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/cuse_lowlevel.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/helper.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/modules/subdir.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/fuse/lib/modules/iconv.c
 )

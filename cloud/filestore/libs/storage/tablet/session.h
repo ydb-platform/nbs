@@ -5,7 +5,7 @@
 
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <library/cpp/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>

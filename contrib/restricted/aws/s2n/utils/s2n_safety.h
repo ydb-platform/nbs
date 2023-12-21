@@ -39,10 +39,14 @@
     #define FALL_THROUGH ((void) 0)
 #endif
 
-int s2n_in_unit_test_set(bool is_unit);
-int s2n_in_integ_test_set(bool is_integ);
+/* Returns `true` if s2n is in unit test mode, `false` otherwise */
 bool s2n_in_unit_test();
-bool s2n_in_test();
+
+/* Sets whether s2n is in unit test mode */
+int s2n_in_unit_test_set(bool newval);
+
+#define S2N_IN_INTEG_TEST (getenv("S2N_INTEG_TEST") != NULL)
+#define S2N_IN_TEST       (s2n_in_unit_test() || S2N_IN_INTEG_TEST)
 
 /* Returns 1 if a and b are equal, in constant time */
 bool s2n_constant_time_equals(const uint8_t* a, const uint8_t* b, const uint32_t len);

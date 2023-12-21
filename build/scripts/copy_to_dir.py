@@ -1,17 +1,16 @@
-import argparse
 import errno
 import sys
 import os
 import shutil
+import optparse
 import tarfile
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--build-root', required=True)
-    parser.add_argument('--dest-arch', default=None)
-    parser.add_argument('--dest-dir', required=True)
-    parser.add_argument('args', nargs='*')
+    parser = optparse.OptionParser()
+    parser.add_option('--build-root')
+    parser.add_option('--dest-dir')
+    parser.add_option('--dest-arch')
     return parser.parse_args()
 
 
@@ -42,7 +41,9 @@ def hardlink_or_copy(src, dst):
 
 
 def main():
-    opts = parse_args()
+    opts, args = parse_args()
+    assert opts.build_root
+    assert opts.dest_dir
 
     dest_arch = None
     if opts.dest_arch:
@@ -52,16 +53,12 @@ def main():
             dest_arch = tarfile.open(opts.dest_arch, 'w:gz', dereference=True)
         else:
             # TODO: move check to graph generation stage
-            raise Exception(
-                'Unsopported archive type for {}. Use one of: tar, tar.gz, tgz.'.format(
-                    os.path.basename(opts.dest_arch)
-                )
-            )
+            raise Exception('Unsopported archive type for {}. Use one of: tar, tar.gz, tgz.'.format(os.path.basename(opts.dest_arch)))
 
-    for arg in opts.args:
+    for arg in args:
         dst = arg
         if dst.startswith(opts.build_root):
-            dst = dst[len(opts.build_root) + 1 :]
+            dst = dst[len(opts.build_root) + 1:]
 
         if dest_arch and not arg.endswith('.pkg.fake'):
             dest_arch.add(arg, arcname=dst)

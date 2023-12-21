@@ -7,36 +7,35 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef _LIBCPP___DEBUG
-#define _LIBCPP___DEBUG
+#ifndef _LIBCPP_DEBUG_H
+#define _LIBCPP_DEBUG_H
 
 #include <__assert>
 #include <__config>
-#include <cstddef>
+#include <iosfwd>
 #include <type_traits>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
 #endif
 
-// Catch invalid uses of the legacy _LIBCPP_DEBUG toggle.
-#if defined(_LIBCPP_DEBUG) && _LIBCPP_DEBUG != 0 && !defined(_LIBCPP_ENABLE_DEBUG_MODE)
-#   error "Enabling the debug mode now requires having configured the library with support for the debug mode"
+#if _LIBCPP_DEBUG_LEVEL >= 1 || defined(_LIBCPP_BUILDING_LIBRARY)
+#   include <cstddef>
+#   include <cstdio>
+#   include <cstdlib>
 #endif
 
-#if defined(_LIBCPP_ENABLE_DEBUG_MODE) && !defined(_LIBCPP_CXX03_LANG) && !defined(_LIBCPP_DEBUG_RANDOMIZE_UNSPECIFIED_STABILITY)
-# define _LIBCPP_DEBUG_RANDOMIZE_UNSPECIFIED_STABILITY
-#endif
-
-#ifdef _LIBCPP_ENABLE_DEBUG_MODE
+#if _LIBCPP_DEBUG_LEVEL == 0 || _LIBCPP_DEBUG_LEVEL == 1
+#   define _LIBCPP_DEBUG_ASSERT(x, m) ((void)0)
+#elif _LIBCPP_DEBUG_LEVEL == 2
 #   define _LIBCPP_DEBUG_ASSERT(x, m) _LIBCPP_ASSERT(::std::__libcpp_is_constant_evaluated() || (x), m)
 #else
-#   define _LIBCPP_DEBUG_ASSERT(x, m) ((void)0)
+#   error _LIBCPP_DEBUG_LEVEL must be one of 0, 1, 2
 #endif
 
-#if defined(_LIBCPP_ENABLE_DEBUG_MODE) || defined(_LIBCPP_BUILDING_LIBRARY)
-
 _LIBCPP_BEGIN_NAMESPACE_STD
+
+#if _LIBCPP_DEBUG_LEVEL == 2 || defined(_LIBCPP_BUILDING_LIBRARY)
 
 struct _LIBCPP_TYPE_VIS __c_node;
 
@@ -67,7 +66,7 @@ struct _LIBCPP_TYPE_VIS __c_node
     __c_node& operator=(const __c_node&) = delete;
 
     _LIBCPP_INLINE_VISIBILITY
-    explicit __c_node(void* __c, __c_node* __next)
+    __c_node(void* __c, __c_node* __next)
         : __c_(__c), __next_(__next), beg_(nullptr), end_(nullptr), cap_(nullptr) {}
     virtual ~__c_node();
 
@@ -84,7 +83,7 @@ template <class _Cont>
 struct _C_node
     : public __c_node
 {
-    explicit _C_node(void* __c, __c_node* __n)
+    _C_node(void* __c, __c_node* __n)
         : __c_node(__c, __n) {}
 
     virtual bool __dereferenceable(const void*) const;
@@ -142,7 +141,7 @@ class _LIBCPP_TYPE_VIS __libcpp_db
     __i_node** __iend_;
     size_t   __isz_;
 
-    explicit __libcpp_db();
+    __libcpp_db();
 public:
     __libcpp_db(const __libcpp_db&) = delete;
     __libcpp_db& operator=(const __libcpp_db&) = delete;
@@ -205,15 +204,12 @@ private:
 _LIBCPP_FUNC_VIS __libcpp_db* __get_db();
 _LIBCPP_FUNC_VIS const __libcpp_db* __get_const_db();
 
-_LIBCPP_END_NAMESPACE_STD
 
-#endif // defined(_LIBCPP_ENABLE_DEBUG_MODE) || defined(_LIBCPP_BUILDING_LIBRARY)
-
-_LIBCPP_BEGIN_NAMESPACE_STD
+#endif // _LIBCPP_DEBUG_LEVEL == 2 || defined(_LIBCPP_BUILDING_LIBRARY)
 
 template <class _Tp>
 _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_insert_c(_Tp* __c) {
-#ifdef _LIBCPP_ENABLE_DEBUG_MODE
+#if _LIBCPP_DEBUG_LEVEL == 2
     if (!__libcpp_is_constant_evaluated())
         __get_db()->__insert_c(__c);
 #else
@@ -223,7 +219,7 @@ _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_inser
 
 template <class _Tp>
 _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_insert_i(_Tp* __i) {
-#ifdef _LIBCPP_ENABLE_DEBUG_MODE
+#if _LIBCPP_DEBUG_LEVEL == 2
     if (!__libcpp_is_constant_evaluated())
         __get_db()->__insert_i(__i);
 #else
@@ -231,37 +227,6 @@ _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_inser
 #endif
 }
 
-template <class _Tp>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_erase_c(_Tp* __c) {
-#ifdef _LIBCPP_ENABLE_DEBUG_MODE
-    if (!__libcpp_is_constant_evaluated())
-        __get_db()->__erase_c(__c);
-#else
-    (void)(__c);
-#endif
-}
-
-template <class _Tp>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_swap(_Tp* __lhs, _Tp* __rhs) {
-#ifdef _LIBCPP_ENABLE_DEBUG_MODE
-    if (!__libcpp_is_constant_evaluated())
-        __get_db()->swap(__lhs, __rhs);
-#else
-    (void)(__lhs);
-    (void)(__rhs);
-#endif
-}
-
-template <class _Tp>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_AFTER_CXX11 inline void __debug_db_invalidate_all(_Tp* __c) {
-#ifdef _LIBCPP_ENABLE_DEBUG_MODE
-    if (!__libcpp_is_constant_evaluated())
-        __get_db()->__invalidate_all(__c);
-#else
-    (void)(__c);
-#endif
-}
-
 _LIBCPP_END_NAMESPACE_STD
 
-#endif // _LIBCPP___DEBUG
+#endif // _LIBCPP_DEBUG_H

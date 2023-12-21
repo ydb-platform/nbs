@@ -26,12 +26,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetObjectTaggingResult
+  class AWS_S3_API GetObjectTaggingResult
   {
   public:
-    AWS_S3_API GetObjectTaggingResult();
-    AWS_S3_API GetObjectTaggingResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetObjectTaggingResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetObjectTaggingResult();
+    GetObjectTaggingResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetObjectTaggingResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

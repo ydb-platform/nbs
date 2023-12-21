@@ -11,7 +11,7 @@ PEERDIR(
     contrib/python/requests/py3
     contrib/python/retrying
 
-    contrib/ydb/tests/library
+    ydb/tests/library
 )
 
 PY_SRCS(

@@ -1,6 +1,5 @@
 //
 // Copyright (c) 2009-2011 Artyom Beilis (Tonkikh)
-// Copyright (c) 2022-2023 Alexander Grund
 //
 // Distributed under the Boost Software License, Version 1.0.
 // https://www.boost.org/LICENSE_1_0.txt
@@ -9,9 +8,9 @@
 #define BOOST_LOCALE_FORMATTING_HPP_INCLUDED
 
 #include <boost/locale/time_zone.hpp>
+#include <boost/locale/util/string.hpp>
 #include <boost/assert.hpp>
-#include <boost/utility/string_view.hpp>
-#include <cstdint>
+#include <boost/cstdint.hpp>
 #include <cstring>
 #include <istream>
 #include <ostream>
@@ -130,13 +129,15 @@ namespace boost { namespace locale {
         template<typename CharType>
         void date_time_pattern(const std::basic_string<CharType>& str)
         {
-            date_time_pattern_set().set<CharType>(str);
+            string_set& s = date_time_pattern_set();
+            s.set(str.c_str());
         }
         /// Get date/time pattern (strftime like)
         template<typename CharType>
         std::basic_string<CharType> date_time_pattern() const
         {
-            return date_time_pattern_set().get<CharType>();
+            const string_set& s = date_time_pattern_set();
+            return s.get<CharType>();
         }
 
         /// \cond INTERNAL
@@ -158,24 +159,23 @@ namespace boost { namespace locale {
             void swap(string_set& other);
 
             template<typename Char>
-            void set(const boost::basic_string_view<Char> s)
+            void set(const Char* s)
             {
-                BOOST_ASSERT(!s.empty());
+                BOOST_ASSERT(s);
                 delete[] ptr;
                 ptr = nullptr;
                 type = &typeid(Char);
-                size = sizeof(Char) * s.size();
-                ptr = size ? new char[size] : nullptr;
-                memcpy(ptr, s.data(), size);
+                size = sizeof(Char) * (util::str_end(s) - s + 1);
+                ptr = new char[size];
+                memcpy(ptr, s, size);
             }
 
             template<typename Char>
             std::basic_string<Char> get() const
             {
-                if(type == nullptr || *type != typeid(Char))
+                if(type == 0 || *type != typeid(Char))
                     throw std::bad_cast();
-                std::basic_string<Char> result(size / sizeof(Char), Char(0));
-                memcpy(&result.front(), ptr, size);
+                std::basic_string<Char> result = reinterpret_cast<const Char*>(ptr);
                 return result;
             }
 

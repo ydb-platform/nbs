@@ -16,9 +16,8 @@
 #include <__iterator/iterator_traits.h>
 #include <__iterator/next.h>
 #include <__iterator/prev.h>
-#include <__utility/move.h>
 #include <__utility/swap.h>
-#include <type_traits>
+#include <iterator>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header

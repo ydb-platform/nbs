@@ -80,7 +80,7 @@ namespace NSc::NUt {
         case TRef::T_CREATE_BACK:
             return ref;
         default:
-            Y_ABORT();
+            Y_FAIL();
         }
     }
 
@@ -99,7 +99,7 @@ namespace NSc::NUt {
             }
             return src;
         default:
-            Y_ABORT();
+            Y_FAIL();
         }
     }
 
@@ -125,7 +125,7 @@ namespace NSc::NUt {
         case TDst::T_CREATE_BACK_RREF:
             return dst;
         default:
-            Y_ABORT();
+            Y_FAIL();
         }
     }
 

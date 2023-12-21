@@ -23,7 +23,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 namespace ranges {
   template <class _Tp>
@@ -58,14 +58,14 @@ namespace __begin {
   struct __fn {
     template <class _Tp>
     [[nodiscard]] _LIBCPP_HIDE_FROM_ABI constexpr auto operator()(_Tp (&__t)[]) const noexcept
-      requires (sizeof(_Tp) >= 0)  // Disallow incomplete element types.
+      requires (sizeof(_Tp) != 0)  // Disallow incomplete element types.
     {
       return __t + 0;
     }
 
     template <class _Tp, size_t _Np>
     [[nodiscard]] _LIBCPP_HIDE_FROM_ABI constexpr auto operator()(_Tp (&__t)[_Np]) const noexcept
-      requires (sizeof(_Tp) >= 0)  // Disallow incomplete element types.
+      requires (sizeof(_Tp) != 0)  // Disallow incomplete element types.
     {
       return __t + 0;
     }
@@ -128,10 +128,11 @@ namespace __end {
       { _LIBCPP_AUTO_CAST(end(__t)) } -> sentinel_for<iterator_t<_Tp>>;
     };
 
-  struct __fn {
+  class __fn {
+  public:
     template <class _Tp, size_t _Np>
     [[nodiscard]] _LIBCPP_HIDE_FROM_ABI constexpr auto operator()(_Tp (&__t)[_Np]) const noexcept
-      requires (sizeof(_Tp) >= 0)  // Disallow incomplete element types.
+      requires (sizeof(_Tp) != 0)  // Disallow incomplete element types.
     {
       return __t + _Np;
     }
@@ -217,7 +218,7 @@ inline namespace __cpo {
 } // namespace __cpo
 } // namespace ranges
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 _LIBCPP_END_NAMESPACE_STD
 

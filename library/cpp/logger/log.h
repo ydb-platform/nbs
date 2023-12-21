@@ -54,9 +54,6 @@ public:
     // Check if underlying backend is defined and is not null.
     // NOTE: not thread safe with respect to `ResetBackend` and `ReleaseBackend`.
     bool IsNullLog() const noexcept;
-    bool IsNotNullLog() const noexcept {
-        return !IsNullLog();
-    }
 
     // Write message to the log.
     //

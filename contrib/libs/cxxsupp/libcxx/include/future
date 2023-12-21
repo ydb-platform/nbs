@@ -361,16 +361,14 @@ template <class R, class Alloc> struct uses_allocator<packaged_task<R>, Alloc>;
 
 */
 
-#include <__assert> // all public C++ headers provide the assertion handler
+#include <__assert>
 #include <__availability>
-#include <__chrono/duration.h>
-#include <__chrono/time_point.h>
 #include <__config>
 #include <__memory/allocator_arg_t.h>
 #include <__memory/uses_allocator.h>
 #include <__utility/auto_cast.h>
 #include <__utility/forward.h>
-#include <__utility/move.h>
+#include <chrono>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -378,17 +376,13 @@ template <class R, class Alloc> struct uses_allocator<packaged_task<R>, Alloc>;
 #include <thread>
 #include <version>
 
-#ifndef _LIBCPP_REMOVE_TRANSITIVE_INCLUDES
-#  include <chrono>
-#endif
-
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
 #endif
 
 #ifdef _LIBCPP_HAS_NO_THREADS
-# error "<future> is not supported since libc++ has been configured without support for threads."
-#endif
+#error <future> is not supported on this single threaded system
+#else // !_LIBCPP_HAS_NO_THREADS
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
@@ -405,7 +399,7 @@ _LIBCPP_DECLARE_STRONG_ENUM_EPILOG(future_errc)
 template <>
 struct _LIBCPP_TEMPLATE_VIS is_error_code_enum<future_errc> : public true_type {};
 
-#ifdef _LIBCPP_CXX03_LANG
+#ifdef _LIBCPP_HAS_NO_STRONG_ENUMS
 template <>
 struct _LIBCPP_TEMPLATE_VIS is_error_code_enum<future_errc::__lx> : public true_type { };
 #endif
@@ -419,7 +413,7 @@ _LIBCPP_DECLARE_STRONG_ENUM(launch)
 };
 _LIBCPP_DECLARE_STRONG_ENUM_EPILOG(launch)
 
-#ifndef _LIBCPP_CXX03_LANG
+#ifndef _LIBCPP_HAS_NO_STRONG_ENUMS
 
 typedef underlying_type<launch>::type __launch_underlying_type;
 
@@ -479,7 +473,7 @@ operator^=(launch& __x, launch __y)
     __x = __x ^ __y; return __x;
 }
 
-#endif // !_LIBCPP_CXX03_LANG
+#endif // !_LIBCPP_HAS_NO_STRONG_ENUMS
 
 //enum class future_status
 _LIBCPP_DECLARE_STRONG_ENUM(future_status)
@@ -525,12 +519,12 @@ _LIBCPP_NORETURN inline _LIBCPP_INLINE_VISIBILITY
 #ifndef _LIBCPP_NO_EXCEPTIONS
 _LIBCPP_AVAILABILITY_FUTURE_ERROR
 #endif
-void __throw_future_error(future_errc __ev)
+void __throw_future_error(future_errc _Ev)
 {
 #ifndef _LIBCPP_NO_EXCEPTIONS
-    throw future_error(make_error_code(__ev));
+    throw future_error(make_error_code(_Ev));
 #else
-    ((void)__ev);
+    ((void)_Ev);
     _VSTD::abort();
 #endif
 }
@@ -1106,7 +1100,7 @@ future<_Rp>::future(__assoc_state<_Rp>* __state)
 
 struct __release_shared_count
 {
-    void operator()(__shared_count* __p) {__p->__release_shared();}
+    void operator()(__shared_count* p) {p->__release_shared();}
 };
 
 template <class _Rp>
@@ -2435,5 +2429,7 @@ future<void>::share() _NOEXCEPT
 }
 
 _LIBCPP_END_NAMESPACE_STD
+
+#endif // !_LIBCPP_HAS_NO_THREADS
 
 #endif // _LIBCPP_FUTURE

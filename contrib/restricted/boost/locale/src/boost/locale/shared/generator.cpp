@@ -20,7 +20,8 @@ namespace boost { namespace locale {
             backend_manager(mgr)
         {}
 
-        mutable std::map<std::string, std::locale> cached;
+        typedef std::map<std::string, std::locale> cached_type;
+        mutable cached_type cached;
         mutable boost::mutex cached_lock;
 
         category_t cats;
@@ -68,9 +69,10 @@ namespace boost { namespace locale {
 
     void generator::set_default_messages_domain(const std::string& domain)
     {
-        const auto p = std::find(d->domains.begin(), d->domains.end(), domain);
-        if(p != d->domains.end())
+        std::vector<std::string>::iterator p;
+        if((p = std::find(d->domains.begin(), d->domains.end(), domain)) != d->domains.end()) {
             d->domains.erase(p);
+        }
         d->domains.insert(d->domains.begin(), domain);
     }
 
@@ -102,11 +104,12 @@ namespace boost { namespace locale {
     {
         if(d->caching_enabled) {
             boost::unique_lock<boost::mutex> guard(d->cached_lock);
-            const auto p = d->cached.find(id);
-            if(p != d->cached.end())
+            data::cached_type::const_iterator p = d->cached.find(id);
+            if(p != d->cached.end()) {
                 return p->second;
+            }
         }
-        auto backend = d->backend_manager.create();
+        hold_ptr<localization_backend> backend(d->backend_manager.create());
         set_all_options(*backend, id);
 
         std::locale result = base;
@@ -127,9 +130,10 @@ namespace boost { namespace locale {
         }
         if(d->caching_enabled) {
             boost::unique_lock<boost::mutex> guard(d->cached_lock);
-            const auto p = d->cached.find(id);
-            if(p == d->cached.end())
+            data::cached_type::const_iterator p = d->cached.find(id);
+            if(p == d->cached.end()) {
                 d->cached[id] = result;
+            }
         }
         return result;
     }
@@ -156,11 +160,12 @@ namespace boost { namespace locale {
     void generator::set_all_options(localization_backend& backend, const std::string& id) const
     {
         backend.set_option("locale", id);
-        backend.set_option("use_ansi_encoding", d->use_ansi_encoding ? "true" : "false");
-        for(const std::string& domain : d->domains)
-            backend.set_option("message_application", domain);
-        for(const std::string& path : d->paths)
-            backend.set_option("message_path", path);
+        if(d->use_ansi_encoding)
+            backend.set_option("use_ansi_encoding", "true");
+        for(size_t i = 0; i < d->domains.size(); i++)
+            backend.set_option("message_application", d->domains[i]);
+        for(size_t i = 0; i < d->paths.size(); i++)
+            backend.set_option("message_path", d->paths[i]);
     }
 
     // Sanity check

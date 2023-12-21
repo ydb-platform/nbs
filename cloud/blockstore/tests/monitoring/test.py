@@ -20,8 +20,8 @@ from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server, wait_for_secure_erase
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 4
@@ -718,7 +718,7 @@ class Nbs(LocalNbs):
 
 
 def __run_test(test_case):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,

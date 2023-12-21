@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <boost/limits.hpp>
 #include <boost/type_traits/conditional.hpp>
+#include <boost/static_assert.hpp>
 #include <boost/detail/workaround.hpp>
 
 
@@ -57,8 +58,8 @@ namespace boost
     {
         template<class T>
         inline
-        typename boost::make_unsigned<T>::type lcast_to_unsigned(const T value) noexcept {
-            typedef typename boost::make_unsigned<T>::type result_type;
+        BOOST_DEDUCED_TYPENAME boost::make_unsigned<T>::type lcast_to_unsigned(const T value) BOOST_NOEXCEPT {
+            typedef BOOST_DEDUCED_TYPENAME boost::make_unsigned<T>::type result_type;
             return value < 0
                 ? static_cast<result_type>(0u - static_cast<result_type>(value))
                 : static_cast<result_type>(value);
@@ -69,8 +70,8 @@ namespace boost
     {
         template <class Traits, class T, class CharT>
         class lcast_put_unsigned: boost::noncopyable {
-            typedef typename Traits::int_type int_type;
-            typename boost::conditional<
+            typedef BOOST_DEDUCED_TYPENAME Traits::int_type int_type;
+            BOOST_DEDUCED_TYPENAME boost::conditional<
                     (sizeof(unsigned) > sizeof(T))
                     , unsigned
                     , T
@@ -80,12 +81,12 @@ namespace boost
             int_type const  m_zero;
 
         public:
-            lcast_put_unsigned(const T n_param, CharT* finish) noexcept
+            lcast_put_unsigned(const T n_param, CharT* finish) BOOST_NOEXCEPT
                 : m_value(n_param), m_finish(finish)
                 , m_czero(lcast_char_constants<CharT>::zero), m_zero(Traits::to_int_type(m_czero))
             {
 #ifndef BOOST_NO_LIMITS_COMPILE_TIME_CONSTANTS
-                static_assert(!std::numeric_limits<T>::is_signed, "");
+                BOOST_STATIC_ASSERT(!std::numeric_limits<T>::is_signed);
 #endif
             }
 
@@ -107,7 +108,7 @@ namespace boost
 
 #ifndef BOOST_NO_LIMITS_COMPILE_TIME_CONSTANTS
                 // Check that ulimited group is unreachable:
-                static_assert(std::numeric_limits<T>::digits10 < CHAR_MAX, "");
+                BOOST_STATIC_ASSERT(std::numeric_limits<T>::digits10 < CHAR_MAX);
 #endif
                 CharT const thousands_sep = np.thousands_sep();
                 std::string::size_type group = 0; // current group number
@@ -137,7 +138,7 @@ namespace boost
             }
 
         private:
-            inline bool main_convert_iteration() noexcept {
+            inline bool main_convert_iteration() BOOST_NOEXCEPT {
                 --m_finish;
                 int_type const digit = static_cast<int_type>(m_value % 10U);
                 Traits::assign(*m_finish, Traits::to_char_type(m_zero + digit));
@@ -145,7 +146,7 @@ namespace boost
                 return !!m_value; // suppressing warnings
             }
 
-            inline CharT* main_convert_loop() noexcept {
+            inline CharT* main_convert_loop() BOOST_NOEXCEPT {
                 while (main_convert_iteration());
                 return m_finish;
             }
@@ -163,18 +164,18 @@ namespace boost
             const CharT* m_end;
 
         public:
-            lcast_ret_unsigned(T& value, const CharT* const begin, const CharT* end) noexcept
+            lcast_ret_unsigned(T& value, const CharT* const begin, const CharT* end) BOOST_NOEXCEPT
                 : m_multiplier_overflowed(false), m_multiplier(1), m_value(value), m_begin(begin), m_end(end)
             {
 #ifndef BOOST_NO_LIMITS_COMPILE_TIME_CONSTANTS
-                static_assert(!std::numeric_limits<T>::is_signed, "");
+                BOOST_STATIC_ASSERT(!std::numeric_limits<T>::is_signed);
 
                 // GCC when used with flag -std=c++0x may not have std::numeric_limits
                 // specializations for __int128 and unsigned __int128 types.
                 // Try compilation with -std=gnu++0x or -std=gnu++11.
                 //
                 // http://gcc.gnu.org/bugzilla/show_bug.cgi?id=40856
-                static_assert(std::numeric_limits<T>::is_specialized,
+                BOOST_STATIC_ASSERT_MSG(std::numeric_limits<T>::is_specialized,
                     "std::numeric_limits are not specialized for integral type passed to boost::lexical_cast"
                 );
 #endif
@@ -251,7 +252,7 @@ namespace boost
         private:
             // Iteration that does not care about grouping/separators and assumes that all
             // input characters are digits
-            inline bool main_convert_iteration() noexcept {
+            inline bool main_convert_iteration() BOOST_NOEXCEPT {
                 CharT const czero = lcast_char_constants<CharT>::zero;
                 T const maxv = (std::numeric_limits<T>::max)();
 
@@ -276,7 +277,7 @@ namespace boost
                 return true;
             }
 
-            bool main_convert_loop() noexcept {
+            bool main_convert_loop() BOOST_NOEXCEPT {
                 for ( ; m_end >= m_begin; --m_end) {
                     if (!main_convert_iteration()) {
                         return false;

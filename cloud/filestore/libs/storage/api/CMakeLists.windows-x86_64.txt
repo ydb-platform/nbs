@@ -16,7 +16,7 @@ target_link_libraries(filestore-libs-storage-api PUBLIC
   filestore-private-api-protos
   filestore-public-api-protos
   core-libs-common
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
   ydb-core-protos
 )

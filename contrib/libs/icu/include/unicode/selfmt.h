@@ -259,7 +259,7 @@ public:
      * @return         true if other is semantically equal to this.
      * @stable ICU 4.4
      */
-    virtual bool operator==(const Format& other) const override;
+    virtual UBool operator==(const Format& other) const;
 
     /**
      * Return true if another object is semantically unequal to this one.
@@ -268,14 +268,14 @@ public:
      * @return         true if other is semantically unequal to this.
      * @stable ICU 4.4
      */
-    virtual bool operator!=(const Format& other) const;
+    virtual UBool operator!=(const Format& other) const;
 
     /**
      * Clones this Format object polymorphically.  The caller owns the
      * result and should delete it when done.
      * @stable ICU 4.4
      */
-    virtual SelectFormat* clone() const override;
+    virtual SelectFormat* clone() const;
 
     /**
      * Format an object to produce a string.
@@ -295,7 +295,7 @@ public:
     UnicodeString& format(const Formattable& obj,
                          UnicodeString& appendTo,
                          FieldPosition& pos,
-                         UErrorCode& status) const override;
+                         UErrorCode& status) const;
 
     /**
      * Returns the pattern from applyPattern() or constructor.
@@ -331,7 +331,7 @@ public:
      */
     virtual void parseObject(const UnicodeString& source,
                             Formattable& result,
-                            ParsePosition& parse_pos) const override;
+                            ParsePosition& parse_pos) const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for this class.
@@ -343,12 +343,12 @@ public:
      * ICU "poor man's RTTI", returns a UClassID for the actual class.
      * @stable ICU 4.4
      */
-    virtual UClassID getDynamicClassID() const override;
+    virtual UClassID getDynamicClassID() const;
 
 private:
     friend class MessageFormat;
 
-    SelectFormat() = delete;   // default constructor not implemented.
+    SelectFormat();   // default constructor not implemented.
 
     /**
      * Finds the SelectFormat sub-message for the given keyword, or the "other" sub-message.

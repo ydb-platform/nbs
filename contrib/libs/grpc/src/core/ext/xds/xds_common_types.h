@@ -14,8 +14,8 @@
 // limitations under the License.
 //
 
-#ifndef GRPC_SRC_CORE_EXT_XDS_XDS_COMMON_TYPES_H
-#define GRPC_SRC_CORE_EXT_XDS_XDS_COMMON_TYPES_H
+#ifndef GRPC_CORE_EXT_XDS_XDS_COMMON_TYPES_H
+#define GRPC_CORE_EXT_XDS_XDS_COMMON_TYPES_H
 
 #include <grpc/support/port_platform.h>
 
@@ -23,23 +23,24 @@
 #include <util/string/cast.h>
 #include <vector>
 
+#include "y_absl/status/statusor.h"
 #include "y_absl/strings/string_view.h"
-#include "y_absl/types/optional.h"
-#include "y_absl/types/variant.h"
 #include "envoy/extensions/transport_sockets/tls/v3/tls.upb.h"
 #include "google/protobuf/any.upb.h"
 #include "google/protobuf/duration.upb.h"
+#include "xds/type/v3/typed_struct.upb.h"
 
 #include "src/core/ext/xds/xds_resource_type.h"
 #include "src/core/lib/gprpp/time.h"
-#include "src/core/lib/gprpp/validation_errors.h"
-#include "src/core/lib/json/json.h"
 #include "src/core/lib/matchers/matchers.h"
 
 namespace grpc_core {
 
-Duration ParseDuration(const google_protobuf_Duration* proto_duration,
-                       ValidationErrors* errors);
+inline Duration ParseDuration(const google_protobuf_Duration* proto_duration) {
+  return Duration::FromSecondsAndNanoseconds(
+      google_protobuf_Duration_seconds(proto_duration),
+      google_protobuf_Duration_nanos(proto_duration));
+}
 
 struct CommonTlsContext {
   struct CertificateProviderPluginInstance {
@@ -82,28 +83,21 @@ struct CommonTlsContext {
   TString ToString() const;
   bool Empty() const;
 
-  static CommonTlsContext Parse(
+  static y_absl::StatusOr<CommonTlsContext> Parse(
       const XdsResourceType::DecodeContext& context,
       const envoy_extensions_transport_sockets_tls_v3_CommonTlsContext*
-          common_tls_context_proto,
-      ValidationErrors* errors);
+          common_tls_context_proto);
 };
 
-struct XdsExtension {
-  // The type, either from the top level or from inside the TypedStruct.
+struct ExtractExtensionTypeNameResult {
   y_absl::string_view type;
-  // A Json object for a TypedStruct, or the serialized config otherwise.
-  y_absl::variant<y_absl::string_view /*serialized_value*/, Json /*typed_struct*/>
-      value;
-  // Validation fields that need to stay in scope until we're done
-  // processing the extension.
-  std::vector<ValidationErrors::ScopedField> validation_fields;
+  xds_type_v3_TypedStruct* typed_struct = nullptr;
 };
 
-y_absl::optional<XdsExtension> ExtractXdsExtension(
+y_absl::StatusOr<ExtractExtensionTypeNameResult> ExtractExtensionTypeName(
     const XdsResourceType::DecodeContext& context,
-    const google_protobuf_Any* any, ValidationErrors* errors);
+    const google_protobuf_Any* any);
 
 }  // namespace grpc_core
 
-#endif  // GRPC_SRC_CORE_EXT_XDS_XDS_COMMON_TYPES_H
+#endif  // GRPC_CORE_EXT_XDS_XDS_COMMON_TYPES_H

@@ -30,7 +30,7 @@ target_link_libraries(libs-storage-stats_service PUBLIC
   ydb-core-mon
   ydb-core-protos
   ydb-core-tablet
-  library-actors-core
+  cpp-actors-core
   library-cpp-json
   monlib-service-pages
   contrib-libs-protobuf

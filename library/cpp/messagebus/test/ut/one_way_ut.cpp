@@ -125,7 +125,7 @@ public:
     /// this handler should not be called because this server does not send replies
     void OnSent(TAutoPtr<TBusMessage> mess) override {
         Y_UNUSED(mess);
-        Y_ABORT("This server does not sent replies");
+        Y_FAIL("This server does not sent replies");
     }
 };
 
@@ -168,7 +168,7 @@ Y_UNIT_TEST_SUITE(TMessageBusTests_OneWay) {
         void OnError(TAutoPtr<TBusMessage> mess, EMessageStatus status) override {
             Y_UNUSED(mess);
 
-            Y_ABORT_UNLESS(status == MESSAGE_MESSAGE_TOO_LARGE, "wrong status: %s", ToCString(status));
+            Y_VERIFY(status == MESSAGE_MESSAGE_TOO_LARGE, "wrong status: %s", ToCString(status));
 
             GotTooLarge.Signal();
         }

@@ -111,7 +111,7 @@ void TDynamicCountersPage::HandleAbsentSubgroup(IMonHttpRequest& request) {
     } else if (UnknownGroupPolicy == EUnknownGroupPolicy::Ignore) {
         NoContent(request);
     } else {
-        Y_ABORT("Unsupported policy set");
+        Y_FAIL("Unsupported policy set");
     }
 }
 

@@ -13,9 +13,9 @@ from cloud.blockstore.tests.python.lib.test_base import \
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
+from ydb.tests.library.harness.kikimr_cluster import \
     kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
+from ydb.tests.library.harness.kikimr_config import \
     KikimrConfigGenerator
 
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
@@ -38,7 +38,7 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 
 def kikimr_start():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -137,7 +137,7 @@ def test_change_device():
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
-        kikimr_binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        kikimr_binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
         disk_agent_binary_path=yatest_common.binary_path(
             disk_agent_binary_path))
 

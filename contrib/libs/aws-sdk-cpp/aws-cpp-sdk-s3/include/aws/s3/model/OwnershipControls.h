@@ -29,14 +29,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/OwnershipControls">AWS
    * API Reference</a></p>
    */
-  class OwnershipControls
+  class AWS_S3_API OwnershipControls
   {
   public:
-    AWS_S3_API OwnershipControls();
-    AWS_S3_API OwnershipControls(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API OwnershipControls& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    OwnershipControls();
+    OwnershipControls(const Aws::Utils::Xml::XmlNode& xmlNode);
+    OwnershipControls& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -82,7 +82,7 @@ namespace Model
   private:
 
     Aws::Vector<OwnershipControlsRule> m_rules;
-    bool m_rulesHasBeenSet = false;
+    bool m_rulesHasBeenSet;
   };
 
 } // namespace Model

@@ -41,7 +41,7 @@
  * default locale because that would result in a mix of languages that is
  * unpredictable to the programmer and most likely useless.
  */
-U_CAPI const char16_t * U_EXPORT2
+U_CAPI const UChar * U_EXPORT2
 uloc_getTableStringWithFallback(const char *path, const char *locale,
                               const char *tableKey, const char *subTableKey,
                               const char *itemKey,
@@ -49,7 +49,7 @@ uloc_getTableStringWithFallback(const char *path, const char *locale,
                               UErrorCode *pErrorCode)
 {
 /*    char localeBuffer[ULOC_FULLNAME_CAPACITY*4];*/
-    const char16_t *item=nullptr;
+    const UChar *item=NULL;
     UErrorCode errorCode;
     char explicitFallbackName[ULOC_FULLNAME_CAPACITY] = {0};
 
@@ -63,7 +63,7 @@ uloc_getTableStringWithFallback(const char *path, const char *locale,
     if(U_FAILURE(errorCode)) {
         /* total failure, not even root could be opened */
         *pErrorCode=errorCode;
-        return nullptr;
+        return NULL;
     } else if(errorCode==U_USING_DEFAULT_WARNING ||
                 (errorCode==U_USING_FALLBACK_WARNING && *pErrorCode!=U_USING_DEFAULT_WARNING)
     ) {
@@ -76,7 +76,7 @@ uloc_getTableStringWithFallback(const char *path, const char *locale,
         icu::StackUResourceBundle subTable;
         ures_getByKeyWithFallback(rb.getAlias(), tableKey, table.getAlias(), &errorCode);
 
-        if (subTableKey != nullptr) {
+        if (subTableKey != NULL) {
             /*
             ures_getByKeyWithFallback(table.getAlias(), subTableKey, subTable.getAlias(), &errorCode);
             item = ures_getStringByKeyWithFallback(subTable.getAlias(), itemKey, pLength, &errorCode);
@@ -91,7 +91,7 @@ uloc_getTableStringWithFallback(const char *path, const char *locale,
         if(U_SUCCESS(errorCode)){
             item = ures_getStringByKeyWithFallback(table.getAlias(), itemKey, pLength, &errorCode);
             if(U_FAILURE(errorCode)){
-                const char* replacement = nullptr;
+                const char* replacement = NULL;
                 *pErrorCode = errorCode; /*save the errorCode*/
                 errorCode = U_ZERO_ERROR;
                 /* may be a deprecated code */
@@ -101,7 +101,7 @@ uloc_getTableStringWithFallback(const char *path, const char *locale,
                     replacement =  uloc_getCurrentLanguageID(itemKey);
                 }
                 /*pointer comparison is ok since uloc_getCurrentCountryID & uloc_getCurrentLanguageID return the key itself is replacement is not found*/
-                if(replacement!=nullptr && itemKey != replacement){
+                if(replacement!=NULL && itemKey != replacement){
                     item = ures_getStringByKeyWithFallback(table.getAlias(), replacement, pLength, &errorCode);
                     if(U_SUCCESS(errorCode)){
                         *pErrorCode = errorCode;
@@ -117,7 +117,7 @@ uloc_getTableStringWithFallback(const char *path, const char *locale,
 
             /* still can't figure out ?.. try the fallback mechanism */
             int32_t len = 0;
-            const char16_t* fallbackLocale =  nullptr;
+            const UChar* fallbackLocale =  NULL;
             *pErrorCode = errorCode;
             errorCode = U_ZERO_ERROR;
 
@@ -162,12 +162,12 @@ _uloc_getOrientationHelper(const char* localeId,
         uloc_canonicalize(localeId, localeBuffer, sizeof(localeBuffer), status);
 
         if (!U_FAILURE(*status)) {
-            const char16_t* const value =
+            const UChar* const value =
                 uloc_getTableStringWithFallback(
-                    nullptr,
+                    NULL,
                     localeBuffer,
                     "layout",
-                    nullptr,
+                    NULL,
                     key,
                     &length,
                     status);

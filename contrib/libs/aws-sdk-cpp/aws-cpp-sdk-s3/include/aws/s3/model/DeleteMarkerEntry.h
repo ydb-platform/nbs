@@ -29,14 +29,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/DeleteMarkerEntry">AWS
    * API Reference</a></p>
    */
-  class DeleteMarkerEntry
+  class AWS_S3_API DeleteMarkerEntry
   {
   public:
-    AWS_S3_API DeleteMarkerEntry();
-    AWS_S3_API DeleteMarkerEntry(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API DeleteMarkerEntry& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    DeleteMarkerEntry();
+    DeleteMarkerEntry(const Aws::Utils::Xml::XmlNode& xmlNode);
+    DeleteMarkerEntry& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -210,19 +210,19 @@ namespace Model
   private:
 
     Owner m_owner;
-    bool m_ownerHasBeenSet = false;
+    bool m_ownerHasBeenSet;
 
     Aws::String m_key;
-    bool m_keyHasBeenSet = false;
+    bool m_keyHasBeenSet;
 
     Aws::String m_versionId;
-    bool m_versionIdHasBeenSet = false;
+    bool m_versionIdHasBeenSet;
 
     bool m_isLatest;
-    bool m_isLatestHasBeenSet = false;
+    bool m_isLatestHasBeenSet;
 
     Aws::Utils::DateTime m_lastModified;
-    bool m_lastModifiedHasBeenSet = false;
+    bool m_lastModifiedHasBeenSet;
   };
 
 } // namespace Model

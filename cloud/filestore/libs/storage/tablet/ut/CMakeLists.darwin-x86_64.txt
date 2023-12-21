@@ -20,7 +20,7 @@ target_link_libraries(cloud-filestore-libs-storage-tablet-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-tablet
-  libs-storage-testlib
+  filestore-libs-storage-testlib
   ydb-core-testlib
 )
 target_link_options(cloud-filestore-libs-storage-tablet-ut PRIVATE

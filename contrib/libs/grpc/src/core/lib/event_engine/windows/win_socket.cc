@@ -18,16 +18,14 @@
 #include <grpc/support/log_windows.h>
 
 #include "src/core/lib/event_engine/executor/executor.h"
-#include "src/core/lib/event_engine/tcp_socket_utils.h"
 #include "src/core/lib/event_engine/trace.h"
 #include "src/core/lib/event_engine/windows/win_socket.h"
-#include "src/core/lib/gprpp/debug_location.h"
 #include "src/core/lib/gprpp/sync.h"
 #include "src/core/lib/iomgr/error.h"
 
 #if defined(__MSYS__) && defined(GPR_ARCH_64)
-// Nasty workaround for nasty bug when using the 64 bits msys compiler
-// in conjunction with Microsoft Windows headers.
+/* Nasty workaround for nasty bug when using the 64 bits msys compiler
+   in conjunction with Microsoft Windows headers. */
 #define GRPC_FIONBIO _IOW('f', 126, uint32_t)
 #else
 #define GRPC_FIONBIO FIONBIO
@@ -36,27 +34,27 @@
 namespace grpc_event_engine {
 namespace experimental {
 
-// ---- WinSocket ----
-
 WinSocket::WinSocket(SOCKET socket, Executor* executor) noexcept
     : socket_(socket),
       executor_(executor),
-      read_info_(this),
-      write_info_(this) {}
+      read_info_(OpState(this)),
+      write_info_(OpState(this)) {}
 
-WinSocket::~WinSocket() {
-  GPR_ASSERT(is_shutdown_.load());
-  GRPC_EVENT_ENGINE_ENDPOINT_TRACE("WinSocket::%p destroyed", this);
-}
+WinSocket::~WinSocket() { GPR_ASSERT(is_shutdown_.load()); }
 
-SOCKET WinSocket::raw_socket() { return socket_; }
+SOCKET WinSocket::socket() { return socket_; }
 
-void WinSocket::Shutdown() {
+void WinSocket::MaybeShutdown(y_absl::Status why) {
   // if already shutdown, return early. Otherwise, set the shutdown flag.
   if (is_shutdown_.exchange(true)) {
-    GRPC_EVENT_ENGINE_ENDPOINT_TRACE("WinSocket::%p already shutting down",
-                                     this);
+    if (GRPC_TRACE_FLAG_ENABLED(grpc_event_engine_trace)) {
+      gpr_log(GPR_DEBUG, "WinSocket::%p already shutting down", this);
+    }
     return;
+  }
+  if (GRPC_TRACE_FLAG_ENABLED(grpc_event_engine_trace)) {
+    gpr_log(GPR_DEBUG, "WinSocket::%p shutting down now. Reason: %s", this,
+            why.ToString().c_str());
   }
   // Grab the function pointer for DisconnectEx for that specific socket.
   // It may change depending on the interface.
@@ -76,15 +74,6 @@ void WinSocket::Shutdown() {
     gpr_free(utf8_message);
   }
   closesocket(socket_);
-  GRPC_EVENT_ENGINE_ENDPOINT_TRACE("WinSocket::%p socket closed", this);
-}
-
-void WinSocket::Shutdown(const grpc_core::DebugLocation& location,
-                         y_absl::string_view reason) {
-  GRPC_EVENT_ENGINE_ENDPOINT_TRACE(
-      "WinSocket::%p Shut down from %s:%d. Reason: %s", this, location.file(),
-      location.line(), reason.data());
-  Shutdown();
 }
 
 void WinSocket::NotifyOnReady(OpState& info, EventEngine::Closure* closure) {
@@ -96,8 +85,7 @@ void WinSocket::NotifyOnReady(OpState& info, EventEngine::Closure* closure) {
   if (std::exchange(info.has_pending_iocp_, false)) {
     executor_->Run(closure);
   } else {
-    EventEngine::Closure* prev = nullptr;
-    GPR_ASSERT(info.closure_.compare_exchange_strong(prev, closure));
+    info.closure_ = closure;
   }
 }
 
@@ -109,56 +97,46 @@ void WinSocket::NotifyOnWrite(EventEngine::Closure* on_write) {
   NotifyOnReady(write_info_, on_write);
 }
 
-// ---- WinSocket::OpState ----
-
 WinSocket::OpState::OpState(WinSocket* win_socket) noexcept
-    : win_socket_(win_socket) {
-  memset(&overlapped_, 0, sizeof(OVERLAPPED));
-}
+    : win_socket_(win_socket), closure_(nullptr) {}
 
 void WinSocket::OpState::SetReady() {
   GPR_ASSERT(!has_pending_iocp_);
-  auto* closure = closure_.exchange(nullptr);
-  if (closure) {
-    win_socket_->executor_->Run(closure);
+  if (closure_) {
+    win_socket_->executor_->Run(closure_);
   } else {
     has_pending_iocp_ = true;
   }
 }
 
 void WinSocket::OpState::SetError(int wsa_error) {
-  result_ = OverlappedResult{/*wsa_error=*/wsa_error, /*bytes_transferred=*/0};
-}
-
-void WinSocket::OpState::SetResult(OverlappedResult result) {
-  result_ = result;
+  bytes_transferred_ = 0;
+  wsa_error_ = wsa_error;
 }
 
 void WinSocket::OpState::GetOverlappedResult() {
-  GetOverlappedResult(win_socket_->raw_socket());
-}
-
-void WinSocket::OpState::GetOverlappedResult(SOCKET sock) {
-  if (win_socket_->IsShutdown()) {
-    result_ = OverlappedResult{/*wsa_error=*/WSA_OPERATION_ABORTED,
-                               /*bytes_transferred=*/0};
-    return;
-  }
   DWORD flags = 0;
   DWORD bytes;
-  BOOL success =
-      WSAGetOverlappedResult(sock, &overlapped_, &bytes, FALSE, &flags);
-  result_ = OverlappedResult{/*wsa_error=*/success ? 0 : WSAGetLastError(),
-                             /*bytes_transferred=*/bytes};
+  BOOL success = WSAGetOverlappedResult(win_socket_->socket(), &overlapped_,
+                                        &bytes, FALSE, &flags);
+  bytes_transferred_ = bytes;
+  wsa_error_ = success ? 0 : WSAGetLastError();
 }
+
+void WinSocket::SetReadable() { read_info_.SetReady(); }
+
+void WinSocket::SetWritable() { write_info_.SetReady(); }
 
 bool WinSocket::IsShutdown() { return is_shutdown_.load(); }
 
 WinSocket::OpState* WinSocket::GetOpInfoForOverlapped(OVERLAPPED* overlapped) {
-  GRPC_EVENT_ENGINE_POLLER_TRACE(
-      "WinSocket::%p looking for matching OVERLAPPED::%p. "
-      "read(%p) write(%p)",
-      this, overlapped, &read_info_.overlapped_, &write_info_.overlapped_);
+  if (GRPC_TRACE_FLAG_ENABLED(grpc_event_engine_trace)) {
+    gpr_log(GPR_DEBUG,
+            "WinSocket::%p looking for matching OVERLAPPED::%p. "
+            "read(%p) write(%p)",
+            this, overlapped, &read_info_.overlapped_,
+            &write_info_.overlapped_);
+  }
   if (overlapped == &read_info_.overlapped_) return &read_info_;
   if (overlapped == &write_info_.overlapped_) return &write_info_;
   return nullptr;
@@ -173,7 +151,7 @@ grpc_error_handle grpc_tcp_set_non_block(SOCKET sock) {
   status = WSAIoctl(sock, GRPC_FIONBIO, &param, sizeof(param), NULL, 0, &ret,
                     NULL, NULL);
   return status == 0
-             ? y_absl::OkStatus()
+             ? GRPC_ERROR_NONE
              : GRPC_WSA_ERROR(WSAGetLastError(), "WSAIoctl(GRPC_FIONBIO)");
 }
 
@@ -183,7 +161,7 @@ static grpc_error_handle set_dualstack(SOCKET sock) {
   status = setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&param,
                       sizeof(param));
   return status == 0
-             ? y_absl::OkStatus()
+             ? GRPC_ERROR_NONE
              : GRPC_WSA_ERROR(WSAGetLastError(), "setsockopt(IPV6_V6ONLY)");
 }
 
@@ -195,7 +173,7 @@ static grpc_error_handle enable_socket_low_latency(SOCKET sock) {
   if (status == SOCKET_ERROR) {
     status = WSAGetLastError();
   }
-  return status == 0 ? y_absl::OkStatus()
+  return status == 0 ? GRPC_ERROR_NONE
                      : GRPC_WSA_ERROR(status, "setsockopt(TCP_NODELAY)");
 }
 
@@ -204,12 +182,12 @@ static grpc_error_handle enable_socket_low_latency(SOCKET sock) {
 y_absl::Status PrepareSocket(SOCKET sock) {
   y_absl::Status err;
   err = grpc_tcp_set_non_block(sock);
-  if (!err.ok()) return err;
+  if (!GRPC_ERROR_IS_NONE(err)) return err;
   err = enable_socket_low_latency(sock);
-  if (!err.ok()) return err;
+  if (!GRPC_ERROR_IS_NONE(err)) return err;
   err = set_dualstack(sock);
-  if (!err.ok()) return err;
-  return y_absl::OkStatus();
+  if (!GRPC_ERROR_IS_NONE(err)) return err;
+  return GRPC_ERROR_NONE;
 }
 
 }  // namespace experimental

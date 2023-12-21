@@ -89,6 +89,12 @@ typedef struct {
   const unsigned char *json;
   size_t position;
 } error;
+static error global_error = { NULL, 0 };
+
+CJSON_PUBLIC(const char *) cJSON_GetErrorPtr(void)
+{
+  return (const char*) (global_error.json + global_error.position);
+}
 
 CJSON_PUBLIC(char *) cJSON_GetStringValue(const cJSON * const item)
 {
@@ -1088,6 +1094,10 @@ CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthOpts(const char *value, size_t buffer
   parse_buffer buffer = { 0, 0, 0, 0, { 0, 0, 0 } };
   cJSON *item = NULL;
 
+  /* reset error position */
+  global_error.json = NULL;
+  global_error.position = 0;
+
   if (value == NULL || 0 == buffer_length)
   {
       goto fail;
@@ -1152,6 +1162,7 @@ fail:
           *return_parse_end = (const char*)local_error.json + local_error.position;
       }
 
+      global_error = local_error;
   }
 
   return NULL;

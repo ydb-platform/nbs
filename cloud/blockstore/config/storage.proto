@@ -4,7 +4,7 @@ package NCloud.NBlockStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+option go_package = "a.yandex-team.ru/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -20,13 +20,11 @@ class TMappedIterator {
 protected:
     using TSelf = TMappedIterator<TIterator, TMapper>;
     using TSrcPointerType = typename std::iterator_traits<TIterator>::reference;
-    using TInvokeResult = std::invoke_result_t<TMapper, TSrcPointerType>;
-    using TValue = std::remove_reference_t<TInvokeResult>;
+    using TValue = typename std::invoke_result_t<TMapper, TSrcPointerType>;
 public:
     using difference_type = std::ptrdiff_t;
     using value_type = TValue;
     using reference = TValue&;
-    using const_reference = const TValue&;
     using pointer = std::remove_reference_t<TValue>*;
     using iterator_category = std::conditional_t<NIteratorPrivate::HasRandomAccess<TIterator>(),
         std::random_access_iterator_tag, std::input_iterator_tag>;
@@ -45,10 +43,10 @@ public:
         --Iter;
         return *this;
     }
-    TInvokeResult operator*() {
+    TValue operator*() {
         return Mapper((*Iter));
     }
-    TInvokeResult operator*() const {
+    TValue operator*() const {
         return Mapper((*Iter));
     }
 
@@ -56,7 +54,7 @@ public:
         return &(Mapper((*Iter)));
     }
 
-    TInvokeResult operator[](difference_type n) const {
+    TValue operator[](difference_type n) const {
         return Mapper(*(Iter + n));
     }
     TSelf& operator+=(difference_type n) {
@@ -108,7 +106,7 @@ public:
     using const_iterator = TIterator;
     using value_type = typename TIterator::value_type;
     using reference = typename TIterator::reference;
-    using const_reference = typename TIterator::const_reference;
+    using const_reference = typename TIterator::reference;
 
     TInputMappedRange(TContainer&& container, TMapper&& mapper)
         : Container(std::forward<TContainer>(container))

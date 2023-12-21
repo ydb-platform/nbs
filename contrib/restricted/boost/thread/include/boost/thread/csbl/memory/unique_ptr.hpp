@@ -12,15 +12,17 @@
 #define BOOST_CSBL_MEMORY_UNIQUE_PTR_HPP
 
 #include <boost/thread/csbl/memory/config.hpp>
-#include <boost/smart_ptr/make_unique.hpp>
+
+#include <boost/move/unique_ptr.hpp>
+#include <boost/move/make_unique.hpp>
 
 namespace boost
 {
   namespace csbl
   {
-    using ::std::unique_ptr;
-    using ::boost::make_unique;
+    using ::boost::movelib::unique_ptr;
+    using ::boost::movelib::make_unique;
+
   }
 }
-
 #endif // header

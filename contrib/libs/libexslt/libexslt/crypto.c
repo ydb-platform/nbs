@@ -7,7 +7,6 @@
 #include <libxml/parser.h>
 #include <libxml/encoding.h>
 #include <libxml/uri.h>
-#include <libxml/threads.h>
 
 #include <libxslt/xsltutils.h>
 #include <libxslt/xsltInternals.h>

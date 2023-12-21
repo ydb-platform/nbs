@@ -32,7 +32,11 @@ time2_demo contained this comment:
 #ifndef BOOST_RATIO_RATIO_FWD_HPP
 #define BOOST_RATIO_RATIO_FWD_HPP
 
-#include <ratio>
+#include <boost/ratio/config.hpp>
+
+#if defined(__GNUC__) && (__GNUC__ >= 4)
+#pragma GCC system_header
+#endif
 
 namespace boost
 {
@@ -44,40 +48,62 @@ namespace boost
 //----------------------------------------------------------------------------//
 
 // ratio
-using std::ratio;
+template <boost::intmax_t N, boost::intmax_t D = 1> class ratio;
 
 // ratio arithmetic
-using std::ratio_add;
-using std::ratio_subtract;
-using std::ratio_multiply;
-using std::ratio_divide;
+template <class R1, class R2> struct ratio_add;
+template <class R1, class R2> struct ratio_subtract;
+template <class R1, class R2> struct ratio_multiply;
+template <class R1, class R2> struct ratio_divide;
+#ifdef BOOST_RATIO_EXTENSIONS
+template <class R1, class R2> struct ratio_gcd;
+template <class R1, class R2> struct ratio_lcm;
+template <class R> struct ratio_negate;
+template <class R> struct ratio_abs;
+template <class R> struct ratio_sign;
+template <class R, int P> struct ratio_power;
+#endif
 
 // ratio comparison
-using std::ratio_equal;
-using std::ratio_not_equal;
-using std::ratio_less;
-using std::ratio_less_equal;
-using std::ratio_greater;
-using std::ratio_greater_equal;
+template <class R1, class R2> struct ratio_equal;
+template <class R1, class R2> struct ratio_not_equal;
+template <class R1, class R2> struct ratio_less;
+template <class R1, class R2> struct ratio_less_equal;
+template <class R1, class R2> struct ratio_greater;
+template <class R1, class R2> struct ratio_greater_equal;
 
 // convenience SI typedefs
-using std::atto;
-using std::femto;
-using std::pico;
-using std::nano;
-using std::micro;
-using std::milli;
-using std::centi;
-using std::deci;
-using std::deca;
-using std::hecto;
-using std::kilo;
-using std::mega;
-using std::giga;
-using std::tera;
-using std::peta;
-using std::exa;
+typedef ratio<BOOST_RATIO_INTMAX_C(1), BOOST_RATIO_INTMAX_C(1000000000000000000)> atto;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),    BOOST_RATIO_INTMAX_C(1000000000000000)> femto;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),       BOOST_RATIO_INTMAX_C(1000000000000)> pico;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),          BOOST_RATIO_INTMAX_C(1000000000)> nano;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),             BOOST_RATIO_INTMAX_C(1000000)> micro;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),                BOOST_RATIO_INTMAX_C(1000)> milli;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),                 BOOST_RATIO_INTMAX_C(100)> centi;
+typedef ratio<BOOST_RATIO_INTMAX_C(1),                  BOOST_RATIO_INTMAX_C(10)> deci;
+typedef ratio<                 BOOST_RATIO_INTMAX_C(10), BOOST_RATIO_INTMAX_C(1)> deca;
+typedef ratio<                BOOST_RATIO_INTMAX_C(100), BOOST_RATIO_INTMAX_C(1)> hecto;
+typedef ratio<               BOOST_RATIO_INTMAX_C(1000), BOOST_RATIO_INTMAX_C(1)> kilo;
+typedef ratio<            BOOST_RATIO_INTMAX_C(1000000), BOOST_RATIO_INTMAX_C(1)> mega;
+typedef ratio<         BOOST_RATIO_INTMAX_C(1000000000), BOOST_RATIO_INTMAX_C(1)> giga;
+typedef ratio<      BOOST_RATIO_INTMAX_C(1000000000000), BOOST_RATIO_INTMAX_C(1)> tera;
+typedef ratio<   BOOST_RATIO_INTMAX_C(1000000000000000), BOOST_RATIO_INTMAX_C(1)> peta;
+typedef ratio<BOOST_RATIO_INTMAX_C(1000000000000000000), BOOST_RATIO_INTMAX_C(1)> exa;
 
+#ifdef BOOST_RATIO_EXTENSIONS
+
+#define BOOST_RATIO_1024 BOOST_RATIO_INTMAX_C(1024)
+
+// convenience IEC typedefs
+typedef ratio<                                                                                     BOOST_RATIO_1024> kibi;
+typedef ratio<                                                                    BOOST_RATIO_1024*BOOST_RATIO_1024> mebi;
+typedef ratio<                                                   BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024> gibi;
+typedef ratio<                                  BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024> tebi;
+typedef ratio<                 BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024> pebi;
+typedef ratio<BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024*BOOST_RATIO_1024> exbi;
+
+#endif
 }  // namespace boost
 
-#endif  // BOOST_RATIO_RATIO_FWD_HPP
+
+#endif  // BOOST_RATIO_HPP

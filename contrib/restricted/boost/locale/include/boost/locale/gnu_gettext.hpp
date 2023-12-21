@@ -7,17 +7,10 @@
 #ifndef BOOST_LOCLAE_GNU_GETTEXT_HPP
 #define BOOST_LOCLAE_GNU_GETTEXT_HPP
 
-#include <boost/locale/detail/is_supported_char.hpp>
 #include <boost/locale/message.hpp>
 #include <functional>
 #include <stdexcept>
-#include <type_traits>
 #include <vector>
-
-#ifdef BOOST_MSVC
-#    pragma warning(push)
-#    pragma warning(disable : 4251) // "identifier" : class "type" needs to have dll-interface...
-#endif
 
 namespace boost { namespace locale {
     /// \addtogroup message
@@ -32,7 +25,7 @@ namespace boost { namespace locale {
         /// also allows providing functions for charset conversion. Note, you need to provide them,
         /// so this structure is not useful for wide characters without subclassing and it will also
         /// ignore gettext catalogs that use a charset different from \a encoding.
-        struct BOOST_LOCALE_DECL messages_info {
+        struct messages_info {
             messages_info() : language("C"), locale_category("LC_MESSAGES") {}
 
             std::string language; ///< The language we load the catalog for, like "ru", "en", "de"
@@ -60,7 +53,7 @@ namespace boost { namespace locale {
                 /// "UTF-8"
                 domain(const std::string& n)
                 {
-                    const size_t pos = n.find('/');
+                    size_t pos = n.find('/');
                     if(pos == std::string::npos) {
                         name = n;
                         encoding = "UTF-8";
@@ -87,7 +80,7 @@ namespace boost { namespace locale {
             /// encoded in \a encoding character set into std::vector<char> and return it.
             ///
             /// - If the file does not exist, it should return an empty vector.
-            /// - If an error occurs during file read it should throw an exception.
+            /// - If a error occurs during file read it should throw a error.
             ///
             /// \note The user should support only the encodings the locales are created for. So if the user
             /// uses only one encoding or the file system is encoding agnostic, he may ignore the \a encoding parameter.
@@ -97,28 +90,37 @@ namespace boost { namespace locale {
             /// The callback for handling custom file systems, if it is empty, the real OS file-system
             /// is being used.
             callback_type callback;
-
-            /// Get paths to folders which may contain catalog files
-            std::vector<std::string> get_catalog_paths() const;
-
-        private:
-            /// Get a list of folder names for the language, country and variant
-            std::vector<std::string> get_lang_folders() const;
         };
 
         /// Create a message_format facet using GNU Gettext catalogs. It uses \a info structure to get
         /// information about where to read them from and uses it for character set conversion (if needed)
-        template<typename CharType, class = boost::locale::detail::enable_if_is_supported_char<CharType>>
-        BOOST_LOCALE_DECL message_format<CharType>* create_messages_facet(const messages_info& info);
+        template<typename CharType>
+        message_format<CharType>* create_messages_facet(const messages_info& info);
+
+        /// \cond INTERNAL
+
+        template<>
+        BOOST_LOCALE_DECL message_format<char>* create_messages_facet(const messages_info& info);
+
+        template<>
+        BOOST_LOCALE_DECL message_format<wchar_t>* create_messages_facet(const messages_info& info);
+
+#ifdef BOOST_LOCALE_ENABLE_CHAR16_T
+        template<>
+        BOOST_LOCALE_DECL message_format<char16_t>* create_messages_facet(const messages_info& info);
+#endif
+
+#ifdef BOOST_LOCALE_ENABLE_CHAR32_T
+        template<>
+        BOOST_LOCALE_DECL message_format<char32_t>* create_messages_facet(const messages_info& info);
+#endif
+
+        /// \endcond
 
     } // namespace gnu_gettext
 
     /// @}
 
 }} // namespace boost::locale
-
-#ifdef BOOST_MSVC
-#    pragma warning(pop)
-#endif
 
 #endif

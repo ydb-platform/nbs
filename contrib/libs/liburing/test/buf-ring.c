@@ -10,22 +10,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 
 #include "liburing.h"
 #include "helpers.h"
 
 static int no_buf_ring;
-static int pagesize;
 
 /* test trying to register classic group when ring group exists */
 static int test_mixed_reg2(int bgid)
 {
-	struct io_uring_buf_ring *br;
+	struct io_uring_buf_reg reg = { };
 	struct io_uring_sqe *sqe;
 	struct io_uring_cqe *cqe;
 	struct io_uring ring;
-	void *bufs;
+	void *ptr, *bufs;
 	int ret;
 
 	ret = t_create_ring(1, &ring, 0);
@@ -34,8 +32,15 @@ static int test_mixed_reg2(int bgid)
 	else if (ret != T_SETUP_OK)
 		return 1;
 
-	br = io_uring_setup_buf_ring(&ring, 32, bgid, 0, &ret);
-	if (!br) {
+	if (posix_memalign(&ptr, 4096, 4096))
+		return 1;
+
+	reg.ring_addr = (unsigned long) ptr;
+	reg.ring_entries = 32;
+	reg.bgid = bgid;
+
+	ret = io_uring_register_buf_ring(&ring, &reg, 0);
+	if (ret) {
 		fprintf(stderr, "Buffer ring register failed %d\n", ret);
 		return 1;
 	}
@@ -56,7 +61,6 @@ static int test_mixed_reg2(int bgid)
 	}
 	io_uring_cqe_seen(&ring, cqe);
 
-	io_uring_free_buf_ring(&ring, br, 32, bgid);
 	io_uring_queue_exit(&ring);
 	return 0;
 }
@@ -64,11 +68,11 @@ static int test_mixed_reg2(int bgid)
 /* test trying to register ring group when  classic group exists */
 static int test_mixed_reg(int bgid)
 {
-	struct io_uring_buf_ring *br;
+	struct io_uring_buf_reg reg = { };
 	struct io_uring_sqe *sqe;
 	struct io_uring_cqe *cqe;
 	struct io_uring ring;
-	void *bufs;
+	void *ptr, *bufs;
 	int ret;
 
 	ret = t_create_ring(1, &ring, 0);
@@ -93,9 +97,16 @@ static int test_mixed_reg(int bgid)
 	}
 	io_uring_cqe_seen(&ring, cqe);
 
-	br = io_uring_setup_buf_ring(&ring, 32, bgid, 0, &ret);
-	if (br) {
-		fprintf(stderr, "Buffer ring setup succeeded unexpectedly %d\n", ret);
+	if (posix_memalign(&ptr, 4096, 4096))
+		return 1;
+
+	reg.ring_addr = (unsigned long) ptr;
+	reg.ring_entries = 32;
+	reg.bgid = bgid;
+
+	ret = io_uring_register_buf_ring(&ring, &reg, 0);
+	if (ret != -EEXIST) {
+		fprintf(stderr, "Buffer ring register failed %d\n", ret);
 		return 1;
 	}
 
@@ -106,8 +117,8 @@ static int test_mixed_reg(int bgid)
 static int test_double_reg_unreg(int bgid)
 {
 	struct io_uring_buf_reg reg = { };
-	struct io_uring_buf_ring *br;
 	struct io_uring ring;
+	void *ptr;
 	int ret;
 
 	ret = t_create_ring(1, &ring, 0);
@@ -116,14 +127,21 @@ static int test_double_reg_unreg(int bgid)
 	else if (ret != T_SETUP_OK)
 		return 1;
 
-	br = io_uring_setup_buf_ring(&ring, 32, bgid, 0, &ret);
-	if (!br) {
+	if (posix_memalign(&ptr, 4096, 4096))
+		return 1;
+
+	reg.ring_addr = (unsigned long) ptr;
+	reg.ring_entries = 32;
+	reg.bgid = bgid;
+
+	ret = io_uring_register_buf_ring(&ring, &reg, 0);
+	if (ret) {
 		fprintf(stderr, "Buffer ring register failed %d\n", ret);
 		return 1;
 	}
 
 	/* check that 2nd register with same bgid fails */
-	reg.ring_addr = (unsigned long) br;
+	reg.ring_addr = (unsigned long) ptr;
 	reg.ring_entries = 32;
 	reg.bgid = bgid;
 
@@ -133,7 +151,7 @@ static int test_double_reg_unreg(int bgid)
 		return 1;
 	}
 
-	ret = io_uring_free_buf_ring(&ring, br, 32, bgid);
+	ret = io_uring_unregister_buf_ring(&ring, bgid);
 	if (ret) {
 		fprintf(stderr, "Buffer ring register failed %d\n", ret);
 		return 1;
@@ -151,8 +169,9 @@ static int test_double_reg_unreg(int bgid)
 
 static int test_reg_unreg(int bgid)
 {
-	struct io_uring_buf_ring *br;
+	struct io_uring_buf_reg reg = { };
 	struct io_uring ring;
+	void *ptr;
 	int ret;
 
 	ret = t_create_ring(1, &ring, 0);
@@ -161,8 +180,15 @@ static int test_reg_unreg(int bgid)
 	else if (ret != T_SETUP_OK)
 		return 1;
 
-	br = io_uring_setup_buf_ring(&ring, 32, bgid, 0, &ret);
-	if (!br) {
+	if (posix_memalign(&ptr, 4096, 4096))
+		return 1;
+
+	reg.ring_addr = (unsigned long) ptr;
+	reg.ring_entries = 32;
+	reg.bgid = bgid;
+
+	ret = io_uring_register_buf_ring(&ring, &reg, 0);
+	if (ret) {
 		if (ret == -EINVAL) {
 			no_buf_ring = 1;
 			return 0;
@@ -171,9 +197,9 @@ static int test_reg_unreg(int bgid)
 		return 1;
 	}
 
-	ret = io_uring_free_buf_ring(&ring, br, 32, bgid);
+	ret = io_uring_unregister_buf_ring(&ring, bgid);
 	if (ret) {
-		fprintf(stderr, "Buffer ring unregister failed %d\n", ret);
+		fprintf(stderr, "Buffer ring register failed %d\n", ret);
 		return 1;
 	}
 
@@ -203,54 +229,6 @@ static int test_bad_reg(int bgid)
 
 	io_uring_queue_exit(&ring);
 	return !ret;
-}
-
-static int test_full_page_reg(int bgid)
-{
-#if defined(__hppa__)
-	return T_EXIT_SKIP;
-#else
-	struct io_uring ring;
-	int ret;
-	void *ptr;
-	struct io_uring_buf_reg reg = { };
-	int entries = pagesize / sizeof(struct io_uring_buf);
-
-	ret = io_uring_queue_init(1, &ring, 0);
-	if (ret) {
-		fprintf(stderr, "queue init failed %d\n", ret);
-		return T_EXIT_FAIL;
-	}
-
-	ret = posix_memalign(&ptr, pagesize, pagesize * 2);
-	if (ret) {
-		fprintf(stderr, "posix_memalign failed %d\n", ret);
-		goto err;
-	}
-
-	ret = mprotect(ptr + pagesize, pagesize, PROT_NONE);
-	if (ret) {
-		fprintf(stderr, "mprotect failed %d\n", errno);
-		goto err1;
-	}
-
-	reg.ring_addr = (unsigned long) ptr;
-	reg.ring_entries = entries;
-	reg.bgid = bgid;
-
-	ret = io_uring_register_buf_ring(&ring, &reg, 0);
-	if (ret)
-		fprintf(stderr, "register buf ring failed %d\n", ret);
-
-	if (mprotect(ptr + pagesize, pagesize, PROT_READ | PROT_WRITE))
-		fprintf(stderr, "reverting mprotect failed %d\n", errno);
-
-err1:
-	free(ptr);
-err:
-	io_uring_queue_exit(&ring);
-	return ret ? T_EXIT_FAIL : T_EXIT_PASS;
-#endif
 }
 
 static int test_one_read(int fd, int bgid, struct io_uring *ring)
@@ -295,12 +273,18 @@ static int test_one_read(int fd, int bgid, struct io_uring *ring)
 
 static int test_running(int bgid, int entries, int loops)
 {
-	int ring_mask = io_uring_buf_ring_mask(entries);
-	struct io_uring_buf_ring *br;
-	int ret, loop, idx, read_fd;
+	struct io_uring_buf_reg reg = { };
 	struct io_uring ring;
+	void *ptr;
 	char buffer[8];
+	int ret;
+	int ring_size = (entries * sizeof(struct io_uring_buf) + 4095) & (~4095);
+	int ring_mask = io_uring_buf_ring_mask(entries);
+
+	int loop, idx;
 	bool *buffers;
+	struct io_uring_buf_ring *br;
+	int read_fd;
 
 	ret = t_create_ring(1, &ring, 0);
 	if (ret == T_SETUP_SKIP)
@@ -308,12 +292,11 @@ static int test_running(int bgid, int entries, int loops)
 	else if (ret != T_SETUP_OK)
 		return 1;
 
-	br = io_uring_setup_buf_ring(&ring, entries, bgid, 0, &ret);
-	if (!br) {
-		/* by now should have checked if this is supported or not */
-		fprintf(stderr, "Buffer ring register failed %d\n", ret);
+	if (posix_memalign(&ptr, 4096, ring_size))
 		return 1;
-	}
+
+	br = (struct io_uring_buf_ring *)ptr;
+	io_uring_buf_ring_init(br);
 
 	buffers = malloc(sizeof(bool) * entries);
 	if (!buffers)
@@ -322,6 +305,17 @@ static int test_running(int bgid, int entries, int loops)
 	read_fd = open("/dev/zero", O_RDONLY);
 	if (read_fd < 0)
 		return 1;
+
+	reg.ring_addr = (unsigned long) ptr;
+	reg.ring_entries = entries;
+	reg.bgid = bgid;
+
+	ret = io_uring_register_buf_ring(&ring, &reg, 0);
+	if (ret) {
+		/* by now should have checked if this is supported or not */
+		fprintf(stderr, "Buffer ring register failed %d\n", ret);
+		return 1;
+	}
 
 	for (loop = 0; loop < loops; loop++) {
 		memset(buffers, 0, sizeof(bool) * entries);
@@ -381,8 +375,6 @@ int main(int argc, char *argv[])
 	if (argc > 1)
 		return T_EXIT_SKIP;
 
-	pagesize = getpagesize();
-
 	for (i = 0; bgids[i] != -1; i++) {
 		ret = test_reg_unreg(bgids[i]);
 		if (ret) {
@@ -413,12 +405,6 @@ int main(int argc, char *argv[])
 		ret = test_mixed_reg2(bgids[i]);
 		if (ret) {
 			fprintf(stderr, "test_mixed_reg2 failed\n");
-			return T_EXIT_FAIL;
-		}
-
-		ret = test_full_page_reg(bgids[i]);
-		if (ret == T_EXIT_FAIL) {
-			fprintf(stderr, "test_full_page_reg failed\n");
 			return T_EXIT_FAIL;
 		}
 	}

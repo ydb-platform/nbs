@@ -1,8 +1,7 @@
 import base64
 import itertools
-from hashlib import md5
+import md5
 import os
-import six
 from _common import rootrel_arc_src, tobuilddir
 import ymake
 
@@ -42,13 +41,12 @@ def get_import_path(unit):
 
 
 def get_appended_values(unit, key):
-    values = []
+    value = []
     raw_value = unit.get(key)
     if raw_value:
-        values = [x for x in raw_value.split(' ') if x]
-        if len(values) > 0 and values[0] == '$' + key:
-            values.pop(0)
-    return values
+        value = filter(lambda x: len(x) > 0, raw_value.split(' '))
+        assert len(value) == 0 or value[0] == '$' + key
+    return value[1:] if len(value) > 0 else value
 
 
 def compare_versions(version1, version2):
@@ -109,7 +107,7 @@ def on_go_process_srcs(unit):
     s_files = []
     syso_files = []
 
-    classified_files = {
+    classifed_files = {
         '.c': c_files,
         '.cc': cxx_files,
         '.cpp': cxx_files,
@@ -130,7 +128,7 @@ def on_go_process_srcs(unit):
     is_cgo_export = False
     for f in srcs_files:
         _, ext = os.path.splitext(f)
-        ext_files = classified_files.get(ext)
+        ext_files = classifed_files.get(ext)
         if ext_files is not None:
             if is_cgo_export:
                 is_cgo_export = False
@@ -189,7 +187,7 @@ def on_go_process_srcs(unit):
         for f in go_files:
             if f.endswith('_test.go'):
                 continue
-            cover_var = 'GoCover' + six.ensure_str(base64.b32encode(six.ensure_binary(f))).rstrip('=')
+            cover_var = 'GoCover' + base64.b32encode(f).rstrip('=')
             cover_file = unit.resolve_arc_path(f)
             cover_file_output = '{}/{}'.format(unit_path, os.path.basename(f))
             unit.on_go_gen_cover_go([cover_file, cover_file_output, cover_var])
@@ -291,7 +289,7 @@ def on_go_resource(unit, *args):
     args = list(args)
     files = args[::2]
     keys = args[1::2]
-    suffix_md5 = md5(six.ensure_binary('@'.join(args))).hexdigest()
+    suffix_md5 = md5.new('@'.join(args)).hexdigest()
     resource_go = os.path.join("resource.{}.res.go".format(suffix_md5))
 
     unit.onpeerdir(["library/go/core/resource"])

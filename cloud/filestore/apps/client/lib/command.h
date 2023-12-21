@@ -16,7 +16,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <library/cpp/actors/util/should_continue.h>
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/threading/future/future.h>
 

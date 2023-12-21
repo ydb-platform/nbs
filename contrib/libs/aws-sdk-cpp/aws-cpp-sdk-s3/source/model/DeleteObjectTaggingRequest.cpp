@@ -72,13 +72,3 @@ Aws::Http::HeaderValueCollection DeleteObjectTaggingRequest::GetRequestSpecificH
 
   return headers;
 }
-
-DeleteObjectTaggingRequest::EndpointParameters DeleteObjectTaggingRequest::GetEndpointContextParams() const
-{
-    EndpointParameters parameters;
-    // Operation context parameters
-    if (BucketHasBeenSet()) {
-        parameters.emplace_back(Aws::String("Bucket"), this->GetBucket(), Aws::Endpoint::EndpointParameter::ParameterOrigin::OPERATION_CONTEXT);
-    }
-    return parameters;
-}

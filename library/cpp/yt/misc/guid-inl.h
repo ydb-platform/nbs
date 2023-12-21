@@ -32,42 +32,33 @@ Y_FORCE_INLINE TGuid::operator bool() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_FORCE_INLINE bool operator == (TGuid lhs, TGuid rhs) noexcept
+Y_FORCE_INLINE bool operator == (TGuid lhs, TGuid rhs)
 {
-    return
-        lhs.Parts64[0] == rhs.Parts64[0] &&
-        lhs.Parts64[1] == rhs.Parts64[1];
+    return lhs.Parts64[0] == rhs.Parts64[0] &&
+           lhs.Parts64[1] == rhs.Parts64[1];
 }
 
-Y_FORCE_INLINE std::strong_ordering operator <=> (TGuid lhs, TGuid rhs) noexcept
+Y_FORCE_INLINE bool operator != (TGuid lhs, TGuid rhs)
+{
+    return !(lhs == rhs);
+}
+
+Y_FORCE_INLINE bool operator < (TGuid lhs, TGuid rhs)
 {
 #ifdef __GNUC__
     ui64 lhs0 = __builtin_bswap64(lhs.Parts64[0]);
     ui64 rhs0 = __builtin_bswap64(rhs.Parts64[0]);
     if (lhs0 < rhs0) {
-        return std::strong_ordering::less;
+        return true;
     }
     if (lhs0 > rhs0) {
-        return std::strong_ordering::greater;
+        return false;
     }
     ui64 lhs1 = __builtin_bswap64(lhs.Parts64[1]);
     ui64 rhs1 = __builtin_bswap64(rhs.Parts64[1]);
-    if (lhs1 < rhs1) {
-        return std::strong_ordering::less;
-    }
-    if (lhs1 > rhs1) {
-        return std::strong_ordering::greater;
-    }
-    return std::strong_ordering::equal;
+    return lhs1 < rhs1;
 #else
-    int cmp = memcmp(&lhs, &rhs, sizeof(TGuid));
-    if (cmp < 0) {
-        return std::strong_ordering::less;
-    }
-    if (cmp > 0) {
-        return std::strong_ordering::greater;
-    }
-    return std::strong_ordering::equal;
+    return memcmp(&lhs, &rhs, sizeof(TGuid)) < 0;
 #endif
 }
 

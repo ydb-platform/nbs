@@ -22,14 +22,10 @@
  */
 class TUnbufferedFileInput: public IInputStream {
 public:
-    TUnbufferedFileInput(const char* path);
-    TUnbufferedFileInput(const TString& path);
-    TUnbufferedFileInput(const std::filesystem::path& path);
     TUnbufferedFileInput(const TFile& file);
+    TUnbufferedFileInput(const TString& path);
 
 private:
-    static constexpr EOpenMode OPEN_MODE = OpenExisting | RdOnly | Seq;
-
     size_t DoRead(void* buf, size_t len) override;
     size_t DoSkip(size_t len) override;
 
@@ -59,9 +55,7 @@ private:
  */
 class TUnbufferedFileOutput: public IOutputStream {
 public:
-    TUnbufferedFileOutput(const char* path);
     TUnbufferedFileOutput(const TString& path);
-    TUnbufferedFileOutput(const std::filesystem::path& path);
     TUnbufferedFileOutput(const TFile& file);
     ~TUnbufferedFileOutput() override;
 
@@ -69,8 +63,6 @@ public:
     TUnbufferedFileOutput& operator=(TUnbufferedFileOutput&&) noexcept = default;
 
 private:
-    static constexpr EOpenMode OPEN_MODE = CreateAlways | WrOnly | Seq;
-
     void DoWrite(const void* buf, size_t len) override;
     void DoFlush() override;
 

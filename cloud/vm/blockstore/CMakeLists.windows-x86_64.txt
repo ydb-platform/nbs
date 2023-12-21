@@ -8,7 +8,7 @@
 
 add_subdirectory(lib)
 
-add_shared_library(blockstore-plugin)
+add_library(blockstore-plugin SHARED)
 target_link_libraries(blockstore-plugin PUBLIC
   contrib-libs-cxxsupp
   yutil

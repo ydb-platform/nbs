@@ -9,7 +9,9 @@
 #define BOOST_SRC_ICU_UTIL_HPP
 
 #include <boost/locale/config.hpp>
-#include <cstdint> // Avoid ICU defining e.g. INT8_MIN causing macro redefinition warnings
+#ifdef BOOST_HAS_STDINT_H
+#    include <stdint.h> // Avoid ICU defining e.g. INT8_MIN causing macro redefinition warnings
+#endif
 #include <stdexcept>
 #include <string>
 #include <unicode/utypes.h>

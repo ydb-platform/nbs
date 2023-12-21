@@ -161,23 +161,23 @@ public:
     /** 
      * Equality operator.
      * @param that    the object to be compared with.
-     * @return        true if the two field positions are equal, false otherwise.
+     * @return        TRUE if the two field positions are equal, FALSE otherwise.
      * @stable ICU 2.0
      */
-    bool               operator==(const FieldPosition& that) const;
+    UBool              operator==(const FieldPosition& that) const;
 
     /** 
      * Equality operator.
      * @param that    the object to be compared with.
-     * @return        true if the two field positions are not equal, false otherwise.
+     * @return        TRUE if the two field positions are not equal, FALSE otherwise.
      * @stable ICU 2.0
      */
-    bool               operator!=(const FieldPosition& that) const;
+    UBool              operator!=(const FieldPosition& that) const;
 
     /**
      * Clone this object.
      * Clones can be used concurrently in multiple threads.
-     * If an error occurs, then nullptr is returned.
+     * If an error occurs, then NULL is returned.
      * The caller must delete the clone.
      *
      * @return a clone of this object
@@ -236,7 +236,7 @@ public:
      *
      * @stable ICU 2.2
      */
-    virtual UClassID getDynamicClassID() const override;
+    virtual UClassID getDynamicClassID() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for this class.
@@ -274,7 +274,7 @@ FieldPosition::operator=(const FieldPosition& copy)
     return *this;
 }
 
-inline bool
+inline UBool
 FieldPosition::operator==(const FieldPosition& copy) const
 {
     return (fField == copy.fField &&
@@ -282,7 +282,7 @@ FieldPosition::operator==(const FieldPosition& copy) const
         fBeginIndex == copy.fBeginIndex);
 }
 
-inline bool
+inline UBool
 FieldPosition::operator!=(const FieldPosition& copy) const
 {
     return !operator==(copy);

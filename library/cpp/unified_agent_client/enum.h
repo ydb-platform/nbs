@@ -8,26 +8,23 @@ namespace NUnifiedAgent {
         using TEnumNames = TVector<const TString*>;
 
         template <typename TEnum>
-        TEnumNames* BuildEnumNames() {
+        TEnumNames BuildEnumNames() {
             const auto names = GetEnumNames<TEnum>();
-            TEnumNames* result = new TEnumNames(names.size());
+            auto result = TEnumNames(names.size());
             size_t index = 0;
             for (const auto& p: names) {
-                Y_ABORT_UNLESS(static_cast<size_t>(p.first) == index);
-                (*result)[index++] = &p.second;
+                Y_VERIFY(static_cast<size_t>(p.first) == index);
+                result[index++] = &p.second;
             }
             return result;
         }
 
         template <typename TEnum>
-        const TEnumNames& EnumNamesVec() {
-            static const TEnumNames* EnumNames = BuildEnumNames<TEnum>();
-            return *EnumNames;
-        }
+        inline const auto EnumNames = BuildEnumNames<TEnum>();
     }
 
     template <typename TEnum, typename = std::enable_if_t<std::is_enum_v<TEnum>>>
     inline const TString& NameOf(TEnum val) noexcept {
-        return *NPrivate::EnumNamesVec<TEnum>()[static_cast<size_t>(val)];
+        return *NPrivate::EnumNames<TEnum>[static_cast<size_t>(val)];
     }
 }

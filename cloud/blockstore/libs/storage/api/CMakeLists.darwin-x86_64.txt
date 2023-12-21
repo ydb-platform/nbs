@@ -17,7 +17,7 @@ target_link_libraries(libs-storage-api PUBLIC
   libs-storage-protos_ydb
   private-api-protos
   public-api-protos
-  library-actors-core
+  cpp-actors-core
   ydb-core-protos
 )
 target_sources(libs-storage-api PRIVATE

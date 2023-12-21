@@ -29,7 +29,7 @@ namespace Aws
             {
             public:
                 EventStreamHandler() :
-                    m_failure(false), m_internalError(EventStreamErrors::EVENT_STREAM_NO_ERROR), m_headersBytesReceived(0), m_payloadBytesReceived(0), m_message()
+                    m_failure(false), m_internalError(EventStreamErrors::EVENT_STREAM_NO_ERROR), m_headersBytesReceived(0), m_payloadBytesReceived(0)
                 {}
 
                 virtual ~EventStreamHandler() = default;

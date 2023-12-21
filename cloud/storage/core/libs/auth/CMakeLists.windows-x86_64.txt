@@ -21,7 +21,7 @@ target_link_libraries(core-libs-auth PUBLIC
   tools-enum_parser-enum_serialization_runtime
   core-libs-api
   storage-core-protos
-  library-actors-core
+  cpp-actors-core
   cpp-monlib-dynamic_counters
   ydb-core-security
 )

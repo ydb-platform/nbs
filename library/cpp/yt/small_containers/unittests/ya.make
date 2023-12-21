@@ -7,7 +7,6 @@ SRCS(
     compact_heap_ut.cpp
     compact_set_ut.cpp
     compact_vector_ut.cpp
-    compact_queue_ut.cpp
 )
 
 PEERDIR(

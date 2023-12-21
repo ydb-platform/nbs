@@ -32,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/WebsiteConfiguration">AWS
    * API Reference</a></p>
    */
-  class WebsiteConfiguration
+  class AWS_S3_API WebsiteConfiguration
   {
   public:
-    AWS_S3_API WebsiteConfiguration();
-    AWS_S3_API WebsiteConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API WebsiteConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    WebsiteConfiguration();
+    WebsiteConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    WebsiteConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -190,16 +190,16 @@ namespace Model
   private:
 
     ErrorDocument m_errorDocument;
-    bool m_errorDocumentHasBeenSet = false;
+    bool m_errorDocumentHasBeenSet;
 
     IndexDocument m_indexDocument;
-    bool m_indexDocumentHasBeenSet = false;
+    bool m_indexDocumentHasBeenSet;
 
     RedirectAllRequestsTo m_redirectAllRequestsTo;
-    bool m_redirectAllRequestsToHasBeenSet = false;
+    bool m_redirectAllRequestsToHasBeenSet;
 
     Aws::Vector<RoutingRule> m_routingRules;
-    bool m_routingRulesHasBeenSet = false;
+    bool m_routingRulesHasBeenSet;
   };
 
 } // namespace Model

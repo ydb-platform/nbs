@@ -12,9 +12,10 @@ import (
 	"strings"
 	"text/template"
 
+	nbs "a.yandex-team.ru/cloud/blockstore/public/sdk/go/client"
+	logutil "a.yandex-team.ru/cloud/storage/core/tools/common/go/log"
+
 	"github.com/golang/protobuf/proto"
-	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
-	logutil "github.com/ydb-platform/nbs/cloud/storage/core/tools/common/go/log"
 	"golang.org/x/exp/maps"
 )
 

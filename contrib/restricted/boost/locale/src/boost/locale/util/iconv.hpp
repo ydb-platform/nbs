@@ -20,12 +20,8 @@ namespace boost { namespace locale {
         }
 
     public:
-        explicit iconv_handle(iconv_t h = iconv_t(-1)) : h_(h) {}
-
-        iconv_handle(const iconv_handle& rhs) = delete;
+        iconv_handle(iconv_t h = iconv_t(-1)) : h_(h) {}
         iconv_handle(iconv_handle&& rhs) noexcept : h_(exchange(rhs.h_, iconv_t(-1))) {}
-
-        iconv_handle& operator=(const iconv_handle& rhs) = delete;
         iconv_handle& operator=(iconv_handle&& rhs) noexcept
         {
             h_ = exchange(rhs.h_, iconv_t(-1));

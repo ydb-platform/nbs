@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <library/cpp/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 

@@ -2,13 +2,16 @@ package client
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
+
+	"crypto/tls"
+	"crypto/x509"
+
 	"io/ioutil"
 
 	"golang.org/x/oauth2"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"

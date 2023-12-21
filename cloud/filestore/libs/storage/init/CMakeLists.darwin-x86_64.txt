@@ -26,7 +26,7 @@ target_link_libraries(libs-storage-init PUBLIC
   core-libs-hive_proxy
   core-libs-kikimr
   core-libs-user_stats
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
   run
   ydb-core-mind

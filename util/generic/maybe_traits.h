@@ -21,13 +21,7 @@ namespace NMaybe {
         {
         }
 
-        constexpr TStorageBase(TStorageBase&&) = default;
-        constexpr TStorageBase(const TStorageBase&) = default;
-
         ~TStorageBase() = default;
-
-        TStorageBase& operator=(const TStorageBase&) = default;
-        TStorageBase& operator=(TStorageBase&&) = default;
 
         union {
             char NullState_;
@@ -50,17 +44,11 @@ namespace NMaybe {
         {
         }
 
-        constexpr TStorageBase(TStorageBase&&) = default;
-        constexpr TStorageBase(const TStorageBase&) = default;
-
         ~TStorageBase() {
             if (this->Defined_) {
                 this->Data_.~T();
             }
         }
-
-        TStorageBase& operator=(const TStorageBase&) = default;
-        TStorageBase& operator=(TStorageBase&&) = default;
 
         union {
             char NullState_;
@@ -148,7 +136,7 @@ namespace NMaybe {
 
     // -------------------- MOVE ASSIGN --------------------
 
-    template <class T, bool = std::is_trivially_move_assignable<T>::value>
+    template <class T, bool = std::is_trivially_copy_assignable<T>::value>
     struct TMoveAssignBase: TCopyAssignBase<T> {
         using TCopyAssignBase<T>::TCopyAssignBase;
     };

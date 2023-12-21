@@ -46,7 +46,6 @@ namespace Aws
             Aws::String m_sessionName;
             Aws::String m_token;
             bool m_initialized;
-            bool ExpiresSoon() const;
         };
     } // namespace Auth
 } // namespace Aws

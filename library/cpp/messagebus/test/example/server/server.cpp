@@ -39,7 +39,7 @@ namespace NCalculator {
                 response->Record.SetResult(result);
                 request.SendReplyMove(response);
             } else {
-                Y_ABORT("unknown request");
+                Y_FAIL("unknown request");
             }
         }
     };

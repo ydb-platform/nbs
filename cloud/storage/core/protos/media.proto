@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package NCloud.NProto;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+option go_package = "a.yandex-team.ru/cloud/storage/core/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Disk/FS media kind

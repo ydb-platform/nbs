@@ -1,5 +1,4 @@
 import json
-import six
 
 
 def extract_macro_calls(unit, macro_value_name):
@@ -14,7 +13,7 @@ def macro_calls_to_dict(unit, calls):
         if arg is None:
             return None
 
-        kv = list(filter(None, arg.split('=')))
+        kv = filter(None, arg.split('='))
         if len(kv) != 2:
             unit.message(
                 [
@@ -51,6 +50,4 @@ def onprocess_docs(unit, *args):
 def onprocess_mkdocs(unit, *args):
     variables = get_variables(unit)
     if variables:
-        unit.set(
-            ['_DOCS_VARS_FLAG', ' '.join(['--var {}={}'.format(k, v) for k, v in sorted(six.iteritems(variables))])]
-        )
+        unit.set(['_DOCS_VARS_FLAG', ' '.join(['--var {}={}'.format(k, v) for k, v in variables.items()])])

@@ -68,10 +68,10 @@ PEERDIR(
 
     library/cpp/containers/ring_buffer
 
-    contrib/ydb/core/base
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/basics
-    contrib/ydb/library/actors/core
+    ydb/core/base
+    ydb/core/testlib
+    ydb/core/testlib/basics
+    library/cpp/actors/core
 )
 
 END()

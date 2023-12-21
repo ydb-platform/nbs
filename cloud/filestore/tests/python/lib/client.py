@@ -7,7 +7,7 @@ import yatest.common as common
 
 from cloud.filestore.tests.python.lib.common import daemon_log_files, wait_for
 
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from ydb.tests.library.harness.daemon import Daemon
 
 import cloud.filestore.public.sdk.python.protos as protos
 

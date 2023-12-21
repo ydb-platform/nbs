@@ -25,14 +25,16 @@
 # define WIN32_LEAN_AND_MEAN
 # define NOMINMAX
 # include <windows.h>
-#else
+#endif
+
+#if !defined(_LIBCPP_WIN32API)
 # include <dirent.h>   // for DIR & friends
 # include <fcntl.h>    /* values for fchmodat */
 # include <sys/stat.h>
 # include <sys/statvfs.h>
 # include <sys/time.h> // for ::utimes as used in __last_write_time
 # include <unistd.h>
-#endif // defined(_LIBCPP_WIN32API)
+#endif
 
 #include "../include/apple_availability.h"
 
@@ -44,16 +46,17 @@
 #endif
 #endif
 
-_LIBCPP_DIAGNOSTIC_PUSH
-_LIBCPP_GCC_DIAGNOSTIC_IGNORED("-Wunused-function")
-_LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wunused-function")
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 
 #if defined(_LIBCPP_WIN32API)
-#  define PATHSTR(x) (L##x)
-#  define PATH_CSTR_FMT "\"%ls\""
+#define PS(x) (L##x)
+#define PATH_CSTR_FMT "\"%ls\""
 #else
-#  define PATHSTR(x) (x)
-#  define PATH_CSTR_FMT "\"%s\""
+#define PS(x) (x)
+#define PATH_CSTR_FMT "\"%s\""
 #endif
 
 _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
@@ -80,14 +83,14 @@ format_string_impl(const char* msg, va_list ap) {
   if (static_cast<size_t>(ret) < buf.size()) {
     result.assign(buf.data(), static_cast<size_t>(ret));
   } else {
-    // we did not provide a long enough buffer on our first attempt. The
-    // return value is the number of bytes (excluding the null byte) that are
-    // needed for formatting.
+  // we did not provide a long enough buffer on our first attempt. The
+  // return value is the number of bytes (excluding the null byte) that are
+  // needed for formatting.
     size_t size_with_null = static_cast<size_t>(ret) + 1;
-    result.__resize_default_init(size_with_null - 1);
+  result.__resize_default_init(size_with_null - 1);
     ret = ::vsnprintf(&result[0], size_with_null, msg, ap);
-    _LIBCPP_ASSERT(static_cast<size_t>(ret) == (size_with_null - 1), "TODO");
-  }
+  _LIBCPP_ASSERT(static_cast<size_t>(ret) == (size_with_null - 1), "TODO");
+}
   return result;
 }
 
@@ -111,7 +114,7 @@ format_string(const char* msg, ...) {
 }
 
 error_code capture_errno() {
-  _LIBCPP_ASSERT(errno != 0, "Expected errno to be non-zero");
+  _LIBCPP_ASSERT(errno, "Expected errno to be non-zero");
   return error_code(errno, generic_category());
 }
 
@@ -135,6 +138,16 @@ size_t error_value<size_t>() {
   return size_t(-1);
 }
 #endif
+
+#if defined(_MSC_VER) && !defined(__clang__) && defined(_M_IX86)
+// FIXME thegeorg@ MSVC on i686 somehow depends on this function presence.
+// Further investigation is needed in order to understand the logic behind this.
+template <>
+unsigned int error_value<unsigned int>() {
+  return unsigned int(-1);
+}
+#endif
+
 template <>
 uintmax_t error_value<uintmax_t>() {
   return uintmax_t(-1);
@@ -607,7 +620,5 @@ static file_time_type get_write_time(const WIN32_FIND_DATAW& data) {
 } // end namespace detail
 
 _LIBCPP_END_NAMESPACE_FILESYSTEM
-
-_LIBCPP_DIAGNOSTIC_POP
 
 #endif // FILESYSTEM_COMMON_H

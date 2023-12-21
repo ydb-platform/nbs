@@ -11,8 +11,8 @@
 // we will define the mapping from an internal macro to the real BSD symbol.
 //===----------------------------------------------------------------------===//
 
-#ifndef _LIBCPP___BSD_LOCALE_DEFAULTS_H
-#define _LIBCPP___BSD_LOCALE_DEFAULTS_H
+#ifndef _LIBCPP_BSD_LOCALE_DEFAULTS_H
+#define _LIBCPP_BSD_LOCALE_DEFAULTS_H
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
@@ -29,8 +29,9 @@
 #define __libcpp_mbrlen_l(s, n, ps, l)                      mbrlen_l(s, n, ps, l)
 #define __libcpp_localeconv_l(l)                            localeconv_l(l)
 #define __libcpp_mbsrtowcs_l(dest, src, len, ps, l)         mbsrtowcs_l(dest, src, len, ps, l)
-#define __libcpp_snprintf_l(...)                            snprintf_l(__VA_ARGS__)
-#define __libcpp_asprintf_l(...)                            asprintf_l(__VA_ARGS__)
-#define __libcpp_sscanf_l(...)                              sscanf_l(__VA_ARGS__)
+// Workaround for Visual Studio preprocessor bug - explicitly mention all non-variadic parameters.
+#define __libcpp_snprintf_l(__s, __n, __l, __f, ...)        snprintf_l(__s, __n, __l, __f, ##__VA_ARGS__)
+#define __libcpp_asprintf_l(__ret, __l, __f, ...)           asprintf_l(__ret, __l, __f, ##__VA_ARGS__)
+#define __libcpp_sscanf_l(__s, __l, __f, ...)               sscanf_l(__s, __l, __f, ##__VA_ARGS__)
 
-#endif // _LIBCPP___BSD_LOCALE_DEFAULTS_H
+#endif // _LIBCPP_BSD_LOCALE_DEFAULTS_H

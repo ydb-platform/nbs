@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"strings"
 
-	protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
-	storage_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	protos "a.yandex-team.ru/cloud/blockstore/public/api/protos"
+	storage_protos "a.yandex-team.ru/cloud/storage/core/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

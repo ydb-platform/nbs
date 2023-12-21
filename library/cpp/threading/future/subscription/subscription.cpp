@@ -39,7 +39,7 @@ void TSubscriptionManager::OnCallback(TFutureStateId stateId) noexcept {
     THashMap<ui64, TSubscription> subscriptions;
     with_lock(Lock) {
         auto const it = Subscriptions.find(stateId);
-        Y_ABORT_UNLESS(it != Subscriptions.end(), "The callback has been triggered more than once");
+        Y_VERIFY(it != Subscriptions.end(), "The callback has been triggered more than once");
         subscriptions.swap(it->second);
         Subscriptions.erase(it);
     }

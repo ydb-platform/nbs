@@ -4,7 +4,7 @@ package NCloud.NFileStore.NProto;
 
 import "cloud/filestore/config/client.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+option go_package = "a.yandex-team.ru/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

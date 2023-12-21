@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/library/actors/core/defs.h>
+#include <library/cpp/actors/core/defs.h>
 
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>

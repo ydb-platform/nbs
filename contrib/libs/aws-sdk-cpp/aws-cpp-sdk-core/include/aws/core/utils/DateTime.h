@@ -49,7 +49,7 @@ namespace Aws
         };
 
         /**
-         * Wrapper for timestamp functionality.
+         * Wrapper for all the weird crap we need to do with timestamps.
          */
         class AWS_CORE_API DateTime
         {
@@ -143,11 +143,6 @@ namespace Aws
              * Get the representation of this datetime as seconds.milliseconds since epoch
              */
             double SecondsWithMSPrecision() const;
-
-            /**
-             * Get the seconds without millisecond precision.
-             */
-            int64_t Seconds() const;
 
             /**
              * Milliseconds since epoch of this datetime.

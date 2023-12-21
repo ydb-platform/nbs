@@ -67,13 +67,13 @@ PEERDIR(
     library/cpp/lwtrace
     library/cpp/monlib/service/pages
     
-    contrib/ydb/core/base
-    contrib/ydb/core/node_whiteboard
-    contrib/ydb/core/scheme
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tablet_flat
-    contrib/ydb/core/testlib/basics
-    contrib/ydb/library/actors/core
+    ydb/core/base
+    ydb/core/node_whiteboard
+    ydb/core/scheme
+    ydb/core/tablet
+    ydb/core/tablet_flat
+    ydb/core/testlib/basics
+    library/cpp/actors/core
 )
 
 END()

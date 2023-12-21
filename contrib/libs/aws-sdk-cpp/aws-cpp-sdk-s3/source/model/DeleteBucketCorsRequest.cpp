@@ -63,13 +63,3 @@ Aws::Http::HeaderValueCollection DeleteBucketCorsRequest::GetRequestSpecificHead
 
   return headers;
 }
-
-DeleteBucketCorsRequest::EndpointParameters DeleteBucketCorsRequest::GetEndpointContextParams() const
-{
-    EndpointParameters parameters;
-    // Operation context parameters
-    if (BucketHasBeenSet()) {
-        parameters.emplace_back(Aws::String("Bucket"), this->GetBucket(), Aws::Endpoint::EndpointParameter::ParameterOrigin::OPERATION_CONTEXT);
-    }
-    return parameters;
-}

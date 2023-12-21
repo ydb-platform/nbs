@@ -16,15 +16,13 @@ target_link_libraries(cloud-filestore-apps-client-lib-ut PUBLIC
   contrib-libs-cxxsupp
   yutil
   cpp-testing-unittest_main
-  apps-client-lib
+  filestore-apps-client-lib
 )
 target_link_options(cloud-filestore-apps-client-lib-ut PRIVATE
   -ldl
   -lrt
   -Wl,--no-as-needed
-  -Wl,-rpath,$ORIGIN
   -fPIC
-  -Wl,-rpath,$ORIGIN
   -fPIC
   -lpthread
   -lrt

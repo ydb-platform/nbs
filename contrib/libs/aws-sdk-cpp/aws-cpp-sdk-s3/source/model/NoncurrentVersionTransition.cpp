@@ -24,9 +24,7 @@ NoncurrentVersionTransition::NoncurrentVersionTransition() :
     m_noncurrentDays(0),
     m_noncurrentDaysHasBeenSet(false),
     m_storageClass(TransitionStorageClass::NOT_SET),
-    m_storageClassHasBeenSet(false),
-    m_newerNoncurrentVersions(0),
-    m_newerNoncurrentVersionsHasBeenSet(false)
+    m_storageClassHasBeenSet(false)
 {
 }
 
@@ -34,9 +32,7 @@ NoncurrentVersionTransition::NoncurrentVersionTransition(const XmlNode& xmlNode)
     m_noncurrentDays(0),
     m_noncurrentDaysHasBeenSet(false),
     m_storageClass(TransitionStorageClass::NOT_SET),
-    m_storageClassHasBeenSet(false),
-    m_newerNoncurrentVersions(0),
-    m_newerNoncurrentVersionsHasBeenSet(false)
+    m_storageClassHasBeenSet(false)
 {
   *this = xmlNode;
 }
@@ -59,12 +55,6 @@ NoncurrentVersionTransition& NoncurrentVersionTransition::operator =(const XmlNo
       m_storageClass = TransitionStorageClassMapper::GetTransitionStorageClassForName(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(storageClassNode.GetText()).c_str()).c_str());
       m_storageClassHasBeenSet = true;
     }
-    XmlNode newerNoncurrentVersionsNode = resultNode.FirstChild("NewerNoncurrentVersions");
-    if(!newerNoncurrentVersionsNode.IsNull())
-    {
-      m_newerNoncurrentVersions = StringUtils::ConvertToInt32(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(newerNoncurrentVersionsNode.GetText()).c_str()).c_str());
-      m_newerNoncurrentVersionsHasBeenSet = true;
-    }
   }
 
   return *this;
@@ -85,14 +75,6 @@ void NoncurrentVersionTransition::AddToNode(XmlNode& parentNode) const
   {
    XmlNode storageClassNode = parentNode.CreateChildElement("StorageClass");
    storageClassNode.SetText(TransitionStorageClassMapper::GetNameForTransitionStorageClass(m_storageClass));
-  }
-
-  if(m_newerNoncurrentVersionsHasBeenSet)
-  {
-   XmlNode newerNoncurrentVersionsNode = parentNode.CreateChildElement("NewerNoncurrentVersions");
-   ss << m_newerNoncurrentVersions;
-   newerNoncurrentVersionsNode.SetText(ss.str());
-   ss.str("");
   }
 
 }

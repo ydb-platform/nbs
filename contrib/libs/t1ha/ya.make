@@ -2,7 +2,10 @@
 
 LIBRARY()
 
-LICENSE(Zlib)
+LICENSE(
+    Protestware AND
+    Zlib
+)
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 

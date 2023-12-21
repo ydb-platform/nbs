@@ -76,11 +76,7 @@ public:
 
     T *allocate(std::size_t size) const {
         size_t alloc_size = size * sizeof(T);
-        T *ptr = static_cast<T *>(aligned_malloc_internal(alloc_size, N));
-        if (!ptr) {
-            throw std::bad_alloc();
-        }
-        return ptr;
+        return static_cast<T *>(aligned_malloc_internal(alloc_size, N));
     }
 
     void deallocate(T *x, std::size_t) const noexcept {

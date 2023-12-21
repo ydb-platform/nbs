@@ -37,7 +37,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cinttypes>
 #include <limits>
 #include "absl/base/internal/hide_ptr.h"
 #include "absl/base/internal/raw_logging.h"
@@ -115,7 +114,7 @@ class Vec {
     if (src->ptr_ == src->space_) {
       // Need to actually copy
       resize(src->size_);
-      std::copy_n(src->ptr_, src->size_, ptr_);
+      std::copy(src->ptr_, src->ptr_ + src->size_, ptr_);
       src->size_ = 0;
     } else {
       Discard();
@@ -149,7 +148,7 @@ class Vec {
     size_t request = static_cast<size_t>(capacity_) * sizeof(T);
     T* copy = static_cast<T*>(
         base_internal::LowLevelAlloc::AllocWithArena(request, arena));
-    std::copy_n(ptr_, size_, copy);
+    std::copy(ptr_, ptr_ + size_, copy);
     Discard();
     ptr_ = copy;
   }
@@ -387,22 +386,19 @@ bool GraphCycles::CheckInvariants() const {
     Node* nx = r->nodes_[x];
     void* ptr = base_internal::UnhidePtr<void>(nx->masked_ptr);
     if (ptr != nullptr && static_cast<uint32_t>(r->ptrmap_.Find(ptr)) != x) {
-      ABSL_RAW_LOG(FATAL, "Did not find live node in hash table %" PRIu32 " %p",
-                   x, ptr);
+      ABSL_RAW_LOG(FATAL, "Did not find live node in hash table %u %p", x, ptr);
     }
     if (nx->visited) {
-      ABSL_RAW_LOG(FATAL, "Did not clear visited marker on node %" PRIu32, x);
+      ABSL_RAW_LOG(FATAL, "Did not clear visited marker on node %u", x);
     }
     if (!ranks.insert(nx->rank)) {
-      ABSL_RAW_LOG(FATAL, "Duplicate occurrence of rank %" PRId32, nx->rank);
+      ABSL_RAW_LOG(FATAL, "Duplicate occurrence of rank %d", nx->rank);
     }
     HASH_FOR_EACH(y, nx->out) {
       Node* ny = r->nodes_[static_cast<uint32_t>(y)];
       if (nx->rank >= ny->rank) {
-        ABSL_RAW_LOG(FATAL,
-                     "Edge %" PRIu32 " ->%" PRId32
-                     " has bad rank assignment %" PRId32 "->%" PRId32,
-                     x, y, nx->rank, ny->rank);
+        ABSL_RAW_LOG(FATAL, "Edge %u->%d has bad rank assignment %d->%d", x, y,
+                     nx->rank, ny->rank);
       }
     }
   }

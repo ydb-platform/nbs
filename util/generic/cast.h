@@ -18,7 +18,7 @@ static inline T VerifyDynamicCast(F f) {
 
     T ret = dynamic_cast<T>(f);
 
-    Y_ABORT_UNLESS(ret, "verify cast failed");
+    Y_VERIFY(ret, "verify cast failed");
 
     return ret;
 }
@@ -147,7 +147,7 @@ inline TSmallInt IntegerCast(TLargeInt largeInt) noexcept {
     try {
         return SafeIntegerCast<TSmallInt>(largeInt);
     } catch (const yexception& exc) {
-        Y_ABORT("IntegerCast: %s", exc.what());
+        Y_FAIL("IntegerCast: %s", exc.what());
     }
 }
 

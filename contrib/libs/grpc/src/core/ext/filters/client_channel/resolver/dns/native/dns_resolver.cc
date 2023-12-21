@@ -24,24 +24,27 @@
 #include <vector>
 
 #include "y_absl/functional/bind_front.h"
+#include "y_absl/memory/memory.h"
 #include "y_absl/status/status.h"
 #include "y_absl/status/statusor.h"
-#include "y_absl/strings/match.h"
 #include "y_absl/strings/str_cat.h"
 #include "y_absl/strings/string_view.h"
 #include "y_absl/strings/strip.h"
 #include "y_absl/types/optional.h"
 
-#include <grpc/grpc.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/log.h>
 
+#include "src/core/ext/filters/client_channel/resolver/dns/dns_resolver_selection.h"
 #include "src/core/ext/filters/client_channel/resolver/polling_resolver.h"
 #include "src/core/lib/backoff/backoff.h"
 #include "src/core/lib/channel/channel_args.h"
-#include "src/core/lib/config/config_vars.h"
 #include "src/core/lib/config/core_configuration.h"
 #include "src/core/lib/debug/trace.h"
+#include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gprpp/debug_location.h"
+#include "src/core/lib/gprpp/global_config_generic.h"
+#include "src/core/lib/gprpp/memory.h"
 #include "src/core/lib/gprpp/orphanable.h"
 #include "src/core/lib/gprpp/ref_counted_ptr.h"
 #include "src/core/lib/gprpp/time.h"
@@ -49,6 +52,7 @@
 #include "src/core/lib/iomgr/resolved_address.h"
 #include "src/core/lib/resolver/resolver.h"
 #include "src/core/lib/resolver/resolver_factory.h"
+#include "src/core/lib/resolver/resolver_registry.h"
 #include "src/core/lib/resolver/server_address.h"
 #include "src/core/lib/uri/uri_parser.h"
 
@@ -66,7 +70,7 @@ TraceFlag grpc_trace_dns_resolver(false, "dns_resolver");
 class NativeClientChannelDNSResolver : public PollingResolver {
  public:
   NativeClientChannelDNSResolver(ResolverArgs args,
-                                 Duration min_time_between_resolutions);
+                                 const ChannelArgs& channel_args);
   ~NativeClientChannelDNSResolver() override;
 
   OrphanablePtr<Orphanable> StartRequest() override;
@@ -87,16 +91,22 @@ class NativeClientChannelDNSResolver : public PollingResolver {
 };
 
 NativeClientChannelDNSResolver::NativeClientChannelDNSResolver(
-    ResolverArgs args, Duration min_time_between_resolutions)
-    : PollingResolver(std::move(args), min_time_between_resolutions,
-                      BackOff::Options()
-                          .set_initial_backoff(Duration::Milliseconds(
-                              GRPC_DNS_INITIAL_CONNECT_BACKOFF_SECONDS * 1000))
-                          .set_multiplier(GRPC_DNS_RECONNECT_BACKOFF_MULTIPLIER)
-                          .set_jitter(GRPC_DNS_RECONNECT_JITTER)
-                          .set_max_backoff(Duration::Milliseconds(
-                              GRPC_DNS_RECONNECT_MAX_BACKOFF_SECONDS * 1000)),
-                      &grpc_trace_dns_resolver) {
+    ResolverArgs args, const ChannelArgs& channel_args)
+    : PollingResolver(
+          std::move(args), channel_args,
+          std::max(Duration::Zero(),
+                   channel_args
+                       .GetDurationFromIntMillis(
+                           GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS)
+                       .value_or(Duration::Seconds(30))),
+          BackOff::Options()
+              .set_initial_backoff(Duration::Milliseconds(
+                  GRPC_DNS_INITIAL_CONNECT_BACKOFF_SECONDS * 1000))
+              .set_multiplier(GRPC_DNS_RECONNECT_BACKOFF_MULTIPLIER)
+              .set_jitter(GRPC_DNS_RECONNECT_JITTER)
+              .set_max_backoff(Duration::Milliseconds(
+                  GRPC_DNS_RECONNECT_MAX_BACKOFF_SECONDS * 1000)),
+          &grpc_trace_dns_resolver) {
   if (GRPC_TRACE_FLAG_ENABLED(grpc_trace_dns_resolver)) {
     gpr_log(GPR_DEBUG, "[dns_resolver=%p] created", this);
   }
@@ -167,28 +177,26 @@ class NativeClientChannelDNSResolverFactory : public ResolverFactory {
 
   OrphanablePtr<Resolver> CreateResolver(ResolverArgs args) const override {
     if (!IsValidUri(args.uri)) return nullptr;
-    Duration min_time_between_resolutions = std::max(
-        Duration::Zero(), args.args
-                              .GetDurationFromIntMillis(
-                                  GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS)
-                              .value_or(Duration::Seconds(30)));
+    auto channel_args = args.args;
     return MakeOrphanable<NativeClientChannelDNSResolver>(
-        std::move(args), min_time_between_resolutions);
+        std::move(args), std::move(channel_args));
   }
 };
 
 }  // namespace
 
 void RegisterNativeDnsResolver(CoreConfiguration::Builder* builder) {
-  if (y_absl::EqualsIgnoreCase(ConfigVars::Get().DnsResolver(), "native")) {
+  static const char* const resolver =
+      GPR_GLOBAL_CONFIG_GET(grpc_dns_resolver).release();
+  if (gpr_stricmp(resolver, "native") == 0) {
     gpr_log(GPR_DEBUG, "Using native dns resolver");
     builder->resolver_registry()->RegisterResolverFactory(
-        std::make_unique<NativeClientChannelDNSResolverFactory>());
+        y_absl::make_unique<NativeClientChannelDNSResolverFactory>());
   } else {
     if (!builder->resolver_registry()->HasResolverFactory("dns")) {
       gpr_log(GPR_DEBUG, "Using native dns resolver");
       builder->resolver_registry()->RegisterResolverFactory(
-          std::make_unique<NativeClientChannelDNSResolverFactory>());
+          y_absl::make_unique<NativeClientChannelDNSResolverFactory>());
     }
   }
 }

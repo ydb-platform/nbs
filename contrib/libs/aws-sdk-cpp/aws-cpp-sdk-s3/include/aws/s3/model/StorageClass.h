@@ -23,8 +23,7 @@ namespace Model
     INTELLIGENT_TIERING,
     GLACIER,
     DEEP_ARCHIVE,
-    OUTPOSTS,
-    GLACIER_IR
+    OUTPOSTS
   };
 
 namespace StorageClassMapper

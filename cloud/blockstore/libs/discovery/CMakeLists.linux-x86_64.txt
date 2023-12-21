@@ -19,7 +19,7 @@ target_link_libraries(blockstore-libs-discovery PUBLIC
   blockstore-libs-common
   blockstore-libs-diagnostics
   core-libs-grpc
-  library-actors-prof
+  cpp-actors-prof
   cpp-deprecated-atomic
   cpp-monlib-dynamic_counters
   monlib-service-pages

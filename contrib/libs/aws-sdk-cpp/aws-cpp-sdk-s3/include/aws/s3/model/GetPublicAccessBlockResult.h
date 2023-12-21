@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetPublicAccessBlockResult
+  class AWS_S3_API GetPublicAccessBlockResult
   {
   public:
-    AWS_S3_API GetPublicAccessBlockResult();
-    AWS_S3_API GetPublicAccessBlockResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetPublicAccessBlockResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetPublicAccessBlockResult();
+    GetPublicAccessBlockResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetPublicAccessBlockResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

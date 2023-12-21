@@ -4,8 +4,6 @@ PROGRAM()
 
 WITHOUT_LICENSE_TEXTS()
 
-LICENSE(MIT)
-
 PEERDIR(
     contrib/libs/liburing
 )

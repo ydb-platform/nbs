@@ -6,7 +6,7 @@ import grpc
 from .mock_service import AccessServiceMockState, AccessServiceMockServicer
 from .control_service import ControlServer
 
-from contrib.ydb.public.api.client.yc_private.servicecontrol import access_service_pb2_grpc
+from ydb.public.api.client.yc_private.servicecontrol import access_service_pb2_grpc
 
 
 def parse_args():

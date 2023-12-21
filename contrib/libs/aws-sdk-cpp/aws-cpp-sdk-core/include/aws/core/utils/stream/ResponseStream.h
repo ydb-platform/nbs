@@ -49,22 +49,14 @@ namespace Aws
                 /**
                  * Gives access to underlying stream, but keep in mind that this changes state of the stream
                  */
-                Aws::IOStream& GetUnderlyingStream() const;
+                inline Aws::IOStream& GetUnderlyingStream() const { return *m_underlyingStream; }
 
             private:
                 void ReleaseStream();
-                void RegisterStream();
-                void DeregisterStream();
 
-                Aws::IOStream* m_underlyingStream = nullptr;
-
-                static const int xindex;
-                static void StreamCallback(Aws::IOStream::event evt, std::ios_base& str, int idx);
+                Aws::IOStream* m_underlyingStream;
             };
 
-            /**
-             * A default IOStream for ResponseStream.
-             */
             class AWS_CORE_API DefaultUnderlyingStream : public Aws::IOStream
             {
             public:

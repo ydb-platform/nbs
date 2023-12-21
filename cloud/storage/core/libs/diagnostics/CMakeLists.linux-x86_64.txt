@@ -16,7 +16,7 @@ target_link_libraries(core-libs-diagnostics PUBLIC
   core-libs-common
   storage-core-protos
   cpp-lwtrace-mon
-  library-actors-prof
+  cpp-actors-prof
   cpp-containers-ring_buffer
   cpp-deprecated-atomic
   cpp-histogram-hdr

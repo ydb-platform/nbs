@@ -108,7 +108,7 @@ bool THttpParser::HeadersParser() {
 
 bool THttpParser::ContentParser() {
     DBGOUT("Content parsing()");
-    if (HasContentLength_ && !BodyNotExpected_) {
+    if (HasContentLength_) {
         size_t rd = Min<size_t>(DataEnd_ - Data_, ContentLength_ - Content_.size());
         Content_.append(Data_, rd);
         Data_ += rd;
@@ -119,8 +119,8 @@ bool THttpParser::ContentParser() {
     } else {
         if (MessageType_ == Request) {
             return OnEndParsing(); //RFC2616 4.4-5
-        } else if (Y_UNLIKELY(BodyNotExpected_ || RetCode() < 200 || RetCode() == 204 || RetCode() == 304)) {
-            return OnEndParsing(); //RFC2616 4.4-1
+        } else if (Y_UNLIKELY(RetCode() < 200 || RetCode() == 204 || RetCode() == 304)) {
+            return OnEndParsing(); //RFC2616 4.4-1 (but not checked HEAD request type !)
         }
 
         Content_.append(Data_, DataEnd_);
@@ -262,10 +262,6 @@ void THttpParser::OnEof() {
 }
 
 bool THttpParser::DecodeContent() {
-    if (!DecodeContent_) {
-        return false;
-    }
-
     if (!ContentEncoding_ || ContentEncoding_ == "identity" || ContentEncoding_ == "none") {
         DecodedContent_ = Content_;
         return false;

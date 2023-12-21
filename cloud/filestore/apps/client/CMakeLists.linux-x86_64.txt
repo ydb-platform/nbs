@@ -14,16 +14,14 @@ target_link_libraries(filestore-client PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
-  apps-client-lib
+  filestore-apps-client-lib
   library-cpp-getopt
 )
 target_link_options(filestore-client PRIVATE
   -ldl
   -lrt
   -Wl,--no-as-needed
-  -Wl,-rpath,$ORIGIN
   -fPIC
-  -Wl,-rpath,$ORIGIN
   -fPIC
   -lpthread
   -lrt

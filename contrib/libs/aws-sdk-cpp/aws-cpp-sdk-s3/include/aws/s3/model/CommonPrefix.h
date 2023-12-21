@@ -31,14 +31,14 @@ namespace Model
    * <a href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/CommonPrefix">AWS
    * API Reference</a></p>
    */
-  class CommonPrefix
+  class AWS_S3_API CommonPrefix
   {
   public:
-    AWS_S3_API CommonPrefix();
-    AWS_S3_API CommonPrefix(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API CommonPrefix& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    CommonPrefix();
+    CommonPrefix(const Aws::Utils::Xml::XmlNode& xmlNode);
+    CommonPrefix& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -84,7 +84,7 @@ namespace Model
   private:
 
     Aws::String m_prefix;
-    bool m_prefixHasBeenSet = false;
+    bool m_prefixHasBeenSet;
   };
 
 } // namespace Model

@@ -15,7 +15,7 @@ target_link_libraries(filestore-libs-storage-ss_proxy PUBLIC
   filestore-libs-storage-api
   filestore-libs-storage-core
   core-libs-kikimr
-  library-actors-core
+  cpp-actors-core
   cpp-string_utils-quote
   ydb-core-base
   ydb-core-tablet

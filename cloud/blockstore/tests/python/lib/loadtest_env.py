@@ -1,6 +1,6 @@
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.util import LogLevels
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.util import LogLevels
 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
@@ -52,7 +52,7 @@ class LocalLoadTest:
         self.__endpoint = endpoint
 
         if kikimr_binary_path is None:
-            kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
         self.configurator = KikimrConfigGenerator(
             erasure=None,

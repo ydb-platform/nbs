@@ -26,7 +26,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 // [iterator.concept.readable]
 template<class _In>
@@ -273,7 +273,7 @@ concept indirectly_copyable_storable =
 // Note: indirectly_swappable is located in iter_swap.h to prevent a dependency cycle
 // (both iter_swap and indirectly_swappable require indirectly_readable).
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 _LIBCPP_END_NAMESPACE_STD
 

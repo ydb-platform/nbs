@@ -92,7 +92,7 @@ public:
      *
      * @stable ICU 4.2
      */
-    bool operator==(const CurrencyPluralInfo& info) const;
+    UBool operator==(const CurrencyPluralInfo& info) const;
 
 
     /**
@@ -100,7 +100,7 @@ public:
      *
      * @stable ICU 4.2
      */
-    bool operator!=(const CurrencyPluralInfo& info) const;
+    UBool operator!=(const CurrencyPluralInfo& info) const;
 
 
     /**
@@ -184,7 +184,7 @@ public:
      *
      * @stable ICU 4.2
      */
-    virtual UClassID getDynamicClassID() const override;
+    virtual UClassID getDynamicClassID() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for this class.
@@ -259,7 +259,7 @@ private:
 };
 
 
-inline bool
+inline UBool
 CurrencyPluralInfo::operator!=(const CurrencyPluralInfo& info) const {
     return !operator==(info);
 }  

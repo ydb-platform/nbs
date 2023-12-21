@@ -12,7 +12,7 @@
 
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <library/cpp/actors/core/actorid.h>
 
 #include <util/digest/multi.h>
 #include <util/generic/hash.h>

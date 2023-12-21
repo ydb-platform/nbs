@@ -25,7 +25,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 // [iter.cust.swap]
 
@@ -99,7 +99,7 @@ concept indirectly_swappable =
     ranges::iter_swap(__i2, __i1);
   };
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 _LIBCPP_END_NAMESPACE_STD
 

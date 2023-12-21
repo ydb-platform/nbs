@@ -63,7 +63,7 @@ extern "C" EHExceptionRecord** __current_exception();
 #ifdef __clang__
 struct _ThrowInfo;
 // defined in vcruntime<ver>.dll
-extern "C" _LIBCPP_NORETURN void __stdcall _CxxThrowException(
+_LIBCPP_NORETURN extern "C" void __stdcall _CxxThrowException(
     void* __exc, _ThrowInfo* __throw_info);
 #endif
 

@@ -31,14 +31,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/AccelerateConfiguration">AWS
    * API Reference</a></p>
    */
-  class AccelerateConfiguration
+  class AWS_S3_API AccelerateConfiguration
   {
   public:
-    AWS_S3_API AccelerateConfiguration();
-    AWS_S3_API AccelerateConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API AccelerateConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    AccelerateConfiguration();
+    AccelerateConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    AccelerateConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -74,7 +74,7 @@ namespace Model
   private:
 
     BucketAccelerateStatus m_status;
-    bool m_statusHasBeenSet = false;
+    bool m_statusHasBeenSet;
   };
 
 } // namespace Model

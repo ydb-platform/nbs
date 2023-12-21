@@ -1,1 +1,0 @@
-MCS_IN_SEC = 1e6

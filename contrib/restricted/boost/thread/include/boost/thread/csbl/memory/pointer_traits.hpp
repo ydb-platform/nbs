@@ -12,7 +12,17 @@
 #include <boost/thread/csbl/memory/config.hpp>
 
 // 20.7.3, pointer traits
+#if defined BOOST_NO_CXX11_ALLOCATOR
+#include <boost/intrusive/pointer_traits.hpp>
 
+namespace boost
+{
+  namespace csbl
+  {
+    using ::boost::intrusive::pointer_traits;
+  }
+}
+#else
 namespace boost
 {
   namespace csbl
@@ -20,5 +30,6 @@ namespace boost
     using ::std::pointer_traits;
   }
 }
+#endif // BOOST_NO_CXX11_ALLOCATOR
 
 #endif // header

@@ -212,14 +212,14 @@ void WaitForSecureErase(
     TTestActorRuntimeBase::TEventObserver prev;
 
     prev = runtime.SetObserverFunc(
-        [&] (TAutoPtr<IEventHandle>& event) {
+        [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
                 auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                 cleanDevices += msg->CleanDevices;
             }
 
-            return prev(event);
+            return prev(runtime, event);
         });
 
     runtime.AdvanceCurrentTime(TDuration::Seconds(5));
@@ -318,14 +318,14 @@ void RegisterAndWaitForAgent(
     size_t cleanDevices = 0;
 
     if (deviceCount) {
-        prev = runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        prev = runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
                     auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                     cleanDevices += msg->CleanDevices;
                 }
 
-                return prev(event);
+                return prev(runtime, event);
             });
     }
 

@@ -4,8 +4,7 @@
  */
 #pragma once
 
-#include <aws/core/Core_EXPORTS.h>
-#include <aws/core/utils/memory/stl/AWSStreamFwd.h>
+#include "aws/core/Core_EXPORTS.h"
 
 namespace Aws
 {
@@ -52,15 +51,8 @@ namespace Aws
             UNKNOWN = 100,                // Unknown to the SDK
             CLIENT_SIGNING_FAILURE = 101, // Client failed to sign the request
             USER_CANCELLED = 102, // User cancelled the request
-            ENDPOINT_RESOLUTION_FAILURE = 103,
-            SERVICE_EXTENSION_START_RANGE = 128,
-            OK = -1 // No error set
+            SERVICE_EXTENSION_START_RANGE = 128
         };
-
-        /**
-         * Overload ostream operator<< for CoreErrors enum class for a prettier output such as "128"
-         */
-        AWS_CORE_API Aws::OStream& operator<< (Aws::OStream& oStream, CoreErrors code);
 
         namespace CoreErrorsMapper
         {

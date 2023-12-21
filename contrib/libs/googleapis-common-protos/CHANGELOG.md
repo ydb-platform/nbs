@@ -1,21 +1,5 @@
 # Changelog
 
-## [1.61.0](https://github.com/googleapis/python-api-common-protos/compare/v1.60.0...v1.61.0) (2023-10-09)
-
-
-### Features
-
-* Add `google/api/field_info.proto` ([2d39f37](https://github.com/googleapis/python-api-common-protos/commit/2d39f37212fe886b3029e1043ca28789e2d66876))
-* Add `IDENTIFIER` to `FieldBehavior` enum ([2d39f37](https://github.com/googleapis/python-api-common-protos/commit/2d39f37212fe886b3029e1043ca28789e2d66876))
-
-## [1.60.0](https://github.com/googleapis/python-api-common-protos/compare/v1.59.1...v1.60.0) (2023-07-27)
-
-
-### Features
-
-* Add `google/api/policy.proto` ([b2cb5c2](https://github.com/googleapis/python-api-common-protos/commit/b2cb5c257ae8d0869d33581b116995620ddae0b2))
-* Add `method_policies` to `Control` ([b2cb5c2](https://github.com/googleapis/python-api-common-protos/commit/b2cb5c257ae8d0869d33581b116995620ddae0b2))
-
 ## [1.59.1](https://github.com/googleapis/python-api-common-protos/compare/v1.59.0...v1.59.1) (2023-06-06)
 
 

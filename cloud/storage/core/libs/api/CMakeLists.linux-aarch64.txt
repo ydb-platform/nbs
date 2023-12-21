@@ -13,7 +13,7 @@ target_link_libraries(core-libs-api PUBLIC
   contrib-libs-cxxsupp
   yutil
   core-libs-kikimr
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
 )
 target_sources(core-libs-api PRIVATE

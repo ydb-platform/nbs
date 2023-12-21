@@ -48,7 +48,7 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, error] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
@@ -64,7 +64,7 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendDescribeVolumeRequest();
@@ -82,7 +82,7 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        runtime.SetObserverFunc([] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -92,7 +92,7 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendDescribeVolumeRequest(TString());

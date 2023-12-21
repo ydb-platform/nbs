@@ -11,9 +11,9 @@
 #include <boost/locale/boundary/facets.hpp>
 #include <boost/locale/boundary/segment.hpp>
 #include <boost/locale/boundary/types.hpp>
+#include <boost/cstdint.hpp>
 #include <boost/iterator/iterator_facade.hpp>
 #include <algorithm>
-#include <cstdint>
 #include <iterator>
 #include <locale>
 #include <memory>
@@ -133,7 +133,7 @@ namespace boost { namespace locale { namespace boundary {
             typedef mapping<base_iterator> mapping_type;
             typedef segment<base_iterator> segment_type;
 
-            segment_index_iterator() : current_(0, 0), map_(nullptr), mask_(0), full_select_(false) {}
+            segment_index_iterator() : current_(0, 0), map_(0), mask_(0), full_select_(false) {}
 
             segment_index_iterator(base_iterator p, const mapping_type* map, rule_type mask, bool full_select) :
                 map_(map), mask_(mask), full_select_(full_select)
@@ -221,10 +221,11 @@ namespace boost { namespace locale { namespace boundary {
 
             void set(base_iterator p)
             {
-                const auto b = map_->index().begin(), e = map_->index().end();
-                auto boundary_point = std::upper_bound(b, e, break_info(std::distance(map_->begin(), p)));
+                size_t dist = std::distance(map_->begin(), p);
+                index_type::const_iterator b = map_->index().begin(), e = map_->index().end();
+                index_type::const_iterator boundary_point = std::upper_bound(b, e, break_info(dist));
                 while(boundary_point != e && (boundary_point->rule & mask_) == 0)
-                    ++boundary_point;
+                    boundary_point++;
 
                 current_.first = current_.second = boundary_point - b;
 
@@ -258,8 +259,9 @@ namespace boost { namespace locale { namespace boundary {
 
             void update_rule()
             {
-                if(current_.second != size())
+                if(current_.second != size()) {
                     value_.rule(index()[current_.second].rule);
+                }
             }
             size_t get_offset(size_t ind) const
             {
@@ -295,7 +297,7 @@ namespace boost { namespace locale { namespace boundary {
             typedef mapping<base_iterator> mapping_type;
             typedef boundary_point<base_iterator> boundary_point_type;
 
-            boundary_point_index_iterator() : current_(0), map_(nullptr), mask_(0) {}
+            boundary_point_index_iterator() : current_(0), map_(0), mask_(0) {}
 
             boundary_point_index_iterator(bool is_begin, const mapping_type* map, rule_type mask) :
                 map_(map), mask_(mask)
@@ -356,13 +358,14 @@ namespace boost { namespace locale { namespace boundary {
             {
                 size_t dist = std::distance(map_->begin(), p);
 
-                const auto b = index().begin(), e = index().end();
-                const auto ptr = std::lower_bound(b, e, break_info(dist));
+                index_type::const_iterator b = index().begin();
+                index_type::const_iterator e = index().end();
+                index_type::const_iterator ptr = std::lower_bound(b, e, break_info(dist));
 
-                if(ptr == e)
+                if(ptr == index().end())
                     current_ = size() - 1;
                 else
-                    current_ = ptr - b;
+                    current_ = ptr - index().begin();
 
                 while(!valid_offset(current_))
                     current_++;
@@ -385,8 +388,9 @@ namespace boost { namespace locale { namespace boundary {
 
             void update_rule()
             {
-                if(current_ != size())
+                if(current_ != size()) {
                     value_.rule(index()[current_].rule);
+                }
             }
             size_t get_offset(size_t ind) const
             {

@@ -65,8 +65,8 @@ bool LeakCheckerIsActive() { return false; }
 void DoIgnoreLeak(const void*) { }
 void RegisterLivePointers(const void*, size_t) { }
 void UnRegisterLivePointers(const void*, size_t) { }
-LeakCheckDisabler::LeakCheckDisabler() = default;
-LeakCheckDisabler::~LeakCheckDisabler() = default;
+LeakCheckDisabler::LeakCheckDisabler() { }
+LeakCheckDisabler::~LeakCheckDisabler() { }
 Y_ABSL_NAMESPACE_END
 }  // namespace y_absl
 

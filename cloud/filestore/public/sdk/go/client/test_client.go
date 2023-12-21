@@ -1,8 +1,9 @@
 package client
 
 import (
-	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	"golang.org/x/net/context"
+
+	protos "a.yandex-team.ru/cloud/filestore/public/api/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

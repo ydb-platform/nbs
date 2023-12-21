@@ -1,5 +1,5 @@
 // © 2019 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html
+// License & terms of use: http://www.unicode.org/copyright.html#License
 
 // lsr.cpp
 // created: 2019may08 Markus W. Scherer
@@ -31,7 +31,7 @@ LSR::LSR(char prefix, const char *lang, const char *scr, const char *r, int32_t 
     }
 }
 
-LSR::LSR(LSR &&other) noexcept :
+LSR::LSR(LSR &&other) U_NOEXCEPT :
         language(other.language), script(other.script), region(other.region), owned(other.owned),
         regionIndex(other.regionIndex), flags(other.flags),
         hashCode(other.hashCode) {
@@ -46,7 +46,7 @@ void LSR::deleteOwned() {
     uprv_free(owned);
 }
 
-LSR &LSR::operator=(LSR &&other) noexcept {
+LSR &LSR::operator=(LSR &&other) U_NOEXCEPT {
     this->~LSR();
     language = other.language;
     script = other.script;
@@ -72,7 +72,7 @@ UBool LSR::isEquivalentTo(const LSR &other) const {
         (regionIndex > 0 || uprv_strcmp(region, other.region) == 0);
 }
 
-bool LSR::operator==(const LSR &other) const {
+UBool LSR::operator==(const LSR &other) const {
     return
         uprv_strcmp(language, other.language) == 0 &&
         uprv_strcmp(script, other.script) == 0 &&

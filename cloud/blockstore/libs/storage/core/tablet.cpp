@@ -1,6 +1,6 @@
 #include "tablet.h"
 
-#include <contrib/ydb/core/engine/minikql/flat_local_tx_factory.h>
+#include <ydb/core/engine/minikql/flat_local_tx_factory.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

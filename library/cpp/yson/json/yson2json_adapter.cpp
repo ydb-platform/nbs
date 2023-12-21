@@ -1,13 +1,9 @@
 #include "yson2json_adapter.h"
 
 namespace NYT {
-    TYson2JsonCallbacksAdapter::TYson2JsonCallbacksAdapter(
-        ::NYson::TYsonConsumerBase* impl,
-        bool throwException,
-        ui64 maxDepth)
+    TYson2JsonCallbacksAdapter::TYson2JsonCallbacksAdapter(::NYson::TYsonConsumerBase* impl, bool throwException)
         : NJson::TJsonCallbacks(throwException)
         , Impl_(impl)
-        , MaxDepth_(maxDepth)
     {
     }
 
@@ -50,9 +46,6 @@ namespace NYT {
     bool TYson2JsonCallbacksAdapter::OnOpenArray() {
         WrapIfListItem();
         State_.ContextStack.push(true);
-        if (State_.ContextStack.size() > MaxDepth_) {
-            return false;
-        }
         Impl_->OnBeginList();
         return true;
     }
@@ -66,9 +59,6 @@ namespace NYT {
     bool TYson2JsonCallbacksAdapter::OnOpenMap() {
         WrapIfListItem();
         State_.ContextStack.push(false);
-        if (State_.ContextStack.size() > MaxDepth_) {
-            return false;
-        }
         Impl_->OnBeginMap();
         return true;
     }

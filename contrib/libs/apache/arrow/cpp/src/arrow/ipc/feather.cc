@@ -49,7 +49,7 @@
 #include "arrow/util/make_unique.h"
 #include "arrow/visitor_inline.h"
 
-#include "generated/feather.fbs.h"
+#include "generated/feather_generated.h"
 
 namespace arrow {
 
@@ -207,8 +207,8 @@ class ReaderV1 : public Reader {
         TimeUnit::type unit = FromFlatbufferEnum(meta->unit());
         std::string tz;
         // flatbuffer non-null
-        if (meta->time_zone() != 0) {
-          tz = meta->time_zone()->str();
+        if (meta->timezone() != 0) {
+          tz = meta->timezone()->str();
         } else {
           tz = "";
         }

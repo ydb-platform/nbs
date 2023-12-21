@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketRequestPaymentResult
+  class AWS_S3_API GetBucketRequestPaymentResult
   {
   public:
-    AWS_S3_API GetBucketRequestPaymentResult();
-    AWS_S3_API GetBucketRequestPaymentResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetBucketRequestPaymentResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketRequestPaymentResult();
+    GetBucketRequestPaymentResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketRequestPaymentResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

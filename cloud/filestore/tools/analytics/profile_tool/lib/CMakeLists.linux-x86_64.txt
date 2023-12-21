@@ -14,7 +14,7 @@ target_link_libraries(analytics-profile_tool-lib PUBLIC
   contrib-libs-cxxsupp
   yutil
   filestore-libs-diagnostics-events
-  analytics-libs-event-log
+  filestore-analytics-libs-event-log
   cpp-eventlog-dumper
   library-cpp-getopt
 )

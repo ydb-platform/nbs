@@ -10,9 +10,9 @@ PEERDIR(
     cloud/storage/core/tools/testing/access_service/lib
     cloud/storage/core/tools/testing/qemu/lib
 
-    contrib/ydb/core/protos
-    contrib/ydb/public/api/protos
-    contrib/ydb/tests/library
+    ydb/core/protos
+    ydb/public/api/protos
+    ydb/tests/library
 
     contrib/python/requests/py3
     contrib/python/retrying

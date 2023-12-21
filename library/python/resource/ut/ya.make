@@ -1,17 +1,4 @@
-PY23_TEST()
-
-STYLE_PYTHON()
-
-TEST_SRCS(test_simple.py)
-
-PEERDIR(
-    library/python/resource
+RECURSE(
+    py2
+    py3
 )
-
-RESOURCE(
-    qw.txt /qw.txt
-    qw.txt /prefix/1.txt
-    qw.txt /prefix/2.txt
-)
-
-END()

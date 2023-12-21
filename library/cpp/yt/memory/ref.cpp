@@ -1,5 +1,4 @@
 #include "ref.h"
-
 #include "blob.h"
 
 #include <library/cpp/yt/malloc/malloc.h>

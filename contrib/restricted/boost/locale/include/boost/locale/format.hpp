@@ -1,6 +1,5 @@
 //
 // Copyright (c) 2009-2011 Artyom Beilis (Tonkikh)
-// Copyright (c) 2021-2023 Alexander Grund
 //
 // Distributed under the Boost Software License, Version 1.0.
 // https://www.boost.org/LICENSE_1_0.txt
@@ -13,7 +12,6 @@
 #include <boost/locale/message.hpp>
 #include <sstream>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 #ifdef BOOST_MSVC
@@ -37,15 +35,15 @@ namespace boost { namespace locale {
             typedef std::basic_ostream<CharType> stream_type;
             typedef void (*writer_type)(stream_type& output, const void* ptr);
 
-            formattible() noexcept : pointer_(nullptr), writer_(&formattible::void_write) {}
+            formattible() : pointer_(0), writer_(&formattible::void_write) {}
 
-            formattible(const formattible&) noexcept = default;
-            formattible(formattible&&) noexcept = default;
-            formattible& operator=(const formattible&) noexcept = default;
-            formattible& operator=(formattible&&) noexcept = default;
+            formattible(const formattible&) = default;
+            formattible(formattible&&) = default;
+            formattible& operator=(const formattible&) = default;
+            formattible& operator=(formattible&&) = default;
 
             template<typename Type>
-            explicit formattible(const Type& value) noexcept
+            explicit formattible(const Type& value)
             {
                 pointer_ = static_cast<const void*>(&value);
                 writer_ = &write<Type>;
@@ -175,12 +173,10 @@ namespace boost { namespace locale {
     ///    \endcode
     ///
     ///
-    /// Invalid formatting strings are silently ignored.
-    /// This protects against a translator crashing the program in an unexpected location.
+    /// Invalid formatting strings are slightly ignored. This would prevent from translator
+    /// to crash the program in unexpected location.
     template<typename CharType>
     class basic_format {
-        int throw_if_params_bound() const;
-
     public:
         typedef CharType char_type;                    ///< Underlying character type
         typedef basic_message<char_type> message_type; ///< The translation message type
@@ -203,12 +199,16 @@ namespace boost { namespace locale {
         void operator=(const basic_format& other) = delete;
         /// Moveable
         basic_format(basic_format&& other) :
-            message_((other.throw_if_params_bound(), std::move(other.message_))), format_(std::move(other.format_)),
-            translate_(other.translate_), parameters_count_(0)
-        {}
+            message_(std::move(other.message_)), format_(std::move(other.format_)), translate_(other.translate_),
+            parameters_count_(0)
+        {
+            if(other.parameters_count_)
+                throw std::invalid_argument("Can't move a basic_format with bound parameters");
+        }
         basic_format& operator=(basic_format&& other)
         {
-            other.throw_if_params_bound();
+            if(other.parameters_count_)
+                throw std::invalid_argument("Can't move a basic_format with bound parameters");
             message_ = std::move(other.message_);
             format_ = std::move(other.format_);
             translate_ = other.translate_;
@@ -262,37 +262,39 @@ namespace boost { namespace locale {
     private:
         class format_guard {
         public:
-            format_guard(detail::format_parser& fmt) : fmt_(fmt), restored_(false) {}
+            format_guard(detail::format_parser& fmt) : fmt_(&fmt), restored_(false) {}
             void restore()
             {
                 if(restored_)
                     return;
-                fmt_.restore();
+                fmt_->restore();
                 restored_ = true;
             }
             ~format_guard()
             {
-                // clang-format off
-                try { restore(); } catch(...) {}
-                // clang-format on
+                try {
+                    restore();
+                } catch(...) {
+                }
             }
 
         private:
-            detail::format_parser& fmt_;
+            detail::format_parser* fmt_;
             bool restored_;
         };
 
         void format_output(stream_type& out, const string_type& sformat) const
         {
-            constexpr char_type obrk = '{';
-            constexpr char_type cbrk = '}';
-            constexpr char_type eq = '=';
-            constexpr char_type comma = ',';
-            constexpr char_type quote = '\'';
+            char_type obrk = '{';
+            char_type cbrk = '}';
+            char_type eq = '=';
+            char_type comma = ',';
+            char_type quote = '\'';
 
-            const size_t size = sformat.size();
+            size_t pos = 0;
+            size_t size = sformat.size();
             const CharType* format = sformat.c_str();
-            for(size_t pos = 0; format[pos];) {
+            while(format[pos] != 0) {
                 if(format[pos] != obrk) {
                     if(format[pos] == cbrk && format[pos + 1] == cbrk) {
                         out << cbrk;
@@ -303,11 +305,13 @@ namespace boost { namespace locale {
                     }
                     continue;
                 }
-                pos++;
-                if(format[pos] == obrk) {
+
+                if(pos + 1 < size && format[pos + 1] == obrk) {
                     out << obrk;
+                    pos += 2;
                     continue;
                 }
+                pos++;
 
                 detail::format_parser fmt(out, static_cast<void*>(&out), &basic_format::imbue_locale);
 
@@ -318,8 +322,13 @@ namespace boost { namespace locale {
                     std::string svalue;
                     string_type value;
                     bool use_svalue = true;
-                    for(char_type c = format[pos]; !(c == 0 || c == comma || c == eq || c == cbrk); c = format[++pos]) {
-                        key += static_cast<char>(c);
+                    for(; format[pos]; pos++) {
+                        char_type c = format[pos];
+                        if(c == comma || c == eq || c == cbrk)
+                            break;
+                        else {
+                            key += static_cast<char>(c);
+                        }
                     }
 
                     if(format[pos] == eq) {
@@ -350,19 +359,22 @@ namespace boost { namespace locale {
                         }
                     }
 
-                    if(use_svalue)
+                    if(use_svalue) {
                         fmt.set_one_flag(key, svalue);
-                    else
+                    } else
                         fmt.set_flag_with_str(key, value);
 
-                    if(format[pos] == comma)
+                    if(format[pos] == comma) {
                         pos++;
-                    else {
-                        if(format[pos] == cbrk) {
-                            unsigned position = fmt.get_position();
-                            out << get(position);
-                            pos++;
-                        }
+                        continue;
+                    } else if(format[pos] == cbrk) {
+                        unsigned position = fmt.get_position();
+                        out << get(position);
+                        guard.restore();
+                        pos++;
+                        break;
+                    } else {
+                        guard.restore();
                         break;
                     }
                 }
@@ -388,7 +400,7 @@ namespace boost { namespace locale {
                 return parameters_[id];
         }
 
-        static void imbue_locale(void* ptr, const std::locale& l) { static_cast<stream_type*>(ptr)->imbue(l); }
+        static void imbue_locale(void* ptr, const std::locale& l) { reinterpret_cast<stream_type*>(ptr)->imbue(l); }
 
         static constexpr unsigned base_params_ = 8;
 
@@ -426,13 +438,6 @@ namespace boost { namespace locale {
     typedef basic_format<char32_t> u32format;
 #endif
 
-    template<typename CharType>
-    int basic_format<CharType>::throw_if_params_bound() const
-    {
-        if(parameters_count_)
-            throw std::invalid_argument("Can't move a basic_format with bound parameters");
-        return 0;
-    }
     /// @}
 }} // namespace boost::locale
 

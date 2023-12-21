@@ -49,12 +49,12 @@ public:
      * Transliterator API.
      * @return    A copy of the object.
      */
-    virtual NameUnicodeTransliterator* clone() const override;
+    virtual NameUnicodeTransliterator* clone() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for the actual class.
      */
-    virtual UClassID getDynamicClassID() const override;
+    virtual UClassID getDynamicClassID() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for this class.
@@ -73,7 +73,7 @@ public:
      *                      pos.contextLimit. Otherwise, assume the text is complete.
      */
     virtual void handleTransliterate(Replaceable& text, UTransPosition& offset,
-                                     UBool isIncremental) const override;
+                                     UBool isIncremental) const;
 
     /**
      * Set of characters which occur in Unicode character names.

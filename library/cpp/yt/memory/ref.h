@@ -36,9 +36,6 @@ public:
     //! Creates a non-owning TRef for a given string.
     static TRef FromString(const TString& str);
 
-    //! Creates a non-owning TRef for a given std::string.
-    static TRef FromString(const std::string& str);
-
     //! Creates a non-owning TRef for a given stringbuf.
     static TRef FromStringBuf(TStringBuf strBuf);
 
@@ -403,7 +400,3 @@ size_t GetByteSize(const std::vector<T>& parts);
 #define REF_INL_H_
 #include "ref-inl.h"
 #undef REF_INL_H_
-
-//! Serialize TSharedRef like vector<char>. Useful for ::Save, ::Load serialization/deserialization. See util/ysaveload.h.
-template <>
-class TSerializer<NYT::TSharedRef>: public TVectorSerializer<NYT::TSharedRange<char>> {};

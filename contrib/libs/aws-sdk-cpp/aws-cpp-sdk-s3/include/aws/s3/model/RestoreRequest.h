@@ -32,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/RestoreRequest">AWS
    * API Reference</a></p>
    */
-  class RestoreRequest
+  class AWS_S3_API RestoreRequest
   {
   public:
-    AWS_S3_API RestoreRequest();
-    AWS_S3_API RestoreRequest(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API RestoreRequest& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    RestoreRequest();
+    RestoreRequest(const Aws::Utils::Xml::XmlNode& xmlNode);
+    RestoreRequest& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -275,25 +275,25 @@ namespace Model
   private:
 
     int m_days;
-    bool m_daysHasBeenSet = false;
+    bool m_daysHasBeenSet;
 
     GlacierJobParameters m_glacierJobParameters;
-    bool m_glacierJobParametersHasBeenSet = false;
+    bool m_glacierJobParametersHasBeenSet;
 
     RestoreRequestType m_type;
-    bool m_typeHasBeenSet = false;
+    bool m_typeHasBeenSet;
 
     Tier m_tier;
-    bool m_tierHasBeenSet = false;
+    bool m_tierHasBeenSet;
 
     Aws::String m_description;
-    bool m_descriptionHasBeenSet = false;
+    bool m_descriptionHasBeenSet;
 
     SelectParameters m_selectParameters;
-    bool m_selectParametersHasBeenSet = false;
+    bool m_selectParametersHasBeenSet;
 
     OutputLocation m_outputLocation;
-    bool m_outputLocationHasBeenSet = false;
+    bool m_outputLocationHasBeenSet;
   };
 
 } // namespace Model

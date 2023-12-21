@@ -26,7 +26,7 @@ target_link_libraries(libs-storage-partition_common PUBLIC
   storage-partition_common-model
   core-libs-common
   core-libs-kikimr
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
 )
 target_sources(libs-storage-partition_common PRIVATE

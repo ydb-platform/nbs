@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+find_package(OpenSSL REQUIRED)
 
 add_library(libs-poco-NetSSL_OpenSSL)
 target_compile_options(libs-poco-NetSSL_OpenSSL PRIVATE
@@ -30,7 +31,7 @@ target_include_directories(libs-poco-NetSSL_OpenSSL PRIVATE
 target_link_libraries(libs-poco-NetSSL_OpenSSL PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
-  contrib-libs-openssl
+  OpenSSL::OpenSSL
   libs-poco-Crypto
   libs-poco-Foundation
   libs-poco-JSON

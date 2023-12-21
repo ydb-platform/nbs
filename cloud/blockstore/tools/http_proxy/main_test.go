@@ -18,14 +18,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	blockstore_config "github.com/ydb-platform/nbs/cloud/blockstore/config"
-	blockstore_grpc "github.com/ydb-platform/nbs/cloud/blockstore/public/api/grpc"
-	blockstore_protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
-	storage_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
-	"github.com/ydb-platform/nbs/library/go/test/yatest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpc_metadata "google.golang.org/grpc/metadata"
+
+	blockstore_config "a.yandex-team.ru/cloud/blockstore/config"
+	blockstore_grpc "a.yandex-team.ru/cloud/blockstore/public/api/grpc"
+	blockstore_protos "a.yandex-team.ru/cloud/blockstore/public/api/protos"
+	storage_protos "a.yandex-team.ru/cloud/storage/core/protos"
+	"a.yandex-team.ru/library/go/test/yatest"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

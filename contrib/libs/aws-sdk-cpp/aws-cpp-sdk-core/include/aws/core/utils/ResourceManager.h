@@ -96,6 +96,7 @@ namespace Aws
              */
             Aws::Vector<RESOURCE_TYPE> ShutdownAndWait(size_t resourceCount)
             {
+                Aws::Vector<RESOURCE_TYPE> resources;
                 std::unique_lock<std::mutex> locker(m_queueLock);
                 m_shutdown = true;
 
@@ -105,7 +106,8 @@ namespace Aws
                     m_semaphore.wait(locker, [&]() { return m_resources.size() == resourceCount; });
                 }
 
-                Aws::Vector<RESOURCE_TYPE> resources{std::move(m_resources)};
+                resources = m_resources;
+                m_resources.clear();
 
                 return resources;
             }

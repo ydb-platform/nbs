@@ -17,10 +17,6 @@ ORIGINAL_SOURCE(https://github.com/llvm/llvm-project/archive/llvmorg-14.0.6.tar.
 
 DISABLE(USE_LTO)
 
-PEERDIR(
-    library/cpp/sanitizer/include
-)
-
 ADDINCL(
     contrib/libs/libunwind/include
 )

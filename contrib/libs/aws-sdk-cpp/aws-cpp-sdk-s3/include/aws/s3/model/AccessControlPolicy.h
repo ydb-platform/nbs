@@ -30,14 +30,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/AccessControlPolicy">AWS
    * API Reference</a></p>
    */
-  class AccessControlPolicy
+  class AWS_S3_API AccessControlPolicy
   {
   public:
-    AWS_S3_API AccessControlPolicy();
-    AWS_S3_API AccessControlPolicy(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API AccessControlPolicy& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    AccessControlPolicy();
+    AccessControlPolicy(const Aws::Utils::Xml::XmlNode& xmlNode);
+    AccessControlPolicy& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -114,10 +114,10 @@ namespace Model
   private:
 
     Aws::Vector<Grant> m_grants;
-    bool m_grantsHasBeenSet = false;
+    bool m_grantsHasBeenSet;
 
     Owner m_owner;
-    bool m_ownerHasBeenSet = false;
+    bool m_ownerHasBeenSet;
   };
 
 } // namespace Model

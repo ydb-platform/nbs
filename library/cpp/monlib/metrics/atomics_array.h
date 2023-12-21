@@ -18,7 +18,7 @@ namespace NMonitoring {
         }
 
         ui64 operator[](size_t index) const noexcept {
-            Y_DEBUG_ABORT_UNLESS(index < Size_);
+            Y_VERIFY_DEBUG(index < Size_);
             return Values_[index].load(std::memory_order_relaxed);
         }
 
@@ -27,7 +27,7 @@ namespace NMonitoring {
         }
 
         void Add(size_t index, ui64 count) noexcept {
-            Y_DEBUG_ABORT_UNLESS(index < Size_);
+            Y_VERIFY_DEBUG(index < Size_);
             Values_[index].fetch_add(count, std::memory_order_relaxed);
         }
 

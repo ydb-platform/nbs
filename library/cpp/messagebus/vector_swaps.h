@@ -122,7 +122,7 @@ public:
         size_t newCapacity = FastClp2(n);
         TVectorSwaps<T> tmp;
         tmp.Start = (T*)malloc(sizeof(T) * newCapacity);
-        Y_ABORT_UNLESS(!!tmp.Start);
+        Y_VERIFY(!!tmp.Start);
 
         tmp.EndOfStorage = tmp.Start + newCapacity;
 
@@ -146,7 +146,7 @@ public:
 
     template <class TIterator>
     void insert(iterator pos, TIterator b, TIterator e) {
-        Y_ABORT_UNLESS(pos == end(), "TODO: only insert at the end is implemented");
+        Y_VERIFY(pos == end(), "TODO: only insert at the end is implemented");
 
         size_t count = e - b;
 

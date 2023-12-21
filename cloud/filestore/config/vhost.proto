@@ -6,7 +6,7 @@ import "cloud/filestore/config/client.proto";
 import "cloud/filestore/config/server.proto";
 import "cloud/storage/core/protos/endpoints.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+option go_package = "a.yandex-team.ru/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

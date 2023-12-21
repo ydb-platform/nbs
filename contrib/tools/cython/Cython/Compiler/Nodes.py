@@ -6215,10 +6215,8 @@ class AssertStatNode(StatNode):
     gil_message = "Raising exception"
 
     def generate_execution_code(self, code):
-        code.globalstate.use_utility_code(
-            UtilityCode.load_cached("AssertionsEnabled", "Exceptions.c"))
         code.putln("#ifndef CYTHON_WITHOUT_ASSERTIONS")
-        code.putln("if (unlikely(__pyx_assertions_enabled())) {")
+        code.putln("if (unlikely(!Py_OptimizeFlag)) {")
         code.mark_pos(self.pos)
         self.cond.generate_evaluation_code(code)
         code.putln(

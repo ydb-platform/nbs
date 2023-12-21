@@ -7,8 +7,6 @@
 
 #include <library/cpp/yt/assert/assert.h>
 
-#include <util/ysaveload.h>
-
 #include <optional>
 
 namespace NYT {
@@ -100,26 +98,6 @@ public:
         , Holder_(std::move(holder))
     { }
 
-    TSharedRange(const TSharedRange& other) = default;
-
-    TSharedRange(TSharedRange&& other) noexcept
-        : TSharedRange()
-    {
-        other.Swap(*this);
-    }
-
-    TSharedRange& operator=(TSharedRange other) noexcept
-    {
-        other.Swap(*this);
-        return *this;
-    }
-
-    void Swap(TSharedRange& other) noexcept
-    {
-        DoSwap(TRange<T>::Data_, other.Data_);
-        DoSwap(TRange<T>::Length_, other.Length_);
-        Holder_.Swap(other.Holder_);
-    }
 
     void Reset()
     {
@@ -287,26 +265,6 @@ public:
         , Holder_(std::move(holder))
     { }
 
-    TSharedMutableRange(const TSharedMutableRange& other) = default;
-
-    TSharedMutableRange(TSharedMutableRange&& other) noexcept
-        : TSharedMutableRange()
-    {
-        other.Swap(*this);
-    }
-
-    TSharedMutableRange& operator=(TSharedMutableRange other) noexcept
-    {
-        other.Swap(*this);
-        return *this;
-    }
-
-    void Swap(TSharedMutableRange& other) noexcept
-    {
-        DoSwap(TRange<T>::Data_, other.Data_);
-        DoSwap(TRange<T>::Length_, other.Length_);
-        Holder_.Swap(other.Holder_);
-    }
 
     void Reset()
     {

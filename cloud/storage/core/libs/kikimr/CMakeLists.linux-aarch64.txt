@@ -15,9 +15,9 @@ target_link_libraries(core-libs-kikimr PUBLIC
   core-libs-actors
   core-libs-common
   core-libs-diagnostics
-  library-actors-core
-  library-actors-util
-  library-actors-wilson
+  cpp-actors-core
+  cpp-actors-util
+  cpp-actors-wilson
   cpp-getopt-small
   library-cpp-lwtrace
   ydb-core-base

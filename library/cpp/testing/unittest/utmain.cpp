@@ -520,6 +520,12 @@ private:
         return EnabledTests_.find(name) != EnabledTests_.end();
     }
 
+    void PushDownEnvVar(TShellCommandOptions* options, const TString& var) {
+        if (TString value = GetEnv(var)) {
+            options->Environment[var] = std::move(value);
+        }
+    }
+
     void Run(std::function<void()> f, const TString& suite, const char* name, const bool forceFork) override {
         if (!(GetForkTests() || forceFork) || GetIsForked()) {
             return f();
@@ -535,6 +541,10 @@ private:
             .SetCloseAllFdsOnExec(true)
             .SetAsync(false)
             .SetLatency(1);
+
+        PushDownEnvVar(&options, Y_UNITTEST_OUTPUT_CMDLINE_OPTION);
+        PushDownEnvVar(&options, Y_UNITTEST_TEST_FILTER_FILE_OPTION);
+        PushDownEnvVar(&options, "TMPDIR");
 
         TShellCommand cmd(AppName, args, options);
         cmd.Run();
@@ -566,7 +576,7 @@ private:
                 ythrow yexception() << "Forked test finished with unknown status";
             }
             case TShellCommand::SHELL_RUNNING: {
-                Y_ABORT_UNLESS(false, "This can't happen, we used sync mode, it's a bug!");
+                Y_VERIFY(false, "This can't happen, we used sync mode, it's a bug!");
             }
             case TShellCommand::SHELL_INTERNAL_ERROR: {
                 ythrow yexception() << "Forked test failed with internal error: " << cmd.GetInternalError();
@@ -706,7 +716,7 @@ int NUnitTest::RunMain(int argc, char** argv) {
         memset(&sa, 0, sizeof(sa));
         sa.sa_handler = GracefulShutdownHandler;
         sa.sa_flags = SA_SIGINFO | SA_RESTART;
-        Y_ABORT_UNLESS(!sigaction(SIGUSR2, &sa, nullptr));
+        Y_VERIFY(!sigaction(SIGUSR2, &sa, nullptr));
     }
 #endif
     NTesting::THook::CallBeforeInit();
@@ -754,24 +764,7 @@ int NUnitTest::RunMain(int argc, char** argv) {
             processor.FilterFromFile(filterFn);
         }
 
-        auto processJunitOption = [&](const TStringBuf& v) {
-            if (!hasJUnitProcessor) {
-                hasJUnitProcessor = true;
-                bool xmlFormat = false;
-                constexpr TStringBuf xmlPrefix = "xml:";
-                constexpr TStringBuf jsonPrefix = "json:";
-                if ((xmlFormat = v.StartsWith(xmlPrefix)) || v.StartsWith(jsonPrefix)) {
-                    TStringBuf fileName = v;
-                    const TStringBuf prefix = xmlFormat ? xmlPrefix : jsonPrefix;
-                    fileName = fileName.SubString(prefix.size(), TStringBuf::npos);
-                    const TJUnitProcessor::EOutputFormat format = xmlFormat ? TJUnitProcessor::EOutputFormat::Xml : TJUnitProcessor::EOutputFormat::Json;
-                    NUnitTest::ShouldColorizeDiff = false;
-                    traceProcessors.push_back(std::make_shared<TJUnitProcessor>(TString(fileName),
-                                                                                std::filesystem::path(argv[0]).stem().string(),
-                                                                                format));
-                }
-            }
-        };
+
 
         for (size_t i = 1; i < (size_t)argc; ++i) {
             const char* name = argv[i];
@@ -831,7 +824,14 @@ int NUnitTest::RunMain(int argc, char** argv) {
                 } else if (strcmp(name, "--output") == 0) {
                     ++i;
                     Y_ENSURE((int)i < argc);
-                    processJunitOption(argv[i]);
+                    TString param(argv[i]);
+                    if (param.StartsWith("xml:") && !hasJUnitProcessor) {
+                        TStringBuf fileName = param;
+                        fileName = fileName.SubString(4, TStringBuf::npos);
+                        NUnitTest::ShouldColorizeDiff = false;
+                        traceProcessors.push_back(std::make_shared<TJUnitProcessor>(TString(fileName), argv[0]));
+                    }
+                    hasJUnitProcessor = true;
                 } else if (strcmp(name, "--filter-file") == 0) {
                     ++i;
                     TString filename(argv[i]);
@@ -852,8 +852,13 @@ int NUnitTest::RunMain(int argc, char** argv) {
         }
 
         if (!hasJUnitProcessor) {
-            if (TString oo = GetEnv(Y_UNITTEST_OUTPUT_CMDLINE_OPTION)) {
-                processJunitOption(oo);
+            TString oo(GetEnv(Y_UNITTEST_OUTPUT_CMDLINE_OPTION));
+            if (oo.StartsWith("xml:")) {
+                TStringBuf fileName = oo;
+                fileName = fileName.SubString(4, TStringBuf::npos);
+                NUnitTest::ShouldColorizeDiff = false;
+                traceProcessors.push_back(std::make_shared<TJUnitProcessor>(TString(fileName),
+                                                                            std::filesystem::path(argv[0]).stem().string()));
             }
         }
 

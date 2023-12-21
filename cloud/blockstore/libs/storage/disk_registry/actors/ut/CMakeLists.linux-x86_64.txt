@@ -18,7 +18,7 @@ target_link_libraries(libs-storage-disk_registry-actors-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   storage-disk_registry-actors
-  library-actors-testlib
+  cpp-actors-testlib
 )
 target_link_options(libs-storage-disk_registry-actors-ut PRIVATE
   -ldl

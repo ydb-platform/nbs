@@ -382,7 +382,7 @@ public:
 
     inline explicit TBasicString(::NDetail::TReserveTag rt)
 #ifndef TSTRING_IS_STD_STRING
-        : S_(Construct<>())
+        : S_(Construct())
 #endif
     {
         reserve(rt.Capacity);
@@ -487,11 +487,10 @@ public:
      *
      * @throw std::length_error
      */
-    TBasicString(TUninitialized uninitialized)
+    TBasicString(TUninitialized uninitialized) {
 #if !defined(TSTRING_IS_STD_STRING)
-        : S_(Construct<>())
+        S_ = Construct();
 #endif
-    {
         ReserveAndResize(uninitialized.Size);
     }
 
@@ -905,11 +904,6 @@ public:
         return Join(TCharType(ch), s);
     }
 
-    friend TBasicString operator+(TExplicitType<TCharType> ch, TBasicString&& s) Y_WARN_UNUSED_RESULT {
-        s.prepend(ch);
-        return std::move(s);
-    }
-
     friend TBasicString operator+(const TBasicString& s1, const TBasicString& s2) Y_WARN_UNUSED_RESULT {
         return Join(s1, s2);
     }
@@ -945,11 +939,11 @@ public:
     }
 
     friend TBasicString operator+(std::basic_string<TCharType, TTraits> l, TBasicString r) {
-        return std::move(l) + r.ConstRef();
+        return l + r.ConstRef();
     }
 
     friend TBasicString operator+(TBasicString l, std::basic_string<TCharType, TTraits> r) {
-        return l.ConstRef() + std::move(r);
+        return l.ConstRef() + r;
     }
 
     // ~~~ Prepending ~~~ : FAMILY0(TBasicString&, prepend);

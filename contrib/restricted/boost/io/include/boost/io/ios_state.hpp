@@ -155,7 +155,7 @@ public:
         s.exceptions(a);
     }
 
-    ~basic_ios_exception_saver() BOOST_NOEXCEPT_IF(false) {
+    ~basic_ios_exception_saver() {
         this->restore();
     }
 
@@ -413,7 +413,7 @@ public:
 #endif
         { }
 
-    ~basic_ios_all_saver() BOOST_NOEXCEPT_IF(false) {
+    ~basic_ios_all_saver() {
         this->restore();
     }
 

@@ -38,7 +38,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         ui64 observedNodeId = 0;
         bool observedKeepDown = false;
-        env.GetRuntime().SetObserverFunc([&](TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvDrainNode: {
@@ -47,7 +47,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                         observedKeepDown = msg->Record.GetKeepDown();
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         static constexpr auto DrainTabletsActionName = "draintablets";

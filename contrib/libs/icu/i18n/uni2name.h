@@ -48,12 +48,12 @@ class UnicodeNameTransliterator : public Transliterator {
     /**
      * Transliterator API.
      */
-    virtual UnicodeNameTransliterator* clone() const override;
+    virtual UnicodeNameTransliterator* clone() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for the actual class.
      */
-    virtual UClassID getDynamicClassID() const override;
+    virtual UClassID getDynamicClassID() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for this class.
@@ -72,7 +72,7 @@ class UnicodeNameTransliterator : public Transliterator {
      *                    pos.contextLimit.  Otherwise, assume the text is complete.
      */
     virtual void handleTransliterate(Replaceable& text, UTransPosition& offset,
-                                     UBool isIncremental) const override;
+                                     UBool isIncremental) const;
 
 private:
     /**

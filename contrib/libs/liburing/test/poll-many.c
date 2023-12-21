@@ -15,7 +15,6 @@
 #include <fcntl.h>
 
 #include "liburing.h"
-#include "helpers.h"
 
 #define	NFILES	5000
 #define BATCH	500
@@ -139,21 +138,6 @@ static int arm_polls(struct io_uring *ring)
 	return 0;
 }
 
-static int do_test(struct io_uring *ring)
-{
-	int i;
-
-	if (arm_polls(ring))
-		return 1;
-
-	for (i = 0; i < NLOOPS; i++) {
-		trigger_polls();
-		if (reap_polls(ring))
-			return 1;
-	}
-	return 0;
-}
-
 int main(int argc, char *argv[])
 {
 	struct io_uring ring;
@@ -166,7 +150,7 @@ int main(int argc, char *argv[])
 
 	if (getrlimit(RLIMIT_NOFILE, &rlim) < 0) {
 		perror("getrlimit");
-		return T_EXIT_FAIL;
+		goto err_noring;
 	}
 
 	if (rlim.rlim_cur < (2 * NFILES + 5)) {
@@ -176,14 +160,14 @@ int main(int argc, char *argv[])
 			if (errno == EPERM)
 				goto err_nofail;
 			perror("setrlimit");
-			return T_EXIT_FAIL;
+			goto err_noring;
 		}
 	}
 
 	for (i = 0; i < NFILES; i++) {
 		if (pipe(p[i].fd) < 0) {
 			perror("pipe");
-			return T_EXIT_FAIL;
+			goto err_noring;
 		}
 	}
 
@@ -193,37 +177,31 @@ int main(int argc, char *argv[])
 	if (ret) {
 		if (ret == -EINVAL) {
 			fprintf(stdout, "No CQSIZE, trying without\n");
-
-			params.flags &= ~IORING_SETUP_CQSIZE;
-			params.cq_entries = 0;
-			ret = io_uring_queue_init_params(RING_SIZE, &ring, &params);
+			ret = io_uring_queue_init(RING_SIZE, &ring, 0);
 			if (ret) {
 				fprintf(stderr, "ring setup failed: %d\n", ret);
-				return T_EXIT_FAIL;
+				return 1;
 			}
 		}
 	}
 
-	if (do_test(&ring)) {
-		fprintf(stderr, "test (normal) failed\n");
-		return T_EXIT_FAIL;
-	}
-	io_uring_queue_exit(&ring);
+	if (arm_polls(&ring))
+		goto err;
 
-	if (t_probe_defer_taskrun()) {
-		params.flags |= IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN;
-		ret = io_uring_queue_init_params(RING_SIZE, &ring, &params);
-		if (ret) {
-			fprintf(stderr, "ring DEFER setup failed: %d\n", ret);
-			return T_EXIT_FAIL;
-		}
-		if (do_test(&ring)) {
-			fprintf(stderr, "test (DEFER) failed\n");
-			return T_EXIT_FAIL;
-		}
-		io_uring_queue_exit(&ring);
+	for (i = 0; i < NLOOPS; i++) {
+		trigger_polls();
+		ret = reap_polls(&ring);
+		if (ret)
+			goto err;
 	}
+
+	io_uring_queue_exit(&ring);
 	return 0;
+err:
+	io_uring_queue_exit(&ring);
+err_noring:
+	fprintf(stderr, "poll-many failed\n");
+	return 1;
 err_nofail:
 	fprintf(stderr, "poll-many: not enough files available (and not root), "
 			"skipped\n");

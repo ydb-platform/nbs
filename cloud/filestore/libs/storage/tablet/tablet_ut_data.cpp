@@ -1584,7 +1584,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TAutoPtr<IEventHandle> readBlob;
         bool intercept = true;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 if (intercept) {
                     switch (event->GetTypeRewrite()) {
@@ -1597,7 +1597,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1761,7 +1761,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // intercepting EvPutResult and setting yellow flag
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     using namespace NKikimr;
 
@@ -1785,7 +1785,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1950,7 +1950,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // forcing hard gc to make sure that our next gc is soft
         TVector<TPartialBlobId> blobIds;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPut: {
                         auto* msg = event->Get<TEvBlobStorage::TEvPut>();
@@ -1968,7 +1968,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1984,7 +1984,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 0, block, 'b');
 
         bool evPutObserved = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPut: {
                         auto* msg = event->Get<TEvBlobStorage::TEvPut>();
@@ -1996,7 +1996,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2010,7 +2010,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT(evPutObserved);
 
         bool collectGarbageResultObserved = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPut: {
                         auto* msg = event->Get<TEvBlobStorage::TEvPut>();
@@ -2031,7 +2031,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2236,7 +2236,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         TAutoPtr<IEventHandle> completion;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvFlushBytesCompleted: {
@@ -2245,7 +2245,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2262,7 +2262,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         bool flushObserved = false;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvFlushCompleted: {
@@ -2271,7 +2271,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2483,7 +2483,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         TVector<ui32> ranges;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvCompactionRequest: {
@@ -2492,7 +2492,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2521,7 +2521,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         TVector<ui32> ranges;
         bool dropped = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvCompactionRequest: {
@@ -2546,7 +2546,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2575,7 +2575,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         bool dropped = false;
         TVector<ui32> ranges;
         TAutoPtr<IEventHandle> request;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvCompactionRequest: {
@@ -2589,7 +2589,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2623,7 +2623,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         bool changed = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     using TAddBlob = TEvIndexTabletPrivate::TEvAddBlobRequest;
@@ -2636,7 +2636,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 

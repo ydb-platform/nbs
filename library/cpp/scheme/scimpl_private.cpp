@@ -58,7 +58,7 @@ namespace NSc {
                 case EMode::Throw:
                     ythrow TSchemeException() << "REFERENCE LOOP DETECTED";
                 case EMode::Abort:
-                    Y_ABORT("REFERENCE LOOP DETECTED");
+                    Y_FAIL("REFERENCE LOOP DETECTED");
                     break;
                 case EMode::Stderr:
                     Cerr << "REFERENCE LOOP DETECTED: " << JoinStrings(Vector.begin(), Vector.end(), ", ")

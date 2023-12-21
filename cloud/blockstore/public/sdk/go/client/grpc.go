@@ -3,11 +3,13 @@ package client
 import (
 	"time"
 
-	api "github.com/ydb-platform/nbs/cloud/blockstore/public/api/grpc"
-	protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"golang.org/x/net/context"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
+
+	api "a.yandex-team.ru/cloud/blockstore/public/api/grpc"
+	protos "a.yandex-team.ru/cloud/blockstore/public/api/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

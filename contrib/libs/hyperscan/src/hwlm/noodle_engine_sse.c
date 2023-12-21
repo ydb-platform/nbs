@@ -106,7 +106,7 @@ hwlm_error_t scanDoubleShort(const struct noodTable *n, const u8 *buf,
     if (!l) {
         return HWLM_SUCCESS;
     }
-    assert(l <= 16);
+    assert(l <= 32);
 
     DEBUG_PRINTF("d %zu\n", d - buf);
     m128 v = zeroes128();

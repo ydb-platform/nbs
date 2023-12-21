@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketReplicationResult
+  class AWS_S3_API GetBucketReplicationResult
   {
   public:
-    AWS_S3_API GetBucketReplicationResult();
-    AWS_S3_API GetBucketReplicationResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetBucketReplicationResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketReplicationResult();
+    GetBucketReplicationResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketReplicationResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     

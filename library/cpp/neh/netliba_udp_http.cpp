@@ -282,7 +282,7 @@ namespace NNehNetliba {
         }
 
         void SendRequest(const TUdpAddress& addr, const TString& url, const TString& data, const TGUID& reqId) override {
-            Y_ABORT_UNLESS(
+            Y_VERIFY(
                 data.size() < MAX_PACKET_SIZE,
                 "data size is too large; data.size()=%" PRISZT ", MAX_PACKET_SIZE=%" PRISZT,
                 data.size(), MAX_PACKET_SIZE);
@@ -322,7 +322,7 @@ namespace NNehNetliba {
 
         void SendResponse(const TGUID& reqId, TVector<char>* data) override {
             if (data && data->size() > MAX_PACKET_SIZE) {
-               Y_ABORT(
+               Y_FAIL(
                     "data size is too large; data->size()=%" PRISZT ", MAX_PACKET_SIZE=%" PRISZT,
                     data->size(), MAX_PACKET_SIZE);
             }

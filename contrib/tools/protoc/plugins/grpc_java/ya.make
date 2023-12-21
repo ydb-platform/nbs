@@ -8,4 +8,6 @@ ENDIF()
 
 RECURSE(
     bin
+    bin/parsever
+    bin/test
 )

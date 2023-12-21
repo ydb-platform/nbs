@@ -38,7 +38,7 @@ public:
         kNegativeNumberRule = -1,
         kImproperFractionRule = -2,
         kProperFractionRule = -3,
-        kDefaultRule = -4,
+        kMasterRule = -4,
         kInfinityRule = -5,
         kNaNRule = -6,
         kOtherRule = -7
@@ -54,8 +54,8 @@ public:
     NFRule(const RuleBasedNumberFormat* rbnf, const UnicodeString &ruleText, UErrorCode &status);
     ~NFRule();
 
-    bool operator==(const NFRule& rhs) const;
-    bool operator!=(const NFRule& rhs) const { return !operator==(rhs); }
+    UBool operator==(const NFRule& rhs) const;
+    UBool operator!=(const NFRule& rhs) const { return !operator==(rhs); }
 
     ERuleType getType() const { return (ERuleType)(baseValue <= kNoBase ? (ERuleType)baseValue : kOtherRule); }
     void setType(ERuleType ruleType) { baseValue = (int32_t)ruleType; }
@@ -63,7 +63,7 @@ public:
     int64_t getBaseValue() const { return baseValue; }
     void setBaseValue(int64_t value, UErrorCode& status);
 
-    char16_t getDecimalPoint() const { return decimalPoint; }
+    UChar getDecimalPoint() const { return decimalPoint; }
 
     int64_t getDivisor() const;
 
@@ -108,7 +108,7 @@ private:
     int64_t baseValue;
     int32_t radix;
     int16_t exponent;
-    char16_t decimalPoint;
+    UChar decimalPoint;
     UnicodeString fRuleText;
     NFSubstitution* sub1;
     NFSubstitution* sub2;

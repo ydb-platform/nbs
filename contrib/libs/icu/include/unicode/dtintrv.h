@@ -89,7 +89,7 @@ public:
      *                  other classes have different class IDs.
      * @stable ICU 4.0
      */
-    virtual UClassID getDynamicClassID(void) const override;
+    virtual UClassID getDynamicClassID(void) const;
 
     
     /**
@@ -106,17 +106,17 @@ public:
 
     /**
      * Equality operator.
-     * @return true if the two DateIntervals are the same
+     * @return TRUE if the two DateIntervals are the same
      * @stable ICU 4.0
      */
-    virtual bool operator==(const DateInterval& other) const;
+    virtual UBool operator==(const DateInterval& other) const;
 
     /**
      * Non-equality operator
-     * @return true if the two DateIntervals are not the same
+     * @return TRUE if the two DateIntervals are not the same
      * @stable ICU 4.0
      */
-    inline bool operator!=(const DateInterval& other) const;
+    inline UBool operator!=(const DateInterval& other) const;
 
 
     /**
@@ -131,7 +131,7 @@ private:
     /** 
      * Default constructor, not implemented.
      */
-    DateInterval() = delete;
+    DateInterval();
 
     UDate fromDate;
     UDate toDate;
@@ -151,7 +151,7 @@ DateInterval::getToDate() const {
 }
 
 
-inline bool
+inline UBool 
 DateInterval::operator!=(const DateInterval& other) const { 
     return ( !operator==(other) );
 }

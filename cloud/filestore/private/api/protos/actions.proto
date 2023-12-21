@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package NCloud.NFileStore.NProtoPrivate;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
+option go_package = "a.yandex-team.ru/cloud/filestore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Actiions

@@ -22,9 +22,7 @@ target_link_options(cloud-filestore-libs-daemon-vhost-ut PRIVATE
   -ldl
   -lrt
   -Wl,--no-as-needed
-  -Wl,-rpath,$ORIGIN
   -fPIC
-  -Wl,-rpath,$ORIGIN
   -fPIC
   -lpthread
   -lrt

@@ -217,7 +217,6 @@ namespace Aws
             void Reload() override;
 
         private:
-            bool ExpiresSoon() const;
             void RefreshIfExpired();
 
             std::shared_ptr<Aws::Config::AWSProfileConfigLoader> m_ec2MetadataConfigLoader;

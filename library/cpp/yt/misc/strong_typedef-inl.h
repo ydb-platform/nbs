@@ -4,8 +4,6 @@
 #include "strong_typedef.h"
 #endif
 
-#include "wrapper_traits.h"
-
 #include <util/generic/strbuf.h>
 
 #include <functional>
@@ -62,35 +60,6 @@ constexpr T&& TStrongTypedef<T, TTag>::Underlying() &&
     return std::move(Underlying_);
 }
 
-#define XX(op, defaultValue) \
-    template <class T, class TTag> \
-    constexpr auto TStrongTypedef<T, TTag>::operator op(const TStrongTypedef& rhs) const \
-        noexcept(noexcept(Underlying_ op rhs.Underlying_)) \
-            requires requires (T lhs, T rhs) {lhs op rhs; } \
-    { \
-        if constexpr (std::same_as<T, void>) { \
-            return defaultValue; \
-        } \
-        return Underlying_ op rhs.Underlying_; \
-    }
-
-XX(<, false)
-XX(>, false)
-XX(<=, true)
-XX(>=, true)
-XX(==, true)
-XX(!=, false)
-XX(<=>, std::strong_ordering::equal)
-
-#undef XX
-
-template <class T, class TTag>
-TStrongTypedef<T, TTag>::operator bool() const
-    noexcept(noexcept(static_cast<bool>(Underlying_)))
-{
-    return static_cast<bool>(Underlying_);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class T>
@@ -109,7 +78,7 @@ struct TStrongTypedefTraits<TStrongTypedef<T, TTag>>
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class T, class TChar>
-    requires CStrongTypedef<T>
+    requires TStrongTypedefTraits<T>::IsStrongTypedef
 bool TryFromStringImpl(const TChar* data, size_t size, T& value)
 {
     return TryFromString(data, size, value.Underlying());
@@ -121,32 +90,9 @@ class TStringBuilderBase;
 
 template <class T, class TTag>
 void FormatValue(TStringBuilderBase* builder, const TStrongTypedef<T, TTag>& value, TStringBuf format)
-    noexcept(noexcept(FormatValue(builder, value.Underlying(), format)))
 {
     FormatValue(builder, value.Underlying(), format);
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <class T, class TTag>
-struct TBasicWrapperTraits<TStrongTypedef<T, TTag>>
-{
-    static constexpr bool IsTrivialWrapper = false;
-
-    using TUnwrapped = T;
-
-    static constexpr bool HasValue(const TStrongTypedef<T, TTag>&) noexcept
-    {
-        return true;
-    }
-
-    template <class U>
-        requires std::same_as<std::remove_cvref_t<U>, TStrongTypedef<T, TTag>>
-    static constexpr decltype(auto) Unwrap(U&& wrapper) noexcept
-    {
-        return std::forward<U>(wrapper).Underlying();
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -171,22 +117,13 @@ struct hash<NYT::TStrongTypedef<T, TTag>>
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <class T>
+struct THash;
+
 template <class T, class TTag>
 struct THash<NYT::TStrongTypedef<T, TTag>>
-{
-    size_t operator()(const NYT::TStrongTypedef<T, TTag>& value) const
-    {
-        static constexpr bool IsHashable = requires (T value) {
-            { THash<T>()(value) } -> std::same_as<size_t>;
-        };
-
-        if constexpr (IsHashable) {
-            return THash<T>()(value.Underlying());
-        } else {
-            return std::hash<T>()(value.Underlying());
-        }
-    }
-};
+    : public std::hash<NYT::TStrongTypedef<T, TTag>>
+{ };
 
 ////////////////////////////////////////////////////////////////////////////////
 

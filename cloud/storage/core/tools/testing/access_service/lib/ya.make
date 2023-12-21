@@ -6,7 +6,7 @@ PY_SRCS(
 
 PEERDIR(
     contrib/python/requests/py3
-    contrib/ydb/tests/library
+    ydb/tests/library
 )
 
 END()

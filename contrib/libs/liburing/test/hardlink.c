@@ -45,7 +45,7 @@ err:
 	return 1;
 }
 
-static int files_linked_ok(const char* fn1, const char *fn2)
+int files_linked_ok(const char* fn1, const char *fn2)
 {
 	struct stat s1, s2;
 

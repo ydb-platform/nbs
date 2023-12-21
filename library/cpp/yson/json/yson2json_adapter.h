@@ -21,10 +21,7 @@ namespace NYT {
         };
 
     public:
-        TYson2JsonCallbacksAdapter(
-            ::NYson::TYsonConsumerBase* impl,
-            bool throwException = false,
-            ui64 maxDepth = std::numeric_limits<ui64>::max());
+        TYson2JsonCallbacksAdapter(::NYson::TYsonConsumerBase* impl, bool throwException = false);
 
         bool OnNull() override;
         bool OnBoolean(bool val) override;
@@ -52,6 +49,5 @@ namespace NYT {
     private:
         ::NYson::TYsonConsumerBase* Impl_;
         TState State_;
-        ui64 MaxDepth_;
     };
 }

@@ -11,6 +11,24 @@
 
 #include <boost/thread/csbl/memory/config.hpp>
 
+#if defined BOOST_NO_CXX11_SMART_PTR
+
+#include <boost/smart_ptr/shared_ptr.hpp>
+#include <boost/smart_ptr/make_shared.hpp>
+
+namespace boost
+{
+  namespace csbl
+  {
+    using ::boost::shared_ptr;
+    using ::boost::make_shared;
+  }
+}
+
+#else
+
+#include <boost/shared_ptr.hpp>
+
 namespace boost
 {
   namespace csbl
@@ -20,4 +38,5 @@ namespace boost
   }
 }
 
+#endif
 #endif // header

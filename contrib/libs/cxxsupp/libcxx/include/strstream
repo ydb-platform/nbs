@@ -129,7 +129,6 @@ private:
 
 */
 
-#include <__assert> // all public C++ headers provide the assertion handler
 #include <__config>
 #include <istream>
 #include <ostream>
@@ -266,8 +265,8 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     istrstream& operator=(istrstream&& __rhs)
     {
-        __sb_ = _VSTD::move(__rhs.__sb_);
         istream::operator=(_VSTD::move(__rhs));
+        __sb_ = _VSTD::move(__rhs.__sb_);
         return *this;
     }
 #endif // _LIBCPP_CXX03_LANG
@@ -315,8 +314,8 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     ostrstream& operator=(ostrstream&& __rhs)
     {
-        __sb_ = _VSTD::move(__rhs.__sb_);
         ostream::operator=(_VSTD::move(__rhs));
+        __sb_ = _VSTD::move(__rhs.__sb_);
         return *this;
     }
 #endif // _LIBCPP_CXX03_LANG
@@ -375,8 +374,8 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     strstream& operator=(strstream&& __rhs)
     {
-        __sb_ = _VSTD::move(__rhs.__sb_);
         iostream::operator=(_VSTD::move(__rhs));
+        __sb_ = _VSTD::move(__rhs.__sb_);
         return *this;
     }
 #endif // _LIBCPP_CXX03_LANG

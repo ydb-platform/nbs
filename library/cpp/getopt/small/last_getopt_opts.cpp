@@ -300,23 +300,13 @@ namespace NLastGetopt {
         const TString& metavar = title.empty() ? metavarDef : title;
 
         if (option->GetHasArg() == OPTIONAL_ARGUMENT) {
-            if (option->IsEqParseOnly()) {
-                result << "[=";
-            } else {
-                result << " [";
-            }
-            result << metavar;
+            result << " [" << metavar;
             if (option->HasOptionalValue())
                 result << ':' << option->GetOptionalValue();
             result << ']';
-        } else if (option->GetHasArg() == REQUIRED_ARGUMENT) {
-            if (option->IsEqParseOnly()) {
-                result << "=";
-            } else {
-                result << " ";
-            }
-            result << metavar;
-        } else
+        } else if (option->GetHasArg() == REQUIRED_ARGUMENT)
+            result << ' ' << metavar;
+        else
             Y_ASSERT(option->GetHasArg() == NO_ARGUMENT);
 
         return result.Str();
@@ -435,14 +425,6 @@ namespace NLastGetopt {
                 bool helpHasParagraphs = false;
                 if (help) {
                     os << Wrap(Wrap_, help, SPad + leftPadding + " ", &lastLineLength, &helpHasParagraphs);
-                }
-
-                auto choicesHelp = opt->GetChoicesHelp();
-                if (!choicesHelp.empty()) {
-                    if (help) {
-                        os << Endl << SPad << leftPadding << " ";
-                    }
-                    os << "(values: " << choicesHelp << ")";
                 }
 
                 if (opt->HasDefaultValue()) {

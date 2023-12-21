@@ -17,7 +17,6 @@ PEERDIR(
     contrib/restricted/abseil-cpp/absl/synchronization
     contrib/restricted/abseil-cpp/absl/time
     contrib/restricted/abseil-cpp/absl/types
-    library/cpp/sanitizer/include
 )
 
 ADDINCL(

@@ -5,9 +5,9 @@
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
 
-#include <contrib/ydb/core/base/hive.h>
+#include <ydb/core/base/hive.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <library/cpp/actors/core/actorid.h>
 
 #include <util/generic/vector.h>
 

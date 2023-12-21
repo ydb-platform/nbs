@@ -52,16 +52,16 @@ RBBINode::RBBINode(NodeType t) : UMemory() {
     fSerialNum    = ++gLastSerial;
 #endif
     fType         = t;
-    fParent       = nullptr;
-    fLeftChild    = nullptr;
-    fRightChild   = nullptr;
-    fInputSet     = nullptr;
+    fParent       = NULL;
+    fLeftChild    = NULL;
+    fRightChild   = NULL;
+    fInputSet     = NULL;
     fFirstPos     = 0;
     fLastPos      = 0;
-    fNullable     = false;
-    fLookAheadEnd = false;
-    fRuleRoot     = false;
-    fChainIn      = false;
+    fNullable     = FALSE;
+    fLookAheadEnd = FALSE;
+    fRuleRoot     = FALSE;
+    fChainIn      = FALSE;
     fVal          = 0;
     fPrecedence   = precZero;
 
@@ -82,9 +82,9 @@ RBBINode::RBBINode(const RBBINode &other) : UMemory(other) {
     fSerialNum   = ++gLastSerial;
 #endif
     fType        = other.fType;
-    fParent      = nullptr;
-    fLeftChild   = nullptr;
-    fRightChild  = nullptr;
+    fParent      = NULL;
+    fLeftChild   = NULL;
+    fRightChild  = NULL;
     fInputSet    = other.fInputSet;
     fPrecedence  = other.fPrecedence;
     fText        = other.fText;
@@ -92,7 +92,7 @@ RBBINode::RBBINode(const RBBINode &other) : UMemory(other) {
     fLastPos     = other.fLastPos;
     fNullable    = other.fNullable;
     fVal         = other.fVal;
-    fRuleRoot    = false;
+    fRuleRoot    = FALSE;
     fChainIn     = other.fChainIn;
     UErrorCode     status = U_ZERO_ERROR;
     fFirstPosSet = new UVector(status);   // TODO - get a real status from somewhere
@@ -113,7 +113,7 @@ RBBINode::RBBINode(const RBBINode &other) : UMemory(other) {
 RBBINode::~RBBINode() {
     // printf("deleting node %8x   serial %4d\n", this, this->fSerialNum);
     delete fInputSet;
-    fInputSet = nullptr;
+    fInputSet = NULL;
 
     switch (this->fType) {
     case varRef:
@@ -124,9 +124,9 @@ RBBINode::~RBBINode() {
 
     default:
         delete        fLeftChild;
-        fLeftChild =   nullptr;
+        fLeftChild =   NULL;
         delete        fRightChild;
-        fRightChild = nullptr;
+        fRightChild = NULL;
     }
 
 
@@ -158,12 +158,12 @@ RBBINode *RBBINode::cloneTree() {
     } else {
         n = new RBBINode(*this);
         // Check for null pointer.
-        if (n != nullptr) {
-            if (fLeftChild != nullptr) {
+        if (n != NULL) {
+            if (fLeftChild != NULL) {
                 n->fLeftChild          = fLeftChild->cloneTree();
                 n->fLeftChild->fParent = n;
             }
-            if (fRightChild != nullptr) {
+            if (fRightChild != NULL) {
                 n->fRightChild          = fRightChild->cloneTree();
                 n->fRightChild->fParent = n;
             }
@@ -195,7 +195,7 @@ RBBINode *RBBINode::cloneTree() {
 RBBINode *RBBINode::flattenVariables() {
     if (fType == varRef) {
         RBBINode *retNode  = fLeftChild->cloneTree();
-        if (retNode != nullptr) {
+        if (retNode != NULL) {
             retNode->fRuleRoot = this->fRuleRoot;
             retNode->fChainIn  = this->fChainIn;
         }
@@ -203,11 +203,11 @@ RBBINode *RBBINode::flattenVariables() {
         return retNode;
     }
 
-    if (fLeftChild != nullptr) {
+    if (fLeftChild != NULL) {
         fLeftChild = fLeftChild->flattenVariables();
         fLeftChild->fParent  = this;
     }
-    if (fRightChild != nullptr) {
+    if (fRightChild != NULL) {
         fRightChild = fRightChild->flattenVariables();
         fRightChild->fParent = this;
     }
@@ -226,7 +226,7 @@ RBBINode *RBBINode::flattenVariables() {
 void RBBINode::flattenSets() {
     U_ASSERT(fType != setRef);
 
-    if (fLeftChild != nullptr) {
+    if (fLeftChild != NULL) {
         if (fLeftChild->fType==setRef) {
             RBBINode *setRefNode = fLeftChild;
             RBBINode *usetNode   = setRefNode->fLeftChild;
@@ -239,7 +239,7 @@ void RBBINode::flattenSets() {
         }
     }
 
-    if (fRightChild != nullptr) {
+    if (fRightChild != NULL) {
         if (fRightChild->fType==setRef) {
             RBBINode *setRefNode = fRightChild;
             RBBINode *usetNode   = setRefNode->fLeftChild;
@@ -266,14 +266,13 @@ void   RBBINode::findNodes(UVector *dest, RBBINode::NodeType kind, UErrorCode &s
     if (U_FAILURE(status)) {
         return;
     }
-    U_ASSERT(!dest->hasDeleter());
     if (fType == kind) {
         dest->addElement(this, status);
     }
-    if (fLeftChild != nullptr) {
+    if (fLeftChild != NULL) {
         fLeftChild->findNodes(dest, kind, status);
     }
-    if (fRightChild != nullptr) {
+    if (fRightChild != NULL) {
         fRightChild->findNodes(dest, kind, status);
     }
 }
@@ -287,7 +286,7 @@ void   RBBINode::findNodes(UVector *dest, RBBINode::NodeType kind, UErrorCode &s
 #ifdef RBBI_DEBUG
 
 static int32_t serial(const RBBINode *node) {
-    return (node == nullptr? -1 : node->fSerialNum);
+    return (node == NULL? -1 : node->fSerialNum);
 }
 
 
@@ -311,7 +310,7 @@ void RBBINode::printNode(const RBBINode *node) {
                 "opLParen"
     };
 
-    if (node==nullptr) {
+    if (node==NULL) {
         RBBIDebugPrintf("%10p", (void *)node);
     } else {
         RBBIDebugPrintf("%10p %5d %12s %c%c  %5d       %5d     %5d       %6d     %d ",
@@ -350,16 +349,16 @@ void RBBINode::printTree(const RBBINode *node, UBool printHeading) {
         printNodeHeader();
     }
     printNode(node);
-    if (node != nullptr) {
+    if (node != NULL) {
         // Only dump the definition under a variable reference if asked to.
-        // Unconditionally dump children of all other node types.
+        // Unconditinally dump children of all other node types.
         if (node->fType != varRef) {
-            if (node->fLeftChild != nullptr) {
-                printTree(node->fLeftChild, false);
+            if (node->fLeftChild != NULL) {
+                printTree(node->fLeftChild, FALSE);
             }
             
-            if (node->fRightChild != nullptr) {
-                printTree(node->fRightChild, false);
+            if (node->fRightChild != NULL) {
+                printTree(node->fRightChild, FALSE);
             }
         }
     }

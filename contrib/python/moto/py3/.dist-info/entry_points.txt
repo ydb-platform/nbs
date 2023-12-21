@@ -1,2 +1,0 @@
-[console_scripts]
-moto_server = moto.server:main

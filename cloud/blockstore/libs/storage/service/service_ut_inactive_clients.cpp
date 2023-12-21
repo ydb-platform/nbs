@@ -35,7 +35,7 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
 
         bool detectedInactiveClientsTimeout = false;
         bool detectedStartVolumeActorStopped = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvInactiveClientsTimeout: {
                         detectedInactiveClientsTimeout = true;
@@ -46,7 +46,7 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // Give a chance to the timeout event although it shouldn't happen

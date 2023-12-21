@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class PutObjectAclResult
+  class AWS_S3_API PutObjectAclResult
   {
   public:
-    AWS_S3_API PutObjectAclResult();
-    AWS_S3_API PutObjectAclResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API PutObjectAclResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    PutObjectAclResult();
+    PutObjectAclResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    PutObjectAclResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     

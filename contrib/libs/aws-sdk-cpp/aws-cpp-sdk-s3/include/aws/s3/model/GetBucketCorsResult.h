@@ -25,12 +25,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketCorsResult
+  class AWS_S3_API GetBucketCorsResult
   {
   public:
-    AWS_S3_API GetBucketCorsResult();
-    AWS_S3_API GetBucketCorsResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetBucketCorsResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketCorsResult();
+    GetBucketCorsResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketCorsResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

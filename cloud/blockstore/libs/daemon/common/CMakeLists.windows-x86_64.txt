@@ -50,7 +50,7 @@ target_link_libraries(libs-daemon-common PUBLIC
   core-libs-grpc
   core-libs-keyring
   core-libs-version
-  library-actors-util
+  cpp-actors-util
   cpp-getopt-small
   library-cpp-json
   cpp-json-writer

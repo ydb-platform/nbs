@@ -7,7 +7,14 @@
 
 
 
-add_library(contrib-libs-virtiofsd INTERFACE)
-target_link_libraries(contrib-libs-virtiofsd INTERFACE
+add_library(contrib-libs-virtiofsd)
+target_link_libraries(contrib-libs-virtiofsd PUBLIC
   contrib-libs-linux-headers
+)
+target_sources(contrib-libs-virtiofsd PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/libs/virtiofsd/buffer.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/virtiofsd/fuse_log.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/virtiofsd/fuse_lowlevel.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/virtiofsd/fuse_opt.c
+  ${CMAKE_SOURCE_DIR}/contrib/libs/virtiofsd/fuse_signals.c
 )

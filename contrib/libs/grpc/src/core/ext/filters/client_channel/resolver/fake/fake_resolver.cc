@@ -24,6 +24,7 @@
 #include <memory>
 #include <utility>
 
+#include "y_absl/memory/memory.h"
 #include "y_absl/status/status.h"
 #include "y_absl/status/statusor.h"
 #include "y_absl/strings/string_view.h"
@@ -37,6 +38,7 @@
 #include "src/core/lib/gprpp/orphanable.h"
 #include "src/core/lib/gprpp/work_serializer.h"
 #include "src/core/lib/resolver/resolver_factory.h"
+#include "src/core/lib/resolver/resolver_registry.h"
 #include "src/core/lib/resolver/server_address.h"
 #include "src/core/lib/service_config/service_config.h"
 #include "src/core/lib/uri/uri_parser.h"
@@ -360,7 +362,7 @@ class FakeResolverFactory : public ResolverFactory {
 
 void RegisterFakeResolver(CoreConfiguration::Builder* builder) {
   builder->resolver_registry()->RegisterResolverFactory(
-      std::make_unique<FakeResolverFactory>());
+      y_absl::make_unique<FakeResolverFactory>());
 }
 
 }  // namespace grpc_core

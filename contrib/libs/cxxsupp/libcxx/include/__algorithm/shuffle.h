@@ -10,7 +10,6 @@
 #define _LIBCPP___ALGORITHM_SHUFFLE_H
 
 #include <__config>
-#include <__debug>
 #include <__iterator/iterator_traits.h>
 #include <__random/uniform_int_distribution.h>
 #include <__utility/swap.h>

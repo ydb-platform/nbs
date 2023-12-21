@@ -14,6 +14,5 @@ void TCompositeLogBackend::ReopenLog() {
 }
 
 void TCompositeLogBackend::AddLogBackend(THolder<TLogBackend>&& backend) {
-    LogPriority = Max(LogPriority, backend->FiltrationLevel());
     Slaves.emplace_back(std::move(backend));
 }

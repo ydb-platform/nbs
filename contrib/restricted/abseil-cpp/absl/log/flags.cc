@@ -90,27 +90,19 @@ ABSL_FLAG(std::string, log_backtrace_at, "",
     .OnUpdate([] {
       const std::string log_backtrace_at =
           absl::GetFlag(FLAGS_log_backtrace_at);
-      if (log_backtrace_at.empty()) {
-        absl::ClearLogBacktraceLocation();
-        return;
-      }
+      if (log_backtrace_at.empty()) return;
 
       const size_t last_colon = log_backtrace_at.rfind(':');
-      if (last_colon == log_backtrace_at.npos) {
-        absl::ClearLogBacktraceLocation();
-        return;
-      }
+      if (last_colon == log_backtrace_at.npos) return;
 
       const absl::string_view file =
           absl::string_view(log_backtrace_at).substr(0, last_colon);
       int line;
-      if (!absl::SimpleAtoi(
+      if (absl::SimpleAtoi(
               absl::string_view(log_backtrace_at).substr(last_colon + 1),
               &line)) {
-        absl::ClearLogBacktraceLocation();
-        return;
+        absl::SetLogBacktraceLocation(file, line);
       }
-      absl::SetLogBacktraceLocation(file, line);
     });
 
 ABSL_FLAG(bool, log_prefix, true,

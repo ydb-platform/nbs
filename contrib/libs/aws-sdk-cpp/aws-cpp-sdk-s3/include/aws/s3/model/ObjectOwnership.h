@@ -17,8 +17,7 @@ namespace Model
   {
     NOT_SET,
     BucketOwnerPreferred,
-    ObjectWriter,
-    BucketOwnerEnforced
+    ObjectWriter
   };
 
 namespace ObjectOwnershipMapper

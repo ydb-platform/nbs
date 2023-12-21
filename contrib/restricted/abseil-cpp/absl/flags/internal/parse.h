@@ -16,14 +16,11 @@
 #ifndef ABSL_FLAGS_INTERNAL_PARSE_H_
 #define ABSL_FLAGS_INTERNAL_PARSE_H_
 
-#include <iostream>
-#include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/base/config.h"
 #include "absl/flags/declare.h"
-#include "absl/flags/internal/usage.h"
 #include "absl/strings/string_view.h"
 
 ABSL_DECLARE_FLAG(std::vector<std::string>, flagfile);
@@ -35,6 +32,7 @@ namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace flags_internal {
 
+enum class ArgvListAction { kRemoveParsedArgs, kKeepParsedArgs };
 enum class UsageFlagsAction { kHandleUsage, kIgnoreUsage };
 enum class OnUndefinedFlag {
   kIgnoreUndefined,
@@ -42,15 +40,10 @@ enum class OnUndefinedFlag {
   kAbortIfUndefined
 };
 
-// This is not a public interface. This interface exists to expose the ability
-// to change help output stream in case of parsing errors. This is used by
-// internal unit tests to validate expected outputs.
-// When this was written, `EXPECT_EXIT` only supported matchers on stderr,
-// but not on stdout.
-std::vector<char*> ParseCommandLineImpl(
-    int argc, char* argv[], UsageFlagsAction usage_flag_action,
-    OnUndefinedFlag undef_flag_action,
-    std::ostream& error_help_output = std::cout);
+std::vector<char*> ParseCommandLineImpl(int argc, char* argv[],
+                                        ArgvListAction arg_list_act,
+                                        UsageFlagsAction usage_flag_act,
+                                        OnUndefinedFlag on_undef_flag);
 
 // --------------------------------------------------------------------
 // Inspect original command line

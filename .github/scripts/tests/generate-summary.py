@@ -9,10 +9,9 @@ from github import Github, Auth as GithubAuth
 from github.PullRequest import PullRequest
 from enum import Enum
 from operator import attrgetter
-from typing import List, Dict
+from typing import List, Optional, Dict
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from junit_utils import get_property_value, iter_xml_files
-from contextlib import nullcontext
 
 
 class TestStatus(Enum):
@@ -49,9 +48,9 @@ class TestResult:
         m, s = divmod(self.elapsed, 60)
         parts = []
         if m > 0:
-            parts.append(f"{int(m)}m")
+            parts.append(f'{int(m)}m')
         parts.append(f"{s:.3f}s")
-        return " ".join(parts)
+        return ' '.join(parts)
 
     def __str__(self):
         return f"{self.full_name:<138} {self.status_display}"
@@ -76,10 +75,10 @@ class TestResult:
             status = TestStatus.PASS
 
         log_urls = {
-            "Log": get_property_value(testcase, "url:Log"),
-            "log": get_property_value(testcase, "url:log"),
-            "stdout": get_property_value(testcase, "url:stdout"),
-            "stderr": get_property_value(testcase, "url:stderr"),
+            'Log': get_property_value(testcase, "url:Log"),
+            'log': get_property_value(testcase, "url:log"),
+            'stdout': get_property_value(testcase, "url:stdout"),
+            'stderr': get_property_value(testcase, "url:stderr"),
         }
         log_urls = {k: v for k, v in log_urls.items() if v}
 
@@ -156,7 +155,9 @@ class TestSummary:
 
         footnote = "[^1]" if add_footnote else f'<sup>[?]({footnote_url} "All mute rules are defined here")</sup>'
 
-        columns = ["TESTS", "PASSED", "ERRORS", "FAILED", "SKIPPED", f"MUTED{footnote}"]
+        columns = [
+            "TESTS", "PASSED", "ERRORS", "FAILED", "SKIPPED", f"MUTED{footnote}"
+        ]
 
         need_first_column = len(self.lines) > 1
 
@@ -168,25 +169,23 @@ class TestSummary:
         ]
 
         if need_first_column:
-            result.append(self.render_line([":---"] + ["---:"] * (len(columns) - 1)))
+            result.append(self.render_line([':---'] + ['---:'] * (len(columns) - 1)))
         else:
-            result.append(self.render_line(["---:"] * len(columns)))
+            result.append(self.render_line(['---:'] * len(columns)))
 
         for line in self.lines:
             report_url = line.report_url
             row = []
             if need_first_column:
                 row.append(line.title)
-            row.extend(
-                [
-                    render_pm(line.test_count, f"{report_url}", 0),
-                    render_pm(line.passed, f"{report_url}#PASS", 0),
-                    render_pm(line.errors, f"{report_url}#ERROR", 0),
-                    render_pm(line.failed, f"{report_url}#FAIL", 0),
-                    render_pm(line.skipped, f"{report_url}#SKIP", 0),
-                    render_pm(line.muted, f"{report_url}#MUTE", 0),
-                ]
-            )
+            row.extend([
+                render_pm(line.test_count, f"{report_url}", 0),
+                render_pm(line.passed, f"{report_url}#PASS", 0),
+                render_pm(line.errors, f"{report_url}#ERROR", 0),
+                render_pm(line.failed, f"{report_url}#FAIL", 0),
+                render_pm(line.skipped, f"{report_url}#SKIP", 0),
+                render_pm(line.muted, f"{report_url}#MUTE", 0),
+            ])
             result.append(self.render_line(row))
 
         if add_footnote:
@@ -235,7 +234,9 @@ def render_testlist_html(rows, fn):
     # remove status group without tests
     status_order = [s for s in status_order if s in status_test]
 
-    content = env.get_template("summary.html").render(status_order=status_order, tests=status_test, has_any_log=has_any_log)
+    content = env.get_template("summary.html").render(
+        status_order=status_order, tests=status_test, has_any_log=has_any_log
+    )
 
     with open(fn, "w") as fp:
         fp.write(content)
@@ -243,11 +244,17 @@ def render_testlist_html(rows, fn):
 
 def write_summary(summary: TestSummary):
     summary_fn = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_fn:
+        fp = open(summary_fn, "at")
+    else:
+        fp = sys.stdout
 
-    with open(summary_fn, "at") if summary_fn else nullcontext(sys.stdout) as fp:  # noqa: SIM115
-        for line in summary.render(add_footnote=True):
-            fp.write(f"{line}\n")
-        fp.write("\n")
+    for line in summary.render(add_footnote=True):
+        fp.write(f"{line}\n")
+    fp.write("\n")
+
+    if summary_fn:
+        fp.close()
 
 
 def gen_summary(summary_url_prefix, summary_out_folder, paths):
@@ -270,6 +277,7 @@ def gen_summary(summary_url_prefix, summary_out_folder, paths):
 
 
 def get_comment_text(pr: PullRequest, summary: TestSummary, build_preset: str, test_history_url: str):
+
     if summary.is_failed:
         result = f":red_circle: **{build_preset}**: some tests FAILED"
     else:
@@ -320,8 +328,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-out-path", required=True)
     parser.add_argument("--summary-url-prefix", required=True)
-    parser.add_argument("--test-history-url", required=False)
-    parser.add_argument("--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False)
+    parser.add_argument('--test-history-url', required=False)
+    parser.add_argument('--build-preset', default="default-linux-x86-64-relwithdebinfo", required=False)
     parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
     args = parser.parse_args()
 

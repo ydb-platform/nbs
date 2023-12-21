@@ -6,9 +6,9 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/events.h>
+#include <library/cpp/actors/core/hfunc.h>
 #include <library/cpp/json/json_reader.h>
 
 #include <google/protobuf/util/json_util.h>

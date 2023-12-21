@@ -3,15 +3,15 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/base/hive.h>
-#include <contrib/ydb/core/base/tablet_resolver.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/basics/appdata.h>
-#include <contrib/ydb/core/testlib/basics/helpers.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/base/hive.h>
+#include <ydb/core/base/tablet_resolver.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/tablet_flat/tablet_flat_executed.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/appdata.h>
+#include <ydb/core/testlib/basics/helpers.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -902,7 +902,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             0);
 
         int hiveLockRequests = 0;
-        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvHive::EvLockTabletExecution) {
                     ++hiveLockRequests;
@@ -1031,7 +1031,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvHive::EvReassignTablet) {
                     env.RebootHive();
@@ -1197,7 +1197,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         request.SetOwnerIdx(1);
         request.SetTabletType(TTabletTypes::BlockStoreDiskRegistry);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 if (ev->GetTypeRewrite() == TEvHive::EvCreateTablet) {
                     const auto* msg = ev->Get<TEvHive::TEvCreateTablet>();
 
@@ -1241,7 +1241,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 if (ev->GetTypeRewrite() == TEvHive::EvLookupTablet) {
                     const auto* msg = ev->Get<TEvHive::TEvLookupTablet>();
 
@@ -1310,7 +1310,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         ui32 lookupCnt = 0;
         TAutoPtr<IEventHandle> savedEvent;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
                     case TEvHive::EvCreateTablet: {
                         const auto* msg = ev->Get<TEvHive::TEvCreateTablet>();
@@ -1355,7 +1355,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         env.SendCreateTabletRequestAsync(
@@ -1431,7 +1431,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         ui32 hiveMessages = 0;
         ui32 wakeups = 0;
         runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event) {
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvTabletMetrics: {
                         ++hiveMessages;

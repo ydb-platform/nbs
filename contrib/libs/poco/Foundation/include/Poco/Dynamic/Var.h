@@ -231,7 +231,6 @@ public:
 		Var tmp(other);
 		swap(tmp);
 #else
-		destruct();
 		construct(other);
 #endif
 		return *this;

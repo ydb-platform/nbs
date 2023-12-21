@@ -49,8 +49,7 @@ static struct iovec *vecs;
  * bash -c "echo 1 > /proc/self/make-it-fail && exec ./cq-overflow.t"
  */
 
-static int test_io(const char *file, unsigned long usecs, unsigned *drops,
-		   int fault)
+static int test_io(const char *file, unsigned long usecs, unsigned *drops, int fault)
 {
 	struct io_uring_sqe *sqe;
 	struct io_uring_cqe *cqe;
@@ -62,10 +61,8 @@ static int test_io(const char *file, unsigned long usecs, unsigned *drops,
 
 	fd = open(file, O_RDONLY | O_DIRECT);
 	if (fd < 0) {
-		if (errno == EINVAL)
-			return T_EXIT_SKIP;
 		perror("file open");
-		return T_EXIT_FAIL;
+		return 1;
 	}
 
 	memset(&p, 0, sizeof(p));
@@ -73,7 +70,7 @@ static int test_io(const char *file, unsigned long usecs, unsigned *drops,
 	if (ret) {
 		close(fd);
 		fprintf(stderr, "ring create failed: %d\n", ret);
-		return T_EXIT_FAIL;
+		return 1;
 	}
 	nodrop = 0;
 	if (p.features & IORING_FEAT_NODROP)
@@ -177,12 +174,12 @@ reap_it:
 
 	io_uring_queue_exit(&ring);
 	close(fd);
-	return T_EXIT_PASS;
+	return 0;
 err:
 	if (fd != -1)
 		close(fd);
 	io_uring_queue_exit(&ring);
-	return T_EXIT_SKIP;
+	return 1;
 }
 
 static int reap_events(struct io_uring *ring, unsigned nr_events, int do_wait)
@@ -500,10 +497,7 @@ int main(int argc, char *argv[])
 	do {
 		drops = 0;
 
-		ret = test_io(fname, usecs, &drops, 0);
-		if (ret == T_EXIT_SKIP)
-			break;
-		else if (ret != T_EXIT_PASS) {
+		if (test_io(fname, usecs, &drops, 0)) {
 			fprintf(stderr, "test_io nofault failed\n");
 			goto err;
 		}
@@ -513,12 +507,12 @@ int main(int argc, char *argv[])
 		iters++;
 	} while (iters < 40);
 
-	if (test_io(fname, usecs, &drops, 0) == T_EXIT_FAIL) {
+	if (test_io(fname, usecs, &drops, 0)) {
 		fprintf(stderr, "test_io nofault failed\n");
 		goto err;
 	}
 
-	if (test_io(fname, usecs, &drops, 1) == T_EXIT_FAIL) {
+	if (test_io(fname, usecs, &drops, 1)) {
 		fprintf(stderr, "test_io fault failed\n");
 		goto err;
 	}

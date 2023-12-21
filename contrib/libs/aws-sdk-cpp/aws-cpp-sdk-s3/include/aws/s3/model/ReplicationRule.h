@@ -34,14 +34,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ReplicationRule">AWS
    * API Reference</a></p>
    */
-  class ReplicationRule
+  class AWS_S3_API ReplicationRule
   {
   public:
-    AWS_S3_API ReplicationRule();
-    AWS_S3_API ReplicationRule(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ReplicationRule& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationRule();
+    ReplicationRule(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationRule& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -189,7 +189,7 @@ namespace Model
      * objects that you want to replicate. You can choose to enable or disable the
      * replication of these objects. Currently, Amazon S3 supports only the filter that
      * you can specify for objects created with server-side encryption using a customer
-     * managed key stored in Amazon Web Services Key Management Service (SSE-KMS).</p>
+     * master key (CMK) stored in AWS Key Management Service (SSE-KMS).</p>
      */
     inline const SourceSelectionCriteria& GetSourceSelectionCriteria() const{ return m_sourceSelectionCriteria; }
 
@@ -198,7 +198,7 @@ namespace Model
      * objects that you want to replicate. You can choose to enable or disable the
      * replication of these objects. Currently, Amazon S3 supports only the filter that
      * you can specify for objects created with server-side encryption using a customer
-     * managed key stored in Amazon Web Services Key Management Service (SSE-KMS).</p>
+     * master key (CMK) stored in AWS Key Management Service (SSE-KMS).</p>
      */
     inline bool SourceSelectionCriteriaHasBeenSet() const { return m_sourceSelectionCriteriaHasBeenSet; }
 
@@ -207,7 +207,7 @@ namespace Model
      * objects that you want to replicate. You can choose to enable or disable the
      * replication of these objects. Currently, Amazon S3 supports only the filter that
      * you can specify for objects created with server-side encryption using a customer
-     * managed key stored in Amazon Web Services Key Management Service (SSE-KMS).</p>
+     * master key (CMK) stored in AWS Key Management Service (SSE-KMS).</p>
      */
     inline void SetSourceSelectionCriteria(const SourceSelectionCriteria& value) { m_sourceSelectionCriteriaHasBeenSet = true; m_sourceSelectionCriteria = value; }
 
@@ -216,7 +216,7 @@ namespace Model
      * objects that you want to replicate. You can choose to enable or disable the
      * replication of these objects. Currently, Amazon S3 supports only the filter that
      * you can specify for objects created with server-side encryption using a customer
-     * managed key stored in Amazon Web Services Key Management Service (SSE-KMS).</p>
+     * master key (CMK) stored in AWS Key Management Service (SSE-KMS).</p>
      */
     inline void SetSourceSelectionCriteria(SourceSelectionCriteria&& value) { m_sourceSelectionCriteriaHasBeenSet = true; m_sourceSelectionCriteria = std::move(value); }
 
@@ -225,7 +225,7 @@ namespace Model
      * objects that you want to replicate. You can choose to enable or disable the
      * replication of these objects. Currently, Amazon S3 supports only the filter that
      * you can specify for objects created with server-side encryption using a customer
-     * managed key stored in Amazon Web Services Key Management Service (SSE-KMS).</p>
+     * master key (CMK) stored in AWS Key Management Service (SSE-KMS).</p>
      */
     inline ReplicationRule& WithSourceSelectionCriteria(const SourceSelectionCriteria& value) { SetSourceSelectionCriteria(value); return *this;}
 
@@ -234,7 +234,7 @@ namespace Model
      * objects that you want to replicate. You can choose to enable or disable the
      * replication of these objects. Currently, Amazon S3 supports only the filter that
      * you can specify for objects created with server-side encryption using a customer
-     * managed key stored in Amazon Web Services Key Management Service (SSE-KMS).</p>
+     * master key (CMK) stored in AWS Key Management Service (SSE-KMS).</p>
      */
     inline ReplicationRule& WithSourceSelectionCriteria(SourceSelectionCriteria&& value) { SetSourceSelectionCriteria(std::move(value)); return *this;}
 
@@ -328,28 +328,28 @@ namespace Model
   private:
 
     Aws::String m_iD;
-    bool m_iDHasBeenSet = false;
+    bool m_iDHasBeenSet;
 
     int m_priority;
-    bool m_priorityHasBeenSet = false;
+    bool m_priorityHasBeenSet;
 
     ReplicationRuleFilter m_filter;
-    bool m_filterHasBeenSet = false;
+    bool m_filterHasBeenSet;
 
     ReplicationRuleStatus m_status;
-    bool m_statusHasBeenSet = false;
+    bool m_statusHasBeenSet;
 
     SourceSelectionCriteria m_sourceSelectionCriteria;
-    bool m_sourceSelectionCriteriaHasBeenSet = false;
+    bool m_sourceSelectionCriteriaHasBeenSet;
 
     ExistingObjectReplication m_existingObjectReplication;
-    bool m_existingObjectReplicationHasBeenSet = false;
+    bool m_existingObjectReplicationHasBeenSet;
 
     Destination m_destination;
-    bool m_destinationHasBeenSet = false;
+    bool m_destinationHasBeenSet;
 
     DeleteMarkerReplication m_deleteMarkerReplication;
-    bool m_deleteMarkerReplicationHasBeenSet = false;
+    bool m_deleteMarkerReplicationHasBeenSet;
   };
 
 } // namespace Model

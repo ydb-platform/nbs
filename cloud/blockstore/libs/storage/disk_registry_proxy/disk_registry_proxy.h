@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/public.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <library/cpp/actors/core/actorid.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

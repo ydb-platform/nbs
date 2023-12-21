@@ -26,7 +26,7 @@ target_link_libraries(libs-storage-service PUBLIC
   private-api-protos
   core-libs-api
   core-libs-common
-  library-actors-core
+  cpp-actors-core
   library-cpp-json
   monlib-service-pages
   ydb-core-base

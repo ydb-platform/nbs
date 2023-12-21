@@ -1,19 +1,19 @@
-//
-// Copyright 2015 gRPC authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-//
+/*
+ * Copyright 2015 gRPC authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 
 #include <limits.h>
 #include <string.h>
@@ -26,14 +26,15 @@
 #include <sstream>
 #include <util/generic/string.h>
 #include <util/string/cast.h>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "y_absl/status/status.h"
+#include "y_absl/memory/memory.h"
 
 #include <grpc/byte_buffer.h>
 #include <grpc/grpc.h>
+#include <grpc/impl/codegen/gpr_types.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/slice.h>
 #include <grpc/support/log.h>
 #include <grpc/support/sync.h>
@@ -43,23 +44,25 @@
 #include <grpcpp/generic/async_generic_service.h>
 #include <grpcpp/health_check_service_interface.h>
 #include <grpcpp/impl/call.h>
-#include <grpcpp/impl/call_op_set.h>
 #include <grpcpp/impl/call_op_set_interface.h>
-#include <grpcpp/impl/completion_queue_tag.h>
-#include <grpcpp/impl/interceptor_common.h>
-#include <grpcpp/impl/metadata_map.h>
+#include <grpcpp/impl/codegen/call_op_set.h>
+#include <grpcpp/impl/codegen/completion_queue_tag.h>
+#include <grpcpp/impl/codegen/interceptor_common.h>
+#include <grpcpp/impl/codegen/metadata_map.h>
+#include <grpcpp/impl/codegen/server_callback_handlers.h>
+#include <grpcpp/impl/codegen/server_interface.h>
+#include <grpcpp/impl/codegen/sync.h>
+#include <grpcpp/impl/grpc_library.h>
 #include <grpcpp/impl/rpc_method.h>
 #include <grpcpp/impl/rpc_service_method.h>
-#include <grpcpp/impl/server_callback_handlers.h>
 #include <grpcpp/impl/server_initializer.h>
 #include <grpcpp/impl/service_type.h>
-#include <grpcpp/impl/sync.h>
 #include <grpcpp/security/server_credentials.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_context.h>
-#include <grpcpp/server_interface.h>
 #include <grpcpp/support/channel_arguments.h>
 #include <grpcpp/support/client_interceptor.h>
+#include <grpcpp/support/config.h>
 #include <grpcpp/support/interceptor.h>
 #include <grpcpp/support/method_handler.h>
 #include <grpcpp/support/server_interceptor.h>
@@ -68,6 +71,7 @@
 
 #include "src/core/ext/transport/inproc/inproc_transport.h"
 #include "src/core/lib/gprpp/manual_constructor.h"
+#include "src/core/lib/iomgr/error.h"
 #include "src/core/lib/iomgr/exec_ctx.h"
 #include "src/core/lib/iomgr/iomgr.h"
 #include "src/core/lib/resource_quota/api.h"
@@ -152,14 +156,12 @@ ServerInterface::BaseAsyncRequest::BaseAsyncRequest(
       delete_on_finalize_(delete_on_finalize),
       call_(nullptr),
       done_intercepting_(false) {
-  // Set up interception state partially for the receive ops. call_wrapper_ is
-  // not filled at this point, but it will be filled before the interceptors are
-  // run.
+  /* Set up interception state partially for the receive ops. call_wrapper_ is
+   * not filled at this point, but it will be filled before the interceptors are
+   * run. */
   interceptor_methods_.SetCall(&call_wrapper_);
   interceptor_methods_.SetReverse();
   call_cq_->RegisterAvalanching();  // This op will trigger more ops
-  call_metric_recording_enabled_ = server_->call_metric_recording_enabled();
-  server_metric_recorder_ = server_->server_metric_recorder();
 }
 
 ServerInterface::BaseAsyncRequest::~BaseAsyncRequest() {
@@ -175,8 +177,7 @@ bool ServerInterface::BaseAsyncRequest::FinalizeResult(void** tag,
     }
     return true;
   }
-  context_->set_call(call_, call_metric_recording_enabled_,
-                     server_metric_recorder_);
+  context_->set_call(call_);
   context_->cq_ = call_cq_;
   if (call_wrapper_.call() == nullptr) {
     // Fill it since it is empty.
@@ -220,7 +221,7 @@ void ServerInterface::BaseAsyncRequest::
   grpc_core::ExecCtx exec_ctx;
   grpc_cq_begin_op(notification_cq_->cq(), this);
   grpc_cq_end_op(
-      notification_cq_->cq(), this, y_absl::OkStatus(),
+      notification_cq_->cq(), this, GRPC_ERROR_NONE,
       [](void* /*arg*/, grpc_cq_completion* completion) { delete completion; },
       nullptr, new grpc_cq_completion());
 }
@@ -425,8 +426,7 @@ class Server::SyncRequest final : public grpc::internal::CompletionQueueTag {
         call_, server_, &cq_, server_->max_receive_message_size(),
         ctx_->ctx.set_server_rpc_info(method_->name(), method_->method_type(),
                                       server_->interceptor_creators_));
-    ctx_->ctx.set_call(call_, server_->call_metric_recording_enabled(),
-                       server_->server_metric_recorder());
+    ctx_->ctx.set_call(call_);
     ctx_->ctx.cq_ = &cq_;
     request_metadata_.count = 0;
 
@@ -654,9 +654,7 @@ class Server::CallbackRequest final
       }
 
       // Bind the call, deadline, and metadata from what we got
-      req_->ctx_->set_call(req_->call_,
-                           req_->server_->call_metric_recording_enabled(),
-                           req_->server_->server_metric_recorder());
+      req_->ctx_->set_call(req_->call_);
       req_->ctx_->cq_ = req_->cq_;
       req_->ctx_->BindDeadlineAndMetadata(req_->deadline_,
                                           &req_->request_metadata_);
@@ -843,7 +841,7 @@ class Server::SyncRequestThreadManager : public grpc::ThreadManager {
 
   void AddUnknownSyncMethod() {
     if (has_sync_method_) {
-      unknown_method_ = std::make_unique<grpc::internal::RpcServiceMethod>(
+      unknown_method_ = y_absl::make_unique<grpc::internal::RpcServiceMethod>(
           "unknown", grpc::internal::RpcMethod::BIDI_STREAMING,
           new grpc::internal::UnknownMethodHandler(kUnknownRpcMethod));
       grpc_core::Server::FromC(server_->server())
@@ -887,6 +885,7 @@ class Server::SyncRequestThreadManager : public grpc::ThreadManager {
   std::shared_ptr<Server::GlobalCallbacks> global_callbacks_;
 };
 
+static grpc::internal::GrpcLibraryInitializer g_gli_initializer;
 Server::Server(
     grpc::ChannelArguments* args,
     std::shared_ptr<std::vector<std::unique_ptr<grpc::ServerCompletionQueue>>>
@@ -898,8 +897,7 @@ Server::Server(
     grpc_resource_quota* server_rq,
     std::vector<
         std::unique_ptr<grpc::experimental::ServerInterceptorFactoryInterface>>
-        interceptor_creators,
-    experimental::ServerMetricRecorder* server_metric_recorder)
+        interceptor_creators)
     : acceptors_(std::move(acceptors)),
       interceptor_creators_(std::move(interceptor_creators)),
       max_receive_message_size_(INT_MIN),
@@ -909,8 +907,8 @@ Server::Server(
       shutdown_notified_(false),
       server_(nullptr),
       server_initializer_(new ServerInitializer(this)),
-      health_check_service_disabled_(false),
-      server_metric_recorder_(server_metric_recorder) {
+      health_check_service_disabled_(false) {
+  g_gli_initializer.summon();
   gpr_once_init(&grpc::g_once_init_callbacks, grpc::InitGlobalCallbacks);
   global_callbacks_ = grpc::g_callbacks;
   global_callbacks_->UpdateArguments(args);
@@ -956,10 +954,6 @@ Server::Server(
     if (0 ==
         strcmp(channel_args.args[i].key, GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH)) {
       max_receive_message_size_ = channel_args.args[i].value.integer;
-    }
-    if (0 == strcmp(channel_args.args[i].key,
-                    GRPC_ARG_SERVER_CALL_METRIC_RECORDING)) {
-      call_metric_recording_enabled_ = channel_args.args[i].value.integer;
     }
   }
   server_ = grpc_server_create(&channel_args, nullptr);
@@ -1169,7 +1163,7 @@ void Server::Start(grpc::ServerCompletionQueue** cqs, size_t num_cqs) {
   // explicit one.
   if (health_check_service_ == nullptr && !health_check_service_disabled_ &&
       grpc::DefaultHealthCheckServiceEnabled()) {
-    auto default_hc_service = std::make_unique<DefaultHealthCheckService>();
+    auto default_hc_service = y_absl::make_unique<DefaultHealthCheckService>();
     auto* hc_service_impl = default_hc_service->GetHealthCheckService();
     health_check_service_ = std::move(default_hc_service);
     RegisterService(nullptr, hc_service_impl);
@@ -1202,7 +1196,7 @@ void Server::Start(grpc::ServerCompletionQueue** cqs, size_t num_cqs) {
   bool unknown_rpc_needed =
       !has_async_generic_service_ && !has_callback_generic_service_;
   if (unknown_rpc_needed && has_callback_methods_) {
-    unimplemented_service_ = std::make_unique<grpc::CallbackGenericService>();
+    unimplemented_service_ = y_absl::make_unique<grpc::CallbackGenericService>();
     RegisterCallbackGenericService(unimplemented_service_.get());
     unknown_rpc_needed = false;
   }
@@ -1227,7 +1221,7 @@ void Server::Start(grpc::ServerCompletionQueue** cqs, size_t num_cqs) {
   // to deal with the case of thread exhaustion
   if (sync_server_cqs_ != nullptr && !sync_server_cqs_->empty()) {
     resource_exhausted_handler_ =
-        std::make_unique<grpc::internal::ResourceExhaustedHandler>(
+        y_absl::make_unique<grpc::internal::ResourceExhaustedHandler>(
             kServerThreadpoolExhausted);
   }
 

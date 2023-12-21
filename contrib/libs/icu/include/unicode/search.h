@@ -59,7 +59,7 @@ U_NAMESPACE_BEGIN
  * <p>
  * <tt>SearchIterator</tt> provides an API that is similar to that of
  * other text iteration classes such as <tt>BreakIterator</tt>. Using 
- * this class, it is easy to scan through text looking for all occurrences of 
+ * this class, it is easy to scan through text looking for all occurances of 
  * a given pattern. The following example uses a <tt>StringSearch</tt> 
  * object to find all instances of "fox" in the target string. Any other 
  * subclass of <tt>SearchIterator</tt> can be used in an identical 
@@ -206,7 +206,7 @@ public:
      *                found, but the match's start or end index is not a 
      *                boundary as determined by the <tt>BreakIterator</tt>, 
      *                the match will be rejected and another will be searched 
-     *                for. If this parameter is <tt>nullptr</tt>, no break
+     *                for. If this parameter is <tt>NULL</tt>, no break
      *                detection is attempted.
      * @param status for errors if it occurs
      * @see BreakIterator
@@ -218,7 +218,7 @@ public:
      * Returns the BreakIterator that is used to restrict the points at 
      * which matches are detected.  This will be the same object that was 
      * passed to the constructor or to <tt>setBreakIterator</tt>.
-     * Note that <tt>nullptr</tt> is a legal value; it means that break
+     * Note that <tt>NULL</tt> is a legal value; it means that break
      * detection should not be attempted.
      * @return BreakIterator used to restrict matchings.
      * @see #setBreakIterator
@@ -267,20 +267,20 @@ public:
     /**
      * Equality operator. 
      * @param that SearchIterator instance to be compared.
-     * @return true if both BreakIterators are of the same class, have the 
+     * @return TRUE if both BreakIterators are of the same class, have the 
      *         same behavior, terates over the same text and have the same
-     *         attributes. false otherwise.
+     *         attributes. FALSE otherwise.
      * @stable ICU 2.0
      */
-    virtual bool operator==(const SearchIterator &that) const;
+    virtual UBool operator==(const SearchIterator &that) const;
 
     /**
      * Not-equal operator. 
      * @param that SearchIterator instance to be compared.
-     * @return false if operator== returns true, and vice versa.
+     * @return FALSE if operator== returns TRUE, and vice versa.
      * @stable ICU 2.0
      */
-    bool operator!=(const SearchIterator &that) const;
+    UBool operator!=(const SearchIterator &that) const;
 
     // public methods ----------------------------------------------------
 
@@ -452,13 +452,13 @@ protected:
      *                boundary as determined by the <tt>BreakIterator</tt>, 
      *                the match is rejected and <tt>handleNext</tt> or 
      *                <tt>handlePrev</tt> is called again. If this parameter 
-     *                is <tt>nullptr</tt>, no break detection is attempted.
+     *                is <tt>NULL</tt>, no break detection is attempted.  
      * @see #handleNext
      * @see #handlePrev
      * @stable ICU 2.0
      */
     SearchIterator(const UnicodeString &text, 
-                         BreakIterator *breakiter = nullptr);
+                         BreakIterator *breakiter = NULL);
 
     /**
      * Constructor for use by subclasses.
@@ -474,12 +474,12 @@ protected:
      *                boundary as determined by the <tt>BreakIterator</tt>, 
      *                the match is rejected and <tt>handleNext</tt> or 
      *                <tt>handlePrev</tt> is called again. If this parameter 
-     *                is <tt>nullptr</tt>, no break detection is attempted.
+     *                is <tt>NULL</tt>, no break detection is attempted.
      * @see #handleNext
      * @see #handlePrev
      * @stable ICU 2.0
      */
-    SearchIterator(CharacterIterator &text, BreakIterator *breakiter = nullptr);
+    SearchIterator(CharacterIterator &text, BreakIterator *breakiter = NULL);
 
     // protected methods --------------------------------------------------
 
@@ -566,7 +566,7 @@ protected:
     void setMatchNotFound();
 };
 
-inline bool SearchIterator::operator!=(const SearchIterator &that) const
+inline UBool SearchIterator::operator!=(const SearchIterator &that) const
 {
    return !operator==(that); 
 }

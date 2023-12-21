@@ -1,17 +1,14 @@
 PY23_LIBRARY()
 
-LICENSE(Service-Py23-Proxy)
+LICENSE(YandexOpen)
 
-WITHOUT_LICENSE_TEXTS()
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 NO_PYTHON_INCLUDES()
 
 IF (USE_ARCADIA_PYTHON)
-    ADDINCL(
-        GLOBAL contrib/libs/python/Include
-    )
-
     PEERDIR(
+        contrib/libs/python/Include
         library/python/symbols/module
         library/python/symbols/libc
         library/python/symbols/python
@@ -22,20 +19,13 @@ IF (USE_ARCADIA_PYTHON)
         )
     ENDIF()
     IF (MODULE_TAG == "PY2")
-        CFLAGS(
-            GLOBAL -DUSE_PYTHON2
-        )
         PEERDIR(
             contrib/tools/python/lib
             library/python/runtime
         )
     ELSE()
-        CFLAGS(
-            GLOBAL -DUSE_PYTHON3
-        )
         PEERDIR(
             contrib/tools/python3/lib
-            contrib/tools/python3/src
             library/python/runtime_py3
         )
     ENDIF()
@@ -50,3 +40,7 @@ ELSE()
 ENDIF()
 
 END()
+
+RECURSE(
+    Include
+)

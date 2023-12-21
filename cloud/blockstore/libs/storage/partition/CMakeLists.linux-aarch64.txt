@@ -36,7 +36,7 @@ target_link_libraries(libs-storage-partition PUBLIC
   ydb-core-tablet
   ydb-core-tablet_flat
   core-testlib-basics
-  library-actors-core
+  cpp-actors-core
 )
 target_sources(libs-storage-partition PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition/part.cpp

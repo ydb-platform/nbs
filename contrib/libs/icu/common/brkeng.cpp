@@ -25,7 +25,6 @@
 #include "brkeng.h"
 #include "cmemory.h"
 #include "dictbe.h"
-#include "lstmbe.h"
 #include "charstr.h"
 #include "dictionarydata.h"
 #include "mutex.h"
@@ -78,10 +77,7 @@ int32_t
 UnhandledEngine::findBreaks( UText *text,
                              int32_t /* startPos */,
                              int32_t endPos,
-                             UVector32 &/*foundBreaks*/,
-                             UBool /* isPhraseBreaking */,
-                             UErrorCode &status) const {
-    if (U_FAILURE(status)) return 0;
+                             UVector32 &/*foundBreaks*/ ) const {
     UChar32 c = utext_current32(text); 
     while((int32_t)utext_getNativeIndex(text) < endPos && fHandled->contains(c)) {
         utext_next32(text);            // TODO:  recast loop to work with post-increment operations.
@@ -130,24 +126,25 @@ U_NAMESPACE_BEGIN
 
 const LanguageBreakEngine *
 ICULanguageBreakFactory::getEngineFor(UChar32 c) {
-    const LanguageBreakEngine *lbe = nullptr;
+    const LanguageBreakEngine *lbe = NULL;
     UErrorCode  status = U_ZERO_ERROR;
 
     static UMutex gBreakEngineMutex;
     Mutex m(&gBreakEngineMutex);
 
-    if (fEngines == nullptr) {
-        LocalPointer<UStack>  engines(new UStack(_deleteEngine, nullptr, status), status);
-        if (U_FAILURE(status) ) {
+    if (fEngines == NULL) {
+        UStack  *engines = new UStack(_deleteEngine, NULL, status);
+        if (U_FAILURE(status) || engines == NULL) {
             // Note: no way to return error code to caller.
-            return nullptr;
+            delete engines;
+            return NULL;
         }
-        fEngines = engines.orphan();
+        fEngines = engines;
     } else {
         int32_t i = fEngines->size();
         while (--i >= 0) {
             lbe = (const LanguageBreakEngine *)(fEngines->elementAt(i));
-            if (lbe != nullptr && lbe->handles(c)) {
+            if (lbe != NULL && lbe->handles(c)) {
                 return lbe;
             }
         }
@@ -155,10 +152,10 @@ ICULanguageBreakFactory::getEngineFor(UChar32 c) {
     
     // We didn't find an engine. Create one.
     lbe = loadEngineFor(c);
-    if (lbe != nullptr) {
+    if (lbe != NULL) {
         fEngines->push((void *)lbe, status);
     }
-    return U_SUCCESS(status) ? lbe : nullptr;
+    return lbe;
 }
 
 const LanguageBreakEngine *
@@ -166,26 +163,9 @@ ICULanguageBreakFactory::loadEngineFor(UChar32 c) {
     UErrorCode status = U_ZERO_ERROR;
     UScriptCode code = uscript_getScript(c, &status);
     if (U_SUCCESS(status)) {
-        const LanguageBreakEngine *engine = nullptr;
-        // Try to use LSTM first
-        const LSTMData *data = CreateLSTMDataForScript(code, status);
-        if (U_SUCCESS(status)) {
-            if (data != nullptr) {
-                engine = CreateLSTMBreakEngine(code, data, status);
-                if (U_SUCCESS(status) && engine != nullptr) {
-                    return engine;
-                }
-                if (engine != nullptr) {
-                    delete engine;
-                    engine = nullptr;
-                } else {
-                    DeleteLSTMData(data);
-                }
-            }
-        }
-        status = U_ZERO_ERROR;  // fallback to dictionary based
         DictionaryMatcher *m = loadDictionaryMatcherFor(code);
-        if (m != nullptr) {
+        if (m != NULL) {
+            const LanguageBreakEngine *engine = NULL;
             switch(code) {
             case USCRIPT_THAI:
                 engine = new ThaiBreakEngine(m, status);
@@ -230,17 +210,17 @@ ICULanguageBreakFactory::loadEngineFor(UChar32 c) {
             default:
                 break;
             }
-            if (engine == nullptr) {
+            if (engine == NULL) {
                 delete m;
             }
             else if (U_FAILURE(status)) {
                 delete engine;
-                engine = nullptr;
+                engine = NULL;
             }
             return engine;
         }
     }
-    return nullptr;
+    return NULL;
 }
 
 DictionaryMatcher *
@@ -250,21 +230,21 @@ ICULanguageBreakFactory::loadDictionaryMatcherFor(UScriptCode script) {
     UResourceBundle *b = ures_open(U_ICUDATA_BRKITR, "", &status);
     b = ures_getByKeyWithFallback(b, "dictionaries", b, &status);
     int32_t dictnlength = 0;
-    const char16_t *dictfname =
+    const UChar *dictfname =
         ures_getStringByKeyWithFallback(b, uscript_getShortName(script), &dictnlength, &status);
     if (U_FAILURE(status)) {
         ures_close(b);
-        return nullptr;
+        return NULL;
     }
     CharString dictnbuf;
     CharString ext;
-    const char16_t *extStart = u_memrchr(dictfname, 0x002e, dictnlength);  // last dot
-    if (extStart != nullptr) {
+    const UChar *extStart = u_memrchr(dictfname, 0x002e, dictnlength);  // last dot
+    if (extStart != NULL) {
         int32_t len = (int32_t)(extStart - dictfname);
-        ext.appendInvariantChars(UnicodeString(false, extStart + 1, dictnlength - len - 1), status);
+        ext.appendInvariantChars(UnicodeString(FALSE, extStart + 1, dictnlength - len - 1), status);
         dictnlength = len;
     }
-    dictnbuf.appendInvariantChars(UnicodeString(false, dictfname, dictnlength), status);
+    dictnbuf.appendInvariantChars(UnicodeString(FALSE, dictfname, dictnlength), status);
     ures_close(b);
 
     UDataMemory *file = udata_open(U_ICUDATA_BRKITR, ext.data(), dictnbuf.data(), &status);
@@ -274,29 +254,29 @@ ICULanguageBreakFactory::loadDictionaryMatcherFor(UScriptCode script) {
         const int32_t *indexes = (const int32_t *)data;
         const int32_t offset = indexes[DictionaryData::IX_STRING_TRIE_OFFSET];
         const int32_t trieType = indexes[DictionaryData::IX_TRIE_TYPE] & DictionaryData::TRIE_TYPE_MASK;
-        DictionaryMatcher *m = nullptr;
+        DictionaryMatcher *m = NULL;
         if (trieType == DictionaryData::TRIE_TYPE_BYTES) {
             const int32_t transform = indexes[DictionaryData::IX_TRANSFORM];
             const char *characters = (const char *)(data + offset);
             m = new BytesDictionaryMatcher(characters, transform, file);
         }
         else if (trieType == DictionaryData::TRIE_TYPE_UCHARS) {
-            const char16_t *characters = (const char16_t *)(data + offset);
+            const UChar *characters = (const UChar *)(data + offset);
             m = new UCharsDictionaryMatcher(characters, file);
         }
-        if (m == nullptr) {
+        if (m == NULL) {
             // no matcher exists to take ownership - either we are an invalid 
             // type or memory allocation failed
             udata_close(file);
         }
         return m;
-    } else if (dictfname != nullptr) {
+    } else if (dictfname != NULL) {
         // we don't have a dictionary matcher.
-        // returning nullptr here will cause us to fail to find a dictionary break engine, as expected
+        // returning NULL here will cause us to fail to find a dictionary break engine, as expected
         status = U_ZERO_ERROR;
-        return nullptr;
+        return NULL;
     }
-    return nullptr;
+    return NULL;
 }
 
 U_NAMESPACE_END

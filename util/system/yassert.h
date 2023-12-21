@@ -68,7 +68,9 @@ inline void YaDebugBreak() {
             }                            \
         } while (false)
 #else
-    #define Y_HIT_DEBUGGER() Y_SEMICOLON_GUARD
+    #define Y_HIT_DEBUGGER(a) \
+        do {                  \
+        } while (false)
 #endif
 
 namespace NPrivate {
@@ -77,16 +79,26 @@ namespace NPrivate {
 }
 
 /// Assert that does not depend on NDEBUG macro and outputs message like printf
-#define Y_ABORT_UNLESS(expr, ...)                                                                    \
-    do {                                                                                             \
-        if (Y_UNLIKELY(!(expr))) {                                                                   \
-            Y_HIT_DEBUGGER();                                                                        \
-            /* NOLINTNEXTLINE */                                                                     \
-            ::NPrivate::Panic(__SOURCE_FILE_IMPL__, __LINE__, __FUNCTION__, #expr, " " __VA_ARGS__); \
-        }                                                                                            \
+#define Y_ABORT_UNLESS(expr, ...)                                                                            \
+    do {                                                                                                     \
+        try {                                                                                                \
+            if (Y_UNLIKELY(!(expr))) {                                                                       \
+                Y_HIT_DEBUGGER();                                                                            \
+                ::PrintBackTrace();                                                                          \
+                /* NOLINTNEXTLINE */                                                                         \
+                ::NPrivate::Panic(__SOURCE_FILE_IMPL__, __LINE__, __FUNCTION__, #expr, " " __VA_ARGS__);     \
+            }                                                                                                \
+        } catch (...) {                                                                                      \
+            Y_HIT_DEBUGGER();                                                                                \
+            /* NOLINTNEXTLINE */                                                                             \
+            ::NPrivate::Panic(__SOURCE_FILE_IMPL__, __LINE__, __FUNCTION__, #expr, "Exception during assert" \
+                                                                                   " " __VA_ARGS__);         \
+        }                                                                                                    \
     } while (false)
+#define Y_VERIFY(...) Y_ABORT_UNLESS(__VA_ARGS__)
 
 #define Y_ABORT(...) Y_ABORT_UNLESS(false, __VA_ARGS__)
+#define Y_FAIL Y_ABORT
 
 #ifndef NDEBUG
     /// Assert that depend on NDEBUG macro and outputs message like printf
@@ -100,4 +112,5 @@ namespace NPrivate {
             }                                         \
         } while (false)
 #endif
+#define Y_VERIFY_DEBUG Y_DEBUG_ABORT_UNLESS
 #define Y_ASSERT(a) Y_DEBUG_ABORT_UNLESS(a)

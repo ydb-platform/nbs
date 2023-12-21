@@ -19,9 +19,9 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonrepli
     create_devices, setup_disk_registry_config, \
     update_cms_config, enable_writable_state, make_agent_id, AgentInfo, DeviceInfo
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_runner import ensure_path_exists, \
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_runner import ensure_path_exists, \
     get_unique_path_for_current_test
 
 import yatest.common as yatest_common
@@ -168,7 +168,7 @@ def __prepare_test_config(test_case):
 
 
 def __run_test(test_case):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,

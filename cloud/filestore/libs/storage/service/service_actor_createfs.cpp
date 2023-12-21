@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

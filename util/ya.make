@@ -4,6 +4,8 @@ SUBSCRIBER(g:util-subscribers)
 
 NEED_CHECK()
 
+NO_SANITIZE_HEADERS()
+
 NO_UTIL()
 
 # stream

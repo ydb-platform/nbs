@@ -12,7 +12,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -175,7 +175,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         bool registerAgentSeen = false;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvRegisterAgentRequest:
                         {
@@ -202,7 +202,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TDiskRegistryClient diskRegistry(*runtime);
@@ -634,13 +634,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         ui32 updateCount = 0;
 
-        runtime->SetObserverFunc([&] (auto& event) {
+        runtime->SetObserverFunc([&] (auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
             case TEvDiskRegistryPrivate::EvUpdateVolumeConfigRequest:
                 updateCount++;
                 break;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         diskRegistry.CreatePlacementGroup(
@@ -978,13 +978,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices->Val());
 
         TAutoPtr<IEventHandle> secureEraseDeviceResponse;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceResponse) {
                     secureEraseDeviceResponse = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));

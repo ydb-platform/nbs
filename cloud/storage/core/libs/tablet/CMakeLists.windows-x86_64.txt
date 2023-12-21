@@ -14,7 +14,7 @@ target_link_libraries(core-libs-tablet PUBLIC
   contrib-libs-cxxsupp
   yutil
   libs-tablet-model
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
 )
 target_sources(core-libs-tablet PRIVATE

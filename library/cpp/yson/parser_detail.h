@@ -35,7 +35,7 @@ namespace NYson {
                         break;
 
                     default:
-                        Y_ABORT("unreachable");
+                        Y_FAIL("unreachable");
                 }
 
                 while (!(TBase::IsFinished() && TBase::IsEmpty())) {

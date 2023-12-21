@@ -93,11 +93,11 @@ namespace std {
     template <class U, class... Args>
       constexpr explicit optional(in_place_t, initializer_list<U>, Args &&...);
     template <class U = T>
-      constexpr explicit(see-below) optional(U &&);
+      constexpr EXPLICIT optional(U &&);
     template <class U>
-      explicit(see-below) optional(const optional<U> &);         // constexpr in C++20
+      EXPLICIT optional(const optional<U> &);   // constexpr in C++20
     template <class U>
-      explicit(see-below) optional(optional<U> &&);              // constexpr in C++20
+      EXPLICIT optional(optional<U> &&);        // constexpr in C++20
 
     // 23.6.3.2, destructor
     ~optional(); // constexpr in C++20
@@ -158,42 +158,23 @@ template<class T>
 
 */
 
-#include <__assert> // all public C++ headers provide the assertion handler
+#include <__assert>
 #include <__availability>
 #include <__concepts/invocable.h>
 #include <__config>
-#include <__functional/hash.h>
-#include <__functional/invoke.h>
-#include <__functional/unary_function.h>
-#include <__memory/construct_at.h>
-#include <__tuple>
-#include <__utility/forward.h>
-#include <__utility/in_place.h>
-#include <__utility/move.h>
-#include <__utility/swap.h>
+#include <compare>
+#include <functional>
 #include <initializer_list>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <version>
 
-#ifndef _LIBCPP_REMOVE_TRANSITIVE_INCLUDES
-#  include <atomic>
-#  include <chrono>
-#  include <climits>
-#  include <concepts>
-#  include <ctime>
-#  include <iterator>
-#  include <memory>
-#  include <ratio>
-#  include <tuple>
-#  include <typeinfo>
-#  include <utility>
-#  include <variant>
-#endif
-
-// standard-mandated includes
-#include <compare>
+// TODO: remove these headers
+#include <__memory/allocator_arg_t.h>
+#include <__memory/uses_allocator.h>
+#include <typeinfo>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
@@ -405,9 +386,9 @@ struct __optional_storage_base : __optional_destruct_base<_Tp>
     }
 };
 
-// optional<T&> is currently required to be ill-formed. However, it may
-// be allowed in the future. For this reason, it has already been implemented
-// to ensure we can make the change in an ABI-compatible manner.
+// optional<T&> is currently required ill-formed, however it may to be in the
+// future. For this reason it has already been implemented to ensure we can
+// make the change in an ABI compatible manner.
 template <class _Tp>
 struct __optional_storage_base<_Tp, true>
 {
@@ -666,16 +647,14 @@ private:
     // LWG2756: conditionally explicit conversion from _Up
     struct _CheckOptionalArgsConstructor {
       template <class _Up>
-      static constexpr bool __enable_implicit() {
-          return is_constructible_v<_Tp, _Up&&> &&
-                 is_convertible_v<_Up&&, _Tp>;
-      }
+      static constexpr bool __enable_implicit =
+          is_constructible_v<_Tp, _Up&&> &&
+          is_convertible_v<_Up&&, _Tp>;
 
       template <class _Up>
-      static constexpr bool __enable_explicit() {
-          return is_constructible_v<_Tp, _Up&&> &&
-                 !is_convertible_v<_Up&&, _Tp>;
-      }
+      static constexpr bool __enable_explicit =
+          is_constructible_v<_Tp, _Up&&> &&
+          !is_convertible_v<_Up&&, _Tp>;
     };
     template <class _Up>
     using _CheckOptionalArgsCtor = _If<
@@ -705,22 +684,19 @@ private:
           is_assignable<_Tp&, _Opt const&&>
       >;
       template <class _Up, class _QUp = _QualUp>
-      static constexpr bool __enable_implicit() {
-          return is_convertible<_QUp, _Tp>::value &&
-              !__check_constructible_from_opt<_Up>::value;
-      }
+      static constexpr bool __enable_implicit =
+          is_convertible<_QUp, _Tp>::value &&
+          !__check_constructible_from_opt<_Up>::value;
+
       template <class _Up, class _QUp = _QualUp>
-      static constexpr bool __enable_explicit() {
-          return !is_convertible<_QUp, _Tp>::value &&
-              !__check_constructible_from_opt<_Up>::value;
-      }
+      static constexpr bool __enable_explicit =
+          !is_convertible<_QUp, _Tp>::value &&
+          !__check_constructible_from_opt<_Up>::value;
+
       template <class _Up, class _QUp = _QualUp>
-      static constexpr bool __enable_assign() {
-          // Construction and assignability of _QUp to _Tp has already been
-          // checked.
-          return !__check_constructible_from_opt<_Up>::value &&
-              !__check_assignable_from_opt<_Up>::value;
-      }
+      static constexpr bool __enable_assign =
+          !__check_constructible_from_opt<_Up>::value &&
+          !__check_assignable_from_opt<_Up>::value;
     };
 
     template <class _Up, class _QualUp>
@@ -753,7 +729,7 @@ public:
     template <class _InPlaceT, class... _Args, class = enable_if_t<
           _And<
               _IsSame<_InPlaceT, in_place_t>,
-              is_constructible<value_type, _Args...>
+            is_constructible<value_type, _Args...>
             >::value
         >
     >
@@ -769,14 +745,14 @@ public:
         : __base(in_place, __il, _VSTD::forward<_Args>(__args)...) {}
 
     template <class _Up = value_type, enable_if_t<
-        _CheckOptionalArgsCtor<_Up>::template __enable_implicit<_Up>()
+        _CheckOptionalArgsCtor<_Up>::template __enable_implicit<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     constexpr optional(_Up&& __v)
         : __base(in_place, _VSTD::forward<_Up>(__v)) {}
 
     template <class _Up, enable_if_t<
-        _CheckOptionalArgsCtor<_Up>::template __enable_explicit<_Up>()
+        _CheckOptionalArgsCtor<_Up>::template __enable_explicit<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     constexpr explicit optional(_Up&& __v)
@@ -784,7 +760,7 @@ public:
 
     // LWG2756: conditionally explicit conversion from const optional<_Up>&
     template <class _Up, enable_if_t<
-        _CheckOptionalLikeCtor<_Up, _Up const&>::template __enable_implicit<_Up>()
+        _CheckOptionalLikeCtor<_Up, _Up const&>::template __enable_implicit<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     _LIBCPP_CONSTEXPR_AFTER_CXX17 optional(const optional<_Up>& __v)
@@ -792,7 +768,7 @@ public:
         this->__construct_from(__v);
     }
     template <class _Up, enable_if_t<
-        _CheckOptionalLikeCtor<_Up, _Up const&>::template __enable_explicit<_Up>()
+        _CheckOptionalLikeCtor<_Up, _Up const&>::template __enable_explicit<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     _LIBCPP_CONSTEXPR_AFTER_CXX17 explicit optional(const optional<_Up>& __v)
@@ -802,7 +778,7 @@ public:
 
     // LWG2756: conditionally explicit conversion from optional<_Up>&&
     template <class _Up, enable_if_t<
-        _CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_implicit<_Up>()
+        _CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_implicit<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     _LIBCPP_CONSTEXPR_AFTER_CXX17 optional(optional<_Up>&& __v)
@@ -810,7 +786,7 @@ public:
         this->__construct_from(_VSTD::move(__v));
     }
     template <class _Up, enable_if_t<
-        _CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_explicit<_Up>()
+        _CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_explicit<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     _LIBCPP_CONSTEXPR_AFTER_CXX17 explicit optional(optional<_Up>&& __v)
@@ -862,7 +838,7 @@ public:
 
     // LWG2756
     template <class _Up, enable_if_t<
-        _CheckOptionalLikeAssign<_Up, _Up const&>::template __enable_assign<_Up>()
+        _CheckOptionalLikeAssign<_Up, _Up const&>::template __enable_assign<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     _LIBCPP_CONSTEXPR_AFTER_CXX17 optional&
@@ -874,7 +850,7 @@ public:
 
     // LWG2756
     template <class _Up, enable_if_t<
-        _CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_assign<_Up>()
+        _CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_assign<_Up>
     , int> = 0>
     _LIBCPP_INLINE_VISIBILITY
     _LIBCPP_CONSTEXPR_AFTER_CXX17 optional&

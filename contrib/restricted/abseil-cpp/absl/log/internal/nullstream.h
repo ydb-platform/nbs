@@ -102,9 +102,7 @@ class NullStreamMaybeFatal final : public NullStream {
   explicit NullStreamMaybeFatal(absl::LogSeverity severity)
       : fatal_(severity == absl::LogSeverity::kFatal) {}
   ~NullStreamMaybeFatal() {
-    if (fatal_) {
-      _exit(1);
-    }
+    if (fatal_) _exit(1);
   }
 
  private:
@@ -116,7 +114,7 @@ class NullStreamMaybeFatal final : public NullStream {
 // and expression-defined severity use `NullStreamMaybeFatal` above.
 class NullStreamFatal final : public NullStream {
  public:
-  NullStreamFatal() = default;
+  NullStreamFatal() {}
   // ABSL_ATTRIBUTE_NORETURN doesn't seem to work on destructors with msvc, so
   // disable msvc's warning about the d'tor never returning.
 #if defined(_MSC_VER) && !defined(__clang__)

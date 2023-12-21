@@ -7,11 +7,11 @@
 
 
 
-add_library(libs-storage-testlib)
-target_compile_options(libs-storage-testlib PRIVATE
+add_library(blockstore-libs-storage-testlib)
+target_compile_options(blockstore-libs-storage-testlib PRIVATE
   -DUSE_CURRENT_UDF_ABI_VERSION
 )
-target_link_libraries(libs-storage-testlib PUBLIC
+target_link_libraries(blockstore-libs-storage-testlib PUBLIC
   contrib-libs-cxxsupp
   yutil
   blockstore-libs-diagnostics
@@ -51,10 +51,10 @@ target_link_libraries(libs-storage-testlib PUBLIC
   core-tx-schemeshard
   core-tx-tx_allocator
   core-tx-tx_proxy
-  library-actors-core
+  cpp-actors-core
   cpp-testing-unittest
 )
-target_sources(libs-storage-testlib PRIVATE
+target_sources(blockstore-libs-storage-testlib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/testlib/disk_agent_mock.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/testlib/service_client.cpp

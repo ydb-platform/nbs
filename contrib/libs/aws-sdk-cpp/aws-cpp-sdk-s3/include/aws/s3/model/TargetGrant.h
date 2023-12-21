@@ -24,23 +24,18 @@ namespace Model
 {
 
   /**
-   * <p>Container for granting information.</p> <p>Buckets that use the bucket owner
-   * enforced setting for Object Ownership don't support target grants. For more
-   * information, see <a
-   * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/enable-server-access-logging.html#grant-log-delivery-permissions-general">Permissions
-   * server access log delivery</a> in the <i>Amazon S3 User Guide</i>.</p><p><h3>See
-   * Also:</h3>   <a
+   * <p>Container for granting information.</p><p><h3>See Also:</h3>   <a
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/TargetGrant">AWS API
    * Reference</a></p>
    */
-  class TargetGrant
+  class AWS_S3_API TargetGrant
   {
   public:
-    AWS_S3_API TargetGrant();
-    AWS_S3_API TargetGrant(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API TargetGrant& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    TargetGrant();
+    TargetGrant(const Aws::Utils::Xml::XmlNode& xmlNode);
+    TargetGrant& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -107,10 +102,10 @@ namespace Model
   private:
 
     Grantee m_grantee;
-    bool m_granteeHasBeenSet = false;
+    bool m_granteeHasBeenSet;
 
     BucketLogsPermission m_permission;
-    bool m_permissionHasBeenSet = false;
+    bool m_permissionHasBeenSet;
   };
 
 } // namespace Model

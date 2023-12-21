@@ -43,8 +43,8 @@ target_link_libraries(storage-init-server PUBLIC
   core-libs-hive_proxy
   core-libs-kikimr
   core-libs-user_stats
-  library-actors-core
-  library-actors-util
+  cpp-actors-core
+  cpp-actors-util
   ydb-core-base
   run
   ydb-core-load_test

@@ -28,14 +28,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/JSONInput">AWS API
    * Reference</a></p>
    */
-  class JSONInput
+  class AWS_S3_API JSONInput
   {
   public:
-    AWS_S3_API JSONInput();
-    AWS_S3_API JSONInput(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API JSONInput& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    JSONInput();
+    JSONInput(const Aws::Utils::Xml::XmlNode& xmlNode);
+    JSONInput& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -71,7 +71,7 @@ namespace Model
   private:
 
     JSONType m_type;
-    bool m_typeHasBeenSet = false;
+    bool m_typeHasBeenSet;
   };
 
 } // namespace Model

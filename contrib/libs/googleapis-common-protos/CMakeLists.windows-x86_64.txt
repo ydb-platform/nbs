@@ -732,30 +732,6 @@ get_built_tool_path(
   contrib/tools/protoc/plugins/cpp_styleguide
   cpp_styleguide
 )
-get_built_tool_path(
-  TOOL_protoc_bin
-  TOOL_protoc_dependency
-  contrib/tools/protoc/bin
-  protoc
-)
-get_built_tool_path(
-  TOOL_cpp_styleguide_bin
-  TOOL_cpp_styleguide_dependency
-  contrib/tools/protoc/plugins/cpp_styleguide
-  cpp_styleguide
-)
-get_built_tool_path(
-  TOOL_protoc_bin
-  TOOL_protoc_dependency
-  contrib/tools/protoc/bin
-  protoc
-)
-get_built_tool_path(
-  TOOL_cpp_styleguide_bin
-  TOOL_cpp_styleguide_dependency
-  contrib/tools/protoc/plugins/cpp_styleguide
-  cpp_styleguide
-)
 
 add_library(contrib-libs-googleapis-common-protos)
 set_property(TARGET contrib-libs-googleapis-common-protos PROPERTY
@@ -788,7 +764,6 @@ target_proto_messages(contrib-libs-googleapis-common-protos PRIVATE
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/endpoint.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/error_reason.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/field_behavior.proto
-  ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/field_info.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/http.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/httpbody.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/label.proto
@@ -798,7 +773,6 @@ target_proto_messages(contrib-libs-googleapis-common-protos PRIVATE
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/metric.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/monitored_resource.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/monitoring.proto
-  ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/policy.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/quota.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/resource.proto
   ${CMAKE_SOURCE_DIR}/contrib/libs/googleapis-common-protos/google/api/routing.proto

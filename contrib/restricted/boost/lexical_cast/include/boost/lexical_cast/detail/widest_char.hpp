@@ -30,7 +30,7 @@ namespace boost { namespace detail {
 
     template <typename TargetChar, typename SourceChar>
     struct widest_char {
-        typedef typename boost::conditional<
+        typedef BOOST_DEDUCED_TYPENAME boost::conditional<
             (sizeof(TargetChar) > sizeof(SourceChar))
             , TargetChar
             , SourceChar

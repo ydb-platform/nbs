@@ -24,10 +24,12 @@ template <class _Tp>
 struct __has_allocator_type
 {
 private:
-    template <class _Up> static false_type __test(...);
-    template <class _Up> static true_type __test(typename _Up::allocator_type* = 0);
+    struct __two {char __lx; char __lxx;};
+    template <class _Up> static __two __test(...);
+    // Fix for MSVC which allows to reference private types. Wrap into declval to prevent that.
+    template <class _Up> static char __test(decltype(_VSTD::declval<typename _Up::allocator_type*>()) = 0);
 public:
-    static const bool value = decltype(__test<_Tp>(0))::value;
+    static const bool value = sizeof(__test<_Tp>(0)) == 1;
 };
 
 template <class _Tp, class _Alloc, bool = __has_allocator_type<_Tp>::value>

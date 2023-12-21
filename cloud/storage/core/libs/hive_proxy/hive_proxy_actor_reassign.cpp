@@ -1,6 +1,6 @@
 #include "hive_proxy_actor.h"
 
-#include <contrib/ydb/core/base/hive.h>
+#include <ydb/core/base/hive.h>
 
 namespace NCloud::NStorage {
 

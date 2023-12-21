@@ -19,7 +19,7 @@ target_link_libraries(blockstore-vhost-server PUBLIC
   vhost-server
   core-libs-common
   core-libs-diagnostics
-  library-actors-util
+  cpp-actors-util
   library-cpp-getopt
   cpp-getopt-small
   library-cpp-logger

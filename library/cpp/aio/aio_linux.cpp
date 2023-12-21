@@ -30,7 +30,7 @@ namespace NAsyncIO {
             ~TAsyncIOContext() {
                 if (Context) {
                     int ret = io_destroy(Context);
-                    Y_ABORT_UNLESS(ret == 0, "unable to destroy context: %s", LastSystemErrorText(-ret));
+                    Y_VERIFY(ret == 0, "unable to destroy context: %s", LastSystemErrorText(-ret));
                 }
             }
 
@@ -105,7 +105,7 @@ namespace NAsyncIO {
 
             iocb* ios[] = {ptr};
             int count = Context.Submit(1, ios);
-            Y_ABORT_UNLESS(count == 1);
+            Y_VERIFY(count == 1);
 
             Y_UNUSED(request.Release());
         }

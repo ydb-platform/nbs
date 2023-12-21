@@ -9,9 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"a.yandex-team.ru/library/go/test/canon"
+	"a.yandex-team.ru/library/go/test/yatest"
+
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/library/go/test/canon"
-	"github.com/ydb-platform/nbs/library/go/test/yatest"
 )
 
 func TestGenerator(t *testing.T) {

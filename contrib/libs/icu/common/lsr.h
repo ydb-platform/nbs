@@ -1,5 +1,5 @@
 // © 2019 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html
+// License & terms of use: http://www.unicode.org/copyright.html#License
 
 // lsr.h
 // created: 2019may08 Markus W. Scherer
@@ -45,7 +45,7 @@ struct LSR final : public UMemory {
      */
     LSR(char prefix, const char *lang, const char *scr, const char *r, int32_t f,
         UErrorCode &errorCode);
-    LSR(LSR &&other) noexcept;
+    LSR(LSR &&other) U_NOEXCEPT;
     LSR(const LSR &other) = delete;
     inline ~LSR() {
         // Pure inline code for almost all instances.
@@ -54,7 +54,7 @@ struct LSR final : public UMemory {
         }
     }
 
-    LSR &operator=(LSR &&other) noexcept;
+    LSR &operator=(LSR &&other) U_NOEXCEPT;
     LSR &operator=(const LSR &other) = delete;
 
     /**
@@ -65,9 +65,9 @@ struct LSR final : public UMemory {
     static int32_t indexForRegion(const char *region);
 
     UBool isEquivalentTo(const LSR &other) const;
-    bool operator==(const LSR &other) const;
+    UBool operator==(const LSR &other) const;
 
-    inline bool operator!=(const LSR &other) const {
+    inline UBool operator!=(const LSR &other) const {
         return !operator==(other);
     }
 

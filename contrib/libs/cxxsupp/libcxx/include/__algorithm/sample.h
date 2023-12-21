@@ -12,10 +12,8 @@
 #include <__algorithm/min.h>
 #include <__assert>
 #include <__config>
-#include <__iterator/distance.h>
-#include <__iterator/iterator_traits.h>
 #include <__random/uniform_int_distribution.h>
-#include <type_traits>
+#include <iterator>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header

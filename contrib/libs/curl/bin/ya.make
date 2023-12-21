@@ -2,15 +2,6 @@
 
 PROGRAM(curl)
 
-LICENSE(
-    BSD-3-Clause AND
-    ISC AND
-    Public-Domain AND
-    curl
-)
-
-LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
-
 WITHOUT_LICENSE_TEXTS()
 
 PEERDIR(
@@ -70,12 +61,12 @@ SRCS(
     src/tool_msgs.c
     src/tool_operate.c
     src/tool_operhlp.c
+    src/tool_panykey.c
     src/tool_paramhlp.c
     src/tool_parsecfg.c
     src/tool_progress.c
     src/tool_setopt.c
     src/tool_sleep.c
-    src/tool_stderr.c
     src/tool_strdup.c
     src/tool_urlglob.c
     src/tool_util.c

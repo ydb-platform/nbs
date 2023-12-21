@@ -16,11 +16,11 @@ target_link_libraries(filestore-loadtest PUBLIC
   cloud-filestore-config
   filestore-public-api-protos
   filestore-libs-client
-  testing-loadtest-lib
-  testing-loadtest-protos
+  filestore-testing-loadtest-lib
+  filestore-testing-loadtest-protos
   core-libs-common
   core-libs-diagnostics
-  library-actors-util
+  cpp-actors-util
   library-cpp-getopt
   library-cpp-logger
   cpp-protobuf-json

@@ -17,7 +17,6 @@
 #include <boost/type_traits/is_reference.hpp>
 #include <boost/type_traits/integral_constant.hpp>
 #include <boost/type_traits/conditional.hpp>
-#include <boost/core/invoke_swap.hpp>
 
 namespace boost {
 
@@ -337,7 +336,7 @@ class optional_base : public optional_tag
     // No-throw (assuming T::~T() doesn't)
     void reset() BOOST_NOEXCEPT { destroy(); }
 
-    // **DEPRECATED** Replaces the current value -if any- with 'val'
+    // **DEPPRECATED** Replaces the current value -if any- with 'val'
     void reset ( argument_type val ) { assign(val); }
 
     // Returns a pointer to the value if this is initialized, otherwise,
@@ -543,7 +542,7 @@ class optional_base : public optional_tag
     //   Thus, the following overload is needed to properly handle the case when the 'lhs'
     //   is another optional.
     //
-    // For VC<=70 compilers this workaround doesn't work because the compiler issues and error
+    // For VC<=70 compilers this workaround dosen't work becasue the comnpiler issues and error
     // instead of choosing the wrong overload
     //
 #ifndef  BOOST_OPTIONAL_DETAIL_NO_RVALUE_REFERENCES
@@ -630,7 +629,7 @@ class optional_base : public optional_tag
 
     // If T is of reference type, trying to get a pointer to the held value must result in a compile-time error.
     // Decent compilers should disallow conversions from reference_content<T>* to T*, but just in case,
-    // the following overloads are used to filter out the case and guarantee an error in case of T being a reference.
+    // the following olverloads are used to filter out the case and guarantee an error in case of T being a reference.
     pointer_const_type cast_ptr( internal_type const* p, is_not_reference_tag ) const { return p ; }
     pointer_type       cast_ptr( internal_type *      p, is_not_reference_tag )       { return p ; }
     pointer_const_type cast_ptr( internal_type const* p, is_reference_tag     ) const { return &p->get() ; }
@@ -895,7 +894,7 @@ class optional : public optional_detail::optional_base<T>
       BOOST_NOEXCEPT_IF(::boost::is_nothrow_move_constructible<T>::value && ::boost::is_nothrow_move_assignable<T>::value)
       {
         // allow for Koenig lookup
-        boost::core::invoke_swap(*this, arg);
+        boost::swap(*this, arg);
       }
 
 

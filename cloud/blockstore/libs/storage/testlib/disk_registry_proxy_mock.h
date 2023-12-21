@@ -9,9 +9,9 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 
-#include <contrib/ydb/core/mind/local.h>
+#include <ydb/core/mind/local.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <library/cpp/actors/core/actor.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/hash.h>

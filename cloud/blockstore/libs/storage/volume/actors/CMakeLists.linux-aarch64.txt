@@ -17,7 +17,7 @@ target_link_libraries(storage-volume-actors PUBLIC
   libs-storage-partition_common
   libs-storage-protos
   libs-storage-protos_ydb
-  library-actors-core
+  cpp-actors-core
   library-cpp-lwtrace
 )
 target_sources(storage-volume-actors PRIVATE

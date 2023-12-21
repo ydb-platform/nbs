@@ -14,7 +14,6 @@ SYMBOLS_TO_PATCH = (
     'sendto',
 )
 
-
 class Error(Exception):
     pass
 

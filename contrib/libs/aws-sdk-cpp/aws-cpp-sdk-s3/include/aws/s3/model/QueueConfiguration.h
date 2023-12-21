@@ -32,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/QueueConfiguration">AWS
    * API Reference</a></p>
    */
-  class QueueConfiguration
+  class AWS_S3_API QueueConfiguration
   {
   public:
-    AWS_S3_API QueueConfiguration();
-    AWS_S3_API QueueConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API QueueConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    QueueConfiguration();
+    QueueConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    QueueConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     
@@ -178,16 +178,16 @@ namespace Model
   private:
 
     Aws::String m_id;
-    bool m_idHasBeenSet = false;
+    bool m_idHasBeenSet;
 
     Aws::String m_queueArn;
-    bool m_queueArnHasBeenSet = false;
+    bool m_queueArnHasBeenSet;
 
     Aws::Vector<Event> m_events;
-    bool m_eventsHasBeenSet = false;
+    bool m_eventsHasBeenSet;
 
     NotificationConfigurationFilter m_filter;
-    bool m_filterHasBeenSet = false;
+    bool m_filterHasBeenSet;
   };
 
 } // namespace Model

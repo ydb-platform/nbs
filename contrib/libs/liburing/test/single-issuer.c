@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <error.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -56,13 +57,13 @@ static int try_submit(struct io_uring *ring)
 		return ret;
 
 	if (ret != 1)
-		t_error(1, ret, "submit %i", ret);
+		error(1, ret, "submit %i", ret);
 	ret = io_uring_wait_cqe(ring, &cqe);
 	if (ret)
-		t_error(1, ret, "wait fail %i", ret);
+		error(1, ret, "wait fail %i", ret);
 
 	if (cqe->res || cqe->user_data != 42)
-		t_error(1, ret, "invalid cqe");
+		error(1, ret, "invalid cqe");
 
 	io_uring_cqe_seen(ring, cqe);
 	return 0;
@@ -78,6 +79,7 @@ int main(int argc, char *argv[])
 
 	ret = io_uring_queue_init(8, &ring, IORING_SETUP_SINGLE_ISSUER);
 	if (ret == -EINVAL) {
+		fprintf(stderr, "SETUP_SINGLE_ISSUER is not supported, skip\n");
 		return T_EXIT_SKIP;
 	} else if (ret) {
 		fprintf(stderr, "io_uring_queue_init() failed %i\n", ret);
@@ -105,7 +107,7 @@ int main(int argc, char *argv[])
 	ret = io_uring_queue_init(8, &ring, IORING_SETUP_SINGLE_ISSUER |
 					    IORING_SETUP_R_DISABLED);
 	if (ret)
-		t_error(1, ret, "ring init (2) %i", ret);
+		error(1, ret, "ring init (2) %i", ret);
 
 	if (!fork_t()) {
 		io_uring_enable_rings(&ring);
@@ -121,7 +123,7 @@ int main(int argc, char *argv[])
 	ret = io_uring_queue_init(8, &ring, IORING_SETUP_SINGLE_ISSUER |
 					    IORING_SETUP_R_DISABLED);
 	if (ret)
-		t_error(1, ret, "ring init (3) %i", ret);
+		error(1, ret, "ring init (3) %i", ret);
 
 	io_uring_enable_rings(&ring);
 	if (!fork_t()) {
@@ -136,7 +138,7 @@ int main(int argc, char *argv[])
 	/* test that anyone can submit to a SQPOLL|SINGLE_ISSUER ring */
 	ret = io_uring_queue_init(8, &ring, IORING_SETUP_SINGLE_ISSUER|IORING_SETUP_SQPOLL);
 	if (ret)
-		t_error(1, ret, "ring init (4) %i", ret);
+		error(1, ret, "ring init (4) %i", ret);
 
 	ret = try_submit(&ring);
 	if (ret) {
@@ -156,7 +158,7 @@ int main(int argc, char *argv[])
 	/* test that IORING_ENTER_REGISTERED_RING doesn't break anything */
 	ret = io_uring_queue_init(8, &ring, IORING_SETUP_SINGLE_ISSUER);
 	if (ret)
-		t_error(1, ret, "ring init (5) %i", ret);
+		error(1, ret, "ring init (5) %i", ret);
 
 	if (!fork_t()) {
 		ret = try_submit(&ring);

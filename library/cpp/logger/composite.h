@@ -11,5 +11,4 @@ public:
 
 private:
     TVector<THolder<TLogBackend>> Slaves;
-    ELogPriority LogPriority = static_cast<ELogPriority>(0); // has now it's own priority by default
 };

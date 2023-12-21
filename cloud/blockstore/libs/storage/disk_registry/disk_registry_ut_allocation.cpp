@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -606,7 +606,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<TString> destroyedDiskIds;
         TAutoPtr<IEventHandle> destroyVolumeRequest;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
                         && event->Recipient == MakeStorageServiceId())
                 {
@@ -617,7 +617,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1215,7 +1215,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         TVector<NProto::TDeviceConfig> dirtyDevices;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() ==
                         TEvDiskRegistryPrivate::EvSecureEraseRequest)
                 {
@@ -1227,7 +1227,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         msg->DirtyDevices.end());
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1581,7 +1581,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
 
-        auto oldOfn = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto oldOfn = runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceRequest) {
                     event->DropRewrite();
                     secureEraseDeviceRequests.push_back(std::unique_ptr<IEventHandle> {
@@ -1591,7 +1591,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1691,7 +1691,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
 
-        auto oldOfn = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto oldOfn = runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskAgent::EvSecureEraseDeviceRequest) {
                     event->DropRewrite();
                     secureEraseDeviceRequests.push_back(std::unique_ptr<IEventHandle> {
@@ -1701,7 +1701,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1768,7 +1768,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         TVector<TString> destroyedDiskIds;
         TAutoPtr<IEventHandle> destroyVolumeRequest;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest
                     && event->Recipient == MakeStorageServiceId())
             {
@@ -1779,7 +1779,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         diskRegistry.SendAllocateDiskRequest("vol0", 1000_GB);
@@ -1847,14 +1847,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         WaitForAgents(*runtime, 1);
         WaitForSecureErase(*runtime, agents);
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeResponse) {
                 auto* msg = event->Get<TEvService::TEvDestroyVolumeResponse>();
                 *msg->Record.MutableError() =
                     MakeError(E_REJECTED, "transient error");
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         diskRegistry.SendAllocateDiskRequest("vol0", 1000_GB);

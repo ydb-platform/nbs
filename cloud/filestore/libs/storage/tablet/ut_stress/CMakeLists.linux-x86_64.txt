@@ -21,7 +21,7 @@ target_link_libraries(cloud-filestore-libs-storage-tablet-ut_stress PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-tablet
-  libs-storage-testlib
+  filestore-libs-storage-testlib
 )
 target_link_options(cloud-filestore-libs-storage-tablet-ut_stress PRIVATE
   -ldl

@@ -158,7 +158,7 @@ def java_path():
     """
     from . import runtime_java
 
-    return runtime_java.get_java_path(binary_path(os.path.join('build', 'platform', 'java', 'jdk', 'testing')))
+    return runtime_java.get_java_path(binary_path(os.path.join('contrib', 'tools', 'jdk')))
 
 
 def java_home():
@@ -287,28 +287,6 @@ def get_param(key, default=None):
     return _get_ya_plugin_instance().get_param(key, default)
 
 
-def set_metric_value(name, val):
-    """
-    Use this method only when your test environment does not support pytest fixtures,
-    otherwise you should prefer using https://docs.yandex-team.ru/ya-make/manual/tests/#python
-    :param name: name
-    :param val: value
-    """
-    _get_ya_plugin_instance().set_metric_value(name, val)
-
-
-@default_arg1
-def get_metric_value(name, default=None):
-    """
-    Use this method only when your test environment does not support pytest fixtures,
-    otherwise you should prefer using https://docs.yandex-team.ru/ya-make/manual/tests/#python
-    :param name: name
-    :param default: default
-    :return: parameter value or the default
-    """
-    return _get_ya_plugin_instance().get_metric_value(name, default)
-
-
 @default_value(lambda _: {})
 def get_param_dict_copy():
     """
@@ -362,11 +340,6 @@ def c_compiler_path():
     return os.environ.get("YA_CC")
 
 
-def c_compiler_cmd():
-    p = c_compiler_path()
-    return [p, '-isystem' + os.path.dirname(os.path.dirname(p)) + '/share/include']
-
-
 def get_yt_hdd_path(path=None):
     if 'HDD_PATH' in os.environ:
         return _join_path(os.environ['HDD_PATH'], path)
@@ -377,11 +350,6 @@ def cxx_compiler_path():
     Get path to the gdb
     """
     return os.environ.get("YA_CXX")
-
-
-def cxx_compiler_cmd():
-    p = cxx_compiler_path()
-    return [p, '-isystem' + os.path.dirname(os.path.dirname(p)) + '/share/include']
 
 
 def global_resources():

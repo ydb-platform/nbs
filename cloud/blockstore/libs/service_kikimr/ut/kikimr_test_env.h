@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 namespace NCloud::NBlockStore::NServer {
 

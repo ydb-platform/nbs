@@ -21,7 +21,7 @@ target_link_libraries(cloud-blockstore-libs-storage-disk_agent-ut_actor PUBLIC
   libs-storage-api
   libs-storage-core
   storage-disk_agent-testlib
-  library-actors-core
+  cpp-actors-core
   cpp-testing-gmock_in_unittest
   cpp-testing-unittest
   ydb-core-testlib

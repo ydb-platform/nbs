@@ -1,6 +1,5 @@
-import collections
 import os
-import six
+import collections
 from hashlib import md5
 
 import ymake
@@ -11,15 +10,6 @@ YA_IDE_VENV_VAR = 'YA_IDE_VENV'
 PY_NAMESPACE_PREFIX = 'py/namespace'
 BUILTIN_PROTO = 'builtin_proto'
 DEFAULT_FLAKE8_FILE_PROCESSING_TIME = "1.5"  # in seconds
-
-
-def _split_macro_call(macro_call, data, item_size, chunk_size=1024):
-    index = 0
-    length = len(data)
-    offset = item_size * chunk_size
-    while index + 1 < length:
-        macro_call(data[index : index + offset])
-        index += offset
 
 
 def is_arc_src(src, unit):
@@ -34,9 +24,6 @@ def is_extended_source_search_enabled(path, unit):
     if not is_arc_src(path, unit):
         return False
     if unit.get('NO_EXTENDED_SOURCE_SEARCH') == 'yes':
-        return False
-    # contrib is unfriendly to extended source search
-    if unit.resolve_arc_path(path).startswith('$S/contrib/'):
         return False
     return True
 
@@ -83,8 +70,7 @@ def mangle(name):
 
 
 def parse_pyx_includes(filename, path, source_root, seen=None):
-    def normpath(*args):
-        return os.path.normpath(os.path.join(*args))
+    normpath = lambda *x: os.path.normpath(os.path.join(*x))
 
     abs_path = normpath(source_root, filename)
     seen = seen or set()
@@ -98,7 +84,7 @@ def parse_pyx_includes(filename, path, source_root, seen=None):
 
     with open(abs_path, 'rb') as f:
         # Don't parse cimports and etc - irrelevant for cython, it's linker work
-        includes = [six.ensure_str(x) for x in ymake.parse_cython_includes(f.read())]
+        includes = ymake.parse_cython_includes(f.read())
 
     abs_dirname = os.path.dirname(abs_path)
     # All includes are relative to the file which include
@@ -147,6 +133,7 @@ def add_python_lint_checks(unit, py_ver, files):
 
     no_lint_value = get_no_lint_value(unit)
     if no_lint_value == "none":
+
         no_lint_allowed_paths = (
             "contrib/",
             "devtools/",
@@ -157,8 +144,6 @@ def add_python_lint_checks(unit, py_ver, files):
             "market/report/lite/",  # MARKETOUT-38662, deadline: 2021-08-12
             "passport/backend/oauth/",  # PASSP-35982
             "testenv/",  # CI-3229
-            "yt/yt/",  # YT-20053
-            "yt/python/",  # YT-20053
         )
 
         upath = unit.path()[3:]
@@ -170,25 +155,19 @@ def add_python_lint_checks(unit, py_ver, files):
         resolved_files = get_resolved_files()
         if resolved_files:
             flake8_cfg = 'build/config/tests/flake8/flake8.conf'
-            migrations_cfg = 'build/rules/flake8/migrations.yaml'
             resource = "build/external_resources/flake8_py{}".format(py_ver)
-            lint_name = "py2_flake8" if py_ver == 2 else "flake8"
+            lint_name = "py{}_flake8".format(py_ver)
             params = [lint_name, "tools/flake8_linter/flake8_linter"]
             params += ["FILES"] + resolved_files
             params += ["GLOBAL_RESOURCES", resource]
+            params += ["CONFIGS", flake8_cfg, "build/rules/flake8/migrations.yaml"]
             params += [
                 "FILE_PROCESSING_TIME",
                 unit.get("FLAKE8_FILE_PROCESSING_TIME") or DEFAULT_FLAKE8_FILE_PROCESSING_TIME,
             ]
-
             extra_params = []
             if unit.get("DISABLE_FLAKE8_MIGRATIONS") == "yes":
                 extra_params.append("DISABLE_FLAKE8_MIGRATIONS=yes")
-                config_files = [flake8_cfg, '']
-            else:
-                config_files = [flake8_cfg, migrations_cfg]
-            params += ["CONFIGS"] + config_files
-
             if extra_params:
                 params += ["EXTRA_PARAMS"] + extra_params
             unit.on_add_linter_check(params)
@@ -196,7 +175,9 @@ def add_python_lint_checks(unit, py_ver, files):
     if files and unit.get('STYLE_PYTHON_VALUE') == 'yes' and is_py3(unit):
         resolved_files = get_resolved_files()
         if resolved_files:
-            black_cfg = unit.get('STYLE_PYTHON_PYPROJECT_VALUE') or 'build/config/tests/py_style/config.toml'
+            black_cfg = (
+                unit.get('STYLE_PYTHON_PYPROJECT_VALUE') or 'devtools/ya/handlers/style/python_style_config.toml'
+            )
             params = ['black', 'tools/black_linter/black_linter']
             params += ['FILES'] + resolved_files
             params += ['CONFIGS', black_cfg]
@@ -232,14 +213,11 @@ def onpy_srcs(unit, *args):
     """
     @usage PY_SRCS({| CYTHONIZE_PY} {| CYTHON_C} { | TOP_LEVEL | NAMESPACE ns} Files...)
 
-    PY_SRCS() - is rule to build extended versions of Python interpreters and containing all application code in its executable file.
-    It can be used to collect only the executables but not shared libraries, and, in particular, not to collect the modules that are imported using import directive.
+    PY_SRCS() - is rule to build extended versions of Python interpreters and containing all application code in its executable file. It can be used to collect only the executables but not shared libraries, and, in particular, not to collect the modules that are imported using import directive.
     The main disadvantage is the lack of IDE support; There is also no readline yet.
     The application can be collect from any of the sources from which the C library, and with the help of PY_SRCS .py , .pyx,.proto and .swg files.
-    At the same time extensions for Python on C language generating from .pyx and .swg, will be registered in Python's as built-in modules, and sources on .py are stored as static data:
-    when the interpreter starts, the initialization code will add a custom loader of these modules to sys.meta_path.
-    You can compile .py files as Cython sources with CYTHONIZE_PY directive (Use carefully, as build can get too slow). However, with it you won't have profiling info by default.
-    To enable it, add "# cython: profile=True" line to the beginning of every cythonized source.
+    At the same time extensions for Python on C language generating from .pyx and .swg, will be registered in Python's as built-in modules, and sources on .py are stored as static data: when the interpreter starts, the initialization code will add a custom loader of these modules to sys.meta_path.
+    You can compile .py files as Cython sources with CYTHONIZE_PY directive (Use carefully, as build can get too slow). However, with it you won't have profiling info by default. To enable it, add "# cython: profile=True" line to the beginning of every cythonized source.
     By default .pyx files are collected as C++-extensions. To collect them as C (similar to BUILDWITH_CYTHON_C, but with the ability to specify namespace), you must specify the Directive CYTHON_C.
     Building with pyx automatically registers modules, you do not need to call PY_REGISTER for them
     __init__.py never required, but if present (and specified in PY_SRCS), it will be imported when you import package modules with __init__.py Oh.
@@ -309,10 +287,10 @@ def onpy_srcs(unit, *args):
     dump_dir = unit.get('PYTHON_BUILD_DUMP_DIR')
     dump_output = None
     if dump_dir:
-        import threading
+        import thread
 
         pid = os.getpid()
-        tid = threading.current_thread().ident
+        tid = thread.get_ident()
         dump_name = '{}-{}.dump'.format(pid, tid)
         dump_output = open(os.path.join(dump_dir, dump_name), 'a')
 
@@ -383,8 +361,6 @@ def onpy_srcs(unit, *args):
                         mod_root_path = root_rel_path[: -(len(path) + 1)]
                         py_namespaces.setdefault(mod_root_path, set()).add(ns if ns else '.')
                     mod = ns + mod_name
-                    if in_proto_library:
-                        mod = mod.replace('-', '_')
 
             if main_mod:
                 py_main(unit, mod + ":main")
@@ -521,7 +497,7 @@ def onpy_srcs(unit, *args):
             prefix = 'resfs/cython/include'
             for line in sorted(
                 '{}/{}={}'.format(prefix, filename, ':'.join(sorted(files)))
-                for filename, files in six.iteritems(include_map)
+                for filename, files in include_map.iteritems()
             ):
                 data += ['-', line]
             unit.onresource(data)
@@ -549,7 +525,7 @@ def onpy_srcs(unit, *args):
         if py3:
             mod_list_md5 = md5()
             for path, mod in pys:
-                mod_list_md5.update(six.ensure_binary(mod))
+                mod_list_md5.update(mod)
                 if not (venv and is_extended_source_search_enabled(path, unit)):
                     dest = 'py/' + mod.replace('.', '/') + '.py'
                     if with_py:
@@ -569,7 +545,7 @@ def onpy_srcs(unit, *args):
                     ns_res += ['-', '{}="{}"'.format(key, namespaces)]
                 unit.onresource(ns_res)
 
-            _split_macro_call(unit.onresource_files, res, (3 if with_py else 0) + (3 if with_pyc else 0))
+            unit.onresource_files(res)
             add_python_lint_checks(
                 unit, 3, [path for path, mod in pys] + unit.get(['_PY_EXTRA_LINT_FILES_VALUE']).split()
             )
@@ -590,7 +566,7 @@ def onpy_srcs(unit, *args):
                     unit.on_py_compile_bytecode([root_rel_path + '-', src, dst])
                     res += [dst + '.yapyc', '/py_code/' + mod]
 
-            _split_macro_call(unit.onresource, res, (4 if with_py else 0) + (2 if with_pyc else 0))
+            unit.onresource(res)
             add_python_lint_checks(
                 unit, 2, [path for path, mod in pys] + unit.get(['_PY_EXTRA_LINT_FILES_VALUE']).split()
             )
@@ -632,12 +608,8 @@ def onpy_srcs(unit, *args):
     if fbss:
         unit.onpeerdir(unit.get('_PY_FBS_DEPS').split())
         pysrc_base_name = listid(fbss)
-        if py3:
-            unit.onfbs_to_pysrc([pysrc_base_name] + [path for path, _ in fbss])
-            unit.onsrcs(['GLOBAL', '{}.py3.fbs.pysrc'.format(pysrc_base_name)])
-        else:
-            unit.onfbs_to_py2src([pysrc_base_name] + [path for path, _ in fbss])
-            unit.onsrcs(['GLOBAL', '{}.py2.fbs.pysrc'.format(pysrc_base_name)])
+        unit.onfbs_to_pysrc([pysrc_base_name] + [path for path, _ in fbss])
+        unit.onsrcs(['GLOBAL', '{}.fbs.pysrc'.format(pysrc_base_name)])
 
 
 def _check_test_srcs(*args):

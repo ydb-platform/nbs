@@ -9,8 +9,6 @@
 #include <new>
 #include <stdlib.h>
 
-#include "include/atomic_support.h"
-
 #if defined(_LIBCPP_ABI_MICROSOFT)
 #   if !defined(_LIBCPP_ABI_VCRUNTIME)
 #       include "support/runtime/new_handler_fallback.ipp"
@@ -139,7 +137,7 @@ _LIBCPP_WEAK
 void
 operator delete(void* ptr) noexcept
 {
-    ::free(ptr);
+        ::free(ptr);
 }
 
 _LIBCPP_WEAK
@@ -260,8 +258,8 @@ _LIBCPP_WEAK
 void
 operator delete(void* ptr, std::align_val_t) noexcept
 {
-    std::__libcpp_aligned_free(ptr);
-}
+        std::__libcpp_aligned_free(ptr);
+    }
 
 _LIBCPP_WEAK
 void

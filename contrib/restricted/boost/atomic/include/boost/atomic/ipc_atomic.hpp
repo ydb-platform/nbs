@@ -15,6 +15,7 @@
 #define BOOST_ATOMIC_IPC_ATOMIC_HPP_INCLUDED_
 
 #include <cstddef>
+#include <boost/static_assert.hpp>
 #include <boost/memory_order.hpp>
 #include <boost/atomic/capabilities.hpp>
 #include <boost/atomic/detail/config.hpp>
@@ -43,9 +44,9 @@ private:
 public:
     typedef typename base_type::value_type value_type;
 
-    static_assert(sizeof(value_type) > 0u, "boost::ipc_atomic<T> requires T to be a complete type");
+    BOOST_STATIC_ASSERT_MSG(sizeof(value_type) > 0u, "boost::ipc_atomic<T> requires T to be a complete type");
 #if !defined(BOOST_ATOMIC_DETAIL_NO_CXX11_IS_TRIVIALLY_COPYABLE)
-    static_assert(atomics::detail::is_trivially_copyable< value_type >::value, "boost::ipc_atomic<T> requires T to be a trivially copyable type");
+    BOOST_STATIC_ASSERT_MSG(atomics::detail::is_trivially_copyable< value_type >::value, "boost::ipc_atomic<T> requires T to be a trivially copyable type");
 #endif
 
 public:

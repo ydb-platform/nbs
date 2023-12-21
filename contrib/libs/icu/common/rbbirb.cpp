@@ -22,7 +22,6 @@
 #include "unicode/uniset.h"
 #include "unicode/uchar.h"
 #include "unicode/uchriter.h"
-#include "unicode/ustring.h"
 #include "unicode/parsepos.h"
 #include "unicode/parseerr.h"
 
@@ -52,26 +51,26 @@ RBBIRuleBuilder::RBBIRuleBuilder(const UnicodeString   &rules,
 {
     fStatus = &status; // status is checked below
     fParseError = parseErr;
-    fDebugEnv   = nullptr;
+    fDebugEnv   = NULL;
 #ifdef RBBI_DEBUG
     fDebugEnv   = getenv("U_RBBIDEBUG");
 #endif
 
 
-    fForwardTree        = nullptr;
-    fReverseTree        = nullptr;
-    fSafeFwdTree        = nullptr;
-    fSafeRevTree        = nullptr;
+    fForwardTree        = NULL;
+    fReverseTree        = NULL;
+    fSafeFwdTree        = NULL;
+    fSafeRevTree        = NULL;
     fDefaultTree        = &fForwardTree;
-    fForwardTable       = nullptr;
-    fRuleStatusVals     = nullptr;
-    fChainRules         = false;
-    fLBCMNoChain        = false;
-    fLookAheadHardBreak = false;
-    fUSetNodes          = nullptr;
-    fRuleStatusVals     = nullptr;
-    fScanner            = nullptr;
-    fSetBuilder         = nullptr;
+    fForwardTable       = NULL;
+    fRuleStatusVals     = NULL;
+    fChainRules         = FALSE;
+    fLBCMNoChain        = FALSE;
+    fLookAheadHardBreak = FALSE;
+    fUSetNodes          = NULL;
+    fRuleStatusVals     = NULL;
+    fScanner            = NULL;
+    fSetBuilder         = NULL;
     if (parseErr) {
         uprv_memset(parseErr, 0, sizeof(UParseError));
     }
@@ -104,7 +103,7 @@ RBBIRuleBuilder::~RBBIRuleBuilder() {
     int        i;
     for (i=0; ; i++) {
         RBBINode *n = (RBBINode *)fUSetNodes->elementAt(i);
-        if (n==nullptr) {
+        if (n==NULL) {
             break;
         }
         delete n;
@@ -138,7 +137,7 @@ RBBIDataHeader *RBBIRuleBuilder::flattenData() {
     int32_t    i;
 
     if (U_FAILURE(*fStatus)) {
-        return nullptr;
+        return NULL;
     }
 
     // Remove whitespace from the rules to make it smaller.
@@ -155,14 +154,7 @@ RBBIDataHeader *RBBIRuleBuilder::flattenData() {
     int32_t reverseTableSize  = align8(fForwardTable->getSafeTableSize());
     int32_t trieSize          = align8(fSetBuilder->getTrieSize());
     int32_t statusTableSize   = align8(fRuleStatusVals->size() * sizeof(int32_t));
-
-    int32_t rulesLengthInUTF8 = 0;
-    u_strToUTF8WithSub(0, 0, &rulesLengthInUTF8,
-                       fStrippedRules.getBuffer(), fStrippedRules.length(),
-                       0xfffd, nullptr, fStatus);
-    *fStatus = U_ZERO_ERROR;
-
-    int32_t rulesSize         = align8((rulesLengthInUTF8+1));
+    int32_t rulesSize         = align8((fStrippedRules.length()+1) * sizeof(UChar));
 
     int32_t         totalSize = headerSize
                                 + forwardTableSize
@@ -183,9 +175,9 @@ RBBIDataHeader *RBBIRuleBuilder::flattenData() {
 #endif
 
     RBBIDataHeader  *data     = (RBBIDataHeader *)uprv_malloc(totalSize);
-    if (data == nullptr) {
+    if (data == NULL) {
         *fStatus = U_MEMORY_ALLOCATION_ERROR;
-        return nullptr;
+        return NULL;
     }
     uprv_memset(data, 0, totalSize);
 
@@ -205,11 +197,11 @@ RBBIDataHeader *RBBIRuleBuilder::flattenData() {
     data->fRTableLen     = reverseTableSize;
 
     data->fTrie          = data->fRTable + data->fRTableLen;
-    data->fTrieLen       = trieSize;
-    data->fStatusTable   = data->fTrie    + data->fTrieLen;
+    data->fTrieLen       = fSetBuilder->getTrieSize();
+    data->fStatusTable   = data->fTrie    + trieSize;
     data->fStatusTableLen= statusTableSize;
     data->fRuleSource    = data->fStatusTable + statusTableSize;
-    data->fRuleSourceLen = rulesLengthInUTF8;
+    data->fRuleSourceLen = fStrippedRules.length() * sizeof(UChar);
 
     uprv_memset(data->fReserved, 0, sizeof(data->fReserved));
 
@@ -222,12 +214,7 @@ RBBIDataHeader *RBBIRuleBuilder::flattenData() {
         ruleStatusTable[i] = fRuleStatusVals->elementAti(i);
     }
 
-    u_strToUTF8WithSub((char *)data+data->fRuleSource, rulesSize, &rulesLengthInUTF8,
-                       fStrippedRules.getBuffer(), fStrippedRules.length(),
-                       0xfffd, nullptr, fStatus);
-    if (U_FAILURE(*fStatus)) {
-        return nullptr;
-    }
+    fStrippedRules.extract((UChar *)((uint8_t *)data+data->fRuleSource), rulesSize/2+1, *fStatus);
 
     return data;
 }
@@ -250,7 +237,7 @@ RBBIRuleBuilder::createRuleBasedBreakIterator( const UnicodeString    &rules,
     //
     RBBIRuleBuilder  builder(rules, parseError, status);
     if (U_FAILURE(status)) { // status checked here bcos build below doesn't
-        return nullptr;
+        return NULL;
     }
 
     RBBIDataHeader *data = builder.build(status);
@@ -267,9 +254,9 @@ RBBIRuleBuilder::createRuleBasedBreakIterator( const UnicodeString    &rules,
     RuleBasedBreakIterator *This = new RuleBasedBreakIterator(data, status);
     if (U_FAILURE(status)) {
         delete This;
-        This = nullptr;
+        This = NULL;
     } 
-    else if(This == nullptr) { // test for nullptr
+    else if(This == NULL) { // test for NULL
         status = U_MEMORY_ALLOCATION_ERROR;
     }
     return This;
@@ -287,7 +274,9 @@ RBBIDataHeader *RBBIRuleBuilder::build(UErrorCode &status) {
 
     //
     // UnicodeSet processing.
-    //    Munge the Unicode Sets to create an initial set of character categories.
+    //    Munge the Unicode Sets to create a set of character categories.
+    //    Generate the mapping tables (TRIE) from input code points to
+    //    the character categories.
     //
     fSetBuilder->buildRanges();
 
@@ -301,12 +290,6 @@ RBBIDataHeader *RBBIRuleBuilder::build(UErrorCode &status) {
     }
 
     fForwardTable->buildForwardTable();
-
-    // State table and character category optimization.
-    // Merge equivalent rows and columns.
-    // Note that this process alters the initial set of character categories,
-    // causing the representation of UnicodeSets in the parse tree to become invalid.
-
     optimizeTables();
     fForwardTable->buildSafeReverseTable(status);
 
@@ -319,16 +302,13 @@ RBBIDataHeader *RBBIRuleBuilder::build(UErrorCode &status) {
     }
 #endif
 
-    //    Generate the mapping tables (TRIE) from input code points to
-    //    the character categories.
-    //
     fSetBuilder->buildTrie();
 
     //
     //   Package up the compiled data into a memory image
     //      in the run-time format.
     //
-    RBBIDataHeader *data = flattenData(); // returns nullptr if error
+    RBBIDataHeader *data = flattenData(); // returns NULL if error
     if (U_FAILURE(status)) {
         return nullptr;
     }

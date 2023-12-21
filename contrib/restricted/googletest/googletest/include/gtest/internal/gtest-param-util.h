@@ -97,7 +97,7 @@ class ParamGenerator;
 template <typename T>
 class ParamIteratorInterface {
  public:
-  virtual ~ParamIteratorInterface() = default;
+  virtual ~ParamIteratorInterface() {}
   // A pointer to the base generator instance.
   // Used only for the purposes of iterator comparison
   // to make sure that two iterators belong to the same generator.
@@ -171,7 +171,7 @@ class ParamGeneratorInterface {
  public:
   typedef T ParamType;
 
-  virtual ~ParamGeneratorInterface() = default;
+  virtual ~ParamGeneratorInterface() {}
 
   // Generator interface definition
   virtual ParamIteratorInterface<T>* Begin() const = 0;
@@ -215,7 +215,7 @@ class RangeGenerator : public ParamGeneratorInterface<T> {
         end_(end),
         step_(step),
         end_index_(CalculateEndIndex(begin, end, step)) {}
-  ~RangeGenerator() override = default;
+  ~RangeGenerator() override {}
 
   ParamIteratorInterface<T>* Begin() const override {
     return new Iterator(this, begin_, 0, step_);
@@ -230,7 +230,7 @@ class RangeGenerator : public ParamGeneratorInterface<T> {
     Iterator(const ParamGeneratorInterface<T>* base, T value, int index,
              IncrementT step)
         : base_(base), value_(value), index_(index), step_(step) {}
-    ~Iterator() override = default;
+    ~Iterator() override {}
 
     const ParamGeneratorInterface<T>* BaseGenerator() const override {
       return base_;
@@ -299,7 +299,7 @@ class ValuesInIteratorRangeGenerator : public ParamGeneratorInterface<T> {
   template <typename ForwardIterator>
   ValuesInIteratorRangeGenerator(ForwardIterator begin, ForwardIterator end)
       : container_(begin, end) {}
-  ~ValuesInIteratorRangeGenerator() override = default;
+  ~ValuesInIteratorRangeGenerator() override {}
 
   ParamIteratorInterface<T>* Begin() const override {
     return new Iterator(this, container_.begin());
@@ -316,7 +316,7 @@ class ValuesInIteratorRangeGenerator : public ParamGeneratorInterface<T> {
     Iterator(const ParamGeneratorInterface<T>* base,
              typename ContainerType::const_iterator iterator)
         : base_(base), iterator_(iterator) {}
-    ~Iterator() override = default;
+    ~Iterator() override {}
 
     const ParamGeneratorInterface<T>* BaseGenerator() const override {
       return base_;
@@ -420,7 +420,7 @@ class ParameterizedTestFactory : public TestFactoryBase {
 template <class ParamType>
 class TestMetaFactoryBase {
  public:
-  virtual ~TestMetaFactoryBase() = default;
+  virtual ~TestMetaFactoryBase() {}
 
   virtual TestFactoryBase* CreateTestFactory(ParamType parameter) = 0;
 };
@@ -439,7 +439,7 @@ class TestMetaFactory
  public:
   using ParamType = typename TestSuite::ParamType;
 
-  TestMetaFactory() = default;
+  TestMetaFactory() {}
 
   TestFactoryBase* CreateTestFactory(ParamType parameter) override {
     return new ParameterizedTestFactory<TestSuite>(parameter);
@@ -462,7 +462,7 @@ class TestMetaFactory
 // and calls RegisterTests() on each of them when asked.
 class ParameterizedTestSuiteInfoBase {
  public:
-  virtual ~ParameterizedTestSuiteInfoBase() = default;
+  virtual ~ParameterizedTestSuiteInfoBase() {}
 
   // Base part of test suite name for display purposes.
   virtual const std::string& GetTestSuiteName() const = 0;
@@ -691,7 +691,7 @@ using ParameterizedTestCaseInfo = ParameterizedTestSuiteInfo<TestCase>;
 // ParameterizedTestSuiteInfo descriptors.
 class ParameterizedTestSuiteRegistry {
  public:
-  ParameterizedTestSuiteRegistry() = default;
+  ParameterizedTestSuiteRegistry() {}
   ~ParameterizedTestSuiteRegistry() {
     for (auto& test_suite_info : test_suite_infos_) {
       delete test_suite_info;
@@ -794,7 +794,10 @@ internal::ParamGenerator<typename Container::value_type> ValuesIn(
 namespace internal {
 // Used in the Values() function to provide polymorphic capabilities.
 
-GTEST_DISABLE_MSC_WARNINGS_PUSH_(4100)
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
 
 template <typename... Ts>
 class ValueArray {
@@ -815,7 +818,9 @@ class ValueArray {
   FlatTuple<Ts...> v_;
 };
 
-GTEST_DISABLE_MSC_WARNINGS_POP_()  // 4100
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 template <typename... T>
 class CartesianProductGenerator
@@ -825,7 +830,7 @@ class CartesianProductGenerator
 
   CartesianProductGenerator(const std::tuple<ParamGenerator<T>...>& g)
       : generators_(g) {}
-  ~CartesianProductGenerator() override = default;
+  ~CartesianProductGenerator() override {}
 
   ParamIteratorInterface<ParamType>* Begin() const override {
     return new Iterator(this, generators_, false);
@@ -850,7 +855,7 @@ class CartesianProductGenerator
           current_(is_end ? end_ : begin_) {
       ComputeCurrentValue();
     }
-    ~IteratorImpl() override = default;
+    ~IteratorImpl() override {}
 
     const ParamGeneratorInterface<ParamType>* BaseGenerator() const override {
       return base_;
@@ -951,7 +956,7 @@ class CartesianProductHolder {
 template <typename From, typename To>
 class ParamGeneratorConverter : public ParamGeneratorInterface<To> {
  public:
-  ParamGeneratorConverter(ParamGenerator<From> gen)  // NOLINT
+  ParamGeneratorConverter(ParamGenerator<From> gen) // NOLINT
       : generator_(std::move(gen)) {}
 
   ParamIteratorInterface<To>* Begin() const override {
@@ -969,7 +974,7 @@ class ParamGeneratorConverter : public ParamGeneratorInterface<To> {
         : base_(base), it_(it), end_(end) {
       if (it_ != end_) value_ = std::make_shared<To>(static_cast<To>(*it_));
     }
-    ~Iterator() override = default;
+    ~Iterator() override {}
 
     const ParamGeneratorInterface<To>* BaseGenerator() const override {
       return base_;

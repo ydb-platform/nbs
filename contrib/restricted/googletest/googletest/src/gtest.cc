@@ -44,21 +44,15 @@
 #include <chrono>  // NOLINT
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <initializer_list>
 #include <iomanip>
-#include <ios>
-#include <iostream>
 #include <iterator>
 #include <limits>
 #include <list>
 #include <map>
 #include <ostream>  // NOLINT
-#include <set>
 #include <sstream>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "gtest/gtest-assertion-result.h"
@@ -66,7 +60,7 @@
 #include "gtest/internal/custom/gtest.h"
 #include "gtest/internal/gtest-port.h"
 
-#ifdef GTEST_OS_LINUX
+#if GTEST_OS_LINUX
 
 #include <fcntl.h>   // NOLINT
 #include <limits.h>  // NOLINT
@@ -79,18 +73,18 @@
 
 #include <string>
 
-#elif defined(GTEST_OS_ZOS)
+#elif GTEST_OS_ZOS
 #include <sys/time.h>  // NOLINT
 
 // On z/OS we additionally need strings.h for strcasecmp.
 #include <strings.h>   // NOLINT
 
-#elif defined(GTEST_OS_WINDOWS_MOBILE)  // We are on Windows CE.
+#elif GTEST_OS_WINDOWS_MOBILE  // We are on Windows CE.
 
 #include <windows.h>  // NOLINT
 #undef min
 
-#elif defined(GTEST_OS_WINDOWS)  // We are on Windows proper.
+#elif GTEST_OS_WINDOWS  // We are on Windows proper.
 
 #include <windows.h>  // NOLINT
 #undef min
@@ -104,7 +98,7 @@
 #include <sys/timeb.h>  // NOLINT
 #include <sys/types.h>  // NOLINT
 
-#ifdef GTEST_OS_WINDOWS_MINGW
+#if GTEST_OS_WINDOWS_MINGW
 #include <sys/time.h>  // NOLINT
 #endif                 // GTEST_OS_WINDOWS_MINGW
 
@@ -130,18 +124,17 @@
 
 #include "src/gtest-internal-inl.h"
 
-#ifdef GTEST_OS_WINDOWS
+#if GTEST_OS_WINDOWS
 #define vsnprintf _vsnprintf
 #endif  // GTEST_OS_WINDOWS
 
-#ifdef GTEST_OS_MAC
+#if GTEST_OS_MAC
 #ifndef GTEST_OS_IOS
 #include <crt_externs.h>
 #endif
 #endif
 
-#ifdef GTEST_HAS_ABSL
-#error #include "absl/container/flat_hash_set.h"
+#if GTEST_HAS_ABSL
 #error #include "absl/debugging/failure_signal_handler.h"
 #error #include "absl/debugging/stacktrace.h"
 #error #include "absl/debugging/symbolize.h"
@@ -149,8 +142,6 @@
 #error #include "absl/flags/usage.h"
 #error #include "absl/strings/str_cat.h"
 #error #include "absl/strings/str_replace.h"
-#error #include "absl/strings/string_view.h"
-#error #include "absl/strings/strip.h"
 #endif  // GTEST_HAS_ABSL
 
 // Checks builtin compiler feature |x| while avoiding an extra layer of #ifdefs
@@ -416,7 +407,7 @@ uint32_t Random::Generate(uint32_t range) {
 // GTestIsInitialized() returns true if and only if the user has initialized
 // Google Test.  Useful for catching the user mistake of not initializing
 // Google Test before calling RUN_ALL_TESTS().
-static bool GTestIsInitialized() { return !GetArgvs().empty(); }
+static bool GTestIsInitialized() { return GetArgvs().size() > 0; }
 
 // Iterates over a vector of TestSuites, keeping a running sum of the
 // results of calling a given int-returning method on each.
@@ -638,7 +629,7 @@ static ::std::vector<std::string> g_argvs;
 FilePath GetCurrentExecutableName() {
   FilePath result;
 
-#if defined(GTEST_OS_WINDOWS) || defined(GTEST_OS_OS2)
+#if GTEST_OS_WINDOWS || GTEST_OS_OS2
   result.Set(FilePath(GetArgvs()[0]).RemoveExtension("exe"));
 #else
   result.Set(FilePath(GetArgvs()[0]));
@@ -863,18 +854,13 @@ bool UnitTestOptions::FilterMatchesTest(const std::string& test_suite_name,
 }
 
 #if GTEST_HAS_SEH
-static std::string FormatSehExceptionMessage(DWORD exception_code,
-                                             const char* location) {
-  Message message;
-  message << "SEH exception with code 0x" << std::setbase(16) << exception_code
-          << std::setbase(10) << " thrown in " << location << ".";
-  return message.GetString();
-}
-
-int UnitTestOptions::GTestProcessSEH(DWORD seh_code, const char* location) {
+// Returns EXCEPTION_EXECUTE_HANDLER if Google Test should handle the
+// given SEH exception, or EXCEPTION_CONTINUE_SEARCH otherwise.
+// This function is useful as an __except condition.
+int UnitTestOptions::GTestShouldProcessSEH(DWORD exception_code) {
   // Google Test should handle a SEH exception if:
   //   1. the user wants it to, AND
-  //   2. this is not a breakpoint exception or stack overflow, AND
+  //   2. this is not a breakpoint exception, AND
   //   3. this is not a C++ exception (VC++ implements them via SEH,
   //      apparently).
   //
@@ -882,20 +868,16 @@ int UnitTestOptions::GTestProcessSEH(DWORD seh_code, const char* location) {
   // (see http://support.microsoft.com/kb/185294 for more information).
   const DWORD kCxxExceptionCode = 0xe06d7363;
 
-  if (!GTEST_FLAG_GET(catch_exceptions) || seh_code == kCxxExceptionCode ||
-      seh_code == EXCEPTION_BREAKPOINT ||
-      seh_code == EXCEPTION_STACK_OVERFLOW) {
-    return EXCEPTION_CONTINUE_SEARCH;  // Don't handle these exceptions
-  }
+  bool should_handle = true;
 
-  internal::ReportFailureInUnknownLocation(
-      TestPartResult::kFatalFailure,
-      FormatSehExceptionMessage(seh_code, location) +
-          "\n"
-          "Stack trace:\n" +
-          ::testing::internal::GetCurrentOsStackTraceExceptTop(1));
+  if (!GTEST_FLAG_GET(catch_exceptions))
+    should_handle = false;
+  else if (exception_code == EXCEPTION_BREAKPOINT)
+    should_handle = false;
+  else if (exception_code == kCxxExceptionCode)
+    should_handle = false;
 
-  return EXCEPTION_EXECUTE_HANDLER;
+  return should_handle ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
 }
 #endif  // GTEST_HAS_SEH
 
@@ -1152,8 +1134,8 @@ class Timer {
 
   // Return time elapsed in milliseconds since the timer was created.
   TimeInMillis Elapsed() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() -
-                                                                 start_)
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               clock::now() - start_)
         .count();
   }
 
@@ -1182,7 +1164,7 @@ TimeInMillis GetTimeInMillis() {
 
 // class String.
 
-#ifdef GTEST_OS_WINDOWS_MOBILE
+#if GTEST_OS_WINDOWS_MOBILE
 // Creates a UTF-16 wide string from the given ANSI string, allocating
 // memory using new. The caller is responsible for deleting the return
 // value using delete[]. Returns the wide string, or NULL if the
@@ -1884,14 +1866,14 @@ AssertionResult IsNotSubstring(const char* needle_expr,
 
 namespace internal {
 
-#ifdef GTEST_OS_WINDOWS
+#if GTEST_OS_WINDOWS
 
 namespace {
 
 // Helper function for IsHRESULT{SuccessFailure} predicates
 AssertionResult HRESULTFailureHelper(const char* expr, const char* expected,
                                      long hr) {  // NOLINT
-#if defined(GTEST_OS_WINDOWS_MOBILE) || defined(GTEST_OS_WINDOWS_TV_TITLE)
+#if GTEST_OS_WINDOWS_MOBILE || GTEST_OS_WINDOWS_TV_TITLE
 
   // Windows CE doesn't support FormatMessage.
   const char error_text[] = "";
@@ -2152,9 +2134,9 @@ bool String::CaseInsensitiveWideCStringEquals(const wchar_t* lhs,
 
   if (rhs == nullptr) return false;
 
-#ifdef GTEST_OS_WINDOWS
+#if GTEST_OS_WINDOWS
   return _wcsicmp(lhs, rhs) == 0;
-#elif defined(GTEST_OS_LINUX) && !defined(GTEST_OS_LINUX_ANDROID)
+#elif GTEST_OS_LINUX && !GTEST_OS_LINUX_ANDROID
   return wcscasecmp(lhs, rhs) == 0;
 #else
   // Android, Mac OS X and Cygwin don't define wcscasecmp.
@@ -2254,7 +2236,7 @@ TestResult::TestResult()
     : death_test_count_(0), start_timestamp_(0), elapsed_time_(0) {}
 
 // D'tor.
-TestResult::~TestResult() = default;
+TestResult::~TestResult() {}
 
 // Returns the i-th test part result among all the results. i can
 // range from 0 to total_part_count() - 1. If i is not in that range,
@@ -2342,9 +2324,7 @@ static std::vector<std::string> GetReservedAttributesForElement(
   return std::vector<std::string>();
 }
 
-#if GTEST_HAS_FILE_SYSTEM
 // TODO(jdesprez): Merge the two getReserved attributes once skip is improved
-// This function is only used when file systems are enabled.
 static std::vector<std::string> GetReservedOutputAttributesForElement(
     const std::string& xml_element) {
   if (xml_element == "testsuites") {
@@ -2359,7 +2339,6 @@ static std::vector<std::string> GetReservedOutputAttributesForElement(
   // This code is unreachable but some compilers may not realizes that.
   return std::vector<std::string>();
 }
-#endif
 
 static std::string FormatWordList(const std::vector<std::string>& words) {
   Message word_list;
@@ -2463,7 +2442,7 @@ Test::Test() : gtest_flag_saver_(new GTEST_FLAG_SAVER_) {}
 // The d'tor restores the states of all flags.  The actual work is
 // done by the d'tor of the gtest_flag_saver_ field, and thus not
 // visible here.
-Test::~Test() = default;
+Test::~Test() {}
 
 // Sets up the test fixture.
 //
@@ -2478,6 +2457,11 @@ void Test::TearDown() {}
 // Allows user supplied key value pairs to be recorded for later output.
 void Test::RecordProperty(const std::string& key, const std::string& value) {
   UnitTest::GetInstance()->RecordProperty(key, value);
+}
+// We do not define a customary serialization except for integers,
+// but other values could be logged in this way.
+void Test::RecordProperty(const std::string& key, int64_t value) {
+  RecordProperty(key, (Message() << value).GetString());
 }
 
 namespace internal {
@@ -2562,6 +2546,23 @@ bool Test::HasSameFixtureClass() {
   return true;
 }
 
+#if GTEST_HAS_SEH
+
+// Adds an "exception thrown" fatal failure to the current test.  This
+// function returns its result via an output parameter pointer because VC++
+// prohibits creation of objects with destructors on stack in functions
+// using __try (see error C2712).
+static std::string* FormatSehExceptionMessage(DWORD exception_code,
+                                              const char* location) {
+  Message message;
+  message << "SEH exception with code 0x" << std::setbase(16) << exception_code
+          << std::setbase(10) << " thrown in " << location << ".";
+
+  return new std::string(message.GetString());
+}
+
+#endif  // GTEST_HAS_SEH
+
 namespace internal {
 
 #if GTEST_HAS_EXCEPTIONS
@@ -2603,8 +2604,16 @@ Result HandleSehExceptionsInMethodIfSupported(T* object, Result (T::*method)(),
 #if GTEST_HAS_SEH
   __try {
     return (object->*method)();
-  } __except (internal::UnitTestOptions::GTestProcessSEH(  // NOLINT
-      GetExceptionCode(), location)) {
+  } __except (internal::UnitTestOptions::GTestShouldProcessSEH(  // NOLINT
+      GetExceptionCode())) {
+    // We create the exception message on the heap because VC++ prohibits
+    // creation of objects with destructors on stack in functions using __try
+    // (see error C2712).
+    std::string* exception_message =
+        FormatSehExceptionMessage(GetExceptionCode(), location);
+    internal::ReportFailureInUnknownLocation(TestPartResult::kFatalFailure,
+                                             *exception_message);
+    delete exception_message;
     return static_cast<Result>(0);
   }
 #else
@@ -2973,25 +2982,6 @@ void TestSuite::Run() {
 
   TestEventListener* repeater = UnitTest::GetInstance()->listeners().repeater();
 
-  // Ensure our tests are in a deterministic order.
-  //
-  // We do this by sorting lexicographically on (file, line number), providing
-  // an order matching what the user can see in the source code.
-  //
-  // In the common case the line number comparison shouldn't be necessary,
-  // because the registrations made by the TEST macro are executed in order
-  // within a translation unit. But this is not true of the manual registration
-  // API, and in more exotic scenarios a single file may be part of multiple
-  // translation units.
-  std::stable_sort(test_info_list_.begin(), test_info_list_.end(),
-                   [](const TestInfo* const a, const TestInfo* const b) {
-                     if (const int result = std::strcmp(a->file(), b->file())) {
-                       return result < 0;
-                     }
-
-                     return a->line() < b->line();
-                   });
-
   // Call both legacy and the new API
   repeater->OnTestSuiteStart(*this);
 //  Legacy API is deprecated but still available
@@ -3003,8 +2993,7 @@ void TestSuite::Run() {
   internal::HandleExceptionsInMethodIfSupported(
       this, &TestSuite::RunSetUpTestSuite, "SetUpTestSuite()");
 
-  const bool skip_all =
-      ad_hoc_test_result().Failed() || ad_hoc_test_result().Skipped();
+  const bool skip_all = ad_hoc_test_result().Failed();
 
   start_timestamp_ = internal::GetTimeInMillis();
   internal::Timer timer;
@@ -3156,7 +3145,7 @@ static void PrintTestPartResult(const TestPartResult& test_part_result) {
   // following statements add the test part result message to the Output
   // window such that the user can double-click on it to jump to the
   // corresponding source code location; otherwise they do nothing.
-#if defined(GTEST_OS_WINDOWS) && !defined(GTEST_OS_WINDOWS_MOBILE)
+#if GTEST_OS_WINDOWS && !GTEST_OS_WINDOWS_MOBILE
   // We don't call OutputDebugString*() on Windows Mobile, as printing
   // to stdout is done by OutputDebugString() there already - we don't
   // want the same message printed twice.
@@ -3166,9 +3155,8 @@ static void PrintTestPartResult(const TestPartResult& test_part_result) {
 }
 
 // class PrettyUnitTestResultPrinter
-#if defined(GTEST_OS_WINDOWS) && !defined(GTEST_OS_WINDOWS_MOBILE) &&    \
-    !defined(GTEST_OS_WINDOWS_PHONE) && !defined(GTEST_OS_WINDOWS_RT) && \
-    !defined(GTEST_OS_WINDOWS_MINGW)
+#if GTEST_OS_WINDOWS && !GTEST_OS_WINDOWS_MOBILE && !GTEST_OS_WINDOWS_PHONE && \
+    !GTEST_OS_WINDOWS_RT && !GTEST_OS_WINDOWS_MINGW
 
 // Returns the character attribute for the given color.
 static WORD GetColorAttribute(GTestColor color) {
@@ -3240,7 +3228,7 @@ bool ShouldUseColor(bool stdout_is_tty) {
   const char* const gtest_color = c.c_str();
 
   if (String::CaseInsensitiveCStringEquals(gtest_color, "auto")) {
-#if defined(GTEST_OS_WINDOWS) && !defined(GTEST_OS_WINDOWS_MINGW)
+#if GTEST_OS_WINDOWS && !GTEST_OS_WINDOWS_MINGW
     // On Windows the TERM variable is usually not set, but the
     // console there does support colors.
     return stdout_is_tty;
@@ -3295,9 +3283,8 @@ static void ColoredPrintf(GTestColor color, const char* fmt, ...) {
     return;
   }
 
-#if defined(GTEST_OS_WINDOWS) && !defined(GTEST_OS_WINDOWS_MOBILE) &&    \
-    !defined(GTEST_OS_WINDOWS_PHONE) && !defined(GTEST_OS_WINDOWS_RT) && \
-    !defined(GTEST_OS_WINDOWS_MINGW)
+#if GTEST_OS_WINDOWS && !GTEST_OS_WINDOWS_MOBILE && !GTEST_OS_WINDOWS_PHONE && \
+    !GTEST_OS_WINDOWS_RT && !GTEST_OS_WINDOWS_MINGW
   const HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
   // Gets the current text color.
@@ -3351,7 +3338,7 @@ static void PrintFullTestCommentIfPresent(const TestInfo& test_info) {
 // Class PrettyUnitTestResultPrinter is copyable.
 class PrettyUnitTestResultPrinter : public TestEventListener {
  public:
-  PrettyUnitTestResultPrinter() = default;
+  PrettyUnitTestResultPrinter() {}
   static void PrintTestName(const char* test_suite, const char* test) {
     printf("%s.%s", test_suite, test);
   }
@@ -3659,7 +3646,7 @@ void PrettyUnitTestResultPrinter::OnTestIterationEnd(const UnitTest& unit_test,
 // Class BriefUnitTestResultPrinter is copyable.
 class BriefUnitTestResultPrinter : public TestEventListener {
  public:
-  BriefUnitTestResultPrinter() = default;
+  BriefUnitTestResultPrinter() {}
   static void PrintTestName(const char* test_suite, const char* test) {
     printf("%s.%s", test_suite, test);
   }
@@ -3774,28 +3761,28 @@ class TestEventRepeater : public TestEventListener {
   bool forwarding_enabled() const { return forwarding_enabled_; }
   void set_forwarding_enabled(bool enable) { forwarding_enabled_ = enable; }
 
-  void OnTestProgramStart(const UnitTest& parameter) override;
+  void OnTestProgramStart(const UnitTest& unit_test) override;
   void OnTestIterationStart(const UnitTest& unit_test, int iteration) override;
-  void OnEnvironmentsSetUpStart(const UnitTest& parameter) override;
-  void OnEnvironmentsSetUpEnd(const UnitTest& parameter) override;
+  void OnEnvironmentsSetUpStart(const UnitTest& unit_test) override;
+  void OnEnvironmentsSetUpEnd(const UnitTest& unit_test) override;
 //  Legacy API is deprecated but still available
 #ifndef GTEST_REMOVE_LEGACY_TEST_CASEAPI_
   void OnTestCaseStart(const TestSuite& parameter) override;
 #endif  //  GTEST_REMOVE_LEGACY_TEST_CASEAPI_
   void OnTestSuiteStart(const TestSuite& parameter) override;
-  void OnTestStart(const TestInfo& parameter) override;
-  void OnTestDisabled(const TestInfo& parameter) override;
-  void OnTestPartResult(const TestPartResult& parameter) override;
-  void OnTestEnd(const TestInfo& parameter) override;
+  void OnTestStart(const TestInfo& test_info) override;
+  void OnTestDisabled(const TestInfo& test_info) override;
+  void OnTestPartResult(const TestPartResult& result) override;
+  void OnTestEnd(const TestInfo& test_info) override;
 //  Legacy API is deprecated but still available
 #ifndef GTEST_REMOVE_LEGACY_TEST_CASEAPI_
   void OnTestCaseEnd(const TestCase& parameter) override;
 #endif  //  GTEST_REMOVE_LEGACY_TEST_CASEAPI_
   void OnTestSuiteEnd(const TestSuite& parameter) override;
-  void OnEnvironmentsTearDownStart(const UnitTest& parameter) override;
-  void OnEnvironmentsTearDownEnd(const UnitTest& parameter) override;
+  void OnEnvironmentsTearDownStart(const UnitTest& unit_test) override;
+  void OnEnvironmentsTearDownEnd(const UnitTest& unit_test) override;
   void OnTestIterationEnd(const UnitTest& unit_test, int iteration) override;
-  void OnTestProgramEnd(const UnitTest& parameter) override;
+  void OnTestProgramEnd(const UnitTest& unit_test) override;
 
  private:
   // Controls whether events will be forwarded to listeners_. Set to false
@@ -4102,13 +4089,6 @@ std::string XmlUnitTestResultPrinter::RemoveInvalidXmlCharacters(
 // Formats the given time in milliseconds as seconds.
 std::string FormatTimeInMillisAsSeconds(TimeInMillis ms) {
   ::std::stringstream ss;
-  // For the exact N seconds, makes sure output has a trailing decimal point.
-  // Sets precision so that we won't have many trailing zeros (e.g., 300 ms
-  // will be just 0.3, 410 ms 0.41, and so on)
-  ss << std::fixed
-     << std::setprecision(
-            ms % 1000 == 0 ? 0 : (ms % 100 == 0 ? 1 : (ms % 10 == 0 ? 2 : 3)))
-     << std::showpoint;
   ss << (static_cast<double>(ms) * 1e-3);
   return ss.str();
 }
@@ -4970,7 +4950,7 @@ const char* const OsStackTraceGetterInterface::kElidedFramesMarker =
 
 std::string OsStackTraceGetter::CurrentStackTrace(int max_depth, int skip_count)
     GTEST_LOCK_EXCLUDED_(mutex_) {
-#ifdef GTEST_HAS_ABSL
+#if GTEST_HAS_ABSL
   std::string result;
 
   if (max_depth <= 0) {
@@ -5019,7 +4999,7 @@ std::string OsStackTraceGetter::CurrentStackTrace(int max_depth, int skip_count)
 }
 
 void OsStackTraceGetter::UponLeavingGTest() GTEST_LOCK_EXCLUDED_(mutex_) {
-#ifdef GTEST_HAS_ABSL
+#if GTEST_HAS_ABSL
   void* caller_frame = nullptr;
   if (absl::GetStackTrace(&caller_frame, 1, 3) <= 0) {
     caller_frame = nullptr;
@@ -5030,7 +5010,7 @@ void OsStackTraceGetter::UponLeavingGTest() GTEST_LOCK_EXCLUDED_(mutex_) {
 #endif  // GTEST_HAS_ABSL
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 // A helper class that creates the premature-exit file in its
 // constructor and deletes the file in its destructor.
 class ScopedPrematureExitFile {
@@ -5050,7 +5030,7 @@ class ScopedPrematureExitFile {
   }
 
   ~ScopedPrematureExitFile() {
-#ifndef GTEST_OS_ESP8266
+#if !GTEST_OS_ESP8266
     if (!premature_exit_filepath_.empty()) {
       int retval = remove(premature_exit_filepath_.c_str());
       if (retval) {
@@ -5140,8 +5120,8 @@ bool TestEventListeners::EventForwardingEnabled() const {
   return repeater_->forwarding_enabled();
 }
 
-void TestEventListeners::SuppressEventForwarding(bool suppress) {
-  repeater_->set_forwarding_enabled(!suppress);
+void TestEventListeners::SuppressEventForwarding() {
+  repeater_->set_forwarding_enabled(false);
 }
 
 // class UnitTest
@@ -5318,7 +5298,7 @@ void UnitTest::AddTestPartResult(TestPartResult::Type result_type,
   msg << message;
 
   internal::MutexLock lock(&mutex_);
-  if (!impl_->gtest_trace_stack().empty()) {
+  if (impl_->gtest_trace_stack().size() > 0) {
     msg << "\n" << GTEST_NAME_ << " trace:";
 
     for (size_t i = impl_->gtest_trace_stack().size(); i > 0; --i) {
@@ -5331,8 +5311,6 @@ void UnitTest::AddTestPartResult(TestPartResult::Type result_type,
 
   if (os_stack_trace.c_str() != nullptr && !os_stack_trace.empty()) {
     msg << internal::kStackTraceMarker << os_stack_trace;
-  } else {
-    msg << "\n";
   }
 
   const TestPartResult result = TestPartResult(
@@ -5348,8 +5326,7 @@ void UnitTest::AddTestPartResult(TestPartResult::Type result_type,
     // with another testing framework) and specify the former on the
     // command line for debugging.
     if (GTEST_FLAG_GET(break_on_failure)) {
-#if defined(GTEST_OS_WINDOWS) && !defined(GTEST_OS_WINDOWS_PHONE) && \
-    !defined(GTEST_OS_WINDOWS_RT)
+#if GTEST_OS_WINDOWS && !GTEST_OS_WINDOWS_PHONE && !GTEST_OS_WINDOWS_RT
       // Using DebugBreak on Windows allows gtest to still break into a debugger
       // when a failure happens and both the --gtest_break_on_failure and
       // the --gtest_catch_exceptions flags are specified.
@@ -5397,7 +5374,7 @@ void UnitTest::RecordProperty(const std::string& key,
 // We don't protect this under mutex_, as we only support calling it
 // from the main thread.
 int UnitTest::Run() {
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
   const bool in_death_test_child_process =
       GTEST_FLAG_GET(internal_run_death_test).length() > 0;
 
@@ -5426,36 +5403,32 @@ int UnitTest::Run() {
       in_death_test_child_process
           ? nullptr
           : internal::posix::GetEnv("TEST_PREMATURE_EXIT_FILE"));
-#else
-  const bool in_death_test_child_process = false;
 #endif  // GTEST_HAS_DEATH_TEST
 
   // Captures the value of GTEST_FLAG(catch_exceptions).  This value will be
   // used for the duration of the program.
   impl()->set_catch_exceptions(GTEST_FLAG_GET(catch_exceptions));
 
-#ifdef GTEST_OS_WINDOWS
+#if GTEST_OS_WINDOWS
   // Either the user wants Google Test to catch exceptions thrown by the
   // tests or this is executing in the context of death test child
   // process. In either case the user does not want to see pop-up dialogs
   // about crashes - they are expected.
   if (impl()->catch_exceptions() || in_death_test_child_process) {
-#if !defined(GTEST_OS_WINDOWS_MOBILE) && !defined(GTEST_OS_WINDOWS_PHONE) && \
-    !defined(GTEST_OS_WINDOWS_RT)
+#if !GTEST_OS_WINDOWS_MOBILE && !GTEST_OS_WINDOWS_PHONE && !GTEST_OS_WINDOWS_RT
     // SetErrorMode doesn't exist on CE.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOALIGNMENTFAULTEXCEPT |
                  SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 #endif  // !GTEST_OS_WINDOWS_MOBILE
 
-#if (defined(_MSC_VER) || defined(GTEST_OS_WINDOWS_MINGW)) && \
-    !defined(GTEST_OS_WINDOWS_MOBILE)
+#if (defined(_MSC_VER) || GTEST_OS_WINDOWS_MINGW) && !GTEST_OS_WINDOWS_MOBILE
     // Death test children can be terminated with _abort().  On Windows,
     // _abort() can show a dialog with a warning message.  This forces the
     // abort message to go to stderr instead.
     _set_error_mode(_OUT_TO_STDERR);
 #endif
 
-#if defined(_MSC_VER) && !defined(GTEST_OS_WINDOWS_MOBILE)
+#if defined(_MSC_VER) && !GTEST_OS_WINDOWS_MOBILE
     // In the debug version, Visual Studio pops up a separate dialog
     // offering a choice to debug the aborted program. We need to suppress
     // this dialog or it will pop up for every EXPECT/ASSERT_DEATH statement
@@ -5477,8 +5450,6 @@ int UnitTest::Run() {
     }
 #endif
   }
-#else
-  (void)in_death_test_child_process;  // Needed inside the #if block above
 #endif  // GTEST_OS_WINDOWS
 
   return internal::HandleExceptionsInMethodIfSupported(
@@ -5574,7 +5545,7 @@ UnitTestImpl::UnitTestImpl(UnitTest* parent)
       random_(0),       // Will be reseeded before first use.
       start_timestamp_(0),
       elapsed_time_(0),
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
       death_test_factory_(new DefaultDeathTestFactory),
 #endif
       // Will be overridden by the flag before first use.
@@ -5614,12 +5585,12 @@ void UnitTestImpl::RecordProperty(const TestProperty& test_property) {
   test_result->RecordProperty(xml_element, test_property);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 // Disables event forwarding if the control is currently in a death test
 // subprocess. Must not be called before InitGoogleTest.
 void UnitTestImpl::SuppressTestEventsIfInSubprocess() {
-  if (internal_run_death_test_flag_ != nullptr)
-    listeners()->SuppressEventForwarding(true);
+  if (internal_run_death_test_flag_.get() != nullptr)
+    listeners()->SuppressEventForwarding();
 }
 #endif  // GTEST_HAS_DEATH_TEST
 
@@ -5634,15 +5605,13 @@ void UnitTestImpl::ConfigureXmlOutput() {
   } else if (output_format == "json") {
     listeners()->SetDefaultXmlGenerator(new JsonUnitTestResultPrinter(
         UnitTestOptions::GetAbsolutePathToOutputFile().c_str()));
-  } else if (!output_format.empty()) {
+  } else if (output_format != "") {
     GTEST_LOG_(WARNING) << "WARNING: unrecognized output format \""
                         << output_format << "\" ignored.";
   }
 #else
-  if (!output_format.empty()) {
-    GTEST_LOG_(ERROR) << "ERROR: alternative output formats require "
-                      << "GTEST_HAS_FILE_SYSTEM to be enabled";
-  }
+  GTEST_LOG_(ERROR) << "ERROR: alternative output formats require "
+                    << "GTEST_HAS_FILE_SYSTEM to be enabled";
 #endif  // GTEST_HAS_FILE_SYSTEM
 }
 
@@ -5679,7 +5648,7 @@ void UnitTestImpl::PostFlagParsingInit() {
     listeners()->Append(new GTEST_CUSTOM_TEST_EVENT_LISTENER_());
 #endif  // defined(GTEST_CUSTOM_TEST_EVENT_LISTENER_)
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
     InitDeathTestSubprocessControlInfo();
     SuppressTestEventsIfInSubprocess();
 #endif  // GTEST_HAS_DEATH_TEST
@@ -5702,7 +5671,7 @@ void UnitTestImpl::PostFlagParsingInit() {
     ConfigureStreamingOutput();
 #endif  // GTEST_CAN_STREAM_RESULTS_
 
-#ifdef GTEST_HAS_ABSL
+#if GTEST_HAS_ABSL
     if (GTEST_FLAG_GET(install_failure_signal_handler)) {
       absl::FailureSignalHandlerOptions options;
       absl::InstallFailureSignalHandler(options);
@@ -5817,8 +5786,9 @@ bool UnitTestImpl::RunAllTests() {
   // death test.
   bool in_subprocess_for_death_test = false;
 
-#ifdef GTEST_HAS_DEATH_TEST
-  in_subprocess_for_death_test = (internal_run_death_test_flag_ != nullptr);
+#if GTEST_HAS_DEATH_TEST
+  in_subprocess_for_death_test =
+      (internal_run_death_test_flag_.get() != nullptr);
 #if defined(GTEST_EXTRA_DEATH_TEST_CHILD_SETUP_)
   if (in_subprocess_for_death_test) {
     GTEST_EXTRA_DEATH_TEST_CHILD_SETUP_();
@@ -5981,6 +5951,10 @@ bool UnitTestImpl::RunAllTests() {
         "() before calling RUN_ALL_TESTS(). This is INVALID. Soon " GTEST_NAME_
         " will start to enforce the valid usage. "
         "Please fix it ASAP, or IT WILL START TO FAIL.\n");  // NOLINT
+#if GTEST_FOR_GOOGLE_
+    ColoredPrintf(GTestColor::kRed,
+                  "For more details, see http://wiki/Main/ValidGUnitMain.\n");
+#endif  // GTEST_FOR_GOOGLE_
   }
 
   return !failed;
@@ -6198,7 +6172,7 @@ void UnitTestImpl::ListTestsMatchingFilter() {
     }
   }
   fflush(stdout);
-#if GTEST_HAS_FILE_SYSTEM
+  #if GTEST_HAS_FILE_SYSTEM
   const std::string& output_format = UnitTestOptions::GetOutputFormat();
   if (output_format == "xml" || output_format == "json") {
     FILE* fileout = OpenFileForWriting(
@@ -6536,7 +6510,7 @@ static const char kColorEncodedHelpMessage[] =
 #endif  // GTEST_CAN_STREAM_RESULTS_
     "\n"
     "Assertion Behavior:\n"
-#if defined(GTEST_HAS_DEATH_TEST) && !defined(GTEST_OS_WINDOWS)
+#if GTEST_HAS_DEATH_TEST && !GTEST_OS_WINDOWS
     "  @G--" GTEST_FLAG_PREFIX_
     "death_test_style=@Y(@Gfast@Y|@Gthreadsafe@Y)@D\n"
     "      Set the default death test style.\n"
@@ -6677,60 +6651,26 @@ void ParseGoogleTestFlagsOnlyImpl(int* argc, CharType** argv) {
 }
 
 // Parses the command line for Google Test flags, without initializing
-// other parts of Google Test. This function updates argc and argv by removing
-// flags that are known to GoogleTest (including other user flags defined using
-// ABSL_FLAG if GoogleTest is built with GTEST_USE_ABSL). Other arguments
-// remain in place. Unrecognized flags are not reported and do not cause the
-// program to exit.
+// other parts of Google Test.
 void ParseGoogleTestFlagsOnly(int* argc, char** argv) {
-#ifdef GTEST_HAS_ABSL
-  if (*argc <= 0) return;
-
-  std::vector<char*> positional_args;
-  std::vector<absl::UnrecognizedFlag> unrecognized_flags;
-  absl::ParseAbseilFlagsOnly(*argc, argv, positional_args, unrecognized_flags);
-  absl::flat_hash_set<absl::string_view> unrecognized;
-  for (const auto& flag : unrecognized_flags) {
-    unrecognized.insert(flag.flag_name);
-  }
-  absl::flat_hash_set<char*> positional;
-  for (const auto& arg : positional_args) {
-    positional.insert(arg);
-  }
-
-  int out_pos = 1;
-  int in_pos = 1;
-  for (; in_pos < *argc; ++in_pos) {
-    char* arg = argv[in_pos];
-    absl::string_view arg_str(arg);
-    if (absl::ConsumePrefix(&arg_str, "--")) {
-      // Flag-like argument. If the flag was unrecognized, keep it.
-      // If it was a GoogleTest flag, remove it.
-      if (unrecognized.contains(arg_str)) {
-        argv[out_pos++] = argv[in_pos];
-        continue;
-      }
-    }
-
-    if (arg_str.empty()) {
-      ++in_pos;
-      break;  // '--' indicates that the rest of the arguments are positional
-    }
-
-    // Probably a positional argument. If it is in fact positional, keep it.
-    // If it was a value for the flag argument, remove it.
-    if (positional.contains(arg)) {
-      argv[out_pos++] = arg;
+#if GTEST_HAS_ABSL
+  if (*argc > 0) {
+    // absl::ParseCommandLine() requires *argc > 0.
+    auto positional_args = absl::flags_internal::ParseCommandLineImpl(
+        *argc, argv, absl::flags_internal::ArgvListAction::kRemoveParsedArgs,
+        absl::flags_internal::UsageFlagsAction::kHandleUsage,
+        absl::flags_internal::OnUndefinedFlag::kReportUndefined);
+    // Any command-line positional arguments not part of any command-line flag
+    // (or arguments to a flag) are copied back out to argv, with the program
+    // invocation name at position 0, and argc is resized. This includes
+    // positional arguments after the flag-terminating delimiter '--'.
+    // See https://abseil.io/docs/cpp/guides/flags.
+    std::copy(positional_args.begin(), positional_args.end(), argv);
+    if (static_cast<int>(positional_args.size()) < *argc) {
+      argv[positional_args.size()] = nullptr;
+      *argc = static_cast<int>(positional_args.size());
     }
   }
-
-  // The rest are positional args for sure.
-  while (in_pos < *argc) {
-    argv[out_pos++] = argv[in_pos++];
-  }
-
-  *argc = out_pos;
-  argv[out_pos] = nullptr;
 #else
   ParseGoogleTestFlagsOnlyImpl(argc, argv);
 #endif
@@ -6738,7 +6678,7 @@ void ParseGoogleTestFlagsOnly(int* argc, char** argv) {
   // Fix the value of *_NSGetArgc() on macOS, but if and only if
   // *_NSGetArgv() == argv
   // Only applicable to char** version of argv
-#ifdef GTEST_OS_MAC
+#if GTEST_OS_MAC
 #ifndef GTEST_OS_IOS
   if (*_NSGetArgv() == argv) {
     *_NSGetArgc() = *argc;
@@ -6766,7 +6706,7 @@ void InitGoogleTestImpl(int* argc, CharType** argv) {
     g_argvs.push_back(StreamableToString(argv[i]));
   }
 
-#ifdef GTEST_HAS_ABSL
+#if GTEST_HAS_ABSL
   absl::InitializeSymbolizer(g_argvs[0].c_str());
 
   // When using the Abseil Flags library, set the program usage message to the
@@ -6850,16 +6790,16 @@ static std::string GetDirFromEnv(
 std::string TempDir() {
 #if defined(GTEST_CUSTOM_TEMPDIR_FUNCTION_)
   return GTEST_CUSTOM_TEMPDIR_FUNCTION_();
-#elif defined(GTEST_OS_WINDOWS) || defined(GTEST_OS_WINDOWS_MOBILE)
+#elif GTEST_OS_WINDOWS || GTEST_OS_WINDOWS_MOBILE
   return GetDirFromEnv({"TEST_TMPDIR", "TEMP"}, "\\temp\\", '\\');
-#elif defined(GTEST_OS_LINUX_ANDROID)
+#elif GTEST_OS_LINUX_ANDROID
   return GetDirFromEnv({"TEST_TMPDIR", "TMPDIR"}, "/data/local/tmp/", '/');
 #else
   return GetDirFromEnv({"TEST_TMPDIR", "TMPDIR"}, "/tmp/", '/');
 #endif
 }
 
-#if GTEST_HAS_FILE_SYSTEM && !defined(GTEST_CUSTOM_SRCDIR_FUNCTION_)
+#if !defined(GTEST_CUSTOM_SRCDIR_FUNCTION_)
 // Returns the directory path (including terminating separator) of the current
 // executable as derived from argv[0].
 static std::string GetCurrentExecutableDirectory() {
@@ -6868,14 +6808,13 @@ static std::string GetCurrentExecutableDirectory() {
 }
 #endif
 
-#if GTEST_HAS_FILE_SYSTEM
 std::string SrcDir() {
 #if defined(GTEST_CUSTOM_SRCDIR_FUNCTION_)
   return GTEST_CUSTOM_SRCDIR_FUNCTION_();
-#elif defined(GTEST_OS_WINDOWS) || defined(GTEST_OS_WINDOWS_MOBILE)
+#elif GTEST_OS_WINDOWS || GTEST_OS_WINDOWS_MOBILE
   return GetDirFromEnv({"TEST_SRCDIR"}, GetCurrentExecutableDirectory().c_str(),
                        '\\');
-#elif defined(GTEST_OS_LINUX_ANDROID)
+#elif GTEST_OS_LINUX_ANDROID
   return GetDirFromEnv({"TEST_SRCDIR"}, GetCurrentExecutableDirectory().c_str(),
                        '/');
 #else
@@ -6883,7 +6822,6 @@ std::string SrcDir() {
                        '/');
 #endif
 }
-#endif
 
 // Class ScopedTrace
 

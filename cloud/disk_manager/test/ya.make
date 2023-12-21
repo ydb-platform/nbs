@@ -1,9 +1,0 @@
-RECURSE(
-    acceptance
-    common
-    images
-    mocks
-    nemesis
-    recipe
-    remote
-)

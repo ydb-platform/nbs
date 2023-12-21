@@ -33,7 +33,6 @@ SRCS(
     node_generator.cc
     objective_c_generator.cc
     php_generator.cc
-    proto_parser_helper.cc
     python_generator.cc
     ruby_generator.cc
 )

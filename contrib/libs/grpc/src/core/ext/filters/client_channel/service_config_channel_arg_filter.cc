@@ -28,7 +28,7 @@
 #include "y_absl/status/statusor.h"
 #include "y_absl/types/optional.h"
 
-#include <grpc/grpc.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/log.h>
 
 #include "src/core/lib/channel/channel_args.h"
@@ -55,11 +55,11 @@ class ServiceConfigChannelArgChannelData {
  public:
   explicit ServiceConfigChannelArgChannelData(
       const grpc_channel_element_args* args) {
-    auto service_config_str =
-        args->channel_args.GetOwnedString(GRPC_ARG_SERVICE_CONFIG);
-    if (service_config_str.has_value()) {
+    const char* service_config_str = grpc_channel_args_find_string(
+        args->channel_args, GRPC_ARG_SERVICE_CONFIG);
+    if (service_config_str != nullptr) {
       auto service_config = ServiceConfigImpl::Create(
-          args->channel_args, service_config_str->c_str());
+          ChannelArgs::FromC(args->channel_args), service_config_str);
       if (!service_config.ok()) {
         gpr_log(GPR_ERROR, "%s", service_config.status().ToString().c_str());
       } else {
@@ -115,7 +115,7 @@ grpc_error_handle ServiceConfigChannelArgInitCallElem(
   }
   new (calld) ServiceConfigChannelArgCallData(std::move(service_config),
                                               method_config, args);
-  return y_absl::OkStatus();
+  return GRPC_ERROR_NONE;
 }
 
 void ServiceConfigChannelArgDestroyCallElem(
@@ -131,7 +131,7 @@ grpc_error_handle ServiceConfigChannelArgInitChannelElem(
   ServiceConfigChannelArgChannelData* chand =
       static_cast<ServiceConfigChannelArgChannelData*>(elem->channel_data);
   new (chand) ServiceConfigChannelArgChannelData(args);
-  return y_absl::OkStatus();
+  return GRPC_ERROR_NONE;
 }
 
 void ServiceConfigChannelArgDestroyChannelElem(grpc_channel_element* elem) {

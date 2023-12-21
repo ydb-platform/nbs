@@ -6,20 +6,21 @@
 #define BOOST_HASH_IS_UNORDERED_RANGE_HPP_INCLUDED
 
 #include <boost/container_hash/is_range.hpp>
-#include <type_traits>
+#include <boost/type_traits/integral_constant.hpp>
+#include <boost/type_traits/is_same.hpp>
 
 namespace boost
 {
 namespace hash_detail
 {
 
-template<class T, class E = std::true_type> struct has_hasher_: std::false_type
+template<class T, class E = true_type> struct has_hasher_: false_type
 {
 };
 
-template<class T> struct has_hasher_< T, std::integral_constant< bool,
-        std::is_same<typename T::hasher, typename T::hasher>::value
-    > >: std::true_type
+template<class T> struct has_hasher_< T, integral_constant< bool,
+        is_same<typename T::hasher, typename T::hasher>::value
+    > >: true_type
 {
 };
 
@@ -28,7 +29,7 @@ template<class T> struct has_hasher_< T, std::integral_constant< bool,
 namespace container_hash
 {
 
-template<class T> struct is_unordered_range: std::integral_constant< bool, is_range<T>::value && hash_detail::has_hasher_<T>::value >
+template<class T> struct is_unordered_range: integral_constant< bool, is_range<T>::value && hash_detail::has_hasher_<T>::value >
 {
 };
 

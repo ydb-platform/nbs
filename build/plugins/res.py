@@ -1,8 +1,35 @@
 import json
 import os
 import six
-from _common import rootrel_arc_src
+from _common import iterpair, listid, pathid, rootrel_arc_src, tobuilddir, filter_out_by_keyword
 import ymake
+
+
+def split(lst, limit):
+    # paths are specified with replaceable prefix
+    # real length is unknown at the moment, that why we use root_lenght
+    # as a rough estimation
+    root_lenght = 200
+    filepath = None
+    lenght = 0
+    bucket = []
+
+    for item in lst:
+        if filepath:
+            lenght += root_lenght + len(filepath) + len(item)
+            if lenght > limit and bucket:
+                yield bucket
+                bucket = []
+                lenght = 0
+
+            bucket.append(filepath)
+            bucket.append(item)
+            filepath = None
+        else:
+            filepath = item
+
+    if bucket:
+        yield bucket
 
 
 def remove_prefix(text, prefix):
@@ -65,19 +92,11 @@ def onresource_files(unit, *args):
         unit.onresource(res)
 
 
-def on_all_resource_files(unit, macro, *args):
+def onall_resource_files(unit, *args):
     # This is only validation, actual work is done in ymake.core.conf implementation
     for arg in args:
         if '*' in arg or '?' in arg:
-            ymake.report_configure_error('Wildcards in [[imp]]{}[[rst]] are not allowed'.format(macro))
-
-
-def onall_resource_files(unit, *args):
-    on_all_resource_files(unit, 'ALL_RESOURCE_FILES', args)
-
-
-def onall_resource_files_from_dirs(unit, *args):
-    on_all_resource_files(unit, 'ALL_RESOURCE_FILES_FROM_DIRS', args)
+            ymake.report_configure_error('Wildcards in [[imp]]ALL_RESOURCE_FILES[[rst]] are not allowed')
 
 
 def on_ya_conf_json(unit, conf_file):
@@ -93,18 +112,13 @@ def on_ya_conf_json(unit, conf_file):
         unit.onsrcdir(conf_dir)
     unit.onresource_files(os.path.basename(conf_file))
 
-    valid_dirs = (
-        "build",
-        conf_dir,
-    )
-
     with open(conf_abs_path) as f:
         conf = json.load(f)
     formulas = set()
     for bottle_name, bottle in conf['bottles'].items():
         formula = bottle['formula']
         if isinstance(formula, six.string_types):
-            if formula.startswith(valid_dirs):
+            if formula.startswith(conf_dir):
                 abs_path = unit.resolve('$S/' + formula)
                 if os.path.exists(abs_path):
                     formulas.add(formula)
@@ -117,8 +131,8 @@ def on_ya_conf_json(unit, conf_file):
             else:
                 ymake.report_configure_error(
                     'File "{}" (referenced from bottle "{}" in "{}") must be located in "{}" file tree'.format(
-                        formula, bottle_name, conf_file, '" or "'.join(valid_dirs)
+                        formula, bottle_name, conf_file, conf_dir
                     )
                 )
-    for formula in sorted(formulas):
+    for formula in formulas:
         unit.onresource_files(formula)

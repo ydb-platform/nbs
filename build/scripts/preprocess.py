@@ -9,15 +9,15 @@ def load_file(p):
 
 def step(base, data, hh):
     def flt():
-        for line in data.split('\n'):
-            if line in hh:
-                pp = os.path.join(base, hh[line])
+        for l in data.split('\n'):
+            if l in hh:
+                pp = os.path.join(base, hh[l])
 
                 yield '\n\n' + load_file(pp) + '\n\n'
 
                 os.unlink(pp)
             else:
-                yield line
+                yield l
 
     return '\n'.join(flt())
 

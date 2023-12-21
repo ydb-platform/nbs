@@ -10,7 +10,7 @@ namespace {
 
     TAbstractIO* IO(BIO* bio) noexcept {
         void* ptr = BIO_get_data(bio);
-        Y_ABORT_UNLESS(ptr);
+        Y_VERIFY(ptr);
         return static_cast<TAbstractIO*>(ptr);
     }
 

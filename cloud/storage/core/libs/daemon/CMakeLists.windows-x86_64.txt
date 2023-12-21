@@ -13,7 +13,7 @@ target_link_libraries(core-libs-daemon PUBLIC
   yutil
   core-libs-common
   core-libs-diagnostics
-  library-actors-util
+  cpp-actors-util
   cpp-deprecated-atomic
   library-cpp-logger
   library-cpp-sighandler

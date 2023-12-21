@@ -16,7 +16,7 @@ target_link_libraries(cloud-filestore-tools-analytics-libs-event-log-ut PUBLIC
   contrib-libs-cxxsupp
   yutil
   cpp-testing-unittest_main
-  analytics-libs-event-log
+  filestore-analytics-libs-event-log
 )
 target_link_options(cloud-filestore-tools-analytics-libs-event-log-ut PRIVATE
   -ldl

@@ -16,7 +16,7 @@
  * Default formatter implementation
  */
 
-#ifdef _MSC_VER
+#if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
 

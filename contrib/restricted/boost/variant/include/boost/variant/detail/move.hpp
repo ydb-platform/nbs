@@ -22,11 +22,12 @@
 
 #include <boost/config.hpp>
 #include <boost/detail/workaround.hpp>
-#include <utility>
+#include <boost/move/utility_core.hpp> // for boost::move
+#include <boost/move/adl_move_swap.hpp>
 
 namespace boost { namespace detail { namespace variant {
 
-using std::move;
+using boost::move;
 
 //////////////////////////////////////////////////////////////////////////
 // function template move_swap
@@ -38,8 +39,7 @@ using std::move;
 template <typename T>
 inline void move_swap(T& lhs, T& rhs)
 {
-    using std::swap;
-    swap(lhs, rhs);
+    ::boost::adl_move_swap(lhs, rhs);
 }
 
 }}} // namespace boost::detail::variant

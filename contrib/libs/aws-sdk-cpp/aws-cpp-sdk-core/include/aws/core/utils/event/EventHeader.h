@@ -44,11 +44,10 @@ namespace Aws
                     UNKNOWN
                 };
 
-                EventHeaderValue() : m_eventHeaderType(EventHeaderType::UNKNOWN), m_eventHeaderStaticValue({0}) {}
+                EventHeaderValue() = default;
 
                 EventHeaderValue(aws_event_stream_header_value_pair* header) :
-                    m_eventHeaderType(static_cast<EventHeaderType>(header->header_value_type)),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderType(static_cast<EventHeaderType>(header->header_value_type))
                 {
                     switch (m_eventHeaderType)
                     {
@@ -89,57 +88,49 @@ namespace Aws
 
                 EventHeaderValue(const Aws::String& s) :
                     m_eventHeaderType(EventHeaderType::STRING),
-                    m_eventHeaderVariableLengthValue(reinterpret_cast<const uint8_t*>(s.data()), s.length()),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderVariableLengthValue(reinterpret_cast<const uint8_t*>(s.data()), s.length())
                 {
                 }
 
                 EventHeaderValue(const ByteBuffer& bb) :
                     m_eventHeaderType(EventHeaderType::BYTE_BUF),
-                    m_eventHeaderVariableLengthValue(bb),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderVariableLengthValue(bb)
                 {
                 }
 
                 EventHeaderValue(ByteBuffer&& bb) :
                     m_eventHeaderType(EventHeaderType::BYTE_BUF),
-                    m_eventHeaderVariableLengthValue(std::move(bb)),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderVariableLengthValue(std::move(bb))
                 {
                 }
 
 
                 explicit EventHeaderValue(unsigned char byte) :
-                    m_eventHeaderType(EventHeaderType::BYTE),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderType(EventHeaderType::BYTE)
                 {
                     m_eventHeaderStaticValue.byteValue = byte;
                 }
 
                 explicit EventHeaderValue(bool b) :
-                    m_eventHeaderType(b ? EventHeaderType::BOOL_TRUE : EventHeaderType::BOOL_FALSE),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderType(b ? EventHeaderType::BOOL_TRUE : EventHeaderType::BOOL_FALSE)
                 {
                     m_eventHeaderStaticValue.boolValue = b;
                 }
 
                 explicit EventHeaderValue(int16_t n) :
-                    m_eventHeaderType(EventHeaderType::INT16),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderType(EventHeaderType::INT16)
                 {
                     m_eventHeaderStaticValue.int16Value = n;
                 }
 
                 explicit EventHeaderValue(int32_t n) :
-                    m_eventHeaderType(EventHeaderType::INT32),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderType(EventHeaderType::INT32)
                 {
                     m_eventHeaderStaticValue.int32Value = n;
                 }
 
                 explicit EventHeaderValue(int64_t n, EventHeaderType type = EventHeaderType::INT64) :
-                    m_eventHeaderType(type),
-                    m_eventHeaderStaticValue({0})
+                    m_eventHeaderType(type)
                 {
                     if (type == EventHeaderType::TIMESTAMP)
                     {
@@ -304,12 +295,12 @@ namespace Aws
                 ByteBuffer m_eventHeaderVariableLengthValue;
                 union
                 {
-                    int64_t timestampValue;
-                    int64_t int64Value;
-                    int32_t int32Value;
-                    int16_t int16Value;
-                    uint8_t byteValue;
                     bool boolValue;
+                    uint8_t byteValue;
+                    int16_t int16Value;
+                    int32_t int32Value;
+                    int64_t int64Value;
+                    int64_t timestampValue;
                 } m_eventHeaderStaticValue;
             };
 

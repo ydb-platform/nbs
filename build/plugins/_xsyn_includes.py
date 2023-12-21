@@ -14,7 +14,7 @@ def get_include_callback():
         res = []
         if element.nodeType == element.ELEMENT_NODE and element.nodeName == "parse:include":
             attrs = element.attributes
-            for i in range(attrs.length):
+            for i in xrange(attrs.length):
                 attr = attrs.item(i)
                 if attr.nodeName == "path":
                     include_filename = attr.nodeValue

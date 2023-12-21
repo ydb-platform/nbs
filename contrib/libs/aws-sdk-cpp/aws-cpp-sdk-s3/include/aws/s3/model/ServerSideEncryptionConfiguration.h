@@ -29,14 +29,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ServerSideEncryptionConfiguration">AWS
    * API Reference</a></p>
    */
-  class ServerSideEncryptionConfiguration
+  class AWS_S3_API ServerSideEncryptionConfiguration
   {
   public:
-    AWS_S3_API ServerSideEncryptionConfiguration();
-    AWS_S3_API ServerSideEncryptionConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ServerSideEncryptionConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ServerSideEncryptionConfiguration();
+    ServerSideEncryptionConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ServerSideEncryptionConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -90,7 +90,7 @@ namespace Model
   private:
 
     Aws::Vector<ServerSideEncryptionRule> m_rules;
-    bool m_rulesHasBeenSet = false;
+    bool m_rulesHasBeenSet;
   };
 
 } // namespace Model

@@ -20,7 +20,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 // [readable.traits]
 template<class> struct __cond_value_type {};
@@ -79,7 +79,7 @@ using iter_value_t = typename conditional_t<__is_primary_template<iterator_trait
                                             indirectly_readable_traits<remove_cvref_t<_Ip> >,
                                             iterator_traits<remove_cvref_t<_Ip> > >::value_type;
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 _LIBCPP_END_NAMESPACE_STD
 

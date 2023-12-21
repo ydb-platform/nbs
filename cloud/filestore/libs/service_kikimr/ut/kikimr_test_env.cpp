@@ -4,8 +4,8 @@
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 
-#include <contrib/ydb/core/testlib/basics/appdata.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/appdata.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 namespace NCloud::NFileStore {
 

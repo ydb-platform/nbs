@@ -22,7 +22,7 @@ target_link_libraries(cloud-blockstore-libs-storage-volume_balancer-ut PUBLIC
   cpp-testing-unittest_main
   libs-storage-volume_balancer
   blockstore-libs-diagnostics
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_link_options(cloud-blockstore-libs-storage-volume_balancer-ut PRIVATE
   -ldl

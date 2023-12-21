@@ -18,22 +18,16 @@
 
 #include <inttypes.h>
 
-#include "y_absl/base/thread_annotations.h"
-#include "y_absl/status/status.h"
-#include "y_absl/synchronization/mutex.h"
-#include "y_absl/types/optional.h"
-
-#include <grpc/event_engine/event_engine.h>
 #include <grpc/grpc.h>
-#include <grpc/impl/connectivity_state.h>
+#include <grpc/impl/codegen/connectivity_state.h>
+#include <grpc/impl/codegen/gpr_types.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/log.h>
-#include <grpc/support/time.h>
 
 #include "src/core/ext/filters/client_channel/client_channel.h"
 #include "src/core/lib/channel/channel_fwd.h"
 #include "src/core/lib/channel/channel_stack.h"
 #include "src/core/lib/debug/trace.h"
-#include "src/core/lib/gprpp/crash.h"
 #include "src/core/lib/gprpp/dual_ref_counted.h"
 #include "src/core/lib/gprpp/ref_counted_ptr.h"
 #include "src/core/lib/gprpp/time.h"
@@ -41,6 +35,7 @@
 #include "src/core/lib/iomgr/error.h"
 #include "src/core/lib/iomgr/exec_ctx.h"
 #include "src/core/lib/iomgr/polling_entity.h"
+#include "src/core/lib/iomgr/timer.h"
 #include "src/core/lib/surface/api_trace.h"
 #include "src/core/lib/surface/channel.h"
 #include "src/core/lib/surface/completion_queue.h"
@@ -115,6 +110,7 @@ class StateWatcher : public DualRefCounted<StateWatcher> {
         state_(last_observed_state) {
     GPR_ASSERT(grpc_cq_begin_op(cq, tag));
     GRPC_CLOSURE_INIT(&on_complete_, WatchComplete, this, nullptr);
+    GRPC_CLOSURE_INIT(&on_timeout_, TimeoutComplete, this, nullptr);
     ClientChannel* client_channel =
         ClientChannel::GetFromChannel(channel_.get());
     if (client_channel == nullptr) {
@@ -124,18 +120,19 @@ class StateWatcher : public DualRefCounted<StateWatcher> {
       // will always be TRANSIENT_FAILURE), so we don't actually start a
       // watch, but we are hiding that fact from the application.
       if (IsLameChannel(channel_.get())) {
-        // A ref is held by the timer callback.
+        // Ref from object creation is held by timer callback.
         StartTimer(Timestamp::FromTimespecRoundUp(deadline));
-        // Ref from object creation needs to be freed here since lame channel
-        // does not have a watcher.
-        Unref();
         return;
       }
-      Crash(
-          "grpc_channel_watch_connectivity_state called on something that is "
-          "not a client channel");
+      gpr_log(GPR_ERROR,
+              "grpc_channel_watch_connectivity_state called on "
+              "something that is not a client channel");
+      GPR_ASSERT(false);
     }
-    // Ref from object creation is held by the watcher callback.
+    // Take an addition ref, so we have two (the first one is from the
+    // creation of this object).  One will be held by the timer callback,
+    // the other by the watcher callback.
+    Ref().release();
     auto* watcher_timer_init_state = new WatcherTimerInitState(
         this, Timestamp::FromTimespecRoundUp(deadline));
     client_channel->AddExternalConnectivityWatcher(
@@ -168,53 +165,37 @@ class StateWatcher : public DualRefCounted<StateWatcher> {
   };
 
   void StartTimer(Timestamp deadline) {
-    const Duration timeout = deadline - Timestamp::Now();
-    y_absl::MutexLock lock(&mu_);
-    timer_handle_ = channel_->channel_stack()->EventEngine()->RunAfter(
-        timeout, [self = Ref()]() mutable {
-          ApplicationCallbackExecCtx callback_exec_ctx;
-          ExecCtx exec_ctx;
-          self->TimeoutComplete();
-          // StateWatcher deletion might require an active ExecCtx.
-          self.reset();
-        });
+    grpc_timer_init(&timer_, deadline, &on_timeout_);
   }
 
   static void WatchComplete(void* arg, grpc_error_handle error) {
     auto* self = static_cast<StateWatcher*>(arg);
     if (GRPC_TRACE_FLAG_ENABLED(grpc_trace_operation_failures)) {
-      GRPC_LOG_IF_ERROR("watch_completion_error", error);
+      GRPC_LOG_IF_ERROR("watch_completion_error", GRPC_ERROR_REF(error));
     }
-    {
-      y_absl::MutexLock lock(&self->mu_);
-      if (self->timer_handle_.has_value()) {
-        self->channel_->channel_stack()->EventEngine()->Cancel(
-            *self->timer_handle_);
-      }
-    }
-    // Watcher fired when either notified or cancelled, either way the state of
-    // this watcher has been cleared from the client channel. Thus there is no
-    // need to cancel the watch again.
+    grpc_timer_cancel(&self->timer_);
     self->Unref();
   }
 
-  void TimeoutComplete() {
-    timer_fired_ = true;
+  static void TimeoutComplete(void* arg, grpc_error_handle error) {
+    auto* self = static_cast<StateWatcher*>(arg);
+    self->timer_fired_ = GRPC_ERROR_IS_NONE(error);
     // If this is a client channel (not a lame channel), cancel the watch.
     ClientChannel* client_channel =
-        ClientChannel::GetFromChannel(channel_.get());
+        ClientChannel::GetFromChannel(self->channel_.get());
     if (client_channel != nullptr) {
-      client_channel->CancelExternalConnectivityWatcher(&on_complete_);
+      client_channel->CancelExternalConnectivityWatcher(&self->on_complete_);
     }
+    self->Unref();
   }
 
   // Invoked when both strong refs are released.
   void Orphan() override {
     WeakRef().release();  // Take a weak ref until completion is finished.
     grpc_error_handle error =
-        timer_fired_
-            ? GRPC_ERROR_CREATE("Timed out waiting for connection state change")
-            : y_absl::OkStatus();
+        timer_fired_ ? GRPC_ERROR_CREATE_FROM_STATIC_STRING(
+                           "Timed out waiting for connection state change")
+                     : GRPC_ERROR_NONE;
     grpc_cq_end_op(cq_, tag_, error, FinishedCompletion, this,
                    &completion_storage_);
   }
@@ -234,13 +215,9 @@ class StateWatcher : public DualRefCounted<StateWatcher> {
   grpc_cq_completion completion_storage_;
 
   grpc_closure on_complete_;
+  grpc_timer timer_;
+  grpc_closure on_timeout_;
 
-  // timer_handle_ might be accessed in parallel from multiple threads, e.g.
-  // timer callback fired immediately on an EventEngine thread before
-  // RunAfter() returns.
-  y_absl::Mutex mu_;
-  y_absl::optional<grpc_event_engine::experimental::EventEngine::TaskHandle>
-      timer_handle_ Y_ABSL_GUARDED_BY(mu_);
   bool timer_fired_ = false;
 };
 

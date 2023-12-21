@@ -15,7 +15,7 @@ target_link_libraries(libs-storage-bootstrapper PUBLIC
   yutil
   blockstore-libs-kikimr
   libs-storage-api
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
   ydb-core-tablet
 )

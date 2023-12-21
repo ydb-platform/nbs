@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"strings"
 
-	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
+	protos "a.yandex-team.ru/cloud/filestore/public/api/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

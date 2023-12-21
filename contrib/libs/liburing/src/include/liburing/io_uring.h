@@ -12,11 +12,12 @@
 #include <linux/types.h>
 /*
  * this file is shared with liburing and that has to autodetect
- * if linux/time_types.h is available or not, it can
- * define UAPI_LINUX_IO_URING_H_SKIP_LINUX_TIME_TYPES_H
- * if linux/time_types.h is not available
+ * if linux/time_types.h is available
  */
-#ifndef UAPI_LINUX_IO_URING_H_SKIP_LINUX_TIME_TYPES_H
+#ifdef __KERNEL__
+#define HAVE_LINUX_TIME_TYPES_H 1
+#endif
+#ifdef HAVE_LINUX_TIME_TYPES_H
 #include <linux/time_types.h>
 #endif
 
@@ -230,7 +231,7 @@ enum io_uring_op {
 
 /*
  * sqe->uring_cmd_flags
- * IORING_URING_CMD_FIXED	use registered buffer; pass this flag
+ * IORING_URING_CMD_FIXED	use registered buffer; pass thig flag
  *				along with setting sqe->buf_index.
  */
 #define IORING_URING_CMD_FIXED	(1U << 0)
@@ -250,7 +251,6 @@ enum io_uring_op {
 #define IORING_TIMEOUT_REALTIME		(1U << 3)
 #define IORING_LINK_TIMEOUT_UPDATE	(1U << 4)
 #define IORING_TIMEOUT_ETIME_SUCCESS	(1U << 5)
-#define IORING_TIMEOUT_MULTISHOT	(1U << 6)
 #define IORING_TIMEOUT_CLOCK_MASK	(IORING_TIMEOUT_BOOTTIME | IORING_TIMEOUT_REALTIME)
 #define IORING_TIMEOUT_UPDATE_MASK	(IORING_TIMEOUT_UPDATE | IORING_LINK_TIMEOUT_UPDATE)
 /*
@@ -305,28 +305,10 @@ enum io_uring_op {
  *
  * IORING_RECVSEND_FIXED_BUF	Use registered buffers, the index is stored in
  *				the buf_index field.
- *
- * IORING_SEND_ZC_REPORT_USAGE
- *				If set, SEND[MSG]_ZC should report
- *				the zerocopy usage in cqe.res
- *				for the IORING_CQE_F_NOTIF cqe.
- *				0 is reported if zerocopy was actually possible.
- *				IORING_NOTIF_USAGE_ZC_COPIED if data was copied
- *				(at least partially).
  */
 #define IORING_RECVSEND_POLL_FIRST	(1U << 0)
 #define IORING_RECV_MULTISHOT		(1U << 1)
 #define IORING_RECVSEND_FIXED_BUF	(1U << 2)
-#define IORING_SEND_ZC_REPORT_USAGE	(1U << 3)
-
-/*
- * cqe.res for IORING_CQE_F_NOTIF if
- * IORING_SEND_ZC_REPORT_USAGE was requested
- *
- * It should be treated as a flag, all other
- * bits of cqe.res should be treated as reserved!
- */
-#define IORING_NOTIF_USAGE_ZC_COPIED    (1U << 31)
 
 /*
  * accept flags stored in sqe->ioprio
@@ -348,8 +330,6 @@ enum {
  *				applicable for IORING_MSG_DATA, obviously.
  */
 #define IORING_MSG_RING_CQE_SKIP	(1U << 0)
-/* Pass through the flags from sqe->file_index to cqe->flags */
-#define IORING_MSG_RING_FLAGS_PASS	(1U << 1)
 
 /*
  * IO completion data structure (Completion Queue Entry)
@@ -390,9 +370,6 @@ enum {
 #define IORING_OFF_SQ_RING		0ULL
 #define IORING_OFF_CQ_RING		0x8000000ULL
 #define IORING_OFF_SQES			0x10000000ULL
-#define IORING_OFF_PBUF_RING		0x80000000ULL
-#define IORING_OFF_PBUF_SHIFT		16
-#define IORING_OFF_MMAP_MASK		0xf8000000ULL
 
 /*
  * Filled with the offset for mmap(2)
@@ -476,7 +453,6 @@ struct io_uring_params {
 #define IORING_FEAT_RSRC_TAGS		(1U << 10)
 #define IORING_FEAT_CQE_SKIP		(1U << 11)
 #define IORING_FEAT_LINKED_FILE		(1U << 12)
-#define IORING_FEAT_REG_REG_RING	(1U << 13)
 
 /*
  * io_uring_register(2) opcodes and arguments
@@ -524,10 +500,7 @@ enum {
 	IORING_REGISTER_FILE_ALLOC_RANGE	= 25,
 
 	/* this goes last */
-	IORING_REGISTER_LAST,
-
-	/* flag added to the opcode to use a registered ring fd */
-	IORING_REGISTER_USE_REGISTERED_RING	= 1U << 31
+	IORING_REGISTER_LAST
 };
 
 /* io-wq worker categories */
@@ -570,6 +543,19 @@ struct io_uring_rsrc_update2 {
 	__aligned_u64 tags;
 	__u32 nr;
 	__u32 resv2;
+};
+
+struct io_uring_notification_slot {
+	__u64 tag;
+	__u64 resv[3];
+};
+
+struct io_uring_notification_register {
+	__u32 nr_slots;
+	__u32 resv;
+	__u64 resv2;
+	__u64 data;
+	__u64 resv3;
 };
 
 /* Skip updating fd indexes set to this value in the fd table */
@@ -626,26 +612,12 @@ struct io_uring_buf_ring {
 	};
 };
 
-/*
- * Flags for IORING_REGISTER_PBUF_RING.
- *
- * IOU_PBUF_RING_MMAP:	If set, kernel will allocate the memory for the ring.
- *			The application must not set a ring_addr in struct
- *			io_uring_buf_reg, instead it must subsequently call
- *			mmap(2) with the offset set as:
- *			IORING_OFF_PBUF_RING | (bgid << IORING_OFF_PBUF_SHIFT)
- *			to get a virtual mapping for the ring.
- */
-enum {
-	IOU_PBUF_RING_MMAP	= 1,
-};
-
 /* argument for IORING_(UN)REGISTER_PBUF_RING */
 struct io_uring_buf_reg {
 	__u64	ring_addr;
 	__u32	ring_entries;
 	__u16	bgid;
-	__u16	flags;
+	__u16	pad;
 	__u64	resv[3];
 };
 

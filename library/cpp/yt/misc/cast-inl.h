@@ -4,12 +4,9 @@
 #include "cast.h"
 #endif
 
-#include "enum.h"
-
 #include <util/string/cast.h>
 #include <util/string/printf.h>
 
-#include <concepts>
 #include <type_traits>
 
 namespace NYT {
@@ -19,38 +16,27 @@ namespace NYT {
 namespace NDetail {
 
 template <class T, class S>
-bool IsInIntegralRange(S value)
-    requires std::is_signed_v<T> && std::is_signed_v<S>
+typename std::enable_if<std::is_signed<T>::value && std::is_signed<S>::value, bool>::type IsInIntegralRange(S value)
 {
     return value >= std::numeric_limits<T>::min() && value <= std::numeric_limits<T>::max();
 }
 
 template <class T, class S>
-bool IsInIntegralRange(S value)
-    requires std::is_signed_v<T> && std::is_unsigned_v<S>
+static typename std::enable_if<std::is_signed<T>::value && std::is_unsigned<S>::value, bool>::type IsInIntegralRange(S value)
 {
     return value <= static_cast<typename std::make_unsigned<T>::type>(std::numeric_limits<T>::max());
 }
 
 template <class T, class S>
-bool IsInIntegralRange(S value)
-    requires std::is_unsigned_v<T> && std::is_signed_v<S>
+static typename std::enable_if<std::is_unsigned<T>::value && std::is_signed<S>::value, bool>::type IsInIntegralRange(S value)
 {
     return value >= 0 && static_cast<typename std::make_unsigned<S>::type>(value) <= std::numeric_limits<T>::max();
 }
 
 template <class T, class S>
-bool IsInIntegralRange(S value)
-    requires std::is_unsigned_v<T> && std::is_unsigned_v<S>
+typename std::enable_if<std::is_unsigned<T>::value && std::is_unsigned<S>::value, bool>::type IsInIntegralRange(S value)
 {
     return value <= std::numeric_limits<T>::max();
-}
-
-template <class T, class S>
-bool IsInIntegralRange(S value)
-    requires std::is_enum_v<S>
-{
-    return IsInIntegralRange<T>(static_cast<std::underlying_type_t<S>>(value));
 }
 
 template <class T>
@@ -102,11 +88,7 @@ T CheckedIntegralCast(S value)
 template <class T, class S>
 bool TryEnumCast(S value, T* result)
 {
-    std::underlying_type_t<T> underlying;
-    if (!TryIntegralCast<std::underlying_type_t<T>>(value, &underlying)) {
-        return false;
-    }
-    auto candidate = static_cast<T>(underlying);
+    auto candidate = static_cast<T>(value);
     if (!TEnumTraits<T>::FindLiteralByValue(candidate)) {
         return false;
     }

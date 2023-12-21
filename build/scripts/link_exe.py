@@ -36,7 +36,7 @@ CUDA_LIBRARIES = {
     '-lnvinfer_static': '-lnvinfer',
     '-lnvinfer_plugin_static': '-lnvinfer_plugin',
     '-lnvonnxparser_static': '-lnvonnxparser',
-    '-lnvparsers_static': '-lnvparsers',
+    '-lnvparsers_static': '-lnvparsers'
 }
 
 
@@ -48,7 +48,7 @@ def remove_excessive_flags(cmd):
     return flags
 
 
-def fix_sanitize_flag(cmd, opts):
+def fix_sanitize_flag(cmd):
     """
     Remove -fsanitize=address flag if sanitazers are linked explicitly for linux target.
     """
@@ -56,14 +56,14 @@ def fix_sanitize_flag(cmd, opts):
         if flag.startswith('--target') and 'linux' not in flag.lower():
             # use toolchained sanitize libraries
             return cmd
-    assert opts.clang_ver
-    CLANG_RT = 'contrib/libs/clang' + opts.clang_ver + '-rt/lib/'
+
+    CLANG_RT = 'contrib/libs/clang14-rt/lib/'
     sanitize_flags = {
         '-fsanitize=address': CLANG_RT + 'asan',
         '-fsanitize=memory': CLANG_RT + 'msan',
         '-fsanitize=leak': CLANG_RT + 'lsan',
         '-fsanitize=undefined': CLANG_RT + 'ubsan',
-        '-fsanitize=thread': CLANG_RT + 'tsan',
+        '-fsanitize=thread': CLANG_RT + 'tsan'
     }
 
     used_sanitize_libs = []
@@ -147,7 +147,6 @@ def parse_args():
     parser.add_option('--custom-step')
     parser.add_option('--python')
     parser.add_option('--source-root')
-    parser.add_option('--clang-ver')
     parser.add_option('--dynamic-cuda', action='store_true')
     parser.add_option('--arch')
     parser.add_option('--linker-output')
@@ -165,14 +164,7 @@ if __name__ == '__main__':
     if opts.musl:
         cmd = fix_cmd_for_musl(cmd)
 
-    cmd = fix_sanitize_flag(cmd, opts)
-
-    if 'ld.lld' in str(cmd):
-        if '-fPIE' in str(cmd) or '-fPIC' in str(cmd):
-            # support explicit PIE
-            pass
-        else:
-            cmd.append('-Wl,-no-pie')
+    cmd = fix_sanitize_flag(cmd)
 
     if opts.dynamic_cuda:
         cmd = fix_cmd_for_dynamic_cuda(cmd)

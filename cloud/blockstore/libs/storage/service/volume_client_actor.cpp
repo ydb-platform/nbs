@@ -12,11 +12,11 @@
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
-#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <ydb/core/tablet/tablet_pipe_client_cache.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <library/cpp/actors/core/actor.h>
+#include <library/cpp/actors/core/hfunc.h>
+#include <library/cpp/actors/core/log.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

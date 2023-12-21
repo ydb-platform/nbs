@@ -5,27 +5,23 @@ import os
 
 # very simple regexp to find go import statement in the source code
 # NOTE! only one-line comments are somehow considered
-IMPORT_DECL = re.compile(
-    r'''
+IMPORT_DECL=re.compile(r'''
     \bimport
     (
         \s+((\.|\w+)\s+)?"[^"]+" ( \s+//[^\n]* )?
         | \s* \( \s* ( ( \s+ ((\.|\w+)\s+)? "[^"]+" )? ( \s* //[^\n]* )? )* \s* \)
-    )''',
-    re.MULTILINE | re.DOTALL | re.VERBOSE,
-)
+    )''', re.MULTILINE | re.DOTALL | re.VERBOSE)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--arcadia-prefix', required=True)
     parser.add_argument('--input-dir', required=True)
     parser.add_argument('--map', nargs='*', default=None)
 
     return parser.parse_args()
 
 
-def process_go_file(file_name, import_map, arcadia_prefix):
+def process_go_file(file_name, import_map):
     content = ''
     with open(file_name, 'r') as f:
         content = f.read()
@@ -45,7 +41,7 @@ def process_go_file(file_name, import_map, arcadia_prefix):
         ns = namespace.split('.')
         name = '__'.join(ns)
         import_path = '/'.join(ns)
-        imports = imports.replace('{} "{}"'.format(name, import_path), '{} "{}{}"'.format(name, arcadia_prefix, path))
+        imports = imports.replace('{} "{}"'.format(name, import_path), '{} "a.yandex-team.ru/{}"'.format(name, path))
 
     if imports != content[start:end]:
         with open(file_name, 'w') as f:
@@ -65,15 +61,11 @@ def main():
     if len(raw_import_map) != len(import_map):
         for k, v in (z.split('=', 1) for z in raw_import_map):
             if v != import_map[k]:
-                raise Exception(
-                    'import map [{}] contains different values for key [{}]: [{}] and [{}].'.format(
-                        args.map, k, v, import_map[k]
-                    )
-                )
+                raise Exception('import map [{}] contains different values for key [{}]: [{}] and [{}].'.format(args.map, k, v, import_map[k]))
 
     for root, _, files in os.walk(args.input_dir):
         for src in (f for f in files if f.endswith('.go')):
-            process_go_file(os.path.join(root, src), import_map, args.arcadia_prefix)
+            process_go_file(os.path.join(root, src), import_map)
 
 
 if __name__ == '__main__':

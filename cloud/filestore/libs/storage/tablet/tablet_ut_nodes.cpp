@@ -1128,7 +1128,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         bool putObserved = false;
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPut: {
                         putObserved = true;
@@ -1136,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 

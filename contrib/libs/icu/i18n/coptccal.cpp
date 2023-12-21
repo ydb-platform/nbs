@@ -92,26 +92,8 @@ CopticCalendar::handleComputeFields(int32_t julianDay, UErrorCode &/*status*/)
     internalSet(UCAL_ERA, era);
     internalSet(UCAL_YEAR, year);
     internalSet(UCAL_MONTH, month);
-    internalSet(UCAL_ORDINAL_MONTH, month);
     internalSet(UCAL_DATE, day);
     internalSet(UCAL_DAY_OF_YEAR, (30 * month) + day);
-}
-
-constexpr uint32_t kCopticRelatedYearDiff = 284;
-
-int32_t CopticCalendar::getRelatedYear(UErrorCode &status) const
-{
-    int32_t year = get(UCAL_EXTENDED_YEAR, status);
-    if (U_FAILURE(status)) {
-        return 0;
-    }
-    return year + kCopticRelatedYearDiff;
-}
-
-void CopticCalendar::setRelatedYear(int32_t year)
-{
-    // set extended year
-    set(UCAL_EXTENDED_YEAR, year - kCopticRelatedYearDiff);
 }
 
 /**
@@ -121,7 +103,7 @@ void CopticCalendar::setRelatedYear(int32_t year)
  */
 static UDate           gSystemDefaultCenturyStart       = DBL_MIN;
 static int32_t         gSystemDefaultCenturyStartYear   = -1;
-static icu::UInitOnce  gSystemDefaultCenturyInit        {};
+static icu::UInitOnce  gSystemDefaultCenturyInit        = U_INITONCE_INITIALIZER;
 
 
 static void U_CALLCONV initializeSystemDefaultCentury() {

@@ -3,16 +3,14 @@
 DYNAMIC_LIBRARY()
 
 LICENSE(
-    GPL-2.0-only WITH Linux-syscall-note AND
     LGPL-2.0-or-later AND
-    LGPL-2.1-only
+    LGPL-2.1-only AND
+    Linux-syscall-note-in-syscall-glue
 )
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 DYNAMIC_LIBRARY_FROM(contrib/libs/libaio/static)
-
-LICENSE_RESTRICTION_EXCEPTIONS(contrib/libs/libaio/static)
 
 NO_RUNTIME()
 

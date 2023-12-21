@@ -18,7 +18,7 @@ target_link_libraries(cloud-blockstore-libs-storage-volume-actors-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   storage-volume-actors
-  library-actors-testlib
+  cpp-actors-testlib
 )
 target_link_options(cloud-blockstore-libs-storage-volume-actors-ut PRIVATE
   -ldl

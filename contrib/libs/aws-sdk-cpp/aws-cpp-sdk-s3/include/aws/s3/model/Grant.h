@@ -28,14 +28,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Grant">AWS API
    * Reference</a></p>
    */
-  class Grant
+  class AWS_S3_API Grant
   {
   public:
-    AWS_S3_API Grant();
-    AWS_S3_API Grant(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Grant& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Grant();
+    Grant(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Grant& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -102,10 +102,10 @@ namespace Model
   private:
 
     Grantee m_grantee;
-    bool m_granteeHasBeenSet = false;
+    bool m_granteeHasBeenSet;
 
     Permission m_permission;
-    bool m_permissionHasBeenSet = false;
+    bool m_permissionHasBeenSet;
   };
 
 } // namespace Model

@@ -1,5 +1,0 @@
-RECURSE(
-    externalaccount
-    externalaccountauthorizeduser
-    stsexchange
-)

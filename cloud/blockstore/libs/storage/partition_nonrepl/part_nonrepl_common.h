@@ -10,7 +10,7 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <library/cpp/actors/core/actorsystem.h>
 
 #include <util/string/builder.h>
 

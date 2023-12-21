@@ -143,14 +143,14 @@ namespace NBus {
             ~TBusModuleImpl() override {
                 // Shutdown cannot be called from destructor,
                 // because module has virtual methods.
-                Y_ABORT_UNLESS(State != RUNNING, "if running, must explicitly call Shutdown() before destructor");
+                Y_VERIFY(State != RUNNING, "if running, must explicitly call Shutdown() before destructor");
 
                 Scheduler.Stop();
 
                 while (!Jobs.empty()) {
                     DestroyJob(Jobs.front());
                 }
-                Y_ABORT_UNLESS(JobCount == 0, "state check");
+                Y_VERIFY(JobCount == 0, "state check");
             }
 
             void OnMessageReceived(TAutoPtr<TBusMessage> msg, TOnMessageContext&);
@@ -336,7 +336,7 @@ namespace NBus {
     }
 
     TNetAddr TBusJob::GetPeerAddrNetAddr() const {
-        Y_ABORT_UNLESS(!!OnMessageContext);
+        Y_VERIFY(!!OnMessageContext);
         return OnMessageContext.GetPeerAddrNetAddr();
     }
 
@@ -390,7 +390,7 @@ namespace NBus {
             if (call.Status == MESSAGE_OK) {
                 ++it; // keep pending list until we get reply
             } else if (call.Status == MESSAGE_BUSY) {
-                Y_ABORT("MESSAGE_BUSY is prohibited in modules. Please increase MaxInFlight");
+                Y_FAIL("MESSAGE_BUSY is prohibited in modules. Please increase MaxInFlight");
             } else if (call.Status == MESSAGE_CONNECT_FAILED && call.NumRetries < call.MaxRetries) {
                 ++it; // try up to call.MaxRetries times to send message
                 call.NumRetries++;
@@ -452,7 +452,7 @@ namespace NBus {
             }
         }
 
-        Y_ABORT_UNLESS(!(Pending.size() == 0 && Handler == nullptr && Status == MESSAGE_OK && !ReplySent),
+        Y_VERIFY(!(Pending.size() == 0 && Handler == nullptr && Status == MESSAGE_OK && !ReplySent),
                  "Handler returned NULL without Cancel() or SendReply() for message=%016" PRIx64 " type=%d",
                  Message->GetHeader()->Id, Message->GetHeader()->Type);
 
@@ -480,7 +480,7 @@ namespace NBus {
 
         /// if not found, report error
         if (i == Pending.size()) {
-            Y_ABORT("must not happen");
+            Y_FAIL("must not happen");
         }
 
         /// fill in response into job state
@@ -542,7 +542,7 @@ namespace NBus {
     void TBusJob::SendReply(TBusMessageAutoPtr reply) {
         CheckThreadCurrentJob();
 
-        Y_ABORT_UNLESS(!ReplySent, "cannot call SendReply twice");
+        Y_VERIFY(!ReplySent, "cannot call SendReply twice");
         ReplySent = true;
         if (!OnMessageContext)
             return;
@@ -581,8 +581,8 @@ namespace NBus {
     void TBusJob::Sleep(int milliSeconds) {
         CheckThreadCurrentJob();
 
-        Y_ABORT_UNLESS(Pending.empty(), "sleep is not allowed when there are pending job");
-        Y_ABORT_UNLESS(SleepUntil == 0, "must not override sleep");
+        Y_VERIFY(Pending.empty(), "sleep is not allowed when there are pending job");
+        Y_VERIFY(SleepUntil == 0, "must not override sleep");
 
         SleepUntil = Now() + milliSeconds;
     }
@@ -665,8 +665,8 @@ namespace NBus {
     }
 
     bool TBusModule::StartInput() {
-        Y_ABORT_UNLESS(Impl->State == TBusModuleImpl::CREATED, "state check");
-        Y_ABORT_UNLESS(!!Impl->Queue, "state check");
+        Y_VERIFY(Impl->State == TBusModuleImpl::CREATED, "state check");
+        Y_VERIFY(!!Impl->Queue, "state check");
         Impl->State = TBusModuleImpl::RUNNING;
 
         Y_ASSERT(!Impl->ExternalSession);
@@ -774,7 +774,7 @@ void TBusModuleImpl::DestroyJob(TJobRunner* job) {
     {
         TWhatThreadDoesAcquireGuard<TMutex> G(Lock, "modules: acquiring lock for DestroyJob");
         int jobCount = AtomicDecrement(JobCount);
-        Y_ABORT_UNLESS(jobCount >= 0, "decremented too much");
+        Y_VERIFY(jobCount >= 0, "decremented too much");
         Jobs.erase(job->JobStorageIterator);
 
         if (AtomicGet(State) == STOPPED) {
@@ -789,7 +789,7 @@ void TBusModuleImpl::DestroyJob(TJobRunner* job) {
 
 void TBusModuleImpl::OnMessageReceived(TAutoPtr<TBusMessage> msg0, TOnMessageContext& context) {
     TBusMessage* msg = !!msg0 ? msg0.Get() : context.GetMessage();
-    Y_ABORT_UNLESS(!!msg);
+    Y_VERIFY(!!msg);
 
     THolder<TJobRunner> jobRunner(new TJobRunner(Module->CreateJobInstance(msg)));
     jobRunner->Job->MessageHolder.Reset(msg0.Release());
@@ -834,8 +834,8 @@ void TBusModuleImpl::Shutdown() {
 }
 
 EMessageStatus TBusModule::StartJob(TAutoPtr<TBusMessage> message) {
-    Y_ABORT_UNLESS(Impl->State == TBusModuleImpl::RUNNING);
-    Y_ABORT_UNLESS(!!Impl->Queue);
+    Y_VERIFY(Impl->State == TBusModuleImpl::RUNNING);
+    Y_VERIFY(!!Impl->Queue);
 
     if ((unsigned)AtomicGet(Impl->JobCount) >= Impl->ModuleConfig.StarterMaxInFlight) {
         return MESSAGE_BUSY;

@@ -14,19 +14,17 @@
 // limitations under the License.
 //
 
-#ifndef GRPC_SRC_CORE_EXT_FILTERS_CLIENT_CHANNEL_DYNAMIC_FILTERS_H
-#define GRPC_SRC_CORE_EXT_FILTERS_CLIENT_CHANNEL_DYNAMIC_FILTERS_H
+#ifndef GRPC_CORE_EXT_FILTERS_CLIENT_CHANNEL_DYNAMIC_FILTERS_H
+#define GRPC_CORE_EXT_FILTERS_CLIENT_CHANNEL_DYNAMIC_FILTERS_H
 
 #include <grpc/support/port_platform.h>
 
-#include <utility>
 #include <vector>
 
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/slice.h>
 
-#include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/channel/channel_fwd.h"
-#include "src/core/lib/channel/channel_stack.h"
 #include "src/core/lib/channel/context.h"
 #include "src/core/lib/gpr/time_precise.h"
 #include "src/core/lib/gprpp/debug_location.h"
@@ -92,17 +90,20 @@ class DynamicFilters : public RefCounted<DynamicFilters> {
   };
 
   static RefCountedPtr<DynamicFilters> Create(
-      const ChannelArgs& args, std::vector<const grpc_channel_filter*> filters);
+      const grpc_channel_args* args,
+      std::vector<const grpc_channel_filter*> filters);
 
-  explicit DynamicFilters(RefCountedPtr<grpc_channel_stack> channel_stack)
-      : channel_stack_(std::move(channel_stack)) {}
+  explicit DynamicFilters(grpc_channel_stack* channel_stack)
+      : channel_stack_(channel_stack) {}
+
+  ~DynamicFilters() override;
 
   RefCountedPtr<Call> CreateCall(Call::Args args, grpc_error_handle* error);
 
  private:
-  RefCountedPtr<grpc_channel_stack> channel_stack_;
+  grpc_channel_stack* channel_stack_;
 };
 
 }  // namespace grpc_core
 
-#endif  // GRPC_SRC_CORE_EXT_FILTERS_CLIENT_CHANNEL_DYNAMIC_FILTERS_H
+#endif  // GRPC_CORE_EXT_FILTERS_CLIENT_CHANNEL_DYNAMIC_FILTERS_H

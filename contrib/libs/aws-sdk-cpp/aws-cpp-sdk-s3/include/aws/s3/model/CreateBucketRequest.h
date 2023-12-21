@@ -9,7 +9,6 @@
 #include <aws/s3/model/BucketCannedACL.h>
 #include <aws/core/utils/memory/stl/AWSString.h>
 #include <aws/s3/model/CreateBucketConfiguration.h>
-#include <aws/s3/model/ObjectOwnership.h>
 #include <aws/core/utils/memory/stl/AWSMap.h>
 #include <utility>
 
@@ -26,10 +25,10 @@ namespace Model
 
   /**
    */
-  class CreateBucketRequest : public S3Request
+  class AWS_S3_API CreateBucketRequest : public S3Request
   {
   public:
-    AWS_S3_API CreateBucketRequest();
+    CreateBucketRequest();
 
     // Service request name is the Operation name which will send this request out,
     // each operation should has unique request name, so that we can get operation's name from this request.
@@ -37,16 +36,12 @@ namespace Model
     // so we can not get operation's name from response.
     inline virtual const char* GetServiceRequestName() const override { return "CreateBucket"; }
 
-    AWS_S3_API Aws::String SerializePayload() const override;
+    Aws::String SerializePayload() const override;
 
-    AWS_S3_API void AddQueryStringParameters(Aws::Http::URI& uri) const override;
+    void AddQueryStringParameters(Aws::Http::URI& uri) const override;
 
-    AWS_S3_API Aws::Http::HeaderValueCollection GetRequestSpecificHeaders() const override;
+    Aws::Http::HeaderValueCollection GetRequestSpecificHeaders() const override;
 
-    /**
-     * Helper function to collect parameters (configurable and static hardcoded) required for endpoint computation.
-     */
-    AWS_S3_API EndpointParameters GetEndpointContextParams() const override;
 
     /**
      * <p>The canned ACL to apply to the bucket.</p>
@@ -283,58 +278,42 @@ namespace Model
 
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline const Aws::String& GetGrantWrite() const{ return m_grantWrite; }
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline bool GrantWriteHasBeenSet() const { return m_grantWriteHasBeenSet; }
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline void SetGrantWrite(const Aws::String& value) { m_grantWriteHasBeenSet = true; m_grantWrite = value; }
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline void SetGrantWrite(Aws::String&& value) { m_grantWriteHasBeenSet = true; m_grantWrite = std::move(value); }
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline void SetGrantWrite(const char* value) { m_grantWriteHasBeenSet = true; m_grantWrite.assign(value); }
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline CreateBucketRequest& WithGrantWrite(const Aws::String& value) { SetGrantWrite(value); return *this;}
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline CreateBucketRequest& WithGrantWrite(Aws::String&& value) { SetGrantWrite(std::move(value)); return *this;}
 
     /**
-     * <p>Allows grantee to create new objects in the bucket.</p> <p>For the bucket and
-     * object owners of existing objects, also allows deletions and overwrites of those
-     * objects.</p>
+     * <p>Allows grantee to create, overwrite, and delete any object in the bucket.</p>
      */
     inline CreateBucketRequest& WithGrantWrite(const char* value) { SetGrantWrite(value); return *this;}
 
@@ -406,25 +385,6 @@ namespace Model
 
 
     
-    inline const ObjectOwnership& GetObjectOwnership() const{ return m_objectOwnership; }
-
-    
-    inline bool ObjectOwnershipHasBeenSet() const { return m_objectOwnershipHasBeenSet; }
-
-    
-    inline void SetObjectOwnership(const ObjectOwnership& value) { m_objectOwnershipHasBeenSet = true; m_objectOwnership = value; }
-
-    
-    inline void SetObjectOwnership(ObjectOwnership&& value) { m_objectOwnershipHasBeenSet = true; m_objectOwnership = std::move(value); }
-
-    
-    inline CreateBucketRequest& WithObjectOwnership(const ObjectOwnership& value) { SetObjectOwnership(value); return *this;}
-
-    
-    inline CreateBucketRequest& WithObjectOwnership(ObjectOwnership&& value) { SetObjectOwnership(std::move(value)); return *this;}
-
-
-    
     inline const Aws::Map<Aws::String, Aws::String>& GetCustomizedAccessLogTag() const{ return m_customizedAccessLogTag; }
 
     
@@ -466,37 +426,34 @@ namespace Model
   private:
 
     BucketCannedACL m_aCL;
-    bool m_aCLHasBeenSet = false;
+    bool m_aCLHasBeenSet;
 
     Aws::String m_bucket;
-    bool m_bucketHasBeenSet = false;
+    bool m_bucketHasBeenSet;
 
     CreateBucketConfiguration m_createBucketConfiguration;
-    bool m_createBucketConfigurationHasBeenSet = false;
+    bool m_createBucketConfigurationHasBeenSet;
 
     Aws::String m_grantFullControl;
-    bool m_grantFullControlHasBeenSet = false;
+    bool m_grantFullControlHasBeenSet;
 
     Aws::String m_grantRead;
-    bool m_grantReadHasBeenSet = false;
+    bool m_grantReadHasBeenSet;
 
     Aws::String m_grantReadACP;
-    bool m_grantReadACPHasBeenSet = false;
+    bool m_grantReadACPHasBeenSet;
 
     Aws::String m_grantWrite;
-    bool m_grantWriteHasBeenSet = false;
+    bool m_grantWriteHasBeenSet;
 
     Aws::String m_grantWriteACP;
-    bool m_grantWriteACPHasBeenSet = false;
+    bool m_grantWriteACPHasBeenSet;
 
     bool m_objectLockEnabledForBucket;
-    bool m_objectLockEnabledForBucketHasBeenSet = false;
-
-    ObjectOwnership m_objectOwnership;
-    bool m_objectOwnershipHasBeenSet = false;
+    bool m_objectLockEnabledForBucketHasBeenSet;
 
     Aws::Map<Aws::String, Aws::String> m_customizedAccessLogTag;
-    bool m_customizedAccessLogTagHasBeenSet = false;
+    bool m_customizedAccessLogTagHasBeenSet;
   };
 
 } // namespace Model

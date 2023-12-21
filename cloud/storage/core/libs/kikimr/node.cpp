@@ -3,13 +3,13 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/core/base/event_filter.h>
-#include <contrib/ydb/core/base/location.h>
-#include <contrib/ydb/core/protos/config.pb.h>
-#include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
+#include <ydb/core/base/event_filter.h>
+#include <ydb/core/base/location.h>
+#include <ydb/core/protos/config.pb.h>
+#include <ydb/public/lib/deprecated/kicli/kicli.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
+#include <library/cpp/actors/core/actor.h>
+#include <library/cpp/actors/core/event.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>

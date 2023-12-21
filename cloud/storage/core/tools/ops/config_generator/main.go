@@ -10,14 +10,15 @@ import (
 	"strings"
 	"text/template"
 
+	nbsProto "a.yandex-team.ru/cloud/blockstore/config"
+	nbsApiProto "a.yandex-team.ru/cloud/blockstore/public/api/protos"
+	nbs "a.yandex-team.ru/cloud/blockstore/public/sdk/go/client"
+	nfsProto "a.yandex-team.ru/cloud/filestore/config"
+	coreProto "a.yandex-team.ru/cloud/storage/core/config"
+	"a.yandex-team.ru/cloud/storage/core/tools/common/go/configurator"
+	kikimrProto "a.yandex-team.ru/cloud/storage/core/tools/common/go/configurator/kikimr-proto"
+
 	"github.com/spf13/cobra"
-	nbsProto "github.com/ydb-platform/nbs/cloud/blockstore/config"
-	nbsApiProto "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
-	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
-	nfsProto "github.com/ydb-platform/nbs/cloud/filestore/config"
-	coreProto "github.com/ydb-platform/nbs/cloud/storage/core/config"
-	"github.com/ydb-platform/nbs/cloud/storage/core/tools/common/go/configurator"
-	kikimrProto "github.com/ydb-platform/nbs/cloud/storage/core/tools/common/go/configurator/kikimr-proto"
 	"gopkg.in/yaml.v2"
 )
 

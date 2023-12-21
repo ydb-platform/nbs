@@ -20,7 +20,7 @@ target_link_libraries(cloud-blockstore-libs-storage-ss_proxy-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-storage-ss_proxy
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_link_options(cloud-blockstore-libs-storage-ss_proxy-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0

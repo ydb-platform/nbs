@@ -32,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ReplicationRuleFilter">AWS
    * API Reference</a></p>
    */
-  class ReplicationRuleFilter
+  class AWS_S3_API ReplicationRuleFilter
   {
   public:
-    AWS_S3_API ReplicationRuleFilter();
-    AWS_S3_API ReplicationRuleFilter(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ReplicationRuleFilter& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationRuleFilter();
+    ReplicationRuleFilter(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationRuleFilter& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -229,13 +229,13 @@ namespace Model
   private:
 
     Aws::String m_prefix;
-    bool m_prefixHasBeenSet = false;
+    bool m_prefixHasBeenSet;
 
     Tag m_tag;
-    bool m_tagHasBeenSet = false;
+    bool m_tagHasBeenSet;
 
     ReplicationRuleAndOperator m_and;
-    bool m_andHasBeenSet = false;
+    bool m_andHasBeenSet;
   };
 
 } // namespace Model

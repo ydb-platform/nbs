@@ -11,7 +11,6 @@
 #include <boost/locale/formatting.hpp>
 #include <boost/locale/generator.hpp>
 #include <boost/predef/os.h>
-#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
@@ -37,6 +36,7 @@ namespace boost { namespace locale { namespace impl_posix {
     public:
         typedef typename std::num_put<CharType>::iter_type iter_type;
         typedef std::basic_string<CharType> string_type;
+        typedef CharType char_type;
 
         num_format(std::shared_ptr<locale_t> lc, size_t refs = 0) :
             util::base_num_format<CharType>(refs), lc_(std::move(lc))
@@ -46,7 +46,7 @@ namespace boost { namespace locale { namespace impl_posix {
         iter_type do_format_currency(bool intl,
                                      iter_type out,
                                      std::ios_base& /*ios*/,
-                                     CharType /*fill*/,
+                                     char_type /*fill*/,
                                      long double val) const override
         {
             char buf[4] = {};
@@ -57,29 +57,33 @@ namespace boost { namespace locale { namespace impl_posix {
                 return write_it(out, buf, n);
 
             for(std::vector<char> tmp(sizeof(buf) * 2); tmp.size() <= 4098; tmp.resize(tmp.size() * 2)) {
-                n = strfmon_l(tmp.data(), tmp.size(), *lc_, format, static_cast<double>(val));
+                n = strfmon_l(&tmp.front(), tmp.size(), *lc_, format, static_cast<double>(val));
                 if(n >= 0)
-                    return write_it(out, tmp.data(), n);
+                    return write_it(out, &tmp.front(), n);
             }
             return out;
         }
 
         std::ostreambuf_iterator<char> write_it(std::ostreambuf_iterator<char> out, const char* ptr, size_t n) const
         {
-            return std::copy_n(ptr, n, out);
+            for(size_t i = 0; i < n; i++)
+                *out++ = *ptr++;
+            return out;
         }
 
         std::ostreambuf_iterator<wchar_t>
         write_it(std::ostreambuf_iterator<wchar_t> out, const char* ptr, size_t n) const
         {
-            const std::wstring tmp = conv::to_utf<wchar_t>(ptr, ptr + n, nl_langinfo_l(CODESET, *lc_));
-            return std::copy(tmp.begin(), tmp.end(), out);
+            std::wstring tmp = conv::to_utf<wchar_t>(ptr, ptr + n, nl_langinfo_l(CODESET, *lc_));
+            for(size_t i = 0; i < tmp.size(); i++)
+                *out++ = tmp[i];
+            return out;
         }
 
     private:
         std::shared_ptr<locale_t> lc_;
 
-    }; // num_format
+    }; /// num_format
 
     namespace {
         std::string do_ftime(const char* format, const struct tm* t, locale_t lc)
@@ -115,7 +119,8 @@ namespace boost { namespace locale { namespace impl_posix {
             std::time_put<CharType>(refs), lc_(std::move(lc))
         {}
         typedef typename std::time_put<CharType>::iter_type iter_type;
-        typedef std::basic_string<CharType> string_type;
+        typedef CharType char_type;
+        typedef std::basic_string<char_type> string_type;
 
         iter_type do_put(iter_type out,
                          std::ios_base& /*ios*/,
@@ -124,11 +129,13 @@ namespace boost { namespace locale { namespace impl_posix {
                          char format,
                          char modifier) const override
         {
-            CharType fmt[4] = {'%',
-                               static_cast<CharType>(modifier != 0 ? modifier : format),
-                               static_cast<CharType>(modifier == 0 ? '\0' : format)};
+            char_type fmt[4] = {'%',
+                                static_cast<char_type>(modifier != 0 ? modifier : format),
+                                static_cast<char_type>(modifier == 0 ? '\0' : format)};
             string_type res = do_ftime(fmt, tm, *lc_);
-            return std::copy(res.begin(), res.end(), out);
+            for(unsigned i = 0; i < res.size(); i++)
+                *out++ = res[i];
+            return out;
         }
 
     private:

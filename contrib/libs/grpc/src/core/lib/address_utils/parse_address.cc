@@ -1,20 +1,20 @@
-//
-//
-// Copyright 2016 gRPC authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-//
+/*
+ *
+ * Copyright 2016 gRPC authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 
 #include <grpc/support/port_platform.h>
 
@@ -37,13 +37,10 @@
 
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gprpp/host_port.h"
-#include "src/core/lib/gprpp/status_helper.h"
 #include "src/core/lib/iomgr/grpc_if_nametoindex.h"
 #include "src/core/lib/iomgr/port.h"
 #include "src/core/lib/iomgr/sockaddr.h"
 #include "src/core/lib/iomgr/socket_utils.h"
-
-// IWYU pragma: no_include <arpa/inet.h>
 
 #ifdef GRPC_HAVE_UNIX_SOCKET
 
@@ -56,8 +53,9 @@ bool grpc_parse_unix(const grpc_core::URI& uri,
   }
   grpc_error_handle error =
       grpc_core::UnixSockaddrPopulate(uri.path(), resolved_addr);
-  if (!error.ok()) {
-    gpr_log(GPR_ERROR, "%s", grpc_core::StatusToString(error).c_str());
+  if (!GRPC_ERROR_IS_NONE(error)) {
+    gpr_log(GPR_ERROR, "%s", grpc_error_std_string(error).c_str());
+    GRPC_ERROR_UNREF(error);
     return false;
   }
   return true;
@@ -72,8 +70,9 @@ bool grpc_parse_unix_abstract(const grpc_core::URI& uri,
   }
   grpc_error_handle error =
       grpc_core::UnixAbstractSockaddrPopulate(uri.path(), resolved_addr);
-  if (!error.ok()) {
-    gpr_log(GPR_ERROR, "%s", grpc_core::StatusToString(error).c_str());
+  if (!GRPC_ERROR_IS_NONE(error)) {
+    gpr_log(GPR_ERROR, "%s", grpc_error_std_string(error).c_str());
+    GRPC_ERROR_UNREF(error);
     return false;
   }
   return true;
@@ -88,14 +87,14 @@ grpc_error_handle UnixSockaddrPopulate(y_absl::string_view path,
       reinterpret_cast<struct sockaddr_un*>(resolved_addr->addr);
   const size_t maxlen = sizeof(un->sun_path) - 1;
   if (path.size() > maxlen) {
-    return GRPC_ERROR_CREATE(y_absl::StrCat(
+    return GRPC_ERROR_CREATE_FROM_CPP_STRING(y_absl::StrCat(
         "Path name should not have more than ", maxlen, " characters"));
   }
   un->sun_family = AF_UNIX;
   path.copy(un->sun_path, path.size());
   un->sun_path[path.size()] = '\0';
   resolved_addr->len = static_cast<socklen_t>(sizeof(*un));
-  return y_absl::OkStatus();
+  return GRPC_ERROR_NONE;
 }
 
 grpc_error_handle UnixAbstractSockaddrPopulate(
@@ -105,7 +104,7 @@ grpc_error_handle UnixAbstractSockaddrPopulate(
       reinterpret_cast<struct sockaddr_un*>(resolved_addr->addr);
   const size_t maxlen = sizeof(un->sun_path) - 1;
   if (path.size() > maxlen) {
-    return GRPC_ERROR_CREATE(y_absl::StrCat(
+    return GRPC_ERROR_CREATE_FROM_CPP_STRING(y_absl::StrCat(
         "Path name should not have more than ", maxlen, " characters"));
   }
   un->sun_family = AF_UNIX;
@@ -113,12 +112,12 @@ grpc_error_handle UnixAbstractSockaddrPopulate(
   path.copy(un->sun_path + 1, path.size());
   resolved_addr->len =
       static_cast<socklen_t>(sizeof(un->sun_family) + path.size() + 1);
-  return y_absl::OkStatus();
+  return GRPC_ERROR_NONE;
 }
 
 }  // namespace grpc_core
 
-#else   // GRPC_HAVE_UNIX_SOCKET
+#else  /* GRPC_HAVE_UNIX_SOCKET */
 
 bool grpc_parse_unix(const grpc_core::URI& /* uri */,
                      grpc_resolved_address* /* resolved_addr */) {
@@ -143,7 +142,7 @@ grpc_error_handle UnixAbstractSockaddrPopulate(
 }
 
 }  // namespace grpc_core
-#endif  // GRPC_HAVE_UNIX_SOCKET
+#endif /* GRPC_HAVE_UNIX_SOCKET */
 
 bool grpc_parse_ipv4_hostport(y_absl::string_view hostport,
                               grpc_resolved_address* addr, bool log_errors) {

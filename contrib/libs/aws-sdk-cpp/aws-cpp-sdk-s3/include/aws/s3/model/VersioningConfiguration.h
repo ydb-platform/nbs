@@ -27,19 +27,19 @@ namespace Model
    * <p>Describes the versioning state of an Amazon S3 bucket. For more information,
    * see <a
    * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTVersioningStatus.html">PUT
-   * Bucket versioning</a> in the <i>Amazon S3 API Reference</i>.</p><p><h3>See
-   * Also:</h3>   <a
+   * Bucket versioning</a> in the <i>Amazon Simple Storage Service API
+   * Reference</i>.</p><p><h3>See Also:</h3>   <a
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/VersioningConfiguration">AWS
    * API Reference</a></p>
    */
-  class VersioningConfiguration
+  class AWS_S3_API VersioningConfiguration
   {
   public:
-    AWS_S3_API VersioningConfiguration();
-    AWS_S3_API VersioningConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API VersioningConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    VersioningConfiguration();
+    VersioningConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    VersioningConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -124,10 +124,10 @@ namespace Model
   private:
 
     MFADelete m_mFADelete;
-    bool m_mFADeleteHasBeenSet = false;
+    bool m_mFADeleteHasBeenSet;
 
     BucketVersioningStatus m_status;
-    bool m_statusHasBeenSet = false;
+    bool m_statusHasBeenSet;
   };
 
 } // namespace Model

@@ -25,7 +25,7 @@ namespace {
 #define Y_VERIFY_SYSERROR(expr)                                           \
     do {                                                                  \
         if (!(expr)) {                                                    \
-            Y_ABORT(#expr ", errno=%d", LastSystemError());                \
+            Y_FAIL(#expr ", errno=%d", LastSystemError());                \
         }                                                                 \
     } while (false)
 
@@ -105,7 +105,7 @@ namespace {
             if (!SyncDir_.IsDefined()) {
                 SyncDir_ = TFsPath(GetSystemTempDir()) / "testing_port_locks";
             }
-            Y_ABORT_UNLESS(SyncDir_.IsDefined());
+            Y_VERIFY(SyncDir_.IsDefined());
             NFs::MakeDirectoryRecursive(SyncDir_);
 
             Ranges_ = GetPortRanges();
@@ -113,7 +113,7 @@ namespace {
             for (auto [left, right] : Ranges_) {
                 TotalCount_ += right - left;
             }
-            Y_ABORT_UNLESS(0 != TotalCount_);
+            Y_VERIFY(0 != TotalCount_);
 
             DisableRandomPorts_ = !GetEnv("NO_RANDOM_PORTS").empty();
         }
@@ -137,11 +137,11 @@ namespace {
                 }
             }
 
-            Y_ABORT("Cannot get free port!");
+            Y_FAIL("Cannot get free port!");
         }
 
         TVector<NTesting::TPortHolder> GetFreePortsRange(size_t count) const {
-            Y_ABORT_UNLESS(count > 0);
+            Y_VERIFY(count > 0);
             TVector<NTesting::TPortHolder> ports(Reserve(count));
             for (size_t i = 0; i < Retries; ++i) {
                 for (auto[left, right] : Ranges_) {
@@ -167,7 +167,7 @@ namespace {
                     ports.clear();
                 }
             }
-            Y_ABORT("Cannot get range of %zu ports!", count);
+            Y_FAIL("Cannot get range of %zu ports!", count);
         }
 
         NTesting::TPortHolder GetPort(ui16 port) const {
@@ -176,7 +176,7 @@ namespace {
                 if (ackport) {
                     return NTesting::TPortHolder{std::move(ackport)};
                 }
-                Y_ABORT("Cannot acquire port %hu!", port);
+                Y_FAIL("Cannot acquire port %hu!", port);
             }
             return GetFreePort();
         }
@@ -194,7 +194,7 @@ namespace {
             TSockAddrInet6 addr("::", port);
             if (sock.Bind(&addr) != 0) {
                 lock->Release();
-                Y_ABORT_UNLESS(EADDRINUSE == LastSystemError(), "unexpected error: %d, port: %d", LastSystemError(), port);
+                Y_VERIFY(EADDRINUSE == LastSystemError(), "unexpected error: %d, port: %d", LastSystemError(), port);
                 return nullptr;
             }
             return MakeHolder<TPortGuard>(port, std::move(lock));

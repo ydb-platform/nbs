@@ -23,10 +23,10 @@ namespace NBus {
     TBusIdentity::~TBusIdentity() {
     // TODO: print local flags
 #ifndef NDEBUG
-        Y_ABORT_UNLESS(LocalFlags == 0, "local flags must be zero at this point; message type is %s",
+        Y_VERIFY(LocalFlags == 0, "local flags must be zero at this point; message type is %s",
                  MessageType.value_or("unknown").c_str());
 #else
-        Y_ABORT_UNLESS(LocalFlags == 0, "local flags must be zero at this point");
+        Y_VERIFY(LocalFlags == 0, "local flags must be zero at this point");
 #endif
     }
 
@@ -34,7 +34,7 @@ namespace NBus {
         if (!!Connection) {
             return Connection->GetAddr();
         } else {
-            Y_ABORT();
+            Y_FAIL();
         }
     }
 
@@ -47,8 +47,8 @@ namespace NBus {
     }
 
     void TBusIdentity::Unpack(const char* src) {
-        Y_ABORT_UNLESS(LocalFlags == 0);
-        Y_ABORT_UNLESS(!Connection);
+        Y_VERIFY(LocalFlags == 0);
+        Y_VERIFY(!Connection);
 
         memcpy(this, src, sizeof(TBusIdentity));
     }
@@ -88,7 +88,7 @@ namespace NBus {
 
     TBusMessage::~TBusMessage() {
 #ifndef NDEBUG
-        Y_ABORT_UNLESS(GetHeader()->Id != YBUS_KEYINVALID, "must not be invalid key, message type: %d, ", int(Type));
+        Y_VERIFY(GetHeader()->Id != YBUS_KEYINVALID, "must not be invalid key, message type: %d, ", int(Type));
         GetHeader()->Id = YBUS_KEYINVALID;
         Data = (void*)17;
         CheckClean();
@@ -112,7 +112,7 @@ namespace NBus {
         if (Y_UNLIKELY(LocalFlags != 0)) {
             TString describe = Describe();
             TString localFlags = LocalFlagSetToString(LocalFlags);
-            Y_ABORT("message local flags must be zero, got: %s, message: %s", localFlags.data(), describe.data());
+            Y_FAIL("message local flags must be zero, got: %s, message: %s", localFlags.data(), describe.data());
         }
     }
 

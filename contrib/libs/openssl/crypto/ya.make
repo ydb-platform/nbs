@@ -13,19 +13,15 @@ LICENSE(
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-# TODO(YMAKE-92) Move this information out of ya.make and allow per project configuration
-IF (OPENSOURCE_PROJECT == "catboost")
-    OPENSOURCE_EXPORT_REPLACEMENT(
-        CMAKE OpenSSL
-        CMAKE_PACKAGE_COMPONENT Crypto
-        CMAKE_TARGET OpenSSL::Crypto
-        CONAN openssl/1.1.1t
-    )
-ENDIF()
+OPENSOURCE_EXPORT_REPLACEMENT(
+    CMAKE OpenSSL
+    CMAKE_PACKAGE_COMPONENT Crypto
+    CMAKE_TARGET OpenSSL::Crypto
+    CONAN openssl/1.1.1l
+)
 
 PEERDIR(
     contrib/libs/zlib
-    library/cpp/sanitizer/include
 )
 
 ADDINCL(
@@ -37,8 +33,7 @@ ADDINCL(
     contrib/libs/openssl/include
 )
 
-# TODO(YMAKE-92) Move this information out of ya.make and allow per project configuration
-IF (NOT EXPORT_CMAKE OR OPENSOURCE_PROJECT != "catboost")
+IF (NOT EXPORT_CMAKE)
 
 IF (OS_LINUX)
     IF (ARCH_ARM64)
@@ -1104,9 +1099,6 @@ IF (OS_WINDOWS AND ARCH_I386)
         -DOPENSSL_BN_ASM_GF2m
         -DRC4_ASM
         -DMD5_ASM
-    )
-    MASMFLAGS(
-        /safeseh
     )
     SRCS(
         ../asm/windows/crypto/aes/aesni-x86.masm

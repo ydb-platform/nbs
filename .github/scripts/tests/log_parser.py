@@ -7,7 +7,7 @@ def log_reader(fn, decompress, errors="backslashreplace"):
     if decompress:
         return gzip.open(fn, "rt", errors=errors)
 
-    return open(fn, "rt", errors=errors)  # noqa: SIM115
+    return open(fn, "rt", errors=errors)
 
 
 GTEST_MARK = "[==========]"

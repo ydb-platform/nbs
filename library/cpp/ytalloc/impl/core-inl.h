@@ -1237,7 +1237,7 @@ private:
         if (result != 0) {
             auto error = errno;
             // Failure is possible for locked pages.
-            Y_ABORT_UNLESS(error == EINVAL);
+            Y_VERIFY(error == EINVAL);
         }
     }
 
@@ -1895,7 +1895,7 @@ public:
 
     static void SetCurrentMemoryTag(TMemoryTag tag)
     {
-        Y_ABORT_UNLESS(tag <= MaxMemoryTag);
+        Y_VERIFY(tag <= MaxMemoryTag);
         (&ThreadControlWord_)->Parts.MemoryTag = tag;
     }
 
@@ -1929,13 +1929,13 @@ private:
     void RefThreadState(TThreadState* state)
     {
         auto result = ++state->RefCounter;
-        Y_ABORT_UNLESS(result > 1);
+        Y_VERIFY(result > 1);
     }
 
     void UnrefThreadState(TThreadState* state)
     {
         auto result = --state->RefCounter;
-        Y_ABORT_UNLESS(result >= 0);
+        Y_VERIFY(result >= 0);
         if (result == 0) {
             DestroyThreadState(state);
         }
@@ -2518,7 +2518,7 @@ void* TSystemAllocator::Allocate(size_t size)
     void* mmappedPtr;
     while (true) {
         auto currentPtr = CurrentPtr_.fetch_add(rawSize);
-        Y_ABORT_UNLESS(currentPtr + rawSize <= SystemZoneEnd);
+        Y_VERIFY(currentPtr + rawSize <= SystemZoneEnd);
         mmappedPtr = MappedMemoryManager->Map(
             currentPtr,
             rawSize,
@@ -4404,7 +4404,7 @@ Y_FORCE_INLINE TThreadState* TThreadManager::FindThreadState()
     InitializeGlobals();
 
     // InitializeGlobals must not allocate.
-    Y_ABORT_UNLESS(!ThreadState_);
+    Y_VERIFY(!ThreadState_);
     ThreadState_ = ThreadManager->AllocateThreadState();
     (&ThreadControlWord_)->Parts.ThreadStateValid = true;
 

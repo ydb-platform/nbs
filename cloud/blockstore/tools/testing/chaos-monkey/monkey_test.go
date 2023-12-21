@@ -11,13 +11,15 @@ import (
 	"strconv"
 	"testing"
 
+	"a.yandex-team.ru/library/go/test/canon"
+	"a.yandex-team.ru/library/go/test/yatest"
+
 	"github.com/stretchr/testify/require"
-	nbsgrpc "github.com/ydb-platform/nbs/cloud/blockstore/public/api/grpc"
-	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
-	"github.com/ydb-platform/nbs/library/go/test/canon"
-	"github.com/ydb-platform/nbs/library/go/test/portmanager"
-	"github.com/ydb-platform/nbs/library/go/test/yatest"
 	"google.golang.org/grpc"
+
+	nbsgrpc "a.yandex-team.ru/cloud/blockstore/public/api/grpc"
+	"a.yandex-team.ru/cloud/blockstore/public/api/protos"
+	"a.yandex-team.ru/library/go/test/portmanager"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

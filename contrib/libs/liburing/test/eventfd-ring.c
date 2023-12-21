@@ -1,7 +1,7 @@
 #include "../config-host.h"
 /* SPDX-License-Identifier: MIT */
 /*
- * Description: test use of eventfds with multiple rings
+ * Description: run various nop tests
  *
  */
 #include <errno.h>

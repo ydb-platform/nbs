@@ -9,17 +9,17 @@ struct TNoHeapAlloc {
     // implemented and available for gcc virtual destructors
 protected:
     void operator delete(void*) {
-        Y_ABORT();
+        Y_FAIL();
     }
     void operator delete[](void*) {
-        Y_ABORT();
+        Y_FAIL();
     }
 
     void operator delete(void*, const std::nothrow_t&) {
-        Y_ABORT();
+        Y_FAIL();
     }
     void operator delete[](void*, const std::nothrow_t&) {
-        Y_ABORT();
+        Y_FAIL();
     }
 };
 
@@ -29,12 +29,12 @@ struct TSystemAllocHelper {
     // (allocator themself)
 
     void* operator new(size_t sz) {
-        Y_ABORT_UNLESS(sz == sizeof(TFinal));
+        Y_VERIFY(sz == sizeof(TFinal));
         return NNumaAwareLockFreeAllocator::SystemAllocation(sz);
     }
 
     void* operator new[](size_t sz) {
-        Y_ABORT_UNLESS(sz == sizeof(TFinal));
+        Y_VERIFY(sz == sizeof(TFinal));
         return NNumaAwareLockFreeAllocator::SystemAllocation(sz);
     }
 

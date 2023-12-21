@@ -36,10 +36,10 @@ namespace NUnifiedAgent {
         grpc_core::ApplicationCallbackExecCtx callbackExecCtx;
         grpc_core::ExecCtx execCtx;
         IOCallback->Ref();
-        Y_ABORT_UNLESS(grpc_cq_begin_op(CompletionQueue.cq(), this));
-        grpc_cq_end_op(CompletionQueue.cq(), this, y_absl::OkStatus(),
+        Y_VERIFY(grpc_cq_begin_op(CompletionQueue.cq(), this));
+        grpc_cq_end_op(CompletionQueue.cq(), this, GRPC_ERROR_NONE,
                        [](void* self, grpc_cq_completion*) {
-                           Y_ABORT_UNLESS(static_cast<TGrpcNotification*>(self)->InQueue.exchange(false));
+                           Y_VERIFY(static_cast<TGrpcNotification*>(self)->InQueue.exchange(false));
                        },
                        this, Completion.Get());
     }
@@ -81,7 +81,7 @@ namespace NUnifiedAgent {
     }
 
     void TGrpcTimer::OnIOCompleted(EIOStatus status) {
-        Y_ABORT_UNLESS(AlarmIsSet);
+        Y_VERIFY(AlarmIsSet);
         if (NextTriggerTime) {
             Alarm.Set(&CompletionQueue, InstantToTimespec(*NextTriggerTime), this);
             NextTriggerTime.Clear();
@@ -106,7 +106,7 @@ namespace NUnifiedAgent {
                 try {
                     static_cast<IIOCallback*>(tag)->OnIOCompleted(ok ? EIOStatus::Ok : EIOStatus::Error);
                 } catch (...) {
-                    Y_ABORT("unexpected exception [%s]", CurrentExceptionMessage().c_str());
+                    Y_FAIL("unexpected exception [%s]", CurrentExceptionMessage().c_str());
                 }
             }
         });

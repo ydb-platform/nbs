@@ -27,14 +27,14 @@ namespace Model
    * <a href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/MetadataEntry">AWS
    * API Reference</a></p>
    */
-  class MetadataEntry
+  class AWS_S3_API MetadataEntry
   {
   public:
-    AWS_S3_API MetadataEntry();
-    AWS_S3_API MetadataEntry(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API MetadataEntry& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    MetadataEntry();
+    MetadataEntry(const Aws::Utils::Xml::XmlNode& xmlNode);
+    MetadataEntry& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -121,10 +121,10 @@ namespace Model
   private:
 
     Aws::String m_name;
-    bool m_nameHasBeenSet = false;
+    bool m_nameHasBeenSet;
 
     Aws::String m_value;
-    bool m_valueHasBeenSet = false;
+    bool m_valueHasBeenSet;
   };
 
 } // namespace Model

@@ -2,7 +2,7 @@
 
 #include "features_config.h"
 
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <ydb/core/control/immediate_control_board_impl.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

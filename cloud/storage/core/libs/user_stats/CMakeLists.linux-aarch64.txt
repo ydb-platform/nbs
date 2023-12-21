@@ -15,7 +15,7 @@ target_link_libraries(core-libs-user_stats PUBLIC
   yutil
   libs-user_stats-counter
   storage-core-protos
-  library-actors-core
+  cpp-actors-core
   ydb-core-base
   ydb-core-mon
 )

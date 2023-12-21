@@ -258,7 +258,7 @@ namespace NMonitoring {
                     case ETimePrecision::MILLIS:
                         return TInstant::MilliSeconds(ReadFixed<ui64>());
                 }
-                Y_ABORT("invalid time precision");
+                Y_FAIL("invalid time precision");
             }
 
             template <typename T>
@@ -413,7 +413,7 @@ namespace NMonitoring {
             case ECompression::UNKNOWN:
                 return Max<ui8>();
         }
-        Y_ABORT(); // for GCC
+        Y_FAIL(); // for GCC
     }
 
     ECompression DecodeCompression(ui8 byte) {

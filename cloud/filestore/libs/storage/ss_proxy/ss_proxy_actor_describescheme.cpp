@@ -2,9 +2,9 @@
 
 #include <cloud/filestore/libs/storage/core/config.h>
 
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

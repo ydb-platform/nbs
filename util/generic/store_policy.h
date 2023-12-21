@@ -5,7 +5,11 @@
 
 template <class TBase, class TCounter>
 struct TWithRefCount: public TBase, public TRefCounted<TWithRefCount<TBase, TCounter>, TCounter> {
-    using TBase::TBase;
+    template <typename... Args>
+    inline TWithRefCount(Args&&... args)
+        : TBase(std::forward<Args>(args)...)
+    {
+    }
 };
 
 template <class T>
@@ -28,7 +32,7 @@ struct TPtrPolicy {
 
 template <class T>
 struct TEmbedPolicy {
-    template <typename... Args, typename = typename std::enable_if<std::is_constructible<T, Args...>::value>::type>
+    template <typename... Args>
     inline TEmbedPolicy(Args&&... args)
         : T_(std::forward<Args>(args)...)
     {
@@ -49,7 +53,7 @@ template <class T, class TCounter>
 struct TRefPolicy {
     using THelper = TWithRefCount<T, TCounter>;
 
-    template <typename... Args, typename = typename std::enable_if<std::is_constructible<T, Args...>::value>::type>
+    template <typename... Args>
     inline TRefPolicy(Args&&... args)
         : T_(new THelper(std::forward<Args>(args)...))
     {

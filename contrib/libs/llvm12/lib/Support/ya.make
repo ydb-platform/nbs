@@ -19,7 +19,6 @@ PEERDIR(
     contrib/libs/llvm12
     contrib/libs/llvm12/lib/Demangle
     contrib/libs/zlib
-    library/cpp/sanitizer/include
 )
 
 ADDINCL(

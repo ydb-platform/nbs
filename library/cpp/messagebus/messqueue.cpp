@@ -146,7 +146,7 @@ TBusServerSessionPtr TBusMessageQueue::CreateDestination(TBusProtocol* proto, IB
         Add(session.Get());
         return session.Release();
     } catch (...) {
-        Y_ABORT("create destination failure: %s", CurrentExceptionMessage().c_str());
+        Y_FAIL("create destination failure: %s", CurrentExceptionMessage().c_str());
     }
 }
 
@@ -157,7 +157,7 @@ TBusServerSessionPtr TBusMessageQueue::CreateDestination(TBusProtocol* proto, IB
         Add(session.Get());
         return session.Release();
     } catch (...) {
-        Y_ABORT("create destination failure: %s", CurrentExceptionMessage().c_str());
+        Y_FAIL("create destination failure: %s", CurrentExceptionMessage().c_str());
     }
 }
 
@@ -169,7 +169,7 @@ void TBusMessageQueue::Add(TIntrusivePtr<TBusSessionImpl> session) {
 void TBusMessageQueue::Remove(TBusSession* session) {
     TGuard<TMutex> scope(Lock);
     TList<TIntrusivePtr<TBusSessionImpl>>::iterator it = std::find(Sessions.begin(), Sessions.end(), session);
-    Y_ABORT_UNLESS(it != Sessions.end(), "do not destroy session twice");
+    Y_VERIFY(it != Sessions.end(), "do not destroy session twice");
     Sessions.erase(it);
 }
 
@@ -185,7 +185,7 @@ void TBusMessageQueue::DestroyAllSessions() {
     }
 
     for (auto& session : sessions) {
-        Y_ABORT_UNLESS(session->IsDown(), "Session must be shut down prior to queue shutdown");
+        Y_VERIFY(session->IsDown(), "Session must be shut down prior to queue shutdown");
     }
 }
 

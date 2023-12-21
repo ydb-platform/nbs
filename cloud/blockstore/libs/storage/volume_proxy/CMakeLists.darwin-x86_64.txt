@@ -15,7 +15,7 @@ target_link_libraries(libs-storage-volume_proxy PUBLIC
   blockstore-libs-kikimr
   libs-storage-api
   libs-storage-core
-  library-actors-core
+  cpp-actors-core
   ydb-core-tablet
   ydb-core-testlib
 )

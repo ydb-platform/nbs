@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
-#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
+#include <library/cpp/actors/core/scheduler_cookie.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

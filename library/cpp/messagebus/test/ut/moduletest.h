@@ -77,7 +77,7 @@ namespace NBus {
                 } else if (messageType == TYPE_HOSTINFORESPONSE) {
                     return new THostInfoReply(MESSAGE_CREATE_UNINITIALIZED);
                 } else {
-                    Y_ABORT("unknown");
+                    Y_FAIL("unknown");
                 }
             }
         };

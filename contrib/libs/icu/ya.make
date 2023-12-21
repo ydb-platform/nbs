@@ -12,9 +12,9 @@ LICENSE(
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-VERSION(73.2)
+VERSION(67.1)
 
-ORIGINAL_SOURCE(https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-src.tgz)
+ORIGINAL_SOURCE(https://github.com/unicode-org/icu/releases/download/release-67-1/icu4c-67_1-src.tgz)
 
 ADDINCL(
     GLOBAL contrib/libs/icu/include
@@ -65,7 +65,6 @@ SRCS(
     common/dictionarydata.cpp
     common/dtintrv.cpp
     common/edits.cpp
-    common/emojiprops.cpp
     common/errorcode.cpp
     common/filteredbrk.cpp
     common/filterednormalizer2.cpp
@@ -87,9 +86,7 @@ SRCS(
     common/locresdata.cpp
     common/locutil.cpp
     common/lsr.cpp
-    common/lstmbe.cpp
     common/messagepattern.cpp
-    common/mlbe.cpp
     common/normalizer2.cpp
     common/normalizer2impl.cpp
     common/normlzr.cpp
@@ -298,7 +295,6 @@ SRCS(
     i18n/decContext.cpp
     i18n/decNumber.cpp
     i18n/decimfmt.cpp
-    i18n/displayoptions.cpp
     i18n/double-conversion-bignum-dtoa.cpp
     i18n/double-conversion-bignum.cpp
     i18n/double-conversion-cached-powers.cpp
@@ -331,7 +327,6 @@ SRCS(
     i18n/indiancal.cpp
     i18n/inputext.cpp
     i18n/islamcal.cpp
-    i18n/iso8601cal.cpp
     i18n/japancal.cpp
     i18n/listformatter.cpp
     i18n/measfmt.cpp
@@ -344,6 +339,7 @@ SRCS(
     i18n/nfrule.cpp
     i18n/nfsubs.cpp
     i18n/nortrans.cpp
+    i18n/nounit.cpp
     i18n/nultrans.cpp
     i18n/number_affixutils.cpp
     i18n/number_asformat.cpp
@@ -367,10 +363,7 @@ SRCS(
     i18n/number_patternstring.cpp
     i18n/number_rounding.cpp
     i18n/number_scientific.cpp
-    i18n/number_simple.cpp
     i18n/number_skeletons.cpp
-    i18n/number_symbolswrapper.cpp
-    i18n/number_usageprefs.cpp
     i18n/number_utils.cpp
     i18n/numfmt.cpp
     i18n/numparse_affixes.cpp
@@ -382,13 +375,11 @@ SRCS(
     i18n/numparse_scientific.cpp
     i18n/numparse_symbols.cpp
     i18n/numparse_validators.cpp
-    i18n/numrange_capi.cpp
     i18n/numrange_fluent.cpp
     i18n/numrange_impl.cpp
     i18n/numsys.cpp
     i18n/olsontz.cpp
     i18n/persncal.cpp
-    i18n/pluralranges.cpp
     i18n/plurfmt.cpp
     i18n/plurrule.cpp
     i18n/quant.cpp
@@ -459,10 +450,6 @@ SRCS(
     i18n/umsg.cpp
     i18n/unesctrn.cpp
     i18n/uni2name.cpp
-    i18n/units_complexconverter.cpp
-    i18n/units_converter.cpp
-    i18n/units_data.cpp
-    i18n/units_router.cpp
     i18n/unum.cpp
     i18n/unumsys.cpp
     i18n/upluralrules.cpp
@@ -486,7 +473,7 @@ SRCS(
     i18n/zonemeta.cpp
     i18n/zrule.cpp
     i18n/ztrans.cpp
-    icudt73_dat.rodata
+    icudt67_dat.rodata
     io/locbund.cpp
     io/sprintf.cpp
     io/sscanf.cpp

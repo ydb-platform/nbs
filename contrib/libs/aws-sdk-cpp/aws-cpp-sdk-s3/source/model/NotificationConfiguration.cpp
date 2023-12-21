@@ -23,16 +23,14 @@ namespace Model
 NotificationConfiguration::NotificationConfiguration() : 
     m_topicConfigurationsHasBeenSet(false),
     m_queueConfigurationsHasBeenSet(false),
-    m_lambdaFunctionConfigurationsHasBeenSet(false),
-    m_eventBridgeConfigurationHasBeenSet(false)
+    m_lambdaFunctionConfigurationsHasBeenSet(false)
 {
 }
 
 NotificationConfiguration::NotificationConfiguration(const XmlNode& xmlNode) : 
     m_topicConfigurationsHasBeenSet(false),
     m_queueConfigurationsHasBeenSet(false),
-    m_lambdaFunctionConfigurationsHasBeenSet(false),
-    m_eventBridgeConfigurationHasBeenSet(false)
+    m_lambdaFunctionConfigurationsHasBeenSet(false)
 {
   *this = xmlNode;
 }
@@ -79,12 +77,6 @@ NotificationConfiguration& NotificationConfiguration::operator =(const XmlNode& 
 
       m_lambdaFunctionConfigurationsHasBeenSet = true;
     }
-    XmlNode eventBridgeConfigurationNode = resultNode.FirstChild("EventBridgeConfiguration");
-    if(!eventBridgeConfigurationNode.IsNull())
-    {
-      m_eventBridgeConfiguration = eventBridgeConfigurationNode;
-      m_eventBridgeConfigurationHasBeenSet = true;
-    }
   }
 
   return *this;
@@ -118,12 +110,6 @@ void NotificationConfiguration::AddToNode(XmlNode& parentNode) const
      XmlNode lambdaFunctionConfigurationsNode = parentNode.CreateChildElement("CloudFunctionConfiguration");
      item.AddToNode(lambdaFunctionConfigurationsNode);
    }
-  }
-
-  if(m_eventBridgeConfigurationHasBeenSet)
-  {
-   XmlNode eventBridgeConfigurationNode = parentNode.CreateChildElement("EventBridgeConfiguration");
-   m_eventBridgeConfiguration.AddToNode(eventBridgeConfigurationNode);
   }
 
 }

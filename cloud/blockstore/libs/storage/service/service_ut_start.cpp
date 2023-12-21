@@ -4,8 +4,8 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/core/base/statestorage.h>
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <ydb/core/base/statestorage.h>
+#include <ydb/core/node_whiteboard/node_whiteboard.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -28,7 +28,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -39,7 +39,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         startVolumeActorStopped = true;
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -86,7 +86,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -99,7 +99,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         startVolumeActorStopped = true;
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(runtime, nodeIdx);
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -147,7 +147,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         startVolumeActorStopped = true;
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -183,7 +183,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus:
                         mountActorId = event->Sender;
@@ -194,7 +194,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         }
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service1(runtime, nodeIdx);
@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus:
                         mountActorId = event->Sender;
@@ -234,7 +234,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         }
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service1(runtime, nodeIdx);
@@ -292,7 +292,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeStarted = false;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         volumeStopped = true;
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto sessionId = service.MountVolume()->Record.GetSessionId();
@@ -331,7 +331,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeStarted = false;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -358,7 +358,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -384,7 +384,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeStarted = false;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -416,7 +416,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume();
@@ -452,7 +452,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
 
         TActorId startVolumeActorId;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -499,7 +499,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -553,7 +553,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         ui64 volumeTabletId = 0;
         bool bootExternalReceived = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -653,7 +653,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -690,7 +690,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLockTabletRequest: {
                         startVolumeActorId = event->Sender;
@@ -727,7 +727,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -748,7 +748,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         TActorId volumeActorId;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -766,7 +766,7 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume();

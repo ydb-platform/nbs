@@ -31,14 +31,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/InputSerialization">AWS
    * API Reference</a></p>
    */
-  class InputSerialization
+  class AWS_S3_API InputSerialization
   {
   public:
-    AWS_S3_API InputSerialization();
-    AWS_S3_API InputSerialization(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API InputSerialization& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InputSerialization();
+    InputSerialization(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InputSerialization& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -173,16 +173,16 @@ namespace Model
   private:
 
     CSVInput m_cSV;
-    bool m_cSVHasBeenSet = false;
+    bool m_cSVHasBeenSet;
 
     CompressionType m_compressionType;
-    bool m_compressionTypeHasBeenSet = false;
+    bool m_compressionTypeHasBeenSet;
 
     JSONInput m_jSON;
-    bool m_jSONHasBeenSet = false;
+    bool m_jSONHasBeenSet;
 
     ParquetInput m_parquet;
-    bool m_parquetHasBeenSet = false;
+    bool m_parquetHasBeenSet;
   };
 
 } // namespace Model

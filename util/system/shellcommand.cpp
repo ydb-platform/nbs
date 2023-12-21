@@ -355,18 +355,18 @@ public:
     // start child process
     void Run();
 
-    inline void Terminate(int signal) {
+    inline void Terminate() {
         if (!!Pid && (ExecutionStatus.load(std::memory_order_acquire) == SHELL_RUNNING)) {
+            bool ok =
 #if defined(_unix_)
-            bool ok = kill(Options_.DetachSession ? -1 * Pid : Pid, signal) == 0;
+                kill(Options_.DetachSession ? -1 * Pid : Pid, SIGTERM) == 0;
             if (!ok && (errno == ESRCH) && Options_.DetachSession) {
                 // this could fail when called before child proc completes setsid().
-                ok = kill(Pid, signal) == 0;
-                kill(-Pid, signal); // between a failed kill(-Pid) and a successful kill(Pid) a grandchild could have been spawned
+                ok = kill(Pid, SIGTERM) == 0;
+                kill(-Pid, SIGTERM); // between a failed kill(-Pid) and a successful kill(Pid) a grandchild could have been spawned
             }
 #else
-            Y_UNUSED(signal);
-            bool ok = TerminateProcess(Pid, 1 /* exit code */);
+                TerminateProcess(Pid, 1 /* exit code */);
 #endif
             if (!ok) {
                 ythrow TSystemError() << "cannot terminate " << Pid;
@@ -1146,8 +1146,8 @@ TShellCommand& TShellCommand::Run() {
     return *this;
 }
 
-TShellCommand& TShellCommand::Terminate(int signal) {
-    Impl->Terminate(signal);
+TShellCommand& TShellCommand::Terminate() {
+    Impl->Terminate();
     return *this;
 }
 

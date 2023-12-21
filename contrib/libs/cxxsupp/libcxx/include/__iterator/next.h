@@ -35,7 +35,7 @@ inline _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX14
   return __x;
 }
 
-#if _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS) && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
 
 // [range.iter.op.next]
 
@@ -58,14 +58,16 @@ struct __fn {
   }
 
   template <input_or_output_iterator _Ip, sentinel_for<_Ip> _Sp>
-  _LIBCPP_HIDE_FROM_ABI constexpr _Ip operator()(_Ip __x, _Sp ___bound_sentinel) const {
-    ranges::advance(__x, ___bound_sentinel);
+  _LIBCPP_HIDE_FROM_ABI
+  constexpr _Ip operator()(_Ip __x, _Sp ___bound) const {
+    ranges::advance(__x, ___bound);
     return __x;
   }
 
   template <input_or_output_iterator _Ip, sentinel_for<_Ip> _Sp>
-  _LIBCPP_HIDE_FROM_ABI constexpr _Ip operator()(_Ip __x, iter_difference_t<_Ip> __n, _Sp ___bound_sentinel) const {
-    ranges::advance(__x, __n, ___bound_sentinel);
+  _LIBCPP_HIDE_FROM_ABI
+  constexpr _Ip operator()(_Ip __x, iter_difference_t<_Ip> __n, _Sp ___bound) const {
+    ranges::advance(__x, __n, ___bound);
     return __x;
   }
 };
@@ -77,7 +79,7 @@ inline namespace __cpo {
 } // namespace __cpo
 } // namespace ranges
 
-#endif // _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS) && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
 
 _LIBCPP_END_NAMESPACE_STD
 

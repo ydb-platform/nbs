@@ -22,30 +22,30 @@ const int32_t ARG_NUM_LIMIT = 0x100;
 // These are the default currency spacing UnicodeSets in CLDR.
 // Pre-compute them for performance.
 // The Java unit test testCurrencySpacingPatternStability() will start failing if these change in CLDR.
-icu::UInitOnce gDefaultCurrencySpacingInitOnce {};
+icu::UInitOnce gDefaultCurrencySpacingInitOnce = U_INITONCE_INITIALIZER;
 
 UnicodeSet *UNISET_DIGIT = nullptr;
-UnicodeSet *UNISET_NOTSZ = nullptr;
+UnicodeSet *UNISET_NOTS = nullptr;
 
 UBool U_CALLCONV cleanupDefaultCurrencySpacing() {
     delete UNISET_DIGIT;
     UNISET_DIGIT = nullptr;
-    delete UNISET_NOTSZ;
-    UNISET_NOTSZ = nullptr;
+    delete UNISET_NOTS;
+    UNISET_NOTS = nullptr;
     gDefaultCurrencySpacingInitOnce.reset();
-    return true;
+    return TRUE;
 }
 
 void U_CALLCONV initDefaultCurrencySpacing(UErrorCode &status) {
     ucln_i18n_registerCleanup(UCLN_I18N_CURRENCY_SPACING, cleanupDefaultCurrencySpacing);
     UNISET_DIGIT = new UnicodeSet(UnicodeString(u"[:digit:]"), status);
-    UNISET_NOTSZ = new UnicodeSet(UnicodeString(u"[[:^S:]&[:^Z:]]"), status);
-    if (UNISET_DIGIT == nullptr || UNISET_NOTSZ == nullptr) {
+    UNISET_NOTS = new UnicodeSet(UnicodeString(u"[:^S:]"), status);
+    if (UNISET_DIGIT == nullptr || UNISET_NOTS == nullptr) {
         status = U_MEMORY_ALLOCATION_ERROR;
         return;
     }
     UNISET_DIGIT->freeze();
-    UNISET_NOTSZ->freeze();
+    UNISET_NOTS->freeze();
 }
 
 }  // namespace
@@ -62,19 +62,10 @@ Modifier::Parameters::Parameters(
 
 ModifierStore::~ModifierStore() = default;
 
-AdoptingSignumModifierStore::~AdoptingSignumModifierStore()  {
+AdoptingModifierStore::~AdoptingModifierStore()  {
     for (const Modifier *mod : mods) {
         delete mod;
     }
-}
-
-AdoptingSignumModifierStore&
-AdoptingSignumModifierStore::operator=(AdoptingSignumModifierStore&& other) noexcept {
-    for (size_t i=0; i<SIGNUM_COUNT; i++) {
-        this->mods[i] = other.mods[i];
-        other.mods[i] = nullptr;
-    }
-    return *this;
 }
 
 
@@ -101,13 +92,13 @@ bool ConstantAffixModifier::isStrong() const {
 bool ConstantAffixModifier::containsField(Field field) const {
     (void)field;
     // This method is not currently used.
-    UPRV_UNREACHABLE_EXIT;
+    UPRV_UNREACHABLE;
 }
 
 void ConstantAffixModifier::getParameters(Parameters& output) const {
     (void)output;
     // This method is not currently used.
-    UPRV_UNREACHABLE_EXIT;
+    UPRV_UNREACHABLE;
 }
 
 bool ConstantAffixModifier::semanticallyEquivalent(const Modifier& other) const {
@@ -190,7 +181,7 @@ bool SimpleModifier::isStrong() const {
 bool SimpleModifier::containsField(Field field) const {
     (void)field;
     // This method is not currently used.
-    UPRV_UNREACHABLE_EXIT;
+    UPRV_UNREACHABLE;
 }
 
 void SimpleModifier::getParameters(Parameters& output) const {
@@ -478,8 +469,8 @@ CurrencySpacingEnabledModifier::getUnicodeSet(const DecimalFormatSymbols &symbol
             status);
     if (pattern.compare(u"[:digit:]", -1) == 0) {
         return *UNISET_DIGIT;
-    } else if (pattern.compare(u"[[:^S:]&[:^Z:]]", -1) == 0) {
-        return *UNISET_NOTSZ;
+    } else if (pattern.compare(u"[:^S:]", -1) == 0) {
+        return *UNISET_NOTS;
     } else {
         return UnicodeSet(pattern, status);
     }

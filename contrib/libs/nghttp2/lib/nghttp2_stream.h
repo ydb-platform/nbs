@@ -258,8 +258,14 @@ void nghttp2_stream_shutdown(nghttp2_stream *stream, nghttp2_shut_flag flag);
  * more of NGHTTP2_STREAM_FLAG_DEFERRED_USER and
  * NGHTTP2_STREAM_FLAG_DEFERRED_FLOW_CONTROL.  The |flags| indicates
  * the reason of this action.
+ *
+ * This function returns 0 if it succeeds, or one of the following
+ * negative error codes:
+ *
+ * NGHTTP2_ERR_NOMEM
+ *     Out of memory
  */
-void nghttp2_stream_defer_item(nghttp2_stream *stream, uint8_t flags);
+int nghttp2_stream_defer_item(nghttp2_stream *stream, uint8_t flags);
 
 /*
  * Put back deferred data in this stream to active state.  The |flags|
@@ -373,8 +379,14 @@ int nghttp2_stream_attach_item(nghttp2_stream *stream,
 /*
  * Detaches |stream->item|.  This function does not free
  * |stream->item|.  The caller must free it.
+ *
+ * This function returns 0 if it succeeds, or one of the following
+ * negative error codes:
+ *
+ * NGHTTP2_ERR_NOMEM
+ *     Out of memory
  */
-void nghttp2_stream_detach_item(nghttp2_stream *stream);
+int nghttp2_stream_detach_item(nghttp2_stream *stream);
 
 /*
  * Makes the |stream| depend on the |dep_stream|.  This dependency is

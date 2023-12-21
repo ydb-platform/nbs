@@ -16,7 +16,7 @@ target_link_libraries(storage-volume-testlib PUBLIC
   libs-storage-core
   libs-storage-model
   libs-storage-stats_service
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
   libs-storage-volume
   core-libs-api
   core-libs-diagnostics

@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "y_absl/functional/bind_front.h"
+#include "y_absl/memory/memory.h"
 #include "y_absl/types/optional.h"
 
 #include <grpc/support/log.h>
@@ -58,11 +59,12 @@ class RootCertificatesWatcher
   }
 
   void OnError(grpc_error_handle root_cert_error,
-               grpc_error_handle /*identity_cert_error*/) override {
-    if (!root_cert_error.ok()) {
+               grpc_error_handle identity_cert_error) override {
+    if (!GRPC_ERROR_IS_NONE(root_cert_error)) {
       parent_->SetErrorForCert(cert_name_, root_cert_error /* pass the ref */,
                                y_absl::nullopt);
     }
+    GRPC_ERROR_UNREF(identity_cert_error);
   }
 
  private:
@@ -91,12 +93,13 @@ class IdentityCertificatesWatcher
     }
   }
 
-  void OnError(grpc_error_handle /*root_cert_error*/,
+  void OnError(grpc_error_handle root_cert_error,
                grpc_error_handle identity_cert_error) override {
-    if (!identity_cert_error.ok()) {
+    if (!GRPC_ERROR_IS_NONE(identity_cert_error)) {
       parent_->SetErrorForCert(cert_name_, y_absl::nullopt,
                                identity_cert_error /* pass the ref */);
     }
+    GRPC_ERROR_UNREF(root_cert_error);
   }
 
  private:
@@ -146,7 +149,7 @@ void XdsCertificateProvider::ClusterCertificateState::
       root_cert_watcher_ = nullptr;
       xds_certificate_provider_->distributor_->SetErrorForCert(
           "",
-          GRPC_ERROR_CREATE(
+          GRPC_ERROR_CREATE_FROM_STATIC_STRING(
               "No certificate provider available for root certificates"),
           y_absl::nullopt);
     }
@@ -177,7 +180,7 @@ void XdsCertificateProvider::ClusterCertificateState::
       identity_cert_watcher_ = nullptr;
       xds_certificate_provider_->distributor_->SetErrorForCert(
           "", y_absl::nullopt,
-          GRPC_ERROR_CREATE(
+          GRPC_ERROR_CREATE_FROM_STATIC_STRING(
               "No certificate provider available for identity certificates"));
     }
   }
@@ -188,7 +191,7 @@ void XdsCertificateProvider::ClusterCertificateState::
 void XdsCertificateProvider::ClusterCertificateState::UpdateRootCertWatcher(
     const TString& cert_name,
     grpc_tls_certificate_distributor* root_cert_distributor) {
-  auto watcher = std::make_unique<RootCertificatesWatcher>(
+  auto watcher = y_absl::make_unique<RootCertificatesWatcher>(
       xds_certificate_provider_->distributor_, cert_name);
   root_cert_watcher_ = watcher.get();
   root_cert_distributor->WatchTlsCertificates(std::move(watcher),
@@ -198,7 +201,7 @@ void XdsCertificateProvider::ClusterCertificateState::UpdateRootCertWatcher(
 void XdsCertificateProvider::ClusterCertificateState::UpdateIdentityCertWatcher(
     const TString& cert_name,
     grpc_tls_certificate_distributor* identity_cert_distributor) {
-  auto watcher = std::make_unique<IdentityCertificatesWatcher>(
+  auto watcher = y_absl::make_unique<IdentityCertificatesWatcher>(
       xds_certificate_provider_->distributor_, cert_name);
   identity_cert_watcher_ = watcher.get();
   identity_cert_distributor->WatchTlsCertificates(
@@ -219,7 +222,7 @@ void XdsCertificateProvider::ClusterCertificateState::WatchStatusCallback(
     if (root_cert_distributor_ == nullptr) {
       xds_certificate_provider_->distributor_->SetErrorForCert(
           cert_name,
-          GRPC_ERROR_CREATE(
+          GRPC_ERROR_CREATE_FROM_STATIC_STRING(
               "No certificate provider available for root certificates"),
           y_absl::nullopt);
     } else {
@@ -239,7 +242,7 @@ void XdsCertificateProvider::ClusterCertificateState::WatchStatusCallback(
     if (identity_cert_distributor_ == nullptr) {
       xds_certificate_provider_->distributor_->SetErrorForCert(
           cert_name, y_absl::nullopt,
-          GRPC_ERROR_CREATE(
+          GRPC_ERROR_CREATE_FROM_STATIC_STRING(
               "No certificate provider available for identity certificates"));
     } else {
       UpdateIdentityCertWatcher(cert_name, identity_cert_distributor_.get());
@@ -287,10 +290,10 @@ void XdsCertificateProvider::UpdateRootCertNameAndDistributor(
   MutexLock lock(&mu_);
   auto it = certificate_state_map_.find(cert_name);
   if (it == certificate_state_map_.end()) {
-    it =
-        certificate_state_map_
-            .emplace(cert_name, std::make_unique<ClusterCertificateState>(this))
-            .first;
+    it = certificate_state_map_
+             .emplace(cert_name,
+                      y_absl::make_unique<ClusterCertificateState>(this))
+             .first;
   }
   it->second->UpdateRootCertNameAndDistributor(cert_name, root_cert_name,
                                                root_cert_distributor);
@@ -312,10 +315,10 @@ void XdsCertificateProvider::UpdateIdentityCertNameAndDistributor(
   MutexLock lock(&mu_);
   auto it = certificate_state_map_.find(cert_name);
   if (it == certificate_state_map_.end()) {
-    it =
-        certificate_state_map_
-            .emplace(cert_name, std::make_unique<ClusterCertificateState>(this))
-            .first;
+    it = certificate_state_map_
+             .emplace(cert_name,
+                      y_absl::make_unique<ClusterCertificateState>(this))
+             .first;
   }
   it->second->UpdateIdentityCertNameAndDistributor(
       cert_name, identity_cert_name, identity_cert_distributor);
@@ -363,10 +366,10 @@ void XdsCertificateProvider::WatchStatusCallback(TString cert_name,
   MutexLock lock(&mu_);
   auto it = certificate_state_map_.find(cert_name);
   if (it == certificate_state_map_.end()) {
-    it =
-        certificate_state_map_
-            .emplace(cert_name, std::make_unique<ClusterCertificateState>(this))
-            .first;
+    it = certificate_state_map_
+             .emplace(cert_name,
+                      y_absl::make_unique<ClusterCertificateState>(this))
+             .first;
   }
   it->second->WatchStatusCallback(cert_name, root_being_watched,
                                   identity_being_watched);

@@ -2,33 +2,31 @@
 
 #include "typetraits.h"
 
-#include <util/system/compiler.h>
-
 #include <cstring>
 
 template <class T>
-static constexpr const T& Min(const T& l Y_LIFETIME_BOUND, const T& r Y_LIFETIME_BOUND) {
+static constexpr const T& Min(const T& l, const T& r) {
     return r < l ? r : l;
 }
 
 template <typename T, typename... Args>
-static constexpr const T& Min(const T& a Y_LIFETIME_BOUND, const T& b Y_LIFETIME_BOUND, const Args&... args Y_LIFETIME_BOUND) {
+static constexpr const T& Min(const T& a, const T& b, const Args&... args) {
     return Min(a, Min(b, args...));
 }
 
 template <class T>
-static constexpr const T& Max(const T& l Y_LIFETIME_BOUND, const T& r Y_LIFETIME_BOUND) {
+static constexpr const T& Max(const T& l, const T& r) {
     return l < r ? r : l;
 }
 
 template <typename T, typename... Args>
-static constexpr const T& Max(const T& a Y_LIFETIME_BOUND, const T& b Y_LIFETIME_BOUND, const Args&... args Y_LIFETIME_BOUND) {
+static constexpr const T& Max(const T& a, const T& b, const Args&... args) {
     return Max(a, Max(b, args...));
 }
 
 // replace with http://en.cppreference.com/w/cpp/algorithm/clamp in c++17
 template <class T>
-constexpr const T& ClampVal(const T& val Y_LIFETIME_BOUND, const T& min Y_LIFETIME_BOUND, const T& max Y_LIFETIME_BOUND) {
+constexpr const T& ClampVal(const T& val, const T& min, const T& max) {
     return val < min ? min : (max < val ? max : val);
 }
 

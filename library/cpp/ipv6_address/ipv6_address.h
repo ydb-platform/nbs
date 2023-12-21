@@ -1,7 +1,6 @@
 #pragma once
 
 #include <util/generic/hash_set.h>
-#include <util/generic/strbuf.h>
 #include <util/network/ip.h>
 #include <util/stream/input.h>
 
@@ -201,7 +200,7 @@ IOutputStream& operator<<(IOutputStream& Out, const THostAddressAndPort& HostAdd
 ///   2001::7348       // port wil be equal to DefaultPort
 ///   [2001::7348]:80
 ///
-std::tuple<THostAddressAndPort, TString, TIpPort> ParseHostAndMayBePortFromString(const TStringBuf RawStr,
+std::tuple<THostAddressAndPort, TString, TIpPort> ParseHostAndMayBePortFromString(const TString& RawStr,
                                                                                   TIpPort DefaultPort,
                                                                                   bool& Ok) noexcept;
 

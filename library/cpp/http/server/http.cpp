@@ -56,7 +56,6 @@ public:
     inline void DeActivate();
     inline void Reject();
 
-    void ScheduleDelete();
 public:
     TSocket Socket_;
     NAddr::IRemoteAddrRef ListenerSockAddrRef_;
@@ -65,11 +64,6 @@ public:
     TInstant LastUsed;
     TInstant AcceptMoment;
     size_t ReceivedRequests = 0;
-
-    struct TCleanupState {
-        ui64 ThreadMask = 0;
-        bool Closed = false;
-    } CleanupState_;
 };
 
 class THttpServer::TImpl {
@@ -89,35 +83,12 @@ public:
             TGuard<TMutex> g(Mutex_);
 
             Conns_.PushBack(c);
-            if (Options.OneShotPoll) {
-                Poller_->WaitReadOneShot(c->Socket_, (void*)static_cast<const IPollAble*>(c));
-            } else {
-                Poller_->WaitRead(c->Socket_, (void*)static_cast<const IPollAble*>(c));
-            }
+            Poller_->WaitRead(c->Socket_, (void*)static_cast<const IPollAble*>(c));
         }
-
-        void Cleanup(size_t threadNum) {
-            if (Options.nListenerThreads < 2) {
-                return;
-            }
-
-            TIntrusiveListWithAutoDelete<TClientConnection, TDelete> toDelete;
-
-            {
-                TGuard<TMutex> g(Mutex_);
-
-                PendingDelete_.ForEach([&toDelete, threadNum](TClientConnection * conn) {
-                    if (!(conn->CleanupState_.ThreadMask &= ~((ui64)1 << threadNum))) {
-                        toDelete.PushBack(conn);
-                    }
-                });
-            }
-        }
-
 
         inline void Erase(TClientConnection* c, TInstant now) noexcept {
             TGuard<TMutex> g(Mutex_);
-            EraseUnsafe(c, /*removeFromPoller*/!Options.OneShotPoll);
+            EraseUnsafe(c);
             if (Options.ExpirationTimeout > TDuration::Zero()) {
                 TryRemovingUnsafe(now - Options.ExpirationTimeout);
             }
@@ -143,31 +114,31 @@ public:
                 return false;
             }
             EraseUnsafe(c);
-
-            if (Options.nListenerThreads > 1) {
-                c->ScheduleDelete();
-                PendingDelete_.PushBack(c);
-            } else {
-                delete c;
-            }
-
+            delete c;
             return true;
         }
 
-        void EraseUnsafe(TClientConnection* c, bool removeFromPoller = true) noexcept {
-            if (removeFromPoller) {
-                Poller_->Unwait(c->Socket_);
-            }
+        void EraseUnsafe(TClientConnection* c) noexcept {
+            Poller_->Unwait(c->Socket_);
             c->Unlink();
         }
 
     public:
         TMutex Mutex_;
         TIntrusiveListWithAutoDelete<TClientConnection, TDelete> Conns_;
-        TIntrusiveListWithAutoDelete<TClientConnection, TDelete> PendingDelete_;
         TSocketPoller* Poller_ = nullptr;
         const THttpServerOptions& Options;
     };
+
+    static void* ListenSocketFunction(void* param) {
+        try {
+            ((TImpl*)param)->ListenSocket();
+        } catch (...) {
+
+        }
+
+        return nullptr;
+    }
 
     TAutoPtr<TClientRequest> CreateRequest(TAutoPtr<TClientConnection> c) {
         THolder<TClientRequest> obj(Cb_->CreateClient());
@@ -208,6 +179,9 @@ public:
         Poller.Reset(new TSocketPoller());
         Connections.Reset(new TConnections(Poller.Get(), Options_));
 
+        // Start the listener thread
+        ListenerRunningOK = false;
+
         // throws on error
         TPipeHandle::Pipe(ListenWakeupReadFd, ListenWakeupWriteFd);
 
@@ -216,62 +190,38 @@ public:
 
         Poller->WaitRead(ListenWakeupReadFd, &WakeupPollAble);
 
-        ErrorCode = 0;
-
-        std::function<void(TSocket)> callback = [&](TSocket socket) {
-            THolder<TListenSocket> ls(new TListenSocket(socket, this));
-            if (Options_.OneShotPoll) {
-                Poller->WaitReadOneShot(socket, static_cast<IPollAble*>(ls.Get()));
-            } else {
-                Poller->WaitRead(socket, static_cast<IPollAble*>(ls.Get()));
-            }
-            Reqs.PushBack(ls.Release());
-        };
-
-        bool addressesBound = TryToBindAddresses(Options_, &callback);
-        if (!addressesBound) {
-            SaveErrorCode();
-            return false;
-        }
-
-        Requests->Start(Options_.nThreads, Options_.MaxQueueSize);
-        FailRequests->Start(Options_.nFThreads, Options_.MaxFQueueSize);
-        Cb_->OnListenStart();
-
+        ListenStartEvent.Reset();
         try {
-            RunningListeners_.store(Options_.nListenerThreads);
-            for (size_t i = 0; i < Options_.nListenerThreads; ++i) {
-                ListenThreads.push_back(MakeHolder<TThread>([this, threadNum = i]() {
-                    ListenSocket(threadNum);
-                }));
-                ListenThreads.back()->Start();
-            }
+            ListenThread.Reset(new TThread(ListenSocketFunction, this));
+            ListenThread->Start();
         } catch (const yexception&) {
             SaveErrorCode();
             return false;
         }
 
-        return true;
-    }
+        // Wait until the thread has completely started and return the success indicator
+        ListenStartEvent.Wait();
 
-    void JoinListenerThreads() {
-        while (!ListenThreads.empty()) {
-            ListenThreads.back()->Join();
-            ListenThreads.pop_back();
-        }
+        return ListenerRunningOK;
     }
 
     void Wait() {
         Cb_->OnWait();
         TGuard<TMutex> g(StopMutex);
-        JoinListenerThreads();
+        if (ListenThread) {
+            ListenThread->Join();
+            ListenThread.Reset(nullptr);
+        }
     }
 
     void Stop() {
         Shutdown();
 
         TGuard<TMutex> g(StopMutex);
-        JoinListenerThreads();
+        if (ListenThread) {
+            ListenThread->Join();
+            ListenThread.Reset(nullptr);
+        }
 
         while (ConnectionCount) {
             usleep(10000);
@@ -348,10 +298,6 @@ public:
         void OnPollEvent(TInstant) override {
             SOCKET s = ::accept(S_, nullptr, nullptr);
 
-            if (Server_->Options_.OneShotPoll) {
-                Server_->Poller->WaitReadOneShot(S_, this);
-            }
-
             if (s == INVALID_SOCKET) {
                 ythrow yexception() << "accept: " << LastSystemErrorText();
             }
@@ -369,8 +315,30 @@ public:
         NAddr::IRemoteAddrRef SockAddrRef_;
     };
 
-    void ListenSocket(size_t threadNum) {
+    void ListenSocket() {
         TThread::SetCurrentThreadName(Options_.ListenThreadName.c_str());
+
+        ErrorCode = 0;
+        TIntrusiveListWithAutoDelete<TListenSocket, TDelete> Reqs;
+
+        std::function<void(TSocket)> callback = [&](TSocket socket) {
+            THolder<TListenSocket> ls(new TListenSocket(socket, this));
+            Poller->WaitRead(socket, static_cast<IPollAble*>(ls.Get()));
+            Reqs.PushBack(ls.Release());
+        };
+        bool addressesBound = TryToBindAddresses(Options_, &callback);
+        if (!addressesBound) {
+            SaveErrorCode();
+            ListenStartEvent.Signal();
+
+            return;
+        }
+
+        Requests->Start(Options_.nThreads, Options_.MaxQueueSize);
+        FailRequests->Start(Options_.nFThreads, Options_.MaxFQueueSize);
+        Cb_->OnListenStart();
+        ListenerRunningOK = true;
+        ListenStartEvent.Signal();
 
         TVector<void*> events;
         events.resize(Options_.EpollMaxEvents);
@@ -378,8 +346,6 @@ public:
         TInstant now = TInstant::Now();
         for (;;) {
             try {
-                Connections->Cleanup(threadNum);
-
                 const TInstant deadline = Options_.PollTimeout == TDuration::Zero() ? TInstant::Max() : now + Options_.PollTimeout;
                 const size_t ret = Poller->WaitD(events.data(), events.size(), deadline);
 
@@ -408,17 +374,15 @@ public:
             }
         }
 
-        if (0 == --RunningListeners_) {
-            while (!Reqs.Empty()) {
-                THolder<TListenSocket> ls(Reqs.PopFront());
+        while (!Reqs.Empty()) {
+            THolder<TListenSocket> ls(Reqs.PopFront());
 
-                Poller->Unwait(ls->GetSocket());
-            }
-
-            Requests->Stop();
-            FailRequests->Stop();
-            Cb_->OnListenStop();
+            Poller->Unwait(ls->GetSocket());
         }
+
+        Requests->Stop();
+        FailRequests->Stop();
+        Cb_->OnListenStop();
     }
 
     void RestartRequestThreads(ui32 nTh, ui32 maxQS) {
@@ -435,16 +399,6 @@ public:
         , Cb_(cb)
         , Parent_(parent)
     {
-        if (Options_.nListenerThreads > 1) {
-            Options_.OneShotPoll = true;
-
-            const auto minPollTimeout = TDuration::MilliSeconds(100);
-            if (!Options_.PollTimeout || Options_.PollTimeout > minPollTimeout) {
-                Options_.PollTimeout = minPollTimeout;
-            }
-
-            Y_ENSURE(Options_.nListenerThreads < 64);
-        }
     }
 
     TImpl(THttpServer* parent, ICallBack* cb, const TOptions& options, IThreadFactory* factory)
@@ -483,16 +437,16 @@ public:
         return Options_.MaxConnections && ((size_t)GetClientCount() >= Options_.MaxConnections);
     }
 
-    TVector<THolder<TThread>> ListenThreads;
-    std::atomic<size_t> RunningListeners_ = 0;
-    TIntrusiveListWithAutoDelete<TListenSocket, TDelete> Reqs;
+    THolder<TThread> ListenThread;
     TPipeHandle ListenWakeupReadFd;
     TPipeHandle ListenWakeupWriteFd;
+    TSystemEvent ListenStartEvent;
     TMtpQueueRef Requests;
     TMtpQueueRef FailRequests;
     TAtomic ConnectionCount = 0;
     THolder<TSocketPoller> Poller;
     THolder<TConnections> Connections;
+    bool ListenerRunningOK = false;
     int ErrorCode = 0;
     TOptions Options_;
     ICallBack* Cb_ = nullptr;
@@ -608,15 +562,7 @@ TClientConnection::TClientConnection(const TSocket& s, THttpServer::TImpl* serv,
 }
 
 TClientConnection::~TClientConnection() {
-    if (!CleanupState_.Closed) {
-        HttpServ_->DecreaseConnections();
-    }
-}
-void TClientConnection::ScheduleDelete() {
-    Socket_.Close();
     HttpServ_->DecreaseConnections();
-    CleanupState_.ThreadMask = ((ui64)1 << HttpServ_->Options().nListenerThreads) - 1;
-    CleanupState_.Closed = true;
 }
 
 void TClientConnection::OnPollEvent(TInstant now) {
@@ -742,11 +688,6 @@ void TClientRequest::Process(void* ThreadSpecificResource) {
             auto maxRequestsPerConnection = HttpServ()->Options().MaxRequestsPerConnection;
             HttpConn_->Output()->EnableKeepAlive(HttpServ()->Options().KeepAliveEnabled && (!maxRequestsPerConnection || Conn_->ReceivedRequests < maxRequestsPerConnection));
             HttpConn_->Output()->EnableCompression(HttpServ()->Options().CompressionEnabled);
-        }
-
-        if (!BeforeParseRequestOk(ThreadSpecificResource)) {
-            ReleaseConnection();
-            return;
         }
 
         if (ParsedHeaders.empty()) {

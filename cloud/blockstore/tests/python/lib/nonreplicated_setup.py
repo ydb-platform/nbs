@@ -11,10 +11,10 @@ from google.protobuf.text_format import MessageToBytes
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, \
     TDiskRegistryProxyConfig, DISK_AGENT_BACKEND_AIO
 
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
-from contrib.ydb.core.protos import console_config_pb2 as console
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
 
 
 CFG_PREFIX = 'Cloud.NBS.'

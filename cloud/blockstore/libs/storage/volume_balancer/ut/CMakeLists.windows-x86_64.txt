@@ -21,7 +21,7 @@ target_link_libraries(cloud-blockstore-libs-storage-volume_balancer-ut PUBLIC
   cpp-testing-unittest_main
   libs-storage-volume_balancer
   blockstore-libs-diagnostics
-  libs-storage-testlib
+  blockstore-libs-storage-testlib
 )
 target_sources(cloud-blockstore-libs-storage-volume_balancer-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut.cpp

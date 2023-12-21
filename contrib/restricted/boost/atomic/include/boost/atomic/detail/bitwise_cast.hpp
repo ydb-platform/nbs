@@ -20,7 +20,6 @@
 #include <boost/atomic/detail/config.hpp>
 #include <boost/atomic/detail/addressof.hpp>
 #include <boost/atomic/detail/string_ops.hpp>
-#include <boost/atomic/detail/type_traits/remove_cv.hpp>
 #include <boost/atomic/detail/type_traits/integral_constant.hpp>
 #include <boost/atomic/detail/type_traits/has_unique_object_representations.hpp>
 #include <boost/atomic/detail/header.hpp>
@@ -83,8 +82,7 @@ BOOST_FORCEINLINE void clear_tail_padding_bits(To& to) BOOST_NOEXCEPT
 template< typename To, std::size_t FromValueSize, typename From >
 BOOST_FORCEINLINE To bitwise_cast_memcpy(From const& from) BOOST_NOEXCEPT
 {
-    typedef typename atomics::detail::remove_cv< To >::type unqualified_to_t;
-    unqualified_to_t to;
+    To to;
 #if !defined(BOOST_ATOMIC_NO_CLEAR_PADDING)
     From from2(from);
     BOOST_ATOMIC_DETAIL_CLEAR_PADDING(atomics::detail::addressof(from2));
@@ -92,14 +90,14 @@ BOOST_FORCEINLINE To bitwise_cast_memcpy(From const& from) BOOST_NOEXCEPT
     (
         atomics::detail::addressof(to),
         atomics::detail::addressof(from2),
-        (FromValueSize < sizeof(unqualified_to_t) ? FromValueSize : sizeof(unqualified_to_t))
+        (FromValueSize < sizeof(To) ? FromValueSize : sizeof(To))
     );
 #else
     BOOST_ATOMIC_DETAIL_MEMCPY
     (
         atomics::detail::addressof(to),
         atomics::detail::addressof(from),
-        (FromValueSize < sizeof(unqualified_to_t) ? FromValueSize : sizeof(unqualified_to_t))
+        (FromValueSize < sizeof(To) ? FromValueSize : sizeof(To))
     );
 #endif
     atomics::detail::clear_tail_padding_bits< FromValueSize >(to);
@@ -112,7 +110,7 @@ template< typename To, std::size_t FromValueSize, typename From >
 BOOST_FORCEINLINE BOOST_ATOMIC_DETAIL_CONSTEXPR_BITWISE_CAST To bitwise_cast_impl(From const& from, atomics::detail::true_type) BOOST_NOEXCEPT
 {
     // This implementation is only called when the From type has no padding and From and To have the same size
-    return BOOST_ATOMIC_DETAIL_BIT_CAST(typename atomics::detail::remove_cv< To >::type, from);
+    return BOOST_ATOMIC_DETAIL_BIT_CAST(To, from);
 }
 
 template< typename To, std::size_t FromValueSize, typename From >

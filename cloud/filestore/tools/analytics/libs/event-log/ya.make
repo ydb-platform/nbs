@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(filestore-analytics-libs-event-log)
 
 SRCS(
     dump.cpp

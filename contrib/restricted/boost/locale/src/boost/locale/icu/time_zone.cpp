@@ -45,10 +45,12 @@ namespace boost { namespace locale { namespace impl_icu {
 
     icu::TimeZone* get_time_zone(const std::string& time_zone)
     {
-        if(time_zone.empty())
+        if(time_zone.empty()) {
             return icu::TimeZone::createDefault();
-        else
-            return icu::TimeZone::createTimeZone(time_zone.c_str());
+        } else {
+            icu::TimeZone* icu_tz = icu::TimeZone::createTimeZone(time_zone.c_str());
+            return icu_tz;
+        }
     }
 
 #else
@@ -81,7 +83,7 @@ namespace boost { namespace locale { namespace impl_icu {
             {
                 if(d && readdir_r(d, &de, &read_result) == 0 && read_result != 0)
                     return de.d_name;
-                return nullptr;
+                return 0;
             }
 
         private:
@@ -93,10 +95,10 @@ namespace boost { namespace locale { namespace impl_icu {
         bool files_equal(const std::string& left, const std::string& right)
         {
             char l[256], r[256];
-            std::ifstream ls(left);
+            std::ifstream ls(left.c_str());
             if(!ls)
                 return false;
-            std::ifstream rs(right);
+            std::ifstream rs(right.c_str());
             if(!rs)
                 return false;
             do {
@@ -119,11 +121,12 @@ namespace boost { namespace locale { namespace impl_icu {
             if(!d.is_open())
                 return std::string();
 
-            const char* name = nullptr;
+            const char* name = 0;
             while((name = d.next()) != 0) {
                 std::string file_name = name;
-                if(file_name == "." || file_name == ".." || file_name == "posixrules" || file_name == "localtime")
+                if(file_name == "." || file_name == ".." || file_name == "posixrules" || file_name == "localtime") {
                     continue;
+                }
                 struct stat st;
                 std::string path = dir + "/" + file_name;
                 if(stat(path.c_str(), &st) == 0) {
@@ -132,8 +135,9 @@ namespace boost { namespace locale { namespace impl_icu {
                         if(!res.empty())
                             return file_name + "/" + res;
                     } else {
-                        if(size_t(st.st_size) == size && files_equal(path, ref))
+                        if(size_t(st.st_size) == size && files_equal(path, ref)) {
                             return file_name;
+                        }
                     }
                 }
             }
@@ -190,8 +194,9 @@ namespace boost { namespace locale { namespace impl_icu {
 
     icu::TimeZone* get_time_zone(const std::string& time_zone)
     {
-        if(!time_zone.empty())
+        if(!time_zone.empty()) {
             return icu::TimeZone::createTimeZone(time_zone.c_str());
+        }
         hold_ptr<icu::TimeZone> tz(icu::TimeZone::createDefault());
         icu::UnicodeString id;
         tz->getID(id);

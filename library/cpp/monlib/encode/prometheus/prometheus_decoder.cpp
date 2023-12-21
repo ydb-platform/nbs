@@ -135,7 +135,7 @@ namespace NMonitoring {
                 Time_ = TInstant::Zero();
                 PrevBucket_ = ZERO_BUCKET;
                 Labels_.Clear();
-                auto snapshot = ExplicitHistogramSnapshot(Bounds_, Values_, true);
+                auto snapshot = ExplicitHistogramSnapshot(Bounds_, Values_);
 
                 Bounds_.clear();
                 Values_.clear();
@@ -234,10 +234,8 @@ namespace NMonitoring {
                     SkipSpaces();
                     EPrometheusMetricType nextType = ReadType();
 
-                    auto emplaceResult = SeenTypes_.emplace(nextName, nextType);
-                    if (!emplaceResult.second) {
-                            Y_PARSER_ENSURE(emplaceResult.first->second == nextType, "second diferent TYPE for metric " << nextName);
-                    }
+                    bool inserted = SeenTypes_.emplace(nextName, nextType).second;
+                    Y_PARSER_ENSURE(inserted, "second TYPE line for metric " << nextName);
 
                     if (nextType == EPrometheusMetricType::HISTOGRAM) {
                         if (!HistogramBuilder_.Empty()) {
@@ -428,7 +426,7 @@ namespace NMonitoring {
             }
 
             TStringBuf ReadToken() {
-                Y_DEBUG_ABORT_UNLESS(CurrentPos_ > 0);
+                Y_VERIFY_DEBUG(CurrentPos_ > 0);
                 size_t begin = CurrentPos_ - 1; // read first byte again
                 while (HasRemaining() && !IsSpace(CurrentByte_) && CurrentByte_ != '\n') {
                     ReadNextByteUnsafe();
@@ -441,7 +439,7 @@ namespace NMonitoring {
                     return "";
                 }
 
-                Y_DEBUG_ABORT_UNLESS(CurrentPos_ > 0);
+                Y_VERIFY_DEBUG(CurrentPos_ > 0);
                 size_t begin = CurrentPos_ - 1; // read first byte again
                 while (HasRemaining()) {
                     ReadNextByteUnsafe();
@@ -457,7 +455,7 @@ namespace NMonitoring {
                     return "";
                 }
 
-                Y_DEBUG_ABORT_UNLESS(CurrentPos_ > 0);
+                Y_VERIFY_DEBUG(CurrentPos_ > 0);
                 size_t begin = CurrentPos_ - 1; // read first byte again
                 while (HasRemaining()) {
                     ReadNextByteUnsafe();
@@ -508,7 +506,7 @@ namespace NMonitoring {
             }
 
             TStringBuf TokenFromPos(size_t begin) {
-                Y_DEBUG_ABORT_UNLESS(CurrentPos_ > begin);
+                Y_VERIFY_DEBUG(CurrentPos_ > begin);
                 size_t len = CurrentPos_ - begin - 1;
                 if (len == 0) {
                     return {};

@@ -1,7 +1,6 @@
-import json
 import os
 import ymake
-from _common import resolve_common_const
+from _common import strip_roots
 
 PLACEHOLDER_EXT = "external"
 
@@ -32,35 +31,10 @@ def onlarge_files(unit, *args):
             unit.message(["warn", msg])
             unit.oncopy_file([arg, arg])
         else:
+            out_file = strip_roots(os.path.join(unit.path(), arg))
             external = "{}.{}".format(arg, PLACEHOLDER_EXT)
-            rel_placeholder = resolve_common_const(unit.resolve_arc_path(external))
-            if not rel_placeholder.startswith("$S"):
-                ymake.report_configure_error(
-                    'LARGE_FILES: neither actual data nor placeholder is found for "{}"'.format(arg)
-                )
-                return
-            try:
-                abs_placeholder = unit.resolve(rel_placeholder)
-                with open(abs_placeholder, "r") as f:
-                    res_desc = json.load(f)
-                    storage = res_desc["storage"]
-                    res_id = res_desc["resource_id"]
-            except Exception as e:
-                ymake.report_configure_error(
-                    'LARGE_FILES: error processing placeholder file "{}.": {}'.format(external, e)
-                )
-                return
-
-            from_cmd = ['FILE', '{}'.format(res_id), 'OUT_NOAUTO', arg, 'EXTERNAL_FILE', external]
+            from_external_cmd = [external, out_file, 'OUT_NOAUTO', arg]
             if os.path.dirname(arg):
-                from_cmd.extend(("RENAME", os.path.basename(arg)))
-
-            method = getattr(unit, 'onfrom_{}'.format(storage.lower()), None)
-            if method:
-                method(from_cmd)
-            else:
-                ymake.report_configure_error(
-                    'LARGE_FILES: error processing placeholder file "{}.": unknown storage kind "{}"'.format(
-                        external, storage
-                    )
-                )
+                from_external_cmd.extend(("RENAME", os.path.basename(arg)))
+            unit.on_from_external(from_external_cmd)
+            unit.onadd_check(['check.external', external])

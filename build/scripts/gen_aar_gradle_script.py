@@ -2,9 +2,9 @@ import argparse
 import os
 import tarfile
 
-FLAT_DIRS_REPO_TEMPLATE = 'flatDir {{ dirs {dirs} }}\n'
-MAVEN_REPO_TEMPLATE = 'maven {{ url "{repo}" }}\n'
-KEYSTORE_TEMLATE = 'signingConfigs {{ debug {{ storeFile file("{keystore}") }} }}\n'
+FLAT_DIRS_REPO_TEMPLATE='flatDir {{ dirs {dirs} }}\n'
+MAVEN_REPO_TEMPLATE='maven {{ url "{repo}" }}\n'
+KEYSTORE_TEMLATE='signingConfigs {{ debug {{ storeFile file("{keystore}") }} }}\n'
 
 DO_NOT_STRIP = '''\
     packagingOptions {
@@ -108,11 +108,6 @@ android {{
     compileSdkVersion compileVersion
     buildToolsVersion buildVersion
 
-    compileOptions {{
-        sourceCompatibility 1.8
-        targetCompatibility 1.8
-    }}
-
     defaultConfig {{
         minSdkVersion minVersion
         targetSdkVersion targetVersion
@@ -191,6 +186,7 @@ android {{
 
 
 def gen_build_script(args):
+
     def wrap(items):
         return ',\n    '.join('"{}"'.format(x) for x in items)
 
@@ -198,9 +194,9 @@ def gen_build_script(args):
     bundles_dirs = set(args.flat_repos)
     for bundle in args.bundles:
         dir_name, base_name = os.path.split(bundle)
-        assert len(dir_name) > 0 and len(base_name) > 0
+        assert(len(dir_name) > 0 and len(base_name) > 0)
         name, ext = os.path.splitext(base_name)
-        assert len(name) > 0 and ext == '.aar'
+        assert(len(name) > 0 and ext == '.aar')
         bundles_dirs.add(dir_name)
         bundles.append('com.yandex:{}@aar'.format(name))
 

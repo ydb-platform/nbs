@@ -16,7 +16,7 @@ struct hash_table_entry {
 };
 
 /* Using a flexible array member is the C99 compliant way to have the hash_table_entries
- * immediately follow the struct.
+ * immediatly follow the struct.
  *
  * MSVC doesn't know this for some reason so we need to use a pragma to make
  * it happy.

@@ -112,9 +112,11 @@ typedef enum UTraceFunctionNumber {
     UTRACE_COLLATION_LIMIT,
 #endif  // U_HIDE_DEPRECATED_API
 
+#ifndef U_HIDE_DRAFT_API
+
     /**
      * The lowest resource/data location.
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UTRACE_UDATA_START=0x3000,
 
@@ -131,7 +133,7 @@ typedef enum UTraceFunctionNumber {
      * - "get" (a path was loaded, but the value was not accessed)
      * - "getalias" (a path was loaded, and an alias was resolved)
      *
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UTRACE_UDATA_RESOURCE=UTRACE_UDATA_START,
 
@@ -139,7 +141,7 @@ typedef enum UTraceFunctionNumber {
      * Indicates that a resource bundle was opened.
      *
      * Provides one C-style string to UTraceData: file name.
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UTRACE_UDATA_BUNDLE,
 
@@ -148,7 +150,7 @@ typedef enum UTraceFunctionNumber {
      *
      * Provides one C-style string to UTraceData: file name.
      *
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UTRACE_UDATA_DATA_FILE,
 
@@ -161,9 +163,11 @@ typedef enum UTraceFunctionNumber {
      *
      * Provides one C-style string to UTraceData: file name.
      *
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UTRACE_UDATA_RES_FILE,
+
+#endif  // U_HIDE_DRAFT_API
 
 #ifndef U_HIDE_INTERNAL_API
     /**
@@ -173,23 +177,24 @@ typedef enum UTraceFunctionNumber {
     UTRACE_RES_DATA_LIMIT,
 #endif  // U_HIDE_INTERNAL_API
 
+#ifndef U_HIDE_DRAFT_API
     /**
      * The lowest break iterator location.
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_START=0x4000,
 
     /**
      * Indicates that a character instance of break iterator was created.
      *
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_CREATE_CHARACTER = UTRACE_UBRK_START,
 
     /**
      * Indicates that a word instance of break iterator was created.
      *
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_CREATE_WORD,
 
@@ -199,21 +204,21 @@ typedef enum UTraceFunctionNumber {
      * Provides one C-style string to UTraceData: the lb value ("",
      * "loose", "strict", or "normal").
      *
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_CREATE_LINE,
 
     /**
      * Indicates that a sentence instance of break iterator was created.
      *
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_CREATE_SENTENCE,
 
     /**
      * Indicates that a title instance of break iterator was created.
      *
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_CREATE_TITLE,
 
@@ -223,9 +228,11 @@ typedef enum UTraceFunctionNumber {
      * Provides one C-style string to UTraceData: the script code of what
      * the break engine cover ("Hani", "Khmr", "Laoo", "Mymr", or "Thai").
      *
-     * @stable ICU 67
+     * @draft ICU 67
      */
     UTRACE_UBRK_CREATE_BREAK_ENGINE,
+
+#endif  // U_HIDE_DRAFT_API
 
 #ifndef U_HIDE_INTERNAL_API
     /**
@@ -242,7 +249,7 @@ typedef enum UTraceFunctionNumber {
  * @param traceLevel A UTraceLevel value.
  * @stable ICU 2.8
  */
-U_CAPI void U_EXPORT2
+U_STABLE void U_EXPORT2
 utrace_setLevel(int32_t traceLevel);
 
 /**
@@ -250,7 +257,7 @@ utrace_setLevel(int32_t traceLevel);
  * @return The UTraceLevel value being used by ICU.
  * @stable ICU 2.8
  */
-U_CAPI int32_t U_EXPORT2
+U_STABLE int32_t U_EXPORT2
 utrace_getLevel(void);
 
 /* Trace function pointers types  ----------------------------- */
@@ -324,7 +331,7 @@ UTraceData(const void *context, int32_t fnNumber, int32_t level,
   *
   *  @stable ICU 2.8
   */
-U_CAPI void U_EXPORT2
+U_STABLE void U_EXPORT2
 utrace_setFunctions(const void *context,
                     UTraceEntry *e, UTraceExit *x, UTraceData *d);
 
@@ -338,7 +345,7 @@ utrace_setFunctions(const void *context,
   * @param d        The currently installed UTraceData function.
   * @stable ICU 2.8
   */
-U_CAPI void U_EXPORT2
+U_STABLE void U_EXPORT2
 utrace_getFunctions(const void **context,
                     UTraceEntry **e, UTraceExit **x, UTraceData **d);
 
@@ -460,7 +467,7 @@ utrace_getFunctions(const void **context,
   *                 If buffer capacity is insufficient, the required capacity is returned. 
   *  @stable ICU 2.8
   */
-U_CAPI int32_t U_EXPORT2
+U_STABLE int32_t U_EXPORT2
 utrace_vformat(char *outBuf, int32_t capacity,
               int32_t indent, const char *fmt,  va_list args);
 
@@ -481,7 +488,7 @@ utrace_vformat(char *outBuf, int32_t capacity,
   *                 If buffer capacity is insufficient, the required capacity is returned. 
   *  @stable ICU 2.8
   */
-U_CAPI int32_t U_EXPORT2
+U_STABLE int32_t U_EXPORT2
 utrace_format(char *outBuf, int32_t capacity,
               int32_t indent, const char *fmt,  ...);
 
@@ -498,7 +505,7 @@ utrace_format(char *outBuf, int32_t capacity,
  * @see UTraceFunctionNumber
  * @stable ICU 2.8
  */
-U_CAPI const char * U_EXPORT2
+U_STABLE const char * U_EXPORT2
 utrace_functionName(int32_t fnNumber);
 
 U_CDECL_END

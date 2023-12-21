@@ -54,8 +54,8 @@
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
 
-#include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
-#include <contrib/ydb/core/tablet_flat/probes.h>
+#include <ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
+#include <ydb/core/tablet_flat/probes.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>

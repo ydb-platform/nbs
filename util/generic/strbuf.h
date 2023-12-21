@@ -537,7 +537,3 @@ private:
 };
 
 std::ostream& operator<<(std::ostream& os, TStringBuf buf);
-
-constexpr TStringBuf operator""_sb(const char* str, size_t len) {
-    return TStringBuf{str, len};
-}

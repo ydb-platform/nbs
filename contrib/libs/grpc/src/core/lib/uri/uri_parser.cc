@@ -23,7 +23,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <initializer_list>
 #include <map>
 #include <util/generic/string.h>
 #include <util/string/cast.h>
@@ -209,6 +208,7 @@ TString URI::PercentDecode(y_absl::string_view str) {
 }
 
 y_absl::StatusOr<URI> URI::Parse(y_absl::string_view uri_text) {
+  y_absl::StatusOr<TString> decoded;
   y_absl::string_view remaining = uri_text;
   // parse scheme
   size_t offset = remaining.find(':');

@@ -24,7 +24,7 @@
 #include <cloud/storage/core/libs/grpc/keepalive.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <library/cpp/actors/prof/tag.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/threading/atomic/bool.h>
 

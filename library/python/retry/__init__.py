@@ -70,13 +70,13 @@ class RetryConf(object):
     """
 
     _PROPS = {
-        "retriable": lambda e: True,
-        "get_delay": lambda n, raised_after, last: 0,
-        "max_time": None,
-        "max_times": None,
-        "handle_error": None,
-        "logger": None,
-        "sleep": DEFAULT_SLEEP_FUNC,
+        'retriable': lambda e: True,
+        'get_delay': lambda n, raised_after, last: 0,
+        'max_time': None,
+        'max_times': None,
+        'handle_error': None,
+        'logger': None,
+        'sleep': DEFAULT_SLEEP_FUNC,
     }
 
     def __init__(self, **kwargs):
@@ -197,9 +197,7 @@ def retry(conf=DEFAULT_CONF, **kwargs):
         @functools.wraps(f)
         def wrapped(*f_args, **f_kwargs):
             return _retry(conf, functools.partial(f, *f_args, **f_kwargs))
-
         return wrapped
-
     return decorator
 
 
@@ -210,9 +208,8 @@ def retry_intrusive(f):
 
     @functools.wraps(f)
     def wrapped(obj, *f_args, **f_kwargs):
-        assert hasattr(obj, "retry_conf"), "Object must have retry_conf attribute for decorator to run"
+        assert hasattr(obj, 'retry_conf'), 'Object must have retry_conf attribute for decorator to run'
         return _retry(obj.retry_conf, functools.partial(f, obj, *f_args, **f_kwargs))
-
     return wrapped
 
 
@@ -228,23 +225,15 @@ def _retry(conf, f):
                 conf.handle_error(error, n, raised_after)
             delay = conf.get_delay(n, raised_after, delay)
             retry_after = raised_after + datetime.timedelta(seconds=delay)
-            retrying = (
-                conf.retriable(error)
-                and (conf.max_times is None or n <= conf.max_times)
+            retrying = conf.retriable(error) \
+                and (conf.max_times is None or n <= conf.max_times) \
                 and (conf.max_time is None or retry_after <= conf.max_time)
-            )
             if not retrying:
                 raise
             if delay:
                 conf.sleep(delay)
             if conf.logger:
-                conf.logger.warning(
-                    "Retrying (try %d) after %s (%s + %s sec) on %s: %s",
-                    n,
-                    retry_after,
-                    raised_after,
-                    delay,
-                    error.__class__.__name__,
-                    error,
-                    exc_info=True,
-                )
+                conf.logger.warning('Retrying (try %d) after %s (%s + %s sec) on %s: %s',
+                                    n, retry_after, raised_after, delay,
+                                    error.__class__.__name__, error,
+                                    exc_info=True)

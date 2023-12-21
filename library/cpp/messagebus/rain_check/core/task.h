@@ -99,9 +99,9 @@ namespace NRainCheck {
                 case CANCELED:
                     return true;
                 case CREATED:
-                    Y_ABORT("not started");
+                    Y_FAIL("not started");
                 default:
-                    Y_ABORT("unknown value: %u", (unsigned)state);
+                    Y_FAIL("unknown value: %u", (unsigned)state);
             }
         }
 

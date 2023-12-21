@@ -12,8 +12,8 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -1220,7 +1220,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId reacquireDiskRecipient;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvReadDeviceBlocksRequest: {
                         auto response = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
@@ -1277,7 +1277,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1397,7 +1397,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TTestEnv env(runtime);
 
         bool done = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvStatsService::EvVolumePartCounters:
                         if (event->Recipient == MakeStorageStatsServiceId()) {
@@ -1406,7 +1406,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                         break;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 

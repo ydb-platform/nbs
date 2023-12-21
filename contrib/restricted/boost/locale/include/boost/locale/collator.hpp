@@ -17,6 +17,8 @@
 
 namespace boost { namespace locale {
 
+    class info;
+
     /// \defgroup collation Collation
     ///
     /// This module introduces collation related classes
@@ -171,7 +173,7 @@ namespace boost { namespace locale {
     public:
         /// Create a comparator class for locale \a l and with collation leval \a level
         ///
-        /// \throws std::bad_cast: \a l does not have \ref collator facet installed
+        /// \note throws std::bad_cast if l does not have \ref collator facet installed
         comparator(const std::locale& l = std::locale(), collate_level level = default_level) :
             locale_(l), level_(level)
         {}

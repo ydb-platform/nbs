@@ -20,7 +20,7 @@ target_link_libraries(cloud-filestore-libs-storage-service-ut PUBLIC
   yutil
   cpp-testing-unittest_main
   filestore-libs-storage-service
-  libs-storage-testlib
+  filestore-libs-storage-testlib
   ydb-core-testlib
 )
 target_link_options(cloud-filestore-libs-storage-service-ut PRIVATE

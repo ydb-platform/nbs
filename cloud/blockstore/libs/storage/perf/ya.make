@@ -1,7 +1,5 @@
 Y_BENCHMARK(cloud-blockstore-libs-storage-perf)
 
-BENCHMARK_OPTS(--budget=10)
-
 PEERDIR(
     cloud/blockstore/libs/storage/partition2/model
 

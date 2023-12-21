@@ -22,6 +22,7 @@
 #include <util/generic/string.h>
 #include <util/string/cast.h>
 
+#include "y_absl/memory/memory.h"
 #include "y_absl/status/status.h"
 #include "y_absl/status/statusor.h"
 #include "y_absl/strings/string_view.h"
@@ -39,40 +40,38 @@ std::unique_ptr<AuthorizationMatcher> AuthorizationMatcher::Create(
   switch (permission.type) {
     case Rbac::Permission::RuleType::kAnd: {
       std::vector<std::unique_ptr<AuthorizationMatcher>> matchers;
-      matchers.reserve(permission.permissions.size());
       for (const auto& rule : permission.permissions) {
         matchers.push_back(AuthorizationMatcher::Create(std::move(*rule)));
       }
-      return std::make_unique<AndAuthorizationMatcher>(std::move(matchers));
+      return y_absl::make_unique<AndAuthorizationMatcher>(std::move(matchers));
     }
     case Rbac::Permission::RuleType::kOr: {
       std::vector<std::unique_ptr<AuthorizationMatcher>> matchers;
-      matchers.reserve(permission.permissions.size());
       for (const auto& rule : permission.permissions) {
         matchers.push_back(AuthorizationMatcher::Create(std::move(*rule)));
       }
-      return std::make_unique<OrAuthorizationMatcher>(std::move(matchers));
+      return y_absl::make_unique<OrAuthorizationMatcher>(std::move(matchers));
     }
     case Rbac::Permission::RuleType::kNot:
-      return std::make_unique<NotAuthorizationMatcher>(
+      return y_absl::make_unique<NotAuthorizationMatcher>(
           AuthorizationMatcher::Create(std::move(*permission.permissions[0])));
     case Rbac::Permission::RuleType::kAny:
-      return std::make_unique<AlwaysAuthorizationMatcher>();
+      return y_absl::make_unique<AlwaysAuthorizationMatcher>();
     case Rbac::Permission::RuleType::kHeader:
-      return std::make_unique<HeaderAuthorizationMatcher>(
+      return y_absl::make_unique<HeaderAuthorizationMatcher>(
           std::move(permission.header_matcher));
     case Rbac::Permission::RuleType::kPath:
-      return std::make_unique<PathAuthorizationMatcher>(
+      return y_absl::make_unique<PathAuthorizationMatcher>(
           std::move(permission.string_matcher));
     case Rbac::Permission::RuleType::kDestIp:
-      return std::make_unique<IpAuthorizationMatcher>(
+      return y_absl::make_unique<IpAuthorizationMatcher>(
           IpAuthorizationMatcher::Type::kDestIp, std::move(permission.ip));
     case Rbac::Permission::RuleType::kDestPort:
-      return std::make_unique<PortAuthorizationMatcher>(permission.port);
+      return y_absl::make_unique<PortAuthorizationMatcher>(permission.port);
     case Rbac::Permission::RuleType::kMetadata:
-      return std::make_unique<MetadataAuthorizationMatcher>(permission.invert);
+      return y_absl::make_unique<MetadataAuthorizationMatcher>(permission.invert);
     case Rbac::Permission::RuleType::kReqServerName:
-      return std::make_unique<ReqServerNameAuthorizationMatcher>(
+      return y_absl::make_unique<ReqServerNameAuthorizationMatcher>(
           std::move(permission.string_matcher));
   }
   return nullptr;
@@ -83,46 +82,44 @@ std::unique_ptr<AuthorizationMatcher> AuthorizationMatcher::Create(
   switch (principal.type) {
     case Rbac::Principal::RuleType::kAnd: {
       std::vector<std::unique_ptr<AuthorizationMatcher>> matchers;
-      matchers.reserve(principal.principals.size());
       for (const auto& id : principal.principals) {
         matchers.push_back(AuthorizationMatcher::Create(std::move(*id)));
       }
-      return std::make_unique<AndAuthorizationMatcher>(std::move(matchers));
+      return y_absl::make_unique<AndAuthorizationMatcher>(std::move(matchers));
     }
     case Rbac::Principal::RuleType::kOr: {
       std::vector<std::unique_ptr<AuthorizationMatcher>> matchers;
-      matchers.reserve(principal.principals.size());
       for (const auto& id : principal.principals) {
         matchers.push_back(AuthorizationMatcher::Create(std::move(*id)));
       }
-      return std::make_unique<OrAuthorizationMatcher>(std::move(matchers));
+      return y_absl::make_unique<OrAuthorizationMatcher>(std::move(matchers));
     }
     case Rbac::Principal::RuleType::kNot:
-      return std::make_unique<NotAuthorizationMatcher>(
+      return y_absl::make_unique<NotAuthorizationMatcher>(
           AuthorizationMatcher::Create(std::move(*principal.principals[0])));
     case Rbac::Principal::RuleType::kAny:
-      return std::make_unique<AlwaysAuthorizationMatcher>();
+      return y_absl::make_unique<AlwaysAuthorizationMatcher>();
     case Rbac::Principal::RuleType::kPrincipalName:
-      return std::make_unique<AuthenticatedAuthorizationMatcher>(
+      return y_absl::make_unique<AuthenticatedAuthorizationMatcher>(
           std::move(principal.string_matcher));
     case Rbac::Principal::RuleType::kSourceIp:
-      return std::make_unique<IpAuthorizationMatcher>(
+      return y_absl::make_unique<IpAuthorizationMatcher>(
           IpAuthorizationMatcher::Type::kSourceIp, std::move(principal.ip));
     case Rbac::Principal::RuleType::kDirectRemoteIp:
-      return std::make_unique<IpAuthorizationMatcher>(
+      return y_absl::make_unique<IpAuthorizationMatcher>(
           IpAuthorizationMatcher::Type::kDirectRemoteIp,
           std::move(principal.ip));
     case Rbac::Principal::RuleType::kRemoteIp:
-      return std::make_unique<IpAuthorizationMatcher>(
+      return y_absl::make_unique<IpAuthorizationMatcher>(
           IpAuthorizationMatcher::Type::kRemoteIp, std::move(principal.ip));
     case Rbac::Principal::RuleType::kHeader:
-      return std::make_unique<HeaderAuthorizationMatcher>(
+      return y_absl::make_unique<HeaderAuthorizationMatcher>(
           std::move(principal.header_matcher));
     case Rbac::Principal::RuleType::kPath:
-      return std::make_unique<PathAuthorizationMatcher>(
+      return y_absl::make_unique<PathAuthorizationMatcher>(
           std::move(principal.string_matcher.value()));
     case Rbac::Principal::RuleType::kMetadata:
-      return std::make_unique<MetadataAuthorizationMatcher>(principal.invert);
+      return y_absl::make_unique<MetadataAuthorizationMatcher>(principal.invert);
   }
   return nullptr;
 }

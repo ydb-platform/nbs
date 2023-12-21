@@ -20,7 +20,6 @@
 #include <map>
 #include <utility>
 
-#include "y_absl/status/status.h"
 #include "y_absl/status/statusor.h"
 #include "y_absl/strings/string_view.h"
 
@@ -28,8 +27,8 @@
 
 #include "src/core/lib/iomgr/load_file.h"
 #include "src/core/lib/json/json.h"
-#include "src/core/lib/slice/slice.h"
 #include "src/core/lib/slice/slice_internal.h"
+#include "src/core/lib/slice/slice_refcount.h"
 
 namespace grpc_core {
 
@@ -39,7 +38,7 @@ FileExternalAccountCredentials::Create(Options options,
                                        grpc_error_handle* error) {
   auto creds = MakeRefCounted<FileExternalAccountCredentials>(
       std::move(options), std::move(scopes), error);
-  if (error->ok()) {
+  if (GRPC_ERROR_IS_NONE(*error)) {
     return creds;
   } else {
     return nullptr;
@@ -51,11 +50,12 @@ FileExternalAccountCredentials::FileExternalAccountCredentials(
     : ExternalAccountCredentials(options, std::move(scopes)) {
   auto it = options.credential_source.object_value().find("file");
   if (it == options.credential_source.object_value().end()) {
-    *error = GRPC_ERROR_CREATE("file field not present.");
+    *error = GRPC_ERROR_CREATE_FROM_STATIC_STRING("file field not present.");
     return;
   }
   if (it->second.type() != Json::Type::STRING) {
-    *error = GRPC_ERROR_CREATE("file field must be a string.");
+    *error =
+        GRPC_ERROR_CREATE_FROM_STATIC_STRING("file field must be a string.");
     return;
   }
   file_ = it->second.string_value();
@@ -63,30 +63,32 @@ FileExternalAccountCredentials::FileExternalAccountCredentials(
   if (it != options.credential_source.object_value().end()) {
     const Json& format_json = it->second;
     if (format_json.type() != Json::Type::OBJECT) {
-      *error = GRPC_ERROR_CREATE(
+      *error = GRPC_ERROR_CREATE_FROM_STATIC_STRING(
           "The JSON value of credential source format is not an object.");
       return;
     }
     auto format_it = format_json.object_value().find("type");
     if (format_it == format_json.object_value().end()) {
-      *error = GRPC_ERROR_CREATE("format.type field not present.");
+      *error = GRPC_ERROR_CREATE_FROM_STATIC_STRING(
+          "format.type field not present.");
       return;
     }
     if (format_it->second.type() != Json::Type::STRING) {
-      *error = GRPC_ERROR_CREATE("format.type field must be a string.");
+      *error = GRPC_ERROR_CREATE_FROM_STATIC_STRING(
+          "format.type field must be a string.");
       return;
     }
     format_type_ = format_it->second.string_value();
     if (format_type_ == "json") {
       format_it = format_json.object_value().find("subject_token_field_name");
       if (format_it == format_json.object_value().end()) {
-        *error = GRPC_ERROR_CREATE(
+        *error = GRPC_ERROR_CREATE_FROM_STATIC_STRING(
             "format.subject_token_field_name field must be present if the "
             "format is in Json.");
         return;
       }
       if (format_it->second.type() != Json::Type::STRING) {
-        *error = GRPC_ERROR_CREATE(
+        *error = GRPC_ERROR_CREATE_FROM_STATIC_STRING(
             "format.subject_token_field_name field must be a string.");
         return;
       }
@@ -99,7 +101,7 @@ void FileExternalAccountCredentials::RetrieveSubjectToken(
     HTTPRequestContext* /*ctx*/, const Options& /*options*/,
     std::function<void(TString, grpc_error_handle)> cb) {
   struct SliceWrapper {
-    ~SliceWrapper() { CSliceUnref(slice); }
+    ~SliceWrapper() { grpc_slice_unref_internal(slice); }
     grpc_slice slice = grpc_empty_slice();
   };
   SliceWrapper content_slice;
@@ -107,7 +109,7 @@ void FileExternalAccountCredentials::RetrieveSubjectToken(
   // request because it may have changed since the last request.
   grpc_error_handle error =
       grpc_load_file(file_.c_str(), 0, &content_slice.slice);
-  if (!error.ok()) {
+  if (!GRPC_ERROR_IS_NONE(error)) {
     cb("", error);
     return;
   }
@@ -115,24 +117,26 @@ void FileExternalAccountCredentials::RetrieveSubjectToken(
   if (format_type_ == "json") {
     auto content_json = Json::Parse(content);
     if (!content_json.ok() || content_json->type() != Json::Type::OBJECT) {
-      cb("", GRPC_ERROR_CREATE(
+      cb("", GRPC_ERROR_CREATE_FROM_STATIC_STRING(
                  "The content of the file is not a valid json object."));
       return;
     }
     auto content_it =
         content_json->object_value().find(format_subject_token_field_name_);
     if (content_it == content_json->object_value().end()) {
-      cb("", GRPC_ERROR_CREATE("Subject token field not present."));
+      cb("", GRPC_ERROR_CREATE_FROM_STATIC_STRING(
+                 "Subject token field not present."));
       return;
     }
     if (content_it->second.type() != Json::Type::STRING) {
-      cb("", GRPC_ERROR_CREATE("Subject token field must be a string."));
+      cb("", GRPC_ERROR_CREATE_FROM_STATIC_STRING(
+                 "Subject token field must be a string."));
       return;
     }
-    cb(content_it->second.string_value(), y_absl::OkStatus());
+    cb(content_it->second.string_value(), GRPC_ERROR_NONE);
     return;
   }
-  cb(TString(content), y_absl::OkStatus());
+  cb(TString(content), GRPC_ERROR_NONE);
 }
 
 }  // namespace grpc_core

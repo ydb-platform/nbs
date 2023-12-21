@@ -36,7 +36,7 @@ NBus::NPrivate::TBusSocketAddr::TBusSocketAddr(const NAddr::IRemoteAddr* addr)
             break;
         }
         default:
-            Y_ABORT("unknown address family");
+            Y_FAIL("unknown address family");
     }
 }
 

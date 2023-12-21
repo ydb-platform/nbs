@@ -126,17 +126,6 @@ void NodeToCanonicalYsonStream(const TNode& node, IOutputStream* output, NYson::
     visitor.Visit(node);
 }
 
-bool TryNodeFromJsonString(const TStringBuf input, TNode& dst)
-{
-    TMemoryInput stream(input);
-    TNodeBuilder builder(&dst);
-    TYson2JsonCallbacksAdapter callbacks(&builder, /*throwException*/ false);
-    NJson::TJsonReaderConfig config;
-    config.DontValidateUtf8 = true;
-    NJson::ReadJson(&stream, &config, &callbacks);
-    return !callbacks.GetHaveErrors();
-}
-
 TNode NodeFromJsonString(const TStringBuf input)
 {
     TMemoryInput stream(input);
@@ -147,22 +136,6 @@ TNode NodeFromJsonString(const TStringBuf input)
     TYson2JsonCallbacksAdapter callbacks(&builder, /*throwException*/ true);
     NJson::TJsonReaderConfig config;
     config.DontValidateUtf8 = true;
-    NJson::ReadJson(&stream, &config, &callbacks);
-    return result;
-}
-
-TNode NodeFromJsonStringIterative(const TStringBuf input, ui64 maxDepth)
-{
-    TMemoryInput stream(input);
-
-    TNode result;
-
-    TNodeBuilder builder(&result);
-    TYson2JsonCallbacksAdapter callbacks(&builder, /*throwException*/ true, maxDepth);
-    NJson::TJsonReaderConfig config;
-    config.DontValidateUtf8 = true;
-    config.UseIterativeParser = true;
-    config.MaxDepth = maxDepth;
     NJson::ReadJson(&stream, &config, &callbacks);
     return result;
 }

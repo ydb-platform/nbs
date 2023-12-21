@@ -5,7 +5,7 @@ import "library/cpp/lwtrace/protos/lwtrace.proto";
 
 package NCloud.NBlockStore.NProto;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos";
+option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Control plane request source.

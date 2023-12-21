@@ -80,7 +80,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107"
 
       - name: black
         uses: reviewdog/action-black@v3.10.2

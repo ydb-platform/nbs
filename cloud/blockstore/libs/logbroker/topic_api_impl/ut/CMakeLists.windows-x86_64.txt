@@ -20,7 +20,6 @@ target_link_libraries(cloud-blockstore-libs-logbroker-topic_api_impl-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   libs-logbroker-topic_api_impl
-  ydb_topic-ut-ut_utils
   ydb_persqueue_core-ut-ut_utils
 )
 target_sources(cloud-blockstore-libs-logbroker-topic_api_impl-ut PRIVATE

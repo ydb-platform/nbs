@@ -44,7 +44,7 @@ target_link_libraries(libs-storage-tablet PUBLIC
   core-libs-tablet
   libs-tablet-model
   storage-core-protos
-  library-actors-core
+  cpp-actors-core
   cpp-protobuf-json
   ydb-core-base
   core-filestore-core

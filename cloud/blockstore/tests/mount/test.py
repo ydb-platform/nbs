@@ -18,8 +18,8 @@ from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 
 class MountContext:
@@ -39,7 +39,7 @@ class CommonPaths:
 
     def __init__(self):
         self.kikimr_binary_path = \
-            yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            yatest_common.binary_path("ydb/apps/ydbd/ydbd")
         self.nbs_binary_path = \
             yatest_common.binary_path(
                 "cloud/blockstore/apps/server/nbsd")

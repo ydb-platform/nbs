@@ -20,7 +20,6 @@ def getfile(object):
         res = orig_getfile(object)
     return res
 
-
 inspect.getfile = getfile
 conftest_modules = []
 

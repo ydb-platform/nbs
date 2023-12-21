@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>

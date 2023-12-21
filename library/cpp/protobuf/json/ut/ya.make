@@ -18,7 +18,6 @@ GENERATE_ENUM_SERIALIZATION(test.pb.h)
 PEERDIR(
     library/cpp/protobuf/interop
     library/cpp/protobuf/json
-    library/cpp/protobuf/json/proto
 )
 
 END()

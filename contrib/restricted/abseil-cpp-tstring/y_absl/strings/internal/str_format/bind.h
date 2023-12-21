@@ -21,7 +21,6 @@
 #include <util/generic/string.h>
 
 #include "y_absl/base/port.h"
-#include "y_absl/container/inlined_vector.h"
 #include "y_absl/strings/internal/str_format/arg.h"
 #include "y_absl/strings/internal/str_format/checker.h"
 #include "y_absl/strings/internal/str_format/parser.h"
@@ -178,7 +177,17 @@ class Streamable {
  public:
   Streamable(const UntypedFormatSpecImpl& format,
              y_absl::Span<const FormatArgImpl> args)
-      : format_(format), args_(args.begin(), args.end()) {}
+      : format_(format) {
+    if (args.size() <= Y_ABSL_ARRAYSIZE(few_args_)) {
+      for (size_t i = 0; i < args.size(); ++i) {
+        few_args_[i] = args[i];
+      }
+      args_ = y_absl::MakeSpan(few_args_, args.size());
+    } else {
+      many_args_.assign(args.begin(), args.end());
+      args_ = many_args_;
+    }
+  }
 
   std::ostream& Print(std::ostream& os) const;
 
@@ -188,7 +197,12 @@ class Streamable {
 
  private:
   const UntypedFormatSpecImpl& format_;
-  y_absl::InlinedVector<FormatArgImpl, 4> args_;
+  y_absl::Span<const FormatArgImpl> args_;
+  // if args_.size() is 4 or less:
+  FormatArgImpl few_args_[4] = {FormatArgImpl(0), FormatArgImpl(0),
+                                FormatArgImpl(0), FormatArgImpl(0)};
+  // if args_.size() is more than 4:
+  std::vector<FormatArgImpl> many_args_;
 };
 
 // for testing
@@ -197,7 +211,8 @@ TString Summarize(UntypedFormatSpecImpl format,
 bool BindWithPack(const UnboundConversion* props,
                   y_absl::Span<const FormatArgImpl> pack, BoundConversion* bound);
 
-bool FormatUntyped(FormatRawSinkImpl raw_sink, UntypedFormatSpecImpl format,
+bool FormatUntyped(FormatRawSinkImpl raw_sink,
+                   UntypedFormatSpecImpl format,
                    y_absl::Span<const FormatArgImpl> args);
 
 TString& AppendPack(TString* out, UntypedFormatSpecImpl format,
@@ -216,7 +231,7 @@ int SnprintF(char* output, size_t size, UntypedFormatSpecImpl format,
 template <typename T>
 class StreamedWrapper {
  public:
-  explicit StreamedWrapper(const T& v) : v_(v) {}
+  explicit StreamedWrapper(const T& v) : v_(v) { }
 
  private:
   template <typename S>

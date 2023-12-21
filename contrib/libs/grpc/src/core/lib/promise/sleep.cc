@@ -20,16 +20,15 @@
 
 #include <grpc/event_engine/event_engine.h>
 
-#include "src/core/lib/event_engine/default_event_engine.h"  // IWYU pragma: keep
+#include "src/core/lib/event_engine/default_event_engine.h"
 #include "src/core/lib/gprpp/time.h"
 #include "src/core/lib/iomgr/exec_ctx.h"
 #include "src/core/lib/promise/activity.h"
-#include "src/core/lib/promise/context.h"
 #include "src/core/lib/promise/poll.h"
 
 namespace grpc_core {
 
-using ::grpc_event_engine::experimental::EventEngine;
+using ::grpc_event_engine::experimental::GetDefaultEventEngine;
 
 Sleep::Sleep(Timestamp deadline) : deadline_(deadline) {}
 
@@ -54,7 +53,7 @@ Poll<y_absl::Status> Sleep::operator()() {
 
 Sleep::ActiveClosure::ActiveClosure(Timestamp deadline)
     : waker_(Activity::current()->MakeOwningWaker()),
-      timer_handle_(GetContext<EventEngine>()->RunAfter(
+      timer_handle_(GetDefaultEventEngine()->RunAfter(
           deadline - Timestamp::Now(), this)) {}
 
 void Sleep::ActiveClosure::Run() {
@@ -72,7 +71,7 @@ void Sleep::ActiveClosure::Cancel() {
   // If we cancel correctly then we must own both refs still and can simply
   // delete without unreffing twice, otherwise try unreffing since this may be
   // the last owned ref.
-  if (HasRun() || GetContext<EventEngine>()->Cancel(timer_handle_) || Unref()) {
+  if (GetDefaultEventEngine()->Cancel(timer_handle_) || Unref()) {
     delete this;
   }
 }

@@ -22,12 +22,12 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/version
 
-    contrib/ydb/core/protos
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    ydb/core/protos
+    ydb/library/yql/public/udf/service/exception_policy
 
     library/cpp/lwtrace/mon
 
-    contrib/ydb/library/actors/util
+    library/cpp/actors/util
     library/cpp/getopt/small
     library/cpp/logger
     library/cpp/monlib/dynamic_counters

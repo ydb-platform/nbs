@@ -18,13 +18,6 @@
 
 #include <stddef.h>
 
-#include <initializer_list>
-#include <vector>
-
-#include "y_absl/strings/str_cat.h"
-#include "y_absl/strings/str_format.h"
-#include "y_absl/strings/str_join.h"
-
 #include "src/core/lib/gprpp/atomic_utils.h"
 
 namespace grpc_core {
@@ -32,16 +25,12 @@ namespace grpc_core {
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-thread_local Activity* Activity::g_current_activity_{nullptr};
+GPR_THREAD_LOCAL(Activity*) Activity::g_current_activity_{nullptr};
 
 namespace promise_detail {
 
 ///////////////////////////////////////////////////////////////////////////////
 // HELPER TYPES
-
-TString Unwakeable::ActivityDebugTag(WakeupMask) const {
-  return "<unknown>";
-}
 
 // Weak handle to an Activity.
 // Handle can persist while Activity goes away.
@@ -63,7 +52,7 @@ class FreestandingActivity::Handle final : public Wakeable {
 
   // Activity needs to wake up (if it still exists!) - wake it up, and drop the
   // ref that was kept for this handle.
-  void Wakeup(WakeupMask) override Y_ABSL_LOCKS_EXCLUDED(mu_) {
+  void Wakeup() override Y_ABSL_LOCKS_EXCLUDED(mu_) {
     mu_.Lock();
     // Note that activity refcount can drop to zero, but we could win the lock
     // against DropActivity, so we need to only increase activities refcount if
@@ -73,7 +62,7 @@ class FreestandingActivity::Handle final : public Wakeable {
       mu_.Unlock();
       // Activity still exists and we have a reference: wake it up, which will
       // drop the ref.
-      activity->Wakeup(0);
+      activity->Wakeup();
     } else {
       // Could not get the activity - it's either gone or going. No need to wake
       // it up!
@@ -83,12 +72,7 @@ class FreestandingActivity::Handle final : public Wakeable {
     Unref();
   }
 
-  void Drop(WakeupMask) override { Unref(); }
-
-  TString ActivityDebugTag(WakeupMask) const override {
-    MutexLock lock(&mu_);
-    return activity_ == nullptr ? "<unknown>" : activity_->DebugTag();
-  }
+  void Drop() override { Unref(); }
 
  private:
   // Unref the Handle (not the activity).
@@ -101,7 +85,7 @@ class FreestandingActivity::Handle final : public Wakeable {
   // Two initial refs: one for the waiter that caused instantiation, one for the
   // activity.
   std::atomic<size_t> refs_{2};
-  mutable Mutex mu_ Y_ABSL_ACQUIRED_AFTER(activity_->mu_);
+  Mutex mu_ Y_ABSL_ACQUIRED_AFTER(activity_->mu_);
   FreestandingActivity* activity_ Y_ABSL_GUARDED_BY(mu_);
 };
 
@@ -129,24 +113,8 @@ void FreestandingActivity::DropHandle() {
 
 Waker FreestandingActivity::MakeNonOwningWaker() {
   mu_.AssertHeld();
-  return Waker(RefHandle(), 0);
+  return Waker(RefHandle());
 }
 
 }  // namespace promise_detail
-
-TString Activity::DebugTag() const {
-  return y_absl::StrFormat("ACTIVITY[%p]", this);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// INTRA ACTIVITY WAKER IMPLEMENTATION
-
-TString IntraActivityWaiter::DebugString() const {
-  std::vector<int> bits;
-  for (size_t i = 0; i < 8 * sizeof(WakeupMask); i++) {
-    if (wakeups_ & (1 << i)) bits.push_back(i);
-  }
-  return y_absl::StrCat("{", y_absl::StrJoin(bits, ","), "}");
-}
-
 }  // namespace grpc_core

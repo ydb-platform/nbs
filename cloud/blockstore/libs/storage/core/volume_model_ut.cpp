@@ -5,7 +5,7 @@
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 
-#include <contrib/ydb/core/protos/blockstore_config.pb.h>
+#include <ydb/core/protos/blockstore_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

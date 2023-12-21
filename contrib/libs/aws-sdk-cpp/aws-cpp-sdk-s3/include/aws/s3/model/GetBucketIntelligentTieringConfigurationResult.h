@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketIntelligentTieringConfigurationResult
+  class AWS_S3_API GetBucketIntelligentTieringConfigurationResult
   {
   public:
-    AWS_S3_API GetBucketIntelligentTieringConfigurationResult();
-    AWS_S3_API GetBucketIntelligentTieringConfigurationResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetBucketIntelligentTieringConfigurationResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketIntelligentTieringConfigurationResult();
+    GetBucketIntelligentTieringConfigurationResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketIntelligentTieringConfigurationResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

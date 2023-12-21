@@ -1,5 +1,7 @@
 #pragma once
 
+#include <library/cpp/containers/stack_vector/stack_vec.h>
+
 #include <util/generic/bitops.h>
 
 #include <cmath>
@@ -22,8 +24,8 @@ struct TPercentileTrackerLg : public TPercentileBase {
     static constexpr size_t MAX_GRANULARITY = size_t(1) << (BUCKET_COUNT - 1);
 
     size_t Borders[BUCKET_COUNT];
-    std::atomic<size_t> Items[ITEMS_COUNT];
-    size_t Frame[FRAME_COUNT][ITEMS_COUNT];
+    TAtomic Items[ITEMS_COUNT];
+    TAtomicBase Frame[FRAME_COUNT][ITEMS_COUNT];
     size_t CurrentFrame;
 
     TPercentileTrackerLg()
@@ -34,7 +36,7 @@ struct TPercentileTrackerLg : public TPercentileBase {
             Borders[i] = Borders[i-1] + (BUCKET_SIZE << (i - 1));
         }
         for (size_t i = 0; i < ITEMS_COUNT; ++i) {
-            Items[i].store(0);
+            AtomicSet(Items[i], 0);
         }
         for (size_t frame = 0; frame < FRAME_COUNT; ++frame) {
             for (size_t bucket = 0; bucket < ITEMS_COUNT; ++bucket) {
@@ -133,18 +135,18 @@ struct TPercentileTrackerLg : public TPercentileBase {
         size_t bucket_idx = BucketIdxMostSignificantBit(value);
         size_t inside_bucket_idx = (value - Borders[bucket_idx] + (1 << bucket_idx) - 1) >> bucket_idx;
         size_t idx = bucket_idx * BUCKET_SIZE + inside_bucket_idx;
-        Items[Min(idx, ITEMS_COUNT - 1)].fetch_add(1, std::memory_order_relaxed);
+        AtomicIncrement(Items[Min(idx, ITEMS_COUNT - 1)]);
     }
 
     // Needed only for tests
     size_t GetPercentile(float threshold) {
-        std::array<size_t, ITEMS_COUNT> totals;
-        size_t total = 0;
+        TStackVec<TAtomicBase, ITEMS_COUNT> totals(ITEMS_COUNT);
+        TAtomicBase total = 0;
         for (size_t i = 0; i < ITEMS_COUNT; ++i) {
-            total += Items[i].load();
+            total += AtomicGet(Items[i]);
             totals[i] = total;
         }
-        size_t item_threshold = std::llround(threshold * (float)total);
+        TAtomicBase item_threshold = std::llround(threshold * (float)total);
         item_threshold = Min(item_threshold, total);
         auto it = LowerBound(totals.begin(), totals.end(), item_threshold);
         size_t index = it - totals.begin();
@@ -154,11 +156,11 @@ struct TPercentileTrackerLg : public TPercentileBase {
 
     // shift frame (call periodically)
     void Update() {
-        std::array<size_t, ITEMS_COUNT> totals;
-        size_t total = 0;
+        TStackVec<TAtomicBase, ITEMS_COUNT> totals(ITEMS_COUNT);
+        TAtomicBase total = 0;
         for (size_t i = 0; i < ITEMS_COUNT; ++i) {
-            size_t item = Items[i].load(std::memory_order_relaxed);
-            size_t prevItem = Frame[CurrentFrame][i];
+            TAtomicBase item = AtomicGet(Items[i]);
+            TAtomicBase prevItem = Frame[CurrentFrame][i];
             Frame[CurrentFrame][i] = item;
             total += item - prevItem;
             totals[i] = total;
@@ -166,7 +168,7 @@ struct TPercentileTrackerLg : public TPercentileBase {
 
         for (size_t i = 0; i < Percentiles.size(); ++i) {
             TPercentile &percentile = Percentiles[i];
-            size_t threshold = std::llround(percentile.first * (float)total);
+            TAtomicBase threshold = std::llround(percentile.first * (float)total);
             threshold = Min(threshold, total);
             auto it = LowerBound(totals.begin(), totals.end(), threshold);
             size_t index = it - totals.begin();

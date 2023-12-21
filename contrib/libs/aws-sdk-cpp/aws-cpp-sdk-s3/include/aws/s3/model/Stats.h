@@ -25,14 +25,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Stats">AWS API
    * Reference</a></p>
    */
-  class Stats
+  class AWS_S3_API Stats
   {
   public:
-    AWS_S3_API Stats();
-    AWS_S3_API Stats(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Stats& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Stats();
+    Stats(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Stats& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -100,13 +100,13 @@ namespace Model
   private:
 
     long long m_bytesScanned;
-    bool m_bytesScannedHasBeenSet = false;
+    bool m_bytesScannedHasBeenSet;
 
     long long m_bytesProcessed;
-    bool m_bytesProcessedHasBeenSet = false;
+    bool m_bytesProcessedHasBeenSet;
 
     long long m_bytesReturned;
-    bool m_bytesReturnedHasBeenSet = false;
+    bool m_bytesReturnedHasBeenSet;
   };
 
 } // namespace Model

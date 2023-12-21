@@ -11,6 +11,7 @@
 #include "xds/service/orca/v3/orca.upb.h"
 #include "xds/data/orca/v3/orca_load_report.upb.h"
 #include "google/protobuf/duration.upb.h"
+#include "validate/validate.upb.h"
 
 #include "upb/port_def.inc"
 

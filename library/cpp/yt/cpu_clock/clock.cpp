@@ -4,8 +4,6 @@
 
 #include <library/cpp/yt/assert/assert.h>
 
-#include <library/cpp/yt/misc/tls.h>
-
 namespace NYT {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,16 +31,14 @@ double GetTicksToMicroseconds()
 
 TCalibrationState GetCalibrationState(TCpuInstant cpuInstant)
 {
-    YT_THREAD_LOCAL(TCalibrationState) State;
+    thread_local TCalibrationState State;
 
-    auto& state = GetTlsRef(State);
-
-    if (state.CpuInstant + CalibrationCpuPeriod < cpuInstant) {
-        state.CpuInstant = cpuInstant;
-        state.Instant = TInstant::Now();
+    if (State.CpuInstant + CalibrationCpuPeriod < cpuInstant) {
+        State.CpuInstant = cpuInstant;
+        State.Instant = TInstant::Now();
     }
 
-    return state;
+    return State;
 }
 
 TCalibrationState GetCalibrationState()

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/core/tablet/tablet_metrics.h>
+#include <ydb/core/tablet/tablet_metrics.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>

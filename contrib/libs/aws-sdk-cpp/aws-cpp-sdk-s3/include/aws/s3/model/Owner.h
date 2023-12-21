@@ -27,14 +27,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Owner">AWS API
    * Reference</a></p>
    */
-  class Owner
+  class AWS_S3_API Owner
   {
   public:
-    AWS_S3_API Owner();
-    AWS_S3_API Owner(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Owner& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Owner();
+    Owner(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Owner& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -121,10 +121,10 @@ namespace Model
   private:
 
     Aws::String m_displayName;
-    bool m_displayNameHasBeenSet = false;
+    bool m_displayNameHasBeenSet;
 
     Aws::String m_iD;
-    bool m_iDHasBeenSet = false;
+    bool m_iDHasBeenSet;
   };
 
 } // namespace Model

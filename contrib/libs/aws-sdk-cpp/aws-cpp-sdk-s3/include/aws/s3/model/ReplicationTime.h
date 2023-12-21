@@ -31,14 +31,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ReplicationTime">AWS
    * API Reference</a></p>
    */
-  class ReplicationTime
+  class AWS_S3_API ReplicationTime
   {
   public:
-    AWS_S3_API ReplicationTime();
-    AWS_S3_API ReplicationTime(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ReplicationTime& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationTime();
+    ReplicationTime(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationTime& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -111,10 +111,10 @@ namespace Model
   private:
 
     ReplicationTimeStatus m_status;
-    bool m_statusHasBeenSet = false;
+    bool m_statusHasBeenSet;
 
     ReplicationTimeValue m_time;
-    bool m_timeHasBeenSet = false;
+    bool m_timeHasBeenSet;
   };
 
 } // namespace Model

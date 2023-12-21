@@ -44,6 +44,8 @@ NO_PLATFORM()
 
 NO_COMPILER_WARNINGS()
 
+NO_SANITIZE_HEADERS()
+
 IF (GCC OR CLANG)
     # Clang (maybe GCC too) LTO code generator leaves the builtin calls unresolved
     # even if they are available. After the code generation pass is done
@@ -52,7 +54,7 @@ IF (GCC OR CLANG)
     # object files actually are not ELFs but an LLVM bytecode and we get
     # "member at xxxxx is not an ELF object" errors from the linker.
     # Just generate native code from the beginning.
-    NO_LTO()
+    DISABLE(USE_LTO)
 ENDIF()
 
 SRCS(

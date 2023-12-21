@@ -1,20 +1,20 @@
-//
-//
-// Copyright 2016 gRPC authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-//
+/*
+ *
+ * Copyright 2016 gRPC authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 #include <grpc/support/port_platform.h>
 
 #include "src/core/lib/iomgr/error.h"
@@ -22,14 +22,10 @@
 #include <inttypes.h>
 #include <string.h>
 
-#include "y_absl/strings/str_format.h"
-
-#include <grpc/status.h>
+#include <grpc/impl/codegen/status.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/string_util.h>
-
-#include "src/core/lib/gprpp/crash.h"
 
 #ifdef GPR_WINDOWS
 #include <grpc/support/log_windows.h>
@@ -37,12 +33,21 @@
 
 #include "src/core/lib/debug/trace.h"
 #include "src/core/lib/gpr/useful.h"
-#include "src/core/lib/gprpp/strerror.h"
 #include "src/core/lib/slice/slice_internal.h"
 
 grpc_core::DebugOnlyTraceFlag grpc_trace_error_refcount(false,
                                                         "error_refcount");
 grpc_core::DebugOnlyTraceFlag grpc_trace_closure(false, "closure");
+
+static gpr_atm g_error_creation_allowed = true;
+
+void grpc_disable_error_creation() {
+  gpr_atm_no_barrier_store(&g_error_creation_allowed, false);
+}
+
+void grpc_enable_error_creation() {
+  gpr_atm_no_barrier_store(&g_error_creation_allowed, true);
+}
 
 y_absl::Status grpc_status_create(y_absl::StatusCode code, y_absl::string_view msg,
                                 const grpc_core::DebugLocation& location,
@@ -56,23 +61,25 @@ y_absl::Status grpc_status_create(y_absl::StatusCode code, y_absl::string_view m
   return s;
 }
 
+TString grpc_error_std_string(y_absl::Status error) {
+  return grpc_core::StatusToString(error);
+}
+
 y_absl::Status grpc_os_error(const grpc_core::DebugLocation& location, int err,
                            const char* call_name) {
-  auto err_string = grpc_core::StrError(err);
   y_absl::Status s =
-      StatusCreate(y_absl::StatusCode::kUnknown, err_string, location, {});
+      StatusCreate(y_absl::StatusCode::kUnknown, strerror(err), location, {});
   grpc_core::StatusSetInt(&s, grpc_core::StatusIntProperty::kErrorNo, err);
   grpc_core::StatusSetStr(&s, grpc_core::StatusStrProperty::kOsError,
-                          err_string);
+                          strerror(err));
   grpc_core::StatusSetStr(&s, grpc_core::StatusStrProperty::kSyscall,
                           call_name);
   return s;
 }
 
 #ifdef GPR_WINDOWS
-// TODO(veblush): lift out of iomgr for use in the WindowsEventEngine
 y_absl::Status grpc_wsa_error(const grpc_core::DebugLocation& location, int err,
-                            y_absl::string_view call_name) {
+                            const char* call_name) {
   char* utf8_message = gpr_format_message(err);
   y_absl::Status s =
       StatusCreate(y_absl::StatusCode::kUnavailable, "WSA Error", location, {});
@@ -81,32 +88,32 @@ y_absl::Status grpc_wsa_error(const grpc_core::DebugLocation& location, int err,
                GRPC_STATUS_UNAVAILABLE);
   StatusSetStr(&s, grpc_core::StatusStrProperty::kOsError, utf8_message);
   StatusSetStr(&s, grpc_core::StatusStrProperty::kSyscall, call_name);
-  gpr_free(utf8_message);
   return s;
 }
 #endif
 
 grpc_error_handle grpc_error_set_int(grpc_error_handle src,
-                                     grpc_core::StatusIntProperty which,
-                                     intptr_t value) {
-  if (src.ok()) {
+                                     grpc_error_ints which, intptr_t value) {
+  if (GRPC_ERROR_IS_NONE(src)) {
     src = y_absl::UnknownError("");
     StatusSetInt(&src, grpc_core::StatusIntProperty::kRpcStatus,
                  GRPC_STATUS_OK);
   }
-  grpc_core::StatusSetInt(&src, which, value);
+  grpc_core::StatusSetInt(
+      &src, static_cast<grpc_core::StatusIntProperty>(which), value);
   return src;
 }
 
-bool grpc_error_get_int(grpc_error_handle error,
-                        grpc_core::StatusIntProperty which, intptr_t* p) {
-  y_absl::optional<intptr_t> value = grpc_core::StatusGetInt(error, which);
+bool grpc_error_get_int(grpc_error_handle error, grpc_error_ints which,
+                        intptr_t* p) {
+  y_absl::optional<intptr_t> value = grpc_core::StatusGetInt(
+      error, static_cast<grpc_core::StatusIntProperty>(which));
   if (value.has_value()) {
     *p = *value;
     return true;
   } else {
     // TODO(veblush): Remove this once y_absl::Status migration is done
-    if (which == grpc_core::StatusIntProperty::kRpcStatus) {
+    if (which == GRPC_ERROR_INT_GRPC_STATUS) {
       switch (error.code()) {
         case y_absl::StatusCode::kOk:
           *p = GRPC_STATUS_OK;
@@ -126,14 +133,14 @@ bool grpc_error_get_int(grpc_error_handle error,
 }
 
 grpc_error_handle grpc_error_set_str(grpc_error_handle src,
-                                     grpc_core::StatusStrProperty which,
+                                     grpc_error_strs which,
                                      y_absl::string_view str) {
-  if (src.ok()) {
+  if (GRPC_ERROR_IS_NONE(src)) {
     src = y_absl::UnknownError("");
     StatusSetInt(&src, grpc_core::StatusIntProperty::kRpcStatus,
                  GRPC_STATUS_OK);
   }
-  if (which == grpc_core::StatusStrProperty::kDescription) {
+  if (which == GRPC_ERROR_STR_DESCRIPTION) {
     // To change the message of y_absl::Status, a new instance should be created
     // with a code and payload because it doesn't have a setter for it.
     y_absl::Status s = y_absl::Status(src.code(), str);
@@ -143,16 +150,17 @@ grpc_error_handle grpc_error_set_str(grpc_error_handle src,
         });
     return s;
   } else {
-    grpc_core::StatusSetStr(&src, which, str);
+    grpc_core::StatusSetStr(
+        &src, static_cast<grpc_core::StatusStrProperty>(which), str);
   }
   return src;
 }
 
-bool grpc_error_get_str(grpc_error_handle error,
-                        grpc_core::StatusStrProperty which, TString* s) {
-  if (which == grpc_core::StatusStrProperty::kDescription) {
-    // y_absl::Status uses the message field for
-    // grpc_core::StatusStrProperty::kDescription instead of using payload.
+bool grpc_error_get_str(grpc_error_handle error, grpc_error_strs which,
+                        TString* s) {
+  if (which == GRPC_ERROR_STR_DESCRIPTION) {
+    // y_absl::Status uses the message field for GRPC_ERROR_STR_DESCRIPTION
+    // instead of using payload.
     y_absl::string_view msg = error.message();
     if (msg.empty()) {
       return false;
@@ -161,16 +169,20 @@ bool grpc_error_get_str(grpc_error_handle error,
       return true;
     }
   } else {
-    y_absl::optional<TString> value = grpc_core::StatusGetStr(error, which);
+    y_absl::optional<TString> value = grpc_core::StatusGetStr(
+        error, static_cast<grpc_core::StatusStrProperty>(which));
     if (value.has_value()) {
       *s = std::move(*value);
       return true;
     } else {
       // TODO(veblush): Remove this once y_absl::Status migration is done
-      if (which == grpc_core::StatusStrProperty::kGrpcMessage) {
+      if (which == GRPC_ERROR_STR_GRPC_MESSAGE) {
         switch (error.code()) {
           case y_absl::StatusCode::kOk:
             *s = "";
+            return true;
+          case y_absl::StatusCode::kResourceExhausted:
+            *s = "RESOURCE_EXHAUSTED";
             return true;
           case y_absl::StatusCode::kCancelled:
             *s = "CANCELLED";
@@ -198,7 +210,7 @@ grpc_error_handle grpc_error_add_child(grpc_error_handle src,
 
 bool grpc_log_error(const char* what, grpc_error_handle error, const char* file,
                     int line) {
-  GPR_DEBUG_ASSERT(!error.ok());
+  GPR_DEBUG_ASSERT(!GRPC_ERROR_IS_NONE(error));
   gpr_log(file, line, GPR_LOG_SEVERITY_ERROR, "%s: %s", what,
           grpc_core::StatusToString(error).c_str());
   return false;

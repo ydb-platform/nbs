@@ -175,17 +175,19 @@ typedef enum UDateAbsoluteUnit {
      */
     UDAT_ABSOLUTE_QUARTER,
 
+#ifndef U_HIDE_DRAFT_API
     /**
      * Hour
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UDAT_ABSOLUTE_HOUR,
 
     /**
      * Minute
-     * @stable ICU 65
+     * @draft ICU 65
      */
     UDAT_ABSOLUTE_MINUTE,
+#endif // U_HIDE_DRAFT_API
 
 #ifndef U_HIDE_DEPRECATED_API
     /**
@@ -283,13 +285,13 @@ class U_I18N_API FormattedRelativeDateTime : public UMemory, public FormattedVal
      * Move constructor: Leaves the source FormattedRelativeDateTime in an undefined state.
      * @stable ICU 64
      */
-    FormattedRelativeDateTime(FormattedRelativeDateTime&& src) noexcept;
+    FormattedRelativeDateTime(FormattedRelativeDateTime&& src) U_NOEXCEPT;
 
     /**
      * Destruct an instance of FormattedRelativeDateTime.
      * @stable ICU 64
      */
-    virtual ~FormattedRelativeDateTime() override;
+    virtual ~FormattedRelativeDateTime() U_OVERRIDE;
 
     /** Copying not supported; use move constructor instead. */
     FormattedRelativeDateTime(const FormattedRelativeDateTime&) = delete;
@@ -301,19 +303,19 @@ class U_I18N_API FormattedRelativeDateTime : public UMemory, public FormattedVal
      * Move assignment: Leaves the source FormattedRelativeDateTime in an undefined state.
      * @stable ICU 64
      */
-    FormattedRelativeDateTime& operator=(FormattedRelativeDateTime&& src) noexcept;
+    FormattedRelativeDateTime& operator=(FormattedRelativeDateTime&& src) U_NOEXCEPT;
 
     /** @copydoc FormattedValue::toString() */
-    UnicodeString toString(UErrorCode& status) const override;
+    UnicodeString toString(UErrorCode& status) const U_OVERRIDE;
 
     /** @copydoc FormattedValue::toTempString() */
-    UnicodeString toTempString(UErrorCode& status) const override;
+    UnicodeString toTempString(UErrorCode& status) const U_OVERRIDE;
 
     /** @copydoc FormattedValue::appendTo() */
-    Appendable &appendTo(Appendable& appendable, UErrorCode& status) const override;
+    Appendable &appendTo(Appendable& appendable, UErrorCode& status) const U_OVERRIDE;
 
     /** @copydoc FormattedValue::nextPosition() */
-    UBool nextPosition(ConstrainedFieldPosition& cfpos, UErrorCode& status) const override;
+    UBool nextPosition(ConstrainedFieldPosition& cfpos, UErrorCode& status) const U_OVERRIDE;
 
   private:
     FormattedRelativeDateTimeData *fData;
@@ -428,7 +430,7 @@ public:
      * @param locale the locale
      * @param nfToAdopt Constructed object takes ownership of this pointer.
      *   It is an error for caller to delete this pointer or change its
-     *   contents after calling this constructor. Caller may pass nullptr for
+     *   contents after calling this constructor. Caller may pass NULL for
      *   this argument if they want default number format behavior.
      * @param style the format style. The UDAT_RELATIVE bit field has no effect.
      * @param capitalizationContext A value from UDisplayContext that pertains to

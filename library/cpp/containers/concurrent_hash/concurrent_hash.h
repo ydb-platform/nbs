@@ -5,13 +5,6 @@
 
 #include <array>
 
-namespace NPrivate {
-    template <typename T, typename THash>
-    concept CHashableBy = requires (const THash& hash, const T& t) {
-        hash(t);
-    };
-}
-
 template <typename K, typename V, size_t BucketCount = 64, typename L = TAdaptiveLock>
 class TConcurrentHashMap {
 public:
@@ -39,19 +32,19 @@ public:
 
         const V& GetUnsafe(const K& key) const {
             typename TActualMap::const_iterator it = Map.find(key);
-            Y_ABORT_UNLESS(it != Map.end(), "not found by key");
+            Y_VERIFY(it != Map.end(), "not found by key");
             return it->second;
         }
 
         V& GetUnsafe(const K& key) {
             typename TActualMap::iterator it = Map.find(key);
-            Y_ABORT_UNLESS(it != Map.end(), "not found by key");
+            Y_VERIFY(it != Map.end(), "not found by key");
             return it->second;
         }
 
         V RemoveUnsafe(const K& key) {
             typename TActualMap::iterator it = Map.find(key);
-            Y_ABORT_UNLESS(it != Map.end(), "removing non-existent key");
+            Y_VERIFY(it != Map.end(), "removing non-existent key");
             V r = std::move(it->second);
             Map.erase(it);
             return r;
@@ -61,28 +54,16 @@ public:
             typename TActualMap::const_iterator it = Map.find(key);
             return (it != Map.end());
         }
-
-        const V* TryGetUnsafe(const K& key) const {
-            typename TActualMap::const_iterator it = Map.find(key);
-            return it == Map.end() ? nullptr : &it->second;
-        }
-
-        V* TryGetUnsafe(const K& key) {
-            typename TActualMap::iterator it = Map.find(key);
-            return it == Map.end() ? nullptr : &it->second;
-        }
     };
 
     std::array<TBucket, BucketCount> Buckets;
 
 public:
-    template <NPrivate::CHashableBy<THash<K>> TKey>
-    TBucket& GetBucketForKey(const TKey& key) {
+    TBucket& GetBucketForKey(const K& key) {
         return Buckets[THash<K>()(key) % BucketCount];
     }
 
-    template <NPrivate::CHashableBy<THash<K>> TKey>
-    const TBucket& GetBucketForKey(const TKey& key) const {
+    const TBucket& GetBucketForKey(const K& key) const {
         return Buckets[THash<K>()(key) % BucketCount];
     }
 
@@ -96,7 +77,7 @@ public:
         TBucket& bucket = GetBucketForKey(key);
         TGuard<TLock> guard(bucket.Mutex);
         if (!bucket.Map.insert(std::make_pair(key, value)).second) {
-            Y_ABORT("non-unique key");
+            Y_FAIL("non-unique key");
         }
     }
 
@@ -106,26 +87,12 @@ public:
         return bucket.Map.insert(std::make_pair(key, value)).first->second;
     }
 
-    template <typename TKey, typename... Args>
-    V& EmplaceIfAbsent(TKey&& key, Args&&... args) {
-        TBucket& bucket = GetBucketForKey(key);
-        TGuard<TLock> guard(bucket.Mutex);
-        if (V* value = bucket.TryGetUnsafe(key)) {
-            return *value;
-        }
-        return bucket.Map.emplace(
-            std::piecewise_construct,
-            std::forward_as_tuple(std::forward<TKey>(key)),
-            std::forward_as_tuple(std::forward<Args>(args)...)
-        ).first->second;
-    }
-
     template <typename Callable>
     V& InsertIfAbsentWithInit(const K& key, Callable initFunc) {
         TBucket& bucket = GetBucketForKey(key);
         TGuard<TLock> guard(bucket.Mutex);
-        if (V* value = bucket.TryGetUnsafe(key)) {
-            return *value;
+        if (bucket.HasUnsafe(key)) {
+            return bucket.GetUnsafe(key);
         }
 
         return bucket.Map.insert(std::make_pair(key, initFunc())).first->second;
@@ -140,8 +107,8 @@ public:
     bool Get(const K& key, V& result) const {
         const TBucket& bucket = GetBucketForKey(key);
         TGuard<TLock> guard(bucket.Mutex);
-        if (const V* value = bucket.TryGetUnsafe(key)) {
-            result = *value;
+        if (bucket.HasUnsafe(key)) {
+            result = bucket.GetUnsafe(key);
             return true;
         }
         return false;

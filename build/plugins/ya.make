@@ -1,49 +1,24 @@
 OWNER(g:ymake)
 
-PY23_LIBRARY()
-
-STYLE_PYTHON()
+PY2_LIBRARY()
 
 PY_SRCS(
-    TOP_LEVEL
+    code_generator.py
+    ssqls.py
+    maps_mobile_idl.py
+
     _common.py
     _requirements.py
-    _xsyn_includes.py
-    bundle.py
-    coverage.py
-    cp.py
-    cpp_style.py
-    create_init_py.py
-    credits.py
-    docs.py
-    files.py
-    gobuild.py
-    ios_app_settings.py
-    ios_assets.py
-    java.py
-    large_files.py
-    linker_script.py
-    lj_archive.py
-    llvm_bc.py
-    macros_with_error.py
-    pybuild.py
-    res.py
-    suppressions.py
-    yql_python_udf.py
-    ytest.py
 )
 
 PEERDIR(
-    build/plugins/lib/proxy
-    build/plugins/lib/test_const/proxy
+    build/plugins/lib
+    build/plugins/lib/test_const
 )
 
 END()
 
 RECURSE(
     tests
-    lib
-    lib/proxy
     lib/test_const
-    lib/test_const/proxy
 )

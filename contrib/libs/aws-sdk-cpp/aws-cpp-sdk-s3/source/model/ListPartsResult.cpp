@@ -22,8 +22,7 @@ ListPartsResult::ListPartsResult() :
     m_maxParts(0),
     m_isTruncated(false),
     m_storageClass(StorageClass::NOT_SET),
-    m_requestCharged(RequestCharged::NOT_SET),
-    m_checksumAlgorithm(ChecksumAlgorithm::NOT_SET)
+    m_requestCharged(RequestCharged::NOT_SET)
 {
 }
 
@@ -33,8 +32,7 @@ ListPartsResult::ListPartsResult(const Aws::AmazonWebServiceResult<XmlDocument>&
     m_maxParts(0),
     m_isTruncated(false),
     m_storageClass(StorageClass::NOT_SET),
-    m_requestCharged(RequestCharged::NOT_SET),
-    m_checksumAlgorithm(ChecksumAlgorithm::NOT_SET)
+    m_requestCharged(RequestCharged::NOT_SET)
 {
   *this = result;
 }
@@ -107,18 +105,13 @@ ListPartsResult& ListPartsResult::operator =(const Aws::AmazonWebServiceResult<X
     {
       m_storageClass = StorageClassMapper::GetStorageClassForName(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(storageClassNode.GetText()).c_str()).c_str());
     }
-    XmlNode checksumAlgorithmNode = resultNode.FirstChild("ChecksumAlgorithm");
-    if(!checksumAlgorithmNode.IsNull())
-    {
-      m_checksumAlgorithm = ChecksumAlgorithmMapper::GetChecksumAlgorithmForName(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(checksumAlgorithmNode.GetText()).c_str()).c_str());
-    }
   }
 
   const auto& headers = result.GetHeaderValueCollection();
   const auto& abortDateIter = headers.find("x-amz-abort-date");
   if(abortDateIter != headers.end())
   {
-    m_abortDate = DateTime(abortDateIter->second, Aws::Utils::DateFormat::RFC822);
+    m_abortDate = DateTime(abortDateIter->second, DateFormat::RFC822);
   }
 
   const auto& abortRuleIdIter = headers.find("x-amz-abort-rule-id");

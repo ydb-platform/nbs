@@ -23,10 +23,14 @@ SRCS(
     ib_memstream.cpp
 )
 
-IF (OS_LINUX)
+IF (OS_LINUX AND NOT CATBOOST_OPENSOURCE)
     PEERDIR(
         contrib/libs/ibdrv
     )
+ENDIF()
+
+IF (CATBOOST_OPENSOURCE)
+    CFLAGS(-DCATBOOST_OPENSOURCE=yes)
 ENDIF()
 
 PEERDIR(

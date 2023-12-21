@@ -7,7 +7,7 @@ import "cloud/storage/core/protos/throttler.proto";
 import "cloud/storage/core/protos/trace.proto";
 import "library/cpp/lwtrace/protos/lwtrace.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+option go_package = "a.yandex-team.ru/cloud/filestore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Common message headers.

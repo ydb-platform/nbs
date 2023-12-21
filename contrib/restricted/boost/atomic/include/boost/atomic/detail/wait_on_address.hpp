@@ -15,6 +15,7 @@
 #define BOOST_ATOMIC_DETAIL_WAIT_ON_ADDRESS_HPP_INCLUDED_
 
 #include <boost/atomic/detail/config.hpp>
+#include <boost/static_assert.hpp>
 #include <boost/memory_order.hpp>
 #include <boost/winapi/basic_types.hpp>
 #include <boost/atomic/detail/link.hpp>
@@ -48,7 +49,7 @@ BOOST_ATOMIC_DECL void initialize_wait_functions() BOOST_NOEXCEPT;
 
 BOOST_FORCEINLINE void ensure_wait_functions_initialized() BOOST_NOEXCEPT
 {
-    static_assert(once_flag_operations::is_always_lock_free, "Boost.Atomic unsupported target platform: native atomic operations not implemented for bytes");
+    BOOST_STATIC_ASSERT_MSG(once_flag_operations::is_always_lock_free, "Boost.Atomic unsupported target platform: native atomic operations not implemented for bytes");
     if (BOOST_LIKELY(once_flag_operations::load(wait_functions_once_flag.m_flag, boost::memory_order_acquire) == 0u))
         return;
 

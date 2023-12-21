@@ -32,19 +32,19 @@ namespace Model
    * <p>Specifies the inventory configuration for an Amazon S3 bucket. For more
    * information, see <a
    * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketGETInventoryConfig.html">GET
-   * Bucket inventory</a> in the <i>Amazon S3 API Reference</i>. </p><p><h3>See
-   * Also:</h3>   <a
+   * Bucket inventory</a> in the <i>Amazon Simple Storage Service API Reference</i>.
+   * </p><p><h3>See Also:</h3>   <a
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/InventoryConfiguration">AWS
    * API Reference</a></p>
    */
-  class InventoryConfiguration
+  class AWS_S3_API InventoryConfiguration
   {
   public:
-    AWS_S3_API InventoryConfiguration();
-    AWS_S3_API InventoryConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API InventoryConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InventoryConfiguration();
+    InventoryConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InventoryConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -314,25 +314,25 @@ namespace Model
   private:
 
     InventoryDestination m_destination;
-    bool m_destinationHasBeenSet = false;
+    bool m_destinationHasBeenSet;
 
     bool m_isEnabled;
-    bool m_isEnabledHasBeenSet = false;
+    bool m_isEnabledHasBeenSet;
 
     InventoryFilter m_filter;
-    bool m_filterHasBeenSet = false;
+    bool m_filterHasBeenSet;
 
     Aws::String m_id;
-    bool m_idHasBeenSet = false;
+    bool m_idHasBeenSet;
 
     InventoryIncludedObjectVersions m_includedObjectVersions;
-    bool m_includedObjectVersionsHasBeenSet = false;
+    bool m_includedObjectVersionsHasBeenSet;
 
     Aws::Vector<InventoryOptionalField> m_optionalFields;
-    bool m_optionalFieldsHasBeenSet = false;
+    bool m_optionalFieldsHasBeenSet;
 
     InventorySchedule m_schedule;
-    bool m_scheduleHasBeenSet = false;
+    bool m_scheduleHasBeenSet;
   };
 
 } // namespace Model

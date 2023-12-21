@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 
-from contrib.ydb.tests.library.common.yatest_common import PortManager
+from ydb.tests.library.common.yatest_common import PortManager
 
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig
@@ -20,12 +20,12 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_file_devices, setup_disk_registry_config_simple, enable_writable_state
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
-from contrib.ydb.core.protos import console_config_pb2 as console
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 import yatest.common as yatest_common
 
@@ -244,7 +244,7 @@ class TestNotifyDiskBackOnline(TestNotifyService):
 def __run_test(test_case):
     logging.info(f"Start: {test_case.name}")
 
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,

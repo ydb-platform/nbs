@@ -83,15 +83,15 @@ struct TMatrix : public TVector<double> {
 
     double& Cell(size_t row, size_t col)
     {
-        Y_ABORT_UNLESS(row < Rows);
-        Y_ABORT_UNLESS(col < Cols);
+        Y_VERIFY(row < Rows);
+        Y_VERIFY(col < Cols);
         return operator[](row * Cols + col);
     }
 
     double Cell(size_t row, size_t col) const
     {
-        Y_ABORT_UNLESS(row < Rows);
-        Y_ABORT_UNLESS(col < Cols);
+        Y_VERIFY(row < Rows);
+        Y_VERIFY(col < Cols);
         return operator[](row * Cols + col);
     }
 

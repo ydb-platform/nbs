@@ -22,7 +22,7 @@
 #  pragma GCC system_header
 #endif
 
-#if _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#ifndef _LIBCPP_HAS_NO_CONCEPTS
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
@@ -64,6 +64,6 @@ inline namespace __cpo {
 
 _LIBCPP_END_NAMESPACE_STD
 
-#endif // _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#endif // _LIBCPP_HAS_NO_RANGES
 
 #endif // _LIBCPP___ALGORITHM_RANGES_SWAP_RANGES_H

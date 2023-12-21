@@ -40,6 +40,13 @@ std::atomic<int> *PerThreadSem::GetThreadBlockedCounter() {
   return identity->blocked_count_ptr;
 }
 
+void PerThreadSem::Init(base_internal::ThreadIdentity *identity) {
+  new (Waiter::GetWaiter(identity)) Waiter();
+  identity->ticker.store(0, std::memory_order_relaxed);
+  identity->wait_start.store(0, std::memory_order_relaxed);
+  identity->is_idle.store(false, std::memory_order_relaxed);
+}
+
 void PerThreadSem::Tick(base_internal::ThreadIdentity *identity) {
   const int ticker =
       identity->ticker.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -47,7 +54,7 @@ void PerThreadSem::Tick(base_internal::ThreadIdentity *identity) {
   const bool is_idle = identity->is_idle.load(std::memory_order_relaxed);
   if (wait_start && (ticker - wait_start > Waiter::kIdlePeriods) && !is_idle) {
     // Wakeup the waiting thread since it is time for it to become idle.
-    Y_ABSL_INTERNAL_C_SYMBOL(AbslInternalPerThreadSemPoke)(identity);
+    Waiter::GetWaiter(identity)->Poke();
   }
 }
 
@@ -57,20 +64,9 @@ Y_ABSL_NAMESPACE_END
 
 extern "C" {
 
-Y_ABSL_ATTRIBUTE_WEAK void Y_ABSL_INTERNAL_C_SYMBOL(AbslInternalPerThreadSemInit)(
-    y_absl::base_internal::ThreadIdentity *identity) {
-  new (y_absl::synchronization_internal::Waiter::GetWaiter(identity))
-      y_absl::synchronization_internal::Waiter();
-}
-
 Y_ABSL_ATTRIBUTE_WEAK void Y_ABSL_INTERNAL_C_SYMBOL(AbslInternalPerThreadSemPost)(
     y_absl::base_internal::ThreadIdentity *identity) {
   y_absl::synchronization_internal::Waiter::GetWaiter(identity)->Post();
-}
-
-Y_ABSL_ATTRIBUTE_WEAK void Y_ABSL_INTERNAL_C_SYMBOL(AbslInternalPerThreadSemPoke)(
-    y_absl::base_internal::ThreadIdentity *identity) {
-  y_absl::synchronization_internal::Waiter::GetWaiter(identity)->Poke();
 }
 
 Y_ABSL_ATTRIBUTE_WEAK bool Y_ABSL_INTERNAL_C_SYMBOL(AbslInternalPerThreadSemWait)(

@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(filestore-apps-client-lib)
 
 SRCS(
     add_cluster_node.cpp
@@ -36,7 +36,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    contrib/ydb/library/actors/util
+    library/cpp/actors/util
     library/cpp/getopt
     library/cpp/logger
     library/cpp/protobuf/json

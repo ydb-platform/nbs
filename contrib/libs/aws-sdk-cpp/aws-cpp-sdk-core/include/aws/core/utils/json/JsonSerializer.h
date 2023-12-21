@@ -19,9 +19,6 @@ namespace Aws
 {
     namespace Utils
     {
-        class Document;
-        class DocumentView;
-
         namespace Json
         {
             class JsonView;
@@ -59,11 +56,6 @@ namespace Aws
                  */
                 JsonValue(JsonValue&& value);
 
-                /**
-                 * Performs a deep copy of the Document parameter.
-                 */
-                JsonValue(const Aws::Utils::DocumentView& value);
-
                 ~JsonValue();
 
                 /**
@@ -79,11 +71,6 @@ namespace Aws
                  * to the moved-from DOM would still valid.
                  */
                 JsonValue& operator=(JsonValue&& other);
-
-                /**
-                 * Performs a deep copy of the Document parameter.
-                 */
-                JsonValue& operator=(const Aws::Utils::DocumentView& value);
 
                 bool operator==(const JsonValue& other) const;
                 bool operator!=(const JsonValue& other) const;
@@ -386,7 +373,6 @@ namespace Aws
                 JsonView(cJSON* val);
                 JsonView& operator=(cJSON* val);
                 cJSON* m_value;
-                friend class Aws::Utils::Document;
             };
 
         } // namespace Json

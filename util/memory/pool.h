@@ -244,10 +244,6 @@ public:
         DoClear(true);
     }
 
-    inline size_t ClearReturnUsedChunkCount(bool keepFirstChunk) noexcept {
-        return DoClear(keepFirstChunk);
-    }
-
     inline size_t MemoryAllocated() const noexcept {
         return MemoryAllocatedBeforeCurrent_ + (Current_ != &Empty_ ? Current_->Used() : 0);
     }
@@ -295,7 +291,7 @@ protected:
 
 private:
     void AddChunk(size_t hint);
-    size_t DoClear(bool keepfirst) noexcept;
+    void DoClear(bool keepfirst) noexcept;
 
 private:
     TChunk Empty_;

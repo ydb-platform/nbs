@@ -2,8 +2,6 @@
 
 #include <util/string/ascii.h>
 
-#include <functional>
-
 namespace {
     void ToSnakeCaseImpl(TString* const name, std::function<bool(const char)> requiresUnderscore) {
         bool requiresChanges = false;

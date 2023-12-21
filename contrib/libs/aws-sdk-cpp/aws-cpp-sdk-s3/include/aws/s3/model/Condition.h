@@ -31,14 +31,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Condition">AWS API
    * Reference</a></p>
    */
-  class Condition
+  class AWS_S3_API Condition
   {
   public:
-    AWS_S3_API Condition();
-    AWS_S3_API Condition(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Condition& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Condition();
+    Condition(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Condition& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -245,10 +245,10 @@ namespace Model
   private:
 
     Aws::String m_httpErrorCodeReturnedEquals;
-    bool m_httpErrorCodeReturnedEqualsHasBeenSet = false;
+    bool m_httpErrorCodeReturnedEqualsHasBeenSet;
 
     Aws::String m_keyPrefixEquals;
-    bool m_keyPrefixEqualsHasBeenSet = false;
+    bool m_keyPrefixEqualsHasBeenSet;
   };
 
 } // namespace Model

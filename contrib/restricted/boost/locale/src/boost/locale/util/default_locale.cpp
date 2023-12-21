@@ -5,8 +5,7 @@
 // https://www.boost.org/LICENSE_1_0.txt
 
 #include <boost/locale/util.hpp>
-#include <boost/locale/util/string.hpp>
-#include <algorithm>
+#include <cstdlib>
 
 #if BOOST_LOCALE_USE_WIN32_API
 #    ifndef NOMINMAX
@@ -28,7 +27,7 @@ static bool get_user_default_locale_info(LCTYPE lcType, char (&buf)[N])
 namespace boost { namespace locale { namespace util {
     std::string get_system_locale(bool use_utf8_on_windows)
     {
-        const char* lang = nullptr;
+        const char* lang = 0;
         if(!lang || !*lang)
             lang = getenv("LC_ALL");
         if(!lang || !*lang)
@@ -55,7 +54,7 @@ namespace boost { namespace locale { namespace util {
         if(use_utf8_on_windows || !get_user_default_locale_info(LOCALE_IDEFAULTANSICODEPAGE, buf))
             lc_name += ".UTF-8";
         else {
-            if(std::find_if_not(buf, str_end(buf), is_numeric_ascii) != str_end(buf))
+            if(atoi(buf) == 0)
                 lc_name += ".UTF-8";
             else
                 lc_name.append(".windows-").append(buf);

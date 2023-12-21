@@ -44,31 +44,25 @@ public:
 
 public:
   //ctor & dtor
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator() noexcept {}
 
-  _LIBCPP_HIDE_FROM_ABI
   explicit directory_iterator(const path& __p)
       : directory_iterator(__p, nullptr) {}
 
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator(const path& __p, directory_options __opts)
       : directory_iterator(__p, nullptr, __opts) {}
 
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator(const path& __p, error_code& __ec)
       : directory_iterator(__p, &__ec) {}
 
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator(const path& __p, directory_options __opts,
                      error_code& __ec)
       : directory_iterator(__p, &__ec, __opts) {}
 
-  _LIBCPP_HIDE_FROM_ABI directory_iterator(const directory_iterator&) = default;
-  _LIBCPP_HIDE_FROM_ABI directory_iterator(directory_iterator&&) = default;
-  _LIBCPP_HIDE_FROM_ABI directory_iterator& operator=(const directory_iterator&) = default;
+  directory_iterator(const directory_iterator&) = default;
+  directory_iterator(directory_iterator&&) = default;
+  directory_iterator& operator=(const directory_iterator&) = default;
 
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator& operator=(directory_iterator&& __o) noexcept {
     // non-default implementation provided to support self-move assign.
     if (this != &__o) {
@@ -77,32 +71,27 @@ public:
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI ~directory_iterator() = default;
+  ~directory_iterator() = default;
 
-  _LIBCPP_HIDE_FROM_ABI
   const directory_entry& operator*() const {
     _LIBCPP_ASSERT(__imp_, "The end iterator cannot be dereferenced");
     return __dereference();
   }
 
-  _LIBCPP_HIDE_FROM_ABI
   const directory_entry* operator->() const { return &**this; }
 
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator& operator++() { return __increment(); }
 
-  _LIBCPP_HIDE_FROM_ABI
   __dir_element_proxy operator++(int) {
     __dir_element_proxy __p(**this);
     __increment();
     return __p;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
   directory_iterator& increment(error_code& __ec) { return __increment(&__ec); }
 
 private:
-  inline _LIBCPP_HIDE_FROM_ABI friend bool
+  inline _LIBCPP_INLINE_VISIBILITY friend bool
   operator==(const directory_iterator& __lhs,
              const directory_iterator& __rhs) noexcept;
 
@@ -121,25 +110,25 @@ private:
   shared_ptr<__dir_stream> __imp_;
 };
 
-inline _LIBCPP_HIDE_FROM_ABI bool
+inline _LIBCPP_INLINE_VISIBILITY bool
 operator==(const directory_iterator& __lhs,
            const directory_iterator& __rhs) noexcept {
   return __lhs.__imp_ == __rhs.__imp_;
 }
 
-inline _LIBCPP_HIDE_FROM_ABI bool
+inline _LIBCPP_INLINE_VISIBILITY bool
 operator!=(const directory_iterator& __lhs,
            const directory_iterator& __rhs) noexcept {
   return !(__lhs == __rhs);
 }
 
 // enable directory_iterator range-based for statements
-inline _LIBCPP_HIDE_FROM_ABI directory_iterator
+inline _LIBCPP_INLINE_VISIBILITY directory_iterator
 begin(directory_iterator __iter) noexcept {
   return __iter;
 }
 
-inline _LIBCPP_HIDE_FROM_ABI directory_iterator
+inline _LIBCPP_INLINE_VISIBILITY directory_iterator
 end(directory_iterator) noexcept {
   return directory_iterator();
 }
@@ -148,7 +137,7 @@ _LIBCPP_AVAILABILITY_FILESYSTEM_POP
 
 _LIBCPP_END_NAMESPACE_FILESYSTEM
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 template <>
 _LIBCPP_AVAILABILITY_FILESYSTEM
@@ -158,7 +147,7 @@ template <>
 _LIBCPP_AVAILABILITY_FILESYSTEM
 inline constexpr bool _VSTD::ranges::enable_view<_VSTD_FS::directory_iterator> = true;
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 #endif // _LIBCPP_CXX03_LANG
 

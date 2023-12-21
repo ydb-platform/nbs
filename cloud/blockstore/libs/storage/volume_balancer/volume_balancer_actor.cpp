@@ -14,10 +14,10 @@
 
 #include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/mon/mon.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/mon/mon.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>

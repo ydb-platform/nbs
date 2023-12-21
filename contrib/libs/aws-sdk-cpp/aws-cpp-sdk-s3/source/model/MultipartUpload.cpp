@@ -27,9 +27,7 @@ MultipartUpload::MultipartUpload() :
     m_storageClass(StorageClass::NOT_SET),
     m_storageClassHasBeenSet(false),
     m_ownerHasBeenSet(false),
-    m_initiatorHasBeenSet(false),
-    m_checksumAlgorithm(ChecksumAlgorithm::NOT_SET),
-    m_checksumAlgorithmHasBeenSet(false)
+    m_initiatorHasBeenSet(false)
 {
 }
 
@@ -40,9 +38,7 @@ MultipartUpload::MultipartUpload(const XmlNode& xmlNode) :
     m_storageClass(StorageClass::NOT_SET),
     m_storageClassHasBeenSet(false),
     m_ownerHasBeenSet(false),
-    m_initiatorHasBeenSet(false),
-    m_checksumAlgorithm(ChecksumAlgorithm::NOT_SET),
-    m_checksumAlgorithmHasBeenSet(false)
+    m_initiatorHasBeenSet(false)
 {
   *this = xmlNode;
 }
@@ -68,7 +64,7 @@ MultipartUpload& MultipartUpload::operator =(const XmlNode& xmlNode)
     XmlNode initiatedNode = resultNode.FirstChild("Initiated");
     if(!initiatedNode.IsNull())
     {
-      m_initiated = DateTime(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(initiatedNode.GetText()).c_str()).c_str(), Aws::Utils::DateFormat::ISO_8601);
+      m_initiated = DateTime(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(initiatedNode.GetText()).c_str()).c_str(), DateFormat::ISO_8601);
       m_initiatedHasBeenSet = true;
     }
     XmlNode storageClassNode = resultNode.FirstChild("StorageClass");
@@ -88,12 +84,6 @@ MultipartUpload& MultipartUpload::operator =(const XmlNode& xmlNode)
     {
       m_initiator = initiatorNode;
       m_initiatorHasBeenSet = true;
-    }
-    XmlNode checksumAlgorithmNode = resultNode.FirstChild("ChecksumAlgorithm");
-    if(!checksumAlgorithmNode.IsNull())
-    {
-      m_checksumAlgorithm = ChecksumAlgorithmMapper::GetChecksumAlgorithmForName(StringUtils::Trim(Aws::Utils::Xml::DecodeEscapedXmlText(checksumAlgorithmNode.GetText()).c_str()).c_str());
-      m_checksumAlgorithmHasBeenSet = true;
     }
   }
 
@@ -118,7 +108,7 @@ void MultipartUpload::AddToNode(XmlNode& parentNode) const
   if(m_initiatedHasBeenSet)
   {
    XmlNode initiatedNode = parentNode.CreateChildElement("Initiated");
-   initiatedNode.SetText(m_initiated.ToGmtString(Aws::Utils::DateFormat::ISO_8601));
+   initiatedNode.SetText(m_initiated.ToGmtString(DateFormat::ISO_8601));
   }
 
   if(m_storageClassHasBeenSet)
@@ -137,12 +127,6 @@ void MultipartUpload::AddToNode(XmlNode& parentNode) const
   {
    XmlNode initiatorNode = parentNode.CreateChildElement("Initiator");
    m_initiator.AddToNode(initiatorNode);
-  }
-
-  if(m_checksumAlgorithmHasBeenSet)
-  {
-   XmlNode checksumAlgorithmNode = parentNode.CreateChildElement("ChecksumAlgorithm");
-   checksumAlgorithmNode.SetText(ChecksumAlgorithmMapper::GetNameForChecksumAlgorithm(m_checksumAlgorithm));
   }
 
 }

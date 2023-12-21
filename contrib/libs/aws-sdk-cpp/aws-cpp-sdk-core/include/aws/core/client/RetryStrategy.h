@@ -24,8 +24,6 @@ namespace Aws
 
     namespace Client
     {
-        static const int NO_RETRY_INCREMENT = 1;
-
         enum class CoreErrors;
         template<typename ERROR_TYPE>
         class AWSError;
@@ -56,18 +54,9 @@ namespace Aws
             virtual long GetMaxAttempts() const { return 0; }
 
             /**
-             * Retrieves send tokens from the bucket. Throws an exception if not available.
+             * Retrives send tokens from the bucket.
              */
             virtual void GetSendToken() {}
-
-            /**
-             * Retrieves send tokens from the bucket. Returns true is send token is retrieved.
-             */
-            virtual bool HasSendToken()
-            {
-                GetSendToken();  // first call old method for backward compatibility
-                return true;
-            }
 
             /**
              * Update status, like the information of retry quota when receiving a response.

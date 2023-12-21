@@ -25,7 +25,6 @@
 #include <boost/type_traits/alignment_of.hpp>
 #include <boost/type_traits/enable_if.hpp>
 #include <boost/type_traits/integral_constant.hpp>
-#include <boost/type_traits/is_function.hpp>
 #include <boost/assert.hpp>
 #include <boost/config.hpp>
 #include <boost/config/workaround.hpp>
@@ -653,25 +652,11 @@ public:
     }
 
   template<typename F>
-    typename boost::enable_if_< !boost::is_function<F>::value, bool >::type
-	contains(const F& f) const
+    bool contains(const F& f) const
     {
       if (const F* fp = this->template target<F>())
       {
         return function_equal(*fp, f);
-      } else {
-        return false;
-      }
-    }
-
-  template<typename Fn>
-    typename boost::enable_if_< boost::is_function<Fn>::value, bool >::type
-	contains(Fn& f) const
-    {
-      typedef Fn* F;
-      if (const F* fp = this->template target<F>())
-      {
-        return function_equal(*fp, &f);
       } else {
         return false;
       }

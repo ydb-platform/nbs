@@ -9,6 +9,8 @@ LICENSE(
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
+NO_SANITIZE_HEADERS()
+
 NO_COMPILER_WARNINGS()
 
 NO_UTIL()
@@ -33,12 +35,10 @@ IF (OS_ANDROID)
         strlcat.c
         strlcpy.c
     )
-
     IF (ANDROID_API < 28)
         SRCS(
             glob.c
         )
-        ENABLE(PROVIDE_GETRANDOM_GETENTROPY)
         ENABLE(PROVIDE_REALLOCARRAY)
     ENDIF()
     IF (ANDROID_API < 24)
@@ -133,20 +133,17 @@ IF (PROVIDE_REALLOCARRAY)
         reallocarray/reallocarray.c
     )
     ADDINCL(
-        GLOBAL contrib/libs/libc_compat/reallocarray
+        ONE_LEVEL contrib/libs/libc_compat/reallocarray
     )
 ENDIF()
 
 IF (PROVIDE_GETRANDOM_GETENTROPY)
-    PEERDIR(
-        library/cpp/sanitizer/include
-    )
     SRCS(
         random/getrandom.c
         random/getentropy.c
     )
     ADDINCL(
-        GLOBAL contrib/libs/libc_compat/random
+        ONE_LEVEL contrib/libs/libc_compat/random
     )
 ENDIF()
 

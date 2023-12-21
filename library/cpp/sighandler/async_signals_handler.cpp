@@ -33,7 +33,7 @@ namespace {
         while (totalBytesWritten != bufsize) {
             const ssize_t result = write(fd, (const char*)buf + totalBytesWritten, bufsize - totalBytesWritten);
 
-            Y_ABORT_UNLESS(result >= 0 || (result == -1 && errno == EINTR), "write failed: %s (errno = %d)", strerror(errno), errno);
+            Y_VERIFY(result >= 0 || (result == -1 && errno == EINTR), "write failed: %s (errno = %d)", strerror(errno), errno);
             totalBytesWritten += static_cast<size_t>(result);
         }
     }
@@ -54,7 +54,7 @@ namespace {
     private:
         TThread Thread;
         int SignalPipeReadFd;
-        typedef THolder<TEventHandler> TEventHandlerPtr;
+        typedef TAutoPtr<TEventHandler> TEventHandlerPtr;
         THashMap<int, TEventHandlerPtr> Handlers;
         TRWMutex HandlersLock;
 
@@ -72,7 +72,7 @@ namespace {
                 ui8 signum;
                 const ssize_t bytesRead = read(SignalPipeReadFd, &signum, 1);
 
-                Y_ABORT_UNLESS(bytesRead >= 0 || (bytesRead == -1 && errno == EINTR), "read failed: %s (errno = %d)", strerror(errno), errno);
+                Y_VERIFY(bytesRead >= 0 || (bytesRead == -1 && errno == EINTR), "read failed: %s (errno = %d)", strerror(errno), errno);
 
                 if (AtomicAdd(ShouldDie, 0) != 0) {
                     DieEvent.Signal();
@@ -90,7 +90,7 @@ namespace {
                     TReadGuard dnd(HandlersLock);
 
                     const TEventHandlerPtr* handler = Handlers.FindPtr(signum);
-                    Y_ABORT_UNLESS(handler && handler->Get(), "Async signal handler is not set, it's a bug!");
+                    Y_VERIFY(handler && handler->Get(), "Async signal handler is not set, it's a bug!");
                     handler->Get()->Handle(signum);
                 }
             }
@@ -127,16 +127,16 @@ namespace {
 
             if (result != 0 && errno == ENOSYS) { // linux older than 2.6.27 returns "not implemented"
 #endif
-                Y_ABORT_UNLESS(pipe(filedes) == 0, "pipe failed: %s (errno = %d)", strerror(errno), errno);
+                Y_VERIFY(pipe(filedes) == 0, "pipe failed: %s (errno = %d)", strerror(errno), errno);
 
                 SignalPipeReadFd = filedes[0];
                 SIGNAL_PIPE_WRITE_FD = filedes[1];
 
-                Y_ABORT_UNLESS(fcntl(SignalPipeReadFd, F_SETFD, FD_CLOEXEC) == 0, "fcntl failed: %s (errno = %d)", strerror(errno), errno);
-                Y_ABORT_UNLESS(fcntl(SIGNAL_PIPE_WRITE_FD, F_SETFD, FD_CLOEXEC) == 0, "fcntl failed: %s (errno = %d)", strerror(errno), errno);
+                Y_VERIFY(fcntl(SignalPipeReadFd, F_SETFD, FD_CLOEXEC) == 0, "fcntl failed: %s (errno = %d)", strerror(errno), errno);
+                Y_VERIFY(fcntl(SIGNAL_PIPE_WRITE_FD, F_SETFD, FD_CLOEXEC) == 0, "fcntl failed: %s (errno = %d)", strerror(errno), errno);
 #ifdef _linux_
             } else {
-                Y_ABORT_UNLESS(result == 0, "pipe2 failed: %s (errno = %d)", strerror(errno), errno);
+                Y_VERIFY(result == 0, "pipe2 failed: %s (errno = %d)", strerror(errno), errno);
                 SignalPipeReadFd = filedes[0];
                 SIGNAL_PIPE_WRITE_FD = filedes[1];
             }
@@ -159,25 +159,25 @@ namespace {
 */
         }
 
-        bool DoInstall(int signum, THolder<TEventHandler> handler) {
+        bool DoInstall(int signum, TAutoPtr<TEventHandler> handler) {
             TWriteGuard dnd(HandlersLock);
             TEventHandlerPtr& ev = Handlers[signum];
             const bool ret = !ev;
 
-            ev = std::move(handler);
+            ev = handler;
 
             return ret;
         }
 
-        void Install(int signum, THolder<TEventHandler> handler) {
-            if (DoInstall(signum, std::move(handler))) {
+        void Install(int signum, TAutoPtr<TEventHandler> handler) {
+            if (DoInstall(signum, handler)) {
                 struct sigaction a;
 
                 memset(&a, 0, sizeof(a));
                 a.sa_sigaction = PipeWriterSignalHandler;
                 a.sa_flags = SA_SIGINFO | SA_RESTART;
 
-                Y_ABORT_UNLESS(!sigaction(signum, &a, nullptr), "sigaction failed: %s (errno = %d)", strerror(errno), errno);
+                Y_VERIFY(!sigaction(signum, &a, nullptr), "sigaction failed: %s (errno = %d)", strerror(errno), errno);
             }
         }
     };
@@ -188,38 +188,27 @@ namespace {
     // It such situation we have 2 options:
     //  - wait for auxiliary thread to die - which will cause dead lock
     //  - destruct variable, ignoring thread - which will cause data corruption.
-    std::atomic<TAsyncSignalsHandler*> SIGNALS_HANDLER = nullptr;
+    TAsyncSignalsHandler* SIGNALS_HANDLER = nullptr;
 }
 
-void SetAsyncSignalHandler(int signum, THolder<TEventHandler> handler) {
+void SetAsyncSignalHandler(int signum, TAutoPtr<TEventHandler> handler) {
     static TAdaptiveLock lock;
 
-    // Must be in HB with Handler's constructor.
-    auto* currentHandler = SIGNALS_HANDLER.load(std::memory_order::acquire);
-
-    if (Y_UNLIKELY(currentHandler == nullptr)) {
+    if (Y_UNLIKELY(SIGNALS_HANDLER == nullptr)) {
         TGuard dnd(lock);
 
-        // If we read non-null here it means that we have a concurrent thread
-        // unlocking the lock establishing strongly HB with us.
-        // next line is sequenced before lock call thus relaxed is enough here.
-        currentHandler = SIGNALS_HANDLER.load(std::memory_order::relaxed);
-
-        if (currentHandler == nullptr) {
+        if (SIGNALS_HANDLER == nullptr) {
             // NEVERS GETS DESTROYED
-            currentHandler = new TAsyncSignalsHandler();
-
-            // Ensure HB with constructor for future readers.
-            SIGNALS_HANDLER.store(currentHandler, std::memory_order::release);
+            SIGNALS_HANDLER = new TAsyncSignalsHandler();
         }
     }
 
-    currentHandler->Install(signum, std::move(handler));
+    SIGNALS_HANDLER->Install(signum, handler);
 }
 
 #else //_win_
 
-void SetAsyncSignalHandler(int, THolder<TEventHandler>) {
+void SetAsyncSignalHandler(int, TAutoPtr<TEventHandler>) {
     // TODO: it's really easy to port using _pipe, _read and _write, but it must be tested properly.
 }
 
@@ -247,10 +236,10 @@ namespace {
 }
 
 void SetAsyncSignalHandler(int signum, void (*handler)(int)) {
-    SetAsyncSignalHandler(signum, MakeHolder<TFunctionEventHandler<void (*)(int)>>(handler));
+    SetAsyncSignalHandler(signum, new TFunctionEventHandler<void (*)(int)>(handler));
 }
 
 void SetAsyncSignalFunction(int signum, std::function<void(int)> func) {
     typedef std::function<void(int)> TFunc;
-    SetAsyncSignalHandler(signum, MakeHolder<TFunctionEventHandler<TFunc>>(func));
+    SetAsyncSignalHandler(signum, new TFunctionEventHandler<TFunc>(func));
 }

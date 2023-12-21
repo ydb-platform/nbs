@@ -1,4 +1,3 @@
-import six
 import sys
 import hashlib
 import base64
@@ -23,11 +22,29 @@ def lazy(func):
 
 
 def pathid(path):
-    return six.ensure_str(base64.b32encode(hashlib.md5(six.ensure_binary(path)).digest()).lower().strip(b'='))
+    return base64.b32encode(hashlib.md5(path).digest()).lower().strip('=')
 
 
-def listid(items):
-    return pathid(str(sorted(items)))
+def listid(l):
+    return pathid(str(sorted(l)))
+
+
+def unpair(lst):
+    for x, y in lst:
+        yield x
+        yield y
+
+
+def iterpair(lst):
+    y = None
+
+    for x in lst:
+        if y:
+            yield (y, x)
+
+            y = None
+        else:
+            y = x
 
 
 def stripext(fname):
@@ -109,6 +126,10 @@ def resolve_to_ymake_path(path):
     return resolve_to_abs_path(path, '${ARCADIA_ROOT}', '${ARCADIA_BUILD_ROOT}')
 
 
+def join_intl_paths(*args):
+    return '/'.join(args)
+
+
 def get(fun, num):
     return fun()[num][0]
 
@@ -169,6 +190,11 @@ def filter_out_by_keyword(test_data, keyword):
                 i += 1
 
     return list(_iterate())
+
+
+def generate_chunks(lst, chunk_size):
+    for i in xrange(0, len(lst), chunk_size):
+        yield lst[i : (i + chunk_size)]
 
 
 def strip_roots(path):

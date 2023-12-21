@@ -6,12 +6,13 @@
 # original buildsystem will not be accepted.
 
 
+find_package(OpenSSL REQUIRED)
 
 add_library(cpp-openssl-crypto)
 target_link_libraries(cpp-openssl-crypto PUBLIC
   contrib-libs-cxxsupp
   yutil
-  contrib-libs-openssl
+  OpenSSL::OpenSSL
   cpp-openssl-big_integer
   cpp-openssl-init
 )

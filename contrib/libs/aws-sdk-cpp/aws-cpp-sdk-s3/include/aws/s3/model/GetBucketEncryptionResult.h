@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketEncryptionResult
+  class AWS_S3_API GetBucketEncryptionResult
   {
   public:
-    AWS_S3_API GetBucketEncryptionResult();
-    AWS_S3_API GetBucketEncryptionResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API GetBucketEncryptionResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketEncryptionResult();
+    GetBucketEncryptionResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    GetBucketEncryptionResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     

@@ -10,12 +10,9 @@
 #ifndef _LIBCPP___MUTEX_BASE
 #define _LIBCPP___MUTEX_BASE
 
-#include <__chrono/duration.h>
-#include <__chrono/steady_clock.h>
-#include <__chrono/system_clock.h>
-#include <__chrono/time_point.h>
 #include <__config>
 #include <__threading_support>
+#include <chrono>
 #include <ratio>
 #include <system_error>
 #include <time.h>
@@ -338,7 +335,11 @@ private:
 
 template <class _Rep, class _Period>
 inline _LIBCPP_INLINE_VISIBILITY
-__enable_if_t<is_floating_point<_Rep>::value, chrono::nanoseconds>
+typename enable_if
+<
+    is_floating_point<_Rep>::value,
+    chrono::nanoseconds
+>::type
 __safe_nanosecond_cast(chrono::duration<_Rep, _Period> __d)
 {
     using namespace chrono;
@@ -361,7 +362,11 @@ __safe_nanosecond_cast(chrono::duration<_Rep, _Period> __d)
 
 template <class _Rep, class _Period>
 inline _LIBCPP_INLINE_VISIBILITY
-__enable_if_t<!is_floating_point<_Rep>::value, chrono::nanoseconds>
+typename enable_if
+<
+    !is_floating_point<_Rep>::value,
+    chrono::nanoseconds
+>::type
 __safe_nanosecond_cast(chrono::duration<_Rep, _Period> __d)
 {
     using namespace chrono;

@@ -37,9 +37,15 @@ namespace boost
 #else
         public std::bad_cast
 #endif
+
+#if defined(BOOST_BORLANDC) && BOOST_WORKAROUND( BOOST_BORLANDC, < 0x560 )
+        // under bcc32 5.5.1 bad_cast doesn't derive from exception
+        , public std::exception
+#endif
+
     {
     public:
-        bad_lexical_cast() noexcept
+        bad_lexical_cast() BOOST_NOEXCEPT
 #ifndef BOOST_NO_TYPEID
            : source(&typeid(void)), target(&typeid(void))
 #endif
@@ -50,8 +56,8 @@ namespace boost
                    "source type value could not be interpreted as target";
         }
 
-        bad_lexical_cast(const bad_lexical_cast&) = default;
-        bad_lexical_cast& operator=(const bad_lexical_cast&) = default;
+        ~bad_lexical_cast() BOOST_NOEXCEPT_OR_NOTHROW BOOST_OVERRIDE
+        {}
 
 #ifndef BOOST_NO_TYPEID
     private:
@@ -63,15 +69,15 @@ namespace boost
     public:
         bad_lexical_cast(
                 const type_info_t &source_type_arg,
-                const type_info_t &target_type_arg) noexcept
+                const type_info_t &target_type_arg) BOOST_NOEXCEPT
             : source(&source_type_arg), target(&target_type_arg)
         {}
 
-        const type_info_t &source_type() const noexcept {
+        const type_info_t &source_type() const BOOST_NOEXCEPT {
             return *source;
         }
 
-        const type_info_t &target_type() const noexcept {
+        const type_info_t &target_type() const BOOST_NOEXCEPT {
             return *target;
         }
 

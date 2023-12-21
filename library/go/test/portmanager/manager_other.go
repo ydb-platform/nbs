@@ -15,7 +15,7 @@ func getEphemeralPortRange() (start, end int, err error) {
 //
 // Implementation should match python version from.
 //
-// https://github.com/ydb-platform/nbs/arc/trunk/arcadia/library/python/filelock/__init__.py?rev=r8352156#L66-103
+// https://a.yandex-team.ru/arc/trunk/arcadia/library/python/filelock/__init__.py?rev=r8352156#L66-103
 func tryLockFile(file *os.File) error {
 	return nil
 }

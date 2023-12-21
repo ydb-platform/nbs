@@ -26,11 +26,11 @@
 #include <util/string/cast.h>
 #include <vector>
 
+#include <util/generic/string.h>
 #include <util/string/split.h>
 #include <util/stream/str.h>
 
 #include "src/compiler/config.h"
-#include "src/compiler/proto_parser_helper.h"
 
 namespace grpc_generator {
 
@@ -261,9 +261,9 @@ inline TString GenerateCommentsWithPrefix(
     if (elem.empty()) {
       oss << prefix << "\n";
     } else if (elem[0] == ' ') {
-      oss << prefix << EscapeVariableDelimiters(elem) << "\n";
+      oss << prefix << elem << "\n";
     } else {
-      oss << prefix << " " << EscapeVariableDelimiters(elem) << "\n";
+      oss << prefix << " " << elem << "\n";
     }
   }
   return oss.str();

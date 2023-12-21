@@ -135,15 +135,13 @@ struct Entity {
     char value;
 };
 
-static const int NUM_ENTITIES = 7;
+static const int NUM_ENTITIES = 5;
 static const Entity entities[NUM_ENTITIES] = {
-    { "quot", 4,    DOUBLE_QUOTE },
-    { "amp",  3,    '&'          },
-    { "apos", 4,    SINGLE_QUOTE },
-    { "lt",   2,    '<'          },
-    { "gt",   2,    '>'          },
-    { "#xA",  3,    LF           },
-    { "#xD",  3,    CR           }
+    { "quot", 4,	DOUBLE_QUOTE },
+    { "amp", 3,		'&'  },
+    { "apos", 4,	SINGLE_QUOTE },
+    { "lt",	2, 		'<'	 },
+    { "gt",	2,		'>'	 }
 };
 
 
@@ -2398,8 +2396,6 @@ XMLPrinter::XMLPrinter( FILE* file, bool compact, int depth ) :
     _restrictedEntityFlag[(unsigned char)'&'] = true;
     _restrictedEntityFlag[(unsigned char)'<'] = true;
     _restrictedEntityFlag[(unsigned char)'>'] = true;	// not required, but consistency is nice
-    _restrictedEntityFlag[(unsigned char)LF] = true;
-    _restrictedEntityFlag[(unsigned char)CR] = true;
     _buffer.Push( 0 );
 }
 

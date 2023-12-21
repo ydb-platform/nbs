@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -98,14 +98,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         size_t cleanDevices = 0;
 
-        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        Runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
                     auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                     cleanDevices += msg->CleanDevices;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         UNIT_ASSERT_VALUES_EQUAL(

@@ -6,8 +6,8 @@ IMonPage::IMonPage(const TString& path, const TString& title)
     : Path(path)
     , Title(title)
 {
-    Y_ABORT_UNLESS(!Path.StartsWith('/'));
-    Y_ABORT_UNLESS(!Path.EndsWith('/'));
+    Y_VERIFY(!Path.StartsWith('/'));
+    Y_VERIFY(!Path.EndsWith('/'));
 }
 
 void IMonPage::OutputNavBar(IOutputStream& out) {

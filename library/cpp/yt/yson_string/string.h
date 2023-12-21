@@ -107,10 +107,6 @@ public:
     //! Computes the hash code.
     size_t ComputeHash() const;
 
-    //! Allow to serialize/deserialize using the ::Save ::Load functions. See util/ysaveload.h.
-    void Save(IOutputStream* s) const;
-    void Load(IInputStream* s);
-
 private:
     struct TNullPayload
     { };

@@ -15,8 +15,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/library/go/test/portmanager"
-	"github.com/ydb-platform/nbs/library/go/test/yatest"
+
+	"a.yandex-team.ru/library/go/test/portmanager"
+	"a.yandex-team.ru/library/go/test/yatest"
 )
 
 func Test_UDPTCP(t *testing.T) {

@@ -199,10 +199,7 @@ template<class Q, class... L> using mp_filter_q = typename detail::mp_filter_imp
 namespace detail
 {
 
-template<class L, class V> struct mp_fill_impl
-{
-// An error "no type named 'type'" here means that the L argument of mp_fill is not a list
-};
+template<class L, class V> struct mp_fill_impl;
 
 template<template<class...> class L, class... T, class V> struct mp_fill_impl<L<T...>, V>
 {
@@ -218,15 +215,6 @@ template<template<class...> class L, class... T, class V> struct mp_fill_impl<L<
 
 #endif
 };
-
-#if defined(BOOST_MP11_HAS_TEMPLATE_AUTO)
-
-template<template<auto...> class L, auto... A, class V> struct mp_fill_impl<L<A...>, V>
-{
-    using type = L<((void)A, V::value)...>;
-};
-
-#endif
 
 } // namespace detail
 
@@ -309,35 +297,35 @@ template<template<class...> class L, class... T, template<class...> class L2, cl
 {
     template<class... W> static mp_identity<L<W...>> f( U*..., mp_identity<W>*... );
 
-    using R = decltype( f( static_cast<mp_identity<T>*>(0) ... ) );
+    using R = decltype( f( (mp_identity<T>*)0 ... ) );
 
     using type = typename R::type;
 };
 
 } // namespace detail
 
-template<class L, std::size_t N> using mp_drop_c = mp_assign<L, typename detail::mp_drop_impl<mp_rename<L, mp_list>, mp_repeat_c<mp_list<void>, N>, mp_bool<N <= mp_size<L>::value>>::type>;
+template<class L, std::size_t N> using mp_drop_c = typename detail::mp_drop_impl<L, mp_repeat_c<mp_list<void>, N>, mp_bool<N <= mp_size<L>::value>>::type;
 
 template<class L, class N> using mp_drop = mp_drop_c<L, std::size_t{ N::value }>;
 
-// mp_from_sequence<S, F>
+// mp_from_sequence<S>
 namespace detail
 {
 
-template<class S, class F> struct mp_from_sequence_impl;
+template<class S> struct mp_from_sequence_impl;
 
-template<template<class T, T... I> class S, class U, U... J, class F> struct mp_from_sequence_impl<S<U, J...>, F>
+template<template<class T, T... I> class S, class U, U... J> struct mp_from_sequence_impl<S<U, J...>>
 {
-    using type = mp_list_c<U, (F::value + J)...>;
+    using type = mp_list<std::integral_constant<U, J>...>;
 };
 
 } // namespace detail
 
-template<class S, class F = mp_int<0>> using mp_from_sequence = typename detail::mp_from_sequence_impl<S, F>::type;
+template<class S> using mp_from_sequence = typename detail::mp_from_sequence_impl<S>::type;
 
-// mp_iota(_c)<N, F>
-template<std::size_t N, std::size_t F = 0> using mp_iota_c = mp_from_sequence<make_index_sequence<N>, mp_size_t<F>>;
-template<class N, class F = mp_int<0>> using mp_iota = mp_from_sequence<make_integer_sequence<typename std::remove_const<decltype(N::value)>::type, N::value>, F>;
+// mp_iota(_c)<N>
+template<std::size_t N> using mp_iota_c = mp_from_sequence<make_index_sequence<N>>;
+template<class N> using mp_iota = mp_from_sequence<make_integer_sequence<typename std::remove_const<decltype(N::value)>::type, N::value>>;
 
 // mp_at(_c)<L, I>
 namespace detail
@@ -352,20 +340,11 @@ template<template<class...> class L, class... T, std::size_t I> struct mp_at_c_i
     using type = __type_pack_element<I, T...>;
 };
 
-#if defined(BOOST_MP11_HAS_TEMPLATE_AUTO)
-
-template<template<auto...> class L, auto... A, std::size_t I> struct mp_at_c_impl<L<A...>, I>
-{
-    using type = __type_pack_element<I, mp_value<A>...>;
-};
-
-#endif
-
 #else
 
 template<class L, std::size_t I> struct mp_at_c_impl
 {
-    using _map = mp_transform<mp_list, mp_iota<mp_size<L> >, mp_rename<L, mp_list>>;
+    using _map = mp_transform<mp_list, mp_iota<mp_size<L> >, L>;
     using type = mp_second<mp_map_find<_map, mp_size_t<I> > >;
 };
 
@@ -470,8 +449,8 @@ struct mp_take_c_impl<N, L<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T...>, typen
 
 } // namespace detail
 
-template<class L, std::size_t N> using mp_take_c = mp_assign<L, typename detail::mp_take_c_impl<N, mp_rename<L, mp_list>>::type>;
-template<class L, class N> using mp_take = mp_take_c<L, std::size_t{ N::value }>;
+template<class L, std::size_t N> using mp_take_c = typename detail::mp_take_c_impl<N, L>::type;
+template<class L, class N> using mp_take = typename detail::mp_take_c_impl<std::size_t{ N::value }, L>::type;
 
 // mp_back<L>
 template<class L> using mp_back = mp_at_c<L, mp_size<L>::value - 1>;

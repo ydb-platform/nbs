@@ -6,7 +6,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 
-#include <contrib/ydb/library/actors/core/event.h>
+#include <library/cpp/actors/core/event.h>
 
 namespace NCloud::NFileStore::NStorage {
 

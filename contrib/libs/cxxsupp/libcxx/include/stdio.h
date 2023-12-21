@@ -13,7 +13,11 @@
 #  pragma GCC system_header
 #endif
 
+#ifdef _LIBCPP_COMPILER_MSVC
+#include Y_UCRT_INCLUDE_NEXT(stdio.h)
+#else
 #include_next <stdio.h>
+#endif
 
 #elif !defined(_LIBCPP_STDIO_H)
 #define _LIBCPP_STDIO_H
@@ -104,7 +108,11 @@ void perror(const char* s);
 #  pragma GCC system_header
 #endif
 
+#ifdef _LIBCPP_COMPILER_MSVC
+#include Y_UCRT_INCLUDE_NEXT(stdio.h)
+#else
 #include_next <stdio.h>
+#endif
 
 #ifdef __cplusplus
 

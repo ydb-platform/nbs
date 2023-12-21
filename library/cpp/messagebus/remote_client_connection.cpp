@@ -20,7 +20,7 @@ TRemoteClientConnection::TRemoteClientConnection(TRemoteClientSessionPtr session
     : TRemoteConnection(session.Get(), id, addr)
     , ClientHandler(GetSession()->ClientHandler)
 {
-    Y_ABORT_UNLESS(addr.GetPort() > 0, "must connect to non-zero port");
+    Y_VERIFY(addr.GetPort() > 0, "must connect to non-zero port");
 
     ScheduleWrite();
 }
@@ -35,7 +35,7 @@ TBusMessage* TRemoteClientConnection::PopAck(TBusKey id) {
 
 SOCKET TRemoteClientConnection::CreateSocket(const TNetAddr& addr) {
     SOCKET handle = socket(addr.Addr()->sa_family, SOCK_STREAM, 0);
-    Y_ABORT_UNLESS(handle != INVALID_SOCKET, "failed to create socket: %s", LastSystemErrorText());
+    Y_VERIFY(handle != INVALID_SOCKET, "failed to create socket: %s", LastSystemErrorText());
 
     TSocketHolder s(handle);
 
@@ -61,7 +61,7 @@ void TRemoteClientConnection::TryConnect() {
     if (AtomicGet(WriterData.Down)) {
         return;
     }
-    Y_ABORT_UNLESS(!WriterData.Status.Connected);
+    Y_VERIFY(!WriterData.Status.Connected);
 
     TInstant now = TInstant::Now();
 
@@ -252,7 +252,7 @@ void TRemoteClientConnection::ReaderProcessMessageUnknownVersion(TArrayRef<const
     LWPROBE(Error, ToString(MESSAGE_INVALID_VERSION), ToString(PeerAddr), "");
     ReaderData.Status.Incremental.StatusCounter[MESSAGE_INVALID_VERSION] += 1;
     // TODO: close connection
-    Y_ABORT("unknown message");
+    Y_FAIL("unknown message");
 }
 
 void TRemoteClientConnection::ClearOutgoingQueue(TMessagesPtrs& result, bool reconnect) {
@@ -306,7 +306,7 @@ EMessageStatus TRemoteClientConnection::SendMessageImpl(TBusMessage* msg, bool w
     }
 
     if (wait) {
-        Y_ABORT_UNLESS(!Session->Queue->GetExecutor()->IsInExecutorThread());
+        Y_VERIFY(!Session->Queue->GetExecutor()->IsInExecutorThread());
         GetSession()->ClientRemoteInFlight.Wait();
     } else {
         if (!GetSession()->ClientRemoteInFlight.TryWait()) {

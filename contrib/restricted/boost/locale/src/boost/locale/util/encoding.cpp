@@ -7,6 +7,7 @@
 
 #include "boost/locale/util/encoding.hpp"
 #include "boost/locale/util/string.hpp"
+#include <boost/assert.hpp>
 #if BOOST_LOCALE_USE_WIN32_API
 #    include "boost/locale/util/win_codepages.hpp"
 #    ifndef NOMINMAX
@@ -18,11 +19,11 @@
 #include <cstring>
 
 namespace boost { namespace locale { namespace util {
-    std::string normalize_encoding(const string_view encoding)
+    static std::string do_normalize_encoding(const char* encoding, const size_t len)
     {
         std::string result;
-        result.reserve(encoding.length());
-        for(char c : encoding) {
+        result.reserve(len);
+        for(char c = *encoding; c != 0; c = *(++encoding)) {
             if(is_lower_ascii(c) || is_numeric_ascii(c))
                 result += c;
             else if(is_upper_ascii(c))
@@ -31,12 +32,24 @@ namespace boost { namespace locale { namespace util {
         return result;
     }
 
+    std::string normalize_encoding(const std::string& encoding)
+    {
+        return do_normalize_encoding(encoding.c_str(), encoding.size());
+    }
+
+    std::string normalize_encoding(const char* encoding)
+    {
+        return do_normalize_encoding(encoding, std::strlen(encoding));
+    }
+
 #if BOOST_LOCALE_USE_WIN32_API
     static int normalized_encoding_to_windows_codepage(const std::string& encoding)
     {
-        windows_encoding* end = std::end(all_windows_encodings);
+        constexpr size_t n = sizeof(all_windows_encodings) / sizeof(all_windows_encodings[0]);
+        windows_encoding* begin = all_windows_encodings;
+        windows_encoding* end = all_windows_encodings + n;
 
-        windows_encoding* ptr = std::lower_bound(all_windows_encodings, end, encoding.c_str());
+        windows_encoding* ptr = std::lower_bound(begin, end, encoding.c_str());
         while(ptr != end && ptr->name == encoding) {
             if(ptr->was_tested)
                 return ptr->codepage;
@@ -51,7 +64,12 @@ namespace boost { namespace locale { namespace util {
         return -1;
     }
 
-    int encoding_to_windows_codepage(const string_view encoding)
+    int encoding_to_windows_codepage(const char* encoding)
+    {
+        return normalized_encoding_to_windows_codepage(normalize_encoding(encoding));
+    }
+
+    int encoding_to_windows_codepage(const std::string& encoding)
     {
         return normalized_encoding_to_windows_codepage(normalize_encoding(encoding));
     }

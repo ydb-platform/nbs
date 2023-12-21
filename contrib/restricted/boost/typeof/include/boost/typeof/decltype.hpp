@@ -6,11 +6,12 @@
 #ifndef BOOST_TYPEOF_DECLTYPE_HPP_INCLUDED
 # define BOOST_TYPEOF_DECLTYPE_HPP_INCLUDED
 
-#include <type_traits>
+#include <boost/type_traits/remove_cv.hpp>
+#include <boost/type_traits/remove_reference.hpp>
 
 namespace boost { namespace type_of {
     template<typename T>
-    using remove_cv_ref_t = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
+        using remove_cv_ref_t = typename remove_cv<typename remove_reference<T>::type>::type;
 }}
 
 #define BOOST_TYPEOF(expr) boost::type_of::remove_cv_ref_t<decltype(expr)>

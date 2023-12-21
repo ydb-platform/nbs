@@ -1,6 +1,6 @@
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/ydb-platform/nbs/library/cpp/eventlog/proto;extensions";
+option go_package = "a.yandex-team.ru/library/cpp/eventlog/proto;extensions";
 option java_package = "NEventLogEventsExtension";
 
 extend google.protobuf.MessageOptions {

@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef GRPC_SRC_CORE_LIB_PROMISE_LOOP_H
-#define GRPC_SRC_CORE_LIB_PROMISE_LOOP_H
+#ifndef GRPC_CORE_LIB_PROMISE_LOOP_H
+#define GRPC_CORE_LIB_PROMISE_LOOP_H
 
 #include <grpc/support/port_platform.h>
 
+#include <new>
 #include <type_traits>
+#include <utility>
 
 #include "y_absl/status/status.h"
 #include "y_absl/status/statusor.h"
 #include "y_absl/types/variant.h"
 
-#include "src/core/lib/gprpp/construct_destruct.h"
 #include "src/core/lib/promise/detail/promise_factory.h"
 #include "src/core/lib/promise/poll.h"
 
@@ -75,39 +76,35 @@ struct LoopTraits<y_absl::StatusOr<LoopCtl<y_absl::Status>>> {
 template <typename F>
 class Loop {
  private:
-  using Factory = promise_detail::RepeatedPromiseFactory<void, F>;
-  using PromiseType = decltype(std::declval<Factory>().Make());
+  using Factory = promise_detail::PromiseFactory<void, F>;
+  using PromiseType = decltype(std::declval<Factory>().Repeated());
   using PromiseResult = typename PromiseType::Result;
 
  public:
   using Result = typename LoopTraits<PromiseResult>::Result;
 
-  explicit Loop(F f) : factory_(std::move(f)) {}
-  ~Loop() {
-    if (started_) Destruct(&promise_);
-  }
+  explicit Loop(F f) : factory_(std::move(f)), promise_(factory_.Repeated()) {}
+  ~Loop() { promise_.~PromiseType(); }
 
-  Loop(Loop&& loop) noexcept : factory_(std::move(loop.factory_)) {}
+  Loop(Loop&& loop) noexcept
+      : factory_(std::move(loop.factory_)),
+        promise_(std::move(loop.promise_)) {}
 
   Loop(const Loop& loop) = delete;
   Loop& operator=(const Loop& loop) = delete;
 
   Poll<Result> operator()() {
-    if (!started_) {
-      started_ = true;
-      Construct(&promise_, factory_.Make());
-    }
     while (true) {
       // Poll the inner promise.
       auto promise_result = promise_();
       // If it returns a value:
-      if (auto* p = promise_result.value_if_ready()) {
+      if (auto* p = y_absl::get_if<kPollReadyIdx>(&promise_result)) {
         //  - then if it's Continue, destroy the promise and recreate a new one
         //  from our factory.
         auto lc = LoopTraits<PromiseResult>::ToLoopCtl(*p);
         if (y_absl::holds_alternative<Continue>(lc)) {
-          Destruct(&promise_);
-          Construct(&promise_, factory_.Make());
+          promise_.~PromiseType();
+          new (&promise_) PromiseType(factory_.Repeated());
           continue;
         }
         //  - otherwise there's our result... return it out.
@@ -121,10 +118,7 @@ class Loop {
 
  private:
   GPR_NO_UNIQUE_ADDRESS Factory factory_;
-  GPR_NO_UNIQUE_ADDRESS union {
-    GPR_NO_UNIQUE_ADDRESS PromiseType promise_;
-  };
-  bool started_ = false;
+  GPR_NO_UNIQUE_ADDRESS union { GPR_NO_UNIQUE_ADDRESS PromiseType promise_; };
 };
 
 }  // namespace promise_detail
@@ -139,4 +133,4 @@ promise_detail::Loop<F> Loop(F f) {
 
 }  // namespace grpc_core
 
-#endif  // GRPC_SRC_CORE_LIB_PROMISE_LOOP_H
+#endif  // GRPC_CORE_LIB_PROMISE_LOOP_H

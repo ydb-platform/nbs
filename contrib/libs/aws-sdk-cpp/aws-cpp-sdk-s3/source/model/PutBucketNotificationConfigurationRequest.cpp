@@ -20,8 +20,6 @@ PutBucketNotificationConfigurationRequest::PutBucketNotificationConfigurationReq
     m_bucketHasBeenSet(false),
     m_notificationConfigurationHasBeenSet(false),
     m_expectedBucketOwnerHasBeenSet(false),
-    m_skipDestinationValidation(false),
-    m_skipDestinationValidationHasBeenSet(false),
     m_customizedAccessLogTagHasBeenSet(false)
 {
 }
@@ -71,22 +69,5 @@ Aws::Http::HeaderValueCollection PutBucketNotificationConfigurationRequest::GetR
     ss.str("");
   }
 
-  if(m_skipDestinationValidationHasBeenSet)
-  {
-    ss << std::boolalpha << m_skipDestinationValidation;
-    headers.emplace("x-amz-skip-destination-validation", ss.str());
-    ss.str("");
-  }
-
   return headers;
-}
-
-PutBucketNotificationConfigurationRequest::EndpointParameters PutBucketNotificationConfigurationRequest::GetEndpointContextParams() const
-{
-    EndpointParameters parameters;
-    // Operation context parameters
-    if (BucketHasBeenSet()) {
-        parameters.emplace_back(Aws::String("Bucket"), this->GetBucket(), Aws::Endpoint::EndpointParameter::ParameterOrigin::OPERATION_CONTEXT);
-    }
-    return parameters;
 }

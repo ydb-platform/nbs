@@ -176,7 +176,6 @@ enum {
 enum {
 	IF_LINK_MODE_DEFAULT,
 	IF_LINK_MODE_DORMANT,	/* limit upward transition to dormant */
-	IF_LINK_MODE_TESTING,	/* limit upward transition to testing */
 };
 
 /*

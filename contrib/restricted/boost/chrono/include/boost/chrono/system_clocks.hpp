@@ -63,7 +63,6 @@ TODO:
 #include <boost/chrono/time_point.hpp>
 #include <boost/chrono/detail/system.hpp>
 #include <boost/chrono/clock_string.hpp>
-#include <boost/ratio/config.hpp>
 
 #include <ctime>
 

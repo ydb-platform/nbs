@@ -9,21 +9,18 @@ PY_SRCS(
     yatest_tools.py
 )
 
-STYLE_PYTHON()
-
 PEERDIR(
-    contrib/python/attrs
     contrib/python/python-dateutil
     contrib/python/ipdb
     contrib/python/py
     contrib/python/pytest
+    contrib/python/requests
     library/python/pytest/plugins
     library/python/testing/yatest_common
     library/python/testing/yatest_lib
 )
 
-IF (NOT OPENSOURCE AND NOT OS_ANDROID AND NOT OS_IOS AND NOT MAPSMOBI_BUILD_TARGET)
-    # FIXME: should be fixed properly in YA-1499
+IF (NOT OPENSOURCE)
     PEERDIR(contrib/tools/gprof2dot)
 ENDIF()
 

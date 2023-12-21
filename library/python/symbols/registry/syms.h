@@ -3,7 +3,6 @@
 namespace NPrivate {
     struct ICB {
         virtual void Apply(const char* mod, const char* name, void* sym) = 0;
-        virtual ~ICB() = default;
     };
 
     void ForEachSymbol(ICB& cb);

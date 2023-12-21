@@ -10,13 +10,13 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
 
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
-from contrib.ydb.core.protos import console_config_pb2 as console
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
@@ -57,7 +57,7 @@ def update_cms_config(client, name, config, node_type):
 
 
 def test_node_type():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,

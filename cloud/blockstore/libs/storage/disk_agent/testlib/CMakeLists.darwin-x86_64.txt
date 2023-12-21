@@ -15,7 +15,7 @@ target_link_libraries(storage-disk_agent-testlib PUBLIC
   libs-storage-core
   libs-storage-disk_agent
   core-libs-aio
-  library-actors-core
+  cpp-actors-core
   cpp-testing-unittest
   core-mind-bscontroller
   ydb-core-tablet_flat

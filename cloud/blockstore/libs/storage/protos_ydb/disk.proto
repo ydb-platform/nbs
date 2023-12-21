@@ -6,7 +6,7 @@ import "cloud/blockstore/libs/storage/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/storage/core/protos/error.proto";
 
-import "contrib/ydb/core/protos/blockstore_config.proto";
+import "ydb/core/protos/blockstore_config.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Create disk from devices

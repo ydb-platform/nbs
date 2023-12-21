@@ -28,14 +28,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/InventorySchedule">AWS
    * API Reference</a></p>
    */
-  class InventorySchedule
+  class AWS_S3_API InventorySchedule
   {
   public:
-    AWS_S3_API InventorySchedule();
-    AWS_S3_API InventorySchedule(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API InventorySchedule& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InventorySchedule();
+    InventorySchedule(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InventorySchedule& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -71,7 +71,7 @@ namespace Model
   private:
 
     InventoryFrequency m_frequency;
-    bool m_frequencyHasBeenSet = false;
+    bool m_frequencyHasBeenSet;
   };
 
 } // namespace Model

@@ -18,28 +18,28 @@ namespace S3
 {
 namespace Model
 {
-  class GetBucketPolicyResult
+  class AWS_S3_API GetBucketPolicyResult
   {
   public:
-    AWS_S3_API GetBucketPolicyResult();
+    GetBucketPolicyResult();
     //We have to define these because Microsoft doesn't auto generate them
-    AWS_S3_API GetBucketPolicyResult(GetBucketPolicyResult&&);
-    AWS_S3_API GetBucketPolicyResult& operator=(GetBucketPolicyResult&&);
+    GetBucketPolicyResult(GetBucketPolicyResult&&);
+    GetBucketPolicyResult& operator=(GetBucketPolicyResult&&);
     //we delete these because Microsoft doesn't handle move generation correctly
     //and we therefore don't trust them to get it right here either.
     GetBucketPolicyResult(const GetBucketPolicyResult&) = delete;
     GetBucketPolicyResult& operator=(const GetBucketPolicyResult&) = delete;
 
 
-    AWS_S3_API GetBucketPolicyResult(Aws::AmazonWebServiceResult<Aws::Utils::Stream::ResponseStream>&& result);
-    AWS_S3_API GetBucketPolicyResult& operator=(Aws::AmazonWebServiceResult<Aws::Utils::Stream::ResponseStream>&& result);
+    GetBucketPolicyResult(Aws::AmazonWebServiceResult<Aws::Utils::Stream::ResponseStream>&& result);
+    GetBucketPolicyResult& operator=(Aws::AmazonWebServiceResult<Aws::Utils::Stream::ResponseStream>&& result);
 
 
 
     /**
      * <p>The bucket policy as a JSON document.</p>
      */
-    inline Aws::IOStream& GetPolicy() const { return m_policy.GetUnderlyingStream(); }
+    inline Aws::IOStream& GetPolicy() { return m_policy.GetUnderlyingStream(); }
 
     /**
      * <p>The bucket policy as a JSON document.</p>
@@ -48,7 +48,7 @@ namespace Model
 
   private:
 
-    Aws::Utils::Stream::ResponseStream m_policy;
+  Aws::Utils::Stream::ResponseStream m_policy;
   };
 
 } // namespace Model

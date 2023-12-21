@@ -285,7 +285,7 @@ void NumberParserImpl::parseGreedy(StringSegment& segment, ParsedNumber& result,
             i++;
             continue;
         }
-        UPRV_UNREACHABLE_EXIT;
+        UPRV_UNREACHABLE;
     }
 
     // NOTE: If we get here, the greedy parse completed without consuming the entire string.

@@ -13,7 +13,7 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -369,7 +369,7 @@ inline void WaitForMigrations(
     ui32 rangeCount)
 {
     ui32 migratedRanges = 0;
-    runtime.SetObserverFunc([&] (auto& event) {
+    runtime.SetObserverFunc([&] (auto& runtime, auto& event) {
         switch (event->GetTypeRewrite()) {
             case TEvNonreplPartitionPrivate::EvRangeMigrated: {
                 auto* msg =
@@ -380,7 +380,7 @@ inline void WaitForMigrations(
                 break;
             }
         }
-        return NActors::TTestActorRuntime::DefaultObserverFunc(event);
+        return NActors::TTestActorRuntime::DefaultObserverFunc(runtime, event);
     });
 
     ui32 i = 0;

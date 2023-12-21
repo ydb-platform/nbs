@@ -23,7 +23,8 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 
 template <class __Operation>
 class _LIBCPP_TEMPLATE_VIS _LIBCPP_DEPRECATED_IN_CXX11 binder1st
-    : public __unary_function<typename __Operation::second_argument_type, typename __Operation::result_type>
+    : public unary_function<typename __Operation::second_argument_type,
+                            typename __Operation::result_type>
 {
 protected:
     __Operation                               op;

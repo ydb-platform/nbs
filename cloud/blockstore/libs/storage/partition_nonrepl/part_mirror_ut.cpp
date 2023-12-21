@@ -13,8 +13,8 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -521,7 +521,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         THashMap<TString, TBlockRange64> device2WriteRange;
         THashMap<TString, TBlockRange64> device2ZeroRange;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
                         using TRequest =
@@ -548,7 +548,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -732,7 +732,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TMigrationTestRuntime()
         {
-            auto obs = [&] (auto& event) {
+            auto obs = [&] (auto& runtime, auto& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvFinishMigrationRequest: {
                         UNIT_ASSERT(!FinishRequestObserved);
@@ -760,7 +760,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             };
 
             Runtime.SetRegistrationObserverFunc(

@@ -1,10 +1,9 @@
-#include "concurrent_hash.h"
+#include <concurrent_hash.h>
 
 #include <library/cpp/testing/unittest/gtest.h>
 
-#include <util/generic/noncopyable.h>
 #include <util/generic/string.h>
-#include <util/string/cast.h>
+#include <util/generic/vector.h>
 
 TEST(TConcurrentHashTest, TEmptyGetTest) {
     TConcurrentHashMap<TString, ui32> h;
@@ -15,7 +14,7 @@ TEST(TConcurrentHashTest, TEmptyGetTest) {
     EXPECT_FALSE(h.Get("key", res));
     EXPECT_EQ(res, 100);
 
-    // Can't check h.Get("key") here because it has Y_ABORT_UNLESS inside o_O
+    // Can't check h.Get("key") here because it has Y_VERIFY inside o_O
 }
 
 TEST(TConcurrentHashTest, TInsertTest) {
@@ -83,34 +82,6 @@ TEST(TConcurrentHashTest, TInsertIfAbsentTestFunc) {
     EXPECT_FALSE(initialized);
 }
 
-
-TEST(TConcurrentHashTest, TEmplaceIfAbsentTest) {
-    struct TBadConstructor{};
-
-    // InsertIfAbsent cannot be uses for noncopyable and nonmovable types (e.g. atomics or structs with atomic members)
-    struct TFoo : public TNonCopyable {
-        explicit TFoo(int value)
-            : Value(value)
-        {}
-
-        explicit TFoo(TBadConstructor) {
-            ythrow yexception{} << "THis constructor must not be called";
-        }
-
-        int Value;
-    };
-
-    TConcurrentHashMap<TString, TFoo> h;
-
-    EXPECT_FALSE(h.Has("key"));
-
-    EXPECT_EQ(h.EmplaceIfAbsent("key", 123).Value, 123);
-    EXPECT_TRUE(h.Has("key"));
-
-    // If the key already exists, the value must not be constructed
-    EXPECT_EQ(h.EmplaceIfAbsent("key", TBadConstructor{}).Value, 123);
-}
-
 TEST(TConcurrentHashTest, TRemoveTest) {
     TConcurrentHashMap<TString, ui32> h;
 
@@ -143,15 +114,4 @@ TEST(TConcurrentHashTest, TRemoveTest) {
     EXPECT_FALSE(h.Has("key2"));
     EXPECT_FALSE(h.Has("key3"));
     EXPECT_EQ(h.Get("key1"), 1);
-}
-
-TEST(TConcurrentHashTest, TGetBucketTest) {
-    TConcurrentHashMap<TString, ui32> h;
-
-    for (int i = 0; i < 100; ++i) {
-        TString key = ToString(i);
-        auto& bucket1 = h.GetBucketForKey(key);
-        auto& bucket2 = h.GetBucketForKey(TStringBuf(key));
-        EXPECT_EQ(&bucket1, &bucket2);
-    }
 }

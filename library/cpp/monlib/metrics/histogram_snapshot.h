@@ -187,12 +187,12 @@ namespace NMonitoring {
         }
 
         TBucket& Bucket(ui32 index) noexcept {
-            Y_DEBUG_ABORT_UNLESS(index < BucketsCount_);
+            Y_VERIFY_DEBUG(index < BucketsCount_);
             return *(reinterpret_cast<TBucket*>(this + 1) + index);
         }
 
         const TBucket& Bucket(ui32 index) const noexcept {
-            Y_DEBUG_ABORT_UNLESS(index < BucketsCount_);
+            Y_VERIFY_DEBUG(index < BucketsCount_);
             return *(reinterpret_cast<const TBucket*>(this + 1) + index);
         }
 
@@ -203,7 +203,7 @@ namespace NMonitoring {
     static_assert(alignof(TExplicitHistogramSnapshot) == alignof(TBucket),
                   "mismatched alingments of THistogramSnapshot and TBucket");
 
-    IHistogramSnapshotPtr ExplicitHistogramSnapshot(TConstArrayRef<TBucketBound> bounds, TConstArrayRef<TBucketValue> values, bool shrinkBuckets = false);
+    IHistogramSnapshotPtr ExplicitHistogramSnapshot(TConstArrayRef<TBucketBound> bounds, TConstArrayRef<TBucketValue> values);
 
 } // namespace NMonitoring
 

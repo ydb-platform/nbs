@@ -79,13 +79,3 @@ Aws::Http::HeaderValueCollection GetObjectAclRequest::GetRequestSpecificHeaders(
 
   return headers;
 }
-
-GetObjectAclRequest::EndpointParameters GetObjectAclRequest::GetEndpointContextParams() const
-{
-    EndpointParameters parameters;
-    // Operation context parameters
-    if (BucketHasBeenSet()) {
-        parameters.emplace_back(Aws::String("Bucket"), this->GetBucket(), Aws::Endpoint::EndpointParameter::ParameterOrigin::OPERATION_CONTEXT);
-    }
-    return parameters;
-}

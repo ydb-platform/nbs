@@ -14,7 +14,7 @@ namespace NBus {
             case EIP_VERSION_6:
                 return "EIP_VERSION_6";
         }
-        Y_ABORT();
+        Y_FAIL();
     }
 
     int ToAddrFamily(EIpVersion ipVersion) {
@@ -26,7 +26,7 @@ namespace NBus {
             case EIP_VERSION_6:
                 return AF_INET6;
         }
-        Y_ABORT();
+        Y_FAIL();
     }
 
     class TNetworkAddressRef: private TNetworkAddress, public TAddrInfo {
@@ -66,7 +66,7 @@ namespace NBus {
     TNetAddr::TNetAddr(TAutoPtr<IRemoteAddr> addr)
         : Ptr(addr)
     {
-        Y_ABORT_UNLESS(!!Ptr);
+        Y_VERIFY(!!Ptr);
     }
 
     namespace {
@@ -81,7 +81,7 @@ namespace NBus {
                 case EIP_VERSION_ANY:
                     return "any address";
                 default:
-                    Y_ABORT("unreachable");
+                    Y_FAIL("unreachable");
             }
         }
 
@@ -158,7 +158,7 @@ namespace NBus {
             case AF_INET6:
                 return InetToHost(((sockaddr_in6*)Ptr->Addr())->sin6_port);
             default:
-                Y_ABORT("unknown AF: %d", (int)Ptr->Addr()->sa_family);
+                Y_FAIL("unknown AF: %d", (int)Ptr->Addr()->sa_family);
                 throw 1;
         }
     }

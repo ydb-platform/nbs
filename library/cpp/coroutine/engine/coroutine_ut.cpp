@@ -91,7 +91,7 @@ void TCoroTest::TestException() {
     auto f1 = [&f2run](TCont* c) {
         struct TCtx {
             ~TCtx() {
-                Y_ABORT_UNLESS(!*F2);
+                Y_VERIFY(!*F2);
 
                 C->Yield();
             }

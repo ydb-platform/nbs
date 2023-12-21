@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, error] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
@@ -65,7 +65,7 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendListVolumesRequest();

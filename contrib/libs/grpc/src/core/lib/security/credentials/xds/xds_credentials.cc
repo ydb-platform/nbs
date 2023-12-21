@@ -24,6 +24,7 @@
 #include "y_absl/types/optional.h"
 
 #include <grpc/grpc_security_constants.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/log.h>
 
 #include "src/core/ext/filters/client_channel/lb_policy/xds/xds_channel_args.h"
@@ -99,7 +100,7 @@ bool XdsCertificateVerifier::Verify(
         y_absl::StatusCode::kUnauthenticated,
         "SANs from certificate did not match SANs from xDS control plane");
   }
-  return true;  // synchronous check
+  return true; /* synchronous check */
 }
 
 void XdsCertificateVerifier::Cancel(

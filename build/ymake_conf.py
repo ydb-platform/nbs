@@ -25,14 +25,6 @@ def init_logger(verbose):
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
 
 
-def find_conf(conf_file):
-    script_dir = os.path.dirname(__file__)
-    full_path = os.path.join(script_dir, conf_file)
-    if os.path.exists(full_path):
-        return full_path
-    return None
-
-
 class DebugString(object):
     def __init__(self, get_string_func):
         self.get_string_func = get_string_func
@@ -64,7 +56,7 @@ class Platform(object):
 
         self.is_armv7 = self.arch in ('armv7', 'armv7a', 'armv7ahf', 'armv7a_neon', 'arm', 'armv7a_cortex_a9', 'armv7ahf_cortex_a35', 'armv7ahf_cortex_a53')
         self.is_armv8 = self.arch in ('armv8', 'armv8a', 'arm64', 'aarch64', 'armv8a_cortex_a35', 'armv8a_cortex_a53')
-        self.is_armv8m = self.arch in ('armv8m_cortex_m33', 'armv8m_cortex_m23')
+        self.is_armv8m = self.arch in ('armv8m_cortex_m33',)
         self.is_armv7em = self.arch in ('armv7em_cortex_m4', 'armv7em_cortex_m7')
         self.is_arm64 = self.arch in ('arm64',)
         self.is_arm = self.is_armv7 or self.is_armv8 or self.is_armv8m or self.is_armv7em
@@ -89,7 +81,6 @@ class Platform(object):
         self.is_cortex_a35 = self.arch in ('armv7ahf_cortex_a35', 'armv8a_cortex_a35')
         self.is_cortex_a53 = self.arch in ('armv7ahf_cortex_a53', 'armv8a_cortex_a53')
         self.is_cortex_m33 = self.arch in ('armv8m_cortex_m33',)
-        self.is_cortex_m23 = self.arch in ('armv8m_cortex_m23',)
         self.is_cortex_m4 = self.arch in ('armv7em_cortex_m4',)
         self.is_cortex_m7 = self.arch in ('armv7em_cortex_m7')
 
@@ -97,11 +88,8 @@ class Platform(object):
         self.is_power9le = self.arch == 'power9le'
         self.is_powerpc = self.is_power8le or self.is_power9le
 
-        self.is_wasm64 = self.arch == 'wasm64'
-        self.is_wasm = self.is_wasm64
-
         self.is_32_bit = self.is_x86 or self.is_armv7 or self.is_armv8m or self.is_riscv32 or self.is_nds32 or self.is_armv7em or self.is_xtensa
-        self.is_64_bit = self.is_x86_64 or self.is_armv8 or self.is_powerpc or self.is_wasm64
+        self.is_64_bit = self.is_x86_64 or self.is_armv8 or self.is_powerpc
 
         assert self.is_32_bit or self.is_64_bit
         assert not (self.is_32_bit and self.is_64_bit)
@@ -132,7 +120,6 @@ class Platform(object):
 
         self.is_cygwin = self.os == 'cygwin'
         self.is_yocto = self.os == 'yocto'
-        self.is_emscripten = self.os == 'emscripten'
 
         self.is_none = self.os == 'none'
 
@@ -183,7 +170,6 @@ class Platform(object):
             (self.is_riscv32, 'ARCH_RISCV32'),
             (self.is_xtensa, 'ARCH_XTENSA'),
             (self.is_nds32, 'ARCH_NDS32'),
-            (self.is_wasm64, 'ARCH_WASM64'),
             (self.is_32_bit, 'ARCH_TYPE_32'),
             (self.is_64_bit, 'ARCH_TYPE_64'),
         ))
@@ -287,7 +273,7 @@ def get_stdout_and_code(command):
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, _ = process.communicate()
-        return six.ensure_str(stdout), process.returncode
+        return stdout, process.returncode
     except Exception as e:
         logger.info("While run: `%s`", e)
         return None, None
@@ -475,7 +461,7 @@ class Options(object):
         self.toolchain_params = self.options.toolchain_params
 
         self.presets = parse_presets(self.options.presets)
-        userify_presets(self.presets, ('CFLAGS', 'CXXFLAGS', 'CONLYFLAGS', 'LDFLAGS', 'GO_COMPILE_FLAGS', 'GO_LINK_FLAGS'))
+        userify_presets(self.presets, ('CFLAGS', 'CXXFLAGS', 'CONLYFLAGS', 'LDFLAGS', 'GO_COMPILE_FLAGS', 'GO_LINK_FLAGS', 'USE_LOCAL_SWIG', 'SWIG_TOOL', 'SWIG_LIBRARY'))
 
     Instance = None
 
@@ -689,6 +675,10 @@ class Build(object):
         ragel.configure_toolchain(self, compiler)
         ragel.print_variables()
 
+        perl = Perl()
+        perl.configure_local()
+        perl.print_variables('LOCAL_')
+
         swiftc = SwiftCompiler(self)
         swiftc.configure()
         swiftc.print_compiler()
@@ -703,9 +693,33 @@ class Build(object):
         cuda.print_()
         CuDNN(cuda).print_()
 
+        print_swig_config()
+
         if self.ignore_local_files or host.is_windows or is_positive('NO_SVN_DEPENDS'):
+            emit_with_ignore_comment('SVN_DEPENDS')
             emit_with_ignore_comment('SVN_DEPENDS_CACHE__NO_UID__')
         else:
+            def find_svn():
+                for i in range(0, 3):
+                    for path in (['.svn', 'wc.db'], ['.svn', 'entries'], ['.git', 'logs', 'HEAD']):
+                        path_parts = [os.pardir] * i + path
+                        full_path = os.path.join(self.arcadia.root, *path_parts)
+                        # HACK(somov): No "normpath" here. ymake fails with the "source file name is outside the build tree" error
+                        # when .svn/wc.db found in "trunk" instead of "arcadia". But $ARCADIA_ROOT/../.svn/wc.db is ok.
+                        if os.path.exists(full_path):
+                            out_path = os.path.join('${ARCADIA_ROOT}', *path_parts)
+                            return '${input;hide:"%s"}' % out_path
+
+                # Special processing for arc repository since .arc may be a symlink.
+                dot_arc = os.path.realpath(os.path.join(self.arcadia.root, '.arc'))
+                full_path = os.path.join(dot_arc, 'TREE')
+                if os.path.exists(full_path):
+                    out_path = os.path.join('${ARCADIA_ROOT}', os.path.relpath(full_path, self.arcadia.root))
+                    return '${input;hide:"%s"}' % out_path
+
+                return ''
+
+            emit_with_ignore_comment('SVN_DEPENDS', find_svn())
             emit_with_ignore_comment('SVN_DEPENDS_CACHE__NO_UID__', '${hide;kv:"disable_cache"}')
 
     @staticmethod
@@ -745,7 +759,10 @@ class YMake(object):
         if presets:
             print('# Variables set from command line by -D options')
             for key in sorted(presets):
-                emit(key, opts().presets[key])
+                if key in ('MY_YMAKE_BIN', 'REAL_YMAKE_BIN'):
+                    emit_with_ignore_comment(key, opts().presets[key])
+                else:
+                    emit(key, opts().presets[key])
 
     @staticmethod
     def _print_conf_content(path):
@@ -753,10 +770,22 @@ class YMake(object):
             print(fin.read())
 
     def print_core_conf(self):
+        emit('YMAKE_YNDEXER_IGNORE_BUILD_ROOT', 'yes')
         print('@import "${CONF_ROOT}/ymake.core.conf"')
 
     def print_settings(self):
-        pass
+        emit_with_ignore_comment('ARCADIA_ROOT', self.arcadia.root)
+
+    @staticmethod
+    def _find_conf(conf_file):
+        script_dir = os.path.dirname(__file__)
+        full_path = os.path.join(script_dir, conf_file)
+        if os.path.exists(full_path):
+            return full_path
+        return None
+
+    def _find_core_conf(self):
+        return self._find_conf('ymake.core.conf')
 
 
 class System(object):
@@ -958,7 +987,7 @@ class ToolchainOptions(object):
             self.compiler_version = self.params.get('gcc_version') or self.params.get('version') or '0'
             self.compiler_version_list = list(map(int, self.compiler_version.split('.')))
 
-        # 'match_root' at this point contains real name for references via toolchain
+        # TODO(somov): Посмотреть, можно ли спрятать это поле.
         self.name_marker = '$(%s)' % self.params.get('match_root', self._name.upper())
 
         self.arch_opt = self.params.get('arch_opt', [])
@@ -986,8 +1015,8 @@ class ToolchainOptions(object):
     def version_exactly(self, *args):
         if not args or len(args) > len(self.compiler_version_list):
             return False
-        for left, right in zip(args, list(self.compiler_version_list)[:len(args)]):
-            if left != right:
+        for l, r in zip(args, list(self.compiler_version_list)[:len(args)]):
+            if l != r:
                 return False
         return True
 
@@ -1087,10 +1116,7 @@ class Compiler(object):
     def print_compiler(self):
         # CLANG and CLANG_VER variables
         emit(self.compiler_variable, 'yes')
-        cv = self.tc.compiler_version
-        if '.' in cv:
-            cv = cv[:cv.index('.')]
-        emit('{}_VER'.format(self.compiler_variable), cv)
+        emit('{}_VER'.format(self.compiler_variable), self.tc.compiler_version)
         if self.tc.is_xcode:
             emit('XCODE', 'yes')
 
@@ -1144,7 +1170,15 @@ class GnuToolchain(Toolchain):
                 self.env.setdefault(lib_path, []).append('{}/lib'.format(self.tc.name_marker))
 
         macos_version_min = '11.0'
-        ios_version_min = '13.0'
+        ios_version_min = '11.0'
+        # min ios simulator version for Metal App is 13.0
+        # https://developer.apple.com/documentation/metal/supporting_simulator_in_a_metal_app
+        # Mapkit (MAPSMOBI_BUILD_TARGET) uses Metal Framework
+        if preset('MAPSMOBI_BUILD_TARGET') and target.is_iossim and target.is_armv8:
+            ios_version_min = '13.0'
+        # Mapkit uses SecTrustEvaluateWithError function and these are min versions for it
+        elif preset('MAPSMOBI_BUILD_TARGET'):
+            ios_version_min = '12.0'
 
         swift_target = select(default=None, selectors=[
             (target.is_iossim and target.is_x86_64, 'x86_64-apple-ios{}-simulator'.format(ios_version_min)),
@@ -1190,8 +1224,6 @@ class GnuToolchain(Toolchain):
                     (target.is_android and target.is_x86_64, 'x86_64-linux-android'),
                     (target.is_android and target.is_armv7, 'armv7a-linux-androideabi'),
                     (target.is_android and target.is_armv8, 'aarch64-linux-android'),
-
-                    (target.is_emscripten and target.is_wasm64, 'wasm64-unknown-emscripten'),
                 ])
 
             if target.is_android:
@@ -1223,9 +1255,6 @@ class GnuToolchain(Toolchain):
 
         elif target.is_cortex_m7:
             self.c_flags_platform.append('-mcpu=cortex-m7 -mfpu=fpv5-sp-d16')
-
-        elif target.is_cortex_m23:
-            self.c_flags_platform.append('-mcpu=cortex-m23')
 
         elif target.is_cortex_m33:
             self.c_flags_platform.append('-mcpu=cortex-m33 -mfpu=fpv5-sp-d16')
@@ -1268,11 +1297,11 @@ class GnuToolchain(Toolchain):
             if self.tc.is_from_arcadia or self.tc.is_system_cxx:
                 if target.is_apple:
                     if target.is_ios:
-                        self.setup_xcode_sdk(project='build/platform/ios_sdk', var='${IOS_SDK_ROOT_RESOURCE_GLOBAL}')
-                        self.platform_projects.append('build/internal/platform/macos_system_stl')
+                        self.setup_sdk(project='build/platform/ios_sdk', var='${IOS_SDK_ROOT_RESOURCE_GLOBAL}')
+                        self.platform_projects.append('build/platform/macos_system_stl')
                     if target.is_macos:
-                        self.setup_xcode_sdk(project='build/internal/platform/macos_sdk', var='${MACOS_SDK_RESOURCE_GLOBAL}')
-                        self.platform_projects.append('build/internal/platform/macos_system_stl')
+                        self.setup_sdk(project='build/platform/macos_sdk', var='${MACOS_SDK_RESOURCE_GLOBAL}')
+                        self.platform_projects.append('build/platform/macos_system_stl')
 
                 if target.is_linux:
                     if not tc.os_sdk_local:
@@ -1294,11 +1323,11 @@ class GnuToolchain(Toolchain):
                 if target.is_apple:
                     if not tc.os_sdk_local:
                         if target.is_ios:
-                            self.setup_xcode_sdk(project='build/platform/ios_sdk', var='${IOS_SDK_ROOT_RESOURCE_GLOBAL}')
-                            self.platform_projects.append('build/internal/platform/macos_system_stl')
+                            self.setup_sdk(project='build/platform/ios_sdk', var='${IOS_SDK_ROOT_RESOURCE_GLOBAL}')
+                            self.platform_projects.append('build/platform/macos_system_stl')
                         if target.is_macos:
-                            self.setup_xcode_sdk(project='build/internal/platform/macos_sdk', var='${MACOS_SDK_RESOURCE_GLOBAL}')
-                            self.platform_projects.append('build/internal/platform/macos_system_stl')
+                            self.setup_sdk(project='build/platform/macos_sdk', var='${MACOS_SDK_RESOURCE_GLOBAL}')
+                            self.platform_projects.append('build/platform/macos_system_stl')
                     else:
                         if target.is_iossim:
                             self.env.setdefault('SDKROOT', subprocess.check_output(['xcrun', '-sdk', 'iphonesimulator', '--show-sdk-path']).strip())
@@ -1310,12 +1339,6 @@ class GnuToolchain(Toolchain):
     def setup_sdk(self, project, var):
         self.platform_projects.append(project)
         self.c_flags_platform.append('--sysroot={}'.format(var))
-        self.swift_flags_platform += ['-sdk', var]
-
-    def setup_xcode_sdk(self, project, var):
-        self.platform_projects.append(project)
-        self.c_flags_platform.append('-isysroot')
-        self.c_flags_platform.append(var)
         self.swift_flags_platform += ['-sdk', var]
 
     # noinspection PyShadowingBuiltins
@@ -1361,10 +1384,6 @@ class GnuCompiler(Compiler):
             # Enable standard-conforming behavior and generate duplicate symbol error in case of duplicated global constants.
             # See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85678#c0
             '-fno-common',
-
-            # Split all functions and data into separate sections for DCE and ICF linker passes
-            '-ffunction-sections',
-            '-fdata-sections'
         ]
 
         if self.tc.is_clang and self.target.is_linux:
@@ -1435,6 +1454,9 @@ class GnuCompiler(Compiler):
         if self.tc.is_clang and self.target.is_linux and self.target.is_x86_64:
             self.c_defines.append('-D_YNDX_LIBUNWIND_ENABLE_EXCEPTION_BACKTRACE')
 
+        if self.target.is_ios:
+            self.c_defines.extend(['-D_XOPEN_SOURCE', '-D_DARWIN_C_SOURCE'])
+
         self.c_flags = ['$CL_DEBUG_INFO', '$CL_DEBUG_INFO_DISABLE_CACHE__NO_UID__']
         self.c_flags += self.tc.arch_opt + ['-pipe']
 
@@ -1484,6 +1506,11 @@ class GnuCompiler(Compiler):
             else:
                 self.c_foptions.append('-fno-delete-null-pointer-checks')
                 self.c_foptions.append('-fabi-version=8')
+
+        # Split all functions and data into separate sections for DCE and ICF linker passes
+        # NOTE: iOS build uses -fembed-bitcode which conflicts with -ffunction-sections (only relevant for ELF targets)
+        if not self.target.is_ios:
+            self.c_foptions.extend(['-ffunction-sections', '-fdata-sections'])
 
     def configure_build_type(self):
         if self.build.is_valgrind:
@@ -1585,7 +1612,7 @@ class Linker(object):
             # Android toolchain is NDK, LLD works on all supported platforms
             return Linker.LLD
 
-        elif self.build.target.is_linux or self.build.target.is_macos or self.build.target.is_ios or self.build.target.is_wasm:
+        elif self.build.target.is_linux or self.build.target.is_macos or self.build.target.is_ios:
             return Linker.LLD
 
         # There is no linker choice on Windows (link.exe)
@@ -1639,9 +1666,9 @@ class LD(Linker):
         elif 'llvm-ar' in self.ar:
             self.ar_type = 'LLVM_AR'
             if target.is_apple:
-                self.llvm_ar_format = "darwin"
+                self.llvm_ar_format="darwin"
             else:
-                self.llvm_ar_format = "gnu"
+                self.llvm_ar_format="gnu"
 
         self.ld_flags = []
 
@@ -1845,7 +1872,7 @@ class MSVCToolchain(MSVC, Toolchain):
         MSVC.__init__(self, tc, build)
 
         if self.tc.from_arcadia and not self.tc.ide_msvs:
-            self.platform_projects.append('build/internal/platform/msvc')
+            self.platform_projects.append('build/platform/msvc')
             if tc.under_wine:
                 self.platform_projects.append('build/platform/wine')
 
@@ -2190,6 +2217,52 @@ class Python(object):
         variables.emit()
 
 
+class Perl(object):
+    # Parse (key, value) from "version='5.26.0';" lines
+    PERL_CONFIG_RE = re.compile(r"^(?P<key>\w+)='(?P<value>.*)';$", re.MULTILINE)
+
+    def __init__(self):
+        self.perl = None
+        self.version = None
+        self.privlib = None
+        self.archlib = None
+
+    def configure_local(self, perl=None):
+        self.perl = perl or preset('PERL') or which('perl')
+        if self.perl is None:
+            return
+
+        # noinspection PyTypeChecker
+        config = dict(self._iter_config(['version', 'privlibexp', 'archlibexp']))
+        self.version = config.get('version')
+        self.privlib = config.get('privlibexp')
+        self.archlib = config.get('archlibexp')
+
+    def print_variables(self, prefix=''):
+        variables = Variables({
+            prefix + 'PERL': self.perl,
+            prefix + 'PERL_VERSION': self.version,
+            prefix + 'PERL_PRIVLIB': self.privlib,
+            prefix + 'PERL_ARCHLIB': self.archlib,
+        })
+
+        variables.reset_if_any(reset_value='PERL-NOT-FOUND')
+        variables.emit(with_ignore_comment=variables.keys())
+
+    def _iter_config(self, config_keys):
+        # Run perl -V:version -V:etc...
+        perl_config = [self.perl] + ['-V:{}'.format(key) for key in config_keys]
+        config = six.ensure_str(get_stdout(perl_config) or '')
+
+        start = 0
+        while True:
+            match = Perl.PERL_CONFIG_RE.search(config, start)
+            if match is None:
+                break
+            yield match.group('key', 'value')
+            start = match.end()
+
+
 class Setting(object):
     def __init__(self, key, auto=None, convert=None, rewrite=False):
         self.key = key
@@ -2399,7 +2472,7 @@ class Cuda(object):
         }
 
         if not self.build.tc.ide_msvs:
-            self.peerdirs.append('build/internal/platform/msvc')
+            self.peerdirs.append('build/platform/msvc')
         self.cuda_host_compiler_env.value = format_env(env)
         self.cuda_host_msvc_version.value = vc_version
         return '%(Y_VC_Root)s/bin/HostX64/x64/cl.exe' % env
@@ -2446,57 +2519,49 @@ class CuDNN(object):
             self.cudnn_version.emit()
 
 
-def customization():
-    if not is_positive('DISABLE_YMAKE_CONF_CUSTOMIZATION'):
-        try:
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'internal'))
-            from custom_conf import CustomConf
-            logger.debug('Customization extension was successfully loaded')
-            return CustomConf
-        except Exception as e:
-            logger.debug('Customization extension was not found; [{}]'.format(str(e)))
-    else:
-        logger.debug('Customization extension was disabled')
+def print_swig_config():
+    def get_swig_tool():
+        tool = preset('USER_SWIG_TOOL')
+        if not tool:
+            tool = which('swig')
+            if not tool:
+                raise ConfigureError('SWIG_TOOL is not specified and "swig" is not found in PATH')
+        return os.path.abspath(tool)
 
-    class DummyConf:
-        def __init__(self, options):
-            pass
+    def get_swig_library(tool):
+        library = preset('USER_SWIG_LIBRARY')
+        if not library:
+            library, code = get_stdout_and_code((tool, '-swiglib'))
+            if code != 0:
+                raise ConfigureError('SWIG_LIBRARY is not specified and "{} -swiglib" failed'.format(tool))
+            library = library.split('\n')[0]
+        return os.path.abspath(library)
 
-        def print_prologue(self):
-            pass
+    use_local_swig = to_bool(preset('USER_USE_LOCAL_SWIG'), False) or bool(preset('USER_SWIG_TOOL'))
+    if use_local_swig:
+        tool = get_swig_tool()
+        library = get_swig_library(tool)
 
-        def print_epilogue(self):
-            pass
-
-    return DummyConf
+        emit('USE_LOCAL_SWIG', True)
+        emit('SWIG_TOOL', tool)
+        emit('SWIG_LIBRARY', library)
 
 
 def main():
     options = opts()
-
-    CustomConfig = customization()
-    custom_conf = CustomConfig(options)
 
     arcadia = Arcadia(options.arcadia_root)
 
     ymake = YMake(arcadia)
 
     ymake.print_core_conf()
-
-    _INTERNAL_CONF = 'internal/conf/internal.conf'
-    internal_conf_full_path = find_conf(_INTERNAL_CONF)
-    if internal_conf_full_path and not is_positive('DISABLE_YMAKE_CONF_CUSTOMIZATION'):
-        print('@import "${{CONF_ROOT}}/{}"'.format(_INTERNAL_CONF))
-
-    custom_conf.print_prologue()
-
     ymake.print_presets()
     ymake.print_settings()
 
     build = Build(arcadia, options.build_type, options.toolchain_params, force_ignore_local_files=not options.local_distbuild)
     build.print_build()
 
-    custom_conf.print_epilogue()
+    emit_with_ignore_comment('CONF_SCRIPT_DEPENDS', __file__)
 
 
 if __name__ == '__main__':

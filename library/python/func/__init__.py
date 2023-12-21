@@ -1,8 +1,6 @@
 import functools
 import threading
 import collections
-import contextlib
-import six
 
 
 def map0(func, value):
@@ -78,32 +76,20 @@ class lazy_classproperty(object):
         return getattr(owner, attr_name)
 
 
-class nullcontext(object):
-    def __enter__(self):
-        pass
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
-
-
-def memoize(limit=0, thread_local=False, thread_safe=True):
+def memoize(limit=0, thread_local=False):
     assert limit >= 0
-    assert limit <= 0 or thread_safe, 'memoize() it not thread safe enough to work in limiting and non-thread safe mode'
 
     def decorator(func):
         memory = {}
-
-        if six.PY3:
-            lock = contextlib.nullcontext()
-        else:
-            lock = nullcontext()
-        lock = threading.Lock() if thread_safe else lock
+        lock = threading.Lock()
 
         if limit:
             keys = collections.deque()
 
             def get(args):
-                if args not in memory:
+                try:
+                    return memory[args]
+                except KeyError:
                     with lock:
                         if args not in memory:
                             fargs = args[-1]
@@ -111,7 +97,7 @@ def memoize(limit=0, thread_local=False, thread_safe=True):
                             keys.append(args)
                             if len(keys) > limit:
                                 del memory[keys.popleft()]
-                return memory[args]
+                        return memory[args]
 
         else:
 
@@ -120,7 +106,7 @@ def memoize(limit=0, thread_local=False, thread_safe=True):
                     with lock:
                         if args not in memory:
                             fargs = args[-1]
-                            memory.setdefault(args, func(*fargs))
+                            memory[args] = func(*fargs)
                 return memory[args]
 
         if thread_local:

@@ -948,7 +948,7 @@ namespace {
                 SuggestPurgeCache();
 
                 if (ExceedHardLimit()) {
-                    Y_ABORT("neh::http2 output connections limit reached");
+                    Y_FAIL("neh::http2 output connections limit reached");
                     //ythrow yexception() << "neh::http2 output connections limit reached";
                 }
             }
@@ -1760,7 +1760,7 @@ namespace {
                     TAtomicBase oldReqId;
                     do {
                         oldReqId = AtomicGet(PrimaryResponse_);
-                        Y_ABORT_UNLESS(oldReqId, "race inside http pipelining");
+                        Y_VERIFY(oldReqId, "race inside http pipelining");
                     } while (!AtomicCas(&PrimaryResponse_, requestId, oldReqId));
 
                     ProcessResponsesData();
@@ -1768,7 +1768,7 @@ namespace {
                     TAtomicBase oldReqId = AtomicGet(PrimaryResponse_);
                     if (oldReqId) {
                         while (!AtomicCas(&PrimaryResponse_, 0, oldReqId)) {
-                            Y_ABORT_UNLESS(oldReqId == AtomicGet(PrimaryResponse_), "race inside http pipelining [2]");
+                            Y_VERIFY(oldReqId == AtomicGet(PrimaryResponse_), "race inside http pipelining [2]");
                         }
                     }
                 }
@@ -1867,6 +1867,7 @@ namespace {
             , CB_(cb)
             , LimitRequestsPerConnection(THttp2Options::LimitRequestsPerConnection)
         {
+
             TNetworkAddress addr = THttp2Options::RespectHostInHttpServerNetworkAddress ?
                                     TNetworkAddress(TString(loc.Host), loc.GetPort())
                                     : TNetworkAddress(loc.GetPort());

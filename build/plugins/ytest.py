@@ -1,9 +1,6 @@
-from __future__ import print_function
-
 import os
 import re
 import sys
-import six
 import json
 import copy
 import base64
@@ -11,19 +8,20 @@ import shlex
 import _common
 import lib.test_const as consts
 import _requirements as reqs
-
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
+import StringIO
 import subprocess
 import collections
 
 import ymake
 
+
+MDS_URI_PREFIX = 'https://storage.yandex-team.ru/get-devtools/'
+MDS_SCHEME = 'mds'
 CANON_DATA_DIR_NAME = 'canondata'
 CANON_OUTPUT_STORAGE = 'canondata_storage'
 CANON_RESULT_FILE_NAME = 'result.json'
+CANON_MDS_RESOURCE_REGEX = re.compile(re.escape(MDS_URI_PREFIX) + r'(.*?)($|#)')
+CANON_SBR_RESOURCE_REGEX = re.compile(r'(sbr:/?/?(\d+))')
 
 BLOCK_SEPARATOR = '============================================================='
 SPLIT_FACTOR_MAX_VALUE = 1000
@@ -44,7 +42,7 @@ def ontest_data(unit, *args):
 def prepare_recipes(data):
     data = data.replace('"USE_RECIPE_DELIM"', "\n")
     data = data.replace("$TEST_RECIPES_VALUE", "")
-    return base64.b64encode(six.ensure_binary(data or ""))
+    return base64.b64encode(data or "")
 
 
 def prepare_env(data):
@@ -74,6 +72,10 @@ def validate_test(unit, kw):
             ("contrib", "mail", "maps", "tools/idl", "metrika", "devtools", "mds", "yandex_io", "smart_devices")
         ):
             errors.append("BOOSTTEST is not allowed here")
+    elif valid_kw.get('SCRIPT-REL-PATH') == 'gtest':
+        project_path = valid_kw.get('BUILD-FOLDER-PATH', "")
+        if not project_path.startswith(("contrib", "devtools", "mds")):
+            errors.append("GTEST_UGLY is not allowed here, use GTEST instead")
 
     size_timeout = collections.OrderedDict(sorted(consts.TestSize.DefaultTimeouts.items(), key=lambda t: t[1]))
 
@@ -121,20 +123,17 @@ def validate_test(unit, kw):
 
     if not errors:
         for req_name, req_value in requirements.items():
-            try:
-                error_msg = reqs.validate_requirement(
-                    req_name,
-                    req_value,
-                    size,
-                    is_force_sandbox,
-                    in_autocheck,
-                    is_fuzzing,
-                    is_kvm,
-                    is_ytexec_run,
-                    requirements,
-                )
-            except Exception as e:
-                error_msg = str(e)
+            error_msg = reqs.validate_requirement(
+                req_name,
+                req_value,
+                size,
+                is_force_sandbox,
+                in_autocheck,
+                is_fuzzing,
+                is_kvm,
+                is_ytexec_run,
+                requirements,
+            )
             if error_msg:
                 errors += [error_msg]
 
@@ -152,9 +151,7 @@ def validate_test(unit, kw):
         if tag.startswith('sb:'):
             sb_tags.append(tag)
         elif ':' in tag and not tag.startswith('ya:') and tag.split(':')[0] not in skip_set:
-            errors.append(
-                "Only [[imp]]sb:[[rst]] and [[imp]]ya:[[rst]] prefixes are allowed in system tags: {}".format(tag)
-            )
+            errors.append("Only [[imp]]sb:[[rst]] and [[imp]]ya:[[rst]] prefixes are allowed in system tags: {}".format(tag))
 
     if is_fat:
         if size != consts.TestSize.Large:
@@ -204,10 +201,7 @@ def validate_test(unit, kw):
             script_rel_path = valid_kw.get('SCRIPT-REL-PATH')
             if timeout < 0:
                 raise Exception("Timeout must be > 0")
-
-            skip_timeout_verification = script_rel_path in ('java.style', 'ktlint')
-
-            if size_timeout[size] < timeout and in_autocheck and not skip_timeout_verification:
+            if size_timeout[size] < timeout and in_autocheck and script_rel_path != 'java.style':
                 suggested_size = None
                 for s, t in size_timeout.items():
                     if timeout <= t:
@@ -227,9 +221,9 @@ def validate_test(unit, kw):
             errors.append("Error when parsing test timeout: [[bad]]{}[[rst]]".format(e))
 
         requirements_list = []
-        for req_name, req_value in six.iteritems(requirements):
+        for req_name, req_value in requirements.iteritems():
             requirements_list.append(req_name + ":" + req_value)
-        valid_kw['REQUIREMENTS'] = serialize_list(sorted(requirements_list))
+        valid_kw['REQUIREMENTS'] = serialize_list(requirements_list)
 
     # Mark test with ya:external tag if it requests any secret from external storages
     # It's not stable and nonreproducible by definition
@@ -309,7 +303,7 @@ def validate_test(unit, kw):
                 )
 
     if tags:
-        valid_kw['TAG'] = serialize_list(sorted(tags))
+        valid_kw['TAG'] = serialize_list(tags)
 
     unit_path = _common.get_norm_unit_path(unit)
     if (
@@ -334,26 +328,26 @@ def dump_test(unit, kw):
         ymake.report_configure_error(e)
     if valid_kw is None:
         return None
-    string_handler = StringIO()
-    for k, v in six.iteritems(valid_kw):
-        print(k + ': ' + six.ensure_str(v), file=string_handler)
-    print(BLOCK_SEPARATOR, file=string_handler)
+    string_handler = StringIO.StringIO()
+    for k, v in valid_kw.iteritems():
+        print >> string_handler, k + ': ' + v
+    print >> string_handler, BLOCK_SEPARATOR
     data = string_handler.getvalue()
     string_handler.close()
     return data
 
 
 def serialize_list(lst):
-    lst = list(filter(None, lst))
+    lst = filter(None, lst)
     return '\"' + ';'.join(lst) + '\"' if lst else ''
 
 
 def deserialize_list(val):
-    return list(filter(None, val.replace('"', "").split(";")))
+    return filter(None, val.replace('"', "").split(";"))
 
 
 def get_correct_expression_for_group_var(varname):
-    return r"\"${join=\;:" + varname + "}\""
+    return "\"${join=\;:" + varname + "}\""
 
 
 def count_entries(x):
@@ -453,19 +447,12 @@ def onadd_ytest(unit, *args):
     }
     flat_args, spec_args = _common.sort_by_keywords(keywords, args)
 
-    is_implicit_data_needed = flat_args[1] in (
-        "unittest.py",
-        "gunittest",
-        "g_benchmark",
-        "go.test",
-        "boost.test",
-        "fuzz.test",
-    )
+    is_implicit_data_needed = flat_args[1] in ("unittest.py", "gunittest", "g_benchmark", "go.test", "boost.test")
     if is_implicit_data_needed and unit.get('ADD_SRCDIR_TO_TEST_DATA') == "yes":
         unit.ondata_files(_common.get_norm_unit_path(unit))
 
     if flat_args[1] == "fuzz.test":
-        unit.ondata_files("fuzzing/{}/corpus.json".format(_common.get_norm_unit_path(unit)))
+        unit.ondata("arcadia/fuzzing/{}/corpus.json".format(_common.get_norm_unit_path(unit)))
 
     if not flat_args[1] in ("unittest.py", "gunittest", "g_benchmark"):
         unit.ondata_files(get_unit_list_variable(unit, 'TEST_YT_SPEC_VALUE'))
@@ -493,13 +480,13 @@ def onadd_ytest(unit, *args):
     elif flat_args[1] == "no.test":
         return
     test_size = ''.join(spec_args.get('SIZE', [])) or unit.get('TEST_SIZE_NAME') or ''
-    test_tags = serialize_list(sorted(_get_test_tags(unit, spec_args)))
+    test_tags = serialize_list(_get_test_tags(unit, spec_args))
     test_timeout = ''.join(spec_args.get('TIMEOUT', [])) or unit.get('TEST_TIMEOUT') or ''
     test_requirements = spec_args.get('REQUIREMENTS', []) + get_values_list(unit, 'TEST_REQUIREMENTS_VALUE')
 
     if flat_args[1] != "clang_tidy" and unit.get("TIDY_ENABLED") == "yes":
         # graph changed for clang_tidy tests
-        if flat_args[1] in ("unittest.py", "gunittest", "g_benchmark", "boost.test"):
+        if flat_args[1] in ("unittest.py", "gunittest", "g_benchmark"):
             flat_args[1] = "clang_tidy"
             test_size = 'SMALL'
             test_tags = ''
@@ -544,7 +531,7 @@ def onadd_ytest(unit, *args):
         'TEST-RECIPES': prepare_recipes(unit.get("TEST_RECIPES_VALUE")),
         'TEST-ENV': prepare_env(unit.get("TEST_ENV_VALUE")),
         #  'TEST-PRESERVE-ENV': 'da',
-        'TEST-DATA': serialize_list(sorted(test_data)),
+        'TEST-DATA': serialize_list(test_data),
         'TEST-TIMEOUT': test_timeout,
         'FORK-MODE': fork_mode,
         'SPLIT-FACTOR': ''.join(spec_args.get('SPLIT_FACTOR', [])) or unit.get('TEST_SPLIT_FACTOR') or '',
@@ -571,10 +558,8 @@ def onadd_ytest(unit, *args):
             return
         else:
             test_record["TEST-NAME"] += "_bench"
-    elif flat_args[1] in ("g_benchmark", "y_benchmark"):
-        benchmark_opts = get_unit_list_variable(unit, 'BENCHMARK_OPTS_VALUE')
-        test_record['BENCHMARK-OPTS'] = serialize_list(benchmark_opts)
-    elif flat_args[1] == 'fuzz.test' and unit.get('FUZZING') == 'yes':
+
+    if flat_args[1] == 'fuzz.test' and unit.get('FUZZING') == 'yes':
         test_record['FUZZING'] = '1'
         # use all cores if fuzzing requested
         test_record['REQUIREMENTS'] = serialize_list(
@@ -629,9 +614,6 @@ def onadd_check(unit, *args):
     if check_type in ("check.data", "check.resource") and unit.get('VALIDATE_DATA') == "no":
         return
 
-    if check_type == "check.external" and (len(flat_args) == 1 or not flat_args[1]):
-        return
-
     test_dir = _common.get_norm_unit_path(unit)
 
     test_timeout = ''
@@ -649,12 +631,8 @@ def onadd_check(unit, *args):
 
     if check_type in ["flake8.py2", "flake8.py3", "black"]:
         fork_mode = unit.get('TEST_FORK_MODE') or ''
-    elif check_type == "ktlint":
-        test_timeout = '120'
-        ktlint_binary = '$(KTLINT_OLD)/run.bat' if unit.get('_USE_KTLINT_OLD') == 'yes' else '$(KTLINT)/run.bat'
-        extra_test_dart_data['KTLINT_BINARY'] = ktlint_binary
     elif check_type == "JAVA_STYLE":
-        if ymake_java_test and not unit.get('ALL_SRCDIRS'):
+        if ymake_java_test and not unit.get('ALL_SRCDIRS') or '':
             return
         if len(flat_args) < 2:
             raise Exception("Not enough arguments for JAVA_STYLE check")
@@ -785,7 +763,7 @@ def onadd_pytest_script(unit, *args):
         return
     unit.set(["PYTEST_BIN", "no"])
     custom_deps = get_values_list(unit, 'TEST_DEPENDS_VALUE')
-    timeout = list(filter(None, [unit.get(["TEST_TIMEOUT"])]))
+    timeout = filter(None, [unit.get(["TEST_TIMEOUT"])])
     if unit.get('ADD_SRCDIR_TO_TEST_DATA') == "yes":
         unit.ondata_files(_common.get_norm_unit_path(unit))
 
@@ -848,7 +826,7 @@ def add_test_to_dart(unit, test_type, binary_path=None, runner_bin=None):
     if unit.get('ADD_SRCDIR_TO_TEST_DATA') == "yes":
         unit.ondata_files(_common.get_norm_unit_path(unit))
     custom_deps = get_values_list(unit, 'TEST_DEPENDS_VALUE')
-    timeout = list(filter(None, [unit.get(["TEST_TIMEOUT"])]))
+    timeout = filter(None, [unit.get(["TEST_TIMEOUT"])])
     if timeout:
         timeout = timeout[0]
     else:
@@ -957,7 +935,7 @@ def onjava_test(unit, *args):
         if prop['type'] == 'file':
             test_data.append(prop['path'].replace('${ARCADIA_ROOT}', 'arcadia'))
 
-    props = base64.b64encode(six.ensure_binary(json.dumps(props)))
+    props = base64.b64encode(json.dumps(props, encoding='utf-8'))
 
     test_cwd = unit.get('TEST_CWD_VALUE') or ''  # TODO: validate test_cwd value
 
@@ -979,7 +957,7 @@ def onjava_test(unit, *args):
         'FORK-MODE': unit.get('TEST_FORK_MODE') or '',
         'SPLIT-FACTOR': unit.get('TEST_SPLIT_FACTOR') or '',
         'CUSTOM-DEPENDENCIES': ' '.join(get_values_list(unit, 'TEST_DEPENDS_VALUE')),
-        'TAG': serialize_list(sorted(_get_test_tags(unit))),
+        'TAG': serialize_list(_get_test_tags(unit)),
         'SIZE': unit.get('TEST_SIZE_NAME') or '',
         'REQUIREMENTS': serialize_list(get_values_list(unit, 'TEST_REQUIREMENTS_VALUE')),
         'TEST-RECIPES': prepare_recipes(unit.get("TEST_RECIPES_VALUE")),
@@ -1094,6 +1072,7 @@ def _dump_test(
     yt_spec=None,
     data_files=None,
 ):
+
     if test_type == "PY_TEST":
         script_rel_path = "py.test"
     else:
@@ -1123,7 +1102,7 @@ def _dump_test(
         'FORK-TEST-FILES': fork_test_files,
         'TEST-FILES': serialize_list(test_files),
         'SIZE': test_size,
-        'TAG': serialize_list(sorted(tags)),
+        'TAG': serialize_list(tags),
         'REQUIREMENTS': serialize_list(requirements),
         'USE_ARCADIA_PYTHON': use_arcadia_python or '',
         'OLD_PYTEST': 'yes' if old_pytest else 'no',
@@ -1169,7 +1148,7 @@ def onsetup_exectest(unit, *args):
     command = command.replace("$EXECTEST_COMMAND_VALUE", "")
     if "PYTHON_BIN" in command:
         unit.ondepends('contrib/tools/python')
-    unit.set(["TEST_BLOB_DATA", base64.b64encode(six.ensure_binary(command))])
+    unit.set(["TEST_BLOB_DATA", base64.b64encode(command)])
     add_test_to_dart(unit, "exectest", binary_path=os.path.join(unit.path(), unit.filename()).replace(".pkg", ""))
 
 
@@ -1195,25 +1174,20 @@ def get_canonical_test_resources(unit):
 
 def _load_canonical_file(filename, unit_path):
     try:
-        with open(filename, 'rb') as results_file:
+        with open(filename) as results_file:
             return json.load(results_file)
     except Exception as e:
-        print("malformed canonical data in {}: {} ({})".format(unit_path, e, filename), file=sys.stderr)
+        print >> sys.stderr, "malformed canonical data in {}: {} ({})".format(unit_path, e, filename)
         return {}
 
 
 def _get_resource_from_uri(uri):
-    m = consts.CANON_MDS_RESOURCE_REGEX.match(uri)
+    m = CANON_MDS_RESOURCE_REGEX.match(uri)
     if m:
-        key = m.group(1)
-        return "{}:{}".format(consts.MDS_SCHEME, key)
+        res_id = m.group(1)
+        return "{}:{}".format(MDS_SCHEME, res_id)
 
-    m = consts.CANON_BACKEND_RESOURCE_REGEX.match(uri)
-    if m:
-        key = m.group(1)
-        return "{}:{}".format(consts.MDS_SCHEME, key)
-
-    m = consts.CANON_SBR_RESOURCE_REGEX.match(uri)
+    m = CANON_SBR_RESOURCE_REGEX.match(uri)
     if m:
         # There might be conflict between resources, because all resources in sandbox have 'resource.tar.gz' name
         # That's why we use notation with '=' to specify specific path for resource
@@ -1238,7 +1212,7 @@ def _get_external_resources_from_canon_data(data):
             if resource:
                 res.add(resource)
         else:
-            for k, v in six.iteritems(data):
+            for k, v in data.iteritems():
                 res.update(_get_external_resources_from_canon_data(v))
     elif isinstance(data, list):
         for e in data:
@@ -1260,6 +1234,9 @@ def on_add_linter_check(unit, *args):
 
     no_lint_value = _common.get_no_lint_value(unit)
     if no_lint_value in ("none", "none_internal"):
+        return
+
+    if unit.get("OPENSOURCE") == "yes":
         return
 
     keywords = {

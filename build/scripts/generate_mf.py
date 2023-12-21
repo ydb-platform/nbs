@@ -1,13 +1,11 @@
 import json
+import logging
 import optparse
 import os
 import sys
 import io
 
-import six
-
 import process_command_files as pcf
-
 
 class BadMfError(Exception):
     pass
@@ -48,12 +46,7 @@ def parse_args():
     parser.add_option('-c', '--credits-output')
     parser.add_option('-t', '--type')
     opts, _ = parser.parse_args(free_args)
-    return (
-        lics,
-        peers,
-        credits,
-        opts,
-    )
+    return lics, peers, credits, opts,
 
 
 def generate_header(meta):
@@ -68,7 +61,7 @@ def generate_mf():
         'path': os.path.dirname(options.output),
         'licenses': lics,
         'dependencies': [],
-        'license_texts': '',
+        'license_texts': ''
     }
 
     build_root = options.build_root
@@ -98,7 +91,7 @@ def generate_mf():
                 texts = data.get('license_texts')
                 if texts:
                     candidate_text = generate_header(data) + '\n' + texts
-                    if isinstance(candidate_text, six.text_type):
+                    if isinstance(candidate_text, unicode):
                         candidate_text = candidate_text.encode('utf-8')
                     final_credits.append(candidate_text)
 

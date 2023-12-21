@@ -83,13 +83,13 @@ std::ostream &operator<<(std::ostream &os, indent x) {
     return os;
 }
 
-void printCustomAttributes(const CustomAttributes& customAttributes, int depth,
+void printCustomFields(const CustomFields& customFields, int depth,
                        std::ostream &os) {
-    std::map<std::string, std::string>::const_iterator iter =
-        customAttributes.attributes().begin();
-    while (iter != customAttributes.attributes().end()) {
+    std::map<std::string, json::Entity>::const_iterator iter =
+        customFields.fields().begin();
+    while (iter != customFields.fields().end()) {
       os << ",\n" << indent(depth);
-      customAttributes.printJson(os, iter->first);
+      customFields.printJson(os, iter->first);
       ++iter;
     }
 }
@@ -287,7 +287,7 @@ void NodeRecord::printJson(std::ostream &os, size_t depth) const {
             }
         }
         if(customAttributes_.size() == fields) {
-          printCustomAttributes(customAttributes_.get(i), depth, os);
+          printCustomFields(customAttributes_.get(i), depth, os);
         }
         os << '\n';
         os << indent(--depth) << '}';

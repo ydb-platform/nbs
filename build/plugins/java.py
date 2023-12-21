@@ -3,7 +3,6 @@ import ymake
 import json
 import os
 import base64
-import six
 
 
 DELIM = '================================'
@@ -11,18 +10,15 @@ CONTRIB_JAVA_PREFIX = 'contrib/java/'
 
 
 def split_args(s):  # TODO quotes, escapes
-    return list(filter(None, s.split()))
+    return filter(None, s.split())
 
 
 def extract_macro_calls(unit, macro_value_name, macro_calls_delim):
     if not unit.get(macro_value_name):
         return []
 
-    return list(
-        filter(
-            None,
-            map(split_args, unit.get(macro_value_name).replace('$' + macro_value_name, '').split(macro_calls_delim)),
-        )
+    return filter(
+        None, map(split_args, unit.get(macro_value_name).replace('$' + macro_value_name, '').split(macro_calls_delim))
     )
 
 
@@ -32,7 +28,7 @@ def extract_macro_calls2(unit, macro_value_name):
 
     calls = []
     for call_encoded_args in unit.get(macro_value_name).strip().split():
-        call_args = json.loads(base64.b64decode(call_encoded_args))
+        call_args = json.loads(base64.b64decode(call_encoded_args), encoding='utf-8')
         calls.append(call_args)
 
     return calls
@@ -72,9 +68,7 @@ def on_run_jbuild_program(unit, *args):
         args += ['FAKE_OUT', fake_out]
 
     prev = unit.get(['RUN_JAVA_PROGRAM_VALUE']) or ''
-    new_val = (
-        prev + ' ' + six.ensure_str(base64.b64encode(six.ensure_binary(json.dumps(list(args)), encoding='utf-8')))
-    ).strip()
+    new_val = (prev + ' ' + base64.b64encode(json.dumps(list(args), encoding='utf-8'))).strip()
     unit.set(['RUN_JAVA_PROGRAM_VALUE', new_val])
 
 
@@ -88,9 +82,7 @@ def ongenerate_script(unit, *args):
     if len(kv.get('TEMPLATE', [])) > len(kv.get('OUT', [])):
         ymake.report_configure_error('To many arguments for TEMPLATE parameter')
     prev = unit.get(['GENERATE_SCRIPT_VALUE']) or ''
-    new_val = (
-        prev + ' ' + six.ensure_str(base64.b64encode(six.ensure_binary(json.dumps(list(args)), encoding='utf-8')))
-    ).strip()
+    new_val = (prev + ' ' + base64.b64encode(json.dumps(list(args), encoding='utf-8'))).strip()
     unit.set(['GENERATE_SCRIPT_VALUE', new_val])
 
 
@@ -141,11 +133,11 @@ def onjava_module(unit, *args):
     }
     if unit.get('ENABLE_PREVIEW_VALUE') == 'yes' and (unit.get('JDK_VERSION') or unit.get('JDK_REAL_VERSION')) in (
         '15',
+        '16',
         '17',
         '18',
         '19',
-        '20',
-        '21',
+        '20'
     ):
         data['ENABLE_PREVIEW'] = extract_macro_calls(unit, 'ENABLE_PREVIEW_VALUE', args_delim)
 
@@ -215,6 +207,7 @@ def onjava_module(unit, *args):
         data['WITH_JDK'] = extract_macro_calls(unit, 'WITH_JDK_VALUE', args_delim)
 
     if not data['EXTERNAL_JAR']:
+        has_processor = extract_macro_calls(unit, 'GENERATE_VCS_JAVA_INFO_NODEP', args_delim)
         # IMPORTANT before switching vcs_info.py to python3 the value was always evaluated to $YMAKE_PYTHON but no
         # code in java dart parser extracts its value only checks this key for existance.
         data['EMBED_VCS'] = [['yes']]
@@ -227,7 +220,7 @@ def onjava_module(unit, *args):
     for java_srcs_args in data['JAVA_SRCS']:
         external = None
 
-        for i in six.moves.range(len(java_srcs_args)):
+        for i in xrange(len(java_srcs_args)):
             arg = java_srcs_args[i]
 
             if arg == 'EXTERNAL':
@@ -247,9 +240,11 @@ def onjava_module(unit, *args):
         if external:
             unit.onpeerdir(external)
 
-    data = {k: v for k, v in six.iteritems(data) if v}
+    for k, v in data.items():
+        if not v:
+            data.pop(k)
 
-    dart = 'JAVA_DART: ' + six.ensure_str(base64.b64encode(six.ensure_binary(json.dumps(data)))) + '\n' + DELIM + '\n'
+    dart = 'JAVA_DART: ' + base64.b64encode(json.dumps(data)) + '\n' + DELIM + '\n'
     unit.set_property(['JAVA_DART_DATA', dart])
 
 
@@ -291,20 +286,24 @@ def onexternal_jar(unit, *args):
 
 def on_check_java_srcdir(unit, *args):
     args = list(args)
-    if 'SKIP_CHECK_SRCDIR' in args:
-        return
     for arg in args:
-        if '$' not in arg:
+        if not '$' in arg:
             arc_srcdir = os.path.join(unit.get('MODDIR'), arg)
             abs_srcdir = unit.resolve(os.path.join("$S/", arc_srcdir))
             if not os.path.exists(abs_srcdir) or not os.path.isdir(abs_srcdir):
-                unit.onsrcdir(os.path.join('${ARCADIA_ROOT}', arc_srcdir))
+                ymake.report_configure_error(
+                    'Trying to set a [[alt1]]JAVA_SRCS[[rst]] for a missing directory: [[imp]]$S/{}[[rst]]',
+                    missing_dir=arc_srcdir,
+                )
             return
-        srcdir = common.resolve_common_const(unit.resolve_arc_path(arg))
-        if srcdir and srcdir.startswith('$S'):
-            abs_srcdir = unit.resolve(srcdir)
-            if not os.path.exists(abs_srcdir) or not os.path.isdir(abs_srcdir):
-                unit.onsrcdir(os.path.join('${ARCADIA_ROOT}', srcdir[3:]))
+        srcdir = unit.resolve_arc_path(arg)
+        if srcdir and not srcdir.startswith('$S'):
+            continue
+        abs_srcdir = unit.resolve(srcdir) if srcdir else unit.resolve(arg)
+        if not os.path.exists(abs_srcdir) or not os.path.isdir(abs_srcdir):
+            ymake.report_configure_error(
+                'Trying to set a [[alt1]]JAVA_SRCS[[rst]] for a missing directory: [[imp]]{}[[rst]]', missing_dir=srcdir
+            )
 
 
 def on_fill_jar_copy_resources_cmd(unit, *args):
@@ -358,7 +357,7 @@ def extract_words(words, keys):
         if w in keys:
             k = w
         else:
-            if k not in kv:
+            if not k in kv:
                 kv[k] = []
             kv[k].append(w)
 
@@ -367,7 +366,7 @@ def extract_words(words, keys):
 
 def parse_words(words):
     kv = extract_words(words, {'OUT', 'TEMPLATE'})
-    if 'TEMPLATE' not in kv:
+    if not 'TEMPLATE' in kv:
         kv['TEMPLATE'] = ['template.tmpl']
     ws = []
     for item in ('OUT', 'TEMPLATE'):
@@ -395,7 +394,7 @@ def parse_words(words):
             continue
         props.append('-B')
         if len(p) > 1:
-            props.append(six.ensure_str(base64.b64encode(six.ensure_binary("{}={}".format(p[0], ' '.join(p[1:]))))))
+            props.append(base64.b64encode("{}={}".format(p[0], ' '.join(p[1:]))))
         else:
             ymake.report_configure_error('CUSTOM_PROPERTY "{}" value is not specified'.format(p[0]))
     for i, o in enumerate(outputs):
@@ -412,13 +411,14 @@ def on_jdk_version_macro_check(unit, *args):
         unit.message(["error", "Invalid syntax. Single argument required."])
     jdk_version = args[0]
     available_versions = (
+        '10',
         '11',
         '15',
+        '16',
         '17',
         '18',
         '19',
         '20',
-        '21',
     )
     if jdk_version not in available_versions:
         ymake.report_configure_error(
@@ -445,7 +445,7 @@ def _maven_coords_for_project(unit, project_dir):
     if os.path.exists(pom_path):
         import xml.etree.ElementTree as et
 
-        with open(pom_path, 'rb') as f:
+        with open(pom_path) as f:
             root = et.fromstring(f.read())
         for xpath in ('./{http://maven.apache.org/POM/4.0.0}artifactId', './artifactId'):
             artifact = root.find(xpath)
@@ -466,21 +466,13 @@ def on_setup_maven_export_coords_if_need(unit, *args):
     unit.set(['MAVEN_EXPORT_COORDS_GLOBAL', _maven_coords_for_project(unit, args[0])])
 
 
-def _get_classpath(unit, dir):
-    if dir.startswith(CONTRIB_JAVA_PREFIX):
-        return '\\"{}\\"'.format(_maven_coords_for_project(unit, dir).rstrip(':'))
-    else:
-        return 'project(\\":{}\\")'.format(dir.replace('/', ':'))
-
-
 def on_setup_project_coords_if_needed(unit, *args):
     if not unit.enabled('EXPORT_GRADLE'):
         return
 
     project_dir = args[0]
     if project_dir.startswith(CONTRIB_JAVA_PREFIX):
-        value = '{}'.format(_get_classpath(unit, project_dir).rstrip(':'))
+        value = '\\"{}\\"'.format(_maven_coords_for_project(unit, project_dir).rstrip(':'))
     else:
         value = 'project(\\":{}\\")'.format(project_dir.replace('/', ':'))
-    unit.set(['EXPORT_GRADLE_CLASSPATH', value])
-    unit.set(['EXPORT_GRADLE_CLASSPATH_GLOBAL', value])
+    unit.set(['_EXPORT_GRADLE_PROJECT_COORDS', value])

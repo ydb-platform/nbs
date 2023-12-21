@@ -43,8 +43,6 @@ int main(int argc, char *argv[])
 	sprintf(buf, "./XXXXXX");
 	fd = mkostemp(buf, O_WRONLY | O_DIRECT | O_CREAT);
 	if (fd < 0) {
-		if (errno == EINVAL)
-			return T_EXIT_SKIP;
 		perror("mkostemp");
 		return T_EXIT_FAIL;
 	}

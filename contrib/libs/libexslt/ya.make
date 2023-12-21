@@ -3,15 +3,16 @@
 LIBRARY()
 
 LICENSE(
+    LicenseRef-scancode-unknown-license-reference AND
     X11 AND
     X11-XConsortium-Veillard
 )
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-VERSION(1.1.39)
+VERSION(1.1.38)
 
-ORIGINAL_SOURCE(https://gitlab.gnome.org/api/v4/projects/GNOME%2Flibxslt/repository/archive.tar.gz?sha=v1.1.39)
+ORIGINAL_SOURCE(https://gitlab.gnome.org/api/v4/projects/GNOME%2Flibxslt/repository/archive.tar.gz?sha=v1.1.38)
 
 PEERDIR(
     contrib/libs/libxml

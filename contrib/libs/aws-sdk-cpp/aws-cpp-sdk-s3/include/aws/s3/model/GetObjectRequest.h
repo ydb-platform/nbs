@@ -9,7 +9,6 @@
 #include <aws/core/utils/memory/stl/AWSString.h>
 #include <aws/core/utils/DateTime.h>
 #include <aws/s3/model/RequestPayer.h>
-#include <aws/s3/model/ChecksumMode.h>
 #include <aws/core/utils/memory/stl/AWSMap.h>
 #include <utility>
 
@@ -26,10 +25,10 @@ namespace Model
 
   /**
    */
-  class GetObjectRequest : public S3Request
+  class AWS_S3_API GetObjectRequest : public S3Request
   {
   public:
-    AWS_S3_API GetObjectRequest();
+    GetObjectRequest();
 
     // Service request name is the Operation name which will send this request out,
     // each operation should has unique request name, so that we can get operation's name from this request.
@@ -37,42 +36,31 @@ namespace Model
     // so we can not get operation's name from response.
     inline virtual const char* GetServiceRequestName() const override { return "GetObject"; }
 
-    AWS_S3_API Aws::String SerializePayload() const override;
+    Aws::String SerializePayload() const override;
 
-    AWS_S3_API void AddQueryStringParameters(Aws::Http::URI& uri) const override;
+    void AddQueryStringParameters(Aws::Http::URI& uri) const override;
 
-    AWS_S3_API Aws::Http::HeaderValueCollection GetRequestSpecificHeaders() const override;
+    Aws::Http::HeaderValueCollection GetRequestSpecificHeaders() const override;
 
-    AWS_S3_API bool ShouldValidateResponseChecksum() const override;
-
-    AWS_S3_API Aws::Vector<Aws::String> GetResponseChecksumAlgorithmNames() const override;
-
-    /**
-     * Helper function to collect parameters (configurable and static hardcoded) required for endpoint computation.
-     */
-    AWS_S3_API EndpointParameters GetEndpointContextParams() const override;
 
     /**
      * <p>The bucket name containing the object. </p> <p>When using this action with an
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline const Aws::String& GetBucket() const{ return m_bucket; }
 
@@ -81,22 +69,19 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline bool BucketHasBeenSet() const { return m_bucketHasBeenSet; }
 
@@ -105,22 +90,19 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline void SetBucket(const Aws::String& value) { m_bucketHasBeenSet = true; m_bucket = value; }
 
@@ -129,22 +111,19 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline void SetBucket(Aws::String&& value) { m_bucketHasBeenSet = true; m_bucket = std::move(value); }
 
@@ -153,22 +132,19 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline void SetBucket(const char* value) { m_bucketHasBeenSet = true; m_bucket.assign(value); }
 
@@ -177,22 +153,19 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline GetObjectRequest& WithBucket(const Aws::String& value) { SetBucket(value); return *this;}
 
@@ -201,22 +174,19 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline GetObjectRequest& WithBucket(Aws::String&& value) { SetBucket(std::move(value)); return *this;}
 
@@ -225,194 +195,191 @@ namespace Model
      * access point, you must direct requests to the access point hostname. The access
      * point hostname takes the form
      * <i>AccessPointName</i>-<i>AccountId</i>.s3-accesspoint.<i>Region</i>.amazonaws.com.
-     * When using this action with an access point through the Amazon Web Services
-     * SDKs, you provide the access point ARN in place of the bucket name. For more
-     * information about access point ARNs, see <a
+     * When using this action with an access point through the AWS SDKs, you provide
+     * the access point ARN in place of the bucket name. For more information about
+     * access point ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using
-     * access points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using an
-     * Object Lambda access point the hostname takes the form
-     * <i>AccessPointName</i>-<i>AccountId</i>.s3-object-lambda.<i>Region</i>.amazonaws.com.</p>
-     * <p>When using this action with Amazon S3 on Outposts, you must direct requests
-     * to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
-     * <code>
-     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com</code>.
-     * When using this action with S3 on Outposts through the Amazon Web Services SDKs,
-     * you provide the Outposts bucket ARN in place of the bucket name. For more
-     * information about S3 on Outposts ARNs, see <a
+     * Access Points</a> in the <i>Amazon S3 User Guide</i>.</p> <p>When using this
+     * action with Amazon S3 on Outposts, you must direct requests to the S3 on
+     * Outposts hostname. The S3 on Outposts hostname takes the form
+     * <i>AccessPointName</i>-<i>AccountId</i>.<i>outpostID</i>.s3-outposts.<i>Region</i>.amazonaws.com.
+     * When using this action using S3 on Outposts through the AWS SDKs, you provide
+     * the Outposts bucket ARN in place of the bucket name. For more information about
+     * S3 on Outposts ARNs, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">Using
-     * Amazon S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
+     * S3 on Outposts</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline GetObjectRequest& WithBucket(const char* value) { SetBucket(value); return *this;}
 
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline const Aws::String& GetIfMatch() const{ return m_ifMatch; }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline bool IfMatchHasBeenSet() const { return m_ifMatchHasBeenSet; }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline void SetIfMatch(const Aws::String& value) { m_ifMatchHasBeenSet = true; m_ifMatch = value; }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline void SetIfMatch(Aws::String&& value) { m_ifMatchHasBeenSet = true; m_ifMatch = std::move(value); }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline void SetIfMatch(const char* value) { m_ifMatchHasBeenSet = true; m_ifMatch.assign(value); }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline GetObjectRequest& WithIfMatch(const Aws::String& value) { SetIfMatch(value); return *this;}
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline GetObjectRequest& WithIfMatch(Aws::String&& value) { SetIfMatch(std::move(value)); return *this;}
 
     /**
      * <p>Return the object only if its entity tag (ETag) is the same as the one
-     * specified; otherwise, return a 412 (precondition failed) error.</p>
+     * specified, otherwise return a 412 (precondition failed).</p>
      */
     inline GetObjectRequest& WithIfMatch(const char* value) { SetIfMatch(value); return *this;}
 
 
     /**
-     * <p>Return the object only if it has been modified since the specified time;
-     * otherwise, return a 304 (not modified) error.</p>
+     * <p>Return the object only if it has been modified since the specified time,
+     * otherwise return a 304 (not modified).</p>
      */
     inline const Aws::Utils::DateTime& GetIfModifiedSince() const{ return m_ifModifiedSince; }
 
     /**
-     * <p>Return the object only if it has been modified since the specified time;
-     * otherwise, return a 304 (not modified) error.</p>
+     * <p>Return the object only if it has been modified since the specified time,
+     * otherwise return a 304 (not modified).</p>
      */
     inline bool IfModifiedSinceHasBeenSet() const { return m_ifModifiedSinceHasBeenSet; }
 
     /**
-     * <p>Return the object only if it has been modified since the specified time;
-     * otherwise, return a 304 (not modified) error.</p>
+     * <p>Return the object only if it has been modified since the specified time,
+     * otherwise return a 304 (not modified).</p>
      */
     inline void SetIfModifiedSince(const Aws::Utils::DateTime& value) { m_ifModifiedSinceHasBeenSet = true; m_ifModifiedSince = value; }
 
     /**
-     * <p>Return the object only if it has been modified since the specified time;
-     * otherwise, return a 304 (not modified) error.</p>
+     * <p>Return the object only if it has been modified since the specified time,
+     * otherwise return a 304 (not modified).</p>
      */
     inline void SetIfModifiedSince(Aws::Utils::DateTime&& value) { m_ifModifiedSinceHasBeenSet = true; m_ifModifiedSince = std::move(value); }
 
     /**
-     * <p>Return the object only if it has been modified since the specified time;
-     * otherwise, return a 304 (not modified) error.</p>
+     * <p>Return the object only if it has been modified since the specified time,
+     * otherwise return a 304 (not modified).</p>
      */
     inline GetObjectRequest& WithIfModifiedSince(const Aws::Utils::DateTime& value) { SetIfModifiedSince(value); return *this;}
 
     /**
-     * <p>Return the object only if it has been modified since the specified time;
-     * otherwise, return a 304 (not modified) error.</p>
+     * <p>Return the object only if it has been modified since the specified time,
+     * otherwise return a 304 (not modified).</p>
      */
     inline GetObjectRequest& WithIfModifiedSince(Aws::Utils::DateTime&& value) { SetIfModifiedSince(std::move(value)); return *this;}
 
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline const Aws::String& GetIfNoneMatch() const{ return m_ifNoneMatch; }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline bool IfNoneMatchHasBeenSet() const { return m_ifNoneMatchHasBeenSet; }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline void SetIfNoneMatch(const Aws::String& value) { m_ifNoneMatchHasBeenSet = true; m_ifNoneMatch = value; }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline void SetIfNoneMatch(Aws::String&& value) { m_ifNoneMatchHasBeenSet = true; m_ifNoneMatch = std::move(value); }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline void SetIfNoneMatch(const char* value) { m_ifNoneMatchHasBeenSet = true; m_ifNoneMatch.assign(value); }
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline GetObjectRequest& WithIfNoneMatch(const Aws::String& value) { SetIfNoneMatch(value); return *this;}
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline GetObjectRequest& WithIfNoneMatch(Aws::String&& value) { SetIfNoneMatch(std::move(value)); return *this;}
 
     /**
      * <p>Return the object only if its entity tag (ETag) is different from the one
-     * specified; otherwise, return a 304 (not modified) error.</p>
+     * specified, otherwise return a 304 (not modified).</p>
      */
     inline GetObjectRequest& WithIfNoneMatch(const char* value) { SetIfNoneMatch(value); return *this;}
 
 
     /**
-     * <p>Return the object only if it has not been modified since the specified time;
-     * otherwise, return a 412 (precondition failed) error.</p>
+     * <p>Return the object only if it has not been modified since the specified time,
+     * otherwise return a 412 (precondition failed).</p>
      */
     inline const Aws::Utils::DateTime& GetIfUnmodifiedSince() const{ return m_ifUnmodifiedSince; }
 
     /**
-     * <p>Return the object only if it has not been modified since the specified time;
-     * otherwise, return a 412 (precondition failed) error.</p>
+     * <p>Return the object only if it has not been modified since the specified time,
+     * otherwise return a 412 (precondition failed).</p>
      */
     inline bool IfUnmodifiedSinceHasBeenSet() const { return m_ifUnmodifiedSinceHasBeenSet; }
 
     /**
-     * <p>Return the object only if it has not been modified since the specified time;
-     * otherwise, return a 412 (precondition failed) error.</p>
+     * <p>Return the object only if it has not been modified since the specified time,
+     * otherwise return a 412 (precondition failed).</p>
      */
     inline void SetIfUnmodifiedSince(const Aws::Utils::DateTime& value) { m_ifUnmodifiedSinceHasBeenSet = true; m_ifUnmodifiedSince = value; }
 
     /**
-     * <p>Return the object only if it has not been modified since the specified time;
-     * otherwise, return a 412 (precondition failed) error.</p>
+     * <p>Return the object only if it has not been modified since the specified time,
+     * otherwise return a 412 (precondition failed).</p>
      */
     inline void SetIfUnmodifiedSince(Aws::Utils::DateTime&& value) { m_ifUnmodifiedSinceHasBeenSet = true; m_ifUnmodifiedSince = std::move(value); }
 
     /**
-     * <p>Return the object only if it has not been modified since the specified time;
-     * otherwise, return a 412 (precondition failed) error.</p>
+     * <p>Return the object only if it has not been modified since the specified time,
+     * otherwise return a 412 (precondition failed).</p>
      */
     inline GetObjectRequest& WithIfUnmodifiedSince(const Aws::Utils::DateTime& value) { SetIfUnmodifiedSince(value); return *this;}
 
     /**
-     * <p>Return the object only if it has not been modified since the specified time;
-     * otherwise, return a 412 (precondition failed) error.</p>
+     * <p>Return the object only if it has not been modified since the specified time,
+     * otherwise return a 412 (precondition failed).</p>
      */
     inline GetObjectRequest& WithIfUnmodifiedSince(Aws::Utils::DateTime&& value) { SetIfUnmodifiedSince(std::move(value)); return *this;}
 
@@ -1037,90 +1004,59 @@ namespace Model
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline const Aws::String& GetExpectedBucketOwner() const{ return m_expectedBucketOwner; }
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline bool ExpectedBucketOwnerHasBeenSet() const { return m_expectedBucketOwnerHasBeenSet; }
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline void SetExpectedBucketOwner(const Aws::String& value) { m_expectedBucketOwnerHasBeenSet = true; m_expectedBucketOwner = value; }
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline void SetExpectedBucketOwner(Aws::String&& value) { m_expectedBucketOwnerHasBeenSet = true; m_expectedBucketOwner = std::move(value); }
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline void SetExpectedBucketOwner(const char* value) { m_expectedBucketOwnerHasBeenSet = true; m_expectedBucketOwner.assign(value); }
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline GetObjectRequest& WithExpectedBucketOwner(const Aws::String& value) { SetExpectedBucketOwner(value); return *this;}
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline GetObjectRequest& WithExpectedBucketOwner(Aws::String&& value) { SetExpectedBucketOwner(std::move(value)); return *this;}
 
     /**
      * <p>The account ID of the expected bucket owner. If the bucket is owned by a
-     * different account, the request fails with the HTTP status code <code>403
-     * Forbidden</code> (access denied).</p>
+     * different account, the request will fail with an HTTP <code>403 (Access
+     * Denied)</code> error.</p>
      */
     inline GetObjectRequest& WithExpectedBucketOwner(const char* value) { SetExpectedBucketOwner(value); return *this;}
-
-
-    /**
-     * <p>To retrieve the checksum, this mode must be enabled.</p>
-     */
-    inline const ChecksumMode& GetChecksumMode() const{ return m_checksumMode; }
-
-    /**
-     * <p>To retrieve the checksum, this mode must be enabled.</p>
-     */
-    inline bool ChecksumModeHasBeenSet() const { return m_checksumModeHasBeenSet; }
-
-    /**
-     * <p>To retrieve the checksum, this mode must be enabled.</p>
-     */
-    inline void SetChecksumMode(const ChecksumMode& value) { m_checksumModeHasBeenSet = true; m_checksumMode = value; }
-
-    /**
-     * <p>To retrieve the checksum, this mode must be enabled.</p>
-     */
-    inline void SetChecksumMode(ChecksumMode&& value) { m_checksumModeHasBeenSet = true; m_checksumMode = std::move(value); }
-
-    /**
-     * <p>To retrieve the checksum, this mode must be enabled.</p>
-     */
-    inline GetObjectRequest& WithChecksumMode(const ChecksumMode& value) { SetChecksumMode(value); return *this;}
-
-    /**
-     * <p>To retrieve the checksum, this mode must be enabled.</p>
-     */
-    inline GetObjectRequest& WithChecksumMode(ChecksumMode&& value) { SetChecksumMode(std::move(value)); return *this;}
 
 
     
@@ -1165,70 +1101,67 @@ namespace Model
   private:
 
     Aws::String m_bucket;
-    bool m_bucketHasBeenSet = false;
+    bool m_bucketHasBeenSet;
 
     Aws::String m_ifMatch;
-    bool m_ifMatchHasBeenSet = false;
+    bool m_ifMatchHasBeenSet;
 
     Aws::Utils::DateTime m_ifModifiedSince;
-    bool m_ifModifiedSinceHasBeenSet = false;
+    bool m_ifModifiedSinceHasBeenSet;
 
     Aws::String m_ifNoneMatch;
-    bool m_ifNoneMatchHasBeenSet = false;
+    bool m_ifNoneMatchHasBeenSet;
 
     Aws::Utils::DateTime m_ifUnmodifiedSince;
-    bool m_ifUnmodifiedSinceHasBeenSet = false;
+    bool m_ifUnmodifiedSinceHasBeenSet;
 
     Aws::String m_key;
-    bool m_keyHasBeenSet = false;
+    bool m_keyHasBeenSet;
 
     Aws::String m_range;
-    bool m_rangeHasBeenSet = false;
+    bool m_rangeHasBeenSet;
 
     Aws::String m_responseCacheControl;
-    bool m_responseCacheControlHasBeenSet = false;
+    bool m_responseCacheControlHasBeenSet;
 
     Aws::String m_responseContentDisposition;
-    bool m_responseContentDispositionHasBeenSet = false;
+    bool m_responseContentDispositionHasBeenSet;
 
     Aws::String m_responseContentEncoding;
-    bool m_responseContentEncodingHasBeenSet = false;
+    bool m_responseContentEncodingHasBeenSet;
 
     Aws::String m_responseContentLanguage;
-    bool m_responseContentLanguageHasBeenSet = false;
+    bool m_responseContentLanguageHasBeenSet;
 
     Aws::String m_responseContentType;
-    bool m_responseContentTypeHasBeenSet = false;
+    bool m_responseContentTypeHasBeenSet;
 
     Aws::Utils::DateTime m_responseExpires;
-    bool m_responseExpiresHasBeenSet = false;
+    bool m_responseExpiresHasBeenSet;
 
     Aws::String m_versionId;
-    bool m_versionIdHasBeenSet = false;
+    bool m_versionIdHasBeenSet;
 
     Aws::String m_sSECustomerAlgorithm;
-    bool m_sSECustomerAlgorithmHasBeenSet = false;
+    bool m_sSECustomerAlgorithmHasBeenSet;
 
     Aws::String m_sSECustomerKey;
-    bool m_sSECustomerKeyHasBeenSet = false;
+    bool m_sSECustomerKeyHasBeenSet;
 
     Aws::String m_sSECustomerKeyMD5;
-    bool m_sSECustomerKeyMD5HasBeenSet = false;
+    bool m_sSECustomerKeyMD5HasBeenSet;
 
     RequestPayer m_requestPayer;
-    bool m_requestPayerHasBeenSet = false;
+    bool m_requestPayerHasBeenSet;
 
     int m_partNumber;
-    bool m_partNumberHasBeenSet = false;
+    bool m_partNumberHasBeenSet;
 
     Aws::String m_expectedBucketOwner;
-    bool m_expectedBucketOwnerHasBeenSet = false;
-
-    ChecksumMode m_checksumMode;
-    bool m_checksumModeHasBeenSet = false;
+    bool m_expectedBucketOwnerHasBeenSet;
 
     Aws::Map<Aws::String, Aws::String> m_customizedAccessLogTag;
-    bool m_customizedAccessLogTagHasBeenSet = false;
+    bool m_customizedAccessLogTagHasBeenSet;
   };
 
 } // namespace Model

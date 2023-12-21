@@ -19,7 +19,7 @@
 #include <utility>
 
 #include "Schema.hh"
-#include "CustomAttributes.hh"
+#include "CustomFields.hh"
 
 namespace avro {
 
@@ -28,11 +28,11 @@ RecordSchema::RecordSchema(const std::string &name) : Schema(new NodeRecord) {
 }
 
 void RecordSchema::addField(const std::string &name, const Schema &fieldSchema) {
-    const CustomAttributes emptyCustomAttribute;
-    addField(name, fieldSchema, emptyCustomAttribute);
+    const CustomFields emptyCustomField;
+    addField(name, fieldSchema, emptyCustomField);
 }
 
-void RecordSchema::addField(const std::string &name, const Schema &fieldSchema, const CustomAttributes &customFields) {
+void RecordSchema::addField(const std::string &name, const Schema &fieldSchema, const CustomFields &customFields) {
     // add the name first. it will throw if the name is a duplicate, preventing
     // the leaf from being added
     node_->addName(name);

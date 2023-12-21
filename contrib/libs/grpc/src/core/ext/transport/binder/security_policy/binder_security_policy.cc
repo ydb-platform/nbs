@@ -26,7 +26,6 @@
 #include <grpc/support/log.h>
 
 #include "src/core/ext/transport/binder/client/jni_utils.h"
-#include "src/core/lib/gprpp/crash.h"
 
 #endif
 

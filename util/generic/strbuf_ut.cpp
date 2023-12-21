@@ -356,12 +356,6 @@ Y_UNIT_TEST_SUITE(TStrBufTest) {
         s.Trunc(0);
         UNIT_ASSERT_STRINGS_EQUAL(s, "");
     }
-
-    Y_UNIT_TEST(TestLiterals) {
-        auto s = "123"_sb;
-        static_assert(std::is_same_v<decltype(s), TStringBuf>);
-        UNIT_ASSERT_VALUES_EQUAL(s, TStringBuf("123"));
-    }
 }
 
 Y_UNIT_TEST_SUITE(TWtrBufTest) {

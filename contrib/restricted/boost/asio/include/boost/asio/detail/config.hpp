@@ -70,6 +70,9 @@
 #  define BOOST_ASIO_MSVC _MSC_VER
 # endif // defined(BOOST_ASIO_HAS_BOOST_CONFIG) && defined(BOOST_MSVC)
 #endif // !defined(BOOST_ASIO_MSVC)
+#if defined(BOOST_ASIO_MSVC)
+# include <ciso646> // Needed for _HAS_CXX17.
+#endif // defined(BOOST_ASIO_MSVC)
 
 // Clang / libc++ detection.
 #if defined(__clang__)
@@ -108,14 +111,6 @@
 #    define BOOST_ASIO_HAS_MOVE 1
 #   endif // (_MSC_VER >= 1700)
 #  endif // defined(BOOST_ASIO_MSVC)
-#  if defined(__INTEL_CXX11_MODE__)
-#    if defined(__INTEL_COMPILER) && (__INTEL_COMPILER >= 1500)
-#      define BOOST_ASIO_HAS_MOVE 1
-#    endif // defined(__INTEL_COMPILER) && (__INTEL_COMPILER >= 1500)
-#    if defined(__ICL) && (__ICL >= 1500)
-#      define BOOST_ASIO_HAS_MOVE 1
-#    endif // defined(__ICL) && (__ICL >= 1500)
-#  endif // defined(__INTEL_CXX11_MODE__)
 # endif // !defined(BOOST_ASIO_DISABLE_MOVE)
 #endif // !defined(BOOST_ASIO_HAS_MOVE)
 
@@ -234,7 +229,7 @@
 // Support noexcept on compilers known to allow it.
 #if !defined(BOOST_ASIO_NOEXCEPT)
 # if !defined(BOOST_ASIO_DISABLE_NOEXCEPT)
-#  if defined(BOOST_ASIO_HAS_BOOST_CONFIG) && (BOOST_VERSION >= 105300)
+#  if (BOOST_VERSION >= 105300)
 #   define BOOST_ASIO_NOEXCEPT BOOST_NOEXCEPT
 #   define BOOST_ASIO_NOEXCEPT_OR_NOTHROW BOOST_NOEXCEPT_OR_NOTHROW
 #  elif defined(__clang__)
@@ -764,7 +759,9 @@
 #  if defined(__GNUC__)
 #   if ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 7)) || (__GNUC__ > 4)
 #    if defined(__GXX_EXPERIMENTAL_CXX0X__)
-#     define BOOST_ASIO_HAS_STD_FUTURE 1
+#     if defined(_GLIBCXX_HAS_GTHREADS)
+#      define BOOST_ASIO_HAS_STD_FUTURE 1
+#     endif // defined(_GLIBCXX_HAS_GTHREADS)
 #    endif // defined(__GXX_EXPERIMENTAL_CXX0X__)
 #   endif // ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 7)) || (__GNUC__ > 4)
 #  endif // defined(__GNUC__)
@@ -780,29 +777,23 @@
 #if !defined(BOOST_ASIO_HAS_STD_STRING_VIEW)
 # if !defined(BOOST_ASIO_DISABLE_STD_STRING_VIEW)
 #  if defined(__clang__)
-#   if defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
-#    if (__cplusplus >= 201402)
-#     if __has_include(<string_view>)
-#      define BOOST_ASIO_HAS_STD_STRING_VIEW 1
-#     endif // __has_include(<string_view>)
-#    endif // (__cplusplus >= 201402)
-#   else // defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
-#    if (__cplusplus >= 201703)
-#     if __has_include(<string_view>)
-#      define BOOST_ASIO_HAS_STD_STRING_VIEW 1
-#     endif // __has_include(<string_view>)
-#    endif // (__cplusplus >= 201703)
-#   endif // defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
-#  elif defined(__GNUC__)
+#   if (__cplusplus >= 201703)
+#    if __has_include(<string_view>)
+#     define BOOST_ASIO_HAS_STD_STRING_VIEW 1
+#    endif // __has_include(<string_view>)
+#   endif // (__cplusplus >= 201703)
+#  endif // defined(__clang__)
+#  if defined(__GNUC__)
 #   if (__GNUC__ >= 7)
 #    if (__cplusplus >= 201703)
 #     define BOOST_ASIO_HAS_STD_STRING_VIEW 1
 #    endif // (__cplusplus >= 201703)
 #   endif // (__GNUC__ >= 7)
-#  elif defined(BOOST_ASIO_MSVC)
-#   if (_MSC_VER >= 1910 && _MSVC_LANG >= 201703)
-#    define BOOST_ASIO_HAS_STD_STRING_VIEW 1
-#   endif // (_MSC_VER >= 1910 && _MSVC_LANG >= 201703)
+#  endif // defined(__GNUC__)
+#  if defined(BOOST_ASIO_MSVC)
+#   if (_MSC_VER >= 1910 && _HAS_CXX17)
+#    define BOOST_ASIO_HAS_STD_STRING_VIEW
+#   endif // (_MSC_VER >= 1910 && _HAS_CXX17)
 #  endif // defined(BOOST_ASIO_MSVC)
 # endif // !defined(BOOST_ASIO_DISABLE_STD_STRING_VIEW)
 #endif // !defined(BOOST_ASIO_HAS_STD_STRING_VIEW)
@@ -811,21 +802,11 @@
 #if !defined(BOOST_ASIO_HAS_STD_EXPERIMENTAL_STRING_VIEW)
 # if !defined(BOOST_ASIO_DISABLE_STD_EXPERIMENTAL_STRING_VIEW)
 #  if defined(__clang__)
-#   if defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
-#    if (_LIBCPP_VERSION < 7000)
-#     if (__cplusplus >= 201402)
-#      if __has_include(<experimental/string_view>)
-#       define BOOST_ASIO_HAS_STD_EXPERIMENTAL_STRING_VIEW 1
-#      endif // __has_include(<experimental/string_view>)
-#     endif // (__cplusplus >= 201402)
-#    endif // (_LIBCPP_VERSION < 7000)
-#   else // defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
-#    if (__cplusplus >= 201402)
-#     if __has_include(<experimental/string_view>)
-#      define BOOST_ASIO_HAS_STD_EXPERIMENTAL_STRING_VIEW 1
-#     endif // __has_include(<experimental/string_view>)
-#    endif // (__cplusplus >= 201402)
-#   endif // // defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
+#   if (__cplusplus >= 201402)
+#    if __has_include(<experimental/string_view>)
+#     define BOOST_ASIO_HAS_STD_EXPERIMENTAL_STRING_VIEW 1
+#    endif // __has_include(<experimental/string_view>)
+#   endif // (__cplusplus >= 201402)
 #  endif // defined(__clang__)
 #  if defined(__GNUC__)
 #   if ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 9)) || (__GNUC__ > 4)
@@ -870,9 +851,9 @@
 #if !defined(BOOST_ASIO_HAS_STD_INVOKE_RESULT)
 # if !defined(BOOST_ASIO_DISABLE_STD_INVOKE_RESULT)
 #  if defined(BOOST_ASIO_MSVC)
-#   if (_MSC_VER >= 1911 && _MSVC_LANG >= 201703)
+#   if (_MSC_VER >= 1910 && _HAS_CXX17)
 #    define BOOST_ASIO_HAS_STD_INVOKE_RESULT 1
-#   endif // (_MSC_VER >= 1911 && _MSVC_LANG >= 201703)
+#   endif // (_MSC_VER >= 1910 && _HAS_CXX17)
 #  endif // defined(BOOST_ASIO_MSVC)
 #  if defined(BOOST_ASIO_HAS_CLANG_LIBCXX)
 #   if (_LIBCPP_VERSION >= 13000)

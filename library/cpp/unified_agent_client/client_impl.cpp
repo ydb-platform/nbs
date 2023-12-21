@@ -67,7 +67,7 @@ namespace NUnifiedAgent::NPrivate {
 
     TClient::~TClient() {
         with_lock(Lock) {
-            Y_ABORT_UNLESS(ActiveSessions.empty(), "active sessions found");
+            Y_VERIFY(ActiveSessions.empty(), "active sessions found");
 
             EnsureStoppedNoLock();
 
@@ -106,7 +106,7 @@ namespace NUnifiedAgent::NPrivate {
     void TClient::UnregisterSession(TClientSession* session) {
         with_lock(Lock) {
             const auto it = Find(ActiveSessions, session);
-            Y_ABORT_UNLESS(it != ActiveSessions.end());
+            Y_VERIFY(it != ActiveSessions.end());
             ActiveSessions.erase(it);
         }
     }
@@ -213,8 +213,8 @@ namespace NUnifiedAgent::NPrivate {
             return;
         }
 
-        Y_ABORT_UNLESS(grpc_is_initialized());
-        Y_ABORT_UNLESS(grpc_core::Fork::Enabled());
+        Y_VERIFY(grpc_is_initialized());
+        Y_VERIFY(grpc_core::Fork::Enabled());
 
         with_lock(Lock) {
             Clients.push_back(&client);
@@ -228,7 +228,7 @@ namespace NUnifiedAgent::NPrivate {
 
         with_lock(Lock) {
             const auto it = Find(Clients, &client);
-            Y_ABORT_UNLESS(it != Clients.end());
+            Y_VERIFY(it != Clients.end());
             Clients.erase(it);
         }
     }
@@ -418,7 +418,7 @@ namespace NUnifiedAgent::NPrivate {
     void TClientSession::DoStart() {
         // Lock must be held
 
-        Y_ABORT_UNLESS(!Started);
+        Y_VERIFY(!Started);
         YLOG_DEBUG("starting");
 
         Client->EnsureStarted();
@@ -447,7 +447,7 @@ namespace NUnifiedAgent::NPrivate {
             }, &AsyncJoiner));
         EventNotification = MakeHolder<TGrpcNotification>(Client->GetCompletionQueue(),
             MakeIOCallback([this](EIOStatus status) {
-                Y_ABORT_UNLESS(status == EIOStatus::Ok);
+                Y_VERIFY(status == EIOStatus::Ok);
                 Poll();
             }, &AsyncJoiner));
 
@@ -471,8 +471,8 @@ namespace NUnifiedAgent::NPrivate {
             YLOG_INFO("MakeGrpcCall, session already closed");
             return;
         }
-        Y_ABORT_UNLESS(!ForcedCloseStarted);
-        Y_ABORT_UNLESS(!ActiveGrpcCall);
+        Y_VERIFY(!ForcedCloseStarted);
+        Y_VERIFY(!ActiveGrpcCall);
         ActiveGrpcCall = MakeIntrusive<TGrpcCall>(*this);
         ActiveGrpcCall->Start();
         ++Counters->GrpcCalls;
@@ -655,7 +655,7 @@ namespace NUnifiedAgent::NPrivate {
             });
 
             if (auto it = begin(batch); it != closeIt) {
-                Y_ABORT_UNLESS(!CloseStarted);
+                Y_VERIFY(!CloseStarted);
                 do {
                     auto& e = std::get<TMessageReceivedEvent>(*it++);
                     WriteQueue.push_back({std::move(e.Message), e.Size, false});
@@ -715,7 +715,7 @@ namespace NUnifiedAgent::NPrivate {
 
     TClientSession::TRequestBuilder::TAddResult TClientSession::TRequestBuilder::TryAddMessage(
             const TPendingMessage& message, size_t seqNo) {
-        Y_ABORT_UNLESS(!CountersInvalid);
+        Y_VERIFY(!CountersInvalid);
         {
             // add item to pwRequest to increase calculated size
             PwTarget->DataBatch.SeqNo.Add(seqNo);
@@ -768,7 +768,7 @@ namespace NUnifiedAgent::NPrivate {
                         if (it == MetaItems.end()) {
                             batch.AddMeta()->SetKey(m.first);
                             auto insertResult = MetaItems.insert({m.first, {batch.MetaSize() - 1}});
-                            Y_ABORT_UNLESS(insertResult.second);
+                            Y_VERIFY(insertResult.second);
                             metaItemBuilder = &insertResult.first->second;
                         } else {
                             metaItemBuilder = &it->second;
@@ -792,7 +792,7 @@ namespace NUnifiedAgent::NPrivate {
     }
 
     void TClientSession::PrepareWriteBatchRequest(NUnifiedAgentProto::Request& target) {
-        Y_ABORT_UNLESS(AckSeqNo.Defined());
+        Y_VERIFY(AckSeqNo.Defined());
         TRequestBuilder requestBuilder(target, Client->GetParameters().GrpcMaxMessageSize, AgentMaxReceiveMessage);
         const auto startIndex = NextIndex - TrimmedCount;
         for (size_t i = startIndex; i < WriteQueue.size(); ++i) {
@@ -830,7 +830,7 @@ namespace NUnifiedAgent::NPrivate {
         if (messagesCount == 0) {
             return;
         }
-        Y_ABORT_UNLESS(requestBuilder.GetSerializedRequestSize() == target.ByteSizeLong(),
+        Y_VERIFY(requestBuilder.GetSerializedRequestSize() == target.ByteSizeLong(),
             "failed to calculate size for message [%s]", target.ShortDebugString().c_str());
         GrpcInflightMessages += messagesCount;
         GrpcInflightBytes += requestBuilder.GetRequestPayloadSize();
@@ -888,13 +888,13 @@ namespace NUnifiedAgent::NPrivate {
         Counters->GrpcInflightBytes -= GrpcInflightBytes;
         GrpcInflightMessages = 0;
         GrpcInflightBytes = 0;
-        YLOG_INFO(Sprintf("grpc call initialized, session_id [%s], last_seq_no [%" PRIu64 "]",
+        YLOG_DEBUG(Sprintf("grpc call initialized, session_id [%s], last_seq_no [%" PRIu64 "]",
                           sessionId.c_str(), lastSeqNo));
     }
 
     void TClientSession::OnGrpcCallFinished() {
-        Y_ABORT_UNLESS(!Closed);
-        Y_ABORT_UNLESS(ActiveGrpcCall);
+        Y_VERIFY(!Closed);
+        Y_VERIFY(ActiveGrpcCall);
         ActiveGrpcCall = nullptr;
         if (CloseStarted && (ForcedCloseStarted || WriteQueue.empty())) {
             DoClose();
@@ -928,9 +928,9 @@ namespace NUnifiedAgent::NPrivate {
     }
 
     void TClientSession::DoClose() {
-        Y_ABORT_UNLESS(CloseStarted);
-        Y_ABORT_UNLESS(!Closed);
-        Y_ABORT_UNLESS(!ClosePromise.HasValue());
+        Y_VERIFY(CloseStarted);
+        Y_VERIFY(!Closed);
+        Y_VERIFY(!ClosePromise.HasValue());
         MakeGrpcCallTimer->Cancel();
         ForceCloseTimer->Cancel();
         PollTimer->Cancel();
@@ -1091,7 +1091,7 @@ namespace NUnifiedAgent::NPrivate {
     }
 
     void TGrpcCall::EndAccept(EIOStatus status) {
-        Y_ABORT_UNLESS(AcceptPending);
+        Y_VERIFY(AcceptPending);
         AcceptPending = false;
         if (CheckHasError(status, "EndAccept")) {
             return;
@@ -1109,7 +1109,7 @@ namespace NUnifiedAgent::NPrivate {
             return;
         }
         if (!ErrorOccured && status == EIOStatus::Error && WritesBlocked) {
-            Y_ABORT_UNLESS(!WritePending);
+            Y_VERIFY(!WritePending);
             YLOG_DEBUG("EndRead ReadsDone");
             ReadsDone = true;
             if (WritesDone) {
@@ -1189,7 +1189,7 @@ namespace NUnifiedAgent::NPrivate {
 
     void TGrpcCall::EndWritesDone(EIOStatus status) {
         YLOG_DEBUG(Sprintf("EndWritesDone [%s]", ToString(status).c_str()));
-        Y_ABORT_UNLESS(!WritePending && !WritesDone && WritesDonePending);
+        Y_VERIFY(!WritePending && !WritesDone && WritesDonePending);
         WritesDonePending = false;
         WritesDone = true;
         if (CheckHasError(status, "EndWriteDone")) {

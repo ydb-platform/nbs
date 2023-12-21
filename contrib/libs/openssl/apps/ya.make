@@ -10,7 +10,6 @@ LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 PEERDIR(
     contrib/libs/openssl
     contrib/libs/openssl/crypto
-    library/cpp/sanitizer/include
 )
 
 ADDINCL(
@@ -89,9 +88,6 @@ IF (OS_WINDOWS)
         CFLAGS(
             -DENGINESDIR="\"C:\\\\Program\ Files\ \(x86\)\\\\OpenSSL\\\\lib\\\\engines-1_1\""
             -DOPENSSLDIR="\"C:\\\\Program\ Files\ \(x86\)\\\\Common\ Files\\\\SSL\""
-        )
-        LDFLAGS(
-            /safeseh
         )
     ENDIF()
     CFLAGS(

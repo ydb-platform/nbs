@@ -25,7 +25,7 @@ target_link_libraries(libs-storage-volume_balancer PUBLIC
   libs-storage-core
   libs-storage-protos
   private-api-protos
-  library-actors-core
+  cpp-actors-core
   monlib-service-pages
   ydb-core-base
   core-blockstore-core

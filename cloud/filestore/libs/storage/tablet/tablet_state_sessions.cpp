@@ -1,7 +1,7 @@
 #include "tablet_state_impl.h"
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <library/cpp/actors/core/actor.h>
+#include <library/cpp/actors/core/log.h>
 
 #include <util/random/random.h>
 

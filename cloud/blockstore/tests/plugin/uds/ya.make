@@ -14,7 +14,7 @@ DEPENDS(
     cloud/storage/core/tools/testing/unstable-process
     cloud/vm/blockstore
 
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 DATA(
@@ -24,7 +24,7 @@ DATA(
 PEERDIR(
     cloud/blockstore/tests/python/lib
 
-    contrib/ydb/tests/library
+    ydb/tests/library
 )
 
 END()

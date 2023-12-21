@@ -13,7 +13,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -119,7 +119,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
 
         bool cmsActionResponseSeen = false;
 
-        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        Runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
                     event->DropRewrite();
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
                     break;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         RegisterAgents(*Runtime, 1);
@@ -190,7 +190,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
         RegisterAgents(*Runtime, 1);
 
         std::unique_ptr<IEventHandle> cleanupRequest;
-        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        Runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
                     event->DropRewrite();
@@ -199,7 +199,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         SendAddDevice("NVMENBS01");
@@ -241,7 +241,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
         RegisterAgents(*Runtime, 1);
 
         std::unique_ptr<IEventHandle> cleanupRequest;
-        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        Runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
                     event->DropRewrite();
@@ -250,7 +250,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         SendAddDevice("NVMENBS01");

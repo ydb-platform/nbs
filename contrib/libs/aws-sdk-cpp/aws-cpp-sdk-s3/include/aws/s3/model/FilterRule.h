@@ -29,14 +29,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/FilterRule">AWS API
    * Reference</a></p>
    */
-  class FilterRule
+  class AWS_S3_API FilterRule
   {
   public:
-    AWS_S3_API FilterRule();
-    AWS_S3_API FilterRule(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API FilterRule& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    FilterRule();
+    FilterRule(const Aws::Utils::Xml::XmlNode& xmlNode);
+    FilterRule& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -137,10 +137,10 @@ namespace Model
   private:
 
     FilterRuleName m_name;
-    bool m_nameHasBeenSet = false;
+    bool m_nameHasBeenSet;
 
     Aws::String m_value;
-    bool m_valueHasBeenSet = false;
+    bool m_valueHasBeenSet;
   };
 
 } // namespace Model

@@ -13,13 +13,14 @@
 # include <boost/mpl/if.hpp>
 # include <boost/mpl/eval_if.hpp>
 # include <boost/mpl/identity.hpp>
-
-# include <boost/static_assert.hpp>
+# include <boost/mpl/assert.hpp>
 
 # include <boost/type_traits/is_same.hpp>
 # include <boost/type_traits/is_const.hpp>
 # include <boost/type_traits/is_reference.hpp>
 # include <boost/type_traits/is_convertible.hpp>
+
+# include <boost/type_traits/is_same.hpp>
 
 # include <boost/iterator/detail/config_def.hpp> // try to keep this last
 
@@ -138,17 +139,17 @@ struct iterator_category_with_traversal
     // Make sure this isn't used to build any categories where
     // convertibility to Traversal is redundant.  Should just use the
     // Category element in that case.
-    BOOST_STATIC_ASSERT((
-        !is_convertible<
+    BOOST_MPL_ASSERT_NOT((
+        is_convertible<
               typename iterator_category_to_traversal<Category>::type
             , Traversal
-          >::value));
+          >));
 
-    BOOST_STATIC_ASSERT(is_iterator_category<Category>::value);
-    BOOST_STATIC_ASSERT(!is_iterator_category<Traversal>::value);
-    BOOST_STATIC_ASSERT(!is_iterator_traversal<Category>::value);
+    BOOST_MPL_ASSERT((is_iterator_category<Category>));
+    BOOST_MPL_ASSERT_NOT((is_iterator_category<Traversal>));
+    BOOST_MPL_ASSERT_NOT((is_iterator_traversal<Category>));
 #  if !BOOST_WORKAROUND(BOOST_MSVC, BOOST_TESTED_AT(1310))
-    BOOST_STATIC_ASSERT(is_iterator_traversal<Traversal>::value);
+    BOOST_MPL_ASSERT((is_iterator_traversal<Traversal>));
 #  endif
 };
 
@@ -157,7 +158,7 @@ struct iterator_category_with_traversal
 template <class Traversal, class ValueParam, class Reference>
 struct facade_iterator_category_impl
 {
-    BOOST_STATIC_ASSERT(!is_iterator_category<Traversal>::value);
+    BOOST_MPL_ASSERT_NOT((is_iterator_category<Traversal>));
 
     typedef typename iterator_facade_default_category<
         Traversal,ValueParam,Reference

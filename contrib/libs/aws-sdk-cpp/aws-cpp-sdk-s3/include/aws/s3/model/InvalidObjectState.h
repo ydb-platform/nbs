@@ -29,14 +29,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/InvalidObjectState">AWS
    * API Reference</a></p>
    */
-  class InvalidObjectState
+  class AWS_S3_API InvalidObjectState
   {
   public:
-    AWS_S3_API InvalidObjectState();
-    AWS_S3_API InvalidObjectState(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API InvalidObjectState& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InvalidObjectState();
+    InvalidObjectState(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InvalidObjectState& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     
@@ -79,10 +79,10 @@ namespace Model
   private:
 
     StorageClass m_storageClass;
-    bool m_storageClassHasBeenSet = false;
+    bool m_storageClassHasBeenSet;
 
     IntelligentTieringAccessTier m_accessTier;
-    bool m_accessTierHasBeenSet = false;
+    bool m_accessTierHasBeenSet;
   };
 
 } // namespace Model

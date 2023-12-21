@@ -17,10 +17,11 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cobra"
-	blockstore_config "github.com/ydb-platform/nbs/cloud/blockstore/config"
-	blockstore_grpc "github.com/ydb-platform/nbs/cloud/blockstore/public/api/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	blockstore_config "a.yandex-team.ru/cloud/blockstore/config"
+	blockstore_grpc "a.yandex-team.ru/cloud/blockstore/public/api/grpc"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -814,7 +814,7 @@ namespace NStringSplitPrivate {
             Y_ENSURE(TryCollectInto<Args...>(args...));
         }
 
-        inline size_t Count() {
+        inline size_t Count() const {
             size_t cnt = 0;
             for (auto&& it : *this) {
                 Y_UNUSED(it);

@@ -71,12 +71,14 @@ template <class _Tp, class _Up>
 struct __has_rebind
 {
 private:
-    template <class _Xp> static false_type __test(...);
+    struct __two {char __lx; char __lxx;};
+    template <class _Xp> static __two __test(...);
     _LIBCPP_SUPPRESS_DEPRECATED_PUSH
-    template <class _Xp> static true_type __test(typename _Xp::template rebind<_Up>* = 0);
+    // Fix for MSVC which allows to reference private types. Wrap into declval to prevent that.
+    template <class _Xp> static char __test(decltype(_VSTD::declval<typename _Xp::template rebind<_Up>*>()) = 0);
     _LIBCPP_SUPPRESS_DEPRECATED_POP
 public:
-    static const bool value = decltype(__test<_Tp>(0))::value;
+    static const bool value = sizeof(__test<_Tp>(0)) == 1;
 };
 
 template <class _Tp, class _Up, bool = __has_rebind<_Tp, _Up>::value>

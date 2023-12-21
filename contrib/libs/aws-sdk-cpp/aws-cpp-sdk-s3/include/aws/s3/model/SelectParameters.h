@@ -30,14 +30,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/SelectParameters">AWS
    * API Reference</a></p>
    */
-  class SelectParameters
+  class AWS_S3_API SelectParameters
   {
   public:
-    AWS_S3_API SelectParameters();
-    AWS_S3_API SelectParameters(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API SelectParameters& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    SelectParameters();
+    SelectParameters(const Aws::Utils::Xml::XmlNode& xmlNode);
+    SelectParameters& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -176,16 +176,16 @@ namespace Model
   private:
 
     InputSerialization m_inputSerialization;
-    bool m_inputSerializationHasBeenSet = false;
+    bool m_inputSerializationHasBeenSet;
 
     ExpressionType m_expressionType;
-    bool m_expressionTypeHasBeenSet = false;
+    bool m_expressionTypeHasBeenSet;
 
     Aws::String m_expression;
-    bool m_expressionHasBeenSet = false;
+    bool m_expressionHasBeenSet;
 
     OutputSerialization m_outputSerialization;
-    bool m_outputSerializationHasBeenSet = false;
+    bool m_outputSerializationHasBeenSet;
   };
 
 } // namespace Model

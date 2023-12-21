@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 namespace NCloud::NFileStore::NStorage {
 

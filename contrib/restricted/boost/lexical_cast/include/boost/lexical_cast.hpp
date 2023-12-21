@@ -27,8 +27,7 @@
 #define BOOST_LCAST_NO_WCHAR_T
 #endif
 
-#include <boost/lexical_cast/detail/buffer_view.hpp>
-
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/lexical_cast/bad_lexical_cast.hpp>
 #include <boost/lexical_cast/try_lexical_convert.hpp>
 
@@ -50,7 +49,7 @@ namespace boost
     inline Target lexical_cast(const char* chars, std::size_t count)
     {
         return ::boost::lexical_cast<Target>(
-            ::boost::conversion::detail::make_buffer_view(chars, chars + count)
+            ::boost::iterator_range<const char*>(chars, chars + count)
         );
     }
 
@@ -58,7 +57,7 @@ namespace boost
     inline Target lexical_cast(const unsigned char* chars, std::size_t count)
     {
         return ::boost::lexical_cast<Target>(
-            ::boost::conversion::detail::make_buffer_view(chars, chars + count)
+            ::boost::iterator_range<const unsigned char*>(chars, chars + count)
         );
     }
 
@@ -66,7 +65,7 @@ namespace boost
     inline Target lexical_cast(const signed char* chars, std::size_t count)
     {
         return ::boost::lexical_cast<Target>(
-            ::boost::conversion::detail::make_buffer_view(chars, chars + count)
+            ::boost::iterator_range<const signed char*>(chars, chars + count)
         );
     }
 
@@ -75,24 +74,28 @@ namespace boost
     inline Target lexical_cast(const wchar_t* chars, std::size_t count)
     {
         return ::boost::lexical_cast<Target>(
-            ::boost::conversion::detail::make_buffer_view(chars, chars + count)
+            ::boost::iterator_range<const wchar_t*>(chars, chars + count)
         );
     }
 #endif
+#ifndef BOOST_NO_CXX11_CHAR16_T
     template <typename Target>
     inline Target lexical_cast(const char16_t* chars, std::size_t count)
     {
         return ::boost::lexical_cast<Target>(
-            ::boost::conversion::detail::make_buffer_view(chars, chars + count)
+            ::boost::iterator_range<const char16_t*>(chars, chars + count)
         );
     }
+#endif
+#ifndef BOOST_NO_CXX11_CHAR32_T
     template <typename Target>
     inline Target lexical_cast(const char32_t* chars, std::size_t count)
     {
         return ::boost::lexical_cast<Target>(
-            ::boost::conversion::detail::make_buffer_view(chars, chars + count)
+            ::boost::iterator_range<const char32_t*>(chars, chars + count)
         );
     }
+#endif
 
 } // namespace boost
 

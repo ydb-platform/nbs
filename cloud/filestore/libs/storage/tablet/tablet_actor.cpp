@@ -8,8 +8,8 @@
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <ydb/core/base/tablet_pipe.h>
+#include <ydb/core/node_whiteboard/node_whiteboard.h>
 
 namespace NCloud::NFileStore::NStorage {
 

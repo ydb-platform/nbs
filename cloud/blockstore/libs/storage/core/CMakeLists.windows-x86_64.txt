@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+find_package(OpenSSL REQUIRED)
 add_subdirectory(ut)
 get_built_tool_path(
   TOOL_enum_parser_bin
@@ -31,8 +32,8 @@ target_link_libraries(libs-storage-core PUBLIC
   core-libs-common
   core-libs-diagnostics
   core-libs-kikimr
-  contrib-libs-openssl
-  library-actors-core
+  OpenSSL::OpenSSL
+  cpp-actors-core
   library-cpp-cgiparam
   cpp-containers-intrusive_rb_tree
   cpp-deprecated-atomic

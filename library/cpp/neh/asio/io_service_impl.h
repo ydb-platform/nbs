@@ -492,10 +492,6 @@ namespace NAsio {
             }
         }
 
-        inline size_t GetOpQueueSize() noexcept {
-            return OpQueue_.Size();
-        }
-
         void SyncRegisterTimer(TTimer* t) {
             Timers_.insert(t);
         }

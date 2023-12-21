@@ -25,9 +25,6 @@
 /* Define to 1 if your system has a working `chown' function. */
 #define HAVE_CHOWN 1
 
-/* Define to 1 if you have the `clock_gettime' function. */
-#define HAVE_CLOCK_GETTIME 1
-
 /* define if the compiler supports basic C++14 syntax */
 #define HAVE_CXX14 1
 
@@ -57,9 +54,6 @@
 /* Define to 1 if you have the `getpwnam' function. */
 #define HAVE_GETPWNAM 1
 
-/* Define to 1 if you have `GetTickCount64` function. */
-/* #undef HAVE_GETTICKCOUNT64 */
-
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
@@ -69,14 +63,11 @@
 /* Define to 1 if you have `libbpf` library. */
 /* #undef HAVE_LIBBPF */
 
-/* Define to 1 if you have `libev` library. */
-#define HAVE_LIBEV 1
-
 /* Define to 1 if you have `libngtcp2_crypto_boringssl` library. */
 /* #undef HAVE_LIBNGTCP2_CRYPTO_BORINGSSL */
 
-/* Define to 1 if you have `libngtcp2_crypto_quictls` library. */
-/* #undef HAVE_LIBNGTCP2_CRYPTO_QUICTLS */
+/* Define to 1 if you have `libngtcp2_crypto_openssl` library. */
+/* #undef HAVE_LIBNGTCP2_CRYPTO_OPENSSL */
 
 /* Define to 1 if you have `libsystemd` library. */
 /* #undef HAVE_LIBSYSTEMD */
@@ -113,9 +104,6 @@
 
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #define HAVE_NETINET_IN_H 1
-
-/* Define to 1 if you have the <netinet/ip.h> header file. */
-#define HAVE_NETINET_IP_H 1
 
 /* Define to 1 if you have `neverbleed` library. */
 /* #undef HAVE_NEVERBLEED */
@@ -189,9 +177,6 @@
 /* Define to 1 if you have `struct tm.tm_gmtoff` member. */
 #define HAVE_STRUCT_TM_TM_GMTOFF 1
 
-/* Define to 1 if you have the <sysinfoapi.h> header file. */
-/* #undef HAVE_SYSINFOAPI_H */
-
 /* Define to 1 if you have the <syslog.h> header file. */
 #define HAVE_SYSLOG_H 1
 
@@ -259,7 +244,7 @@
 #define PACKAGE_NAME "nghttp2"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "nghttp2 1.58.0"
+#define PACKAGE_STRING "nghttp2 1.54.0"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "nghttp2"
@@ -268,7 +253,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.58.0"
+#define PACKAGE_VERSION "1.54.0"
 
 /* The size of `int *', as computed by sizeof. */
 #define SIZEOF_INT_P 8
@@ -373,7 +358,7 @@
 
 
 /* Version number of package */
-#define VERSION "1.58.0"
+#define VERSION "1.54.0"
 
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */

@@ -6,7 +6,7 @@ package NCloud.NBlockStore.NPrivateProto;
 // that's why instead of EDeviceState and EAgentState we use integers here
 // import "cloud/blockstore/libs/storage/protos/disk.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
+option go_package = "a.yandex-team.ru/cloud/blockstore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // DiskRegistryChangeState request/response.

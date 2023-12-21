@@ -217,7 +217,7 @@ namespace NYson {
                         } else if (state == EReadStartCase::BinaryTrue) {
                             *token = TToken(true);
                         } else {
-                            Y_ABORT("unreachable");
+                            Y_FAIL("unreachable");
                         }
                     }
                 } else { // BinaryStringOrOtherSpecialToken = x0b

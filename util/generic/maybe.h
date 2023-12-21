@@ -306,75 +306,75 @@ public:
         }
     }
 
-    const T* Get() const noexcept Y_LIFETIME_BOUND {
+    const T* Get() const noexcept {
         return Defined() ? Data() : nullptr;
     }
 
-    T* Get() noexcept Y_LIFETIME_BOUND {
+    T* Get() noexcept {
         return Defined() ? Data() : nullptr;
     }
 
-    constexpr const T& GetRef() const& Y_LIFETIME_BOUND {
+    constexpr const T& GetRef() const& {
         CheckDefined();
 
         return *Data();
     }
 
-    constexpr T& GetRef() & Y_LIFETIME_BOUND {
+    constexpr T& GetRef() & {
         CheckDefined();
 
         return *Data();
     }
 
-    constexpr const T&& GetRef() const&& Y_LIFETIME_BOUND {
+    constexpr const T&& GetRef() const&& {
         CheckDefined();
 
         return std::move(*Data());
     }
 
-    constexpr T&& GetRef() && Y_LIFETIME_BOUND {
+    constexpr T&& GetRef() && {
         CheckDefined();
 
         return std::move(*Data());
     }
 
-    constexpr const T& operator*() const& Y_LIFETIME_BOUND {
+    constexpr const T& operator*() const& {
         return GetRef();
     }
 
-    constexpr T& operator*() & Y_LIFETIME_BOUND {
+    constexpr T& operator*() & {
         return GetRef();
     }
 
-    constexpr const T&& operator*() const&& Y_LIFETIME_BOUND {
+    constexpr const T&& operator*() const&& {
         return std::move(GetRef());
     }
 
-    constexpr T&& operator*() && Y_LIFETIME_BOUND {
+    constexpr T&& operator*() && {
         return std::move(GetRef());
     }
 
-    constexpr const T* operator->() const Y_LIFETIME_BOUND {
+    constexpr const T* operator->() const {
         return &GetRef();
     }
 
-    constexpr T* operator->() Y_LIFETIME_BOUND {
+    constexpr T* operator->() {
         return &GetRef();
     }
 
-    constexpr const T& GetOrElse(const T& elseValue Y_LIFETIME_BOUND) const Y_LIFETIME_BOUND {
+    constexpr const T& GetOrElse(const T& elseValue) const {
         return Defined() ? *Data() : elseValue;
     }
 
-    constexpr T& GetOrElse(T& elseValue Y_LIFETIME_BOUND) Y_LIFETIME_BOUND {
+    constexpr T& GetOrElse(T& elseValue) {
         return Defined() ? *Data() : elseValue;
     }
 
-    constexpr const TMaybe& OrElse(const TMaybe& elseValue Y_LIFETIME_BOUND) const noexcept Y_LIFETIME_BOUND {
+    constexpr const TMaybe& OrElse(const TMaybe& elseValue) const noexcept {
         return Defined() ? *this : elseValue;
     }
 
-    constexpr TMaybe& OrElse(TMaybe& elseValue Y_LIFETIME_BOUND) Y_LIFETIME_BOUND {
+    constexpr TMaybe& OrElse(TMaybe& elseValue) {
         return Defined() ? *this : elseValue;
     }
 
@@ -434,11 +434,11 @@ public:
     }
 
 private:
-    constexpr const T* Data() const noexcept Y_LIFETIME_BOUND {
+    constexpr const T* Data() const noexcept {
         return std::addressof(this->Data_);
     }
 
-    constexpr T* Data() noexcept Y_LIFETIME_BOUND {
+    constexpr T* Data() noexcept {
         return std::addressof(this->Data_);
     }
 

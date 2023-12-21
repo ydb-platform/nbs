@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package NCloud.NFileStore.NProto;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+option go_package = "a.yandex-team.ru/cloud/filestore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Filestore errors.

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef GRPC_SRC_CORE_LIB_PROMISE_SLEEP_H
-#define GRPC_SRC_CORE_LIB_PROMISE_SLEEP_H
+#ifndef GRPC_CORE_LIB_PROMISE_SLEEP_H
+#define GRPC_CORE_LIB_PROMISE_SLEEP_H
 
 #include <grpc/support/port_platform.h>
 
@@ -72,7 +72,8 @@ class Sleep final {
     Waker waker_;
     // One ref dropped by Run(), the other by Cancel().
     std::atomic<int> refs_{2};
-    grpc_event_engine::experimental::EventEngine::TaskHandle timer_handle_;
+    const grpc_event_engine::experimental::EventEngine::TaskHandle
+        timer_handle_;
   };
 
   Timestamp deadline_;
@@ -81,4 +82,4 @@ class Sleep final {
 
 }  // namespace grpc_core
 
-#endif  // GRPC_SRC_CORE_LIB_PROMISE_SLEEP_H
+#endif  // GRPC_CORE_LIB_PROMISE_SLEEP_H

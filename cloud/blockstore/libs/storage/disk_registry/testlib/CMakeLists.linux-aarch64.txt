@@ -15,7 +15,7 @@ target_link_libraries(storage-disk_registry-testlib PUBLIC
   libs-storage-api
   libs-storage-core
   libs-storage-disk_registry
-  library-actors-core
+  cpp-actors-core
   cpp-testing-unittest
   ydb-core-testlib
   core-testlib-basics

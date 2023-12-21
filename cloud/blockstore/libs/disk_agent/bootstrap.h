@@ -12,9 +12,9 @@
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 
-#include <contrib/ydb/core/driver_lib/run/factories.h>
+#include <ydb/core/driver_lib/run/factories.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <library/cpp/actors/util/should_continue.h>
 #include <library/cpp/logger/log.h>
 
 namespace NCloud::NBlockStore::NServer {

@@ -17,7 +17,7 @@ target_link_libraries(cloud-blockstore-libs-storage-volume-actors-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   storage-volume-actors
-  library-actors-testlib
+  cpp-actors-testlib
 )
 target_sources(cloud-blockstore-libs-storage-volume-actors-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/forward_read_marked.ut.cpp

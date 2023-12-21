@@ -4,8 +4,8 @@
 #include <cloud/filestore/libs/storage/testlib/ss_proxy_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/protos/flat_scheme_op.pb.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         auto& runtime = env.GetRuntime();
         auto error = MakeError(E_FAIL, "Error");
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
@@ -239,7 +239,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         ssProxy.SendDescribeFileStoreRequest("test");
@@ -257,13 +257,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         ui32 nodeIdx = env.CreateNode("nfs");
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);

@@ -6,14 +6,11 @@ VERSION(1.1.1t)
 
 ORIGINAL_SOURCE(https://github.com/openssl/openssl/archive/OpenSSL_1_1_1t.tar.gz)
 
-# TODO(YMAKE-92) Move this information out of ya.make and allow per project configuration
-IF (OPENSOURCE_PROJECT == "catboost")
-    OPENSOURCE_EXPORT_REPLACEMENT(
-        CMAKE OpenSSL
-        CMAKE_TARGET OpenSSL::OpenSSL
-        CONAN openssl/1.1.1t
-    )
-ENDIF()
+OPENSOURCE_EXPORT_REPLACEMENT(
+    CMAKE OpenSSL
+    CMAKE_TARGET OpenSSL::OpenSSL
+    CONAN openssl/1.1.1s
+)
 
 LICENSE(
     Apache-2.0 AND
@@ -37,8 +34,7 @@ ADDINCL(
     contrib/libs/openssl
 )
 
-# TODO(YMAKE-92) Move this information out of ya.make and allow per project configuration
-IF (NOT EXPORT_CMAKE OR OPENSOURCE_PROJECT != "catboost")
+IF (NOT EXPORT_CMAKE)
 
 IF (OS_LINUX)
     IF (ARCH_ARM64)
@@ -272,9 +268,6 @@ ENDIF()
 IF (OS_WINDOWS AND ARCH_I386)
     CFLAGS(
         -DPADLOCK_ASM
-    )
-    MASMFLAGS(
-        /safeseh
     )
     SRCS(
         asm/windows/engines/e_padlock-x86.masm

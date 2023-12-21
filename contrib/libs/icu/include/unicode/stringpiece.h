@@ -75,11 +75,12 @@ class U_COMMON_API StringPiece : public UMemory {
    * @stable ICU 4.2
    */
   StringPiece(const char* str);
+#ifndef U_HIDE_DRAFT_API
 #if defined(__cpp_char8_t) || defined(U_IN_DOXYGEN)
   /**
    * Constructs from a NUL-terminated const char8_t * pointer.
    * @param str a NUL-terminated const char8_t * pointer
-   * @stable ICU 67
+   * @draft ICU 67
    */
   StringPiece(const char8_t* str) : StringPiece(reinterpret_cast<const char*>(str)) {}
 #endif
@@ -87,9 +88,10 @@ class U_COMMON_API StringPiece : public UMemory {
    * Constructs an empty StringPiece.
    * Needed for type disambiguation from multiple other overloads.
    * @param p nullptr
-   * @stable ICU 67
+   * @draft ICU 67
    */
   StringPiece(std::nullptr_t p) : ptr_(p), length_(0) {}
+#endif  // U_HIDE_DRAFT_API
 
   /**
    * Constructs from a std::string.
@@ -97,16 +99,19 @@ class U_COMMON_API StringPiece : public UMemory {
    */
   StringPiece(const std::string& str)
     : ptr_(str.data()), length_(static_cast<int32_t>(str.size())) { }
+#ifndef U_HIDE_DRAFT_API
 #if defined(__cpp_lib_char8_t) || defined(U_IN_DOXYGEN)
   /**
    * Constructs from a std::u8string.
-   * @stable ICU 67
+   * @draft ICU 67
    */
   StringPiece(const std::u8string& str)
     : ptr_(reinterpret_cast<const char*>(str.data())),
       length_(static_cast<int32_t>(str.size())) { }
 #endif
+#endif  // U_HIDE_DRAFT_API
 
+#ifndef U_HIDE_DRAFT_API
   /**
    * Constructs from some other implementation of a string piece class, from any
    * C++ record type that has these two methods:
@@ -127,7 +132,7 @@ class U_COMMON_API StringPiece : public UMemory {
    * as from std::u8string_view.
    *
    * @param str the other string piece
-   * @stable ICU 65
+   * @draft ICU 65
    */
   template <typename T,
             typename = typename std::enable_if<
@@ -140,6 +145,7 @@ class U_COMMON_API StringPiece : public UMemory {
   StringPiece(T str)
       : ptr_(reinterpret_cast<const char*>(str.data())),
         length_(static_cast<int32_t>(str.size())) {}
+#endif  // U_HIDE_DRAFT_API
 
   /**
    * Constructs from a const char * pointer and a specified length.
@@ -148,16 +154,18 @@ class U_COMMON_API StringPiece : public UMemory {
    * @stable ICU 4.2
    */
   StringPiece(const char* offset, int32_t len) : ptr_(offset), length_(len) { }
+#ifndef U_HIDE_DRAFT_API
 #if defined(__cpp_char8_t) || defined(U_IN_DOXYGEN)
   /**
    * Constructs from a const char8_t * pointer and a specified length.
    * @param str a const char8_t * pointer (need not be terminated)
    * @param len the length of the string; must be non-negative
-   * @stable ICU 67
+   * @draft ICU 67
    */
   StringPiece(const char8_t* str, int32_t len) :
       StringPiece(reinterpret_cast<const char*>(str), len) {}
 #endif
+#endif  // U_HIDE_DRAFT_API
 
   /**
    * Substring of another StringPiece.
@@ -201,7 +209,7 @@ class U_COMMON_API StringPiece : public UMemory {
   int32_t length() const { return length_; }
   /**
    * Returns whether the string is empty.
-   * @return true if the string is empty
+   * @return TRUE if the string is empty
    * @stable ICU 4.2
    */
   UBool empty() const { return length_ == 0; }
@@ -227,12 +235,13 @@ class U_COMMON_API StringPiece : public UMemory {
    */
   void set(const char* str);
 
+#ifndef U_HIDE_DRAFT_API
 #if defined(__cpp_char8_t) || defined(U_IN_DOXYGEN)
   /**
    * Resets the stringpiece to refer to new data.
    * @param xdata pointer the new string data. Need not be NUL-terminated.
    * @param len the length of the new data
-   * @stable ICU 67
+   * @draft ICU 67
    */
   inline void set(const char8_t* xdata, int32_t len) {
       set(reinterpret_cast<const char*>(xdata), len);
@@ -241,12 +250,13 @@ class U_COMMON_API StringPiece : public UMemory {
   /**
    * Resets the stringpiece to refer to new data.
    * @param str a pointer to a NUL-terminated string.
-   * @stable ICU 67
+   * @draft ICU 67
    */
   inline void set(const char8_t* str) {
       set(reinterpret_cast<const char*>(str));
   }
 #endif
+#endif  // U_HIDE_DRAFT_API
 
   /**
    * Removes the first n string units.
@@ -278,12 +288,13 @@ class U_COMMON_API StringPiece : public UMemory {
     }
   }
 
+#ifndef U_HIDE_DRAFT_API
   /**
    * Searches the StringPiece for the given search string (needle);
    * @param needle The string for which to search.
    * @param offset Where to start searching within this string (haystack).
    * @return The offset of needle in haystack, or -1 if not found.
-   * @stable ICU 67
+   * @draft ICU 67
    */
   int32_t find(StringPiece needle, int32_t offset);
 
@@ -292,9 +303,10 @@ class U_COMMON_API StringPiece : public UMemory {
    * similar to std::string::compare().
    * @param other The string to compare to.
    * @return below zero if this < other; above zero if this > other; 0 if this == other.
-   * @stable ICU 67
+   * @draft ICU 67
    */
   int32_t compare(StringPiece other);
+#endif  // U_HIDE_DRAFT_API
 
   /**
    * Maximum integer, used as a default value for substring methods.
@@ -319,7 +331,7 @@ class U_COMMON_API StringPiece : public UMemory {
  * Global operator == for StringPiece
  * @param x The first StringPiece to compare.
  * @param y The second StringPiece to compare.
- * @return true if the string data is equal
+ * @return TRUE if the string data is equal
  * @stable ICU 4.8
  */
 U_EXPORT UBool U_EXPORT2 
@@ -329,10 +341,10 @@ operator==(const StringPiece& x, const StringPiece& y);
  * Global operator != for StringPiece
  * @param x The first StringPiece to compare.
  * @param y The second StringPiece to compare.
- * @return true if the string data is not equal
+ * @return TRUE if the string data is not equal
  * @stable ICU 4.8
  */
-inline bool operator!=(const StringPiece& x, const StringPiece& y) {
+inline UBool operator!=(const StringPiece& x, const StringPiece& y) {
   return !(x == y);
 }
 

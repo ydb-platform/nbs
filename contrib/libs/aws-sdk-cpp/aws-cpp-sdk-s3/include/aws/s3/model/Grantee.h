@@ -28,14 +28,14 @@ namespace Model
    * <a href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Grantee">AWS API
    * Reference</a></p>
    */
-  class Grantee
+  class AWS_S3_API Grantee
   {
   public:
-    AWS_S3_API Grantee();
-    AWS_S3_API Grantee(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Grantee& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Grantee();
+    Grantee(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Grantee& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -81,113 +81,105 @@ namespace Model
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline const Aws::String& GetEmailAddress() const{ return m_emailAddress; }
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline bool EmailAddressHasBeenSet() const { return m_emailAddressHasBeenSet; }
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline void SetEmailAddress(const Aws::String& value) { m_emailAddressHasBeenSet = true; m_emailAddress = value; }
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline void SetEmailAddress(Aws::String&& value) { m_emailAddressHasBeenSet = true; m_emailAddress = std::move(value); }
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline void SetEmailAddress(const char* value) { m_emailAddressHasBeenSet = true; m_emailAddress.assign(value); }
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline Grantee& WithEmailAddress(const Aws::String& value) { SetEmailAddress(value); return *this;}
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline Grantee& WithEmailAddress(Aws::String&& value) { SetEmailAddress(std::move(value)); return *this;}
 
     /**
      * <p>Email address of the grantee.</p>  <p>Using email addresses to specify
-     * a grantee is only supported in the following Amazon Web Services Regions: </p>
-     * <ul> <li> <p>US East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p>
-     * </li> <li> <p> US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p>
-     * </li> <li> <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p>
-     * </li> <li> <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p>
-     * </li> </ul> <p>For a list of all the Amazon S3 supported Regions and endpoints,
-     * see <a
+     * a grantee is only supported in the following AWS Regions: </p> <ul> <li> <p>US
+     * East (N. Virginia)</p> </li> <li> <p>US West (N. California)</p> </li> <li> <p>
+     * US West (Oregon)</p> </li> <li> <p> Asia Pacific (Singapore)</p> </li> <li>
+     * <p>Asia Pacific (Sydney)</p> </li> <li> <p>Asia Pacific (Tokyo)</p> </li> <li>
+     * <p>Europe (Ireland)</p> </li> <li> <p>South America (São Paulo)</p> </li> </ul>
+     * <p>For a list of all the Amazon S3 supported Regions and endpoints, see <a
      * href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions
-     * and Endpoints</a> in the Amazon Web Services General Reference.</p> 
+     * and Endpoints</a> in the AWS General Reference.</p> 
      */
     inline Grantee& WithEmailAddress(const char* value) { SetEmailAddress(value); return *this;}
 
@@ -307,19 +299,19 @@ namespace Model
   private:
 
     Aws::String m_displayName;
-    bool m_displayNameHasBeenSet = false;
+    bool m_displayNameHasBeenSet;
 
     Aws::String m_emailAddress;
-    bool m_emailAddressHasBeenSet = false;
+    bool m_emailAddressHasBeenSet;
 
     Aws::String m_iD;
-    bool m_iDHasBeenSet = false;
+    bool m_iDHasBeenSet;
 
     Type m_type;
-    bool m_typeHasBeenSet = false;
+    bool m_typeHasBeenSet;
 
     Aws::String m_uRI;
-    bool m_uRIHasBeenSet = false;
+    bool m_uRIHasBeenSet;
   };
 
 } // namespace Model

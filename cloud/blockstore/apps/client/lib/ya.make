@@ -61,7 +61,7 @@ PEERDIR(
     library/cpp/protobuf/util
     library/cpp/threading/blocking_queue
     
-    contrib/ydb/library/actors/util
+    library/cpp/actors/util
 )
 
 END()

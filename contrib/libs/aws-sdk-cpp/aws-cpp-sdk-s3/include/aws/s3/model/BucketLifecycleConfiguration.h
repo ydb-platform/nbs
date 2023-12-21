@@ -32,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/BucketLifecycleConfiguration">AWS
    * API Reference</a></p>
    */
-  class BucketLifecycleConfiguration
+  class AWS_S3_API BucketLifecycleConfiguration
   {
   public:
-    AWS_S3_API BucketLifecycleConfiguration();
-    AWS_S3_API BucketLifecycleConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API BucketLifecycleConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    BucketLifecycleConfiguration();
+    BucketLifecycleConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    BucketLifecycleConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -85,7 +85,7 @@ namespace Model
   private:
 
     Aws::Vector<LifecycleRule> m_rules;
-    bool m_rulesHasBeenSet = false;
+    bool m_rulesHasBeenSet;
   };
 
 } // namespace Model

@@ -39,11 +39,6 @@ namespace NMonitoring {
         JSON,
 
         /**
-         * Read more https://wiki.yandex-team.ru/golovan/userdocs/stat-handle
-         */
-        UNISTAT,
-
-        /**
          * Simple protobuf format, only for testing purposes.
          */
         PROTOBUF,

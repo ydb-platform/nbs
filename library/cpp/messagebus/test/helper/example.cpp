@@ -68,11 +68,11 @@ TExampleProtocol::~TExampleProtocol() {
         // so it could be reported in test
         return;
     }
-    Y_ABORT_UNLESS(0 == AtomicGet(RequestCount), "protocol %s: must be 0 requests allocated, actually %d", GetService(), int(RequestCount));
-    Y_ABORT_UNLESS(0 == AtomicGet(ResponseCount), "protocol %s: must be 0 responses allocated, actually %d", GetService(), int(ResponseCount));
-    Y_ABORT_UNLESS(0 == AtomicGet(RequestCountDeserialized), "protocol %s: must be 0 requests deserialized allocated, actually %d", GetService(), int(RequestCountDeserialized));
-    Y_ABORT_UNLESS(0 == AtomicGet(ResponseCountDeserialized), "protocol %s: must be 0 responses deserialized allocated, actually %d", GetService(), int(ResponseCountDeserialized));
-    Y_ABORT_UNLESS(0 == AtomicGet(StartCount), "protocol %s: must be 0 start objects allocated, actually %d", GetService(), int(StartCount));
+    Y_VERIFY(0 == AtomicGet(RequestCount), "protocol %s: must be 0 requests allocated, actually %d", GetService(), int(RequestCount));
+    Y_VERIFY(0 == AtomicGet(ResponseCount), "protocol %s: must be 0 responses allocated, actually %d", GetService(), int(ResponseCount));
+    Y_VERIFY(0 == AtomicGet(RequestCountDeserialized), "protocol %s: must be 0 requests deserialized allocated, actually %d", GetService(), int(RequestCountDeserialized));
+    Y_VERIFY(0 == AtomicGet(ResponseCountDeserialized), "protocol %s: must be 0 responses deserialized allocated, actually %d", GetService(), int(ResponseCountDeserialized));
+    Y_VERIFY(0 == AtomicGet(StartCount), "protocol %s: must be 0 start objects allocated, actually %d", GetService(), int(StartCount));
 }
 
 void TExampleProtocol::Serialize(const TBusMessage* message, TBuffer& buffer) {
@@ -83,7 +83,7 @@ void TExampleProtocol::Serialize(const TBusMessage* message, TBuffer& buffer) {
     } else if (const TExampleResponse* exampleReply = dynamic_cast<const TExampleResponse*>(message)) {
         buffer.Append(exampleReply->Data.data(), exampleReply->Data.size());
     } else {
-        Y_ABORT("unknown message type");
+        Y_FAIL("unknown message type");
     }
 }
 
@@ -204,7 +204,7 @@ void TExampleClient::OnReply(TAutoPtr<TBusMessage> mess, TAutoPtr<TBusMessage> r
 
 void TExampleClient::OnError(TAutoPtr<TBusMessage> mess, EMessageStatus status) {
     if (CrashOnError) {
-        Y_ABORT("client failed: %s", ToCString(status));
+        Y_FAIL("client failed: %s", ToCString(status));
     }
 
     Y_UNUSED(mess);
@@ -277,5 +277,5 @@ void TExampleServer::OnMessage(TOnMessageContext& mess) {
         status = mess.SendReplyMove(reply);
     }
 
-    Y_ABORT_UNLESS(status == MESSAGE_OK, "failed to send reply: %s", ToString(status).data());
+    Y_VERIFY(status == MESSAGE_OK, "failed to send reply: %s", ToString(status).data());
 }

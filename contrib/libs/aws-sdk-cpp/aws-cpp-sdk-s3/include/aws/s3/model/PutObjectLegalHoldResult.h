@@ -24,12 +24,12 @@ namespace S3
 {
 namespace Model
 {
-  class PutObjectLegalHoldResult
+  class AWS_S3_API PutObjectLegalHoldResult
   {
   public:
-    AWS_S3_API PutObjectLegalHoldResult();
-    AWS_S3_API PutObjectLegalHoldResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API PutObjectLegalHoldResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    PutObjectLegalHoldResult();
+    PutObjectLegalHoldResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    PutObjectLegalHoldResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     

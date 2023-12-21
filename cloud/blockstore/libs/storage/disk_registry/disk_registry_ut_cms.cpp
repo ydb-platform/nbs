@@ -13,7 +13,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -496,14 +496,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TVector<NProto::TAction> actions;
         actions.push_back(action);
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskRegistryPrivate::EvUpdateCmsHostDeviceStateRequest: {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         diskRegistry.SendCmsActionRequest(std::move(actions));

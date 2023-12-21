@@ -22,15 +22,15 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 
 template <class _ForwardIterator, class _Tp>
 _LIBCPP_NODISCARD_EXT _LIBCPP_CONSTEXPR_AFTER_CXX17 _ForwardIterator
-remove(_ForwardIterator __first, _ForwardIterator __last, const _Tp& __value)
+remove(_ForwardIterator __first, _ForwardIterator __last, const _Tp& __value_)
 {
-    __first = _VSTD::find(__first, __last, __value);
+    __first = _VSTD::find(__first, __last, __value_);
     if (__first != __last)
     {
         _ForwardIterator __i = __first;
         while (++__i != __last)
         {
-            if (!(*__i == __value))
+            if (!(*__i == __value_))
             {
                 *__first = _VSTD::move(*__i);
                 ++__first;

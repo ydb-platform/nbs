@@ -34,13 +34,12 @@
 #endif
 
 #if defined(_LIBCPP_MSVCRT)
-#   define _CTYPE_DISABLE_MACROS
+#    define _CTYPE_DISABLE_MACROS
 #endif
-
 #if defined(_LIBCPP_MSVCRT) || defined(__MINGW32__)
-#   include "__support/win32/locale_win32.h"
+#    include "__support/win32/locale_win32.h"
 #elif !defined(__BIONIC__) && !defined(__NuttX__)
-#   include <langinfo.h>
+#    include <langinfo.h>
 #endif
 
 #include "atomic"
@@ -1527,7 +1526,7 @@ char
 ctype_byname<wchar_t>::do_narrow(char_type c, char dfault) const
 {
     int r = __libcpp_wctob_l(c, __l);
-    return (r != EOF) ? static_cast<char>(r) : dfault;
+    return r != static_cast<int>(WEOF) ? static_cast<char>(r) : dfault;
 }
 
 const wchar_t*
@@ -1536,7 +1535,7 @@ ctype_byname<wchar_t>::do_narrow(const char_type* low, const char_type* high, ch
     for (; low != high; ++low, ++dest)
     {
         int r = __libcpp_wctob_l(*low, __l);
-        *dest = (r != EOF) ? static_cast<char>(r) : dfault;
+        *dest = r != static_cast<int>(WEOF) ? static_cast<char>(r) : dfault;
     }
     return low;
 }
@@ -1834,7 +1833,6 @@ codecvt<wchar_t, char, mbstate_t>::do_max_length() const noexcept
 // 040000 - 0FFFFF  D8C0 - DBBF, DC00 - DFFF  F1 - F3, 80 - BF, 80 - BF, 80 - BF   786432
 // 100000 - 10FFFF  DBC0 - DBFF, DC00 - DFFF  F4 - F4, 80 - 8F, 80 - BF, 80 - BF    65536
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 static
 codecvt_base::result
 utf16_to_utf8(const uint16_t* frm, const uint16_t* frm_end, const uint16_t*& frm_nxt,
@@ -3208,8 +3206,6 @@ utf16le_to_ucs2_length(const uint8_t* frm, const uint8_t* frm_end,
     return static_cast<int>(frm_nxt - frm);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_POP
-
 // template <> class codecvt<char16_t, char, mbstate_t>
 
 locale::id codecvt<char16_t, char, mbstate_t>::id;
@@ -3617,7 +3613,6 @@ __codecvt_utf8<wchar_t>::do_length(state_type&,
 #endif
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf8<wchar_t>::do_max_length() const noexcept
 {
@@ -3700,7 +3695,6 @@ __codecvt_utf8<char16_t>::do_length(state_type&,
     return utf8_to_ucs2_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf8<char16_t>::do_max_length() const noexcept
 {
@@ -3708,7 +3702,6 @@ __codecvt_utf8<char16_t>::do_max_length() const noexcept
         return 6;
     return 3;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf8<char32_t>
 
@@ -3777,7 +3770,6 @@ __codecvt_utf8<char32_t>::do_length(state_type&,
     return utf8_to_ucs4_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf8<char32_t>::do_max_length() const noexcept
 {
@@ -3785,7 +3777,6 @@ __codecvt_utf8<char32_t>::do_max_length() const noexcept
         return 7;
     return 4;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf16<wchar_t, false>
 
@@ -4064,7 +4055,6 @@ __codecvt_utf16<char16_t, false>::do_length(state_type&,
     return utf16be_to_ucs2_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf16<char16_t, false>::do_max_length() const noexcept
 {
@@ -4072,7 +4062,6 @@ __codecvt_utf16<char16_t, false>::do_max_length() const noexcept
         return 4;
     return 2;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf16<char16_t, true>
 
@@ -4141,7 +4130,6 @@ __codecvt_utf16<char16_t, true>::do_length(state_type&,
     return utf16le_to_ucs2_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf16<char16_t, true>::do_max_length() const noexcept
 {
@@ -4149,7 +4137,6 @@ __codecvt_utf16<char16_t, true>::do_max_length() const noexcept
         return 4;
     return 2;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf16<char32_t, false>
 
@@ -4218,7 +4205,6 @@ __codecvt_utf16<char32_t, false>::do_length(state_type&,
     return utf16be_to_ucs4_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf16<char32_t, false>::do_max_length() const noexcept
 {
@@ -4226,7 +4212,6 @@ __codecvt_utf16<char32_t, false>::do_max_length() const noexcept
         return 6;
     return 4;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf16<char32_t, true>
 
@@ -4306,7 +4291,6 @@ __codecvt_utf16<char32_t, true>::do_length(state_type&,
     return utf16le_to_ucs4_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf16<char32_t, true>::do_max_length() const noexcept
 {
@@ -4314,7 +4298,6 @@ __codecvt_utf16<char32_t, true>::do_max_length() const noexcept
         return 6;
     return 4;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf8_utf16<wchar_t>
 
@@ -4472,7 +4455,6 @@ __codecvt_utf8_utf16<char16_t>::do_length(state_type&,
     return utf8_to_utf16_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf8_utf16<char16_t>::do_max_length() const noexcept
 {
@@ -4480,7 +4462,6 @@ __codecvt_utf8_utf16<char16_t>::do_max_length() const noexcept
         return 7;
     return 4;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __codecvt_utf8_utf16<char32_t>
 
@@ -4555,7 +4536,6 @@ __codecvt_utf8_utf16<char32_t>::do_length(state_type&,
     return utf8_to_utf16_length(_frm, _frm_end, mx, _Maxcode_, _Mode_);
 }
 
-_LIBCPP_SUPPRESS_DEPRECATED_PUSH
 int
 __codecvt_utf8_utf16<char32_t>::do_max_length() const noexcept
 {
@@ -4563,7 +4543,6 @@ __codecvt_utf8_utf16<char32_t>::do_max_length() const noexcept
         return 7;
     return 4;
 }
-_LIBCPP_SUPPRESS_DEPRECATED_POP
 
 // __narrow_to_utf8<16>
 
@@ -4825,7 +4804,7 @@ __check_grouping(const string& __grouping, unsigned* __g, unsigned* __g_end,
 {
 //  if the grouping pattern is empty _or_ there are no grouping bits, then do nothing
 //  we always have at least a single entry in [__g, __g_end); the end of the input sequence
-    if (__grouping.size() != 0 && __g_end - __g > 1)
+	if (__grouping.size() != 0 && __g_end - __g > 1)
     {
         reverse(__g, __g_end);
         const char* __ig = __grouping.data();

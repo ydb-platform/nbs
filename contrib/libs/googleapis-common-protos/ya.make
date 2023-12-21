@@ -6,9 +6,9 @@ LICENSE(Apache-2.0)
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-VERSION(1.61.0)
+VERSION(1.59.1)
 
-ORIGINAL_SOURCE(https://github.com/googleapis/python-api-common-protos/archive/v1.61.0.tar.gz)
+ORIGINAL_SOURCE(https://github.com/googleapis/python-api-common-protos/archive/v1.59.1.tar.gz)
 
 PY_NAMESPACE(.)
 
@@ -34,7 +34,6 @@ SRCS(
     google/api/endpoint.proto
     google/api/error_reason.proto
     google/api/field_behavior.proto
-    google/api/field_info.proto
     google/api/http.proto
     google/api/httpbody.proto
     google/api/label.proto
@@ -44,7 +43,6 @@ SRCS(
     google/api/metric.proto
     google/api/monitored_resource.proto
     google/api/monitoring.proto
-    google/api/policy.proto
     google/api/quota.proto
     google/api/resource.proto
     google/api/routing.proto

@@ -15,7 +15,6 @@
 
 #pragma once
 
-#include <openssl/asn1.h>
 #include <openssl/x509.h>
 #include <stdint.h>
 
@@ -23,6 +22,4 @@
 
 DEFINE_POINTER_CLEANUP_FUNC(X509 *, X509_free);
 
-S2N_CLEANUP_RESULT s2n_openssl_x509_stack_pop_free(STACK_OF(X509) **cert_chain);
-
-S2N_CLEANUP_RESULT s2n_openssl_asn1_time_free_pointer(ASN1_GENERALIZEDTIME **time);
+int s2n_openssl_x509_stack_pop_free(STACK_OF(X509) **cert_chain);

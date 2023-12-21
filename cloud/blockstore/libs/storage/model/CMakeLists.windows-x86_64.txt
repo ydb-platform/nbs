@@ -21,7 +21,7 @@ target_link_libraries(libs-storage-model PUBLIC
   tools-enum_parser-enum_serialization_runtime
   blockstore-libs-common
   libs-tablet-model
-  library-actors-core
+  cpp-actors-core
 )
 target_sources(libs-storage-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/model/channel_data_kind.cpp

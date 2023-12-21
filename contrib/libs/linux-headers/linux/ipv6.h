@@ -4,7 +4,6 @@
 
 #include <linux/libc-compat.h>
 #include <linux/types.h>
-#include <linux/stddef.h>
 #include <linux/in6.h>
 #include <asm/byteorder.h>
 
@@ -81,7 +80,7 @@ struct ipv6_opt_hdr {
 struct rt0_hdr {
 	struct ipv6_rt_hdr	rt_hdr;
 	__u32			reserved;
-	struct in6_addr		addr[];
+	struct in6_addr		addr[0];
 
 #define rt0_type		rt_hdr.type
 };
@@ -131,10 +130,8 @@ struct ipv6hdr {
 	__u8			nexthdr;
 	__u8			hop_limit;
 
-	__struct_group(/* no tag */, addrs, /* no attrs */,
-		struct	in6_addr	saddr;
-		struct	in6_addr	daddr;
-	);
+	struct	in6_addr	saddr;
+	struct	in6_addr	daddr;
 };
 
 
@@ -192,13 +189,6 @@ enum {
 	DEVCONF_ACCEPT_RA_RT_INFO_MIN_PLEN,
 	DEVCONF_NDISC_TCLASS,
 	DEVCONF_RPL_SEG_ENABLED,
-	DEVCONF_RA_DEFRTR_METRIC,
-	DEVCONF_IOAM6_ENABLED,
-	DEVCONF_IOAM6_ID,
-	DEVCONF_IOAM6_ID_WIDE,
-	DEVCONF_NDISC_EVICT_NOCARRIER,
-	DEVCONF_ACCEPT_UNTRACKED_NA,
-	DEVCONF_ACCEPT_RA_MIN_LFT,
 	DEVCONF_MAX
 };
 

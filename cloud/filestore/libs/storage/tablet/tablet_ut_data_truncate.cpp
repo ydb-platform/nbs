@@ -375,7 +375,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -383,7 +383,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -468,7 +468,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -476,7 +476,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -515,7 +515,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -523,7 +523,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -560,7 +560,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -568,7 +568,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -604,7 +604,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -612,7 +612,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -654,7 +654,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -662,7 +662,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -705,7 +705,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -713,7 +713,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 

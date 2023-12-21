@@ -35,10 +35,6 @@ namespace NAsio {
         Impl_->Run();
     }
 
-    size_t TIOService::GetOpQueueSize() noexcept {
-        return Impl_->GetOpQueueSize();
-    }
-
     void TIOService::Post(TCompletionHandler h) {
         Impl_->Post(std::move(h));
     }

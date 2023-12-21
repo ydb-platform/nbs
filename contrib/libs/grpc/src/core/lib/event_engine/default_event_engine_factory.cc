@@ -18,6 +18,8 @@
 
 #include <memory>
 
+#include "y_absl/memory/memory.h"
+
 #include <grpc/event_engine/event_engine.h>
 
 #ifdef GPR_WINDOWS
@@ -27,7 +29,7 @@ namespace grpc_event_engine {
 namespace experimental {
 
 std::unique_ptr<EventEngine> DefaultEventEngineFactory() {
-  return std::make_unique<WindowsEventEngine>();
+  return y_absl::make_unique<WindowsEventEngine>();
 }
 
 }  // namespace experimental
@@ -39,7 +41,7 @@ namespace grpc_event_engine {
 namespace experimental {
 
 std::unique_ptr<EventEngine> DefaultEventEngineFactory() {
-  return std::make_unique<PosixEventEngine>();
+  return y_absl::make_unique<PosixEventEngine>();
 }
 
 }  // namespace experimental

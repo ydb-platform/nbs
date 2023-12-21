@@ -5,11 +5,11 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/protos/base.pb.h>
+#include <ydb/core/protos/base.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <library/cpp/actors/core/actor.h>
+#include <library/cpp/actors/core/event.h>
+#include <library/cpp/actors/core/log.h>
 
 namespace NCloud::NBlockStore {
 

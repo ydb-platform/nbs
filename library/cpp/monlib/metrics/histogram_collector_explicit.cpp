@@ -50,6 +50,6 @@ namespace NMonitoring {
         Y_ENSURE(IsSorted(bounds.begin(), bounds.end()),
                  "bounds for explicit histogram must be sorted");
 
-        return MakeHolder<TExplicitHistogramCollector>(std::move(bounds));
+        return MakeHolder<TExplicitHistogramCollector>(bounds);
     }
 }

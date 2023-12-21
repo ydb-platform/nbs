@@ -181,7 +181,6 @@
   - processthreadsapi.h
   - processtopologyapi.h
   - profileapi.h
-  - projectedfslib.h
   - provider.h
   - psapi.h
   - pshpack1.h
@@ -257,7 +256,6 @@
   - verrsrc.h
   - versionhelpers.h
   - vfw.h
-  - w32api/winioctl.h
   - wbemidl.h
   - websocket.h
   - winapifamily.h
@@ -268,7 +266,6 @@
   - windef.h
   - windns.h
   - windows.applicationmodel.core.h
-  - windows.globalization.h
   - windows.graphics.display.h
   - windows.h
   - windows.storage.h

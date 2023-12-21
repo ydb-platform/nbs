@@ -10,11 +10,11 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/tablet/tablet_setup.h>
+#include <ydb/core/base/tablet.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/tablet/tablet_setup.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

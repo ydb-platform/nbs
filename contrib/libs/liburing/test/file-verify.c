@@ -11,6 +11,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <linux/fs.h>
@@ -33,38 +34,20 @@
  */
 #define READ_BATCH	16
 
-static void verify_buf_sync(void *buf, size_t size, bool registered)
-{
-#if defined(__hppa__)
-	if (registered) {
-		unsigned long off = (unsigned long) buf & 4095;
-		unsigned long p = (unsigned long) buf & ~4095;
-		int i;
-
-		size += off;
-		for (i = 0; i < size; i += 32)
-			asm volatile("fdc 0(%0)" : : "r" (p + i));
-	}
-#endif
-}
-
 /*
  * Each offset in the file has the offset / sizeof(int) stored for every
  * sizeof(int) address.
  */
-static int verify_buf(void *buf, size_t size, off_t off, bool registered)
+static int verify_buf(void *buf, size_t size, off_t off)
 {
 	int i, u_in_buf = size / sizeof(unsigned int);
 	unsigned int *ptr;
-
-	verify_buf_sync(buf, size, registered);
 
 	off /= sizeof(unsigned int);
 	ptr = buf;
 	for (i = 0; i < u_in_buf; i++) {
 		if (off != *ptr) {
-			fprintf(stderr, "Found %u, wanted %llu\n", *ptr,
-					(unsigned long long) off);
+			fprintf(stderr, "Found %u, wanted %lu\n", *ptr, off);
 			return 1;
 		}
 		ptr++;
@@ -215,7 +198,7 @@ again:
 		goto err;
 	}
 
-	if (verify_buf(buf, CHUNK_SIZE / 2, 0, false))
+	if (verify_buf(buf, CHUNK_SIZE / 2, 0))
 		goto err;
 
 	/*
@@ -382,12 +365,9 @@ static int test(struct io_uring *ring, const char *fname, int buffered,
 			v[i].iov_base = buf[i];
 			v[i].iov_len = CHUNK_SIZE;
 		}
-		ret = t_register_buffers(ring, v, READ_BATCH);
+		ret = io_uring_register_buffers(ring, v, READ_BATCH);
 		if (ret) {
-			if (ret == T_SETUP_SKIP) {
-				ret = 0;
-				goto free_bufs;
-			}
+			fprintf(stderr, "Error buffer reg %d\n", ret);
 			goto err;
 		}
 	}
@@ -466,12 +446,12 @@ static int test(struct io_uring *ring, const char *fname, int buffered,
 					void *buf = vecs[index][j].iov_base;
 					size_t len = vecs[index][j].iov_len;
 
-					if (verify_buf(buf, len, voff, registered))
+					if (verify_buf(buf, len, voff))
 						goto err;
 					voff += len;
 				}
 			} else {
-				if (verify_buf(buf[index], CHUNK_SIZE, voff, registered))
+				if (verify_buf(buf[index], CHUNK_SIZE, voff))
 					goto err;
 			}
 		}
@@ -481,7 +461,6 @@ static int test(struct io_uring *ring, const char *fname, int buffered,
 done:
 	if (registered)
 		io_uring_unregister_buffers(ring);
-free_bufs:
 	if (vectored) {
 		for (j = 0; j < READ_BATCH; j++)
 			for (i = 0; i < nr_vecs; i++)

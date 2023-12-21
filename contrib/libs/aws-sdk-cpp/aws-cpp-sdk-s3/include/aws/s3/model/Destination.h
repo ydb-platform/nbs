@@ -34,14 +34,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Destination">AWS API
    * Reference</a></p>
    */
-  class Destination
+  class AWS_S3_API Destination
   {
   public:
-    AWS_S3_API Destination();
-    AWS_S3_API Destination(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Destination& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Destination();
+    Destination(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Destination& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -95,97 +95,97 @@ namespace Model
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline const Aws::String& GetAccount() const{ return m_account; }
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline bool AccountHasBeenSet() const { return m_accountHasBeenSet; }
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline void SetAccount(const Aws::String& value) { m_accountHasBeenSet = true; m_account = value; }
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline void SetAccount(Aws::String&& value) { m_accountHasBeenSet = true; m_account = std::move(value); }
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline void SetAccount(const char* value) { m_accountHasBeenSet = true; m_account.assign(value); }
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline Destination& WithAccount(const Aws::String& value) { SetAccount(value); return *this;}
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline Destination& WithAccount(Aws::String&& value) { SetAccount(std::move(value)); return *this;}
 
     /**
      * <p>Destination bucket owner account ID. In a cross-account scenario, if you
-     * direct Amazon S3 to change replica ownership to the Amazon Web Services account
-     * that owns the destination bucket by specifying the
-     * <code>AccessControlTranslation</code> property, this is the account ID of the
-     * destination bucket owner. For more information, see <a
+     * direct Amazon S3 to change replica ownership to the AWS account that owns the
+     * destination bucket by specifying the <code>AccessControlTranslation</code>
+     * property, this is the account ID of the destination bucket owner. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-change-owner.html">Replication
-     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon S3
-     * User Guide</i>.</p>
+     * Additional Configuration: Changing the Replica Owner</a> in the <i>Amazon Simple
+     * Storage Service Developer Guide</i>.</p>
      */
     inline Destination& WithAccount(const char* value) { SetAccount(value); return *this;}
 
@@ -196,7 +196,8 @@ namespace Model
      * object to create the object replica. </p> <p>For valid values, see the
      * <code>StorageClass</code> element of the <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html">PUT
-     * Bucket replication</a> action in the <i>Amazon S3 API Reference</i>.</p>
+     * Bucket replication</a> action in the <i>Amazon Simple Storage Service API
+     * Reference</i>.</p>
      */
     inline const StorageClass& GetStorageClass() const{ return m_storageClass; }
 
@@ -206,7 +207,8 @@ namespace Model
      * object to create the object replica. </p> <p>For valid values, see the
      * <code>StorageClass</code> element of the <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html">PUT
-     * Bucket replication</a> action in the <i>Amazon S3 API Reference</i>.</p>
+     * Bucket replication</a> action in the <i>Amazon Simple Storage Service API
+     * Reference</i>.</p>
      */
     inline bool StorageClassHasBeenSet() const { return m_storageClassHasBeenSet; }
 
@@ -216,7 +218,8 @@ namespace Model
      * object to create the object replica. </p> <p>For valid values, see the
      * <code>StorageClass</code> element of the <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html">PUT
-     * Bucket replication</a> action in the <i>Amazon S3 API Reference</i>.</p>
+     * Bucket replication</a> action in the <i>Amazon Simple Storage Service API
+     * Reference</i>.</p>
      */
     inline void SetStorageClass(const StorageClass& value) { m_storageClassHasBeenSet = true; m_storageClass = value; }
 
@@ -226,7 +229,8 @@ namespace Model
      * object to create the object replica. </p> <p>For valid values, see the
      * <code>StorageClass</code> element of the <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html">PUT
-     * Bucket replication</a> action in the <i>Amazon S3 API Reference</i>.</p>
+     * Bucket replication</a> action in the <i>Amazon Simple Storage Service API
+     * Reference</i>.</p>
      */
     inline void SetStorageClass(StorageClass&& value) { m_storageClassHasBeenSet = true; m_storageClass = std::move(value); }
 
@@ -236,7 +240,8 @@ namespace Model
      * object to create the object replica. </p> <p>For valid values, see the
      * <code>StorageClass</code> element of the <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html">PUT
-     * Bucket replication</a> action in the <i>Amazon S3 API Reference</i>.</p>
+     * Bucket replication</a> action in the <i>Amazon Simple Storage Service API
+     * Reference</i>.</p>
      */
     inline Destination& WithStorageClass(const StorageClass& value) { SetStorageClass(value); return *this;}
 
@@ -246,7 +251,8 @@ namespace Model
      * object to create the object replica. </p> <p>For valid values, see the
      * <code>StorageClass</code> element of the <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html">PUT
-     * Bucket replication</a> action in the <i>Amazon S3 API Reference</i>.</p>
+     * Bucket replication</a> action in the <i>Amazon Simple Storage Service API
+     * Reference</i>.</p>
      */
     inline Destination& WithStorageClass(StorageClass&& value) { SetStorageClass(std::move(value)); return *this;}
 
@@ -254,54 +260,54 @@ namespace Model
     /**
      * <p>Specify this only in a cross-account scenario (where source and destination
      * bucket owners are not the same), and you want to change replica ownership to the
-     * Amazon Web Services account that owns the destination bucket. If this is not
-     * specified in the replication configuration, the replicas are owned by same
-     * Amazon Web Services account that owns the source object.</p>
+     * AWS account that owns the destination bucket. If this is not specified in the
+     * replication configuration, the replicas are owned by same AWS account that owns
+     * the source object.</p>
      */
     inline const AccessControlTranslation& GetAccessControlTranslation() const{ return m_accessControlTranslation; }
 
     /**
      * <p>Specify this only in a cross-account scenario (where source and destination
      * bucket owners are not the same), and you want to change replica ownership to the
-     * Amazon Web Services account that owns the destination bucket. If this is not
-     * specified in the replication configuration, the replicas are owned by same
-     * Amazon Web Services account that owns the source object.</p>
+     * AWS account that owns the destination bucket. If this is not specified in the
+     * replication configuration, the replicas are owned by same AWS account that owns
+     * the source object.</p>
      */
     inline bool AccessControlTranslationHasBeenSet() const { return m_accessControlTranslationHasBeenSet; }
 
     /**
      * <p>Specify this only in a cross-account scenario (where source and destination
      * bucket owners are not the same), and you want to change replica ownership to the
-     * Amazon Web Services account that owns the destination bucket. If this is not
-     * specified in the replication configuration, the replicas are owned by same
-     * Amazon Web Services account that owns the source object.</p>
+     * AWS account that owns the destination bucket. If this is not specified in the
+     * replication configuration, the replicas are owned by same AWS account that owns
+     * the source object.</p>
      */
     inline void SetAccessControlTranslation(const AccessControlTranslation& value) { m_accessControlTranslationHasBeenSet = true; m_accessControlTranslation = value; }
 
     /**
      * <p>Specify this only in a cross-account scenario (where source and destination
      * bucket owners are not the same), and you want to change replica ownership to the
-     * Amazon Web Services account that owns the destination bucket. If this is not
-     * specified in the replication configuration, the replicas are owned by same
-     * Amazon Web Services account that owns the source object.</p>
+     * AWS account that owns the destination bucket. If this is not specified in the
+     * replication configuration, the replicas are owned by same AWS account that owns
+     * the source object.</p>
      */
     inline void SetAccessControlTranslation(AccessControlTranslation&& value) { m_accessControlTranslationHasBeenSet = true; m_accessControlTranslation = std::move(value); }
 
     /**
      * <p>Specify this only in a cross-account scenario (where source and destination
      * bucket owners are not the same), and you want to change replica ownership to the
-     * Amazon Web Services account that owns the destination bucket. If this is not
-     * specified in the replication configuration, the replicas are owned by same
-     * Amazon Web Services account that owns the source object.</p>
+     * AWS account that owns the destination bucket. If this is not specified in the
+     * replication configuration, the replicas are owned by same AWS account that owns
+     * the source object.</p>
      */
     inline Destination& WithAccessControlTranslation(const AccessControlTranslation& value) { SetAccessControlTranslation(value); return *this;}
 
     /**
      * <p>Specify this only in a cross-account scenario (where source and destination
      * bucket owners are not the same), and you want to change replica ownership to the
-     * Amazon Web Services account that owns the destination bucket. If this is not
-     * specified in the replication configuration, the replicas are owned by same
-     * Amazon Web Services account that owns the source object.</p>
+     * AWS account that owns the destination bucket. If this is not specified in the
+     * replication configuration, the replicas are owned by same AWS account that owns
+     * the source object.</p>
      */
     inline Destination& WithAccessControlTranslation(AccessControlTranslation&& value) { SetAccessControlTranslation(std::move(value)); return *this;}
 
@@ -437,25 +443,25 @@ namespace Model
   private:
 
     Aws::String m_bucket;
-    bool m_bucketHasBeenSet = false;
+    bool m_bucketHasBeenSet;
 
     Aws::String m_account;
-    bool m_accountHasBeenSet = false;
+    bool m_accountHasBeenSet;
 
     StorageClass m_storageClass;
-    bool m_storageClassHasBeenSet = false;
+    bool m_storageClassHasBeenSet;
 
     AccessControlTranslation m_accessControlTranslation;
-    bool m_accessControlTranslationHasBeenSet = false;
+    bool m_accessControlTranslationHasBeenSet;
 
     EncryptionConfiguration m_encryptionConfiguration;
-    bool m_encryptionConfigurationHasBeenSet = false;
+    bool m_encryptionConfigurationHasBeenSet;
 
     ReplicationTime m_replicationTime;
-    bool m_replicationTimeHasBeenSet = false;
+    bool m_replicationTimeHasBeenSet;
 
     Metrics m_metrics;
-    bool m_metricsHasBeenSet = false;
+    bool m_metricsHasBeenSet;
   };
 
 } // namespace Model

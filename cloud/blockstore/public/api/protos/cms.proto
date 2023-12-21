@@ -5,7 +5,7 @@ package NCloud.NBlockStore.NProto;
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/storage/core/protos/error.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos";
+option go_package = "a.yandex-team.ru/cloud/blockstore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 // The NBS service definition.

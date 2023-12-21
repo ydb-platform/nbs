@@ -15,7 +15,7 @@ target_link_libraries(storage-partition_common-model PUBLIC
   public-api-protos
   libs-storage-protos
   libs-storage-protos_ydb
-  library-actors-protos
+  cpp-actors-protos
   ydb-core-protos
 )
 target_sources(storage-partition_common-model PRIVATE

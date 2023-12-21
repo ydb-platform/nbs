@@ -1,9 +1,9 @@
 import sys
 
-TEMPLATE = """
+TEMPLATE="""
 #include <yql/udfs/common/python/python_udf/python_udf.h>
 
-#include <contrib/ydb/library/yql/public/udf/udf_registrator.h>
+#include <ydb/library/yql/public/udf/udf_registrator.h>
 
 #if @WITH_LIBRA@
 #include <yql/udfs/quality/libra/module/module.h>
@@ -41,7 +41,8 @@ def main():
     flavor, module_name, package_name, path, libra_flag = sys.argv[1:]
     with open(path, 'w') as f:
         f.write(
-            TEMPLATE.strip()
+            TEMPLATE
+            .strip()
             .replace('@MODULE_NAME@', module_name)
             .replace('@PACKAGE_NAME@', package_name)
             .replace('@FLAVOR@', flavor)

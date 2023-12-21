@@ -54,11 +54,13 @@ static const struct aws_cli_option *s_find_option_from_c_str(
     const struct aws_cli_option *option = &longopts[index];
 
     while (option->name || option->val != 0) {
-        if (option->name && !strcmp(search_for, option->name)) {
-            if (longindex) {
-                *longindex = index;
+        if (option->name) {
+            if (option->name && !strcmp(search_for, option->name)) {
+                if (longindex) {
+                    *longindex = index;
+                }
+                return option;
             }
-            return option;
         }
 
         option = &longopts[++index];

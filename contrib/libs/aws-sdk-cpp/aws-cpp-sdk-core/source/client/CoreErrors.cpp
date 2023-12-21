@@ -18,8 +18,7 @@ using namespace Aws::Http;
 #pragma warning(disable : 4592)
 #endif
 
-using ErrorsMapperContainer = Aws::Map<Aws::String, AWSError<CoreErrors> >;
-static ErrorsMapperContainer* s_CoreErrorsMapper(nullptr);
+static Aws::UniquePtr<Aws::Map<Aws::String, AWSError<CoreErrors> > > s_CoreErrorsMapper(nullptr);
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -31,7 +30,7 @@ void CoreErrorsMapper::InitCoreErrorsMapper()
     {
       return;
     }
-    s_CoreErrorsMapper = Aws::New<ErrorsMapperContainer>("InitCoreErrorsMapper");
+    s_CoreErrorsMapper = Aws::MakeUnique<Aws::Map<Aws::String, AWSError<CoreErrors> > >("InitCoreErrorsMapper");
 
     s_CoreErrorsMapper->emplace("IncompleteSignature", AWSError<CoreErrors>(CoreErrors::INCOMPLETE_SIGNATURE, false));
     s_CoreErrorsMapper->emplace("IncompleteSignatureException", AWSError<CoreErrors>(CoreErrors::INCOMPLETE_SIGNATURE, false));
@@ -93,8 +92,10 @@ void CoreErrorsMapper::InitCoreErrorsMapper()
 
 void CoreErrorsMapper::CleanupCoreErrorsMapper()
 {
-    Aws::Delete(s_CoreErrorsMapper);
-    s_CoreErrorsMapper = nullptr;
+    if (s_CoreErrorsMapper)
+    {
+      s_CoreErrorsMapper = nullptr;
+    }
 }
 
 AWSError<CoreErrors> CoreErrorsMapper::GetErrorForName(const char* errorName)
@@ -147,13 +148,4 @@ AWS_CORE_API AWSError<CoreErrors> CoreErrorsMapper::GetErrorForHttpResponseCode(
     }
     error.SetResponseCode(code);
     return error;
-}
-
-/**
- * Overload ostream operator<< for CoreErrors enum class for a prettier output such as "103" and not "<67-00 00-00>"
- */
-Aws::OStream& Aws::Client::operator<< (Aws::OStream& oStream, CoreErrors code)
-{
-    oStream << Aws::Utils::StringUtils::to_string(static_cast<typename std::underlying_type<HttpResponseCode>::type>(code));
-    return oStream;
 }

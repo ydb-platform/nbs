@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <stdarg.h>
 #include <sys/types.h>
 
 #include <arpa/inet.h>
@@ -136,8 +135,7 @@ enum t_setup_ret t_create_ring_params(int depth, struct io_uring *ring,
 		return T_SETUP_SKIP;
 	}
 
-	if (ret != -EINVAL)
-		fprintf(stderr, "queue_init: %s\n", strerror(-ret));
+	fprintf(stderr, "queue_init: %s\n", strerror(-ret));
 	return ret;
 }
 
@@ -176,7 +174,7 @@ int t_create_socket_pair(int fd[2], bool stream)
 	int val;
 	struct sockaddr_in serv_addr;
 	struct sockaddr *paddr;
-	socklen_t paddrlen;
+	size_t paddrlen;
 
 	type |= SOCK_CLOEXEC;
 	fd[0] = socket(AF_INET, type, 0);
@@ -268,54 +266,4 @@ bool t_probe_defer_taskrun(void)
 		return false;
 	io_uring_queue_exit(&ring);
 	return true;
-}
-
-/*
- * Sync internal state with kernel ring state on the SQ side. Returns the
- * number of pending items in the SQ ring, for the shared ring.
- */
-unsigned __io_uring_flush_sq(struct io_uring *ring)
-{
-	struct io_uring_sq *sq = &ring->sq;
-	unsigned tail = sq->sqe_tail;
-
-	if (sq->sqe_head != tail) {
-		sq->sqe_head = tail;
-		/*
-		 * Ensure kernel sees the SQE updates before the tail update.
-		 */
-		if (!(ring->flags & IORING_SETUP_SQPOLL))
-			IO_URING_WRITE_ONCE(*sq->ktail, tail);
-		else
-			io_uring_smp_store_release(sq->ktail, tail);
-	}
-	/*
-	 * This _may_ look problematic, as we're not supposed to be reading
-	 * SQ->head without acquire semantics. When we're in SQPOLL mode, the
-	 * kernel submitter could be updating this right now. For non-SQPOLL,
-	 * task itself does it, and there's no potential race. But even for
-	 * SQPOLL, the load is going to be potentially out-of-date the very
-	 * instant it's done, regardless or whether or not it's done
-	 * atomically. Worst case, we're going to be over-estimating what
-	 * we can submit. The point is, we need to be able to deal with this
-	 * situation regardless of any perceived atomicity.
-	 */
-	return tail - *sq->khead;
-}
-
-/*
- * Implementation of error(3), prints an error message and exits.
- */
-void t_error(int status, int errnum, const char *format, ...)
-{
-	va_list args;
-    	va_start(args, format);
-
-	vfprintf(stderr, format, args);
-    	if (errnum)
-        	fprintf(stderr, ": %s", strerror(errnum));
-
-	fprintf(stderr, "\n");
-	va_end(args);
-    	exit(status);
 }

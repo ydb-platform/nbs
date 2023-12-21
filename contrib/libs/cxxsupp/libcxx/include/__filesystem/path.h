@@ -71,7 +71,6 @@ struct __can_convert_char<char32_t> {
 };
 
 template <class _ECharT>
-_LIBCPP_HIDE_FROM_ABI
 typename enable_if<__can_convert_char<_ECharT>::value, bool>::type
 __is_separator(_ECharT __e) {
 #if defined(_LIBCPP_WIN32API)
@@ -102,16 +101,10 @@ struct __is_pathable_string<
     : public __can_convert_char<_ECharT> {
   using _Str = basic_string<_ECharT, _Traits, _Alloc>;
   using _Base = __can_convert_char<_ECharT>;
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT const* __range_begin(_Str const& __s) { return __s.data(); }
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT const* __range_end(_Str const& __s) {
     return __s.data() + __s.length();
   }
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT __first_or_null(_Str const& __s) {
     return __s.empty() ? _ECharT{} : __s[0];
   }
@@ -124,16 +117,10 @@ struct __is_pathable_string<
     : public __can_convert_char<_ECharT> {
   using _Str = basic_string_view<_ECharT, _Traits>;
   using _Base = __can_convert_char<_ECharT>;
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT const* __range_begin(_Str const& __s) { return __s.data(); }
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT const* __range_end(_Str const& __s) {
     return __s.data() + __s.length();
   }
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT __first_or_null(_Str const& __s) {
     return __s.empty() ? _ECharT{} : __s[0];
   }
@@ -151,10 +138,7 @@ struct __is_pathable_char_array<_Source, _ECharT*, _UPtr, true>
     : __can_convert_char<typename remove_const<_ECharT>::type> {
   using _Base = __can_convert_char<typename remove_const<_ECharT>::type>;
 
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT const* __range_begin(const _ECharT* __b) { return __b; }
-
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT const* __range_end(const _ECharT* __b) {
     using _Iter = const _ECharT*;
     const _ECharT __sentinel = _ECharT{};
@@ -164,7 +148,6 @@ struct __is_pathable_char_array<_Source, _ECharT*, _UPtr, true>
     return __e;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT __first_or_null(const _ECharT* __b) { return *__b; }
 };
 
@@ -181,13 +164,9 @@ struct __is_pathable_iter<
   using _ECharT = typename iterator_traits<_Iter>::value_type;
   using _Base = __can_convert_char<_ECharT>;
 
-  _LIBCPP_HIDE_FROM_ABI
   static _Iter __range_begin(_Iter __b) { return __b; }
-
-  _LIBCPP_HIDE_FROM_ABI
   static _NullSentinel __range_end(_Iter) { return _NullSentinel{}; }
 
-  _LIBCPP_HIDE_FROM_ABI
   static _ECharT __first_or_null(_Iter __b) { return *__b; }
 };
 
@@ -237,7 +216,6 @@ struct _PathCVT {
   typedef __widen_from_utf8<sizeof(wchar_t) * __CHAR_BIT__> _Widener;
 #endif
 
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_range(__path_string& __dest, _ECharT const* __b,
                              _ECharT const* __e) {
 #if defined(_LIBCPP_WIN32API)
@@ -250,7 +228,6 @@ struct _PathCVT {
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_range(__path_string& __dest, _Iter __b, _Iter __e) {
     static_assert(!is_same<_Iter, _ECharT*>::value, "Call const overload");
     if (__b == __e)
@@ -268,7 +245,6 @@ struct _PathCVT {
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_range(__path_string& __dest, _Iter __b, _NullSentinel) {
     static_assert(!is_same<_Iter, _ECharT*>::value, "Call const overload");
     const _ECharT __sentinel = _ECharT{};
@@ -289,7 +265,6 @@ struct _PathCVT {
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_source(__path_string& __dest, _Source const& __s) {
     using _Traits = __is_pathable<_Source>;
     __append_range(__dest, _Traits::__range_begin(__s),
@@ -302,7 +277,6 @@ template <>
 struct _PathCVT<__path_value> {
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static typename enable_if<__is_exactly_cpp17_input_iterator<_Iter>::value>::type
   __append_range(__path_string& __dest, _Iter __b, _Iter __e) {
     for (; __b != __e; ++__b)
@@ -310,14 +284,12 @@ struct _PathCVT<__path_value> {
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static typename enable_if<__is_cpp17_forward_iterator<_Iter>::value>::type
   __append_range(__path_string& __dest, _Iter __b, _Iter __e) {
     __dest.append(__b, __e);
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_range(__path_string& __dest, _Iter __b, _NullSentinel) {
     const char __sentinel = char{};
     for (; *__b != __sentinel; ++__b)
@@ -325,7 +297,6 @@ struct _PathCVT<__path_value> {
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_source(__path_string& __dest, _Source const& __s) {
     using _Traits = __is_pathable<_Source>;
     __append_range(__dest, _Traits::__range_begin(__s),
@@ -337,7 +308,6 @@ struct _PathCVT<__path_value> {
 template <>
 struct _PathCVT<char> {
 
-  _LIBCPP_HIDE_FROM_ABI
   static void
   __append_string(__path_string& __dest, const basic_string<char> &__str) {
       size_t __size = __char_to_wide(__str, nullptr, 0);
@@ -347,7 +317,6 @@ struct _PathCVT<char> {
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static typename enable_if<__is_exactly_cpp17_input_iterator<_Iter>::value>::type
   __append_range(__path_string& __dest, _Iter __b, _Iter __e) {
     basic_string<char> __tmp(__b, __e);
@@ -355,7 +324,6 @@ struct _PathCVT<char> {
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static typename enable_if<__is_cpp17_forward_iterator<_Iter>::value>::type
   __append_range(__path_string& __dest, _Iter __b, _Iter __e) {
     basic_string<char> __tmp(__b, __e);
@@ -363,7 +331,6 @@ struct _PathCVT<char> {
   }
 
   template <class _Iter>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_range(__path_string& __dest, _Iter __b, _NullSentinel) {
     const char __sentinel = char{};
     basic_string<char> __tmp;
@@ -373,7 +340,6 @@ struct _PathCVT<char> {
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append_source(__path_string& __dest, _Source const& __s) {
     using _Traits = __is_pathable<_Source>;
     __append_range(__dest, _Traits::__range_begin(__s),
@@ -387,7 +353,6 @@ struct _PathExport {
   typedef __widen_from_utf8<sizeof(_ECharT) * __CHAR_BIT__> _Widener;
 
   template <class _Str>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append(_Str& __dest, const __path_string& __src) {
     string __utf8;
     _Narrower()(back_inserter(__utf8), __src.data(), __src.data() + __src.size());
@@ -398,7 +363,6 @@ struct _PathExport {
 template <>
 struct _PathExport<char> {
   template <class _Str>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append(_Str& __dest, const __path_string& __src) {
     size_t __size = __wide_to_char(__src, nullptr, 0);
     size_t __pos = __dest.size();
@@ -410,7 +374,6 @@ struct _PathExport<char> {
 template <>
 struct _PathExport<wchar_t> {
   template <class _Str>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append(_Str& __dest, const __path_string& __src) {
     __dest.append(__src.begin(), __src.end());
   }
@@ -419,7 +382,6 @@ struct _PathExport<wchar_t> {
 template <>
 struct _PathExport<char16_t> {
   template <class _Str>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append(_Str& __dest, const __path_string& __src) {
     __dest.append(__src.begin(), __src.end());
   }
@@ -431,7 +393,6 @@ struct _PathExport<char8_t> {
   typedef __narrow_to_utf8<sizeof(wchar_t) * __CHAR_BIT__> _Narrower;
 
   template <class _Str>
-  _LIBCPP_HIDE_FROM_ABI
   static void __append(_Str& __dest, const __path_string& __src) {
     _Narrower()(back_inserter(__dest), __src.data(), __src.data() + __src.size());
   }
@@ -468,23 +429,21 @@ public:
   };
 
   // constructors and destructor
-  _LIBCPP_HIDE_FROM_ABI path() noexcept {}
-  _LIBCPP_HIDE_FROM_ABI path(const path& __p) : __pn_(__p.__pn_) {}
-  _LIBCPP_HIDE_FROM_ABI path(path&& __p) noexcept
+  _LIBCPP_INLINE_VISIBILITY path() noexcept {}
+  _LIBCPP_INLINE_VISIBILITY path(const path& __p) : __pn_(__p.__pn_) {}
+  _LIBCPP_INLINE_VISIBILITY path(path&& __p) noexcept
       : __pn_(_VSTD::move(__p.__pn_)) {}
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path(string_type&& __s, format = format::auto_format) noexcept
       : __pn_(_VSTD::move(__s)) {}
 
   template <class _Source, class = _EnableIfPathable<_Source, void> >
-  _LIBCPP_HIDE_FROM_ABI
   path(const _Source& __src, format = format::auto_format) {
     _SourceCVT<_Source>::__append_source(__pn_, __src);
   }
 
   template <class _InputIt>
-  _LIBCPP_HIDE_FROM_ABI
   path(_InputIt __first, _InputIt __last, format = format::auto_format) {
     typedef typename iterator_traits<_InputIt>::value_type _ItVal;
     _PathCVT<_ItVal>::__append_range(__pn_, __first, __last);
@@ -501,42 +460,41 @@ public:
 #endif
 */
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   ~path() = default;
 
   // assignments
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator=(const path& __p) {
     __pn_ = __p.__pn_;
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator=(path&& __p) noexcept {
     __pn_ = _VSTD::move(__p.__pn_);
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator=(string_type&& __s) noexcept {
     __pn_ = _VSTD::move(__s);
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& assign(string_type&& __s) noexcept {
     __pn_ = _VSTD::move(__s);
     return *this;
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI _EnableIfPathable<_Source>
+  _LIBCPP_INLINE_VISIBILITY _EnableIfPathable<_Source>
   operator=(const _Source& __src) {
     return this->assign(__src);
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   _EnableIfPathable<_Source> assign(const _Source& __src) {
     __pn_.clear();
     _SourceCVT<_Source>::__append_source(__pn_, __src);
@@ -544,7 +502,6 @@ public:
   }
 
   template <class _InputIt>
-  _LIBCPP_HIDE_FROM_ABI
   path& assign(_InputIt __first, _InputIt __last) {
     typedef typename iterator_traits<_InputIt>::value_type _ItVal;
     __pn_.clear();
@@ -555,7 +512,6 @@ public:
 public:
   // appends
 #if defined(_LIBCPP_WIN32API)
-  _LIBCPP_HIDE_FROM_ABI
   path& operator/=(const path& __p) {
     auto __p_root_name = __p.__root_name();
     auto __p_root_name_size = __p_root_name.size();
@@ -582,18 +538,15 @@ public:
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   _EnableIfPathable<_Source> append(const _Source& __src) {
     return operator/=(path(__src));
   }
 
   template <class _InputIt>
-  _LIBCPP_HIDE_FROM_ABI
   path& append(_InputIt __first, _InputIt __last) {
     return operator/=(path(__first, __last));
   }
 #else
-  _LIBCPP_HIDE_FROM_ABI
   path& operator/=(const path& __p) {
     if (__p.is_absolute()) {
       __pn_ = __p.__pn_;
@@ -609,13 +562,12 @@ public:
   // is known at compile time to be "/' since the user almost certainly intended
   // to append a separator instead of overwriting the path with "/"
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI _EnableIfPathable<_Source>
+  _LIBCPP_INLINE_VISIBILITY _EnableIfPathable<_Source>
   operator/=(const _Source& __src) {
     return this->append(__src);
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   _EnableIfPathable<_Source> append(const _Source& __src) {
     using _Traits = __is_pathable<_Source>;
     using _CVT = _PathCVT<_SourceChar<_Source> >;
@@ -629,7 +581,6 @@ public:
   }
 
   template <class _InputIt>
-  _LIBCPP_HIDE_FROM_ABI
   path& append(_InputIt __first, _InputIt __last) {
     typedef typename iterator_traits<_InputIt>::value_type _ItVal;
     static_assert(__can_convert_char<_ItVal>::value, "Must convertible");
@@ -644,38 +595,37 @@ public:
 #endif
 
   // concatenation
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator+=(const path& __x) {
     __pn_ += __x.__pn_;
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator+=(const string_type& __x) {
     __pn_ += __x;
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator+=(__string_view __x) {
     __pn_ += __x;
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator+=(const value_type* __x) {
     __pn_ += __x;
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& operator+=(value_type __x) {
     __pn_ += __x;
     return *this;
   }
 
   template <class _ECharT>
-  _LIBCPP_HIDE_FROM_ABI
   typename enable_if<__can_convert_char<_ECharT>::value, path&>::type
   operator+=(_ECharT __x) {
     _PathCVT<_ECharT>::__append_source(__pn_,
@@ -684,20 +634,17 @@ public:
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   _EnableIfPathable<_Source> operator+=(const _Source& __x) {
     return this->concat(__x);
   }
 
   template <class _Source>
-  _LIBCPP_HIDE_FROM_ABI
   _EnableIfPathable<_Source> concat(const _Source& __x) {
     _SourceCVT<_Source>::__append_source(__pn_, __x);
     return *this;
   }
 
   template <class _InputIt>
-  _LIBCPP_HIDE_FROM_ABI
   path& concat(_InputIt __first, _InputIt __last) {
     typedef typename iterator_traits<_InputIt>::value_type _ItVal;
     _PathCVT<_ItVal>::__append_range(__pn_, __first, __last);
@@ -705,10 +652,9 @@ public:
   }
 
   // modifiers
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   void clear() noexcept { __pn_.clear(); }
 
-  _LIBCPP_HIDE_FROM_ABI
   path& make_preferred() {
 #if defined(_LIBCPP_WIN32API)
     _VSTD::replace(__pn_.begin(), __pn_.end(), L'/', L'\\');
@@ -716,7 +662,7 @@ public:
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   path& remove_filename() {
     auto __fname = __filename();
     if (!__fname.empty())
@@ -724,7 +670,6 @@ public:
     return *this;
   }
 
-  _LIBCPP_HIDE_FROM_ABI
   path& replace_filename(const path& __replacement) {
     remove_filename();
     return (*this /= __replacement);
@@ -732,26 +677,25 @@ public:
 
   path& replace_extension(const path& __replacement = path());
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   void swap(path& __rhs) noexcept { __pn_.swap(__rhs.__pn_); }
 
   // private helper to allow reserving memory in the path
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   void __reserve(size_t __s) { __pn_.reserve(__s); }
 
   // native format observers
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   const string_type& native() const noexcept { return __pn_; }
 
-  _LIBCPP_HIDE_FROM_ABI
+  _LIBCPP_INLINE_VISIBILITY
   const value_type* c_str() const noexcept { return __pn_.c_str(); }
 
-  _LIBCPP_HIDE_FROM_ABI operator string_type() const { return __pn_; }
+  _LIBCPP_INLINE_VISIBILITY operator string_type() const { return __pn_; }
 
 #if defined(_LIBCPP_WIN32API)
-  _LIBCPP_HIDE_FROM_ABI _VSTD::wstring wstring() const { return __pn_; }
+  _LIBCPP_INLINE_VISIBILITY _VSTD::wstring wstring() const { return __pn_; }
 
-  _LIBCPP_HIDE_FROM_ABI
   _VSTD::wstring generic_wstring() const {
     _VSTD::wstring __s;
     __s.resize(__pn_.size());
@@ -762,7 +706,6 @@ public:
 #if !defined(_LIBCPP_HAS_NO_LOCALIZATION)
   template <class _ECharT, class _Traits = char_traits<_ECharT>,
             class _Allocator = allocator<_ECharT> >
-  _LIBCPP_HIDE_FROM_ABI
   basic_string<_ECharT, _Traits, _Allocator>
   string(const _Allocator& __a = _Allocator()) const {
     using _Str = basic_string<_ECharT, _Traits, _Allocator>;
@@ -772,10 +715,10 @@ public:
     return __s;
   }
 
-  _LIBCPP_HIDE_FROM_ABI _VSTD::string string() const {
+  _LIBCPP_INLINE_VISIBILITY _VSTD::string string() const {
     return string<char>();
   }
-  _LIBCPP_HIDE_FROM_ABI __u8_string u8string() const {
+  _LIBCPP_INLINE_VISIBILITY __u8_string u8string() const {
     using _CVT = __narrow_to_utf8<sizeof(wchar_t) * __CHAR_BIT__>;
     __u8_string __s;
     __s.reserve(__pn_.size());
@@ -783,17 +726,16 @@ public:
     return __s;
   }
 
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u16string u16string() const {
+  _LIBCPP_INLINE_VISIBILITY _VSTD::u16string u16string() const {
     return string<char16_t>();
   }
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u32string u32string() const {
+  _LIBCPP_INLINE_VISIBILITY _VSTD::u32string u32string() const {
     return string<char32_t>();
   }
 
   // generic format observers
   template <class _ECharT, class _Traits = char_traits<_ECharT>,
             class _Allocator = allocator<_ECharT> >
-  _LIBCPP_HIDE_FROM_ABI
   basic_string<_ECharT, _Traits, _Allocator>
   generic_string(const _Allocator& __a = _Allocator()) const {
     using _Str = basic_string<_ECharT, _Traits, _Allocator>;
@@ -806,10 +748,9 @@ public:
     return __s;
   }
 
-  _LIBCPP_HIDE_FROM_ABI _VSTD::string generic_string() const { return generic_string<char>(); }
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u16string generic_u16string() const { return generic_string<char16_t>(); }
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u32string generic_u32string() const { return generic_string<char32_t>(); }
-  _LIBCPP_HIDE_FROM_ABI
+  _VSTD::string generic_string() const { return generic_string<char>(); }
+  _VSTD::u16string generic_u16string() const { return generic_string<char16_t>(); }
+  _VSTD::u32string generic_u32string() const { return generic_string<char32_t>(); }
   __u8_string generic_u8string() const {
     __u8_string __s = u8string();
     _VSTD::replace(__s.begin(), __s.end(), '\\', '/');
@@ -818,17 +759,16 @@ public:
 #endif /* !_LIBCPP_HAS_NO_LOCALIZATION */
 #else /* _LIBCPP_WIN32API */
 
-  _LIBCPP_HIDE_FROM_ABI _VSTD::string string() const { return __pn_; }
+  _LIBCPP_INLINE_VISIBILITY _VSTD::string string() const { return __pn_; }
 #ifndef _LIBCPP_HAS_NO_CHAR8_T
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u8string u8string() const { return _VSTD::u8string(__pn_.begin(), __pn_.end()); }
+  _LIBCPP_INLINE_VISIBILITY _VSTD::u8string u8string() const { return _VSTD::u8string(__pn_.begin(), __pn_.end()); }
 #else
-  _LIBCPP_HIDE_FROM_ABI _VSTD::string u8string() const { return __pn_; }
+  _LIBCPP_INLINE_VISIBILITY _VSTD::string u8string() const { return __pn_; }
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_LOCALIZATION)
   template <class _ECharT, class _Traits = char_traits<_ECharT>,
             class _Allocator = allocator<_ECharT> >
-  _LIBCPP_HIDE_FROM_ABI
   basic_string<_ECharT, _Traits, _Allocator>
   string(const _Allocator& __a = _Allocator()) const {
     using _CVT = __widen_from_utf8<sizeof(_ECharT) * __CHAR_BIT__>;
@@ -840,40 +780,39 @@ public:
   }
 
 #ifndef _LIBCPP_HAS_NO_WIDE_CHARACTERS
-  _LIBCPP_HIDE_FROM_ABI _VSTD::wstring wstring() const {
+  _LIBCPP_INLINE_VISIBILITY _VSTD::wstring wstring() const {
     return string<wchar_t>();
   }
 #endif
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u16string u16string() const {
+  _LIBCPP_INLINE_VISIBILITY _VSTD::u16string u16string() const {
     return string<char16_t>();
   }
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u32string u32string() const {
+  _LIBCPP_INLINE_VISIBILITY _VSTD::u32string u32string() const {
     return string<char32_t>();
   }
 #endif /* !_LIBCPP_HAS_NO_LOCALIZATION */
 
   // generic format observers
-  _LIBCPP_HIDE_FROM_ABI _VSTD::string generic_string() const { return __pn_; }
+  _VSTD::string generic_string() const { return __pn_; }
 #ifndef _LIBCPP_HAS_NO_CHAR8_T
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u8string generic_u8string() const { return _VSTD::u8string(__pn_.begin(), __pn_.end()); }
+  _VSTD::u8string generic_u8string() const { return _VSTD::u8string(__pn_.begin(), __pn_.end()); }
 #else
-  _LIBCPP_HIDE_FROM_ABI _VSTD::string generic_u8string() const { return __pn_; }
+  _VSTD::string generic_u8string() const { return __pn_; }
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_LOCALIZATION)
   template <class _ECharT, class _Traits = char_traits<_ECharT>,
             class _Allocator = allocator<_ECharT> >
-  _LIBCPP_HIDE_FROM_ABI
   basic_string<_ECharT, _Traits, _Allocator>
   generic_string(const _Allocator& __a = _Allocator()) const {
     return string<_ECharT, _Traits, _Allocator>(__a);
   }
 
 #ifndef _LIBCPP_HAS_NO_WIDE_CHARACTERS
-  _LIBCPP_HIDE_FROM_ABI _VSTD::wstring generic_wstring() const { return string<wchar_t>(); }
+  _VSTD::wstring generic_wstring() const { return string<wchar_t>(); }
 #endif
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u16string generic_u16string() const { return string<char16_t>(); }
-  _LIBCPP_HIDE_FROM_ABI _VSTD::u32string generic_u32string() const { return string<char32_t>(); }
+  _VSTD::u16string generic_u16string() const { return string<char16_t>(); }
+  _VSTD::u32string generic_u32string() const { return string<char32_t>(); }
 #endif /* !_LIBCPP_HAS_NO_LOCALIZATION */
 #endif /* !_LIBCPP_WIN32API */
 
@@ -890,77 +829,77 @@ private:
 
 public:
   // compare
-  _LIBCPP_HIDE_FROM_ABI int compare(const path& __p) const noexcept {
+  _LIBCPP_INLINE_VISIBILITY int compare(const path& __p) const noexcept {
     return __compare(__p.__pn_);
   }
-  _LIBCPP_HIDE_FROM_ABI int compare(const string_type& __s) const {
+  _LIBCPP_INLINE_VISIBILITY int compare(const string_type& __s) const {
     return __compare(__s);
   }
-  _LIBCPP_HIDE_FROM_ABI int compare(__string_view __s) const {
+  _LIBCPP_INLINE_VISIBILITY int compare(__string_view __s) const {
     return __compare(__s);
   }
-  _LIBCPP_HIDE_FROM_ABI int compare(const value_type* __s) const {
+  _LIBCPP_INLINE_VISIBILITY int compare(const value_type* __s) const {
     return __compare(__s);
   }
 
   // decomposition
-  _LIBCPP_HIDE_FROM_ABI path root_name() const {
+  _LIBCPP_INLINE_VISIBILITY path root_name() const {
     return string_type(__root_name());
   }
-  _LIBCPP_HIDE_FROM_ABI path root_directory() const {
+  _LIBCPP_INLINE_VISIBILITY path root_directory() const {
     return string_type(__root_directory());
   }
-  _LIBCPP_HIDE_FROM_ABI path root_path() const {
+  _LIBCPP_INLINE_VISIBILITY path root_path() const {
 #if defined(_LIBCPP_WIN32API)
     return string_type(__root_path_raw());
 #else
     return root_name().append(string_type(__root_directory()));
 #endif
   }
-  _LIBCPP_HIDE_FROM_ABI path relative_path() const {
+  _LIBCPP_INLINE_VISIBILITY path relative_path() const {
     return string_type(__relative_path());
   }
-  _LIBCPP_HIDE_FROM_ABI path parent_path() const {
+  _LIBCPP_INLINE_VISIBILITY path parent_path() const {
     return string_type(__parent_path());
   }
-  _LIBCPP_HIDE_FROM_ABI path filename() const {
+  _LIBCPP_INLINE_VISIBILITY path filename() const {
     return string_type(__filename());
   }
-  _LIBCPP_HIDE_FROM_ABI path stem() const { return string_type(__stem()); }
-  _LIBCPP_HIDE_FROM_ABI path extension() const {
+  _LIBCPP_INLINE_VISIBILITY path stem() const { return string_type(__stem()); }
+  _LIBCPP_INLINE_VISIBILITY path extension() const {
     return string_type(__extension());
   }
 
   // query
-  _LIBCPP_NODISCARD_AFTER_CXX17 _LIBCPP_HIDE_FROM_ABI bool
+  _LIBCPP_NODISCARD_AFTER_CXX17 _LIBCPP_INLINE_VISIBILITY bool
   empty() const noexcept {
     return __pn_.empty();
   }
 
-  _LIBCPP_HIDE_FROM_ABI bool has_root_name() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_root_name() const {
     return !__root_name().empty();
   }
-  _LIBCPP_HIDE_FROM_ABI bool has_root_directory() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_root_directory() const {
     return !__root_directory().empty();
   }
-  _LIBCPP_HIDE_FROM_ABI bool has_root_path() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_root_path() const {
     return !__root_path_raw().empty();
   }
-  _LIBCPP_HIDE_FROM_ABI bool has_relative_path() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_relative_path() const {
     return !__relative_path().empty();
   }
-  _LIBCPP_HIDE_FROM_ABI bool has_parent_path() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_parent_path() const {
     return !__parent_path().empty();
   }
-  _LIBCPP_HIDE_FROM_ABI bool has_filename() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_filename() const {
     return !__filename().empty();
   }
-  _LIBCPP_HIDE_FROM_ABI bool has_stem() const { return !__stem().empty(); }
-  _LIBCPP_HIDE_FROM_ABI bool has_extension() const {
+  _LIBCPP_INLINE_VISIBILITY bool has_stem() const { return !__stem().empty(); }
+  _LIBCPP_INLINE_VISIBILITY bool has_extension() const {
     return !__extension().empty();
   }
 
-  _LIBCPP_HIDE_FROM_ABI bool is_absolute() const {
+  _LIBCPP_INLINE_VISIBILITY bool is_absolute() const {
 #if defined(_LIBCPP_WIN32API)
     __string_view __root_name_str = __root_name();
     __string_view __root_dir = __root_directory();
@@ -984,13 +923,13 @@ public:
     return has_root_directory();
 #endif
   }
-  _LIBCPP_HIDE_FROM_ABI bool is_relative() const { return !is_absolute(); }
+  _LIBCPP_INLINE_VISIBILITY bool is_relative() const { return !is_absolute(); }
 
   // relative paths
   path lexically_normal() const;
   path lexically_relative(const path& __base) const;
 
-  _LIBCPP_HIDE_FROM_ABI path lexically_proximate(const path& __base) const {
+  _LIBCPP_INLINE_VISIBILITY path lexically_proximate(const path& __base) const {
     path __result = this->lexically_relative(__base);
     if (__result.native().empty())
       return *this;
@@ -1006,7 +945,7 @@ public:
 
 #if !defined(_LIBCPP_HAS_NO_LOCALIZATION)
   template <class _CharT, class _Traits>
-  _LIBCPP_HIDE_FROM_ABI friend
+  _LIBCPP_INLINE_VISIBILITY friend
       typename enable_if<is_same<_CharT, value_type>::value &&
                              is_same<_Traits, char_traits<value_type> >::value,
                          basic_ostream<_CharT, _Traits>&>::type
@@ -1016,7 +955,7 @@ public:
   }
 
   template <class _CharT, class _Traits>
-  _LIBCPP_HIDE_FROM_ABI friend
+  _LIBCPP_INLINE_VISIBILITY friend
       typename enable_if<!is_same<_CharT, value_type>::value ||
                              !is_same<_Traits, char_traits<value_type> >::value,
                          basic_ostream<_CharT, _Traits>&>::type
@@ -1026,41 +965,42 @@ public:
   }
 
   template <class _CharT, class _Traits>
-  _LIBCPP_HIDE_FROM_ABI friend basic_istream<_CharT, _Traits>&
+  _LIBCPP_INLINE_VISIBILITY friend basic_istream<_CharT, _Traits>&
   operator>>(basic_istream<_CharT, _Traits>& __is, path& __p) {
     basic_string<_CharT, _Traits> __tmp;
-    __is >> _VSTD::__quoted(__tmp);
+    __is >> __quoted(__tmp);
     __p = __tmp;
     return __is;
   }
 #endif // !_LIBCPP_HAS_NO_LOCALIZATION
 
-  friend _LIBCPP_HIDE_FROM_ABI bool operator==(const path& __lhs, const path& __rhs) noexcept {
+  friend _LIBCPP_INLINE_VISIBILITY bool operator==(const path& __lhs, const path& __rhs) noexcept {
     return __lhs.__compare(__rhs.__pn_) == 0;
   }
-  friend _LIBCPP_HIDE_FROM_ABI bool operator!=(const path& __lhs, const path& __rhs) noexcept {
+  friend _LIBCPP_INLINE_VISIBILITY bool operator!=(const path& __lhs, const path& __rhs) noexcept {
     return __lhs.__compare(__rhs.__pn_) != 0;
   }
-  friend _LIBCPP_HIDE_FROM_ABI bool operator<(const path& __lhs, const path& __rhs) noexcept {
+  friend _LIBCPP_INLINE_VISIBILITY bool operator<(const path& __lhs, const path& __rhs) noexcept {
     return __lhs.__compare(__rhs.__pn_) < 0;
   }
-  friend _LIBCPP_HIDE_FROM_ABI bool operator<=(const path& __lhs, const path& __rhs) noexcept {
+  friend _LIBCPP_INLINE_VISIBILITY bool operator<=(const path& __lhs, const path& __rhs) noexcept {
     return __lhs.__compare(__rhs.__pn_) <= 0;
   }
-  friend _LIBCPP_HIDE_FROM_ABI bool operator>(const path& __lhs, const path& __rhs) noexcept {
+  friend _LIBCPP_INLINE_VISIBILITY bool operator>(const path& __lhs, const path& __rhs) noexcept {
     return __lhs.__compare(__rhs.__pn_) > 0;
   }
-  friend _LIBCPP_HIDE_FROM_ABI bool operator>=(const path& __lhs, const path& __rhs) noexcept {
+  friend _LIBCPP_INLINE_VISIBILITY bool operator>=(const path& __lhs, const path& __rhs) noexcept {
     return __lhs.__compare(__rhs.__pn_) >= 0;
   }
 
-  friend _LIBCPP_HIDE_FROM_ABI path operator/(const path& __lhs, const path& __rhs) {
+  friend _LIBCPP_INLINE_VISIBILITY path operator/(const path& __lhs,
+                                                  const path& __rhs) {
     path __result(__lhs);
     __result /= __rhs;
     return __result;
   }
 private:
-  inline _LIBCPP_HIDE_FROM_ABI path&
+  inline _LIBCPP_INLINE_VISIBILITY path&
   __assign_view(__string_view const& __s) noexcept {
     __pn_ = string_type(__s);
     return *this;
@@ -1068,7 +1008,7 @@ private:
   string_type __pn_;
 };
 
-inline _LIBCPP_HIDE_FROM_ABI void swap(path& __lhs, path& __rhs) noexcept {
+inline _LIBCPP_INLINE_VISIBILITY void swap(path& __lhs, path& __rhs) noexcept {
   __lhs.swap(__rhs);
 }
 

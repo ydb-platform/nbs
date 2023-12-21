@@ -1,4 +1,0 @@
-RECURSE(
-    logsink
-    stackdump
-)

@@ -1,5 +1,6 @@
 import _common as common
 import ymake
+import os
 
 
 def onios_app_settings(unit, *args):

@@ -142,7 +142,7 @@ void TSubtaskCompletion::SetRunning(TTaskRunnerBase* parent) {
     for (;;) {
         ESubtaskState current = State.Get();
         if (current != CREATED && current != DONE) {
-            Y_ABORT("current state should be CREATED or DONE: %s", ToCString(current));
+            Y_FAIL("current state should be CREATED or DONE: %s", ToCString(current));
         }
         if (State.CompareAndSet(current, RUNNING)) {
             return;
@@ -166,7 +166,7 @@ void TSubtaskCompletion::SetDone() {
                 break;
             }
         } else {
-            Y_ABORT("cannot SetDone: unknown state: %s", ToCString(state));
+            Y_FAIL("cannot SetDone: unknown state: %s", ToCString(state));
         }
     }
 
@@ -199,7 +199,7 @@ void TTaskRunnerBase::AssertInThisThread() const {
 }
 
 TTaskRunnerBase* TTaskRunnerBase::CurrentTask() {
-    Y_ABORT_UNLESS(!!ThreadCurrentTask);
+    Y_VERIFY(!!ThreadCurrentTask);
     return ThreadCurrentTask;
 }
 

@@ -62,7 +62,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobResponse: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
@@ -71,7 +71,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendWriteBlocksRequest(
@@ -103,7 +103,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
 
         TServiceClient service2(runtime, nodeIdx2);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobResponse: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
@@ -112,7 +112,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service2.SendWriteBlocksRequest(
@@ -187,7 +187,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         service1.CreateVolume();
         service1.AssignVolume(DefaultDiskId, "foo", "bar");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -195,7 +195,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // First mount in read-write mode and write something to be read later
@@ -246,7 +246,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         bool detectedReadBlocksLocalResponseFromVolumeActor = false;
         TActorId readBlocksLocalRequestSenderId;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvReadBlocksLocalRequest: {
                         if (event->Recipient == volumeActorId) {
@@ -264,7 +264,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service2.ReadBlocks(DefaultDiskId, 0, sessionId);
@@ -300,14 +300,14 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         }
 
         bool detectedWriteBlocksLocalRequestSentToVolumeActor = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvWriteBlocksLocalRequest: {
                         detectedWriteBlocksLocalRequestSentToVolumeActor = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.WriteBlocks(
@@ -332,7 +332,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         service.CreateVolume();
         service.AssignVolume(DefaultDiskId, "foo", "bar");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 // non-matching recipient and recipient rewrite mean
                 // the event went through pipe i.e. it has reached
                 // volume or partition actor
@@ -348,7 +348,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // Ensure the volume tablet is ready to prevent service from starting it
@@ -415,7 +415,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId);
         service.UnmountVolume(DefaultDiskId, sessionId);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvReadBlocksResponse: {
                         ++readBlocksResponseNotUsingLocalIpcCount;
@@ -426,7 +426,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // Ensure the volume tablet is ready to prevent service from starting it
@@ -542,7 +542,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         }
 
         bool patchRequest = true;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest &&
                     event->Sender.NodeId() == event->Recipient.NodeId())
                 {
@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto readBlocksRequest = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
@@ -611,7 +611,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetThrottlerDelay());
         }
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvWriteBlocksResponse: {
                         auto* msg = event->Get<TEvService::TEvWriteBlocksResponse>();
@@ -629,7 +629,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         {

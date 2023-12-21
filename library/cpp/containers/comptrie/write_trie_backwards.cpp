@@ -101,7 +101,7 @@ namespace NCompactTrie {
                 memmove(data, pos, end - pos);
                 break;
             default:
-                Y_ABORT_UNLESS(false);
+                Y_VERIFY(false);
         }
 
         return end - pos;

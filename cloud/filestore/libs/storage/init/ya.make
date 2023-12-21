@@ -19,15 +19,15 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/user_stats
 
-    contrib/ydb/library/actors/core
+    library/cpp/actors/core
 
-    contrib/ydb/core/base
-    contrib/ydb/core/driver_lib/run
-    contrib/ydb/core/mind
-    contrib/ydb/core/mon
-    contrib/ydb/core/protos
-    contrib/ydb/core/tablet
-    contrib/ydb/public/lib/deprecated/kicli
+    ydb/core/base
+    ydb/core/driver_lib/run
+    ydb/core/mind
+    ydb/core/mon
+    ydb/core/protos
+    ydb/core/tablet
+    ydb/public/lib/deprecated/kicli
 )
 
 YQL_LAST_ABI_VERSION()

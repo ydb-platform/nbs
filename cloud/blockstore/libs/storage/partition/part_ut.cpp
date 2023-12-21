@@ -33,8 +33,8 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/testlib/basics/storage.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/testlib/basics/storage.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -974,7 +974,7 @@ TTestActorRuntime::TEventObserver StorageStateChanger(
     ui32  flag,
     TMaybe<ui32> groupIdFilter = {})
 {
-    return [=] (TAutoPtr<IEventHandle>& event) {
+    return [=] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
         switch (event->GetTypeRewrite()) {
             case TEvBlobStorage::EvPutResult: {
                 auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
@@ -987,17 +987,17 @@ TTestActorRuntime::TEventObserver StorageStateChanger(
             }
         }
 
-        return TTestActorRuntime::DefaultObserverFunc(event);
+        return TTestActorRuntime::DefaultObserverFunc(runtime, event);
     };
 }
 
-TTestActorRuntime::TEventObserver PartitionBatchWriteCollector(TTestActorRuntime& runtime, ui32 eventCount)
+TTestActorRuntime::TEventObserver PartitionBatchWriteCollector(ui32 eventCount)
 {
     bool dropProcessWriteQueue = true;
     ui32 cnt = 0;
     bool batchSeen = false;
     NActors::TActorId partActorId;
-    return [=, &runtime] (TAutoPtr<IEventHandle>& event) mutable {
+    return [=] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
         switch (event->GetTypeRewrite()) {
             case TEvPartitionPrivate::EvProcessWriteQueue: {
                 batchSeen = true;
@@ -1024,7 +1024,7 @@ TTestActorRuntime::TEventObserver PartitionBatchWriteCollector(TTestActorRuntime
                 break;
             }
         }
-        return TTestActorRuntime::DefaultObserverFunc(event);
+        return TTestActorRuntime::DefaultObserverFunc(runtime, event);
     };
 }
 
@@ -1649,7 +1649,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc(PartitionBatchWriteCollector(*runtime, 1000));
+        runtime->SetObserverFunc(PartitionBatchWriteCollector(1000));
 
         for (ui32 i = 0; i < 1000; ++i) {
             partition.SendWriteBlocksRequest(i, i);
@@ -1696,7 +1696,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc(PartitionBatchWriteCollector(*runtime, 1000));
+        runtime->SetObserverFunc(PartitionBatchWriteCollector(1000));
 
         for (ui32 i = 0; i < 10; ++i) {
             for (ui32 j = 0; j < 100; ++j) {
@@ -1754,7 +1754,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             partition.SendWriteBlocksRequest(i % 2 ? i : maxBlobRangeSize + i, i);
         }
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvAddBlobsRequest: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
@@ -1771,7 +1771,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2418,7 +2418,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool trimSeen = false;
         bool trimCompletedSeen = false;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
@@ -2434,7 +2434,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2471,7 +2471,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool trimSeen = false;
         bool trimCompletedSeen = false;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
@@ -2488,7 +2488,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2526,7 +2526,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 collectGen = 0;
         ui32 collectStep = 0;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionCommonPrivate::EvTrimFreshLogRequest: {
@@ -2545,7 +2545,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2765,7 +2765,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByBlobCount = 0;
         ui64 compactionByReadStats = 0;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvStatsService::EvVolumePartCounters: {
                         auto* msg =
@@ -2776,7 +2776,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         compactionByReadStats = cc.CompactionByReadStats.Value;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -3126,7 +3126,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByReadStats = -1;
 
         bool compactionRequestObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvCompactionRequest>();
@@ -3145,7 +3145,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         compactionByReadStats = cc.CompactionByReadStats.Value;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -3191,7 +3191,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByGarbageBlocksPerRange = 0;
         ui64 compactionByGarbageBlocksPerDisk = 0;
         bool compactionRequestObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvCompactionRequest>();
@@ -3211,7 +3211,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -3288,7 +3288,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 compactionByGarbageBlocksPerRange = 0;
         ui64 compactionByGarbageBlocksPerDisk = 0;
         bool compactionRequestObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvCompactionRequest>();
@@ -3308,7 +3308,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -3707,7 +3707,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobResponse: {
                         auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
@@ -3716,7 +3716,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.SendWriteBlocksRequest(
@@ -3739,7 +3739,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         int pillCount = 0;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvents::TSystem::PoisonPill: {
                         ++pillCount;
@@ -3752,7 +3752,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.SendFlushRequest();
@@ -3762,7 +3762,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     }
 
     auto BuildEvGetBreaker(ui32 blockCount, bool& broken) {
-        return [blockCount, &broken] (TAutoPtr<IEventHandle>& event) {
+        return [blockCount, &broken] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvBlobStorage::EvGetResult: {
                     auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
@@ -3780,7 +3780,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
     }
 
@@ -4262,14 +4262,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         bool writeBlobSeen = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobRequest: {
                         writeBlobSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.Compaction();
@@ -4316,14 +4316,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         bool writeBlobSeen = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobRequest: {
                         writeBlobSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.Compaction();
@@ -5053,7 +5053,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         std::unique_ptr<IEventHandle> compactionRequest;
         bool intercept = true;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         if (intercept) {
@@ -5074,7 +5074,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -5354,7 +5354,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             NKikimrBlobStorage::StatusDiskSpaceYellowStop |
             NKikimrBlobStorage::StatusDiskSpaceLightYellowMove);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvReassignTabletRequest: {
                         auto* msg = event->Get<TEvHiveProxy::TEvReassignTabletRequest>();
@@ -5365,7 +5365,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return StorageStateChanger(ssflags, env.GetGroupIds()[1])(event);
+                return StorageStateChanger(ssflags, env.GetGroupIds()[1])(runtime, event);
             }
         );
 
@@ -5521,7 +5521,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             NKikimrBlobStorage::StatusDiskSpaceYellowStop |
             NKikimrBlobStorage::StatusDiskSpaceLightYellowMove);
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvReassignTabletRequest: {
                         auto* msg = event->Get<TEvHiveProxy::TEvReassignTabletRequest>();
@@ -5531,7 +5531,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             std::make_unique<TEvHiveProxy::TEvReassignTabletResponse>(
                                 MakeError(E_REJECTED, "error")
                             );
-                        runtime->Send(new IEventHandle(
+                        runtime.Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -5543,7 +5543,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return StorageStateChanger(ssflags)(event);
+                return StorageStateChanger(ssflags)(runtime, event);
             }
         );
 
@@ -5595,7 +5595,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TBackpressureReport report;
 
         runtime->SetObserverFunc(
-            [&report] (TAutoPtr<IEventHandle>& event) {
+            [&report] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartition::EvBackpressureReport: {
                         report = *event->Get<TEvPartition::TEvBackpressureReport>();
@@ -5605,7 +5605,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                 return StorageStateChanger(
                     NKikimrBlobStorage::StatusDiskSpaceLightYellowMove |
-                    NKikimrBlobStorage::StatusDiskSpaceYellowStop)(event);
+                    NKikimrBlobStorage::StatusDiskSpaceYellowStop)(runtime, event);
             }
         );
 
@@ -5626,7 +5626,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool reportUpdated = false;
 
         runtime->SetObserverFunc(
-            [&report, &reportUpdated] (TAutoPtr<IEventHandle>& event) {
+            [&report, &reportUpdated] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartition::EvBackpressureReport: {
                         report = *event->Get<TEvPartition::TEvBackpressureReport>();
@@ -5635,7 +5635,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -5664,11 +5664,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartitionPrivate::EvWriteBlobResponse) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1024));
@@ -6134,7 +6134,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, stats.GetLogicalUsedBlocksCount());
 
         ui32 completionStatus = -1;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvMetadataRebuildCompleted: {
                         using TEv =
@@ -6144,7 +6144,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -6334,7 +6334,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui32 externalBlobReads = 0;
         ui32 externalBlobBytes = 0;
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == evStats) {
                     auto* msg =
                         event->Get<TEvStatsService::TEvVolumePartCounters>();
@@ -6345,7 +6345,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     externalBlobBytes = readBlobCounters.ExternalRequestBytes;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             };
 
         runtime.SetObserverFunc(obs);
@@ -6640,14 +6640,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return handled;
            });
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvents::TSystem::PoisonPill: {
                         ++pillCount;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.SendReadBlocksRequest(0);
@@ -6696,7 +6696,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         int describeBlocksCount = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvDescribeBlocksRequest: {
                         auto* msg = event->Get<TEvVolume::TEvDescribeBlocksRequest>();
@@ -6709,7 +6709,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         partition.ReadBlocks(TBlockRange32::WithLength(0, 9));
@@ -6799,7 +6799,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(TBlockRange32::WithLength(1024,1024));
 
         TAutoPtr<IEventHandle> addBlobs;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvAddBlobsRequest: {
                         if (!addBlobs) {
@@ -6808,7 +6808,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
 
@@ -6875,7 +6875,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TActorId rangeActor;
         TActorId partActor;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         rangeActor = event->Sender;
@@ -6883,7 +6883,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         return TTestActorRuntime::EEventAction::DROP ;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
 
@@ -7165,16 +7165,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
 
         bool patchRequest = true;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvPartitionPrivate::EvCollectGarbageRequest) {
                     if (patchRequest) {
                         patchRequest = false;
                         auto request = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageRequest>();
-                        SendUndeliverableRequest(*runtime, event, std::move(request));
+                        SendUndeliverableRequest(runtime, event, std::move(request));
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto httpResponse = partition.RemoteHttpInfo(
@@ -7239,7 +7239,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TDeque<std::unique_ptr<IEventHandle>> evPutRequests;
         bool intercept = true;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 if (intercept) {
                     switch (event->GetTypeRewrite()) {
@@ -7250,7 +7250,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -7343,7 +7343,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool deleteGarbageObserved = false;
         bool sendError = true;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
@@ -7392,7 +7392,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -7450,7 +7450,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         NActors::TActorId gcActor = {};
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
@@ -7470,7 +7470,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -7499,7 +7499,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TAutoPtr<IEventHandle> addFreshBlocks;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvAddFreshBlocksRequest: {
@@ -7511,7 +7511,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -7565,7 +7565,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TAutoPtr<IEventHandle> addFreshBlocks;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvAddFreshBlocksRequest: {
@@ -7577,7 +7577,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -7664,13 +7664,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TAutoPtr<IEventHandle> addBlobsRequest;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvPartitionPrivate::EvAddBlobsRequest) {
                     addBlobsRequest = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -7704,13 +7704,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TAutoPtr<IEventHandle> addBlobsRequest;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == TEvPartitionPrivate::EvAddBlobsRequest) {
                     addBlobsRequest = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8193,7 +8193,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, stats.GetUsedBlocksCount());
 
         ui32 completionStatus = -1;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvMetadataRebuildCompleted: {
                         using TEv =
@@ -8203,7 +8203,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8233,7 +8233,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvAddBlobsRequest: {
                         writeCommitId =
@@ -8241,7 +8241,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8348,7 +8348,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             TBlockRange32::WithLength(1024 * 10, 1024 * 10),
             1);
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvMetadataRebuildBlockCountResponse: {
                         const auto* msg =
@@ -8358,7 +8358,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             msg->RebuildState.MixedBlocks + msg->RebuildState.MergedBlocks);
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8392,7 +8392,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         TAutoPtr<IEventHandle> savedEvent;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest: {
                         if (++cnt == 1) {
@@ -8401,7 +8401,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8522,14 +8522,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         bool suicideHappened = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
                     case TEvTablet::EEv::EvTabletDead: {
                         suicideHappened = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             }
         );
 
@@ -8679,14 +8679,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
 
         bool evPatchObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPatch: {
                         evPatchObserved = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8766,7 +8766,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         bool evPatchObserved = false;
         bool evWriteObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPatch: {
                         evPatchObserved = true;
@@ -8777,7 +8777,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -8854,14 +8854,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
 
         bool evPatchObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPatch: {
                         evPatchObserved = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9025,7 +9025,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 completionStatus = -1;
         ui32 readBlobCount = 0;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvScanDiskCompleted: {
                         using TEv =
@@ -9043,7 +9043,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9127,7 +9127,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TVector<bool> brokenBlobsIndexes;
         ui32 index = 0;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvScanDiskCompleted: {
                         using TEv =
@@ -9149,7 +9149,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                     E_REJECTED,
                                     "blob is broken"));
 
-                            runtime->Send(new IEventHandle(
+                            runtime.Send(new IEventHandle(
                                 event->Recipient,
                                 event->Sender,
                                 response.release(),
@@ -9162,7 +9162,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9245,7 +9245,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             1);
 
         ui32 batchCount = 0;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvScanDiskBatchResponse: {
                         if (++batchCount == 2) {
@@ -9254,7 +9254,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9338,7 +9338,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 cnt = 0;
         TAutoPtr<IEventHandle> savedEvent;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvScanDiskBatchRequest: {
                         if (++cnt == 1) {
@@ -9347,7 +9347,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9407,7 +9407,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 cnt = 0;
         TAutoPtr<IEventHandle> savedEvent;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvScanDiskBatchRequest: {
                         if (++cnt == 1) {
@@ -9417,7 +9417,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9483,7 +9483,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui32 completionStatus = -1;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvScanDiskCompleted: {
                         using TEv =
@@ -9493,7 +9493,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -9565,7 +9565,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         bool dropAddConfirmedBlobs = false;
 
-        runtime->SetObserverFunc([&] (auto& event) {
+        runtime->SetObserverFunc([&] (auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
                     if (dropAddConfirmedBlobs) {
@@ -9575,7 +9575,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         TPartitionClient partition(*runtime);
@@ -9622,7 +9622,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool dropAddConfirmedBlobs = false;
         bool spoofWriteBlobs = false;
 
-        runtime->SetObserverFunc([&] (auto& event) {
+        runtime->SetObserverFunc([&] (auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
                     if (dropAddConfirmedBlobs) {
@@ -9635,7 +9635,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     if (spoofWriteBlobs) {
                         auto response =
                             std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>();
-                        runtime->Send(new IEventHandle(
+                        runtime.Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -9648,7 +9648,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         TPartitionClient partition(*runtime);
@@ -9694,7 +9694,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 compressed = 0;
 
         auto obs =
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite()
                         == TEvStatsService::EvVolumePartCounters)
                 {
@@ -9706,7 +9706,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     compressed = cc.CompressedBytesWritten.Value;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             };
 
         runtime->SetObserverFunc(obs);
@@ -9917,7 +9917,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui64 compactionByBlobCount = 0;
         bool compactionRequestObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         compactionRequestObserved = true;
@@ -9931,7 +9931,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             cc.CompactionByBlobCountPerDisk.Value;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -10281,7 +10281,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Make handler for stealing nested messages
         std::vector<std::unique_ptr<IEventHandle>> stolenRequests;
-        auto requestThief = [&](TAutoPtr<IEventHandle>& event)
+        auto requestThief = [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             switch (event->GetTypeRewrite()) {
                 case TEvBlobStorage::EvGetResult:
@@ -10291,7 +10291,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         // Make handler for intercepting EvLongRunningOperation message.
@@ -10301,7 +10301,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 longRunningFinishCount = 0;
         ui32 longRunningPingCount = 0;
 
-        auto takeCounters = [&](TAutoPtr<IEventHandle>& event)
+        auto takeCounters = [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             using TEvLongRunningOperation =
                 TEvPartitionCommonPrivate::TEvLongRunningOperation;
@@ -10326,7 +10326,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     break;
                 }
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         // Ready to postpone request.

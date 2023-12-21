@@ -92,8 +92,6 @@ MacroProps NumberPropertyMapper::oldToNew(const DecimalFormatProperties& propert
     int32_t minSig = properties.minimumSignificantDigits;
     int32_t maxSig = properties.maximumSignificantDigits;
     double roundingIncrement = properties.roundingIncrement;
-    // Not assigning directly to macros.roundingMode here: we change
-    // roundingMode if and when we also change macros.precision.
     RoundingMode roundingMode = properties.roundingMode.getOrDefault(UNUM_ROUND_HALFEVEN);
     bool explicitMinMaxFrac = minFrac != -1 || maxFrac != -1;
     bool explicitMinMaxSig = minSig != -1 || maxSig != -1;
@@ -134,8 +132,7 @@ MacroProps NumberPropertyMapper::oldToNew(const DecimalFormatProperties& propert
         if (PatternStringUtils::ignoreRoundingIncrement(roundingIncrement, maxFrac)) {
             precision = Precision::constructFraction(minFrac, maxFrac);
         } else {
-            // Convert the double increment to an integer increment
-            precision = Precision::increment(roundingIncrement).withMinFraction(minFrac);
+            precision = Precision::constructIncrement(roundingIncrement, minFrac);
         }
     } else if (explicitMinMaxSig) {
         minSig = minSig < 1 ? 1 : minSig > kMaxIntFracSig ? kMaxIntFracSig : minSig;
@@ -148,7 +145,7 @@ MacroProps NumberPropertyMapper::oldToNew(const DecimalFormatProperties& propert
         precision = Precision::constructCurrency(currencyUsage);
     }
     if (!precision.isBogus()) {
-        macros.roundingMode = roundingMode;
+        precision.fRoundingMode = roundingMode;
         macros.precision = precision;
     }
 
@@ -242,7 +239,7 @@ MacroProps NumberPropertyMapper::oldToNew(const DecimalFormatProperties& propert
                 // TODO: Reset maxSig_ = 1 + minFrac_ to follow the spec.
                 macros.precision = Precision::constructSignificant(minSig_, maxSig_);
             }
-            macros.roundingMode = roundingMode;
+            macros.precision.fRoundingMode = roundingMode;
         }
     }
 
@@ -256,6 +253,8 @@ MacroProps NumberPropertyMapper::oldToNew(const DecimalFormatProperties& propert
         } else {
             macros.notation = Notation::compactShort();
         }
+        // Do not forward the affix provider.
+        macros.affixProvider = nullptr;
     }
 
     /////////////////
@@ -292,14 +291,9 @@ MacroProps NumberPropertyMapper::oldToNew(const DecimalFormatProperties& propert
         } else if (rounding_.fType == Precision::PrecisionType::RND_INCREMENT
                 || rounding_.fType == Precision::PrecisionType::RND_INCREMENT_ONE
                 || rounding_.fType == Precision::PrecisionType::RND_INCREMENT_FIVE) {
+            increment_ = rounding_.fUnion.increment.fIncrement;
             minFrac_ = rounding_.fUnion.increment.fMinFrac;
-            // If incrementRounding is used, maxFrac is set equal to minFrac
             maxFrac_ = rounding_.fUnion.increment.fMinFrac;
-            // Convert the integer increment to a double
-            DecimalQuantity dq;
-            dq.setToLong(rounding_.fUnion.increment.fIncrement);
-            dq.adjustMagnitude(rounding_.fUnion.increment.fIncrementMagnitude);
-            increment_ = dq.toDouble();
         } else if (rounding_.fType == Precision::PrecisionType::RND_SIGNIFICANT) {
             minSig_ = rounding_.fUnion.fracSig.fMinSig;
             maxSig_ = rounding_.fUnion.fracSig.fMaxSig;
@@ -385,10 +379,7 @@ void PropertiesAffixPatternProvider::setTo(const DecimalFormatProperties& proper
         AffixUtils::hasCurrencySymbols(ppp, status) ||
         AffixUtils::hasCurrencySymbols(psp, status) ||
         AffixUtils::hasCurrencySymbols(npp, status) ||
-        AffixUtils::hasCurrencySymbols(nsp, status) ||
-        properties.currencyAsDecimal);
-
-    fCurrencyAsDecimal = properties.currencyAsDecimal;
+        AffixUtils::hasCurrencySymbols(nsp, status));
 }
 
 char16_t PropertiesAffixPatternProvider::charAt(int flags, int i) const {
@@ -453,10 +444,6 @@ bool PropertiesAffixPatternProvider::hasBody() const {
     return true;
 }
 
-bool PropertiesAffixPatternProvider::currencyAsDecimal() const {
-    return fCurrencyAsDecimal;
-}
-
 
 void CurrencyPluralInfoAffixProvider::setTo(const CurrencyPluralInfo& cpi,
                                             const DecimalFormatProperties& properties,
@@ -515,10 +502,6 @@ bool CurrencyPluralInfoAffixProvider::containsSymbolType(AffixPatternType type, 
 
 bool CurrencyPluralInfoAffixProvider::hasBody() const {
     return affixesByPlural[StandardPlural::OTHER].hasBody();
-}
-
-bool CurrencyPluralInfoAffixProvider::currencyAsDecimal() const {
-    return affixesByPlural[StandardPlural::OTHER].currencyAsDecimal();
 }
 
 

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef GRPC_SRC_CORE_LIB_TRANSPORT_PARSED_METADATA_H
-#define GRPC_SRC_CORE_LIB_TRANSPORT_PARSED_METADATA_H
+#ifndef GRPC_CORE_LIB_TRANSPORT_PARSED_METADATA_H
+#define GRPC_CORE_LIB_TRANSPORT_PARSED_METADATA_H
 
 #include <grpc/support/port_platform.h>
 
@@ -22,12 +22,10 @@
 #include <cstdint>
 #include <util/generic/string.h>
 #include <util/string/cast.h>
-#include <type_traits>
 #include <utility>
 
 #include "y_absl/functional/function_ref.h"
 #include "y_absl/meta/type_traits.h"
-#include "y_absl/strings/escaping.h"
 #include "y_absl/strings/match.h"
 #include "y_absl/strings/str_cat.h"
 #include "y_absl/strings/string_view.h"
@@ -153,14 +151,9 @@ class ParsedMetadata {
     value_.slice = value.TakeCSlice();
   }
   // Construct metadata from a string key, slice value pair.
-  // FromSlicePair() is used to adjust the overload set so that we don't
-  // inadvertently match against any of the previous overloads.
-  // TODO(ctiller): re-evaluate the overload functions here so and maybe
-  // introduce some factory functions?
-  struct FromSlicePair {};
-  ParsedMetadata(FromSlicePair, Slice key, Slice value, uint32_t transport_size)
+  ParsedMetadata(Slice key, Slice value)
       : vtable_(ParsedMetadata::KeyValueVTable(key.as_string_view())),
-        transport_size_(transport_size) {
+        transport_size_(static_cast<uint32_t>(key.size() + value.size() + 32)) {
     value_.pointer =
         new std::pair<Slice, Slice>(std::move(key), std::move(value));
   }
@@ -194,13 +187,14 @@ class ParsedMetadata {
   // HTTP2 defined storage size of this metadatum.
   uint32_t transport_size() const { return transport_size_; }
   // Create a new parsed metadata with the same key but a different value.
-  ParsedMetadata WithNewValue(Slice value, uint32_t value_wire_size,
+  ParsedMetadata WithNewValue(Slice value,
                               MetadataParseErrorFn on_error) const {
     ParsedMetadata result;
     result.vtable_ = vtable_;
     result.value_ = value_;
     result.transport_size_ =
-        TransportSize(static_cast<uint32_t>(key().length()), value_wire_size);
+        TransportSize(static_cast<uint32_t>(key().length()),
+                      static_cast<uint32_t>(value.length()));
     vtable_->with_new_value(&value, on_error, &result);
     return result;
   }
@@ -306,7 +300,7 @@ ParsedMetadata<MetadataContainer>::TrivialTraitVTable() {
         return metadata_detail::MakeDebugStringPipeline(
             Which::key(), value,
             metadata_detail::FieldFromTrivial<typename Which::MementoType>,
-            Which::DisplayMemento);
+            Which::DisplayValue);
       },
       // key
       Which::key(),
@@ -340,7 +334,7 @@ ParsedMetadata<MetadataContainer>::NonTrivialTraitVTable() {
         return metadata_detail::MakeDebugStringPipeline(
             Which::key(), value,
             metadata_detail::FieldFromPointer<typename Which::MementoType>,
-            Which::DisplayMemento);
+            Which::DisplayValue);
       },
       // key
       Which::key(),
@@ -368,7 +362,7 @@ ParsedMetadata<MetadataContainer>::SliceTraitVTable() {
       [](const Buffer& value) {
         return metadata_detail::MakeDebugStringPipeline(
             Which::key(), value, metadata_detail::SliceFromBuffer,
-            Which::DisplayMemento);
+            Which::DisplayValue);
       },
       // key
       Which::key(),
@@ -401,21 +395,16 @@ ParsedMetadata<MetadataContainer>::KeyValueVTable(y_absl::string_view key) {
     return y_absl::StrCat(p->first.as_string_view(), ": ",
                         p->second.as_string_view());
   };
-  static const auto binary_debug_string = [](const Buffer& value) {
-    auto* p = static_cast<KV*>(value.pointer);
-    return y_absl::StrCat(p->first.as_string_view(), ": \"",
-                        y_absl::CEscape(p->second.as_string_view()), "\"");
-  };
   static const auto key_fn = [](const Buffer& value) {
     return static_cast<KV*>(value.pointer)->first.as_string_view();
   };
   static const VTable vtable[2] = {
       {false, destroy, set, with_new_value, debug_string, "", key_fn},
-      {true, destroy, set, with_new_value, binary_debug_string, "", key_fn},
+      {true, destroy, set, with_new_value, debug_string, "", key_fn},
   };
   return &vtable[y_absl::EndsWith(key, "-bin")];
 }
 
 }  // namespace grpc_core
 
-#endif  // GRPC_SRC_CORE_LIB_TRANSPORT_PARSED_METADATA_H
+#endif  // GRPC_CORE_LIB_TRANSPORT_PARSED_METADATA_H

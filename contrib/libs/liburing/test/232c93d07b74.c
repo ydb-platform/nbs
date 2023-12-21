@@ -34,9 +34,9 @@ struct params {
 	__be16 bind_port;
 };
 
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-static int rcv_ready = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int rcv_ready = 0;
 
 static void set_rcv_ready(void)
 {

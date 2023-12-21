@@ -8,8 +8,7 @@
 #define BOOST_LOCALE_DATE_TIME_FACET_HPP_INCLUDED
 
 #include <boost/locale/config.hpp>
-#include <boost/locale/detail/facet_id.hpp>
-#include <cstdint>
+#include <boost/cstdint.hpp>
 #include <locale>
 
 #ifdef BOOST_MSVC
@@ -92,7 +91,7 @@ namespace boost { namespace locale {
     /// This class defines generic calendar class, it is used by date_time and calendar
     /// objects internally. It is less useful for end users, but it is build for localization
     /// backend implementation
-    class BOOST_SYMBOL_VISIBLE abstract_calendar {
+    class BOOST_LOCALE_DECL abstract_calendar {
     public:
         /// Type that defines how to fetch the value
         enum value_type {
@@ -164,16 +163,20 @@ namespace boost { namespace locale {
         /// Check of two calendars have same rules
         virtual bool same(const abstract_calendar* other) const = 0;
 
-        virtual ~abstract_calendar() = default;
+        virtual ~abstract_calendar();
     };
 
     /// \brief the facet that generates calendar for specific locale
-    class BOOST_SYMBOL_VISIBLE calendar_facet : public std::locale::facet, public detail::facet_id<calendar_facet> {
+    class BOOST_LOCALE_DECL calendar_facet : public std::locale::facet {
     public:
         /// Basic constructor
         calendar_facet(size_t refs = 0) : std::locale::facet(refs) {}
+        ~calendar_facet();
         /// Create a new calendar that points to current point of time.
         virtual abstract_calendar* create_calendar() const = 0;
+
+        /// Locale id (needed to work with std::locale)
+        static std::locale::id id;
     };
 
 }} // namespace boost::locale

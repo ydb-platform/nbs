@@ -19,7 +19,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 struct unreachable_sentinel_t {
   template<weakly_incrementable _Iter>
@@ -31,7 +31,7 @@ struct unreachable_sentinel_t {
 
 inline constexpr unreachable_sentinel_t unreachable_sentinel{};
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 _LIBCPP_END_NAMESPACE_STD
 

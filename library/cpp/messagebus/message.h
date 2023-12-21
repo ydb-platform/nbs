@@ -86,14 +86,14 @@ namespace NBus {
             } else if (LocalFlags == NPrivate::MESSAGE_IN_WORK && !inWork) {
                 LocalFlags = 0;
             } else {
-                Y_ABORT("impossible combination of flag and parameter: %s %d",
+                Y_FAIL("impossible combination of flag and parameter: %s %d",
                        inWork ? "true" : "false", unsigned(LocalFlags));
             }
         }
 
         void SetMessageType(const std::type_info& messageTypeInfo) {
 #ifndef NDEBUG
-            Y_ABORT_UNLESS(!MessageType, "state check");
+            Y_VERIFY(!MessageType, "state check");
             MessageType = TypeName(messageTypeInfo);
 #else
             Y_UNUSED(messageTypeInfo);

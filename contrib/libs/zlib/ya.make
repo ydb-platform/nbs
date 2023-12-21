@@ -6,9 +6,18 @@ LICENSE(Zlib)
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-VERSION(1.3)
+VERSION(1.2.13)
 
-ORIGINAL_SOURCE(https://github.com/madler/zlib/archive/v1.3.tar.gz)
+ORIGINAL_SOURCE(https://www.zlib.net/fossils/zlib-1.2.13.tar.gz)
+
+OPENSOURCE_EXPORT_REPLACEMENT(
+    CMAKE
+    ZLIB
+    CMAKE_TARGET
+    ZLIB::ZLIB
+    CONAN
+    zlib/1.2.13
+)
 
 ADDINCL(
     GLOBAL contrib/libs/zlib/include
@@ -17,6 +26,8 @@ ADDINCL(
 NO_COMPILER_WARNINGS()
 
 NO_RUNTIME()
+
+NO_SANITIZE_HEADERS()
 
 IF (NOT MSVC)
     CFLAGS(

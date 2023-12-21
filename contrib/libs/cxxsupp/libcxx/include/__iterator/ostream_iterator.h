@@ -14,7 +14,6 @@
 #include <__iterator/iterator.h>
 #include <__iterator/iterator_traits.h>
 #include <__memory/addressof.h>
-#include <cstddef>
 #include <iosfwd> // for forward declarations of char_traits and basic_ostream
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -53,9 +52,9 @@ public:
         : __out_stream_(_VSTD::addressof(__s)), __delim_(nullptr) {}
     _LIBCPP_INLINE_VISIBILITY ostream_iterator(ostream_type& __s, const _CharT* __delimiter) _NOEXCEPT
         : __out_stream_(_VSTD::addressof(__s)), __delim_(__delimiter) {}
-    _LIBCPP_INLINE_VISIBILITY ostream_iterator& operator=(const _Tp& __value)
+    _LIBCPP_INLINE_VISIBILITY ostream_iterator& operator=(const _Tp& __value_)
         {
-            *__out_stream_ << __value;
+            *__out_stream_ << __value_;
             if (__delim_)
                 *__out_stream_ << __delim_;
             return *this;

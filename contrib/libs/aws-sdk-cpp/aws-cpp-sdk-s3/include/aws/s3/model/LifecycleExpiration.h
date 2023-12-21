@@ -28,14 +28,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/LifecycleExpiration">AWS
    * API Reference</a></p>
    */
-  class LifecycleExpiration
+  class AWS_S3_API LifecycleExpiration
   {
   public:
-    AWS_S3_API LifecycleExpiration();
-    AWS_S3_API LifecycleExpiration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API LifecycleExpiration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    LifecycleExpiration();
+    LifecycleExpiration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    LifecycleExpiration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -135,13 +135,13 @@ namespace Model
   private:
 
     Aws::Utils::DateTime m_date;
-    bool m_dateHasBeenSet = false;
+    bool m_dateHasBeenSet;
 
     int m_days;
-    bool m_daysHasBeenSet = false;
+    bool m_daysHasBeenSet;
 
     bool m_expiredObjectDeleteMarker;
-    bool m_expiredObjectDeleteMarkerHasBeenSet = false;
+    bool m_expiredObjectDeleteMarkerHasBeenSet;
   };
 
 } // namespace Model

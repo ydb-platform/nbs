@@ -4,7 +4,6 @@ SRCS(
     ewma_ut.cpp
     fake_ut.cpp
     histogram_collector_ut.cpp
-    histogram_snapshot_ut.cpp
     labels_ut.cpp
     log_histogram_collector_ut.cpp
     metric_registry_ut.cpp

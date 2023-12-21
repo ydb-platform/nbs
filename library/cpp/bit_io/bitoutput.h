@@ -148,7 +148,7 @@ namespace NBitIO {
     public:
         void WriteData(const char* begin, const char* end) {
             size_t sz = end - begin;
-            Y_ABORT_UNLESS(sz <= Left, " ");
+            Y_VERIFY(sz <= Left, " ");
             memcpy(Data, begin, sz);
             Data += sz;
             Left -= sz;

@@ -29,7 +29,7 @@ public:
         TAtForkHandler child)
     {
         int index = AtForkHandlerCount_++;
-        Y_ABORT_UNLESS(index < MaxAtForkHandlerSets);
+        Y_VERIFY(index < MaxAtForkHandlerSets);
         auto& set = AtForkHandlerSets_[index];
         set.Prepare = std::move(prepare);
         set.Parent = std::move(parent);

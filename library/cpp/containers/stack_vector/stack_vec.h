@@ -64,7 +64,7 @@ namespace NPrivate {
                 return reinterpret_cast<T*>(&StackBasedStorage[0]);
             } else {
                 if constexpr (!UseFallbackAlloc) {
-                    Y_ABORT(
+                    Y_FAIL(
                             "Stack storage overflow. Capacity: %d, requested: %d", (int)CountOnStack, int(n));
                 }
                 return FallbackAllocator().allocate(n);
@@ -74,7 +74,7 @@ namespace NPrivate {
         void deallocate(T* p, size_type n) {
             if (p >= reinterpret_cast<T*>(&StackBasedStorage[0]) &&
                     p < reinterpret_cast<T*>(&StackBasedStorage[CountOnStack])) {
-                Y_ABORT_UNLESS(IsStorageUsed);
+                Y_VERIFY(IsStorageUsed);
                 IsStorageUsed = false;
             } else {
                 FallbackAllocator().deallocate(p, n);

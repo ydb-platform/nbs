@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package NCloud.NFileStore.NProto;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+option go_package = "a.yandex-team.ru/cloud/filestore/config";
 
 import "cloud/storage/core/protos/trace.proto";
 

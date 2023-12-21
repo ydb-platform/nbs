@@ -8,7 +8,7 @@
 #define BOOST_LOCALE_FORMATTER_HPP_INCLUDED
 
 #include <boost/locale/config.hpp>
-#include <cstdint>
+#include <boost/cstdint.hpp>
 #include <memory>
 #include <string>
 #include <unicode/locid.h>
@@ -26,6 +26,7 @@ namespace boost { namespace locale { namespace impl_icu {
     template<typename CharType>
     class formatter : public base_formatter {
     public:
+        typedef CharType char_type;
         typedef std::basic_string<CharType> string_type;
 
         /// Format the value and return the number of Unicode code points

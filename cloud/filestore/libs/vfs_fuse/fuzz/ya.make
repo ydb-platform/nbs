@@ -1,5 +1,3 @@
-FUZZ()
-
 TAG(
     ya:not_autocheck
     ya:manual

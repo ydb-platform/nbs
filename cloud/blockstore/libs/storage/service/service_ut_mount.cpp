@@ -262,7 +262,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui64 volumeTabletId = 0;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -272,7 +272,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service1(runtime, nodeIdx1);
@@ -415,7 +415,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto& runtime = env.GetRuntime();
 
         ui64 volumeTabletId = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -425,7 +425,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service1(runtime, nodeIdx1);
@@ -488,7 +488,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui64 volumeTabletId = 0;
         bool startVolumeActorStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -501,7 +501,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         startVolumeActorStopped = true;
                         break;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(runtime, nodeIdx);
@@ -614,7 +614,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         THashSet<TActorId> removeClientRequestSenders;
 
         // Collect events (considering deduplication of forwarding through pipe)
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         events.emplace_back(EEventType::ADD_CLIENT_REQUEST);
@@ -639,7 +639,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // Send mount requests from half of services, then start sending
@@ -717,7 +717,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto error = MakeError(E_ARGUMENT, "Error");
         ui32 counter = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         if (++counter != 2) {
@@ -736,7 +736,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -757,7 +757,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
@@ -773,7 +773,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -797,7 +797,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TActorId source;
         ui64 cookie = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         target = ev->Sender;
@@ -806,7 +806,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         service.SendMountVolumeRequest();
@@ -853,7 +853,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        runtime.SetObserverFunc( [=] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [=] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -862,7 +862,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -1009,7 +1009,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, error] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientResponse: {
                         auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
@@ -1025,7 +1025,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     };
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
@@ -1053,7 +1053,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, error] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStopVolumeResponse: {
                         auto response = std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>(
@@ -1069,7 +1069,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
@@ -1100,7 +1100,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 mountVolumeRequestsCount = 0;
         bool onceUnmountProcessedEventSent = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
                     case TEvServicePrivate::EvInternalMountVolumeRequest: {
                         UNIT_ASSERT_VALUES_EQUAL(
@@ -1128,7 +1128,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     onceUnmountProcessedEventSent = true;
                     runtime.Send(unmountProcessedEvent.Release(), nodeIdx);
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         service.SendUnmountVolumeRequest();
@@ -1199,14 +1199,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         ui32 waitReadyCnt = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyRequest: {
                         ++waitReadyCnt;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto response = service.MountVolume(
@@ -1490,7 +1490,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 numCalls = 0;
         ui32 stopSeen = 0;
         ui32 startSeen = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         if (!numCalls++) {
@@ -1507,7 +1507,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service1(runtime, nodeIdx1);
@@ -1544,13 +1544,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         bool stopResponseSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStopVolumeResponse: {
                         stopResponseSeen = true;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto response = service.MountVolume(
@@ -1673,7 +1673,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto *msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -1685,7 +1685,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto fakeLocalMounter = runtime.AllocateEdgeActor();
@@ -1706,14 +1706,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         }
 
         bool volumeStarted = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeResponse: {
                         volumeStarted = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume();
@@ -1736,7 +1736,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         // Collect events (considering deduplication of forwarding through pipe)
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
                         auto error = MakeError(E_REJECTED, "");
@@ -1752,7 +1752,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
 
@@ -2051,7 +2051,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
 
         int acquireResps = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvAcquireDiskResponse: {
                         ++acquireResps;
@@ -2061,7 +2061,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -2407,7 +2407,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TActorId volumeActorId;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -2423,7 +2423,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(runtime, nodeIdx);
@@ -2479,7 +2479,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui64 volumeTabletId = 0;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -2489,7 +2489,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(runtime, nodeIdx1);
@@ -2622,7 +2622,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto& runtime = env.GetRuntime();
         bool dieSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
                         auto msg = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
@@ -2642,7 +2642,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
@@ -2763,7 +2763,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui64 volumeTabletId = 0;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -2773,7 +2773,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service1.CreateVolume();
@@ -2797,7 +2797,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         bool unmountSeen = false;
         bool responseCatched = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientResponse: {
                         if (!savedEvent && !responseCatched) {
@@ -2812,7 +2812,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service2.SendMountVolumeRequest(
@@ -2858,14 +2858,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 localStartSeen = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeResponse: {
                         ++localStartSeen;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume();
@@ -2887,7 +2887,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui64 volumeTabletId = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -2897,14 +2897,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume();
 
         bool startVolumeSeen = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         return TTestActorRuntime::EEventAction::DROP;
@@ -2914,7 +2914,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest();
@@ -2939,14 +2939,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool addClientSeen = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         addClientSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // test that we don't exceed limit during mount
@@ -2985,14 +2985,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool startVolumeSeen = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeRequest: {
                         startVolumeSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         // test that we don't exceed limit during mount
@@ -3167,14 +3167,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto sessionId = response1->Record.GetSessionId();
 
         bool tabletDeadSeen = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTablet::EvTabletDead: {
                         tabletDeadSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service2.DestroyVolume();
@@ -3213,7 +3213,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool reject = true;
         NProto::TError lastError;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
                         if (!reject) {
@@ -3238,7 +3238,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         lastError = msg->Error;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         runtime.UpdateCurrentTime(runtime.GetCurrentTime() + mountVolumeTimeout);
@@ -3279,7 +3279,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto& runtime = env.GetRuntime();
 
         bool rejectAddClient = true;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         if (rejectAddClient) {
@@ -3287,7 +3287,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TServiceClient service(runtime, nodeIdx);
@@ -3319,7 +3319,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.AssignVolume(DefaultDiskId, "foo", "bar");
 
         ui64 volumeTabletId = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -3329,7 +3329,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume(
@@ -3344,7 +3344,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         bool unlockSeen = false;
         bool failDescribe = true;
         bool sessionDeathSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         if (failDescribe) {
@@ -3367,7 +3367,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         sessionDeathSeen = true;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendMountVolumeRequest(
@@ -3420,7 +3420,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         bool volumeClientPillSeen = false;
         ui32 addCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         if (!volumeClient1 || volumeClientPillSeen) {
@@ -3443,7 +3443,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto response1 = service1.MountVolume(
@@ -3537,7 +3537,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 unlockCnt = 0;
         ui32 lockCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
@@ -3549,7 +3549,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     }
 
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         response = serviceTarget.MountVolume(
@@ -3593,7 +3593,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 lockCnt = 0;
         bool failAddClient = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
@@ -3621,7 +3621,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     }
 
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.MountVolume(
@@ -3691,7 +3691,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 unlockCnt = 0;
         ui32 lockCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
@@ -3702,7 +3702,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto response = service.MountVolume(
@@ -3763,7 +3763,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 lockCnt = 0;
         ui32 unlockCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                      case TEvHiveProxy::EvUnlockTabletRequest: {
@@ -3776,7 +3776,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     }
 
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto response2 = service.MountVolume(
@@ -3841,7 +3841,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto sessionId = response1->Record.GetSessionId();
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvReleaseDiskRequest: {
                         using TResponse =
@@ -3860,7 +3860,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         service.DestroyVolume();
@@ -3900,7 +3900,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TVector<TMonotonic> tss;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev)
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
                      case TEvService::EvChangeVolumeBindingRequest: {
@@ -3909,7 +3909,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         {
@@ -3988,7 +3988,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TAutoPtr<IEventHandle> delayedMsg;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev)
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
                      case TEvServicePrivate::EvMountRequestProcessed: {
@@ -3996,7 +3996,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         {
@@ -4071,7 +4071,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TAutoPtr<IEventHandle> delayedMsg;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev)
+        runtime.SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
                      case TEvServicePrivate::EvMountRequestProcessed: {
@@ -4079,7 +4079,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         {
@@ -4197,7 +4197,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL
         );
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        env.GetRuntime().SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvAcquireDiskRequest: {
                         using TResponse =
@@ -4216,7 +4216,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(ev);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, ev);
             });
 
         service.SendMountVolumeRequest(
@@ -4247,7 +4247,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 numDescribes = 0;
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         ++numDescribes;
@@ -4257,7 +4257,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
 
@@ -4985,14 +4985,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool tabletDeadSeen = false;
         env.GetRuntime().SetObserverFunc(
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTablet::EvTabletDead: {
                         tabletDeadSeen = true;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.DestroyVolume();
@@ -5074,7 +5074,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         );
 
         ui64 volumeTabletId = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -5084,7 +5084,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto response1 = service.MountVolume(
@@ -5119,7 +5119,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 sessionActorDeathCnt = 0;
         env.GetRuntime().SetObserverFunc(
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLockTabletResponse: {
                         auto* msg = event->Get<TEvHiveProxy::TEvLockTabletResponse>();
@@ -5133,7 +5133,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         {
@@ -5187,7 +5187,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 sessionActorDeathCnt = 0;
         env.GetRuntime().SetObserverFunc(
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
@@ -5203,7 +5203,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         {

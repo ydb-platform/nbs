@@ -26,12 +26,12 @@ namespace S3
 {
 namespace Model
 {
-  class ListBucketAnalyticsConfigurationsResult
+  class AWS_S3_API ListBucketAnalyticsConfigurationsResult
   {
   public:
-    AWS_S3_API ListBucketAnalyticsConfigurationsResult();
-    AWS_S3_API ListBucketAnalyticsConfigurationsResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API ListBucketAnalyticsConfigurationsResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    ListBucketAnalyticsConfigurationsResult();
+    ListBucketAnalyticsConfigurationsResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    ListBucketAnalyticsConfigurationsResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     /**

@@ -10,7 +10,6 @@
 #include <aws/s3/model/StorageClass.h>
 #include <aws/s3/model/Owner.h>
 #include <aws/s3/model/Initiator.h>
-#include <aws/s3/model/ChecksumAlgorithm.h>
 #include <utility>
 
 namespace Aws
@@ -33,14 +32,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/MultipartUpload">AWS
    * API Reference</a></p>
    */
-  class MultipartUpload
+  class AWS_S3_API MultipartUpload
   {
   public:
-    AWS_S3_API MultipartUpload();
-    AWS_S3_API MultipartUpload(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API MultipartUpload& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    MultipartUpload();
+    MultipartUpload(const Aws::Utils::Xml::XmlNode& xmlNode);
+    MultipartUpload& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -248,59 +247,25 @@ namespace Model
      */
     inline MultipartUpload& WithInitiator(Initiator&& value) { SetInitiator(std::move(value)); return *this;}
 
-
-    /**
-     * <p>The algorithm that was used to create a checksum of the object.</p>
-     */
-    inline const ChecksumAlgorithm& GetChecksumAlgorithm() const{ return m_checksumAlgorithm; }
-
-    /**
-     * <p>The algorithm that was used to create a checksum of the object.</p>
-     */
-    inline bool ChecksumAlgorithmHasBeenSet() const { return m_checksumAlgorithmHasBeenSet; }
-
-    /**
-     * <p>The algorithm that was used to create a checksum of the object.</p>
-     */
-    inline void SetChecksumAlgorithm(const ChecksumAlgorithm& value) { m_checksumAlgorithmHasBeenSet = true; m_checksumAlgorithm = value; }
-
-    /**
-     * <p>The algorithm that was used to create a checksum of the object.</p>
-     */
-    inline void SetChecksumAlgorithm(ChecksumAlgorithm&& value) { m_checksumAlgorithmHasBeenSet = true; m_checksumAlgorithm = std::move(value); }
-
-    /**
-     * <p>The algorithm that was used to create a checksum of the object.</p>
-     */
-    inline MultipartUpload& WithChecksumAlgorithm(const ChecksumAlgorithm& value) { SetChecksumAlgorithm(value); return *this;}
-
-    /**
-     * <p>The algorithm that was used to create a checksum of the object.</p>
-     */
-    inline MultipartUpload& WithChecksumAlgorithm(ChecksumAlgorithm&& value) { SetChecksumAlgorithm(std::move(value)); return *this;}
-
   private:
 
     Aws::String m_uploadId;
-    bool m_uploadIdHasBeenSet = false;
+    bool m_uploadIdHasBeenSet;
 
     Aws::String m_key;
-    bool m_keyHasBeenSet = false;
+    bool m_keyHasBeenSet;
 
     Aws::Utils::DateTime m_initiated;
-    bool m_initiatedHasBeenSet = false;
+    bool m_initiatedHasBeenSet;
 
     StorageClass m_storageClass;
-    bool m_storageClassHasBeenSet = false;
+    bool m_storageClassHasBeenSet;
 
     Owner m_owner;
-    bool m_ownerHasBeenSet = false;
+    bool m_ownerHasBeenSet;
 
     Initiator m_initiator;
-    bool m_initiatorHasBeenSet = false;
-
-    ChecksumAlgorithm m_checksumAlgorithm;
-    bool m_checksumAlgorithmHasBeenSet = false;
+    bool m_initiatorHasBeenSet;
   };
 
 } // namespace Model

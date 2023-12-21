@@ -27,7 +27,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 template<class _Iter>
 concept __can_use_postfix_proxy =
@@ -37,18 +37,31 @@ concept __can_use_postfix_proxy =
 template<input_or_output_iterator _Iter, sentinel_for<_Iter> _Sent>
   requires (!same_as<_Iter, _Sent> && copyable<_Iter>)
 class common_iterator {
-  struct __proxy {
+  class __proxy {
+    friend common_iterator;
+
+    iter_value_t<_Iter> __value;
+    // We can move __x because the only caller verifies that __x is not a reference.
+    constexpr __proxy(iter_reference_t<_Iter>&& __x)
+      : __value(_VSTD::move(__x)) {}
+
+  public:
     constexpr const iter_value_t<_Iter>* operator->() const noexcept {
-      return _VSTD::addressof(__value_);
+      return _VSTD::addressof(__value);
     }
-    iter_value_t<_Iter> __value_;
   };
 
-  struct __postfix_proxy {
+  class __postfix_proxy {
+    friend common_iterator;
+
+    iter_value_t<_Iter> __value;
+    constexpr __postfix_proxy(iter_reference_t<_Iter>&& __x)
+      : __value(_VSTD::forward<iter_reference_t<_Iter>>(__x)) {}
+
+  public:
     constexpr const iter_value_t<_Iter>& operator*() const noexcept {
-      return __value_;
+      return __value;
     }
-    iter_value_t<_Iter> __value_;
   };
 
 public:
@@ -120,7 +133,7 @@ public:
       auto&& __tmp = *_VSTD::__unchecked_get<_Iter>(__hold_);
       return _VSTD::addressof(__tmp);
     } else {
-      return __proxy{*_VSTD::__unchecked_get<_Iter>(__hold_)};
+      return __proxy(*_VSTD::__unchecked_get<_Iter>(__hold_));
     }
   }
 
@@ -139,7 +152,7 @@ public:
                          !__can_use_postfix_proxy<_Iter>) {
       return _VSTD::__unchecked_get<_Iter>(__hold_)++;
     } else {
-      auto __p = __postfix_proxy{**this};
+      __postfix_proxy __p(**this);
       ++*this;
       return __p;
     }
@@ -263,7 +276,7 @@ struct iterator_traits<common_iterator<_Iter, _Sent>> {
   using reference = iter_reference_t<_Iter>;
 };
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS)
 
 _LIBCPP_END_NAMESPACE_STD
 

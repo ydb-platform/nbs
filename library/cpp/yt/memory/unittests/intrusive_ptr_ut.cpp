@@ -48,7 +48,7 @@ struct TIntricateObject
     }
 };
 
-using TIntricateObjectPtr = TIntrusivePtr<TIntricateObject>;
+typedef TIntrusivePtr<TIntricateObject> TIntricateObjectPtr;
 
 void Ref(TIntricateObject* obj, int /*n*/ = 1)
 {
@@ -449,7 +449,7 @@ TEST(TIntrusivePtrTest, CompareWithNullptr)
 template <class T>
 void TestIntrusivePtrBehavior()
 {
-    using TMyPtr = TIntrusivePtr<T>;
+    typedef TIntrusivePtr<T> TMyPtr;
 
     TStringStream output;
     {

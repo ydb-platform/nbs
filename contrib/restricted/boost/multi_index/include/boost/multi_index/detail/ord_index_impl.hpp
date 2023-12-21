@@ -341,7 +341,12 @@ public:
   void insert(InputIterator first,InputIterator last)
   {
     BOOST_MULTI_INDEX_ORD_INDEX_CHECK_INVARIANT;
-    for(;first!=last;++first)this->final_insert_ref_(*first);
+    index_node_type* hint=header(); /* end() */
+    for(;first!=last;++first){
+      hint=this->final_insert_ref_(
+        *first,static_cast<final_node_type*>(hint)).first;
+      index_node_type::increment(hint);
+    }
   }
 
 #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)

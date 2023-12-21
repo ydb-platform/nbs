@@ -355,6 +355,6 @@ THolder<IPollerFace> IPollerFace::Construct(EContPoller poller) {
         return nullptr;
 #endif
     default:
-        Y_ABORT("bad poller type");
+        Y_FAIL("bad poller type");
     }
 }

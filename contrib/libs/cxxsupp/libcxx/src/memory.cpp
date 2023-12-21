@@ -6,18 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <__config>
-#ifdef _LIBCPP_DEPRECATED_ABI_LEGACY_LIBRARY_DEFINITIONS_FOR_INLINE_FUNCTIONS
-#   define _LIBCPP_SHARED_PTR_DEFINE_LEGACY_INLINE_FUNCTIONS
-#endif
-
 #include <memory>
 
 #ifndef _LIBCPP_HAS_NO_THREADS
 #  include <mutex>
 #  include <thread>
 #  if defined(__ELF__) && defined(_LIBCPP_LINK_PTHREAD_LIB)
-#    pragma comment(lib, "pthread")
+#      pragma comment(lib, "pthread")
 #  endif
 #endif
 
@@ -47,7 +42,7 @@ __shared_weak_count::~__shared_weak_count()
 {
 }
 
-#if defined(_LIBCPP_SHARED_PTR_DEFINE_LEGACY_INLINE_FUNCTIONS)
+#if defined(_LIBCPP_DEPRECATED_ABI_LEGACY_LIBRARY_DEFINITIONS_FOR_INLINE_FUNCTIONS)
 void
 __shared_count::__add_shared() noexcept
 {
@@ -95,7 +90,8 @@ __shared_weak_count::__release_shared() noexcept
     if (__shared_count::__release_shared())
         __release_weak();
 }
-#endif // _LIBCPP_SHARED_PTR_DEFINE_LEGACY_INLINE_FUNCTIONS
+
+#endif // _LIBCPP_DEPRECATED_ABI_LEGACY_LIBRARY_DEFINITIONS_FOR_INLINE_FUNCTIONS
 
 void
 __shared_weak_count::__release_weak() noexcept
@@ -170,13 +166,9 @@ __shared_weak_count::__get_deleter(const type_info&) const noexcept
 
 #if !defined(_LIBCPP_HAS_NO_THREADS)
 
-static constexpr std::size_t __sp_mut_count = 32;
+static constexpr std::size_t __sp_mut_count = 16;
 static _LIBCPP_CONSTINIT __libcpp_mutex_t mut_back[__sp_mut_count] =
 {
-    _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
-    _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
-    _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
-    _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
     _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
     _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
     _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
@@ -192,7 +184,16 @@ void
 __sp_mut::lock() noexcept
 {
     auto m = static_cast<__libcpp_mutex_t*>(__lx);
-    __libcpp_mutex_lock(m);
+    unsigned count = 0;
+    while (!__libcpp_mutex_trylock(m))
+    {
+        if (++count > 16)
+        {
+            __libcpp_mutex_lock(m);
+            break;
+        }
+        this_thread::yield();
+    }
 }
 
 void
@@ -208,11 +209,7 @@ __get_sp_mut(const void* p)
         &mut_back[ 0], &mut_back[ 1], &mut_back[ 2], &mut_back[ 3],
         &mut_back[ 4], &mut_back[ 5], &mut_back[ 6], &mut_back[ 7],
         &mut_back[ 8], &mut_back[ 9], &mut_back[10], &mut_back[11],
-        &mut_back[12], &mut_back[13], &mut_back[14], &mut_back[15],
-        &mut_back[16], &mut_back[17], &mut_back[18], &mut_back[19],
-        &mut_back[20], &mut_back[21], &mut_back[22], &mut_back[23],
-        &mut_back[24], &mut_back[25], &mut_back[26], &mut_back[27],
-        &mut_back[28], &mut_back[29], &mut_back[30], &mut_back[31]
+        &mut_back[12], &mut_back[13], &mut_back[14], &mut_back[15]
     };
     return muts[hash<const void*>()(p) & (__sp_mut_count-1)];
 }

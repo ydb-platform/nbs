@@ -31,31 +31,14 @@ struct mutex
 } // namespace system
 } // namespace boost
 
-#else // defined(BOOST_SYSTEM_DISABLE_THREADS)
-
-#if defined(BOOST_MSSTL_VERSION) && BOOST_MSSTL_VERSION >= 140
+#elif defined(BOOST_MSSTL_VERSION) && BOOST_MSSTL_VERSION >= 140
 
 // Under the MS STL, std::mutex::mutex() is not constexpr, as is
 // required by the standard, which leads to initialization order
 // issues. However, shared_mutex is based on SRWLock and its
 // default constructor is constexpr, so we use that instead.
 
-#include <boost/winapi/config.hpp>
-
-// SRWLOCK is not available when targeting Windows XP
-#if BOOST_USE_WINAPI_VERSION >= BOOST_WINAPI_VERSION_WIN6
-
 #include <shared_mutex>
-
-#if BOOST_MSSTL_VERSION >= 142 || _HAS_SHARED_MUTEX
-# define BOOST_SYSTEM_HAS_MSSTL_SHARED_MUTEX
-#endif
-
-#endif // BOOST_MSSTL_VERSION >= 142 || _HAS_SHARED_MUTEX
-
-#endif // BOOST_USE_WINAPI_VERSION >= BOOST_WINAPI_VERSION_WIN6
-
-#if defined(BOOST_SYSTEM_HAS_MSSTL_SHARED_MUTEX)
 
 namespace boost
 {
@@ -70,7 +53,7 @@ typedef std::shared_mutex mutex;
 } // namespace system
 } // namespace boost
 
-#else // defined(BOOST_SYSTEM_HAS_MSSTL_SHARED_MUTEX)
+#else
 
 #include <mutex>
 
@@ -87,8 +70,7 @@ using std::mutex;
 } // namespace system
 } // namespace boost
 
-#endif // defined(BOOST_SYSTEM_HAS_MSSTL_SHARED_MUTEX)
-#endif // defined(BOOST_SYSTEM_DISABLE_THREADS)
+#endif
 
 namespace boost
 {

@@ -27,14 +27,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/Tag">AWS API
    * Reference</a></p>
    */
-  class Tag
+  class AWS_S3_API Tag
   {
   public:
-    AWS_S3_API Tag();
-    AWS_S3_API Tag(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API Tag& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Tag();
+    Tag(const Aws::Utils::Xml::XmlNode& xmlNode);
+    Tag& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -121,10 +121,10 @@ namespace Model
   private:
 
     Aws::String m_key;
-    bool m_keyHasBeenSet = false;
+    bool m_keyHasBeenSet;
 
     Aws::String m_value;
-    bool m_valueHasBeenSet = false;
+    bool m_valueHasBeenSet;
   };
 
 } // namespace Model

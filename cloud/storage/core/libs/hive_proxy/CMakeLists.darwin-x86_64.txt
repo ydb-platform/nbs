@@ -23,7 +23,7 @@ target_link_libraries(core-libs-hive_proxy PUBLIC
   ydb-core-tablet_flat
   ydb-core-testlib
   core-testlib-basics
-  library-actors-core
+  cpp-actors-core
 )
 target_sources(core-libs-hive_proxy PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/hive_proxy/hive_proxy.cpp

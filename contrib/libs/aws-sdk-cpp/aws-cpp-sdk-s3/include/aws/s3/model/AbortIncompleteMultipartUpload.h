@@ -30,14 +30,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/AbortIncompleteMultipartUpload">AWS
    * API Reference</a></p>
    */
-  class AbortIncompleteMultipartUpload
+  class AWS_S3_API AbortIncompleteMultipartUpload
   {
   public:
-    AWS_S3_API AbortIncompleteMultipartUpload();
-    AWS_S3_API AbortIncompleteMultipartUpload(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API AbortIncompleteMultipartUpload& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    AbortIncompleteMultipartUpload();
+    AbortIncompleteMultipartUpload(const Aws::Utils::Xml::XmlNode& xmlNode);
+    AbortIncompleteMultipartUpload& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -67,7 +67,7 @@ namespace Model
   private:
 
     int m_daysAfterInitiation;
-    bool m_daysAfterInitiationHasBeenSet = false;
+    bool m_daysAfterInitiationHasBeenSet;
   };
 
 } // namespace Model

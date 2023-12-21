@@ -22,10 +22,10 @@ PEERDIR(
     cloud/blockstore/libs/storage/partition_nonrepl
     cloud/blockstore/libs/storage/service
 
-    contrib/ydb/core/blockstore
-    contrib/ydb/core/mind
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/basics
+    ydb/core/blockstore
+    ydb/core/mind
+    ydb/core/testlib
+    ydb/core/testlib/basics
 )
 
 END()

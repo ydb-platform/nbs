@@ -6,8 +6,8 @@ import yatest.common as common
 
 from library.python.testing.recipe import declare_recipe, set_env
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 from cloud.filestore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
@@ -33,7 +33,7 @@ def start(argv):
     parser.add_argument("--restart-interval", action="store", default=None)
     args = parser.parse_args(argv)
 
-    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = common.binary_path("ydb/apps/ydbd/ydbd")
     if args.kikimr_package_path is not None:
         kikimr_binary_path = common.build_path("{}/Berkanavt/kikimr/bin/kikimr".format(args.kikimr_package_path))
 

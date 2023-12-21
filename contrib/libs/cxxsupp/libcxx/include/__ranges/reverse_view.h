@@ -33,7 +33,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#if !defined(_LIBCPP_HAS_NO_CONCEPTS) && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
 
 namespace ranges {
   template<view _View>
@@ -111,22 +111,22 @@ namespace ranges {
   namespace views {
   namespace __reverse {
     template<class _Tp>
-    inline constexpr bool __is_reverse_view = false;
+    constexpr bool __is_reverse_view = false;
 
     template<class _Tp>
-    inline constexpr bool __is_reverse_view<reverse_view<_Tp>> = true;
+    constexpr bool __is_reverse_view<reverse_view<_Tp>> = true;
 
     template<class _Tp>
-    inline constexpr bool __is_sized_reverse_subrange = false;
+    constexpr bool __is_sized_reverse_subrange = false;
 
     template<class _Iter>
-    inline constexpr bool __is_sized_reverse_subrange<subrange<reverse_iterator<_Iter>, reverse_iterator<_Iter>, subrange_kind::sized>> = true;
+    constexpr bool __is_sized_reverse_subrange<subrange<reverse_iterator<_Iter>, reverse_iterator<_Iter>, subrange_kind::sized>> = true;
 
     template<class _Tp>
-    inline constexpr bool __is_unsized_reverse_subrange = false;
+    constexpr bool __is_unsized_reverse_subrange = false;
 
     template<class _Iter, subrange_kind _Kind>
-    inline constexpr bool __is_unsized_reverse_subrange<subrange<reverse_iterator<_Iter>, reverse_iterator<_Iter>, _Kind>> = _Kind == subrange_kind::unsized;
+    constexpr bool __is_unsized_reverse_subrange<subrange<reverse_iterator<_Iter>, reverse_iterator<_Iter>, _Kind>> = _Kind == subrange_kind::unsized;
 
     template<class _Tp>
     struct __unwrapped_reverse_subrange {
@@ -183,7 +183,7 @@ namespace ranges {
   } // namespace views
 } // namespace ranges
 
-#endif // _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#endif // !defined(_LIBCPP_HAS_NO_CONCEPTS) && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
 
 _LIBCPP_END_NAMESPACE_STD
 

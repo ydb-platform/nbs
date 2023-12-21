@@ -5,7 +5,7 @@ import urllib3
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.tests.python.lib.nbs_http_proxy import create_nbs_http_proxy
 

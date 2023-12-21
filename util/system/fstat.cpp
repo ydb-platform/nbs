@@ -63,32 +63,24 @@ struct TSystemFStat: public BY_HANDLE_FILE_INFORMATION {
     ULONG ReparseTag = 0;
 };
 
-#elif defined(_unix_)
-using TSystemFStat = struct stat;
 #else
-    #error unsupported platform
+
+using TSystemFStat = struct stat;
+
 #endif
 
-static void MakeStatFromStructStat(TFileStat& st, const struct stat& fs) {
+static void MakeStat(TFileStat& st, const TSystemFStat& fs) {
+#ifdef _unix_
     st.Mode = fs.st_mode;
     st.NLinks = fs.st_nlink;
     st.Uid = fs.st_uid;
     st.Gid = fs.st_gid;
     st.Size = fs.st_size;
-#ifdef _unix_
     st.AllocationSize = fs.st_blocks * 512;
-#else
-    st.AllocationSize = st.Size; // FIXME
-#endif
     st.ATime = fs.st_atime;
     st.MTime = fs.st_mtime;
     st.CTime = fs.st_ctime;
     st.INode = fs.st_ino;
-}
-
-static void MakeStat(TFileStat& st, const TSystemFStat& fs) {
-#ifdef _unix_
-    MakeStatFromStructStat(st, fs);
 #else
     timeval tv;
     FileTimeToTimeval(&fs.ftCreationTime, &tv);
@@ -148,10 +140,6 @@ TFileStat::TFileStat(FHANDLE f) {
     } else {
         *this = TFileStat();
     }
-}
-
-TFileStat::TFileStat(const struct stat& st) {
-    MakeStatFromStructStat(*this, st);
 }
 
 void TFileStat::MakeFromFileName(const char* fileName, bool nofollow) {

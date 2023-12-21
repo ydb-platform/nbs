@@ -89,7 +89,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         bool letItPass = false;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         if (letItPass) {
@@ -109,7 +109,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendAlterVolumeRequest(DefaultDiskId, "project", "folder", "cloud");
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
 
-        env.GetRuntime().SetObserverFunc( [nodeIdx, &runtime = env.GetRuntime() ] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc( [nodeIdx] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyResponse: {
                         auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>(
@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -179,14 +179,14 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
 
         ui32 resizeRequests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         ++resizeRequests;
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.ResizeVolume(DefaultDiskId, DefaultBlocksCount * 2);
@@ -388,7 +388,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         bool detectedResizeVolumeRequest = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         detectedResizeVolumeRequest = true;
@@ -399,7 +399,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.ResizeVolume(DefaultDiskId, 2*DefaultBlocksCount);
@@ -417,7 +417,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [error, nodeIdx, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [error, nodeIdx] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
@@ -433,7 +433,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendAlterVolumeRequest(DefaultDiskId, "project", "folder", "cloud");
@@ -467,7 +467,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         ui32 errCode = MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPreconditionFailed);
 
-        runtime.SetObserverFunc( [nodeIdx, errCode, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc( [nodeIdx, errCode] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto errStr = "New volume space is over a limit";
@@ -485,7 +485,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.SendAlterVolumeRequest(DefaultDiskId, "project", "folder", "cloud");
@@ -582,7 +582,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             10ULL * 1024ULL * 1024ULL * 1024ULL / DefaultBlockSize;
 
         ui32 originalChannelsCount = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -596,14 +596,14 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         service.CreateVolume(DefaultDiskId, blockCount);
         UNIT_ASSERT_VALUES_EQUAL(14, originalChannelsCount);
 
         ui32 channelsCountOnResize = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
@@ -617,7 +617,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TAtomic dummy;

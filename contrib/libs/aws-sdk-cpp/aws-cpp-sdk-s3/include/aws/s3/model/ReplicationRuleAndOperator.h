@@ -35,14 +35,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ReplicationRuleAndOperator">AWS
    * API Reference</a></p>
    */
-  class ReplicationRuleAndOperator
+  class AWS_S3_API ReplicationRuleAndOperator
   {
   public:
-    AWS_S3_API ReplicationRuleAndOperator();
-    AWS_S3_API ReplicationRuleAndOperator(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ReplicationRuleAndOperator& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationRuleAndOperator();
+    ReplicationRuleAndOperator(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationRuleAndOperator& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -137,10 +137,10 @@ namespace Model
   private:
 
     Aws::String m_prefix;
-    bool m_prefixHasBeenSet = false;
+    bool m_prefixHasBeenSet;
 
     Aws::Vector<Tag> m_tags;
-    bool m_tagsHasBeenSet = false;
+    bool m_tagsHasBeenSet;
   };
 
 } // namespace Model

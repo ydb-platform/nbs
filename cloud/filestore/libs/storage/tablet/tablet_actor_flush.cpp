@@ -4,7 +4,7 @@
 
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

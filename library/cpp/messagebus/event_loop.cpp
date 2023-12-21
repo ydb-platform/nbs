@@ -262,7 +262,7 @@ TEventLoop::TImpl::TImpl(const char* name)
     SOCKET wakeupSockets[2];
 
     if (SocketPair(wakeupSockets) < 0) {
-        Y_ABORT("failed to create socket pair for wakeup sockets: %s", LastSystemErrorText());
+        Y_FAIL("failed to create socket pair for wakeup sockets: %s", LastSystemErrorText());
     }
 
     TSocketHolder wakeupReadSocket(wakeupSockets[0]);
@@ -280,7 +280,7 @@ TEventLoop::TImpl::TImpl(const char* name)
 
 void TEventLoop::TImpl::Run() {
     bool res = AtomicCas(&RunningState, EVENT_LOOP_RUNNING, EVENT_LOOP_CREATED);
-    Y_ABORT_UNLESS(res, "Invalid mbus event loop state");
+    Y_VERIFY(res, "Invalid mbus event loop state");
 
     if (!!Name) {
         SetCurrentThreadName(Name);
@@ -297,7 +297,7 @@ void TEventLoop::TImpl::Run() {
             if (*c == this) {
                 char buf[0x1000];
                 if (NBus::NPrivate::SocketRecv(WakeupReadSocket, buf) < 0) {
-                    Y_ABORT("failed to recv from wakeup socket: %s", LastSystemErrorText());
+                    Y_FAIL("failed to recv from wakeup socket: %s", LastSystemErrorText());
                 }
                 continue;
             }
@@ -308,7 +308,7 @@ void TEventLoop::TImpl::Run() {
         SOCKET socket = -1;
         while (SocketsToRemove.Dequeue(&socket)) {
             TGuard<TMutex> guard(Mutex);
-            Y_ABORT_UNLESS(Data.erase(socket) == 1, "must be removed once");
+            Y_VERIFY(Data.erase(socket) == 1, "must be removed once");
         }
     }
 
@@ -324,7 +324,7 @@ void TEventLoop::TImpl::Run() {
 
     res = AtomicCas(&RunningState, EVENT_LOOP_STOPPED, EVENT_LOOP_RUNNING);
 
-    Y_ABORT_UNLESS(res);
+    Y_VERIFY(res);
 
     StoppedEvent.Signal();
 }
@@ -340,13 +340,13 @@ void TEventLoop::TImpl::Stop() {
 }
 
 TChannelPtr TEventLoop::TImpl::Register(TSocket socket, TEventHandlerPtr eventHandler, void* cookie) {
-    Y_ABORT_UNLESS(socket != INVALID_SOCKET, "must be a valid socket");
+    Y_VERIFY(socket != INVALID_SOCKET, "must be a valid socket");
 
     TChannelPtr channel = new TChannel(new TChannel::TImpl(this, socket, eventHandler, cookie));
 
     TGuard<TMutex> guard(Mutex);
 
-    Y_ABORT_UNLESS(Data.insert(std::make_pair(socket, channel)).second, "must not be already inserted");
+    Y_VERIFY(Data.insert(std::make_pair(socket, channel)).second, "must not be already inserted");
 
     return channel;
 }
@@ -354,7 +354,7 @@ TChannelPtr TEventLoop::TImpl::Register(TSocket socket, TEventHandlerPtr eventHa
 void TEventLoop::TImpl::Wakeup() {
     if (NBus::NPrivate::SocketSend(WakeupWriteSocket, TArrayRef<const char>("", 1)) < 0) {
         if (LastSystemError() != EAGAIN) {
-            Y_ABORT("failed to send to wakeup socket: %s", LastSystemErrorText());
+            Y_FAIL("failed to send to wakeup socket: %s", LastSystemErrorText());
         }
     }
 }
@@ -367,6 +367,6 @@ void TEventLoop::TImpl::AddToPoller(SOCKET socket, void* cookie, int flags) {
     } else if (flags == OP_READ_WRITE) {
         Poller.WaitReadWriteOneShot(socket, cookie);
     } else {
-        Y_ABORT("Wrong flags: %d", int(flags));
+        Y_FAIL("Wrong flags: %d", int(flags));
     }
 }

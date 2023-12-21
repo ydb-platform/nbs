@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/tools/common/go/configurator/kikimr-proto";
+option go_package = "a.yandex-team.ru/cloud/storage/core/tools/common/go/configurator/kikimr-proto";
 
 message TAuthConfig {
     optional string AccessServiceEndpoint = 1;

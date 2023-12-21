@@ -29,21 +29,20 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ScanRange">AWS API
    * Reference</a></p>
    */
-  class ScanRange
+  class AWS_S3_API ScanRange
   {
   public:
-    AWS_S3_API ScanRange();
-    AWS_S3_API ScanRange(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ScanRange& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ScanRange();
+    ScanRange(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ScanRange& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
      * <p>Specifies the start of the byte range. This parameter is optional. Valid
-     * values: non-negative integers. The default value is 0. If only
-     * <code>start</code> is supplied, it means scan from that point to the end of the
-     * file. For example,
+     * values: non-negative integers. The default value is 0. If only start is
+     * supplied, it means scan from that point to the end of the file.For example;
      * <code>&lt;scanrange&gt;&lt;start&gt;50&lt;/start&gt;&lt;/scanrange&gt;</code>
      * means scan from byte 50 until the end of the file.</p>
      */
@@ -51,9 +50,8 @@ namespace Model
 
     /**
      * <p>Specifies the start of the byte range. This parameter is optional. Valid
-     * values: non-negative integers. The default value is 0. If only
-     * <code>start</code> is supplied, it means scan from that point to the end of the
-     * file. For example,
+     * values: non-negative integers. The default value is 0. If only start is
+     * supplied, it means scan from that point to the end of the file.For example;
      * <code>&lt;scanrange&gt;&lt;start&gt;50&lt;/start&gt;&lt;/scanrange&gt;</code>
      * means scan from byte 50 until the end of the file.</p>
      */
@@ -61,9 +59,8 @@ namespace Model
 
     /**
      * <p>Specifies the start of the byte range. This parameter is optional. Valid
-     * values: non-negative integers. The default value is 0. If only
-     * <code>start</code> is supplied, it means scan from that point to the end of the
-     * file. For example,
+     * values: non-negative integers. The default value is 0. If only start is
+     * supplied, it means scan from that point to the end of the file.For example;
      * <code>&lt;scanrange&gt;&lt;start&gt;50&lt;/start&gt;&lt;/scanrange&gt;</code>
      * means scan from byte 50 until the end of the file.</p>
      */
@@ -71,9 +68,8 @@ namespace Model
 
     /**
      * <p>Specifies the start of the byte range. This parameter is optional. Valid
-     * values: non-negative integers. The default value is 0. If only
-     * <code>start</code> is supplied, it means scan from that point to the end of the
-     * file. For example,
+     * values: non-negative integers. The default value is 0. If only start is
+     * supplied, it means scan from that point to the end of the file.For example;
      * <code>&lt;scanrange&gt;&lt;start&gt;50&lt;/start&gt;&lt;/scanrange&gt;</code>
      * means scan from byte 50 until the end of the file.</p>
      */
@@ -123,10 +119,10 @@ namespace Model
   private:
 
     long long m_start;
-    bool m_startHasBeenSet = false;
+    bool m_startHasBeenSet;
 
     long long m_end;
-    bool m_endHasBeenSet = false;
+    bool m_endHasBeenSet;
   };
 
 } // namespace Model

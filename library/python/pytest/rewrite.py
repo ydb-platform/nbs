@@ -6,7 +6,6 @@ import ast
 import py
 
 from _pytest.assertion import rewrite
-
 try:
     import importlib.util
 except ImportError:
@@ -67,10 +66,10 @@ class AssertionRewritingHook(rewrite.AssertionRewritingHook):
         co = self._find_module(name, path)
         if co is not None:
             return importlib.util.spec_from_file_location(
-                name,
-                co.co_filename,
-                loader=self,
-            )
+            name,
+            co.co_filename,
+            loader=self,
+        )
 
     def _should_rewrite(self, name, fn, state):
         if name.startswith("__tests__.") or name.endswith(".conftest"):
@@ -85,7 +84,6 @@ class AssertionRewritingHook(rewrite.AssertionRewritingHook):
         return importer.get_source(name)
 
     if six.PY3:
-
         def load_module(self, module):
             co, _ = self.modules.pop(module.__name__)
             try:
@@ -93,7 +91,7 @@ class AssertionRewritingHook(rewrite.AssertionRewritingHook):
                 module.__cached__ = None
                 module.__loader__ = self
                 module.__spec__ = importlib.util.spec_from_file_location(module.__name__, co.co_filename, loader=self)
-                exec(co, module.__dict__)  # noqa
+                exec(co, module.__dict__)
             except:  # noqa
                 if module.__name__ in sys.modules:
                     del sys.modules[module.__name__]

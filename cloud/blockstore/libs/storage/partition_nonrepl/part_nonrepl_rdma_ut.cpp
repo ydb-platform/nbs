@@ -14,8 +14,8 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -510,7 +510,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TActorId notifiedActor;
         ui32 notificationCount = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRdmaUnavailable: {
                         notifiedActor = event->Recipient;
@@ -520,7 +520,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -591,7 +591,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId reacquireDiskRecipient;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvReacquireDisk: {
                         reacquireDiskRecipient = event->Recipient;
@@ -600,7 +600,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 

@@ -1,8 +1,14 @@
 LIBRARY()
 
-WITHOUT_LICENSE_TEXTS()
+LICENSE(
+    BSD-2-Clause AND
+    GPL-1.0-or-later AND
+    GPL-2.0-only WITH Linux-syscall-note AND
+    LGPL-2.0-only AND
+    LGPL-2.1-only
+)
 
-LICENSE(Service-Dll-Harness)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 VERSION(3.2)
 
@@ -12,19 +18,12 @@ NO_UTIL()
 
 NO_RUNTIME()
 
-IF (USE_DYNAMIC_LIBFUSE)
-    PEERDIR(
-        contrib/libs/virtiofsd/dynamic
-    )
-ELSE()
-    PEERDIR(
-        contrib/libs/virtiofsd/static
-    )
-ENDIF()
+SRCS(
+    buffer.c
+    fuse_log.c
+    fuse_lowlevel.c
+    fuse_opt.c
+    fuse_signals.c
+)
 
 END()
-
-RECURSE(
-    dynamic
-    static
-)

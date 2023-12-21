@@ -50,12 +50,12 @@ class LowercaseTransliterator : public CaseMapTransliterator {
      * Transliterator API.
      * @return a copy of the object.
      */
-    virtual LowercaseTransliterator* clone() const override;
+    virtual LowercaseTransliterator* clone() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for the actual class.
      */
-    virtual UClassID getDynamicClassID() const override;
+    virtual UClassID getDynamicClassID() const;
 
     /**
      * ICU "poor man's RTTI", returns a UClassID for this class.

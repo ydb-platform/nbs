@@ -44,7 +44,7 @@ PEERDIR(
     cloud/storage/core/libs/keyring
     cloud/storage/core/libs/version
 
-    contrib/ydb/library/actors/util
+    library/cpp/actors/util
     library/cpp/getopt/small
     library/cpp/json
     library/cpp/json/writer

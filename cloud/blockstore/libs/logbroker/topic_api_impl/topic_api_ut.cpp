@@ -1,6 +1,7 @@
 #include "topic_api.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
+#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
+#include <ydb/public/sdk/cpp/client/ydb_topic/topic.h>
 
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
@@ -8,8 +9,6 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

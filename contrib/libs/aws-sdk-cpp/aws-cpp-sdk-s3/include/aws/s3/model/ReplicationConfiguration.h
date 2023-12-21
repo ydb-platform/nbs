@@ -30,83 +30,83 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ReplicationConfiguration">AWS
    * API Reference</a></p>
    */
-  class ReplicationConfiguration
+  class AWS_S3_API ReplicationConfiguration
   {
   public:
-    AWS_S3_API ReplicationConfiguration();
-    AWS_S3_API ReplicationConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API ReplicationConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationConfiguration();
+    ReplicationConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    ReplicationConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline const Aws::String& GetRole() const{ return m_role; }
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline bool RoleHasBeenSet() const { return m_roleHasBeenSet; }
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline void SetRole(const Aws::String& value) { m_roleHasBeenSet = true; m_role = value; }
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline void SetRole(Aws::String&& value) { m_roleHasBeenSet = true; m_role = std::move(value); }
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline void SetRole(const char* value) { m_roleHasBeenSet = true; m_role.assign(value); }
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline ReplicationConfiguration& WithRole(const Aws::String& value) { SetRole(value); return *this;}
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
     inline ReplicationConfiguration& WithRole(Aws::String&& value) { SetRole(std::move(value)); return *this;}
 
     /**
-     * <p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-     * role that Amazon S3 assumes when replicating objects. For more information, see
-     * <a
+     * <p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management
+     * (IAM) role that Amazon S3 assumes when replicating objects. For more
+     * information, see <a
      * href="https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-how-setup.html">How
      * to Set Up Replication</a> in the <i>Amazon S3 User Guide</i>.</p>
      */
@@ -164,10 +164,10 @@ namespace Model
   private:
 
     Aws::String m_role;
-    bool m_roleHasBeenSet = false;
+    bool m_roleHasBeenSet;
 
     Aws::Vector<ReplicationRule> m_rules;
-    bool m_rulesHasBeenSet = false;
+    bool m_rulesHasBeenSet;
   };
 
 } // namespace Model

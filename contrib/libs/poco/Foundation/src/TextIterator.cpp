@@ -108,14 +108,12 @@ int TextIterator::operator * () const
 	int read = 1;
 	int n = _pEncoding->queryConvert(buffer, 1);
 
-	while (-1 > n && (_end - it) >= (-n - read) &&
-		TextEncoding::MAX_SEQUENCE_LENGTH > read)
+	while (-1 > n && (_end - it) >= -n - read)
 	{
-		while (read < -n && it != _end &&
-			read < TextEncoding::MAX_SEQUENCE_LENGTH)
-		{
-			*p++ = *it++;
-			read++;
+		while (read < -n && it != _end)
+		{ 
+			*p++ = *it++; 
+			read++; 
 		}
 		n = _pEncoding->queryConvert(buffer, read);
 	}
@@ -147,11 +145,9 @@ TextIterator& TextIterator::operator ++ ()
 	int read = 1;
 	int n = _pEncoding->sequenceLength(buffer, 1);
 
-	while (-1 > n && (_end - _it) >= (-n - read) &&
-		TextEncoding::MAX_SEQUENCE_LENGTH > read)
+	while (-1 > n && (_end - _it) >= -n - read)
 	{
-		while (read < -n && _it != _end &&
-			read < TextEncoding::MAX_SEQUENCE_LENGTH)
+		while (read < -n && _it != _end)
 		{ 
 			*p++ = *_it++; 
 			read++; 

@@ -28,14 +28,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/JSONOutput">AWS API
    * Reference</a></p>
    */
-  class JSONOutput
+  class AWS_S3_API JSONOutput
   {
   public:
-    AWS_S3_API JSONOutput();
-    AWS_S3_API JSONOutput(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API JSONOutput& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    JSONOutput();
+    JSONOutput(const Aws::Utils::Xml::XmlNode& xmlNode);
+    JSONOutput& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -89,7 +89,7 @@ namespace Model
   private:
 
     Aws::String m_recordDelimiter;
-    bool m_recordDelimiterHasBeenSet = false;
+    bool m_recordDelimiterHasBeenSet;
   };
 
 } // namespace Model

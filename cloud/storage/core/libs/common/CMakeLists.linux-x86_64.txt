@@ -27,7 +27,7 @@ target_link_libraries(core-libs-common PUBLIC
   library-cpp-lwtrace
   cpp-protobuf-util
   cpp-threading-future
-  library-actors-prof
+  cpp-actors-prof
 )
 target_sources(core-libs-common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/affinity.cpp

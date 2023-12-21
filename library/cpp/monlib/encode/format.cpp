@@ -40,8 +40,6 @@ namespace NMonitoring {
             return EFormat::TEXT;
         } else if (AsciiEqualsIgnoreCase(value, NFormatContenType::PROMETHEUS)) {
             return EFormat::PROMETHEUS;
-        } else if (AsciiEqualsIgnoreCase(value, NFormatContenType::UNISTAT)) {
-            return EFormat::UNISTAT;
         }
 
         return EFormat::UNKNOWN;
@@ -80,13 +78,11 @@ namespace NMonitoring {
                 return NFormatContenType::TEXT;
             case EFormat::PROMETHEUS:
                 return NFormatContenType::PROMETHEUS;
-            case EFormat::UNISTAT:
-                return NFormatContenType::UNISTAT;
             case EFormat::UNKNOWN:
                 return TStringBuf();
         }
 
-        Y_ABORT(); // for GCC
+        Y_FAIL(); // for GCC
     }
 
     ECompression CompressionFromAcceptEncodingHeader(TStringBuf value) {
@@ -111,7 +107,7 @@ namespace NMonitoring {
                 return TStringBuf();
         }
 
-        Y_ABORT(); // for GCC
+        Y_FAIL(); // for GCC
     }
 
 }
@@ -130,8 +126,6 @@ NMonitoring::EFormat FromStringImpl<NMonitoring::EFormat>(const char* str, size_
         return EFormat::TEXT;
     } else if (value == TStringBuf("PROMETHEUS")) {
         return EFormat::PROMETHEUS;
-    } else if (value == TStringBuf("UNISTAT")) {
-        return EFormat::UNISTAT;
     } else if (value == TStringBuf("UNKNOWN")) {
         return EFormat::UNKNOWN;
     }
@@ -157,15 +151,12 @@ void Out<NMonitoring::EFormat>(IOutputStream& o, NMonitoring::EFormat f) {
         case EFormat::PROMETHEUS:
             o << TStringBuf("PROMETHEUS");
             return;
-        case EFormat::UNISTAT:
-            o << TStringBuf("UNISTAT");
-            return;
         case EFormat::UNKNOWN:
             o << TStringBuf("UNKNOWN");
             return;
     }
 
-    Y_ABORT(); // for GCC
+    Y_FAIL(); // for GCC
 }
 
 template <>
@@ -207,5 +198,5 @@ void Out<NMonitoring::ECompression>(IOutputStream& o, NMonitoring::ECompression 
             return;
     }
 
-    Y_ABORT(); // for GCC
+    Y_FAIL(); // for GCC
 }

@@ -10,8 +10,8 @@ from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
@@ -27,7 +27,7 @@ def start(argv):
     parser.add_argument("--use-ic-version-check", action='store_true', default=False)
     args = parser.parse_args(argv)
 
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
     if args.kikimr_package_path is not None:
         kikimr_binary_path = yatest_common.build_path(
             "{}/Berkanavt/kikimr/bin/kikimr".format(args.kikimr_package_path)

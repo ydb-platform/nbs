@@ -1,36 +1,28 @@
 LIBRARY()
 
-IF (NOT OPENSOURCE AND USE_ICONV != "local")
+IF (NOT OPENSOURCE)
     CXXFLAGS(-DUSE_ICONV_EXTENSIONS)
 ENDIF()
 
 SRCS(
-    decodeunknownplane.cpp
+    generated/cp_data.cpp
+    generated/encrec_data.cpp
+    codepage.cpp
+    cp_encrec.cpp
+    doccodes.cpp
+    iconv.cpp
     recyr.hh
     recyr_int.hh
+    ci_string.cpp
     wide.cpp
 )
 
 PEERDIR(
-    library/cpp/charset/lite
+    contrib/libs/libiconv
 )
-
-IF (OS_ANDROID OR OS_IOS OR LIBRARY_CHARSET_WITHOUT_LIBICONV)
-    SRCS(
-        iconv_mock.cpp
-    )
-ELSE()
-    SRCS(
-        iconv.cpp
-    )
-    PEERDIR(
-        contrib/libs/libiconv
-    )
-ENDIF()
 
 END()
 
 RECURSE_FOR_TESTS(
     ut
-    lite/ut
 )

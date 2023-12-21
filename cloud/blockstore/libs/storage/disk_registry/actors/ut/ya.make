@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/actors/testlib
+    library/cpp/actors/testlib
 )
 
 END()

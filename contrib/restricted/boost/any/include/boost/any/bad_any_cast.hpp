@@ -22,8 +22,6 @@
 
 namespace boost {
 
-/// The exception thrown in the event of a failed boost::any_cast of
-/// an boost::any, boost::anys::basic_any or boost::anys::unique_any value.
 class BOOST_SYMBOL_VISIBLE bad_any_cast :
 #ifndef BOOST_NO_RTTI
     public std::bad_cast
@@ -32,7 +30,7 @@ class BOOST_SYMBOL_VISIBLE bad_any_cast :
 #endif
 {
 public:
-    const char * what() const BOOST_NOEXCEPT_OR_NOTHROW override
+    const char * what() const BOOST_NOEXCEPT_OR_NOTHROW BOOST_OVERRIDE
     {
         return "boost::bad_any_cast: "
                "failed conversion using boost::any_cast";

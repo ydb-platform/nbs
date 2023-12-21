@@ -77,9 +77,3 @@ DefaultAWSCredentialsProviderChain::DefaultAWSCredentialsProviderChain() : AWSCr
         AWS_LOGSTREAM_INFO(DefaultCredentialsProviderChainTag, "Added EC2 metadata service credentials provider to the provider chain.");
     }
 }
-
-DefaultAWSCredentialsProviderChain::DefaultAWSCredentialsProviderChain(const DefaultAWSCredentialsProviderChain& chain) {
-    for (const auto& provider: chain.GetProviders()) {
-        AddProvider(provider);
-    }
-}

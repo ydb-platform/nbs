@@ -1,14 +1,6 @@
 // -*- C++ -*-
-//===----------------------------------------------------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef _LIBCPP___SPLIT_BUFFER
-#define _LIBCPP___SPLIT_BUFFER
+#ifndef _LIBCPP_SPLIT_BUFFER
+#define _LIBCPP_SPLIT_BUFFER
 
 #include <__algorithm/max.h>
 #include <__algorithm/move.h>
@@ -119,10 +111,19 @@ public:
     void __construct_at_end(size_type __n);
     void __construct_at_end(size_type __n, const_reference __x);
     template <class _InputIter>
-    __enable_if_t<__is_exactly_cpp17_input_iterator<_InputIter>::value>
+        typename enable_if
+        <
+            __is_cpp17_input_iterator<_InputIter>::value &&
+           !__is_cpp17_forward_iterator<_InputIter>::value,
+            void
+        >::type
         __construct_at_end(_InputIter __first, _InputIter __last);
     template <class _ForwardIterator>
-    __enable_if_t<__is_cpp17_forward_iterator<_ForwardIterator>::value>
+        typename enable_if
+        <
+            __is_cpp17_forward_iterator<_ForwardIterator>::value,
+            void
+        >::type
         __construct_at_end(_ForwardIterator __first, _ForwardIterator __last);
 
     _LIBCPP_INLINE_VISIBILITY void __destruct_at_begin(pointer __new_begin)
@@ -238,7 +239,12 @@ __split_buffer<_Tp, _Allocator>::__construct_at_end(size_type __n, const_referen
 
 template <class _Tp, class _Allocator>
 template <class _InputIter>
-__enable_if_t<__is_exactly_cpp17_input_iterator<_InputIter>::value>
+typename enable_if
+<
+     __is_cpp17_input_iterator<_InputIter>::value &&
+    !__is_cpp17_forward_iterator<_InputIter>::value,
+    void
+>::type
 __split_buffer<_Tp, _Allocator>::__construct_at_end(_InputIter __first, _InputIter __last)
 {
     __alloc_rr& __a = this->__alloc();
@@ -261,7 +267,11 @@ __split_buffer<_Tp, _Allocator>::__construct_at_end(_InputIter __first, _InputIt
 
 template <class _Tp, class _Allocator>
 template <class _ForwardIterator>
-__enable_if_t<__is_cpp17_forward_iterator<_ForwardIterator>::value>
+typename enable_if
+<
+    __is_cpp17_forward_iterator<_ForwardIterator>::value,
+    void
+>::type
 __split_buffer<_Tp, _Allocator>::__construct_at_end(_ForwardIterator __first, _ForwardIterator __last)
 {
     _ConstructTransaction __tx(&this->__end_, _VSTD::distance(__first, __last));
@@ -309,13 +319,7 @@ template <class _Tp, class _Allocator>
 __split_buffer<_Tp, _Allocator>::__split_buffer(size_type __cap, size_type __start, __alloc_rr& __a)
     : __end_cap_(nullptr, __a)
 {
-    if (__cap == 0) {
-        __first_ = nullptr;
-    } else {
-        auto __allocation = std::__allocate_at_least(__alloc(), __cap);
-        __first_ = __allocation.ptr;
-        __cap = __allocation.count;
-    }
+    __first_ = __cap != 0 ? __alloc_traits::allocate(__alloc(), __cap) : nullptr;
     __begin_ = __end_ = __first_ + __start;
     __end_cap() = __first_ + __cap;
 }
@@ -381,10 +385,10 @@ __split_buffer<_Tp, _Allocator>::__split_buffer(__split_buffer&& __c, const __al
     }
     else
     {
-        auto __allocation = std::__allocate_at_least(__alloc(), __c.size());
-        __first_ = __allocation.ptr;
+        size_type __cap = __c.size();
+        __first_ = __alloc_traits::allocate(__alloc(), __cap);
         __begin_ = __end_ = __first_;
-        __end_cap() = __first_ + __allocation.count;
+        __end_cap() = __first_ + __cap;
         typedef move_iterator<iterator> _Ip;
         __construct_at_end(_Ip(__c.begin()), _Ip(__c.end()));
     }
@@ -629,4 +633,4 @@ _LIBCPP_END_NAMESPACE_STD
 
 _LIBCPP_POP_MACROS
 
-#endif // _LIBCPP___SPLIT_BUFFER
+#endif // _LIBCPP_SPLIT_BUFFER

@@ -4,8 +4,6 @@
 #include "thread_id.h"
 #endif
 
-#include <library/cpp/yt/misc/tls.h>
-
 #include <atomic>
 
 #include <util/system/compiler.h>
@@ -14,7 +12,7 @@ namespace NYT {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-extern YT_THREAD_LOCAL(TSequentialThreadId) CachedSequentialThreadId;
+extern thread_local TSequentialThreadId CachedSequentialThreadId;
 extern std::atomic<TSequentialThreadId> SequentialThreadIdGenerator;
 
 inline TSequentialThreadId GetSequentialThreadId()

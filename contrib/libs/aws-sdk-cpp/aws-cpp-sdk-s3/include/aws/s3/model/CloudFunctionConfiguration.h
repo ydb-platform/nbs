@@ -25,19 +25,19 @@ namespace Model
 {
 
   /**
-   * <p>Container for specifying the Lambda notification configuration.</p><p><h3>See
-   * Also:</h3>   <a
+   * <p>Container for specifying the AWS Lambda notification
+   * configuration.</p><p><h3>See Also:</h3>   <a
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/CloudFunctionConfiguration">AWS
    * API Reference</a></p>
    */
-  class CloudFunctionConfiguration
+  class AWS_S3_API CloudFunctionConfiguration
   {
   public:
-    AWS_S3_API CloudFunctionConfiguration();
-    AWS_S3_API CloudFunctionConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API CloudFunctionConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    CloudFunctionConfiguration();
+    CloudFunctionConfiguration(const Aws::Utils::Xml::XmlNode& xmlNode);
+    CloudFunctionConfiguration& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     
@@ -198,16 +198,16 @@ namespace Model
   private:
 
     Aws::String m_id;
-    bool m_idHasBeenSet = false;
+    bool m_idHasBeenSet;
 
     Aws::Vector<Event> m_events;
-    bool m_eventsHasBeenSet = false;
+    bool m_eventsHasBeenSet;
 
     Aws::String m_cloudFunction;
-    bool m_cloudFunctionHasBeenSet = false;
+    bool m_cloudFunctionHasBeenSet;
 
     Aws::String m_invocationRole;
-    bool m_invocationRoleHasBeenSet = false;
+    bool m_invocationRoleHasBeenSet;
   };
 
 } // namespace Model

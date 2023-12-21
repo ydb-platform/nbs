@@ -1,4 +1,4 @@
-option go_package = "github.com/ydb-platform/nbs/library/cpp/eventlog/proto;extensions";
+option go_package = "a.yandex-team.ru/library/cpp/eventlog/proto;extensions";
 
 package NEventLogInternal;
 

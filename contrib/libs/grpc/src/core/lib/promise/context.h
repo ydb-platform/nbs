@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef GRPC_SRC_CORE_LIB_PROMISE_CONTEXT_H
-#define GRPC_SRC_CORE_LIB_PROMISE_CONTEXT_H
+#ifndef GRPC_CORE_LIB_PROMISE_CONTEXT_H
+#define GRPC_CORE_LIB_PROMISE_CONTEXT_H
 
 #include <grpc/support/port_platform.h>
 
-#include <type_traits>
 #include <utility>
 
-#include <grpc/support/log.h>
+#include "src/core/lib/gpr/tls.h"
 
 namespace grpc_core {
 
@@ -45,11 +44,12 @@ class Context : public ContextType<T> {
 
  private:
   T* const old_;
-  static thread_local T* current_;
+  static GPR_THREAD_LOCAL(T*) current_;
 };
 
 template <typename T>
-thread_local T* Context<T>::current_;
+GPR_THREAD_LOCAL(T*)
+Context<T>::current_;
 
 template <typename T, typename F>
 class WithContext {
@@ -68,18 +68,10 @@ class WithContext {
 
 }  // namespace promise_detail
 
-// Return true if a context of type T is currently active.
-template <typename T>
-bool HasContext() {
-  return promise_detail::Context<T>::get() != nullptr;
-}
-
-// Retrieve the current value of a context, or abort if the value is unset.
+// Retrieve the current value of a context.
 template <typename T>
 T* GetContext() {
-  auto* p = promise_detail::Context<T>::get();
-  GPR_ASSERT(p != nullptr);
-  return p;
+  return promise_detail::Context<T>::get();
 }
 
 // Given a promise and a context, return a promise that has that context set.
@@ -90,4 +82,4 @@ promise_detail::WithContext<T, F> WithContext(F f, T* context) {
 
 }  // namespace grpc_core
 
-#endif  // GRPC_SRC_CORE_LIB_PROMISE_CONTEXT_H
+#endif  // GRPC_CORE_LIB_PROMISE_CONTEXT_H

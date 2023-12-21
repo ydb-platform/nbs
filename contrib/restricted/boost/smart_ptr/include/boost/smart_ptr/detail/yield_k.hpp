@@ -19,7 +19,9 @@
 // Distributed under the Boost Software License, Version 1.0.
 // https://www.boost.org/LICENSE_1_0.txt
 
-#include <boost/core/yield_primitives.hpp>
+#include <boost/smart_ptr/detail/sp_thread_pause.hpp>
+#include <boost/smart_ptr/detail/sp_thread_sleep.hpp>
+#include <boost/config.hpp>
 
 namespace boost
 {
@@ -32,13 +34,13 @@ inline void yield( unsigned k )
     // Experiments on Windows and Fedora 32 show that a single pause,
     // followed by an immediate sp_thread_sleep(), is best.
 
-    if( k & 1 )
+    if( k == 0 )
     {
-        boost::core::sp_thread_sleep();
+        sp_thread_pause();
     }
     else
     {
-        boost::core::sp_thread_pause();
+        sp_thread_sleep();
     }
 }
 

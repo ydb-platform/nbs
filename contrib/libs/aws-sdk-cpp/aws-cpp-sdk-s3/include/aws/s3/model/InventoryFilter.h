@@ -28,14 +28,14 @@ namespace Model
    * href="http://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/InventoryFilter">AWS
    * API Reference</a></p>
    */
-  class InventoryFilter
+  class AWS_S3_API InventoryFilter
   {
   public:
-    AWS_S3_API InventoryFilter();
-    AWS_S3_API InventoryFilter(const Aws::Utils::Xml::XmlNode& xmlNode);
-    AWS_S3_API InventoryFilter& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InventoryFilter();
+    InventoryFilter(const Aws::Utils::Xml::XmlNode& xmlNode);
+    InventoryFilter& operator=(const Aws::Utils::Xml::XmlNode& xmlNode);
 
-    AWS_S3_API void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
+    void AddToNode(Aws::Utils::Xml::XmlNode& parentNode) const;
 
 
     /**
@@ -89,7 +89,7 @@ namespace Model
   private:
 
     Aws::String m_prefix;
-    bool m_prefixHasBeenSet = false;
+    bool m_prefixHasBeenSet;
   };
 
 } // namespace Model

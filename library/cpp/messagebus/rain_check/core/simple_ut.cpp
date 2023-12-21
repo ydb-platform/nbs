@@ -31,7 +31,7 @@ Y_UNIT_TEST_SUITE(RainCheckSimple) {
         }
 
         void SleepCompletionCallback(TSubtaskCompletion* completion) {
-            Y_ABORT_UNLESS(completion == &SleepCompletion);
+            Y_VERIFY(completion == &SleepCompletion);
             TestSync->CheckAndIncrement(1);
 
             Env->SleepService.Sleep(&SleepCompletion, TDuration::MilliSeconds(1));

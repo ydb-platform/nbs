@@ -3,10 +3,10 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/base/tablet_pipe.h>
+#include <ydb/core/mon/mon.h>
+#include <ydb/core/node_whiteboard/node_whiteboard.h>
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>

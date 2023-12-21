@@ -16,8 +16,8 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -54,7 +54,7 @@ struct TResyncController
     {
         runtime.SetReschedulingDelay(ResyncNextRangeInterval);
 
-        runtime.SetObserverFunc([this] (auto& event) {
+        runtime.SetObserverFunc([this] (auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
                     if (ResyncedRanges.size() >= StopAfterResyncedRangeCount) {
@@ -83,7 +83,7 @@ struct TResyncController
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
     }
 
@@ -436,13 +436,13 @@ struct TTestEnv
 
     void CatchEvents(ui32 eventType)
     {
-        PrevObs = Runtime.SetObserverFunc([=] (auto& event) {
+        PrevObs = Runtime.SetObserverFunc([=] (auto& runtime, auto& event) {
             if (event->GetTypeRewrite() == eventType) {
                 Caught.push_back(IEventHandlePtr(event.Release()));
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
     }
 
@@ -741,7 +741,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         runtime.SetReschedulingDelay(ResyncNextRangeInterval);
 
-        runtime.SetObserverFunc([&state, &writeDelay, &rangeCount] (auto& event) {
+        runtime.SetObserverFunc([&state, &writeDelay, &rangeCount] (auto& runtime, auto& event) {
             switch (state) {
                 case INIT: {
                     if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvRangeResynced) {
@@ -788,7 +788,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         env.StartResync();
@@ -1112,7 +1112,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         ui32 resyncIndex = 0;
 
-        runtime.SetObserverFunc([&resyncIndex] (auto& event) {
+        runtime.SetObserverFunc([&resyncIndex] (auto& runtime, auto& event) {
             using TEvent = TEvVolume::TEvUpdateResyncState;
 
             if (event->GetTypeRewrite() == TEvent::EventType) {
@@ -1120,7 +1120,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                 resyncIndex = msg->ResyncIndex;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         env.StartResync();

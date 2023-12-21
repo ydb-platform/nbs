@@ -22,7 +22,6 @@
 #include <__memory/shared_ptr.h>
 #include <__utility/forward.h>
 #include <__utility/move.h>
-#include <__utility/swap.h>
 #include <exception>
 #include <memory> // TODO: replace with <__memory/__builtin_new_allocator.h>
 #include <type_traits>
@@ -35,8 +34,6 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 
 // bad_function_call
 
-_LIBCPP_DIAGNOSTIC_PUSH
-_LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wweak-vtables")
 class _LIBCPP_EXCEPTION_ABI bad_function_call
     : public exception
 {
@@ -54,7 +51,6 @@ public:
     virtual const char* what() const _NOEXCEPT;
 #endif
 };
-_LIBCPP_DIAGNOSTIC_POP
 
 _LIBCPP_NORETURN inline _LIBCPP_INLINE_VISIBILITY
 void __throw_bad_function_call()
@@ -85,7 +81,7 @@ struct __maybe_derive_from_unary_function
 
 template<class _Rp, class _A1>
 struct __maybe_derive_from_unary_function<_Rp(_A1)>
-    : public __unary_function<_A1, _Rp>
+    : public unary_function<_A1, _Rp>
 {
 };
 
@@ -96,7 +92,7 @@ struct __maybe_derive_from_binary_function
 
 template<class _Rp, class _A1, class _A2>
 struct __maybe_derive_from_binary_function<_Rp(_A1, _A2)>
-    : public __binary_function<_A1, _A2, _Rp>
+    : public binary_function<_A1, _A2, _Rp>
 {
 };
 
@@ -390,9 +386,9 @@ template <class _Rp, class... _ArgTypes> class __value_func<_Rp(_ArgTypes...)>
     typedef __base<_Rp(_ArgTypes...)> __func;
     __func* __f_;
 
-    _LIBCPP_NO_CFI static __func* __as_base(void* __p)
+    _LIBCPP_NO_CFI static __func* __as_base(void* p)
     {
-        return reinterpret_cast<__func*>(__p);
+        return reinterpret_cast<__func*>(p);
     }
 
   public:
@@ -614,7 +610,7 @@ struct __policy
     _LIBCPP_INLINE_VISIBILITY
     static const __policy* __create_empty()
     {
-        static const _LIBCPP_CONSTEXPR __policy __policy_ = {nullptr, nullptr,
+        static const /*_LIBCPP_CONSTEXPR*/ __policy __policy_ = {nullptr, nullptr,
                                                              true,
 #ifndef _LIBCPP_NO_RTTI
                                                              &typeid(void)
@@ -956,8 +952,10 @@ public:
 
 template<class _Rp, class ..._ArgTypes>
 class _LIBCPP_TEMPLATE_VIS function<_Rp(_ArgTypes...)>
+#if _LIBCPP_STD_VER <= 17 || !defined(_LIBCPP_ABI_NO_BINDER_BASES)
     : public __function::__maybe_derive_from_unary_function<_Rp(_ArgTypes...)>,
       public __function::__maybe_derive_from_binary_function<_Rp(_ArgTypes...)>
+#endif
 {
 #ifndef _LIBCPP_ABI_OPTIMIZED_FUNCTION
     typedef __function::__value_func<_Rp(_ArgTypes...)> __func;
@@ -967,11 +965,18 @@ class _LIBCPP_TEMPLATE_VIS function<_Rp(_ArgTypes...)>
 
     __func __f_;
 
+#ifdef _LIBCPP_COMPILER_MSVC
+#pragma warning ( push )
+#pragma warning ( disable : 4348 )
+#endif
     template <class _Fp, bool = _And<
         _IsNotSame<__uncvref_t<_Fp>, function>,
         __invokable<_Fp, _ArgTypes...>
     >::value>
     struct __callable;
+#ifdef _LIBCPP_COMPILER_MSVC
+#pragma warning ( pop )
+#endif
     template <class _Fp>
         struct __callable<_Fp, true>
         {
@@ -1240,7 +1245,7 @@ void
 swap(function<_Rp(_ArgTypes...)>& __x, function<_Rp(_ArgTypes...)>& __y) _NOEXCEPT
 {return __x.swap(__y);}
 
-#elif defined(_LIBCPP_ENABLE_CXX03_FUNCTION)
+#else // _LIBCPP_CXX03_LANG
 
 namespace __function {
 
@@ -2806,7 +2811,7 @@ void
 swap(function<_Fp>& __x, function<_Fp>& __y)
 {return __x.swap(__y);}
 
-#endif // _LIBCPP_CXX03_LANG
+#endif
 
 _LIBCPP_END_NAMESPACE_STD
 

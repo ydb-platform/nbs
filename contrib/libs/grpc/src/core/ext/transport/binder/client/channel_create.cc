@@ -30,8 +30,6 @@
 #include <grpc/grpc_posix.h>
 #include <grpc/support/log.h>
 
-#include "src/core/lib/gprpp/crash.h"
-
 #ifdef GPR_SUPPORT_BINDER_TRANSPORT
 
 #include <grpc/support/port_platform.h>
@@ -68,40 +66,41 @@ namespace grpc {
 namespace experimental {
 
 std::shared_ptr<grpc::Channel> CreateBinderChannel(
-    void* jni_env_void, jobject context, y_absl::string_view package_name,
+    void* jni_env_void, jobject application, y_absl::string_view package_name,
     y_absl::string_view class_name,
     std::shared_ptr<grpc::experimental::binder::SecurityPolicy>
         security_policy) {
-  return CreateCustomBinderChannel(jni_env_void, context, package_name,
+  return CreateCustomBinderChannel(jni_env_void, application, package_name,
                                    class_name, security_policy,
                                    ChannelArguments());
 }
 
 std::shared_ptr<grpc::Channel> CreateCustomBinderChannel(
-    void* jni_env_void, jobject context, y_absl::string_view package_name,
+    void* jni_env_void, jobject application, y_absl::string_view package_name,
     y_absl::string_view class_name,
     std::shared_ptr<grpc::experimental::binder::SecurityPolicy> security_policy,
     const ChannelArguments& args) {
   return CreateCustomBinderChannel(
-      jni_env_void, context,
+      jni_env_void, application,
       y_absl::Substitute("android-app://$0#Intent;action=$1;component=$0/$2;end",
                        package_name, kStandardActionName, class_name),
       security_policy, args);
 }
 
 std::shared_ptr<grpc::Channel> CreateBinderChannel(
-    void* jni_env_void, jobject context, y_absl::string_view uri,
+    void* jni_env_void, jobject application, y_absl::string_view uri,
     std::shared_ptr<grpc::experimental::binder::SecurityPolicy>
         security_policy) {
-  return CreateCustomBinderChannel(jni_env_void, context, uri, security_policy,
-                                   ChannelArguments());
+  return CreateCustomBinderChannel(jni_env_void, application, uri,
+                                   security_policy, ChannelArguments());
 }
 
 std::shared_ptr<grpc::Channel> CreateCustomBinderChannel(
-    void* jni_env_void, jobject context, y_absl::string_view uri,
+    void* jni_env_void, jobject application, y_absl::string_view uri,
     std::shared_ptr<grpc::experimental::binder::SecurityPolicy> security_policy,
     const ChannelArguments& args) {
-  grpc_init();
+  grpc::internal::GrpcLibrary init_lib;
+  init_lib.init();
 
   GPR_ASSERT(jni_env_void != nullptr);
   GPR_ASSERT(security_policy != nullptr);
@@ -119,7 +118,7 @@ std::shared_ptr<grpc::Channel> CreateCustomBinderChannel(
   // until SubchannelConnector start establishing connection. For now we don't
   // see any benifits doing that.
   grpc_binder::TryEstablishConnectionWithUri(static_cast<JNIEnv*>(jni_env_void),
-                                             context, uri, connection_id);
+                                             application, uri, connection_id);
 
   grpc_channel_args channel_args;
   args.SetChannelArgs(&channel_args);

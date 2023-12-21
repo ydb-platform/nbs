@@ -433,7 +433,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         TSet<TString> diskIds;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvChangeVolumeBindingRequest: {
                         auto* msg = event->Get<TEvService::TEvChangeVolumeBindingRequest>();
@@ -445,7 +445,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         diskIds.insert(msg->DiskId);
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -472,7 +472,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         ui64 observedNodeIdx = 0;
         bool observedKeepDown = false;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvDrainNode: {
                         auto* msg = event->Get<TEvHive::TEvDrainNode>();
@@ -480,7 +480,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         observedKeepDown = msg->Record.GetKeepDown();
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -522,7 +522,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(DefaultDiskId);
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvUpdateUsedBlocksRequest: {
                         auto* msg =
@@ -535,7 +535,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -861,7 +861,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         bool describeReceived = false;
         ui32 requestCount = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         describeReceived = true;
@@ -894,7 +894,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -988,7 +988,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         requestParams.SetNewNonReplicatedAgentMaxTimeoutMs(456);
 
         bool updateParamsReceived = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvUpdateDiskRegistryAgentListParamsRequest: {
                         updateParamsReceived = true;
@@ -997,7 +997,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(requestParams, params));
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1140,7 +1140,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         volumeParams.insert({"max-timed-out-device-state-duration", protoParam});
 
         bool requestReceived = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 if (event->GetTypeRewrite() == TEvVolume::EvUpdateVolumeParamsRequest) {
                     auto* msg = event->Get<TEvVolume::TEvUpdateVolumeParamsRequest>();
 
@@ -1148,7 +1148,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                     UNIT_ASSERT_VALUES_EQUAL(msg->Record.GetVolumeParams(), volumeParams);
                     requestReceived = true;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
@@ -1177,7 +1177,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         bool requestReceived = false;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvGetDependentDisksRequest: {
                         auto* msg = event->Get<TEvDiskRegistry::TEvGetDependentDisksRequest>();
@@ -1196,7 +1196,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 

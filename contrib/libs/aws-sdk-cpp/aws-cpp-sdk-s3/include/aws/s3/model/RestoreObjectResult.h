@@ -25,12 +25,12 @@ namespace S3
 {
 namespace Model
 {
-  class RestoreObjectResult
+  class AWS_S3_API RestoreObjectResult
   {
   public:
-    AWS_S3_API RestoreObjectResult();
-    AWS_S3_API RestoreObjectResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
-    AWS_S3_API RestoreObjectResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    RestoreObjectResult();
+    RestoreObjectResult(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
+    RestoreObjectResult& operator=(const Aws::AmazonWebServiceResult<Aws::Utils::Xml::XmlDocument>& result);
 
 
     

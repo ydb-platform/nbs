@@ -8,12 +8,11 @@
 #define BOOST_LOCALE_IMPL_ICU_LOCALIZATION_BACKEND_HPP
 
 #include <boost/locale/config.hpp>
-#include <memory>
 
 namespace boost { namespace locale {
     class localization_backend;
     namespace impl_icu {
-        std::unique_ptr<localization_backend> create_localization_backend();
+        localization_backend* create_localization_backend();
     } // namespace impl_icu
 }}    // namespace boost::locale
 #endif

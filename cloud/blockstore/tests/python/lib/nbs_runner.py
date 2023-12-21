@@ -2,7 +2,7 @@ import copy
 import os
 import logging
 import subprocess
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
@@ -13,15 +13,15 @@ from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from google.protobuf.text_format import MessageToBytes, MessageToString
-from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
-from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
-from contrib.ydb.core.protos.config_pb2 import TDomainsConfig
-from contrib.ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
-from contrib.ydb.core.protos.config_pb2 import TLogConfig
-from contrib.ydb.core.protos import console_config_pb2 as console
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from ydb.core.protos.auth_pb2 import TAuthConfig
+from ydb.core.protos.config_pb2 import TActorSystemConfig
+from ydb.core.protos.config_pb2 import TDomainsConfig
+from ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
+from ydb.core.protos.config_pb2 import TLogConfig
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ class LocalNbs(Daemon):
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path
         else:
-            self.__kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            self.__kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
         self.__output_path = yatest_common.output_path()
         self.__cwd = get_unique_path_for_current_test(
