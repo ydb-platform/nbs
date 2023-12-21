@@ -1293,14 +1293,53 @@ func (s *storageYDB) relocateOverlayDiskTx(
 				SlotGeneration:   acquiredSlot.generation,
 			}
 
-			err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo, *acquiredSlot)
-			if err != nil {
-				return RebaseInfo{}, err
-			}
-
 			logging.Info(ctx, "Overlay disk relocating with RebaseInfo %+v", rebaseInfo)
 			return rebaseInfo, nil
 		}
+	}
+
+	// Abort previous relocation.
+	if len(acquiredSlot.targetBaseDiskID) != 0 {
+		baseDisk, err := s.getBaseDisk(ctx, tx, acquiredSlot.targetBaseDiskID)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		baseDiskOldState := baseDisk
+		err = releaseTargetUnitsAndSlots(ctx, tx, &baseDisk, *acquiredSlot)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		acquiredSlotOldState := *acquiredSlot
+
+		acquiredSlot.targetZoneID = ""
+		acquiredSlot.targetBaseDiskID = ""
+		acquiredSlot.targetAllottedSlots = 0
+		acquiredSlot.targetAllottedUnits = 0
+
+		err = s.updateBaseDiskAndSlot(
+			ctx,
+			tx,
+			baseDiskTransition{
+				oldState: &baseDiskOldState,
+				state:    &baseDisk,
+			},
+			slotTransition{
+				oldState: &acquiredSlotOldState,
+				state:    acquiredSlot,
+			},
+		)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		return RebaseInfo{}, errors.NewInterruptExecutionError()
 	}
 
 	imageID := acquiredSlot.imageID
@@ -1326,12 +1365,6 @@ func (s *storageYDB) relocateOverlayDiskTx(
 		}
 
 		acquiredSlot.generation += 1
-
-		// Abort previous relocation.
-		acquiredSlot.targetZoneID = ""
-		acquiredSlot.targetBaseDiskID = ""
-		acquiredSlot.targetAllottedSlots = 0
-		acquiredSlot.targetAllottedUnits = 0
 
 		rebaseInfo := RebaseInfo{
 			OverlayDisk:      overlayDisk,

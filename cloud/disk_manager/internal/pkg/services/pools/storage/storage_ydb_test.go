@@ -1421,6 +1421,16 @@ func TestStorageYDBRelocatingOverlayDiskAfterRelocatingToAnotherZone(
 		slot.OverlayDisk,
 		"another",
 	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	relocateInfo, err = relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"another",
+	)
 	require.NoError(t, err)
 	require.Contains(t, baseDisksInAnotherZoneIds, relocateInfo.TargetBaseDiskID)
 
