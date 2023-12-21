@@ -16,6 +16,7 @@ def test_relocation_test(cluster):
             binary,
             '--dry-run',
             '--teamcity',
+            '--ycp-requests-template-path', '/does/not/matter',
             '--cluster', cluster,
             '--profile', f'{cluster}-tests',
             '--instance-name', 'fake-name',

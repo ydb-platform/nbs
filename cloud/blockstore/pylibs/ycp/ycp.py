@@ -120,10 +120,11 @@ class YcpTestEngine:
         return str(self._id)
 
     def render_template(self, template_name, templates_path, **kwargs):
-        if resource.find(template_name):
+        if templates_path is None:
             template = jinja2.Template(resource.find(template_name).decode('utf8'))
-            return template.render(kwargs)
-        return ''
+        else:
+            return ''
+        return template.render(kwargs)
 
 
 def make_ycp_engine(dry_run):

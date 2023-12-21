@@ -38,6 +38,7 @@ def test_fio_performance_test_suite(test_suite, cluster_and_platform, service, i
             binary,
             "--dry-run",
             "--teamcity",
+            "--ycp-requests-template-path", "/does/not/matter",
             "--service", service,
             "--cluster", cluster,
             "--test-suite", test_suite,

@@ -36,7 +36,9 @@ class TestRunner:
             make_ycp_engine(args.dry_run),
             self.module_factories.make_config_generator(args.dry_run),
             self.helpers,
-            args.generate_ycp_config)
+            args.generate_ycp_config,
+            args.ycp_requests_template_path,
+        )
 
         self.instance = self.find_instance(self.args.instance_name)
         self.logger.info(f'Current zone_id: {self.instance.zone_id}')
