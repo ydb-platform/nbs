@@ -27,7 +27,7 @@ func getStorageMediaKind(
 	case types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD:
 		return coreprotos.EStorageMediaKind_STORAGE_MEDIA_HDD, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, errors.NewNonRetriableErrorf(
 			"unknown fs kind %v",
 			kind,
 		)

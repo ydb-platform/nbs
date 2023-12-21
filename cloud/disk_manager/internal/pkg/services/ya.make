@@ -1,5 +1,6 @@
 RECURSE(
     disks
+    errors
     filesystem
     images
     placementgroup

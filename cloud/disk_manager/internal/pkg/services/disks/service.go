@@ -12,9 +12,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
@@ -681,7 +682,7 @@ func (s *service) SendMigrationSignal(
 	switch req.Signal {
 	case disk_manager.SendMigrationSignalRequest_FINISH_REPLICATION:
 		if state.Status < protos.MigrationStatus_Replicating {
-			return errors.NewNonRetriableErrorf(
+			return task_errors.NewNonRetriableErrorf(
 				"Invalid migration status %v",
 				state.Status,
 			)

@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -381,21 +380,6 @@ func IsSilent(err error) bool {
 	}
 
 	return false
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func NewInvalidArgumentError(format string, args ...interface{}) error {
-	message := fmt.Sprintf(format, args...)
-
-	return NewDetailedError(
-		NewNonRetriableErrorf(message),
-		&ErrorDetails{
-			Code:     codes.InvalidArgument,
-			Message:  message,
-			Internal: true,
-		},
-	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

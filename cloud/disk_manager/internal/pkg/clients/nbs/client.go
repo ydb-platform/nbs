@@ -70,7 +70,7 @@ func getStorageMediaKind(
 	case types.DiskKind_DISK_KIND_HDD_NONREPLICATED:
 		return core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, errors.NewNonRetriableErrorf(
 			"unknown disk kind %v",
 			diskKind,
 		)
@@ -101,7 +101,7 @@ func toEncryptionMode(
 	case types.EncryptionMode_ENCRYPTION_AES_XTS:
 		return protos.EEncryptionMode_ENCRYPTION_AES_XTS, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
 			mode,
 		)
@@ -118,7 +118,7 @@ func fromEncryptionMode(
 	case protos.EEncryptionMode_ENCRYPTION_AES_XTS:
 		return types.EncryptionMode_ENCRYPTION_AES_XTS, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
 			mode,
 		)
@@ -162,7 +162,7 @@ func getEncryptionSpec(
 	case nil:
 		encryptionSpec.KeyParam = nil
 	default:
-		return nil, errors.NewInvalidArgumentError("unknown key %s", key)
+		return nil, errors.NewNonRetriableErrorf("unknown key %s", key)
 	}
 
 	return encryptionSpec, nil
@@ -201,7 +201,7 @@ func toPlacementStrategy(
 	case types.PlacementStrategy_PLACEMENT_STRATEGY_PARTITION:
 		return protos.EPlacementStrategy_PLACEMENT_STRATEGY_PARTITION, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, errors.NewNonRetriableErrorf(
 			"unknown placement strategy %v",
 			placementStrategy,
 		)
@@ -218,7 +218,7 @@ func fromPlacementStrategy(
 	case protos.EPlacementStrategy_PLACEMENT_STRATEGY_PARTITION:
 		return types.PlacementStrategy_PLACEMENT_STRATEGY_PARTITION, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, errors.NewNonRetriableErrorf(
 			"unknown placement strategy %v",
 			placementStrategy,
 		)
