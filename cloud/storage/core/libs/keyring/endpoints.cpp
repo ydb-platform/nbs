@@ -8,6 +8,7 @@
 #include <util/string/builder.h>
 #include <util/string/strip.h>
 #include <util/system/file.h>
+#include <util/system/mutex.h>
 
 namespace NCloud {
 
@@ -112,6 +113,7 @@ class TFileStorage final
 {
 private:
     const TFsPath DirPath;
+    TMutex Mutex;
 
 public:
     TFileStorage(TString dirPath)
@@ -178,6 +180,8 @@ private:
 
     ui32 GetFreeId()
     {
+        TGuard guard(Mutex);
+
         auto idsOrError = GetEndpointIds();
         if (HasError(idsOrError)) {
             return 0;
