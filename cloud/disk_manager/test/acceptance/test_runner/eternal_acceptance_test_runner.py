@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import math
 
@@ -49,124 +50,135 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
             'eternal',
         )
 
-        with self._instance_policy.obtain() as instance:
-            with self._recording_result(
-                instance.compute_node,
-                instance.id,
-                self._args.disk_size * (1024 ** 3),
-                self._args.disk_type,
-                self._args.disk_blocksize,
-                {},
-                (
-                    f'{self._args.zone_id}_eternal_'
-                    f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-                    f'{size_prettifier(self._args.disk_blocksize)}'.lower()
-                ),
-            ):
-                # Copy cmp binary to instance
-                _logger.info(f'Copying <path={self._args.cmp_util}> to'
-                             f' <path={instance.ip}:'
-                             f'{self._remote_cmp_path}>')
-                self._scp_file(self._args.cmp_util,
-                               self._remote_cmp_path,
-                               instance.ip)
+        with contextlib.ExitStack() as stack:
+            instance = stack.enter_context(self._instance_policy.obtain())
+            stack.enter_context(
+                self._recording_result(
+                    instance.compute_node,
+                    instance.id,
+                    self._args.disk_size * (1024 ** 3),
+                    self._args.disk_type,
+                    self._args.disk_blocksize,
+                    {},
+                    (
+                        f'{self._args.zone_id}_eternal_'
+                        f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
+                        f'{size_prettifier(self._args.disk_blocksize)}'.lower()
+                    ),
+                    )
+            )
+            # Copy cmp binary to instance
+            _logger.info(f'Copying <path={self._args.cmp_util}> to'
+                         f' <path={instance.ip}:'
+                         f'{self._remote_cmp_path}>')
+            self._scp_file(self._args.cmp_util,
+                           self._remote_cmp_path,
+                           instance.ip)
 
-                disk_name_prefix = (
-                    f'acceptance-test-{self._args.test_type}-'
-                    f'{size_prettifier(self._args.disk_size * (1024 ** 3))}'
-                    f'-{size_prettifier(self._args.disk_blocksize)}').lower()
-                disk = self._find_or_create_eternal_disk(disk_name_prefix)
+            disk_name_prefix = (
+                f'acceptance-test-{self._args.test_type}-'
+                f'{size_prettifier(self._args.disk_size * (1024 ** 3))}'
+                f'-{size_prettifier(self._args.disk_blocksize)}').lower()
+            disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
-                _logger.info(
-                    f'Waiting until disk <id={disk.id}> will be attached'
-                    f' to instance <id={instance.id}> and secondary disk'
-                    f' appears as block device <name={self._main_block_device}>')
+            _logger.info(
+                f'Waiting until disk <id={disk.id}> will be attached'
+                f' to instance <id={instance.id}> and secondary disk'
+                f' appears as block device <name={self._main_block_device}>')
 
-                with self._instance_policy.attach_disk(
+            stack.enter_context(
+                self._instance_policy.attach_disk(
                     disk,
                     self._main_block_device
-                ):
-                    runtime = math.ceil(
-                        (math.sqrt(0.476+1.24*self._args.disk_size)-0.69)/1.24)*60
-                    _logger.info(f'Approximate time <sec={runtime}>')
+                )
+            )
+            runtime = math.ceil(
+                (math.sqrt(0.476+1.24*self._args.disk_size)-0.69)/1.24)*60
+            _logger.info(f'Approximate time <sec={runtime}>')
 
-                    percentage = min(
-                        100,
-                        max(0, self._args.disk_write_size_percentage))
-                    _logger.info(f'Disk filling <percent={percentage}>')
+            percentage = min(
+                100,
+                max(0, self._args.disk_write_size_percentage))
+            _logger.info(f'Disk filling <percent={percentage}>')
 
-                    self._perform_verification_write(
-                        f'fio --name=fill-disk --filename={self._main_block_device}'
-                        f' --rw=write --bsrange=1-64M --bs_unaligned'
-                        f' --iodepth={self._iodepth} --ioengine=libaio'
-                        f' --size={percentage}% --runtime={runtime}'
-                        f' --sync=1',
-                        disk,
-                        instance)
+            self._perform_verification_write(
+                f'fio --name=fill-disk --filename={self._main_block_device}'
+                f' --rw=write --bsrange=1-64M --bs_unaligned'
+                f' --iodepth={self._iodepth} --ioengine=libaio'
+                f' --size={percentage}% --runtime={runtime}'
+                f' --sync=1',
+                disk,
+                instance)
 
-                    # Perform acceptance test on current disk (detached after fio)
-                    disk_ids = self._perform_acceptance_test_on_single_disk(disk)
+            # Perform acceptance test on current disk (detached after fio)
+            disk_ids = self._perform_acceptance_test_on_single_disk(disk)
 
-                    _logger.info(
-                        f'Waiting until disk <id={disk.id}> will be attached'
-                        f' to instance <id={instance.id}> and secondary disk'
-                        f' appears as block device <name={self._main_block_device}>')
+            _logger.info(
+                f'Waiting until disk <id={disk.id}> will be attached'
+                f' to instance <id={instance.id}> and secondary disk'
+                f' appears as block device <name={self._main_block_device}>')
 
-                    for disk_id in disk_ids:
-                        output_disk = self._ycp.get_disk(disk_id)
+            for disk_id in disk_ids:
+                output_disk = self._ycp.get_disk(disk_id)
 
-                        # Attach output disk
-                        _logger.info(
-                            f'Waiting until disk <id={output_disk.id}> will be'
-                            f' attached to instance <id={instance.id}> and'
-                            f' secondary disk appears as block device'
-                            f' <name={self._secondary_block_device}>')
+                # Attach output disk
+                _logger.info(
+                    f'Waiting until disk <id={output_disk.id}> will be'
+                    f' attached to instance <id={instance.id}> and'
+                    f' secondary disk appears as block device'
+                    f' <name={self._secondary_block_device}>')
 
-                        with self._instance_policy.attach_disk(
+                with contextlib.ExitStack() as inner_disk_exit_stack:
+                    inner_disk_exit_stack.enter_context(
+                        self._instance_policy.attach_disk(
                             output_disk,
                             self._secondary_block_device
-                        ):
-                            byte_count = int((self._args.disk_size * (1024 ** 3)) / self._iodepth)
-                            clients = []
-                            stdouts = []
-                            stderrs = []
-                            cmds = []
-                            for i in range(self._iodepth):
-                                offset = int(i * byte_count)
-                                check_ssh_connection(instance.ip, self._profiler, self._module_factory, self._args.ssh_key_path)
-                                ssh = self._module_factory.make_ssh_client(False, instance.ip, ssh_key_path=self._args.ssh_key_path)
-                                cmd = (f'{self._remote_cmp_path} --verbose'
-                                       f' --bytes={byte_count}'
-                                       f' --ignore-initial={offset}'
-                                       f' {self._main_block_device}'
-                                       f' {self._secondary_block_device}')
-                                _, stdout, stderr = ssh.exec_command(cmd)
-                                clients.append(ssh)
-                                stdouts.append(stdout)
-                                stderrs.append(stderr)
-                                cmds.append(cmd)
-                                _logger.info(f'Verifying data'
-                                             f' <index={i}, offset={offset},'
-                                             f' bytes={byte_count}> on disk'
-                                             f' <id={output_disk.id}> on'
-                                             f' instance <id={instance.id}>')
+                        ),
+                    )
+                    byte_count = int((self._args.disk_size * (1024 ** 3)) / self._iodepth)
+                    stdouts = []
+                    stderrs = []
+                    cmds = []
+                    for i in range(self._iodepth):
+                        offset = int(i * byte_count)
+                        check_ssh_connection(instance.ip, self._profiler, self._module_factory, self._args.ssh_key_path)
+                        ssh = inner_disk_exit_stack.enter_context(
+                            self._module_factory.make_ssh_client(
+                                False,
+                                instance.ip,
+                                ssh_key_path=self._args.ssh_key_path,
+                            ),
+                        )
+                        cmd = (f'{self._remote_cmp_path} --verbose'
+                               f' --bytes={byte_count}'
+                               f' --ignore-initial={offset}'
+                               f' {self._main_block_device}'
+                               f' {self._secondary_block_device}')
+                        _, stdout, stderr = ssh.exec_command(cmd)
+                        stdouts.append(stdout)
+                        stderrs.append(stderr)
+                        cmds.append(cmd)
+                        _logger.info(f'Verifying data'
+                                     f' <index={i}, offset={offset},'
+                                     f' bytes={byte_count}> on disk'
+                                     f' <id={output_disk.id}> on'
+                                     f' instance <id={instance.id}>')
 
-                            error_message = ""
-                            for i in range(self._iodepth):
-                                stdout_str = stdouts[i].read().decode('utf-8')
-                                stderr_str = stderrs[i].read().decode('utf-8')
-                                _logger.info(f'Verifying finished <index={i},'
-                                             f' command="{cmds[i]}", stdout='
-                                             f'{stdout_str}, stderr='
-                                             f'{stderr_str}>')
-                                if stderrs[i].channel.recv_exit_status():
-                                    error_message += (
-                                        f'Error <command="{cmds[i]}", stderr='
-                                        f'{stderr_str}>\n')
-                                clients[i].close()
+                    error_message = ""
+                    for i in range(self._iodepth):
+                        stdout_str = stdouts[i].read().decode('utf-8')
+                        stderr_str = stderrs[i].read().decode('utf-8')
+                        _logger.info(f'Verifying finished <index={i},'
+                                     f' command="{cmds[i]}", stdout='
+                                     f'{stdout_str}, stderr='
+                                     f'{stderr_str}>')
+                        if stderrs[i].channel.recv_exit_status():
+                            error_message += (
+                                f'Error <command="{cmds[i]}", stderr='
+                                f'{stderr_str}>\n')
 
-                            if len(error_message) != 0:
-                                raise Error(error_message)
+                    if len(error_message) != 0:
+                        raise Error(error_message)
 
-                    # Delete all output disks
-                    self._delete_output_disks(disk_ids)
+            # Delete all output disks
+            self._delete_output_disks(disk_ids)
