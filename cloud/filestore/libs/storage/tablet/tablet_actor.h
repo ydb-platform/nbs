@@ -103,8 +103,21 @@ private:
         TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
 
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
-        NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS> ReadDataPostponed;
-        NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS> WriteDataPostponed;
+        using TLatHistogram =
+            NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
+        TLatHistogram ReadDataPostponed;
+        TLatHistogram WriteDataPostponed;
+
+        struct TRequestMetrics
+        {
+            std::atomic<i64> Count{0};
+            std::atomic<i64> RequestBytes{0};
+            TLatHistogram Time;
+        };
+
+        TRequestMetrics ReadBlob;
+        TRequestMetrics WriteBlob;
+        TRequestMetrics PatchBlob;
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;

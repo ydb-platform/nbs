@@ -106,7 +106,6 @@ class TBusyIdleTimeCalculator
     TAtomic InflightCount = 0;
     T Storage;
 
-
 public:
     TBusyIdleTimeCalculator()
     {

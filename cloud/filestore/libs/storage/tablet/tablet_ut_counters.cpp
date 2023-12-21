@@ -82,7 +82,7 @@ private:
     };
 
     TVector<TMetricsEntry> MetricsEntries;
-    TMetricsEntry CurrentEntry;;
+    TMetricsEntry CurrentEntry;
 
 public:
     void OnStreamBegin() override
@@ -134,16 +134,56 @@ public:
     void ValidateExpectedCounters(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters)
     {
-        for (const auto& [labels, value] : expectedCounters) {
+        for (const auto& [labels, value]: expectedCounters) {
+            const auto labelsStr = LabelsToString(labels);
+
             int matchingCountersCount = 0;
-            for (const auto& entry : MetricsEntries) {
+            for (const auto& entry: MetricsEntries) {
                 if (entry.Matches(labels)) {
                     ++matchingCountersCount;
-                    UNIT_ASSERT_EQUAL(entry.Value, value);
+                    UNIT_ASSERT_VALUES_EQUAL_C(entry.Value, value, labelsStr);
                 }
             }
-            UNIT_ASSERT_EQUAL(matchingCountersCount, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(matchingCountersCount, 1, labelsStr);
         }
+    }
+
+    void ValidateExpectedHistogram(
+        const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
+        bool checkEqual)
+    {
+        for (const auto& [labels, value]: expectedCounters) {
+            const auto labelsStr = LabelsToString(labels);
+            i64 total = 0;
+
+            int matchingCountersCount = 0;
+            for (const auto& entry: MetricsEntries) {
+                if (entry.Matches(labels)) {
+                    ++matchingCountersCount;
+                    total += entry.Value;
+                }
+            }
+            if (checkEqual) {
+                UNIT_ASSERT_VALUES_EQUAL_C(total, value, labelsStr);
+            } else {
+                UNIT_ASSERT_VALUES_UNEQUAL_C(total, value, labelsStr);
+            }
+            UNIT_ASSERT_VALUES_UNEQUAL_C(matchingCountersCount, 0, labelsStr);
+        }
+    }
+
+private:
+    static TString LabelsToString(const TVector<TLabel>& labels)
+    {
+        TStringBuilder labelsStr;
+        for (const auto& label: labels) {
+            if (labelsStr) {
+                labelsStr << ", ";
+            }
+            labelsStr << label.GetName() << "=" << label.GetValue();
+        }
+
+        return labelsStr;
     }
 };
 
@@ -188,19 +228,66 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), Visitor);
         // clang-format off
         Visitor.ValidateExpectedCounters({
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "FreshBytesCount"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "GarbageQueueSize"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "MixedBytesCount"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "PostponedRequests"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "RejectedRequests"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "UsedSessionsCount"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "UsedBytesCount"}}, 0},
-            {{{"component", "storage_fs"}, {"host", "cluster"}, {"filesystem", "test"}, {"sensor", "UsedQuota"}}, 0},
-            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "FreshBytesCount"}}, 0},
-            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "GarbageQueueSize"}}, 0},
-            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "MixedBytesCount"}}, 0},
-            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "UsedSessionsCount"}}, 0},
-            {{{"component", "storage"}, {"type", "hdd"}, {"sensor", "UsedBytesCount"}}, 0}
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "FreshBytesCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "GarbageQueueSize"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "MixedBytesCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "PostponedRequests"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "RejectedRequests"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "UsedSessionsCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "UsedBytesCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "UsedQuota"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "FreshBytesCount"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "GarbageQueueSize"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "MixedBytesCount"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "UsedSessionsCount"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "UsedBytesCount"}}, 0}
         });
         // clang-format on
     }
@@ -371,6 +458,76 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Visitor.ValidateExpectedCounters({
             {{{"sensor", "RejectedRequests"}}, 2},
         });
+    }
+
+    Y_UNIT_TEST_F(ShouldCalculateReadWriteBlobMetrics, TEnv)
+    {
+        auto registry = Env.GetRegistry();
+
+        Tablet->InitSession("client", "session");
+
+        auto id = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(*Tablet, id);
+
+        const auto sz = 256_KB;
+
+        Tablet->WriteData(handle, 0, sz, 'a');
+
+        {
+            auto response = Tablet->GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), sz / 4_KB);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+        }
+
+        {
+            auto response = Tablet->ReadData(handle, 0, sz);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
+        }
+
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedHistogram({
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "WriteBlob"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "ReadBlob"}}, 0},
+        }, false);
+        Visitor.ValidateExpectedHistogram({
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "PatchBlob"}}, 0},
+        }, true);
+        Visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "WriteBlob.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "ReadBlob.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "PatchBlob.Count"},
+                {"filesystem", "test"}}, 0},
+        });
+        Visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "WriteBlob.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "ReadBlob.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "PatchBlob.RequestBytes"},
+                {"filesystem", "test"}}, 0},
+        });
+
+        Tablet->DestroyHandle(handle);
     }
 }
 
