@@ -49,6 +49,7 @@ function clean_bin () {
 echo "clean"
 clean_bin "(PROGRAM)" "-mindepth 1 -maxdepth 1"
 clean_bin "(PACKAGE)" "-mindepth 1"
+clean_bin "(DLL)" "-mindepth 1 -maxdepth 1"
 git clean -f ./
 
 cd "$cwd" || exit
