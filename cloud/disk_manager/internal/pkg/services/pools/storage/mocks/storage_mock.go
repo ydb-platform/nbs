@@ -245,7 +245,7 @@ func (s *StorageMock) GetReadyPoolInfos(
 	return args.Get(0).([]storage.PoolInfo), args.Error(1)
 }
 
-func (s *StorageMock) CheckSlotsConsistency(
+func (s *StorageMock) CheckConsistency(
 	ctx context.Context,
 ) error {
 

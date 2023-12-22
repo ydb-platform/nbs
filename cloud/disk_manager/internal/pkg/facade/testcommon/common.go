@@ -655,7 +655,7 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 	poolStorage, err := newPoolStorage(ctx)
 	require.NoError(t, err)
 
-	err = poolStorage.CheckSlotsConsistency(ctx)
+	err = poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.

@@ -413,11 +413,11 @@ func (s *storageYDB) UnlockPool(
 	)
 }
 
-func (s *storageYDB) CheckSlotsConsistency(ctx context.Context) error {
+func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.checkSlotsConsistency(ctx, session)
+			return s.checkConsistency(ctx, session)
 		},
 	)
 }

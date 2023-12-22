@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     common.go
+    consistency_check.go
     storage.go
     storage_ydb.go
     storage_ydb_impl.go

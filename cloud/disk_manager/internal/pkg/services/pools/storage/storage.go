@@ -159,5 +159,5 @@ type Storage interface {
 	GetReadyPoolInfos(ctx context.Context) ([]PoolInfo, error)
 
 	// Used in tests.
-	CheckSlotsConsistency(ctx context.Context) error
+	CheckConsistency(ctx context.Context) error
 }
