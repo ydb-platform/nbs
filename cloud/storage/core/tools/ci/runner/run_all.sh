@@ -17,16 +17,12 @@ fi
 cd $nbspath &&
 git pull
 
-if [ -d "$scripts/contrib" ]; then
-    cp -r "$scripts/contrib" $nbspath   # DEVTOOLSSUPPORT-38677
-fi
-
 logs_dir="/var/www/build/logs/run_$(date +%y_%m_%d__%H)" &&
 rm -rf "$logs_dir" &&
 mkdir -p "$logs_dir"
 
 lineArr=()
-while IFS='' read -r line; do lineArr+=("$line"); done < <((grep -E -lir --include=ya.make "(PY3TEST|UNITTEST_FOR)" "$nbspath/cloud"))
+while IFS='' read -r line; do lineArr+=("$line"); done < <((grep -E -lir --include=ya.make "(PY3TEST|UNITTEST)" "$nbspath/cloud"))
 for line in "${lineArr[@]}"; do
     echo "run test " "$line"
     ${scripts}/run_test.sh $nbspath "$line" "$logs_dir"
@@ -45,7 +41,7 @@ function clean_bin () {
         dir="${logs_dir}${subdir}"
         if [ -e "${dir}" ]; then
             # shellcheck disable=SC2086
-            find "${dir}" $find_args -type f -exec rm {} \;
+            find "${dir}" $find_args -type f -exec rm -f {} \;
         fi
     done
 }

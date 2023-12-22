@@ -20,7 +20,7 @@ SHELL=/bin/sh
 25 6	* * *	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
 47 6	* * 7	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
 52 6	1 * *	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
-0  */6	* * *	root	rm -rf /tmp/last_ci && mkdir /tmp/last_ci && cd /tmp/last_ci && /root/runner/run_all.sh
+0  */6	* * *	nbsci	rm -rf /tmp/last_ci && mkdir /tmp/last_ci && cd /tmp/last_ci && /root/runner/run_all.sh
 0  6	* * *	root	/root/runner/run_fio.sh
 0  9	* * *	root	/root/runner/run_corruption.sh
 0  12	* * *	root	/root/runner/run_nfs_fio.sh
