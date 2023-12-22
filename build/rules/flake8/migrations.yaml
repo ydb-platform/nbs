@@ -1148,7 +1148,6 @@ migrations:
     - market/replenishment/algorithms/lib23/data_preparation/transits
     - market/replenishment/algorithms/safety_tool_lib/tasks
     - market/replenishment/algorithms/tests/integrity_checker
-    - market/sre/tools/rtc/nanny/tests/integration-tests
     - market/yamarec/log-parsers/tests
     - ml/libs/ml_data_reader/src/ml_data_reader/iterators
     - ml/tensorflow/models/userbert/userbert/modeling/embeddings
@@ -5307,7 +5306,6 @@ migrations:
     - yabs/server/test/qabs_bsserver_pytest
     - yabs/server/test/qabs_bsserver_pytest/bs_objects
     - yabs/server/test/qabs_bsserver_pytest/db
-    - yabs/server/tools/config/cloud
     - yabs/server/tools/filter_reason_disable
     - yabs/utils/broadmatch-overdraft/task
     - yabs/utils/yabs-big-brother-client-ng
@@ -5899,8 +5897,6 @@ migrations:
     - market/guru-models-dumper/test
     - market/replenishment/algorithms/lib/simulation
     - market/report/runtime_cloud/report_config
-    - market/sre/tools/rtc/nanny
-    - market/sre/tools/rtc/nanny/models/attributes
     - market/tools/stupid_predict
     - market/yamarec/performance/nirvana/actions/past_checkout
     - market/yamarec/performance/nirvana/segment_computer
@@ -7859,7 +7855,6 @@ migrations:
     - infra/deploy_queue_controller/tests
     - market/pylibrary/mindexerlib
     - quality/neural_net/bert/bert/pytorch/pruning
-    - weather/libs/satpy_cropped
     - ydo/devops/monitorings/alerts_v2/lib/juggler/lib/middlewares
     - yweb/antispam/clean_web/lib/tests/small
   PLE0701:
@@ -8128,7 +8123,6 @@ migrations:
     - search/mon/uchenki/lib/jobs
     - search/mon/uchenki/lib/types/actions
     - travel/avia/shared_flights/lib/python/date_utils
-    - trust/bill76/corovaneer/plugins/fetcher/legacy
     - vcs/svn/s3_backuper
     - yabs/server/test/qabs_bsserver_pytest
     - yweb/verticals/scripts/get_solomon_data
