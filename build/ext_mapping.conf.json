@@ -20,7 +20,7 @@
         "4449551218": "cloud/storage/core/tools/testing/qemu/bin",
         "3307630510": "cloud/storage/core/tools/testing/qemu/image",
         "4556399018": "cloud/storage/core/tools/testing/virtiofs_server/bin",
-        "2513045473": "flock from util-linux 2.37.370-30ec"
+        "2513045473": "cloud/filestore/tools/testing/fs_posix_compliance/suite/bin"
     },
     "tasks": {}
 }
