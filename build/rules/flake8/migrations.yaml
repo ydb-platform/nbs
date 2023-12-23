@@ -588,7 +588,6 @@ migrations:
     - maps/automotive/tools/statistics_auto/pylib/calc_hu_offline
     - maps/b2bgeo/mvrp_solver/backend/tools/failed_tasks/task
     - maps/b2bgeo/test_lib
-    - maps/garden/sdk/core
     - maps/geoq/experiments/check_poi_rendering
     - maps/geoq/hypotheses/entrance/lib
     - maps/goods/tools/avatars_cleaner/bin
@@ -4400,7 +4399,6 @@ migrations:
     - maps/garden/modules/renderer_publication_validator/lib
     - maps/garden/modules/transit_tester/lib
     - maps/garden/sandbox/osm_downloader/task
-    - maps/garden/sdk/core
     - maps/garden/sdk/module_rpc
     - maps/garden/sdk/module_rpc/tests
     - maps/garden/tools/module_version_sync/bin
