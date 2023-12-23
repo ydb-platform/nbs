@@ -27,7 +27,7 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/library/yql/minikql/comp_nodes/llvm
     contrib/ydb/library/yql/parser/pg_catalog
-    contrib/ydb/library/yql/minikql/codegen
+    contrib/ydb/library/yql/minikql/codegen/llvm
     library/cpp/resource
 )
 

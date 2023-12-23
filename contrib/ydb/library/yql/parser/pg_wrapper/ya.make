@@ -4,6 +4,8 @@ PROVIDES(
     yql_pg_runtime
 )
 
+CXXFLAGS(-DMKQL_DISABLE_CODEGEN)
+
 YQL_LAST_ABI_VERSION()
 
 ADDINCL(
@@ -66,7 +68,7 @@ PEERDIR(
     library/cpp/yson
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/minikql/arrow
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/parser/pg_catalog
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/public/issue

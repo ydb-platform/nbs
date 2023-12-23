@@ -43,7 +43,7 @@ PEERDIR(
 
 IF (NOT MKQL_DISABLE_CODEGEN)
     PEERDIR(
-        contrib/ydb/library/yql/minikql/codegen
+        contrib/ydb/library/yql/minikql/codegen/llvm
         contrib/libs/llvm12/lib/IR
         contrib/libs/llvm12/lib/ExecutionEngine/MCJIT
         contrib/libs/llvm12/lib/Linker

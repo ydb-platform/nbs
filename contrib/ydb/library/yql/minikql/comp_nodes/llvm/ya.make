@@ -3,7 +3,7 @@ LIBRARY()
 NO_COMPILER_WARNINGS()
 
 PEERDIR(
-    contrib/ydb/library/yql/minikql/codegen
+    contrib/ydb/library/yql/minikql/codegen/llvm
     contrib/ydb/library/yql/minikql/invoke_builtins/llvm
     contrib/libs/llvm12/lib/IR
     contrib/libs/llvm12/lib/ExecutionEngine/MCJIT
@@ -16,4 +16,8 @@ PEERDIR(
 INCLUDE(../ya.make.inc)
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)
 

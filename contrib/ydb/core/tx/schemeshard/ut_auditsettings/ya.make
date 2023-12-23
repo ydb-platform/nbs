@@ -18,7 +18,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
-    # ydb/library/yql/public/udf/service/exception_policy
+    # contrib/ydb/library/yql/public/udf/service/exception_policy
 )
 
 YQL_LAST_ABI_VERSION()

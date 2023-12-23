@@ -1,5 +1,5 @@
 #include "mkql_timezone.h"
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/mkql_node_builder.h>
 #include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
 #include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>

@@ -5,6 +5,7 @@
 #include <contrib/ydb/library/yql/core/sql_types/match_recognize.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_impl.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders_codegen.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_pack.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <contrib/ydb/library/yql/minikql/mkql_runtime_version.h>

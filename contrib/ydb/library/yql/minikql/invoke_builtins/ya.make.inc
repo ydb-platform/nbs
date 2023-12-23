@@ -1,6 +1,8 @@
-SRCDIR(contrib/ydb/library/yql/minikql/invoke_builtins)
+INCLUDE(header.ya.make.inc)
 
-SRCS(
+SET(ORIG_SRC_DIR contrib/ydb/library/yql/minikql/invoke_builtins)
+
+SET(ORIG_SOURCES
     mkql_builtins.cpp
     mkql_builtins.h
     mkql_builtins_abs.cpp
@@ -18,7 +20,6 @@ SRCS(
     mkql_builtins_dec.cpp
     mkql_builtins_div.cpp
     mkql_builtins_find.cpp
-    mkql_builtins_impl.h
     mkql_builtins_inc.cpp
     mkql_builtins_invprestr.cpp
     mkql_builtins_max.cpp
@@ -55,4 +56,15 @@ PEERDIR(
 
 YQL_LAST_ABI_VERSION()
 
-PROVIDES(mkql_invoke_builtins)
+ADDINCL(
+    ${ORIG_SRC_DIR}
+)
+
+COPY(
+    AUTO
+    FROM ${ORIG_SRC_DIR}
+    ${ORIG_SOURCES}
+    OUTPUT_INCLUDES 
+    ${BINDIR}/contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_impl.h
+    ${BINDIR}/contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_decimal.h
+)

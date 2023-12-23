@@ -52,6 +52,9 @@
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/wilson/wilson_span.h>
+#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
+#include <contrib/ydb/library/wilson_ids/wilson.h>
 
 #include <util/string/join.h>
 

@@ -8,7 +8,7 @@
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/minikql/comp_nodes/mkql_factories.h>
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_pack.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_llvm_base.h>
 

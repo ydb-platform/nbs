@@ -1,5 +1,5 @@
 #pragma once
-#include "contrib/ydb/library/yql/public/issue/yql_issue.h"
+#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
