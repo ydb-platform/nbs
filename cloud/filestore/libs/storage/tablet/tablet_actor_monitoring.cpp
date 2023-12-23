@@ -637,7 +637,7 @@ void DumpSessionHistory(
                 TABLER() {
                     TABLEH() { out << "ClientId";}
                     TABLEH() { out << "FQDN"; }
-                    TABLEH() { out << "FileSystemId"; }
+                    TABLEH() { out << "Timestamp"; }
                     TABLEH() { out << "SessionId"; }
                     TABLEH() { out << "ActionType"; }
                 }
