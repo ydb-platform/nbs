@@ -2,6 +2,7 @@ LIBRARY()
 
 PEERDIR(
     contrib/ydb/core/base
+    contrib/ydb/core/blobstorage/vdisk/balance
     contrib/ydb/core/blobstorage/vdisk/hulldb/base
     contrib/ydb/core/blobstorage/vdisk/hulldb/bulksst_add
     contrib/ydb/core/blobstorage/vdisk/synclog
