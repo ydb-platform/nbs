@@ -7946,7 +7946,6 @@ migrations:
     - sandbox/projects/clickhouse/ClickhouseDocsRelease
     - sandbox/projects/cv/workflow_tests
     - sandbox/projects/eda/computing_sp_statistic
-    - sandbox/projects/market/WHSupport/EvaExecutor
     - sandbox/projects/metrics/parser_release_arcadia
     - sandbox/projects/music/deployment/MusicRevertCommit
     - sandbox/projects/src_setup/UpdateSrcSetupTestData
