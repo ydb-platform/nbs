@@ -10500,7 +10500,6 @@ migrations:
     - logfeller/lib/table_allocator/functional_tests/dyn_allocator_tests
     - mapreduce/library/native2streaming/tests/tests
     - mapreduce/yt/tests
-    - maps/libs/tile/pymod-tests
     - maps/wikimap/mapspro/tools/topology_fixer/tests
     - market/contrib/python/BitTorrent
     - market/dynamic_pricing/pricing/common/checks/checker/ut
