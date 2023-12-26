@@ -253,6 +253,9 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
             TEvNonreplPartitionPrivate::TEvRangeResynced,
             HandleRangeResynced);
         HFunc(
+            TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse,
+            HandleReadResyncFastPathResponse);
+        HFunc(
             TEvVolume::TEvResyncStateUpdated,
             HandleResyncStateUpdated);
         HFunc(
@@ -293,6 +296,7 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvResyncNextRange);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvRangeResynced);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 

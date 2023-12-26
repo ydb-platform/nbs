@@ -128,6 +128,15 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // ReadResyncFastPathResponse
+    //
+
+    struct TReadResyncFastPathResponse
+    {
+        NProto::TError Error;
+    };
+
+    //
     // OperationCompleted
     //
 
@@ -162,6 +171,7 @@ struct TEvNonreplPartitionPrivate
         EvChecksumBlocksCompleted,
         EvResyncNextRange,
         EvRangeResynced,
+        EvReadResyncFastPathResponse,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -202,7 +212,14 @@ struct TEvNonreplPartitionPrivate
         EvRangeResynced
     >;
 
+    using TEvReadResyncFastPathResponse = TResponseEvent<
+        TReadResyncFastPathResponse,
+        EvReadResyncFastPathResponse
+    >;
+
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
+
 };
+
 
 }   // namespace NCloud::NBlockStore::NStorage

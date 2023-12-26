@@ -74,6 +74,7 @@ namespace NCloud::NBlockStore {
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
     xxx(MonitoringSvgTemplatesNotFound)                                        \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
+    xxx(ReadBlockCountMismatch)                                                \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

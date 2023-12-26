@@ -446,6 +446,25 @@ struct TTestEnv
         });
     }
 
+    void ModifyEvents(
+        ui32 eventType,
+        NActors::TTestActorRuntime::TEventObserver eventModifier)
+    {
+        PrevObs = Runtime.SetObserverFunc(
+            [=](auto& event)
+            {
+                if (event->GetTypeRewrite() == eventType) {
+                    if (TTestActorRuntime::EEventAction::DROP ==
+                        eventModifier(event))
+                    {
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+    }
+
     void ReleaseEvents()
     {
         Runtime.SetObserverFunc(std::move(PrevObs));
@@ -929,7 +948,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        env.CatchEvents(TEvNonreplPartitionPrivate::EvChecksumBlocksResponse);
+        env.ModifyEvents(
+            TEvNonreplPartitionPrivate::EvChecksumBlocksResponse,
+            [=](TAutoPtr<IEventHandle>& event)
+            {
+                using TEvent =
+                    TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse;
+                auto* msg = event->template Get<TEvent>();
+                *msg->Record.MutableError() = MakeError(E_IO, "request failed");
+                return TTestActorRuntime::EEventAction::PROCESS;
+            });
 
         env.StartResync();
 
@@ -944,28 +972,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         {
             client.SendReadBlocksRequest(range);
-            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
-
-            for (auto& ev: env.Caught) {
-                if (ev->GetTypeRewrite()
-                        == TEvNonreplPartitionPrivate::EvChecksumBlocksResponse)
-                {
-                    using TEvent =
-                        TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse;
-                    auto* msg = ev->template Get<TEvent>();
-                    *msg->Record.MutableError() =
-                        MakeError(E_IO, "request failed");
-                }
-            }
-
-            env.ReleaseEvents();
-            env.ResyncController.WaitForResyncedRangeCount(1);
-
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
+
+            env.ReleaseEvents();
         }
     }
 
@@ -1086,6 +1099,75 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             for (const auto& block: env.ReadReplica(i, diskRange)) {
                 UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
             }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadFastPathOnReadRequestDuringResync)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        // This range should have identical content even before resync
+        const auto fastPathRange = TBlockRange64::WithLength(2100, 100);
+        // This range has default content, which is different before resync
+        const auto slowPathRange = TBlockRange64::WithLength(3100, 200);
+
+        env.WriteReplica(0, diskRange, 'A');
+        env.WriteReplica(1, diskRange, 'B');
+        env.WriteReplica(2, diskRange, 'B');
+
+        env.WriteReplica(0, fastPathRange, 'A');
+        env.WriteReplica(1, fastPathRange, 'A');
+        env.WriteReplica(2, fastPathRange, 'A');
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        //////////////////////////////////////////////////////////////////////
+        // Fast path read attempts use one checksum request per mirror
+        // Here we're going to make 2 reqs, and count from 0
+        env.ResyncController.SetStopAfterResyncedRangeCount(4);
+        // This read succeeds immediately
+        client.SendReadBlocksRequest(fastPathRange);
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            fastPathRange.Size(),
+            response->Record.GetBlocks().BuffersSize());
+
+        for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), buffer);
+        }
+
+        //////////////////////////////////////////////////////////////////////
+        // This read should not complete until resync of the range is finished
+        client.SendReadBlocksRequest(slowPathRange);
+        TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+
+        //////////////////////////////////////////////////////////////////////
+        // Let resync continue
+        env.ResyncController.SetStopAfterResyncedRangeCount(6);
+        env.ResyncController.WaitForResyncedRangeCount(1);
+        UNIT_ASSERT(!env.ResyncController.ResyncFinished);
+
+        // Now second read sould succeed as well
+        response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            slowPathRange.Size(),
+            response->Record.GetBlocks().BuffersSize());
+
+        for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), buffer);
         }
     }
 

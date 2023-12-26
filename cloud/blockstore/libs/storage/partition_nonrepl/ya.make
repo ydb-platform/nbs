@@ -21,6 +21,7 @@ SRCS(
     part_mirror_resync_actor_readblocks.cpp
     part_mirror_resync_actor_resync.cpp
     part_mirror_resync_actor_stats.cpp
+    part_mirror_resync_fastpath_actor.cpp
     part_mirror_resync_state.cpp
     part_mirror_resync_util.cpp
 
