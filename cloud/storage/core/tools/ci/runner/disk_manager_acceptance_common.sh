@@ -4,7 +4,7 @@ export d="/root"
 scripts=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export scripts
 export dm="${d}/disk_manager_acceptance_test/disk_manager_acceptance_tests"
-export cluster="nemax-tests"
+export cluster="nemax"
 
 export results_dir="/var/www/build/results"
 export result_case_directory="${results_dir}/disk_manager_${test_name:=acceptance}/${cluster}/disk-manager/"
@@ -21,7 +21,7 @@ function base_shell_args () {
         "--no-generate-ycp-config"
         "--ycp-requests-template-path" "$dm/templates/"
         "--ssh-key-path" "/root/.ssh/test-ssh-key"
-        "--profile-name" "nemax-tests"
+        "--profile-name" "${cluster}-tests"
         "--cluster-config-path" "$dm/configs/"
         "--cluster" "${cluster}"
         "--zone-ids" "eu-north1-a"
