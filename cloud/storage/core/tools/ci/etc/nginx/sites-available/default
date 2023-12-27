@@ -12,6 +12,10 @@ server {
 
     server_name _;
 
+    location =/ {
+            rewrite ^ /ci permanent;
+    }
+
     location / {
         try_files $uri $uri/ =404;
     }
