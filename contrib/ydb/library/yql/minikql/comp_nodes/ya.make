@@ -1,3 +1,15 @@
+LIBRARY()
+
+SRCS(
+)
+
+PEERDIR(
+)
+
+YQL_LAST_ABI_VERSION()
+
+END()
+
 RECURSE(
     llvm
     llvm14

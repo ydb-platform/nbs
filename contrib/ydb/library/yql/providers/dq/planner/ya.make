@@ -2,7 +2,7 @@ LIBRARY()
 
 PEERDIR(
     contrib/ydb/library/yql/core/services
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/dq/integration
     contrib/ydb/library/yql/dq/opt
     contrib/ydb/library/yql/dq/type_ann

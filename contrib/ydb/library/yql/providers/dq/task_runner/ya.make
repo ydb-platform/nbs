@@ -5,7 +5,7 @@ PEERDIR(
     library/cpp/threading/task_scheduler
     library/cpp/yson/node
     contrib/ydb/library/yql/dq/integration/transform
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm
+    contrib/ydb/library/yql/minikql/invoke_builtins
     contrib/ydb/library/yql/protos
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/backtrace

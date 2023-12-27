@@ -37,6 +37,8 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/udf_resolve
     contrib/ydb/library/yql/providers/dq/provider
     contrib/ydb/library/yql/providers/yt/gateway/file
+    contrib/ydb/library/yql/providers/yt/codec/codegen
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm
     contrib/ydb/library/yql/core/url_preprocessing
     contrib/ydb/library/yql/tools/yqlrun/http
     contrib/ydb/library/yql/parser/pg_wrapper

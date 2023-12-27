@@ -8,7 +8,7 @@ SRCS(
 PEERDIR(
     library/cpp/json/easy_parse
     library/cpp/monlib/encode/json
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/public/udf

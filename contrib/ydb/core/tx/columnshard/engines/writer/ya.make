@@ -14,6 +14,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/protos
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/formats/arrow
+    contrib/ydb/core/tx/columnshard/engines/writer/buffer
 
 
     contrib/ydb/library/actors/core

@@ -28,7 +28,7 @@ PEERDIR(
     library/cpp/random_provider
     library/cpp/time_provider
     contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes

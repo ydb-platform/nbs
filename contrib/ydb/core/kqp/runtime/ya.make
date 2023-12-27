@@ -33,7 +33,8 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
     contrib/ydb/core/ydb_convert
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/dq/actors/protos
     contrib/ydb/library/yql/dq/actors/spilling

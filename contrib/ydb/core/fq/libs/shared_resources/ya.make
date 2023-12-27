@@ -21,6 +21,7 @@ PEERDIR(
     contrib/ydb/library/logger
     contrib/ydb/library/security
     contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/client/ydb_extension
     contrib/ydb/public/sdk/cpp/client/ydb_table
 )
 

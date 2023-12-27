@@ -16,6 +16,7 @@ PEERDIR(
     contrib/ydb/core/tx/tx_proxy
     contrib/ydb/core/tx
     contrib/ydb/core/mind
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/library/yql/sql/pg
 )

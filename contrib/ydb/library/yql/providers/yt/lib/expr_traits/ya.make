@@ -6,7 +6,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/expr_nodes

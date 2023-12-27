@@ -1,8 +1,22 @@
+LIBRARY()
+
+SRCS(
+)
+
+PEERDIR(
+)
+
+YQL_LAST_ABI_VERSION()
+
+END()
+
 RECURSE(
     llvm
+    llvm14
     no_llvm
 )
 
 RECURSE_FOR_TESTS(
-    ut
+    llvm/ut
+    llvm14/ut
 )

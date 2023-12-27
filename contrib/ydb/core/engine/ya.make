@@ -22,7 +22,7 @@ PEERDIR(
     contrib/ydb/library/mkql_proto/protos
 #    ydb/library/mkql_proto/ut/helpers
     contrib/ydb/public/api/protos
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/public/decimal
 )

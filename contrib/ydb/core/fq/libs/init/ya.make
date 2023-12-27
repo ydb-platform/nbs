@@ -30,7 +30,7 @@ PEERDIR(
     contrib/ydb/library/folder_service
     contrib/ydb/library/folder_service/proto
     contrib/ydb/library/security
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/utils/actor_log
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/dq/comp_nodes

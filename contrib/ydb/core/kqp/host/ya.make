@@ -19,7 +19,7 @@ PEERDIR(
     contrib/ydb/core/kqp/provider
     contrib/ydb/core/tx/long_tx_service/public
     contrib/ydb/library/yql/core/services
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm
+    contrib/ydb/library/yql/minikql/invoke_builtins
     contrib/ydb/library/yql/sql
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/providers/common/codec

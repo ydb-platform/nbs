@@ -1,7 +1,7 @@
 LIBRARY()
 
 PEERDIR(
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm
+    contrib/ydb/library/yql/minikql/invoke_builtins
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/utils/backtrace

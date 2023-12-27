@@ -4,7 +4,7 @@ PEERDIR(
     contrib/libs/apache/arrow
     contrib/ydb/library/yverify_stream
     contrib/ydb/library/mkql_proto
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/dq/actors/protos

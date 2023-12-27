@@ -3,7 +3,7 @@ LIBRARY()
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/yql/dq/integration/transform
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/utils
 )
 

@@ -12,7 +12,7 @@ PEERDIR(
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/peephole_opt
     contrib/ydb/library/yql/core/type_ann
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     library/cpp/yson/node
 )
 

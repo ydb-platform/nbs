@@ -34,28 +34,12 @@ SRCS(
 PEERDIR(
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/ast/serialize
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/providers/common/schema/expr
 )
-
-IF (NOT MKQL_DISABLE_CODEGEN)
-    PEERDIR(
-        contrib/ydb/library/yql/minikql/codegen/llvm
-        contrib/libs/llvm12/lib/IR
-        contrib/libs/llvm12/lib/ExecutionEngine/MCJIT
-        contrib/libs/llvm12/lib/Linker
-        contrib/libs/llvm12/lib/Target/X86
-        contrib/libs/llvm12/lib/Target/X86/AsmParser
-        contrib/libs/llvm12/lib/Transforms/IPO
-    )
-ELSE()
-    CFLAGS(
-        -DMKQL_DISABLE_CODEGEN
-    )
-ENDIF()
 
 YQL_LAST_ABI_VERSION()
 

@@ -25,7 +25,7 @@ PEERDIR(
     library/cpp/xml/document
     contrib/ydb/core/fq/libs/events
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/providers/common/arrow
     contrib/ydb/library/yql/providers/common/arrow/interface
     contrib/ydb/library/yql/providers/common/http_gateway

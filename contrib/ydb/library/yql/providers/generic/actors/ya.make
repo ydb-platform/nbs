@@ -7,7 +7,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation
     contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/providers/generic/proto
     contrib/ydb/library/yql/public/types
