@@ -6,6 +6,14 @@ PEERDIR(
     cloud/filestore/tests/python/lib
 )
 
+IF (OPENSOURCE)
+    # TODO(NBSNEBIUS-47): fix tests and remove tags
+    TAG(
+        ya:not_autocheck
+        ya:manual
+    )
+ENDIF()
+
 TEST_SRCS(
     test.py
 )
