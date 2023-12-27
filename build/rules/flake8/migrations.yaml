@@ -5431,7 +5431,6 @@ migrations:
     - yt/microservices/access_log_viewer/lib
     - yt/microservices/access_log_viewer/lib/daemons
     - yt/python/yt
-    - yt/skynet/test
     - yt/yt/scripts/add_table_replica
     - yt/yt/scripts/analyze_solomon_shard
     - ytech/ecom_tools/amazon/scripts/direct_zora_loader
@@ -9311,7 +9310,6 @@ migrations:
     - antiadblock/configs_api/lib
     - antirobot/scripts/access_log
     - antirobot/scripts/log_viewer/app
-    - antirobot/scripts/log_viewer/precalc
     - april/motivation/motivation/mp/migrations
     - april/tools/django_direct_forecaster/direct_forecaster/migrations
     - april/web/bas/bm/migrations
