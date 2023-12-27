@@ -63,7 +63,6 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
 {
     TFastPathRecord fastPathRecord{
         .Ev{NActors::IEventHandlePtr(ev.Release())},
-        .Local = false,
         .BlockRange{range}};
 
     auto blockSize = PartConfig->GetBlockSize();
@@ -90,9 +89,10 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
         blockSize,
         range,
         fastPathRecord.SgList,
-        std::move(replicas));
+        std::move(replicas),
+        State.GetRWClientId());
 
-    FastPathRecords.insert({FastPathReadCount++, std::move(fastPathRecord)});
+    FastPathRecords[FastPathReadCount++] = std::move(fastPathRecord);
 }
 
 void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
@@ -105,7 +105,6 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     auto msg = ev->Get();
     TFastPathRecord fastPathRecord{
         .Ev{NActors::IEventHandlePtr(ev.Release())},
-        .Local = true,
         .BlockRange{range}};
 
     fastPathRecord.SgList = msg->Record.Sglist;
@@ -121,9 +120,10 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
         blockSize,
         range,
         fastPathRecord.SgList,
-        std::move(replicas));
+        std::move(replicas),
+        State.GetRWClientId());
 
-    FastPathRecords.insert({FastPathReadCount++, std::move(fastPathRecord)});
+    FastPathRecords[FastPathReadCount++] = std::move(fastPathRecord);
 }
 
 void TMirrorPartitionResyncActor::ProcessReadRequestSlowPath(
@@ -253,21 +253,39 @@ void TMirrorPartitionResyncActor::HandleReadResyncFastPathResponse(
     const TActorContext& ctx)
 {
     auto respMsg = ev->Get();
-    auto& record = FastPathRecords.at(ev->Cookie);
+    auto* record = FastPathRecords.FindPtr(ev->Cookie);
+    STORAGE_VERIFY(
+        record,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
 
     if (HasError(respMsg->GetError())) {
         ProcessReadRequestSlowPath(
-            NActors::IEventHandlePtr(record.Ev.release()),
-            record.BlockRange,
+            NActors::IEventHandlePtr(record->Ev.release()),
+            record->BlockRange,
             ctx);
         FastPathRecords.erase(ev->Cookie);
         return;
     }
 
-    if (record.Local) {
-        ProcessReadResponseFastPathLocal(record, ctx);
-    } else {
-        ProcessReadResponseFastPath(record, ctx);
+    switch (record->Ev->GetTypeRewrite()) {
+        case TEvService::EvReadBlocksRequest: {
+            ProcessReadResponseFastPath(*record, ctx);
+            break;
+        }
+        case TEvService::EvReadBlocksLocalRequest: {
+            ProcessReadResponseFastPathLocal(*record, ctx);
+            break;
+        }
+
+        default:
+            STORAGE_VERIFY_C(
+                false,
+                TWellKnownEntityTypes::DISK,
+                PartConfig->GetName(),
+                TStringBuilder() << "unexpected ev type: "
+                    << static_cast<int>(record->Ev->GetTypeRewrite()));
+            break;
     }
 
     FastPathRecords.erase(ev->Cookie);

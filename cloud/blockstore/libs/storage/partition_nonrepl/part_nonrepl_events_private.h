@@ -221,5 +221,4 @@ struct TEvNonreplPartitionPrivate
 
 };
 
-
 }   // namespace NCloud::NBlockStore::NStorage

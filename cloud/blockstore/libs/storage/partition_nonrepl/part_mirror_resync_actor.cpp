@@ -74,6 +74,19 @@ void TMirrorPartitionResyncActor::RejectPostponedRead(TPostponedRead& pr)
     }
 }
 
+void TMirrorPartitionResyncActor::RejectFastPathRecord(TFastPathRecord& fpr)
+{
+    auto& ev = fpr.Ev;
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
+        HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            break;
+    }
+}
+
 void TMirrorPartitionResyncActor::KillActors(const TActorContext& ctx)
 {
     NCloud::Send<TEvents::TEvPoisonPill>(ctx, MirrorActorId);
@@ -143,6 +156,11 @@ void TMirrorPartitionResyncActor::HandlePoisonPill(
         RejectPostponedRead(pr);
     }
     PostponedReads.clear();
+
+    for (auto& x: FastPathRecords) {
+        RejectFastPathRecord(x.second);
+    }
+    FastPathRecords.clear();
 
     Poisoner = CreateRequestInfo(
         ev->Sender,

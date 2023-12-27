@@ -72,13 +72,12 @@ private:
     struct TFastPathRecord
     {
         NActors::IEventHandlePtr Ev;
-        bool Local = false;
         TBlockRange64 BlockRange;
         TGuardedBuffer<TString> Buffer;
         TGuardedSgList SgList;
     };
     ui64 FastPathReadCount = 0;
-    TMap<ui64, TFastPathRecord> FastPathRecords;
+    THashMap<ui64, TFastPathRecord> FastPathRecords;
 
 
 public:
@@ -105,6 +104,7 @@ public:
 
 private:
     void RejectPostponedRead(TPostponedRead& pr);
+    void RejectFastPathRecord(TFastPathRecord& fpr);
     void KillActors(const NActors::TActorContext& ctx);
     void SetupPartitions(const NActors::TActorContext& ctx);
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
