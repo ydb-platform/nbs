@@ -6989,6 +6989,7 @@
   "example/3-start_nbs.sh":"cloud/blockstore/github_toplevel/example/3-start_nbs.sh",
   "example/4-start_nbs_storage.sh":"cloud/blockstore/github_toplevel/example/4-start_nbs_storage.sh",
   "example/5-create_and_attach_disk.sh":"cloud/blockstore/github_toplevel/example/5-create_and_attach_disk.sh",
+  "example/6-run_qemu.sh":"cloud/blockstore/github_toplevel/example/6-run_qemu.sh",
   "example/BUILD.md":"cloud/blockstore/github_toplevel/example/BUILD.md",
   "example/README.md":"cloud/blockstore/github_toplevel/example/README.md",
   "example/dynamic/BindRootStorageRequest-Root.txt":"cloud/blockstore/github_toplevel/example/dynamic/BindRootStorageRequest-Root.txt",
