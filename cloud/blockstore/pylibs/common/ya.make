@@ -9,6 +9,7 @@ PY_SRCS(
     results_processor_fs.py
     retry.py
     ssh.py
+    ssh_client.py
 )
 
 PEERDIR(

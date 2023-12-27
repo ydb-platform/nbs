@@ -5,3 +5,4 @@ from .profiler import *  # noqa
 from .results_processor_fs import *  # noqa
 from .retry import *  # noqa
 from .ssh import *  # noqa
+from .ssh_client import *  # noqa

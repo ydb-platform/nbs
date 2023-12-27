@@ -1,5 +1,14 @@
-from subprocess import CompletedProcess
+import ssl
 import sys
+import tempfile
+import urllib.request
+import uuid
+
+from subprocess import run, CompletedProcess
+
+from .retry import retry
+from .ssh_client import ssh_client, sftp_client
+
 
 DEFAULT_SSH_USER = 'root'
 
@@ -24,7 +33,7 @@ class TestHelpers:
     def wait_until_instance_becomes_available_via_ssh(
         self,
         ip: str,
-        ssh_key_path: str = None,
+        ssh_key_path: str | None = None,
         user: str = DEFAULT_SSH_USER
     ) -> None:
         sys.stdout.write(f'Waiting for instance {ip}\n')
@@ -53,6 +62,61 @@ class TestHelpers:
     def create_tmp_file(self, suffix=''):
         self._id += 1
         return TestHelpers.TmpFile(self._id)
+
+
+class Helpers:
+
+    # FIXME: The is mostly copy-paste from nbs_internal,
+    #  shall use the same helpers class in the nbs_internal
+    def wait_until_instance_becomes_available_via_ssh(
+        self,
+        ip: str,
+        ssh_key_path: str = None,
+        user: str = DEFAULT_SSH_USER
+    ) -> None:
+        # exec_command retries 10 times with 60 seconds delay by default
+        # echo command won't fail in most cases.
+        with ssh_client(ip, ssh_key_path=ssh_key_path, user=user) as client:
+            client.exec_command(['echo'])
+
+    def wait_for_block_device_to_appear(
+        self,
+        ip: str,
+        path: str,
+        ssh_key_path: str | None = None,
+        user: str = DEFAULT_SSH_USER
+    ) -> None:
+        with sftp_client(ip, ssh_key_path=ssh_key_path, user=user) as sftp:
+            @retry(tries=5, delay=60)
+            def _stat():
+                sftp.stat(path)
+
+            _stat()
+
+    def make_get_request(self, url: str) -> int:
+        ssl_context = ssl._create_unverified_context()
+        with urllib.request.urlopen(url, context=ssl_context) as response:
+            return response.getcode()
+
+    def make_subprocess_run(self, command) -> CompletedProcess:
+        result = run(
+            command,
+            capture_output=True,
+            universal_newlines=True,
+            shell=True,
+        )
+        return result
+
+    def generate_id(self):
+        return uuid.uuid1()
+
+    def create_tmp_file(self, suffix='.tmp'):
+        tmp_file = tempfile.NamedTemporaryFile(suffix=suffix)
+        return tmp_file
+
+
+def make_helpers(dry_run):
+    return TestHelpers() if dry_run else Helpers()
 
 
 def make_helpers_stub(dry_run):

@@ -28,6 +28,9 @@ class SshTestClient:
         def readlines(self):
             return []
 
+        def readline(self, size: int | None = None):
+            return b''
+
         def read(self):
             return b''
 
