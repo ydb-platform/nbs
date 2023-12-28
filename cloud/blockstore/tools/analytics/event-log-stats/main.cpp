@@ -105,6 +105,7 @@ struct IBlockInfoConsumer
     virtual void UpdateBlock(ui64 commitId, ui64 blockIndex, ui32 checksum) = 0;
     virtual void RegisterAccess(
         TInstant ts,
+        ui64 commitId,
         ui64 blockIndex,
         ui32 checksum,
         ui32 requestType) = 0;
@@ -254,6 +255,7 @@ private:
             for (const auto [blockIndex, checksum]: checksums) {
                 BlockInfoConsumer->RegisterAccess(
                     TInstant::MicroSeconds(bl.GetTimestampMcs()),
+                    bl.GetCommitId(),
                     blockIndex,
                     checksum,
                     bl.GetRequestType()
@@ -440,47 +442,90 @@ struct TIntersectionStat
 
 struct TBlockChecksumValidator: IBlockInfoConsumer
 {
-    struct TChecksum
+    class TLastNChecksums
     {
-        ui64 CommitId = 0;
-        ui32 Value = 0;
+    public:
+        struct TChecksum
+        {
+            ui64 CommitId = 0;
+            ui32 Value = 0;
+
+            bool operator<(const TChecksum& other) const {
+                return CommitId < other.CommitId;
+            }
+        };
+
+        std::optional<ui32> FindPreviousChecksum(ui64 commitId)
+        {
+            auto it = std::upper_bound(
+                Checksums.begin(),
+                Checksums.end(),
+                TChecksum{commitId, 0});
+
+            if (it == Checksums.begin() || !std::prev(it)->has_value()) {
+                return std::nullopt;
+            }
+            return std::prev(it)->value().Value;
+        }
+
+        ui64 GetLatestCommitId()
+        {
+            return Checksums.back().has_value() ? Checksums.back()->CommitId : 0;
+        }
+
+        void AddChecksum(const TChecksum& checksum)
+        {
+            for (auto& item: Checksums) {
+                if (item && item->CommitId == checksum.CommitId) {
+                    item->Value = checksum.Value;
+                    return;
+                }
+            }
+
+            Checksums[0] = checksum;
+            std::sort(Checksums.begin(), Checksums.end());
+        }
+
+    private:
+        std::array<std::optional<TChecksum>, 5> Checksums;
     };
-    THashMap<ui64, TChecksum> Blocks;
+
+    THashMap<ui64, TLastNChecksums> Blocks;
 
     void UpdateBlock(ui64 commitId, ui64 blockIndex, ui32 checksum) override
     {
-        auto& csum = Blocks[blockIndex];
+        auto& csums = Blocks[blockIndex];
         if (!commitId) {
-            commitId = csum.CommitId;
+            commitId = csums.GetLatestCommitId();
         }
-        if (commitId >= csum.CommitId) {
-            csum.Value = checksum;
-            csum.CommitId = commitId;
-        }
+        csums.AddChecksum({commitId, checksum});
     }
 
     void RegisterAccess(
         TInstant ts,
+        ui64 commitId,
         ui64 blockIndex,
         ui32 checksum,
         ui32 requestType) override
     {
         auto it = Blocks.find(blockIndex);
-        if (it != Blocks.end() && checksum != it->second.Value) {
-            Cout << "corruption at " << ts
-                << ", block " << blockIndex
-                << ", request=" << RequestName(requestType)
-                << ", old checksum=" << it->second.Value
-                << ", new checksum=" << checksum
-                << Endl;
+        if (it != Blocks.end()) {
+            auto oldChecksum = it->second.FindPreviousChecksum(commitId);
+            if (oldChecksum && checksum != oldChecksum) {
+                Cout << "corruption at " << ts
+                    << ", block " << blockIndex
+                    << ", request=" << RequestName(requestType)
+                    << ", old checksum=" << oldChecksum
+                    << ", new checksum=" << checksum
+                    << Endl;
+            }
         }
 
         const auto r = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
         const auto f = static_cast<ui32>(ESysRequestType::Flush);
         // XXX ReadBlocks and Flush can produce fake zero digests
         if (checksum != 0 || r != requestType && f != requestType) {
-            // TODO: CommitId
-            UpdateBlock(0, blockIndex, checksum);
+            UpdateBlock(commitId, blockIndex, checksum);
         }
     }
 };
