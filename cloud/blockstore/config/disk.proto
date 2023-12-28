@@ -210,6 +210,9 @@ message TDiskAgentConfig
 
     // Storage discovery config.
     optional TStorageDiscoveryConfig StorageDiscoveryConfig = 26;
+
+    // The path where Disk Agent will store the cached config.
+    optional string CachedConfigPath = 27;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

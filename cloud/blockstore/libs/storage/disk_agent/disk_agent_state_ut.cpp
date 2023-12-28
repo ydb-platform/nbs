@@ -13,17 +13,20 @@
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
 #include <util/generic/algorithm.h>
+#include <util/stream/file.h>
 #include <util/string/cast.h>
+#include <util/string/join.h>
 #include <util/system/file.h>
-
-#include <array>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -54,7 +57,7 @@ struct TTestNvmeManager
     }
 
     TFuture<NProto::TError> Deallocate(
-        const TString &path,
+        const TString& path,
         ui64 offsetBytes,
         ui64 sizeBytes) override
     {
@@ -106,6 +109,8 @@ struct TNullConfigParams
     TDuration DeviceIOTimeout;
 
     NProto::TStorageDiscoveryConfig DiscoveryConfig;
+
+    TString CachedConfigPath;
 };
 
 auto CreateNullConfig(TNullConfigParams params)
@@ -125,6 +130,8 @@ auto CreateNullConfig(TNullConfigParams params)
     }
 
     *config.MutableStorageDiscoveryConfig() = std::move(params.DiscoveryConfig);
+
+    config.SetCachedConfigPath(std::move(params.CachedConfigPath));
 
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
 }
@@ -285,10 +292,18 @@ struct TFiles
         TempDir.Path() / "nvme3n3"
     };
 
+    const TString CachedConfigPath = TempDir.Path() / "nbs-disk-agent.txt";
+
     const ui64 DefaultFileSize = DefaultDeviceBlockSize * DefaultBlocksCount;
 
     const NNvme::INvmeManagerPtr NvmeManager =
         std::make_shared<TTestNvmeManager>();
+
+    void PrepareFile(const TString& path, size_t size)
+    {
+        TFile fileData(path, EOpenModeFlag::CreateNew);
+        fileData.Resize(size);
+    }
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -296,8 +311,7 @@ struct TFiles
         fileData.Resize(DefaultFileSize);
 
         for (const auto& path: Nvme3s) {
-            TFile fileData(path, EOpenModeFlag::CreateNew);
-            fileData.Resize(DefaultFileSize);
+            PrepareFile(path, DefaultFileSize);
         }
     }
 
@@ -1339,6 +1353,247 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 E_IO,
                 response.GetError().GetCode(),
                 response.GetError().GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldStoreCachedConfigs, TFiles)
+    {
+        TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
+
+        auto config = CreateNullConfig({
+            .DiscoveryConfig = [&] {
+                NProto::TStorageDiscoveryConfig discovery;
+                auto& path = *discovery.AddPathConfigs();
+                path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
+                auto& pool = *path.AddPoolConfigs();
+                pool.SetMinSize(DefaultFileSize);
+                pool.SetMaxSize(DefaultFileSize);
+
+                return discovery;
+            }(),
+            .CachedConfigPath = CachedConfigPath
+        });
+
+        auto state = std::make_unique<TDiskAgentState>(
+            config,
+            nullptr,    // spdk
+            CreateTestAllocator(),
+            std::make_shared<TTestStorageProvider>(storageState),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,    // rdmaServer
+            NvmeManager);
+
+        auto future = state->Initialize({});
+        const auto& result = future.GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
+        UNIT_ASSERT_VALUES_EQUAL(3, result.Configs.size());
+
+        NProto::TDiskAgentConfig proto;
+        ParseFromTextFormat(CachedConfigPath, proto);
+
+        UNIT_ASSERT_VALUES_EQUAL(result.Configs.size(), proto.FileDevicesSize());
+        for (size_t i = 0; i != result.Configs.size(); ++i) {
+            const auto& lhs = result.Configs[i];
+            const auto& rhs = proto.GetFileDevices(i);
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceUUID(), rhs.GetDeviceId());
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceName(), rhs.GetPath());
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetBlockSize(), rhs.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, rhs.GetFileSize());
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldPreferCachedConfigs, TFiles)
+    {
+        const char* ids[] = {
+            "d1dd53cfe76c762edb977b68de3783f4",
+            "6cf62448aa025469fc16f494461177ff",
+            "b272fa66254fd0410f26a12414813f5c"
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(std::size(ids), Nvme3s.size());
+
+        NProto::TDiskAgentConfig cachedConfig;
+        for (size_t i = 0; i != Nvme3s.size(); ++i) {
+            auto& device = *cachedConfig.MutableFileDevices()->Add();
+            device.SetPath(Nvme3s[i].GetPath());
+            device.SetFileSize(DefaultFileSize);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(ids[i]);
+            device.SetPoolName("foo");
+        }
+        std::sort(
+            cachedConfig.MutableFileDevices()->begin(),
+            cachedConfig.MutableFileDevices()->end(),
+            [] (const auto& lhs, const auto& rhs) {
+                return lhs.GetDeviceId() < rhs.GetDeviceId();
+            });
+
+        // there are 3 devices in the cached config
+        SerializeToTextFormat(cachedConfig, CachedConfigPath);
+
+        TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
+
+        auto config = CreateNullConfig({
+            .DiscoveryConfig = [&] {
+                NProto::TStorageDiscoveryConfig discovery;
+                auto& path = *discovery.AddPathConfigs();
+
+                // limit the number of devices to one
+                path.SetPathRegExp(TempDir.Path() / "nvme3n(1)");
+                auto& pool = *path.AddPoolConfigs();
+                pool.SetMinSize(DefaultFileSize);
+                pool.SetMaxSize(DefaultFileSize);
+                pool.SetPoolName("foo");
+
+                return discovery;
+            }(),
+            .CachedConfigPath = CachedConfigPath
+        });
+
+        auto state = std::make_unique<TDiskAgentState>(
+            config,
+            nullptr,    // spdk
+            CreateTestAllocator(),
+            std::make_shared<TTestStorageProvider>(storageState),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,    // rdmaServer
+            NvmeManager);
+
+        auto future = state->Initialize({});
+        const auto& result = future.GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, result.Errors.size());
+        UNIT_ASSERT_STRING_CONTAINS_C(
+            result.Errors[0], "has been lost", result.Errors[0]);
+        UNIT_ASSERT_VALUES_EQUAL(3, result.Configs.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, cachedConfig.FileDevicesSize());
+
+        for (size_t i = 0; i != cachedConfig.FileDevicesSize(); ++i) {
+            const auto& lhs = result.Configs[i];
+            const auto& rhs = cachedConfig.GetFileDevices(i);
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceUUID(), rhs.GetDeviceId());
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceName(), rhs.GetPath());
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetBlockSize(), rhs.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                lhs.GetBlockSize() * lhs.GetBlocksCount(),
+                rhs.GetFileSize());
+            UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldFailOnBrokenCachedConfigs, TFiles)
+    {
+        auto config = CreateNullConfig({
+            .Files = Nvme3s,
+            .CachedConfigPath = CachedConfigPath
+        });
+        auto state = CreateDiskAgentStateNull(config);
+
+        {
+            TFile file(CachedConfigPath, EOpenModeFlag::CreateNew);
+            TFileOutput(file).Write("<<< garbage >>>");
+        }
+
+        auto future = state->Initialize({});
+
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            future.GetValue(),
+            yexception, "Error parsing text-format");
+    }
+
+    Y_UNIT_TEST_F(ShouldAllowNewDevice, TFiles)
+    {
+        PrepareFile(TempDir.Path() / "NVMENBS01", 10 * DefaultFileSize);
+
+        TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
+
+        NProto::TStorageDiscoveryConfig discovery;
+        {
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]+)");
+
+            // limit the device count to 8
+            path.SetMaxDeviceCount(8);
+
+            auto& pool = *path.AddPoolConfigs();
+            pool.SetMinSize(DefaultFileSize);
+            pool.SetMaxSize(10 * DefaultFileSize);
+
+            auto& layout = *pool.MutableLayout();
+            layout.SetDeviceSize(DefaultFileSize);
+        }
+
+        auto newState = [&] (auto discoveryConfig) {
+            return std::make_unique<TDiskAgentState>(
+                CreateNullConfig({
+                    .DiscoveryConfig = discoveryConfig,
+                    .CachedConfigPath = CachedConfigPath
+                }),
+                nullptr,    // spdk
+                CreateTestAllocator(),
+                std::make_shared<TTestStorageProvider>(storageState),
+                CreateProfileLogStub(),
+                CreateBlockDigestGeneratorStub(),
+                CreateLoggingService("console"),
+                nullptr,    // rdmaServer
+                NvmeManager);
+        };
+
+        {
+            auto state = newState(discovery);
+
+            auto future = state->Initialize({});
+            const auto& result = future.GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
+            UNIT_ASSERT_VALUES_EQUAL(8, result.Configs.size());
+
+            NProto::TDiskAgentConfig proto;
+            ParseFromTextFormat(CachedConfigPath, proto);
+
+            UNIT_ASSERT_VALUES_EQUAL(result.Configs.size(), proto.FileDevicesSize());
+            for (size_t i = 0; i != result.Configs.size(); ++i) {
+                const auto& lhs = result.Configs[i];
+                const auto& rhs = proto.GetFileDevices(i);
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceUUID(), rhs.GetDeviceId());
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceName(), rhs.GetPath());
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetBlockSize(), rhs.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(DefaultFileSize, rhs.GetFileSize());
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
+            }
+        }
+
+        // change the device limit to 10
+        discovery.MutablePathConfigs(0)->SetMaxDeviceCount(10);
+
+        {
+            auto state = newState(discovery);
+
+            auto future = state->Initialize({});
+            const auto& result = future.GetValue(WaitTimeout);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
+            UNIT_ASSERT_VALUES_EQUAL(10, result.Configs.size());
+
+            NProto::TDiskAgentConfig proto;
+            ParseFromTextFormat(CachedConfigPath, proto);
+
+            UNIT_ASSERT_VALUES_EQUAL(result.Configs.size(), proto.FileDevicesSize());
+            for (size_t i = 0; i != result.Configs.size(); ++i) {
+                const auto& lhs = result.Configs[i];
+                const auto& rhs = proto.GetFileDevices(i);
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceUUID(), rhs.GetDeviceId());
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceName(), rhs.GetPath());
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetBlockSize(), rhs.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(DefaultFileSize, rhs.GetFileSize());
+                UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
+            }
         }
     }
 }

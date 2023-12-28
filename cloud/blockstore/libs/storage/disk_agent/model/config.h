@@ -98,6 +98,8 @@ public:
         return Config.GetStorageDiscoveryConfig();
     }
 
+    TString GetCachedConfigPath() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
