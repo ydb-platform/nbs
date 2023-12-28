@@ -5865,7 +5865,6 @@ migrations:
     - maps/bizdir/sps/yang
     - maps/bizdir/sps/yang/tests
     - maps/garden/libs/matrix_router_data_builder
-    - maps/garden/modules/carparks_activation/tests
     - maps/garden/modules/transit_tester/tests
     - maps/goods/autotests/src
     - maps/goods/autotests/src/data_types
