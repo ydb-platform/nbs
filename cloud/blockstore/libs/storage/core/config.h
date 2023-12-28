@@ -517,6 +517,8 @@ public:
     TDuration GetAgentListExpiredParamsCleanupInterval() const;
 
     ui64 GetTenantHiveTabletId() const;
+
+    bool GetUseShadowDisksForNonreplDiskCheckpoints() const;
 };
 
 ui64 GetAllocationUnit(

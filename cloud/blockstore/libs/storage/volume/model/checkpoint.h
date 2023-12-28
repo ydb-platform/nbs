@@ -60,7 +60,7 @@ struct TCheckpointRequest
             ECheckpointRequestType reqType,
             ECheckpointRequestState state,
             ECheckpointType type,
-            TString shadowDiskId = TString() /* TODO(drbasic) remove */)
+            TString shadowDiskId)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)

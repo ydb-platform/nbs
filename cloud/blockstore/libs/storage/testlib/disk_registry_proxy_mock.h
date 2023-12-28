@@ -127,6 +127,14 @@ private:
                 TEvDiskRegistry::TEvGetDependentDisksRequest,
                 HandleGetDependentDisks);
 
+            HFunc(
+                TEvDiskRegistry::TEvAllocateCheckpointRequest,
+                HandleAllocateCheckpoint);
+
+            HFunc(
+                TEvDiskRegistry::TEvDeallocateCheckpointRequest,
+                HandleDeallocateCheckpoint);
+
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
@@ -890,6 +898,28 @@ private:
             std::make_unique<TEvDiskRegistry::TEvGetDependentDisksResponse>());
     }
 
+    void HandleAllocateCheckpoint(
+        const TEvDiskRegistry::TEvAllocateCheckpointRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvAllocateCheckpointResponse>();
+        response->Record.SetCheckpointDiskId(
+            ev->Get()->Record.GetSourceDiskId() +
+            ev->Get()->Record.GetCheckpointId());
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleDeallocateCheckpoint(
+        const TEvDiskRegistry::TEvDeallocateCheckpointRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvDiskRegistry::TEvDeallocateCheckpointResponse>());
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

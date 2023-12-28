@@ -817,9 +817,9 @@ bool TVolumeState::GetMuteIOErrors() const
 
 void TVolumeState::SetCheckpointRequestFinished(
     const TCheckpointRequest& request,
-    bool success)
+    bool success,
+    TString shadowDiskId)
 {
-    TString shadowDiskId; // TODO(drbasic) make argument
     GetCheckpointStore().SetCheckpointRequestFinished(
         request.RequestId,
         success,

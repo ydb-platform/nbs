@@ -1,10 +1,10 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
@@ -44,8 +44,9 @@ const char* GetCheckpointRequestName(ECheckpointRequestType reqType) {
         case ECheckpointRequestType::DeleteData:
             return TDeleteCheckpointDataMethod::Name;
         case ECheckpointRequestType::Create:
-        case ECheckpointRequestType::CreateWithoutData:
             return TCreateCheckpointMethod::Name;
+        case ECheckpointRequestType::CreateWithoutData:
+            return "CreateWithoutData";
     }
 }
 
@@ -98,11 +99,13 @@ private:
 private:
     const TRequestInfoPtr RequestInfo;
     const ui64 RequestId;
+    const TString DiskId;
     const TString CheckpointId;
     const ui64 VolumeTabletId;
     const TActorId VolumeActorId;
     const TPartitionDescrs PartitionDescrs;
     const TRequestTraceInfo TraceInfo;
+    const bool CreateCheckpointShadowDisk;
 
     ui32 DrainResponses = 0;
     ui32 Responses = 0;
@@ -114,19 +117,31 @@ public:
     TCheckpointActor(
         TRequestInfoPtr requestInfo,
         ui64 requestId,
+        TString diskId,
         TString checkpointId,
         ui64 volumeTabletId,
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
-        TRequestTraceInfo traceInfo);
+        TRequestTraceInfo traceInfo,
+        bool createCheckpointShadowDisk);
 
     void Bootstrap(const TActorContext& ctx);
     void Drain(const TActorContext& ctx);
     void DoAction(const TActorContext& ctx);
-    void UpdateCheckpointRequest(const TActorContext& ctx, bool completed);
+    void UpdateCheckpointRequest(
+        const TActorContext& ctx,
+        bool completed,
+        TString shadowDiskId);
     void ReplyAndDie(const TActorContext& ctx);
 
 private:
+    void DoActionForDiskRegistryBasedPartition(
+        const TActorContext& ctx,
+        const TPartitionDescr& partition);
+    void DoActionForBlobStorageBasedPartition(
+        const TActorContext& ctx,
+        const TPartitionDescr& partition,
+        ui32 partitionIndex);
     void ForkTraces(TCallContextPtr callContext);
     void JoinTraces(ui32 cookie);
 
@@ -137,6 +152,14 @@ private:
 
     void HandleResponse(
         const typename TMethod::TResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleAllocateCheckpointResponse(
+        const TEvDiskRegistry::TEvAllocateCheckpointResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDeallocateCheckpointResponse(
+        const TEvDiskRegistry::TEvDeallocateCheckpointResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleUndelivery(
@@ -166,18 +189,22 @@ template <typename TMethod>
 TCheckpointActor<TMethod>::TCheckpointActor(
         TRequestInfoPtr requestInfo,
         ui64 requestId,
+        TString diskId,
         TString checkpointId,
         ui64 volumeTabletId,
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
-        TRequestTraceInfo traceInfo)
+        TRequestTraceInfo traceInfo,
+        bool createCheckpointShadowDisk)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
+    , DiskId(std::move(diskId))
     , CheckpointId(std::move(checkpointId))
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
     , PartitionDescrs(std::move(partitionDescrs))
     , TraceInfo(std::move(traceInfo))
+    , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
 {
     TBase::ActivityType = TBlockStoreActivities::VOLUME;
@@ -216,7 +243,8 @@ void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
 template <typename TMethod>
 void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
     const TActorContext& ctx,
-    bool completed)
+    bool completed,
+    TString shadowDiskId)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Sending UpdateCheckpointRequest to volume",
@@ -235,7 +263,7 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
             std::move(requestInfo),
             RequestId,
             completed,
-            TString() /*TODO(drbasic)*/);
+            std::move(shadowDiskId));
 
     auto event = std::make_unique<IEventHandle>(
         VolumeActorId,
@@ -376,8 +404,56 @@ void TCheckpointActor<TMethod>::HandleResponse(
     if (++Responses == PartitionDescrs.size()) {
         // All the underlying actors have sent a successful status, we mark the
         // request as completed.
-        UpdateCheckpointRequest(ctx, true);
+        UpdateCheckpointRequest(ctx, true, "");
     }
+}
+
+template <typename TMethod>
+void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
+    const TEvDiskRegistry::TEvAllocateCheckpointResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    JoinTraces(ev->Cookie);
+
+    if (FAILED(msg->GetStatus())) {
+        Error = msg->GetError();
+
+        NCloud::Send(
+            ctx,
+            VolumeActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
+
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    UpdateCheckpointRequest(ctx, true, msg->Record.GetCheckpointDiskId());
+}
+
+template <typename TMethod>
+void TCheckpointActor<TMethod>::HandleDeallocateCheckpointResponse(
+    const TEvDiskRegistry::TEvDeallocateCheckpointResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    JoinTraces(ev->Cookie);
+
+    if (FAILED(msg->GetStatus())) {
+        Error = msg->GetError();
+
+        NCloud::Send(
+            ctx,
+            VolumeActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
+
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    UpdateCheckpointRequest(ctx, true, {});
 }
 
 template <typename TMethod>
@@ -450,6 +526,12 @@ STFUNC(TCheckpointActor<TMethod>::StateDoAction)
     switch (ev->GetTypeRewrite()) {
         HFunc(TMethod::TResponse, HandleResponse);
         HFunc(TMethod::TRequest, HandleUndelivery);
+        HFunc(
+            TEvDiskRegistry::TEvAllocateCheckpointResponse,
+            HandleAllocateCheckpointResponse);
+        HFunc(
+            TEvDiskRegistry::TEvDeallocateCheckpointResponse,
+            HandleDeallocateCheckpointResponse);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -479,48 +561,102 @@ STFUNC(TCheckpointActor<TMethod>::StateUpdateCheckpointRequest)
 template <typename TMethod>
 void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
 {
-    ui32 cookie = 0;
+    ui32 partitionIndex = 0;
     for (const auto& x: PartitionDescrs) {
         if (x.DiskRegistryBasedDisk) {
             Y_DEBUG_ABORT_UNLESS(PartitionDescrs.size() == 1);
-            // It is not required to send requests to the actor, we reject
-            // zero/write requests in TVolume (see CanExecuteWriteRequest).
 
-            // Here we make a decision about the success of the task.
-            bool okToExecute = true;
-            if constexpr (std::is_same_v<TMethod, TCreateCheckpointMethod>) {
-                if (!CheckpointId) {
-                    okToExecute = false;
-                    Error = MakeError(E_ARGUMENT, "empty checkpoint name");
-                }
-            }
-            UpdateCheckpointRequest(ctx, okToExecute);
-            return;
+            DoActionForDiskRegistryBasedPartition(ctx, x);
+        } else {
+            DoActionForBlobStorageBasedPartition(ctx, x, partitionIndex);
         }
+        ++partitionIndex;
+    }
+}
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Sending %s request to partition %lu",
-            VolumeTabletId,
-            TMethod::Name,
-            x.TabletId);
+template <typename TMethod>
+void TCheckpointActor<TMethod>::DoActionForDiskRegistryBasedPartition(
+    const TActorContext& ctx,
+    const TPartitionDescr& partition)
+{
+    Y_UNUSED(partition);
 
-        const auto selfId = TBase::SelfId();
-        auto request = std::make_unique<typename TMethod::TRequest>();
+    if (!CheckpointId) {
+        Error = MakeError(E_ARGUMENT, "empty checkpoint name");
+        UpdateCheckpointRequest(ctx, false, {});
+        return;
+    }
+
+    if (!CreateCheckpointShadowDisk) {
+        // It is not required to send requests to the actor, we reject
+        // zero/write requests in TVolume (see CanExecuteWriteRequest).
+        UpdateCheckpointRequest(ctx, true, {});
+        return;
+    }
+
+    if constexpr (std::is_same_v<TMethod, TCreateCheckpointMethod>) {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAllocateCheckpointRequest>();
+        request->Record.SetSourceDiskId(DiskId);
         request->Record.SetCheckpointId(CheckpointId);
 
-        ForkTraces(request->CallContext);
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "AllocateCheckpointDiskRequest: %s",
+            request->Record.Utf8DebugString().Quote().c_str());
 
-        auto event = std::make_unique<IEventHandle>(
-            x.ActorId,
-            selfId,
-            request.release(),
-            IEventHandle::FlagForwardOnNondelivery,
-            cookie++,
-            &selfId
-        );
-
-        ctx.Send(event.release());
+        NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
     }
+    if constexpr (
+        std::is_same_v<TMethod, TDeleteCheckpointDataMethod> ||
+        std::is_same_v<TMethod, TDeleteCheckpointMethod>)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvDeallocateCheckpointRequest>();
+        request->Record.SetSourceDiskId(DiskId);
+        request->Record.SetCheckpointId(CheckpointId);
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "DeallocateCheckpointDiskRequest: %s",
+            request->Record.Utf8DebugString().Quote().c_str());
+
+        NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
+    }
+
+    TBase::Become(&TThis::StateDoAction);
+}
+
+template <typename TMethod>
+void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
+    const TActorContext& ctx,
+    const TPartitionDescr& partition,
+    ui32 partitionIndex)
+{
+    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] Sending %s request to partition %lu",
+        VolumeTabletId,
+        TMethod::Name,
+        partition.TabletId);
+
+    const auto selfId = TBase::SelfId();
+    auto request = std::make_unique<typename TMethod::TRequest>();
+    request->Record.SetCheckpointId(CheckpointId);
+
+    ForkTraces(request->CallContext);
+
+    auto event = std::make_unique<IEventHandle>(
+        partition.ActorId,
+        selfId,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        partitionIndex,
+        &selfId
+    );
+
+    ctx.Send(event.release());
 
     TBase::Become(&TThis::StateDoAction);
 }
@@ -922,6 +1058,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     ctx,
                     requestInfo->RequestInfo,
                     request.RequestId,
+                    State->GetDiskId(),
                     request.CheckpointId,
                     TabletID(),
                     SelfId(),
@@ -929,7 +1066,8 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     TRequestTraceInfo(
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
-                        TraceSerializer));
+                        TraceSerializer),
+                    Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
         case ECheckpointRequestType::Delete: {
@@ -944,6 +1082,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     ctx,
                     requestInfo->RequestInfo,
                     request.RequestId,
+                    State->GetDiskId(),
                     request.CheckpointId,
                     TabletID(),
                     SelfId(),
@@ -951,7 +1090,8 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     TRequestTraceInfo(
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
-                        TraceSerializer));
+                        TraceSerializer),
+                    Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
         case ECheckpointRequestType::DeleteData: {
@@ -960,6 +1100,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     ctx,
                     requestInfo->RequestInfo,
                     request.RequestId,
+                    State->GetDiskId(),
                     request.CheckpointId,
                     TabletID(),
                     SelfId(),
@@ -967,7 +1108,8 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     TRequestTraceInfo(
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
-                        TraceSerializer));
+                        TraceSerializer),
+                    Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
         default:
@@ -1093,13 +1235,17 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] CheckpointRequest %lu %s marked %s",
+        "[%lu] CheckpointRequest %lu %s marked: %s disk: %s",
         TabletID(),
         request.RequestId,
         request.CheckpointId.Quote().c_str(),
-        args.Completed ? "completed" : "rejected");
+        args.Completed ? "completed" : "rejected",
+        args.ShadowDiskId.Quote().c_str());
 
-    State->SetCheckpointRequestFinished(request, args.Completed);
+    State->SetCheckpointRequestFinished(
+        request,
+        args.Completed,
+        args.ShadowDiskId);
     CheckpointRequests.erase(request.RequestId);
 
     if (request.Type == ECheckpointType::Light) {

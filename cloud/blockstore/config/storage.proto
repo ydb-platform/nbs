@@ -893,4 +893,7 @@ message TStorageServiceConfig
     // Max value is selected between this limit and
     // MaxNonReplicatedDeviceMigrationsInProgress.
     optional uint32 MaxNonReplicatedDeviceMigrationPercentageInProgress = 343;
+
+    // Create shadow disks for checkpoints for DiskRegistry-based disks.
+    optional bool UseShadowDisksForNonreplDiskCheckpoints = 344;
 }
