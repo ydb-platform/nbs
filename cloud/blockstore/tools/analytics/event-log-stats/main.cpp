@@ -475,7 +475,7 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
 
         void AddChecksum(const TChecksum& checksum)
         {
-            for (auto& item : Checksums) {
+            for (auto& item: Checksums) {
                 if (item && item->CommitId == checksum.CommitId) {
                     item->Value = checksum.Value;
                     return;
