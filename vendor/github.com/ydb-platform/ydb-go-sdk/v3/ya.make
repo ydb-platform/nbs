@@ -6,6 +6,7 @@ SRCS(
     connection.go
     context.go
     driver.go
+    driver_string.go
     errors.go
     meta.go
     options.go
@@ -15,7 +16,10 @@ SRCS(
     with.go
 )
 
-GO_TEST_SRCS(with_test.go)
+GO_TEST_SRCS(
+    driver_string_test.go
+    with_test.go
+)
 
 GO_XTEST_SRCS(
     # example_test.go

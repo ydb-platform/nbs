@@ -30,6 +30,7 @@ import (
 	internalTable "github.com/ydb-platform/ydb-go-sdk/v3/internal/table"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicclientinternal"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsql"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -47,6 +48,9 @@ var _ Connection = (*Driver)(nil)
 
 // Driver type provide access to YDB service clients
 type Driver struct { //nolint:maligned
+	ctx       context.Context // cancel while Driver.Close called.
+	ctxCancel context.CancelFunc
+
 	userInfo *dsn.UserInfo
 
 	logger        log.Logger
@@ -93,15 +97,28 @@ type Driver struct { //nolint:maligned
 	panicCallback func(e interface{})
 }
 
+func (d *Driver) trace() *trace.Driver {
+	if d.config != nil {
+		return d.config.Trace()
+	}
+
+	return &trace.Driver{}
+}
+
 // Close closes Driver and clear resources
+//
+//nolint:nonamedreturns
 func (d *Driver) Close(ctx context.Context) (finalErr error) {
-	onDone := trace.DriverOnClose(d.config.Trace(), &ctx, stack.FunctionID(0))
+	onDone := trace.DriverOnClose(d.trace(), &ctx, stack.FunctionID(""))
 	defer func() {
 		onDone(finalErr)
 	}()
+	d.ctxCancel()
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
+	d.ctxCancel()
 
 	defer func() {
 		for _, f := range d.onClose {
@@ -200,16 +217,33 @@ func (d *Driver) Topic() topic.Client {
 //	"grpc[s]://{endpoint}/{database}[?param=value]"
 //
 // See sugar.DSN helper for make dsn from endpoint and database
+//
+//nolint:nonamedreturns
 func Open(ctx context.Context, dsn string, opts ...Option) (_ *Driver, err error) {
-	return open(
-		ctx,
-		append(
-			[]Option{
-				WithConnectionString(dsn),
-			},
-			opts...,
-		)...,
+	d, err := newConnectionFromOptions(ctx, append(
+		[]Option{
+			WithConnectionString(dsn),
+		},
+		opts...,
+	)...)
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	onDone := trace.DriverOnInit(
+		d.trace(), &ctx,
+		stack.FunctionID(""),
+		d.config.Endpoint(), d.config.Database(), d.config.Secure(),
 	)
+	defer func() {
+		onDone(err)
+	}()
+
+	if err = d.connect(ctx); err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	return d, nil
 }
 
 func MustOpen(ctx context.Context, dsn string, opts ...Option) *Driver {
@@ -217,20 +251,52 @@ func MustOpen(ctx context.Context, dsn string, opts ...Option) *Driver {
 	if err != nil {
 		panic(err)
 	}
+
 	return db
 }
 
 // New connects to database and return driver runtime holder
 //
 // Deprecated: use Open with required param connectionString instead
+//
+//nolint:nonamedreturns
 func New(ctx context.Context, opts ...Option) (_ *Driver, err error) {
-	return open(ctx, opts...)
+	d, err := newConnectionFromOptions(ctx, opts...)
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	onDone := trace.DriverOnInit(
+		d.trace(), &ctx,
+		stack.FunctionID(""),
+		d.config.Endpoint(), d.config.Database(), d.config.Secure(),
+	)
+	defer func() {
+		onDone(err)
+	}()
+
+	if err = d.connect(ctx); err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	return d, nil
 }
 
+//nolint:cyclop, nonamedreturns
 func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, err error) {
+	ctx, driverCtxCancel := xcontext.WithCancel(xcontext.WithoutDeadline(ctx))
+	defer func() {
+		if err != nil {
+			driverCtxCancel()
+		}
+	}()
+
 	d := &Driver{
-		children: make(map[uint64]*Driver),
+		children:  make(map[uint64]*Driver),
+		ctx:       ctx,
+		ctxCancel: driverCtxCancel,
 	}
+
 	if caFile, has := os.LookupEnv("YDB_SSL_ROOT_CERTIFICATES_FILE"); has {
 		d.opts = append(d.opts,
 			WithCertificatesFromFile(caFile),
@@ -264,16 +330,16 @@ func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, e
 	}
 	if d.logger != nil {
 		for _, opt := range []Option{
-			WithTraceDriver(log.Driver(d.logger, d.loggerDetails, d.loggerOpts...)),
-			WithTraceTable(log.Table(d.logger, d.loggerDetails, d.loggerOpts...)),
-			WithTraceScripting(log.Scripting(d.logger, d.loggerDetails, d.loggerOpts...)),
+			WithTraceDriver(log.Driver(d.logger, d.loggerDetails, d.loggerOpts...)),       //nolint:contextcheck
+			WithTraceTable(log.Table(d.logger, d.loggerDetails, d.loggerOpts...)),         //nolint:contextcheck
+			WithTraceScripting(log.Scripting(d.logger, d.loggerDetails, d.loggerOpts...)), //nolint:contextcheck
 			WithTraceScheme(log.Scheme(d.logger, d.loggerDetails, d.loggerOpts...)),
 			WithTraceCoordination(log.Coordination(d.logger, d.loggerDetails, d.loggerOpts...)),
 			WithTraceRatelimiter(log.Ratelimiter(d.logger, d.loggerDetails, d.loggerOpts...)),
-			WithTraceDiscovery(log.Discovery(d.logger, d.loggerDetails, d.loggerOpts...)),
-			WithTraceTopic(log.Topic(d.logger, d.loggerDetails, d.loggerOpts...)),
-			WithTraceDatabaseSQL(log.DatabaseSQL(d.logger, d.loggerDetails, d.loggerOpts...)),
-			WithTraceRetry(log.Retry(d.logger, d.loggerDetails, d.loggerOpts...)),
+			WithTraceDiscovery(log.Discovery(d.logger, d.loggerDetails, d.loggerOpts...)),     //nolint:contextcheck
+			WithTraceTopic(log.Topic(d.logger, d.loggerDetails, d.loggerOpts...)),             //nolint:contextcheck
+			WithTraceDatabaseSQL(log.DatabaseSQL(d.logger, d.loggerDetails, d.loggerOpts...)), //nolint:contextcheck
+			WithTraceRetry(log.Retry(d.logger, d.loggerDetails, d.loggerOpts...)),             //nolint:contextcheck
 		} {
 			if opt != nil {
 				err = opt(ctx, d)
@@ -284,25 +350,19 @@ func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, e
 		}
 	}
 	d.config = config.New(d.options...)
+
 	return d, nil
 }
 
-func connect(ctx context.Context, d *Driver) error {
-	var err error
-
+//nolint:cyclop, nonamedreturns, funlen
+func (d *Driver) connect(ctx context.Context) (err error) {
 	if d.config.Endpoint() == "" {
-		return xerrors.WithStackTrace(errors.New("configuration: empty dial address"))
-	}
-	if d.config.Database() == "" {
-		return xerrors.WithStackTrace(errors.New("configuration: empty database"))
+		return xerrors.WithStackTrace(errors.New("configuration: empty dial address")) //nolint:goerr113
 	}
 
-	onDone := trace.DriverOnInit(
-		d.config.Trace(), &ctx, stack.FunctionID(2), d.config.Endpoint(), d.config.Database(), d.config.Secure(),
-	)
-	defer func() {
-		onDone(err)
-	}()
+	if d.config.Database() == "" {
+		return xerrors.WithStackTrace(errors.New("configuration: empty database")) //nolint:goerr113
+	}
 
 	if d.userInfo != nil {
 		d.config = d.config.With(config.WithCredentials(
@@ -441,18 +501,6 @@ func connect(ctx context.Context, d *Driver) error {
 	}
 
 	return nil
-}
-
-func open(ctx context.Context, opts ...Option) (_ *Driver, err error) {
-	d, err := newConnectionFromOptions(ctx, opts...)
-	if err != nil {
-		return nil, xerrors.WithStackTrace(err)
-	}
-	err = connect(ctx, d)
-	if err != nil {
-		return nil, xerrors.WithStackTrace(err)
-	}
-	return d, nil
 }
 
 // GRPCConn casts *ydb.Driver to grpc.ClientConnInterface for executing

@@ -4,6 +4,7 @@ LICENSE(Apache-2.0)
 
 SRCS(
     codec.go
+    message_metadata.go
     server_message_metadata.go
     update_token.go
 )

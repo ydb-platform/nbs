@@ -36,6 +36,7 @@ RECURSE(
     wait
     wrap
     xatomic
+    xbytes
     xcontext
     xerrors
     xrand
