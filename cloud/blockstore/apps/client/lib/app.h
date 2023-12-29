@@ -12,7 +12,10 @@ private:
 public:
     static TApp& Instance();
     void Shutdown();
-    int Run(int argc, const char* argv[]);
+    int Run(
+        std::shared_ptr<TClientFactories> clientFactories,
+        int argc,
+        const char* argv[]);
 };
 
 void Shutdown(int signum);

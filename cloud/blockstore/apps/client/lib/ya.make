@@ -1,11 +1,14 @@
 LIBRARY()
 
+OWNER(g:cloud-nbs)
+
 SRCS(
     alter_placement_group_membership.cpp
     alter_volume.cpp
     app.cpp
     assign_volume.cpp
     backup_volume.cpp
+    bootstrap.cpp
     command.cpp
     create_checkpoint.cpp
     create_placement_group.cpp

@@ -1,3 +1,4 @@
+#include "bootstrap.h"
 #include "factory.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -26,6 +27,25 @@ static const ui64 DefaultBlocksCount = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+std::shared_ptr<TClientFactories> MakeClientFactories()
+{
+    auto clientFactories = std::make_shared<TClientFactories>();
+
+    clientFactories->IamClientFactory = [] (
+        NCloud::NIamClient::TIamClientConfigPtr config,
+        NCloud::ILoggingServicePtr logging,
+        NCloud::ISchedulerPtr scheduler,
+        NCloud::ITimerPtr timer)
+    {
+        Y_UNUSED(config);
+        Y_UNUSED(logging);
+        Y_UNUSED(scheduler);
+        Y_UNUSED(timer);
+        return NCloud::NIamClient::CreateIamTokenClientStub();
+    };
+    return clientFactories;
+}
+
 bool ExecuteRequest(
     const char* command,
     const TVector<TString>& argv,
@@ -43,6 +63,7 @@ bool ExecuteRequest(
         Cerr << "Failed to find handler for command " << command << Endl;
         return false;
     }
+    handler->SetClientFactories(MakeClientFactories());
 
     return handler->Run(args.size(), &args[0]);
 }
