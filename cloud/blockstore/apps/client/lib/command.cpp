@@ -1,3 +1,4 @@
+#include "bootstrap.h"
 #include "command.h"
 #include "factory.h"
 
@@ -53,6 +54,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
+const TString DefaultIamConfigFile = "/Berkanavt/nbs-server/cfg/nbs-iam.txt";
 const TString DefaultIamTokenFile = "~/.nbs-client/iam-token";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -121,6 +123,13 @@ TCommand::TCommand(IBlockStorePtr client)
             << DefaultConfigFile)
         .RequiredArgument("STR")
         .StoreResult(&ConfigFile);
+
+    Opts.AddLongOption("iam-config")
+        .Help(TStringBuilder()
+            << "iam-config file name. Default is "
+            << DefaultIamConfigFile)
+        .RequiredArgument("STR")
+        .StoreResult(&IamConfigFile);
 
     Opts.AddLongOption("host", "connect host")
         .RequiredArgument("STR")
@@ -284,6 +293,12 @@ void TCommand::SetOutputStream(std::shared_ptr<IOutputStream> os)
     OutputStream = std::move(os);
 }
 
+void TCommand::SetClientFactories(
+    std::shared_ptr<TClientFactories> clientFactories)
+{
+    ClientFactories = std::move(clientFactories);
+}
+
 TString TCommand::NormalizeCommand(TString command)
 {
     command.to_lower();
@@ -420,10 +435,11 @@ void TCommand::Parse(const int argc, const char* argv[])
 void TCommand::Init()
 {
     InitLWTrace();
-    InitClientConfig();
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
+
+    InitClientConfig(InitIamTokenClient());
 
     const auto& logConfig = ClientConfig->GetLogConfig();
     const auto& monConfig = ClientConfig->GetMonitoringConfig();
@@ -549,7 +565,39 @@ void TCommand::InitLWTrace()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
 }
 
-void TCommand::InitClientConfig()
+TString TCommand::InitIamTokenClient()
+{
+    NProto::TIamClientConfig iamConfig;
+    if (IamConfigFile) {
+        ParseFromTextFormat(IamConfigFile, iamConfig);
+    } else if (NFs::Exists(DefaultIamConfigFile)) {
+        ParseFromTextFormat(DefaultIamConfigFile, iamConfig);
+    }
+
+    auto IamClientConfigPtr =
+        std::make_shared<NCloud::NIamClient::TIamClientConfig>(iamConfig);
+
+    IamClient = ClientFactories->IamClientFactory(
+        IamClientConfigPtr,
+        CreateLoggingService("console"),
+        Scheduler,
+        Timer);
+    IamClient->Start();
+
+    TString iamToken;
+    try {
+        auto tokenInfo = IamClient->GetTokenAsync().GetValue(WaitTimeout);
+        if (!HasError(tokenInfo)) {
+            iamToken = tokenInfo.GetResult().Token;
+        }
+    } catch (...) {
+        STORAGE_ERROR(CurrentExceptionMessage());
+    }
+
+    return iamToken;
+}
+
+void TCommand::InitClientConfig(TString IamTokenFromClient)
 {
     NProto::TClientAppConfig appConfig;
     if (ConfigFile) {
@@ -627,6 +675,9 @@ void TCommand::InitClientConfig()
         if (!iamToken) {
             iamToken = GetIamTokenFromFile(IamTokenFile);
         }
+        if (!iamToken) {
+            iamToken = std::move(IamTokenFromClient);
+        }
         clientConfig.SetAuthToken(std::move(iamToken));
     }
 
@@ -666,6 +717,10 @@ void TCommand::Start()
 
 void TCommand::Stop()
 {
+    if (IamClient) {
+        IamClient->Stop();
+    }
+
     if (Scheduler) {
         Scheduler->Stop();
     }
