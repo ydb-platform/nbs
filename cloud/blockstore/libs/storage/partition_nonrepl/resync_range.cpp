@@ -262,6 +262,11 @@ void TResyncRangeActor::HandleChecksumResponse(
     Error = msg->Record.GetError();
 
     if (HasError(Error)) {
+        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+            "[%s] Checksum error %s",
+            Replicas[0].Name.c_str(),
+            FormatError(Error).c_str());
+
         Done(ctx);
         return;
     }
