@@ -131,6 +131,7 @@ TClientAppConfig::TClientAppConfig(NProto::TClientAppConfig appConfig)
     , ClientConfig(AppConfig.GetClientConfig())
     , LogConfig(AppConfig.GetLogConfig())
     , MonitoringConfig(AppConfig.GetMonitoringConfig())
+    , IamConfig(AppConfig.GetIamConfig())
 {}
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \

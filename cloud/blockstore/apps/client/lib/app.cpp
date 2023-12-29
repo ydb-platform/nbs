@@ -1,4 +1,5 @@
 #include "app.h"
+#include "bootstrap.h"
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
@@ -30,7 +31,10 @@ void TApp::Shutdown()
     }
 }
 
-int TApp::Run(int argc, const char* argv[])
+int TApp::Run(
+    std::shared_ptr<TClientFactories> clientFactories,
+    int argc,
+    const char* argv[])
 {
     TOpts opts;
     opts.AddHelpOption('h');
@@ -65,6 +69,8 @@ int TApp::Run(int argc, const char* argv[])
         if (!Handler) {
             ythrow yexception() << "unknown command: " << command;
         }
+
+        Handler->SetClientFactories(clientFactories);
 
         bool res = Handler->Run(argc, argv);
         if (!res) {
