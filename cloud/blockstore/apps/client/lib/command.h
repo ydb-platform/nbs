@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bootstrap.h"
+
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 
@@ -10,6 +12,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/iam/iface/client.h>
 
 #include <library/cpp/actors/util/should_continue.h>
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -36,6 +39,7 @@ protected:
     const ui64 BatchBlocksCount = 1024;
 
     TString ConfigFile;
+    TString IamConfigFile;
 
     TString Host;
     ui32 InsecurePort = 0;
@@ -51,6 +55,8 @@ protected:
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     IEncryptionClientFactoryPtr EncryptionClientFactory;
+
+    NCloud::NIamClient::IIamTokenClientPtr IamClient;
 
     mutable TLog GrpcLog;
     mutable TLog Log;
@@ -93,6 +99,8 @@ protected:
 
     TProgramShouldContinue ShouldContinue;
 
+    std::shared_ptr<TClientFactories> ClientFactories;
+
     static constexpr TDuration WaitTimeout = TDuration::MilliSeconds(100);
 
 public:
@@ -120,6 +128,7 @@ public:
     IOutputStream& GetOutputStream();
 
     void SetOutputStream(std::shared_ptr<IOutputStream> os);
+    void SetClientFactories(std::shared_ptr<TClientFactories> clientFactories);
 
     static TString NormalizeCommand(TString command);
 
@@ -164,7 +173,8 @@ private:
 
     void Init();
     void InitLWTrace();
-    void InitClientConfig();
+    TString InitIamTokenClient();
+    void InitClientConfig(TString IamTokenFromClient);
 
     void Start();
     void Stop();
