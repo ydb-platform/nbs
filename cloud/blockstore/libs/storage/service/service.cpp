@@ -15,6 +15,7 @@ IActorPtr CreateStorageService(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NDiscovery::IDiscoveryServicePtr discoveryService,
     ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
     IVolumeStatsPtr volumeStats,
     TManuallyPreemptedVolumesPtr preemptedVolumes)
@@ -26,6 +27,7 @@ IActorPtr CreateStorageService(
         std::move(blockDigestGenerator),
         std::move(discoveryService),
         std::move(traceSerializer),
+        std::move(endpointEventHandler),
         std::move(rdmaClient),
         std::move(volumeStats),
         std::move(preemptedVolumes));

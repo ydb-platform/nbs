@@ -28,6 +28,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryption_service.h>
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
 #include <cloud/blockstore/libs/endpoints/service_endpoint.h>
@@ -210,6 +211,7 @@ void TBootstrapBase::Init()
     Executor = TExecutor::Create("SVC");
 
     VolumeBalancerSwitch = CreateVolumeBalancerSwitch();
+    EndpointEventHandler = CreateEndpointEventProxy();
 
     switch (Configs->Options->ServiceKind) {
         case TOptionsCommon::EServiceKind::Ydb:
@@ -479,6 +481,7 @@ void TBootstrapBase::Init()
         Logging,
         ServerStats,
         Executor,
+        EndpointEventHandler,
         std::move(sessionManager),
         std::move(endpointListeners),
         Configs->ServerConfig->GetNbdSocketSuffix());

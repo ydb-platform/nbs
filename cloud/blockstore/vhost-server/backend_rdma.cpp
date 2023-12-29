@@ -2,6 +2,7 @@
 
 #include "backend.h"
 
+#include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
@@ -12,11 +13,11 @@
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
-#include <library/cpp/uri/uri.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -68,32 +69,6 @@ TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
     Log = Logging->CreateLog("RDMA");
 }
 
-std::tuple<TString, ui16, TString> ParseRdmaDevicePath(
-    const TString& devicePath)
-{
-    // rdma://myt1-ct5-13.cloud.yandex.net:10020/62ccf40f2743308191205ad6391bfa06
-
-    NUri::TUri uri;
-    auto res = uri.Parse(
-        devicePath,
-        NUri::TFeature::FeaturesDefault | NUri::TFeature::FeatureSchemeFlexible);
-    Y_ENSURE(
-        res == NUri::TState::ParsedOK,
-        "invalid device path " << devicePath);
-
-    Y_ENSURE(uri.GetField(NUri::TField::FieldScheme) == "rdma",
-        "device path doesn't start with rdma://, " << devicePath);
-
-    auto path = uri.GetField(NUri::TField::FieldPath);
-    Y_ENSURE(
-        path.size() > 1 && path[0] == '/',
-        "invalid uuid inside device path " << devicePath);
-
-    auto uuid = path.substr(1);
-
-    return {TString{uri.GetHost()}, uri.GetPort(), TString{uuid}};
-}
-
 vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 {
     STORAGE_INFO("Initializing RDMA backend");
@@ -123,20 +98,31 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     ui64 totalBytes = 0;
 
     for (auto& chunk: options.Layout) {
-        auto [host, port, uuid] = ParseRdmaDevicePath(chunk.DevicePath);
-        auto* device = Volume.MutableDevices()->Add();
-        device->SetDeviceUUID(uuid);
-        device->MutableRdmaEndpoint()->SetHost(host);
-        device->MutableRdmaEndpoint()->SetPort(port);
+        DevicePath devicePath("rdma");
+        auto error = devicePath.Parse(chunk.DevicePath);
+        STORAGE_VERIFY_C(
+                !HasError(error),
+                TWellKnownEntityTypes::ENDPOINT,
+                ClientId,
+                "device parse error: " << error.GetMessage());
 
-        Y_ENSURE(
+        auto* device = Volume.MutableDevices()->Add();
+        device->SetDeviceUUID(devicePath.Uuid);
+        device->MutableRdmaEndpoint()->SetHost(devicePath.Host);
+        device->MutableRdmaEndpoint()->SetPort(devicePath.Port);
+
+        STORAGE_VERIFY_C(
             chunk.Offset == 0,
+            TWellKnownEntityTypes::ENDPOINT,
+            ClientId,
             "device chunk offset is not 0"
                 << ", device=" << chunk.DevicePath
                 << ", offset=" << chunk.Offset);
 
-        Y_ENSURE(
+        STORAGE_VERIFY_C(
             chunk.ByteCount % Volume.GetBlockSize() == 0,
+            TWellKnownEntityTypes::ENDPOINT,
+            ClientId,
             "device chunk size is not aligned to "
                 << Volume.GetBlockSize()
                 << ", device=" << chunk.DevicePath

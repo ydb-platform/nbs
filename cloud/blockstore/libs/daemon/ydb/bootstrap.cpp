@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
@@ -528,6 +529,7 @@ void TBootstrapYdb::InitKikimrService()
             return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
         }();
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
+    args.EndpointEventHandler = EndpointEventHandler;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

@@ -51,6 +51,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
+    const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NRdma::IClientPtr RdmaClient;
     const TString DiskId;
     const ui64 VolumeTabletId;
@@ -83,6 +84,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         TString diskId,
         ui64 volumeTabletId = 0);
@@ -159,6 +161,7 @@ TStartVolumeActor::TStartVolumeActor(
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         TString diskId,
         ui64 volumeTabletId)
@@ -168,6 +171,7 @@ TStartVolumeActor::TStartVolumeActor(
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , TraceSerializer(std::move(traceSerializer))
+    , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
     , DiskId(std::move(diskId))
     , VolumeTabletId(volumeTabletId)
@@ -435,6 +439,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
     auto profileLog = ProfileLog;
     auto blockDigestGenerator = BlockDigestGenerator;
     auto traceSerializer = TraceSerializer;
+    auto endpointEventHandler = EndpointEventHandler;
     auto rdmaClient = RdmaClient;
 
     auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
@@ -858,6 +863,7 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
             ProfileLog,
             BlockDigestGenerator,
             TraceSerializer,
+            EndpointEventHandler,
             RdmaClient,
             diskId,
             TabletId);

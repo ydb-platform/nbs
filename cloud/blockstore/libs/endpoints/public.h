@@ -25,4 +25,10 @@ using IEndpointListenerPtr = std::shared_ptr<IEndpointListener>;
 struct IEndpointService;
 using IEndpointServicePtr = std::shared_ptr<IEndpointService>;
 
+struct IEndpointEventHandler;
+using IEndpointEventHandlerPtr = std::shared_ptr<IEndpointEventHandler>;
+
+struct IEndpointEventProxy;
+using IEndpointEventProxyPtr = std::shared_ptr<IEndpointEventProxy>;
+
 }   // namespace NCloud::NBlockStore::NServer
