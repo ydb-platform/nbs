@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -14,6 +15,7 @@ namespace NCloud::NBlockStore::NStorage {
 NActors::IActorPtr CreateVolumeClient(
     TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const NActors::TActorId& sessionActorId,
     TString diskId,
     ui64 tabletId);

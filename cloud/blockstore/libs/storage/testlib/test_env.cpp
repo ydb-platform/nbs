@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
@@ -371,6 +372,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         CreateBlockDigestGeneratorStub(),
         NDiscovery::CreateDiscoveryServiceStub(),
         TraceSerializer,
+        NServer::CreateEndpointEventProxy(),
         nullptr, // rdmaClient
         CreateVolumeStatsStub(),
         std::move(manuallyPreemptedVolumes));

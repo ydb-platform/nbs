@@ -24,6 +24,7 @@ TServiceActor::TServiceActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NDiscovery::IDiscoveryServicePtr discoveryService,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes)
@@ -33,6 +34,7 @@ TServiceActor::TServiceActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , DiscoveryService(std::move(discoveryService))
     , TraceSerializer(std::move(traceSerializer))
+    , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
     , VolumeStats(std::move(volumeStats))
     , SharedCounters(MakeIntrusive<TSharedServiceCounters>(Config))

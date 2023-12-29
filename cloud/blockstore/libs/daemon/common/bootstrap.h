@@ -69,6 +69,7 @@ protected:
     ICachingAllocatorPtr Allocator;
     IStorageProviderPtr AioStorageProvider;
     IEndpointServicePtr EndpointService;
+    IEndpointEventProxyPtr EndpointEventHandler;
     NRdma::IServerPtr RdmaServer;
     NRdma::IClientPtr RdmaClient;
     ITaskQueuePtr RdmaThreadPool;

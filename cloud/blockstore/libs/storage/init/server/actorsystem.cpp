@@ -210,6 +210,7 @@ public:
             Args.BlockDigestGenerator,
             Args.DiscoveryService,
             Args.TraceSerializer,
+            Args.EndpointEventHandler,
             Args.RdmaClient,
             Args.VolumeStats,
             Args.PreemptedVolumes);
@@ -342,6 +343,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
+    const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NLogbroker::IServicePtr LogbrokerService;
     const NNotify::IServicePtr NotifyService;
     const NRdma::IClientPtr RdmaClient;

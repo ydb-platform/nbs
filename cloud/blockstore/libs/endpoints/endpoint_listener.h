@@ -36,6 +36,11 @@ struct IEndpointListener
     virtual NProto::TError RefreshEndpoint(
         const TString& socketPath,
         const NProto::TVolume& volume) = 0;
+
+    virtual NThreading::TFuture<NProto::TError> SwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

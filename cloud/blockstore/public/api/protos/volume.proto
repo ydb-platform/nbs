@@ -276,6 +276,10 @@ message TVolume
 
     // Represents whether disk filling finished or not.
     bool IsFillFinished = 35;
+
+    // Whether volume can use fast data path (external endpoint with direct
+    // rdma connection to engine)
+    bool IsFastPathEnabled = 36;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
