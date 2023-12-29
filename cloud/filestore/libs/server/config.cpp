@@ -10,6 +10,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration Seconds(int s)
+{
+    return TDuration::Seconds(s);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define FILESTORE_SERVER_CONFIG(xxx)                                           \
     xxx(Host,                        TString,                   "localhost"   )\
     xxx(Port,                        ui32,                      9021          )\
@@ -22,7 +29,7 @@ namespace {
     xxx(KeepAliveIdleTimeout,        TDuration,                 {}            )\
     xxx(KeepAliveProbeTimeout,       TDuration,                 {}            )\
     xxx(KeepAliveProbesCount,        ui32,                      0             )\
-    xxx(ShutdownTimeout,             TDuration,                 {}            )\
+    xxx(ShutdownTimeout,             TDuration,                 Seconds(30)   )\
     xxx(SecureHost,                  TString,                   {}            )\
     xxx(SecurePort,                  ui32,                      0             )\
     xxx(RootCertsFile,               TString,                   {}            )\

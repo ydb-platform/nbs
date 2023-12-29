@@ -69,6 +69,16 @@ private:
         TBlockRange64 BlockRange;
     };
     TDeque<TPostponedRead> PostponedReads;
+    struct TFastPathRecord
+    {
+        NActors::IEventHandlePtr Ev;
+        TBlockRange64 BlockRange;
+        TGuardedBuffer<TString> Buffer;
+        TGuardedSgList SgList;
+    };
+    ui64 FastPathReadCount = 0;
+    THashMap<ui64, TFastPathRecord> FastPathRecords;
+
 
 public:
     TMirrorPartitionResyncActor(
@@ -94,6 +104,7 @@ public:
 
 private:
     void RejectPostponedRead(TPostponedRead& pr);
+    void RejectFastPathRecord(TFastPathRecord& fpr);
     void KillActors(const NActors::TActorContext& ctx);
     void SetupPartitions(const NActors::TActorContext& ctx);
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
@@ -146,14 +157,48 @@ private:
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReadResyncFastPathResponse(
+        const TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     void ForwardRequest(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
-    void ProcessReadRequest(
+    void ProcessReadRequestSyncPath(
         const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ProcessReadRequestFastPath(
+        const TEvService::TEvReadBlocksRequest::TPtr& ev,
+        TVector<TResyncReplica>&& replicas,
+        TBlockRange64 range,
+        const NActors::TActorContext& ctx);
+
+    void ProcessReadRequestFastPath(
+        const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
+        TVector<TResyncReplica>&& replicas,
+        TBlockRange64 range,
+        const NActors::TActorContext& ctx);
+
+    void ProcessReadRequestSlowPath(
+        NActors::IEventHandlePtr&& ev,
+        TBlockRange64 range,
+        const NActors::TActorContext& ctx);
+
+    void ProcessReadResponseFastPath(
+        const TFastPathRecord& record,
+        const NActors::TActorContext& ctx);
+
+    void ProcessReadResponseFastPathLocal(
+        const TFastPathRecord& record,
+        const NActors::TActorContext& ctx);
+
+    void SendReadBlocksResponse(
+        const NProto::TError& error,
+        const TFastPathRecord& record,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);

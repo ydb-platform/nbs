@@ -15,6 +15,7 @@ private:
     TString ClientId;
     bool MountReadOnly = false;
     ui64 MountSeqNo = 0;
+    bool Persistent = false;
 
 public:
     TStartEndpointCommand()
@@ -41,6 +42,10 @@ public:
         Opts.AddLongOption("mount-seqno")
             .RequiredArgument("NUM")
             .StoreResult(&MountSeqNo);
+
+        Opts.AddLongOption("persistent")
+            .NoArgument()
+            .SetFlag(&Persistent);
     }
 
     bool Execute() override
@@ -55,6 +60,7 @@ public:
         config->SetClientId(ClientId);
         config->SetReadOnly(MountReadOnly);
         config->SetMountSeqNumber(MountSeqNo);
+        config->SetPersistent(Persistent);
 
         auto response = WaitFor(
             Client->StartEndpoint(

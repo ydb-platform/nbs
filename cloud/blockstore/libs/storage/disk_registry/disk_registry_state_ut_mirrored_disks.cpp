@@ -410,9 +410,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL("dev-1", devices[0].GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL("dev-2", devices[1].GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL("dev-3", devices[2].GetDeviceName());
-            UNIT_ASSERT_VALUES_EQUAL("dev-4", devices[3].GetDeviceName());
-            UNIT_ASSERT_VALUES_EQUAL("dev-5", devices[4].GetDeviceName());
-            UNIT_ASSERT_VALUES_EQUAL("dev-6", devices[5].GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL("dev-10", devices[3].GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL("dev-11", devices[4].GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL("dev-12", devices[5].GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(1, replicas.size());
             UNIT_ASSERT_VALUES_EQUAL(6, replicas[0].size());
             UNIT_ASSERT_VALUES_EQUAL("dev-7", replicas[0][0].GetDeviceName());

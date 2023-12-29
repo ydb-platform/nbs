@@ -335,6 +335,68 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         UNIT_ASSERT_NO_EXCEPTION(service->Stop());
     }
+
+    Y_UNIT_TEST(ShouldStartPersistentEndpoint)
+    {
+        TString id = "id";
+        TString unixSocket = "testSocket";
+
+        auto request = std::make_shared<NProto::TStartEndpointRequest>();
+        auto config = request->MutableEndpoint();
+        config->SetFileSystemId(id);
+        config->SetSocketPath(unixSocket);
+        config->SetClientId("client");
+        config->SetPersistent(true);
+
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
+
+        auto initError = mutableStorage->Init();
+        UNIT_ASSERT_C(!HasError(initError), initError);
+
+        Y_DEFER {
+            auto error = mutableStorage->Remove();
+            UNIT_ASSERT_C(!HasError(error), error);
+        };
+
+        auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
+        endpoint->Start.SetValue(NProto::TError{});
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->CreateEndpointHandler =
+            [&] (const NProto::TEndpointConfig&) {
+                listener->Endpoints.push_back(endpoint);
+                return endpoint;
+            };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener);
+        service->Start();
+
+        Y_DEFER {
+            endpoint->Stop.SetValue();
+            UNIT_ASSERT_NO_EXCEPTION(service->Stop());
+        };
+
+        auto idsOrError = endpointStorage->GetEndpointIds();
+        UNIT_ASSERT_C(!HasError(idsOrError), idsOrError.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(idsOrError.GetResult().size(), 0);
+
+        auto future = service->StartEndpoint(
+            MakeIntrusive<TCallContext>(),
+            request);
+        auto response = future.GetValue(WaitTimeout);
+        UNIT_ASSERT_C(!HasError(response), response.ShortDebugString());
+
+        UNIT_ASSERT_VALUES_EQUAL(listener->Endpoints.size(), 1);
+
+        idsOrError = endpointStorage->GetEndpointIds();
+        UNIT_ASSERT_C(!HasError(idsOrError), idsOrError.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(idsOrError.GetResult().size(), 1);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NServer

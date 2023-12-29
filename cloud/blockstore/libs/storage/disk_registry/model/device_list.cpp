@@ -96,7 +96,7 @@ TDeviceList::TDeviceList(
 
 void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent, TNodeId prevNodeId)
 {
-    FreeDevices.erase(prevNodeId);
+    NodeDevices.erase(prevNodeId);
     UpdateDevices(agent);
 }
 
@@ -113,15 +113,16 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
         return;
     }
 
-    auto& freeDevices = FreeDevices[agent.GetNodeId()];
-    freeDevices.Devices.clear();
-    freeDevices.Rack.clear();
+    auto& nodeDevices = NodeDevices[agent.GetNodeId()];
+    nodeDevices.FreeDevices.clear();
+    nodeDevices.Rack.clear();
+    nodeDevices.TotalSize = 0;
 
     for (const auto& device: agent.GetDevices()) {
         if (device.GetState() == NProto::DEVICE_STATE_ONLINE
                 && !device.GetRack().empty())
         {
-            freeDevices.Rack = device.GetRack();
+            nodeDevices.Rack = device.GetRack();
             break;
         }
     }
@@ -140,7 +141,7 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
         const auto& uuid = device.GetDeviceUUID();
         UpdateInAllDevices(uuid, device);
 
-        if (device.GetRack() != freeDevices.Rack) {
+        if (device.GetRack() != nodeDevices.Rack) {
             continue;
         }
 
@@ -150,7 +151,7 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
             !DirtyDevices.contains(uuid) &&
             !SuspendedDevices.contains(uuid))
         {
-            freeDevices.Devices.push_back(device);
+            nodeDevices.FreeDevices.push_back(device);
         }
 
         auto& poolNames = PoolKind2PoolNames[device.GetPoolKind()];
@@ -159,14 +160,17 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
         if (it == poolNames.end()) {
             poolNames.push_back(device.GetPoolName());
         }
+
+        nodeDevices.TotalSize +=
+            device.GetBlockSize() * device.GetBlocksCount();
     }
 
-    SortBy(freeDevices.Devices, TBySortQueryKey());
+    SortBy(nodeDevices.FreeDevices, TBySortQueryKey());
 }
 
 void TDeviceList::RemoveDevices(const NProto::TAgentConfig& agent)
 {
-    FreeDevices.erase(agent.GetNodeId());
+    NodeDevices.erase(agent.GetNodeId());
 
     for (const auto& device: agent.GetDevices()) {
         const auto& uuid = device.GetDeviceUUID();
@@ -220,16 +224,16 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
     const TDiskId& diskId,
     const TAllocationQuery& query)
 {
-    for (auto& kv: FreeDevices) {
+    for (auto& kv: NodeDevices) {
         if (!query.NodeIds.empty() && !query.NodeIds.contains(kv.first)) {
             continue;
         }
 
         const ui32 nodeId = kv.first;
-        auto& freeDevices = kv.second;
+        auto& nodeDevices = kv.second;
 
-        const auto& currentRack = freeDevices.Rack;
-        auto& devices = freeDevices.Devices;
+        const auto& currentRack = nodeDevices.Rack;
+        auto& devices = nodeDevices.FreeDevices;
 
         if (devices.empty() || query.ForbiddenRacks.contains(currentRack)) {
             continue;
@@ -336,24 +340,24 @@ bool TDeviceList::ValidateAllocationQuery(
         return false;
     }
 
-    const auto freeItr = FreeDevices.find(node);
-    if (freeItr == FreeDevices.end()) {
+    const auto nodeItr = NodeDevices.find(node);
+    if (nodeItr == NodeDevices.end()) {
         return false;
     }
 
-    const TFreeDevices& freeDevices = freeItr->second;
+    const TNodeDevices& nodeDevices = nodeItr->second;
 
-    if (query.ForbiddenRacks.contains(freeDevices.Rack)) {
+    if (query.ForbiddenRacks.contains(nodeDevices.Rack)) {
         return false;
     }
 
     const auto freeDeviceItr = FindIf(
-        freeDevices.Devices,
+        nodeDevices.FreeDevices,
         [&targetDeviceId] (const NProto::TDeviceConfig& device) {
             return device.GetDeviceUUID() == targetDeviceId;
         });
 
-    if (freeDeviceItr == freeDevices.Devices.end()) {
+    if (freeDeviceItr == nodeDevices.FreeDevices.end()) {
         return false;
     }
 
@@ -373,8 +377,10 @@ void TDeviceList::MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id
     AllocatedDevices.emplace(id, diskId);
 }
 
-// returns a list of racks sorted by preference and then by free space
-// the nodes in each rack are sorted by free space
+// returns a list of racks sorted by preference and then by occupied space ASC
+// then by free space DESC
+// the nodes in each rack are sorted by occupied space ASC then by free space
+// DESC
 auto TDeviceList::SelectRacks(
     const TAllocationQuery& query,
     const TString& poolName) const -> TVector<TRack>
@@ -388,39 +394,53 @@ auto TDeviceList::SelectRacks(
 
         auto& rack = racks[currentRack];
         rack.Id = currentRack;
-        rack.Nodes.push_back({nodeId, 0});
+        rack.Nodes.push_back({nodeId, 0, 0});
         rack.Preferred = query.PreferredRacks.contains(currentRack);
     };
 
     if (!query.NodeIds.empty()) {
         for (ui32 id: query.NodeIds) {
-            if (auto* freeDevices = FreeDevices.FindPtr(id)) {
-                appendNode(freeDevices->Rack, id);
+            if (auto* nodeDevices = NodeDevices.FindPtr(id)) {
+                appendNode(nodeDevices->Rack, id);
             }
         }
     } else {
-        for (auto& [nodeId, freeDevices]: FreeDevices) {
-            appendNode(freeDevices.Rack, nodeId);
+        for (auto& [nodeId, nodeDevices]: NodeDevices) {
+            appendNode(nodeDevices.Rack, nodeId);
         }
     }
 
     for (auto& [id, rack]: racks) {
-        for (auto& node: rack.Nodes) {
-            const auto* freeDevices = FreeDevices.FindPtr(node.NodeId);
-            Y_ABORT_UNLESS(freeDevices);
+        ui64 rackTotalSpace = 0;
 
-            auto r = FindDeviceRange(query, poolName, freeDevices->Devices);
+        for (auto& node: rack.Nodes) {
+            const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
+            Y_ABORT_UNLESS(nodeDevices);
+
+            auto r = FindDeviceRange(query, poolName, nodeDevices->FreeDevices);
+            node.OccupiedSpace = nodeDevices->TotalSize;
+            rackTotalSpace += nodeDevices->TotalSize;
 
             for (const auto& device: MakeIteratorRange(r)) {
                 const auto s = device.GetBlockSize() * device.GetBlocksCount();
                 rack.FreeSpace += s;
+                Y_DEBUG_ABORT_UNLESS(node.OccupiedSpace >= s);
+                node.OccupiedSpace -= s;
                 node.FreeSpace += s;
             }
         }
 
-        SortBy(rack.Nodes, [] (const TNodeInfo& node) {
-            return Max<ui64>() - node.FreeSpace;
-        });
+        Sort(
+            rack.Nodes,
+            [] (const TNodeInfo& lhs, const TNodeInfo& rhs) {
+                if (lhs.OccupiedSpace != rhs.OccupiedSpace) {
+                    return lhs.OccupiedSpace < rhs.OccupiedSpace;
+                }
+
+                return lhs.FreeSpace > rhs.FreeSpace;
+            });
+
+        rack.OccupiedSpace = rackTotalSpace - rack.FreeSpace;
     }
 
     TVector<TRack*> bySpace;
@@ -435,6 +455,9 @@ auto TDeviceList::SelectRacks(
         [] (const TRack* lhs, const TRack* rhs) {
             if (lhs->Preferred != rhs->Preferred) {
                 return lhs->Preferred > rhs->Preferred;
+            }
+            if (lhs->OccupiedSpace != rhs->OccupiedSpace) {
+                return lhs->OccupiedSpace < rhs->OccupiedSpace;
             }
             if (lhs->FreeSpace != rhs->FreeSpace) {
                 return lhs->FreeSpace > rhs->FreeSpace;
@@ -465,13 +488,13 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
 
     for (const auto& rack: SelectRacks(query, poolName)) {
         for (const auto& node: rack.Nodes) {
-            const auto* freeDevices = FreeDevices.FindPtr(node.NodeId);
-            Y_ABORT_UNLESS(freeDevices);
+            const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
+            Y_ABORT_UNLESS(nodeDevices);
 
             // finding free devices belonging to this node that match our
             // query
             auto [begin, end] =
-                FindDeviceRange(query, poolName, freeDevices->Devices);
+                FindDeviceRange(query, poolName, nodeDevices->FreeDevices);
 
             using TDeviceIter = decltype(begin);
             struct TDeviceInfo
@@ -513,7 +536,7 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
                 for (; it != deviceInfo.Range.second; ++it) {
                     const auto& device = *it;
 
-                    Y_DEBUG_ABORT_UNLESS(device.GetRack() == freeDevices->Rack);
+                    Y_DEBUG_ABORT_UNLESS(device.GetRack() == nodeDevices->Rack);
 
                     const ui64 size = device.GetBlockSize() * device.GetBlocksCount();
 
@@ -595,10 +618,10 @@ TVector<NProto::TDeviceConfig> TDeviceList::AllocateDevices(
             return l.first > r.first;
         });
 
-        auto& freeDevices = FreeDevices[nodeId];
+        auto& nodeDevices = NodeDevices[nodeId];
 
         for (const auto& arange: aranges) {
-            freeDevices.Devices.erase(arange.first, arange.second);
+            nodeDevices.FreeDevices.erase(arange.first, arange.second);
         }
     }
 
@@ -644,7 +667,7 @@ void TDeviceList::RemoveDeviceFromFreeList(const TDeviceId& id)
     auto nodeId = FindNodeId(id);
 
     if (nodeId) {
-        auto& devices = FreeDevices[nodeId].Devices;
+        auto& devices = NodeDevices[nodeId].FreeDevices;
 
         auto it = FindIf(devices, [&] (const auto& x) {
             return x.GetDeviceUUID() == id;

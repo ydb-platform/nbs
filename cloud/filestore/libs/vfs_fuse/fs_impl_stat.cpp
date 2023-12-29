@@ -24,10 +24,7 @@ void TFileSystem::StatFs(
                 struct statvfs st;
                 NVFS::ConvertStat(info, stats, st);
 
-                self->ReplyStatFs(
-                    *callContext,
-                    req,
-                    &st);
+                self->ReplyStatFs(*callContext, response.GetError(), req, &st);
             }
         });
 }

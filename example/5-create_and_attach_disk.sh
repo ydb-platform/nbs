@@ -8,8 +8,8 @@ BIN_DIR=`find_bin_dir`
 
 show_help() {
     cat << EOF
-Usage: ./5-create_disk.sh [-hk]
-Creates disk with requested kind
+Usage: ./5-create_and_attach_disk.sh [-hkd]
+Creates disk with requested kind and attach it to device
 -h, --help         Display help
 -k, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3 (default: ssd)
 -d, --device       Device name to attach to (default: /dev/nbd0)
@@ -83,7 +83,7 @@ else
 fi
 
 # attach disk
-echo "Attaching to disk $id to $device"
+echo "Attaching disk $id to $device"
 NBD="./blockstore-nbd"
 SOCK="$BIN_DIR/$id.sock"
 

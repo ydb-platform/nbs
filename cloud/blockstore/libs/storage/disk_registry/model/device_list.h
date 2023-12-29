@@ -25,6 +25,7 @@ class TDeviceList
     {
         TNodeId NodeId = 0;
         ui64 FreeSpace = 0;
+        ui64 OccupiedSpace = 0;
     };
 
     struct TRack
@@ -32,15 +33,18 @@ class TDeviceList
         TString Id;
         TVector<TNodeInfo> Nodes;
         ui64 FreeSpace = 0;
+        ui64 OccupiedSpace = 0;
         bool Preferred = false;
     };
 
-    struct TFreeDevices
+    struct TNodeDevices
     {
         TString Rack;
 
         // sorted by {PoolKind, BlockSize}
-        TVector<NProto::TDeviceConfig> Devices;
+        TVector<NProto::TDeviceConfig> FreeDevices;
+
+        ui64 TotalSize = 0;
     };
 
     using TDeviceRange = std::tuple<
@@ -50,7 +54,7 @@ class TDeviceList
 
 private:
     THashMap<TDeviceId, NProto::TDeviceConfig> AllDevices;
-    THashMap<TNodeId, TFreeDevices> FreeDevices;
+    THashMap<TNodeId, TNodeDevices> NodeDevices;
     THashMap<TDeviceId, TDiskId> AllocatedDevices;
     THashSet<TDeviceId> DirtyDevices;
     THashMap<TDeviceId, NProto::TSuspendedDevice> SuspendedDevices;

@@ -36,6 +36,7 @@ namespace {
     xxx(DirectIoFlagDisabled,               bool,       false                 )\
     xxx(DeviceLockingEnabled,               bool,       false                 )\
     xxx(DeviceHealthCheckDisabled,          bool,       false                 )\
+    xxx(CachedConfigPath,                   TString,    ""                    )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

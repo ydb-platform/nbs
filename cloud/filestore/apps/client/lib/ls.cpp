@@ -40,11 +40,11 @@ struct TCliArgs
     EModeType Mode = EModeType::Unknown;
 
     TString Path;
-    TNodeId NodeId;
     TString Cookie;
+    TNodeId NodeId = 0;
 
-    size_t RowsNumberLimit;
-    bool FetchAll;
+    size_t RowsNumberLimit = 25;
+    bool FetchAll = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

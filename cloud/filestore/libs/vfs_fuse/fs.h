@@ -49,23 +49,27 @@ int ReplyNone(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req);
 int ReplyError(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
-    int error);
+    int errorCode);
 int ReplyEntry(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const fuse_entry_param *e);
 int ReplyCreate(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const fuse_entry_param *e,
     const fuse_file_info *fi);
@@ -73,6 +77,7 @@ int ReplyAttr(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct stat *attr,
     double attr_timeout);
@@ -80,24 +85,28 @@ int ReplyReadLink(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const char *link);
 int ReplyOpen(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const fuse_file_info *fi);
 int ReplyWrite(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     size_t count);
 int ReplyBuf(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const char *buf,
     size_t size);
@@ -105,18 +114,21 @@ int ReplyStatFs(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct statvfs *stbuf);
 int ReplyXAttr(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     size_t count);
 int ReplyLock(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct flock *lock);
 

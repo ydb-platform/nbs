@@ -6,17 +6,12 @@ SRCS(
     main.cpp
 )
 
-PEERDIR(
-    ydb/apps/ydb/commands
-)
-
-IF (NOT USE_SSE4 AND NOT OPENSOURCE)
-
 DISABLE(USE_ASMLIB)
+
 PEERDIR(
     contrib/libs/asmlib
+    ydb/apps/ydb/commands
 )
-ENDIF()
 
 RESOURCE(
     ydb/apps/ydb/version.txt version.txt
