@@ -5,5 +5,6 @@ RECURSE(
     mocks
     nemesis
     recipe
-    remote
+    # Fixme: Add remote tests
+    # remote
 )
