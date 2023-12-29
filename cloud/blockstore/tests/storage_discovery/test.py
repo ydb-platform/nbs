@@ -273,12 +273,9 @@ def test_config_comparison(
         disk_agent_dynamic_config):
 
     if cmp == 'mismatch':
-        # create an additional file to make the dynamic configuration different
-        # from the static one.
-        with open(os.path.join(data_path, "NVMENBS42"), 'wb') as f:
-            f.seek(DEVICE_SIZE - 1)
-            f.write(b'\0')
-            f.flush()
+        # change the device padding of the 'rot' pool
+        disk_agent_dynamic_config.StorageDiscoveryConfig.PathConfigs[0]. \
+            PoolConfigs[0].Layout.DevicePadding = 8192
 
     _setup_disk_registry_config(nbs, agent_id)
 

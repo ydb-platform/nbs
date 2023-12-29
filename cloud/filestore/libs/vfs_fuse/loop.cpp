@@ -57,7 +57,10 @@ void CancelRequest(
 
     int res = fuse_cancel_request(req, code);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(
+        log,
+        callContext,
+        MakeError(E_CANCELLED, "Driver is stopping"));
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -136,7 +139,12 @@ public:
 
         TGuard g{RequestsLock};
         for (auto&& [req, context] : Requests) {
-            CancelRequest(Log, *RequestStats, *context, req, CancelCode);
+            CancelRequest(
+                Log,
+                *RequestStats,
+                *context,
+                req,
+                CancelCode);
         }
         Requests.clear();
 
@@ -510,10 +518,10 @@ public:
             Config->GetMountSeqNumber()).Apply([=] (const auto& future) {
                 if (auto p = weakPtr.lock()) {
                     const auto& response = future.GetValue();
-                    if (HasError(response)) {
-                        callContext->Error = response.GetError();
-                    }
-                    p->RequestStats->RequestCompleted(p->Log, *callContext);
+                    p->RequestStats->RequestCompleted(
+                        p->Log,
+                        *callContext,
+                        response.GetError());
 
                     return p->StartWithSessionState(future);
                 }
@@ -542,10 +550,10 @@ public:
             .Apply([=] (const auto& future) {
                 if (auto p = weakPtr.lock()) {
                     const auto& response = future.GetValue();
-                    if (HasError(response)) {
-                        callContext->Error = response.GetError();
-                    }
-                    p->RequestStats->RequestCompleted(p->Log, *callContext);
+                    p->RequestStats->RequestCompleted(
+                        p->Log,
+                        *callContext,
+                        response.GetError());
 
                     p->StatsRegistry->Unregister(
                         p->Config->GetFileSystemId(),
@@ -591,8 +599,10 @@ public:
                     NProto::TError error;
                     try {
                         const auto& response = future.GetValue();
-                        callContext->Error = response.GetError();
-                        p->RequestStats->RequestCompleted(p->Log, *callContext);
+                        p->RequestStats->RequestCompleted(
+                            p->Log,
+                            *callContext,
+                            response.GetError());
                         if (HasError(response)) {
                             STORAGE_ERROR("[f:%s][c:%s] failed to create session: %s",
                                 p->Config->GetFileSystemId().Quote().c_str(),
@@ -845,6 +855,7 @@ private:
                 pThis->Log,
                 *pThis->RequestStats,
                 *callContext,
+                MakeError(e.GetCode(), TString(e.GetMessage())),
                 req,
                 ErrnoFromError(e.GetCode()));
         } catch (...) {
@@ -853,6 +864,7 @@ private:
                 pThis->Log,
                 *pThis->RequestStats,
                 *callContext,
+                MakeError(E_IO, CurrentExceptionMessage()),
                 req,
                 EIO);
         }

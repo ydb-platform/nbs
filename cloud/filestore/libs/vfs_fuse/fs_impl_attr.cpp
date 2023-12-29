@@ -98,10 +98,11 @@ void TFileSystem::SetAttr(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {ino});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, req, response.GetNode());
+                self->ReplyAttr(*callContext, error, req, response.GetNode());
             }
         });
 }
@@ -125,8 +126,9 @@ void TFileSystem::GetAttr(
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
+            const auto& error = response.GetError();
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, req, response.GetNode());
+                self->ReplyAttr(*callContext, error, req, response.GetNode());
             }
         });
 }
@@ -147,7 +149,7 @@ void TFileSystem::SetXAttr(
         << ", flags:" << xflags);
 
     if (UnsupportedXAttrs.count(name)) {
-        ReplyError(*callContext, req, ENOTSUP);
+        ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
         return;
     }
 
@@ -179,19 +181,17 @@ void TFileSystem::SetXAttr(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {ino});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
 
             self->UpdateXAttrCache(
                 ino,
                 name,
                 value,
                 response.GetVersion(),
-                response.GetError());
+                error);
             if (self->CheckResponse(*callContext, req, response)) {
-                self->ReplyError(
-                    *callContext,
-                    req,
-                    0);
+                self->ReplyError(*callContext, error, req, 0);
             }
         });
 }
@@ -206,7 +206,7 @@ void TFileSystem::GetXAttr(
     STORAGE_DEBUG("GetXAttr #" << ino << " " << name.Quote());
 
     if (UnsupportedXAttrs.count(name)) {
-        ReplyError(*callContext, req, ENOTSUP);
+        ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
         return;
     }
 
@@ -217,9 +217,13 @@ void TFileSystem::GetXAttr(
     with_lock (XAttrLock) {
         if (auto xattr = XAttrCache.Get(ino, name)) {
             if (xattr->Value) {
-                ReplyXAttrInt(*callContext, req, *xattr->Value, size);
+                ReplyXAttrInt(*callContext, {}, req, *xattr->Value, size);
             } else {
-                ReplyError(*callContext, req, ENODATA);
+                ReplyError(
+                    *callContext,
+                    ErrorAttributeDoesNotExist(name),
+                    req,
+                    ENODATA);
             }
             return;
         }
@@ -236,15 +240,17 @@ void TFileSystem::GetXAttr(
             }
 
             const auto& response = future.GetValue();
+            const auto& error = response.GetError();
             self->UpdateXAttrCache(
                 ino,
                 name,
                 response.GetValue(),
                 response.GetVersion(),
-                response.GetError());
+                error);
             if (self->CheckResponse(*callContext, req, response)) {
                 self->ReplyXAttrInt(
                     *callContext,
+                    error,
                     req,
                     response.GetValue(),
                     size);
@@ -277,6 +283,7 @@ void TFileSystem::ListXAttr(
 
                 self->ReplyXAttrInt(
                     *callContext,
+                    response.GetError(),
                     req,
                     value,
                     size);
@@ -293,7 +300,7 @@ void TFileSystem::RemoveXAttr(
     STORAGE_DEBUG("RemoveXAttr #" << ino << " " << name.Quote());
 
     if (UnsupportedXAttrs.count(name)) {
-        ReplyError(*callContext, req, ENOTSUP);
+        ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
         return;
     }
 
@@ -315,17 +322,15 @@ void TFileSystem::RemoveXAttr(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {ino});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 with_lock (self->XAttrLock) {
                     self->XAttrCache.Forget(ino, name);
                 }
 
-                self->ReplyError(
-                    *callContext,
-                    req,
-                    0);
+                self->ReplyError(*callContext, error, req, 0);
             }
         });
 }

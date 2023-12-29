@@ -1,4 +1,4 @@
-UNITTEST()
+UNITTEST_FOR(cloud/storage/core/libs/common)
 
 SRCDIR(cloud/storage/core/libs/common)
 

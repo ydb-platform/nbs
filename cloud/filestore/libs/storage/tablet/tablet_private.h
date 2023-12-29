@@ -206,7 +206,16 @@ struct TEvIndexTabletPrivate
     {
     };
 
-    using TReadBlobCompleted = TEmpty;
+    struct TDataOperationCompleted
+    {
+        ui32 Count = 0;
+        ui32 Size = 0;
+        TDuration Time;
+    };
+
+    struct TReadBlobCompleted: TDataOperationCompleted
+    {
+    };
 
     //
     // WriteBlob
@@ -221,7 +230,7 @@ struct TEvIndexTabletPrivate
     {
     };
 
-    struct TWriteBlobCompleted
+    struct TWriteBlobCompleted: TDataOperationCompleted
     {
         struct TWriteRequestResult
         {

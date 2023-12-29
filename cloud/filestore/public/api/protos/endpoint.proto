@@ -36,6 +36,9 @@ message TEndpointConfig
 
     // Vhost queues count.
     uint32 VhostQueuesCount = 9;
+
+    // Restore endpoint after restart
+    bool Persistent = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

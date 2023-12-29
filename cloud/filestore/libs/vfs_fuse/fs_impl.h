@@ -371,43 +371,49 @@ private:
 
     void ReplyCreate(
         TCallContext& callContext,
+        const NCloud::NProto::TError& error,
         fuse_req_t req,
         ui64 handle,
         const NProto::TNodeAttr& attrs);
     void ReplyEntry(
         TCallContext& callContext,
+        const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs);
     void ReplyXAttrInt(
         TCallContext& callContext,
+        const NCloud::NProto::TError& error,
         fuse_req_t req,
         const TString& value,
         size_t size);
     void ReplyAttr(
         TCallContext& callContext,
+        const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs);
 
     void ClearDirectoryCache();
 
-#define FILESYSTEM_REPLY_IMPL(name, ...)                                                              \
-    template<typename... TArgs>                                                                       \
-    int Reply##name(                                                                                  \
-        TCallContext& callContext,                                                                    \
-        fuse_req_t req,                                                                               \
-        TArgs&&... args)                                                                              \
-    {                                                                                                 \
-        Y_ABORT_UNLESS(RequestStats);                                                                 \
-        Y_ABORT_UNLESS(CompletionQueue);                                                              \
-        return CompletionQueue->Complete(req, [&] (fuse_req_t r) {                                    \
-            return NFuse::Reply##name(                                                                \
-                Log,                                                                                  \
-                *RequestStats,                                                                        \
-                callContext,                                                                          \
-                r,                                                                                    \
-                std::forward<TArgs>(args)...);                                                        \
-        });                                                                                           \
-    }                                                                                                 \
+#define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
+    template<typename... TArgs>                                                \
+    int Reply##name(                                                           \
+        TCallContext& callContext,                                             \
+        const NCloud::NProto::TError& error,                                   \
+        fuse_req_t req,                                                        \
+        TArgs&&... args)                                                       \
+    {                                                                          \
+        Y_ABORT_UNLESS(RequestStats);                                          \
+        Y_ABORT_UNLESS(CompletionQueue);                                       \
+        return CompletionQueue->Complete(req, [&] (fuse_req_t r) {             \
+            return NFuse::Reply##name(                                         \
+                Log,                                                           \
+                *RequestStats,                                                 \
+                callContext,                                                   \
+                error,                                                         \
+                r,                                                             \
+                std::forward<TArgs>(args)...);                                 \
+        });                                                                    \
+    }                                                                          \
 
     FILESYSTEM_REPLY_METHOD(FILESYSTEM_REPLY_IMPL)
 
@@ -430,6 +436,7 @@ private:
         NProto::ELockOrigin origin);
     void ScheduleAcquireLock(
         TCallContextPtr callContext,
+        const NCloud::NProto::TError& error,
         fuse_req_t req,
         fuse_ino_t ino,
         const TRangeLock& range,

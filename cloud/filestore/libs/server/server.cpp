@@ -214,6 +214,7 @@ class TServerRequestHandlerBase
 protected:
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
     NAtomic::TBool Started = false;
+    NCloud::NProto::TError Error;
 
 public:
     TMaybe<TIncompleteRequest> ToIncompleteRequest(ui64 nowCycles) const
@@ -507,7 +508,7 @@ private:
         auto& Log = AppCtx.Log;
 
         if (HasError(response)) {
-            CallContext->Error = response.GetError();
+            Error = response.GetError();
         }
 
         STORAGE_LOG(GetRequestLogPriority<TRequest>(),
@@ -531,10 +532,10 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        CallContext->Error = MakeGrpcError(status);
+        Error = MakeGrpcError(status);
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
-            << " send response: " << FormatError(CallContext->Error));
+            << " send response: " << FormatError(Error));
 
         FILESTORE_TRACK(
             SendResponse,
@@ -543,7 +544,7 @@ private:
 
         AppCtx.Stats->ResponseSent(*CallContext);
 
-        ProfileLogRecord.Request.SetErrorCode(CallContext->Error.GetCode());
+        ProfileLogRecord.Request.SetErrorCode(Error.GetCode());
 
         Writer.FinishWithError(status, AcquireCompletionTag());
     }
@@ -567,7 +568,7 @@ private:
                 ts.TotalTime.MicroSeconds(),
                 ts.ExecutionTime.MicroSeconds());
 
-            AppCtx.Stats->RequestCompleted(Log, *CallContext);
+            AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
 
             const auto startTs = TInstant::MilliSeconds(
                 CallContext->GetRequestStartedCycles() /

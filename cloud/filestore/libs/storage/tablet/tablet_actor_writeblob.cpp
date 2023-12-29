@@ -64,6 +64,7 @@ private:
     const IProfileLogPtr ProfileLog;
 
     TVector<TWriteBlobRequest> Requests;
+    ui32 TotalSize = 0;
 
     using TWriteResult =
         TEvIndexTabletPrivate::TWriteBlobCompleted::TWriteRequestResult;
@@ -141,6 +142,8 @@ void TWriteBlobActor::SendRequests(const TActorContext& ctx)
 {
     size_t requestIndex = 0;
     for (auto& request: Requests) {
+        TotalSize += request.BlobId.BlobSize();
+
         SendToBSProxy(
             ctx,
             request.Proxy,
@@ -201,6 +204,9 @@ void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    const auto t = ctx.Now()
+        - TInstant::MicroSeconds(ProfileLogRequest.GetTimestampMcs());
+
     // log request
     FinalizeProfileLogRequestInfo(
         std::move(ProfileLogRequest),
@@ -211,7 +217,11 @@ void TWriteBlobActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobCompleted>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobCompleted>(error);
+        response->Count = Requests.size();
+        response->Size = TotalSize;
+        response->Time = t;
         response->Results = std::move(WriteResults);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -346,6 +356,12 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
         FormatError(msg->GetError()).c_str());
 
     WorkerActors.erase(ev->Sender);
+
+    Metrics.WriteBlob.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.WriteBlob.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.WriteBlob.Time.Record(msg->Time);
 
     const auto validFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     for (const auto& result: msg->Results) {

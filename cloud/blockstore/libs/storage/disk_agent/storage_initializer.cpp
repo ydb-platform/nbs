@@ -3,6 +3,7 @@
 #include "hash_table_storage.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <cloud/blockstore/config/disk.pb.h>
@@ -12,19 +13,21 @@
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/compare_configs.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
+
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 #include <util/system/file.h>
+#include <util/system/fs.h>
 #include <util/system/mutex.h>
 
-#include <cerrno>
 #include <cstring>
-#include <functional>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -32,6 +35,13 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TString& GetDeviceId(const NProto::TFileDeviceArgs& file)
+{
+    return file.GetDeviceId();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -126,9 +136,12 @@ private:
     NProto::TDeviceConfig CreateConfig(const NProto::TMemoryDeviceArgs& device);
 
     void ScanFileDevices();
-    bool CompareConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
-    bool ValidateConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
+    bool ValidateGeneratedConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
     bool ValidateStorageDiscoveryConfig() const;
+    void ValidateCurrentConfigs();
+
+    TVector<NProto::TFileDeviceArgs> LoadCachedConfig() const;
+    void SaveCurrentConfig();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,6 +161,8 @@ TInitializer::TInitializer(
     FileDevices.assign(
         std::make_move_iterator(fileDevices.begin()),
         std::make_move_iterator(fileDevices.end()));
+
+    SortBy(FileDevices, GetDeviceId);
 }
 
 TFuture<IStoragePtr> TInitializer::CreateFileStorage(
@@ -229,12 +244,10 @@ bool TInitializer::ValidateStorageDiscoveryConfig() const
     return true;
 }
 
-bool TInitializer::ValidateConfigs(
+bool TInitializer::ValidateGeneratedConfigs(
     const TVector<NProto::TFileDeviceArgs>& fileDevices)
 {
-    auto it = AdjacentFindBy(fileDevices, [] (auto& file) {
-        return file.GetDeviceId();
-    });
+    auto it = AdjacentFindBy(fileDevices, GetDeviceId);
 
     if (it != fileDevices.end()) {
         const auto& uuid = it->GetDeviceId();
@@ -250,49 +263,6 @@ bool TInitializer::ValidateConfigs(
             << "' have the same uuid: " << uuid);
 
         return false;
-    }
-
-    return true;
-}
-
-bool TInitializer::CompareConfigs(
-    const TVector<NProto::TFileDeviceArgs>& dynConfig)
-{
-    if (dynConfig.size() != FileDevices.size()) {
-        STORAGE_WARN("Unexpected device count: %lu != %lu",
-            FileDevices.size(), dynConfig.size());
-        return false;
-    }
-
-    auto staticConfig = FileDevices;
-
-    SortBy(staticConfig, [] (auto& file) {
-        return file.GetDeviceId();
-    });
-
-    auto key = [] (const auto& file) {
-        return std::make_tuple(
-            file.GetPath(),
-            file.GetPoolName(),
-            file.GetBlockSize(),
-            file.GetOffset(),
-            file.GetFileSize());
-    };
-
-    for (size_t i = 0; i != staticConfig.size(); ++i) {
-        if (staticConfig[i].GetDeviceId() != dynConfig[i].GetDeviceId()) {
-            STORAGE_WARN("Unexpected dynamic config: " << dynConfig[i]);
-
-            return false;
-        }
-
-        if (key(staticConfig[i]) != key(dynConfig[i])) {
-            STORAGE_WARN("Dynamic config: "
-                << dynConfig[i] << " doesn't match the static one: "
-                << staticConfig[i]);
-
-            return false;
-        }
     }
 
     return true;
@@ -323,11 +293,9 @@ void TInitializer::ScanFileDevices()
         return;
     }
 
-    SortBy(files, [] (auto& file) {
-        return file.GetDeviceId();
-    });
+    SortBy(files, GetDeviceId);
 
-    if (!ValidateConfigs(files)) {
+    if (!ValidateGeneratedConfigs(files)) {
         ReportDiskAgentConfigMismatch("Bad generated config");
 
         return;
@@ -342,9 +310,10 @@ void TInitializer::ScanFileDevices()
 
     // We have both the static config and the dynamic config and they must
     // be the same
-    if (!CompareConfigs(files)) {
+    if (auto error = CompareConfigs(FileDevices, files); HasError(error)) {
         TStringStream ss;
-        ss << "Generated config doesn't match the static one. Static:\n";
+        ss << "Generated config doesn't match the static one:"
+            << FormatError(error) << ". Static:\n";
         for (auto& d: FileDevices) {
             ss << d << "\n";
         }
@@ -357,9 +326,106 @@ void TInitializer::ScanFileDevices()
     }
 }
 
+TVector<NProto::TFileDeviceArgs> TInitializer::LoadCachedConfig() const
+{
+    const auto path = AgentConfig->GetCachedConfigPath();
+
+    if (path.empty()) {
+        return {};
+    }
+
+    if (!NFs::Exists(path)) {
+        return {};
+    }
+
+    NProto::TDiskAgentConfig proto;
+    ParseProtoTextFromFileRobust(path, proto);
+
+    auto& devices = *proto.MutableFileDevices();
+
+    return {
+        std::make_move_iterator(devices.begin()),
+        std::make_move_iterator(devices.end())
+    };
+}
+
+void TInitializer::SaveCurrentConfig()
+{
+    const auto path = AgentConfig->GetCachedConfigPath();
+
+    if (path.empty()) {
+        return;
+    }
+
+    STORAGE_INFO("Store the current config to " << path);
+
+    NProto::TDiskAgentConfig proto;
+    proto.MutableFileDevices()->Assign(
+        FileDevices.cbegin(),
+        FileDevices.cend());
+
+    try {
+        const TString tmpPath {path + ".tmp"};
+
+        SerializeToTextFormat(proto, tmpPath);
+
+        if (!NFs::Rename(tmpPath, path)) {
+            const auto ec = errno;
+            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)} << strerror(ec);
+        }
+    } catch (...) {
+        Errors.push_back(TStringBuilder()
+            << "can't save the current config: " << CurrentExceptionMessage());
+    }
+}
+
+void TInitializer::ValidateCurrentConfigs()
+{
+    auto cachedDevices = LoadCachedConfig();
+    if (cachedDevices.empty()) {
+        STORAGE_INFO("There is no cached config");
+        SaveCurrentConfig();
+
+        return;
+    }
+
+    STORAGE_INFO("Compare the current config with the cached one");
+    const auto error = CompareConfigs(cachedDevices, FileDevices);
+    if (!HasError(error)) {
+        STORAGE_INFO("Current config is OK. Update cached config.");
+        SaveCurrentConfig();
+        return;
+    }
+
+    TStringStream ss;
+    ss << "Current config doesn't match the cached one: "
+        << FormatError(error) << ". Current:\n";
+    for (auto& d: FileDevices) {
+        ss << d << "\n";
+    }
+    ss << "\nCached:\n";
+    for (auto& d: cachedDevices) {
+        ss << d << "\n";
+    }
+
+    ReportDiskAgentConfigMismatch(ss.Str());
+
+    STORAGE_WARN("Current config is broken, fallback to the cached one.");
+    FileDevices.swap(cachedDevices);
+
+    Errors.push_back(TStringBuilder()
+        << "broken config: " << FormatError(error));
+}
+
 TFuture<void> TInitializer::Initialize()
 {
     ScanFileDevices();
+
+    try {
+        ValidateCurrentConfigs();
+    } catch (...) {
+        return MakeErrorFuture<void>(std::current_exception());
+    }
 
     const auto& memoryDevices = AgentConfig->GetMemoryDevices();
 
@@ -444,7 +510,9 @@ TFuture<void> TInitializer::Initialize()
         }
     }
 
-    return WaitAll(futures);
+    return WaitAll(futures).Apply([] (const auto& future) {
+        Y_UNUSED(future);   // ignore
+    });
 }
 
 NProto::TDeviceConfig TInitializer::CreateConfig(
@@ -538,7 +606,7 @@ TFuture<TInitializeStorageResult> InitializeStorage(
         std::move(nvmeManager));
 
     return initializer->Initialize().Apply([=] (const auto& future) {
-        Y_UNUSED(future);
+        future.GetValue();
 
         return initializer->GetResult();
     });

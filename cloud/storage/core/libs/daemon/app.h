@@ -8,6 +8,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void AppCreate();
 int AppMain(TProgramShouldContinue& shouldContinue);
 void AppStop(int exitCode);
 
@@ -17,6 +18,11 @@ template <typename TBootstrap>
 int DoMain(TBootstrap& bootstrap, int argc, char** argv)
 {
     try {
+        // To prevent call to placement new or delete inside signal handler
+        // before creating App singleton. This behaviour is triggered by our
+        // nemesis tests with ThreadSanitizer.
+        AppCreate();
+
         ConfigureSignals();
 
         try {

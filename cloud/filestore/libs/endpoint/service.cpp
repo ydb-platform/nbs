@@ -181,6 +181,22 @@ private:
     {
         StoppingSockets.erase(socketPath);
     }
+
+    NProto::TError AddEndpointToStorage(
+        const NProto::TStartEndpointRequest& request)
+    {
+        auto strOrError = SerializeEndpoint(request);
+        if (HasError(strOrError)) {
+            return strOrError.GetError();
+        }
+
+        auto idOrError = Storage->AddEndpoint(strOrError.GetResult());
+        if (HasError(idOrError)) {
+            return idOrError.GetError();
+        }
+
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -263,6 +279,10 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 
     const auto& response = future.GetValue();
     if (SUCCEEDED(response.GetError().GetCode())) {
+        if (config.GetPersistent()) {
+            AddEndpointToStorage(request);
+        }
+
         Endpoints.emplace(socketPath, TEndpointInfo { endpoint, config });
     }
 

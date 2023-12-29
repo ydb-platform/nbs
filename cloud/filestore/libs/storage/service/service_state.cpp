@@ -26,8 +26,7 @@ void TInFlightRequest::Complete(
 {
     Completed = true;
 
-    CallContext->Error = error;
-    RequestStats->RequestCompleted(*CallContext);
+    RequestStats->RequestCompleted(*CallContext, error);
 
     ProfileLogRequest.SetDurationMcs(
         currentTs.MicroSeconds() - ProfileLogRequest.GetTimestampMcs());

@@ -76,6 +76,7 @@ private:
 
     TVector<TReadBlobRequest> Requests;
     size_t RequestsCompleted = 0;
+    ui32 TotalSize = 0;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
 public:
@@ -199,6 +200,7 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
+        TotalSize += response.Buffer.size();
         ui32 blocksCount = response.Buffer.size() / BlockSize;
         ui32 rangeOffset = 0;
 
@@ -267,6 +269,9 @@ void TReadBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    const auto t = ctx.Now()
+        - TInstant::MicroSeconds(ProfileLogRequest.GetTimestampMcs());
+
     // log request
     FinalizeProfileLogRequestInfo(
         std::move(ProfileLogRequest),
@@ -277,7 +282,11 @@ void TReadBlobActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobCompleted>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvReadBlobCompleted>(error);
+        response->Count = 1;
+        response->Size = TotalSize;
+        response->Time = t;
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -444,6 +453,13 @@ void TIndexTabletActor::HandleReadBlobCompleted(
         FormatError(msg->GetError()).c_str());
 
     WorkerActors.erase(ev->Sender);
+
+    Metrics.ReadBlob.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.ReadBlob.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.ReadBlob.Time.Record(msg->Time);
+
 }
 
 }   // namespace NCloud::NFileStore::NStorage

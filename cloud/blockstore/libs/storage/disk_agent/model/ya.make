@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    compare_configs.cpp
     config.cpp
     device_client.cpp
     device_generator.cpp

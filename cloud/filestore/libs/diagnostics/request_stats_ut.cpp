@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         auto context = MakeIntrusive<TCallContext>(fs, ui64(1));
         context->RequestType = EFileStoreRequest::CreateHandle;
         stats->RequestStarted(*context);
-        stats->RequestCompleted(*context);
+        stats->RequestCompleted(*context, {});
 
         auto counters = componentCounters->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
@@ -199,7 +199,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(50));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
@@ -248,7 +248,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(20));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -297,7 +297,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(0));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -336,7 +336,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(50));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
@@ -385,7 +385,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(0));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -458,7 +458,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(50));
 
-            statsFirst->RequestCompleted(*context);
+            statsFirst->RequestCompleted(*context, {});
             statsFirst->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
@@ -507,7 +507,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(20));
 
-            statsFirst->RequestCompleted(*context);
+            statsFirst->RequestCompleted(*context, {});
             statsFirst->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -546,7 +546,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(25));
 
-            statsSecond->RequestCompleted(*context);
+            statsSecond->RequestCompleted(*context, {});
             statsSecond->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -610,7 +610,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(50));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
@@ -649,7 +649,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(20));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -688,7 +688,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 EProcessingStage::Postponed,
                 TDuration::MilliSeconds(0));
 
-            stats->RequestCompleted(*context);
+            stats->RequestCompleted(*context, {});
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
@@ -719,7 +719,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         auto context = MakeIntrusive<TCallContext>(fs, ui64(1));
         context->RequestType = EFileStoreRequest::CreateHandle;
         stats->RequestStarted(*context);
-        stats->RequestCompleted(*context);
+        stats->RequestCompleted(*context, {});
 
         auto counters = componentCounters->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());

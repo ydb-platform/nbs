@@ -125,6 +125,42 @@ void TIndexTabletActor::TMetrics::Register(
         FsRegistry,
         {CreateLabel("request", "WriteData"), CreateLabel("histogram", "ThrottlerDelay")});
 
+    REGISTER_AGGREGATABLE_SUM(
+        ReadBlob.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        ReadBlob.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    ReadBlob.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "ReadBlob"), CreateLabel("histogram", "Time")});
+
+    REGISTER_AGGREGATABLE_SUM(
+        WriteBlob.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        WriteBlob.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    WriteBlob.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "WriteBlob"), CreateLabel("histogram", "Time")});
+
+    REGISTER_AGGREGATABLE_SUM(
+        PatchBlob.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        PatchBlob.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    PatchBlob.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "PatchBlob"), CreateLabel("histogram", "Time")});
+
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER

@@ -2,6 +2,14 @@ UNITTEST_FOR(cloud/blockstore/libs/logbroker/topic_api_impl)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+IF (OPENSOURCE)
+    # TODO(NBS-4760): fix tests and remove tags
+    TAG(
+        ya:not_autocheck
+        ya:manual
+    )
+ENDIF()
+
 SRCS(
     topic_api_ut.cpp
 )

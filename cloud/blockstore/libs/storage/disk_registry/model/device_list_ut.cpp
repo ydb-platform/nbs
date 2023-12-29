@@ -389,37 +389,48 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSelectRackWithTheMostSpaceUponDeviceAllocation)
+    Y_UNIT_TEST(ShouldSelectRackWithTheMostFreeSpaceUponDeviceAllocation)
     {
         TDeviceList deviceList({}, {});
 
-        auto allocate = [&] (ui32 n) {
+        auto allocate = [&] (ui32 n, THashSet<TString> preferredRacks = {}) {
             return deviceList.AllocateDevices(
                 "disk",
                 {
+                    .PreferredRacks = std::move(preferredRacks),
                     .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
+                    .BlockCount = n * DefaultBlockCount,
                 }
             );
         };
 
         NProto::TAgentConfig agent1 = CreateAgentConfig("agent1", 1, "rack1");
-        NProto::TAgentConfig agent2 = CreateAgentConfig("agent2", 2, "rack2");
+        NProto::TAgentConfig agent2 = CreateAgentConfig("agent2", 2, "rack1");
         NProto::TAgentConfig agent3 = CreateAgentConfig("agent3", 3, "rack2");
+        NProto::TAgentConfig agent4 = CreateAgentConfig("agent4", 4, "rack2");
         deviceList.UpdateDevices(agent1);
         deviceList.UpdateDevices(agent2);
         deviceList.UpdateDevices(agent3);
+        deviceList.UpdateDevices(agent4);
 
-        UNIT_ASSERT_VALUES_EQUAL(45, deviceList.Size());
+        UNIT_ASSERT_VALUES_EQUAL(60, deviceList.Size());
 
+        // using up some space in rack1
+        auto devices0 = allocate(15, {"rack1"});
+        UNIT_ASSERT_VALUES_EQUAL(15, devices0.size());
+        UNIT_ASSERT_VALUES_EQUAL("rack1", devices0[0].GetRack());
+
+        // now rack2 has less occupied space
         auto devices1 = allocate(10);
         UNIT_ASSERT_VALUES_EQUAL(10, devices1.size());
         UNIT_ASSERT_VALUES_EQUAL("rack2", devices1[0].GetRack());
 
+        // rack2 still has less occupied space
         auto devices2 = allocate(10);
         UNIT_ASSERT_VALUES_EQUAL(10, devices2.size());
         UNIT_ASSERT_VALUES_EQUAL("rack2", devices2[0].GetRack());
 
+        // now rack1 has less occupied space
         auto devices3 = allocate(1);
         UNIT_ASSERT_VALUES_EQUAL(1, devices3.size());
         UNIT_ASSERT_VALUES_EQUAL("rack1", devices3[0].GetRack());
@@ -490,6 +501,91 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         UNIT_ASSERT_VALUES_EQUAL(10, devices5.size());
         for (auto& d: devices5) {
             UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSelectAgentWithTheLeastOccupiedSpaceUponDeviceAllocation)
+    {
+        TDeviceList deviceList({}, {});
+
+        auto allocate = [&] (ui32 n) {
+            return deviceList.AllocateDevices(
+                "disk",
+                {
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = n * DefaultBlockCount
+                }
+            );
+        };
+
+        NProto::TAgentConfig agent1 = CreateAgentConfig(
+            "agent1",
+            1,
+            "rack1",
+            "",
+            {"/dev1"},
+            100);
+        NProto::TAgentConfig agent2 = CreateAgentConfig(
+            "agent2",
+            2,
+            "rack2",
+            "",
+            {"/dev1"},
+            200);
+        deviceList.UpdateDevices(agent1);
+        deviceList.UpdateDevices(agent2);
+
+        UNIT_ASSERT_VALUES_EQUAL(300, deviceList.Size());
+
+        // allocating from agent2 - occupied space is 0 at both agents but
+        // agent2 has more free space
+        auto devices1 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices1.size());
+        for (auto& d: devices1) {
+            UNIT_ASSERT_VALUES_EQUAL("agent2", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        // now we should allocate from agent1 since it has less occupied space
+        auto devices2 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices2.size());
+        for (auto& d: devices2) {
+            UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        // now the occupied space is again the same for agent1 and agent2 =>
+        // allocating from agent2
+        auto devices3 = allocate(100);
+        UNIT_ASSERT_VALUES_EQUAL(100, devices3.size());
+        for (auto& d: devices3) {
+            UNIT_ASSERT_VALUES_EQUAL("agent2", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        // allocating from agent1 since it has less occupied space
+        auto devices4 = allocate(30);
+        UNIT_ASSERT_VALUES_EQUAL(30, devices4.size());
+        for (auto& d: devices4) {
+            UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        // allocating from agent1 again since it has less occupied space -
+        // even though it has less free space than agent2
+        auto devices5 = allocate(60);
+        UNIT_ASSERT_VALUES_EQUAL(60, devices5.size());
+        for (auto& d: devices5) {
+            UNIT_ASSERT_VALUES_EQUAL("agent1", d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
+        }
+
+        // no free space at agent1 - allocating from agent2
+        auto devices6 = allocate(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, devices6.size());
+        for (auto& d: devices6) {
+            UNIT_ASSERT_VALUES_EQUAL("agent2", d.GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL("/dev1", d.GetDeviceName());
         }
     }
