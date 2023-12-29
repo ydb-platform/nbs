@@ -353,10 +353,10 @@ def _prepare_test_environment(ssh, virtio):
 
         ssh("sudo mkdir -p {}".format(mount_path))
         ssh("sudo mount -t virtiofs fs0 {} -o rw".format(mount_path),
-            timeout=60)
+            timeout=300)
 
         # Sanity check
-        ssh("sudo touch {}/.test".format(mount_path), timeout=60)
+        ssh("sudo touch {}/.test".format(mount_path), timeout=300)
     elif virtio == "blk":
         # Use virtio-blk device
         ssh("sudo lsblk")
@@ -369,10 +369,10 @@ def _prepare_test_environment(ssh, virtio):
 
         ssh("sudo mkdir -p {}".format(mount_path))
         ssh("sudo mount -t nfs -o proto=tcp,port={} {}:/ {}".format(nfs_port, QEMU_HOST, mount_path),
-            timeout=60)
+            timeout=300)
 
         # Sanity check
-        ssh("sudo touch {}/.test".format(mount_path), timeout=60)
+        ssh("sudo touch {}/.test".format(mount_path), timeout=300)
     elif virtio == "none":
         # nothing to do
         pass
