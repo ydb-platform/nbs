@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -43,6 +44,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NDiscovery::IDiscoveryServicePtr DiscoveryService;
     const ITraceSerializerPtr TraceSerializer;
+    const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NRdma::IClientPtr RdmaClient;
     const IVolumeStatsPtr VolumeStats;
 
@@ -65,6 +67,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NDiscovery::IDiscoveryServicePtr discoveryService,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes);
@@ -381,6 +384,7 @@ NActors::IActorPtr CreateVolumeSessionActor(
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
     TSharedServiceCountersPtr sharedCounters);

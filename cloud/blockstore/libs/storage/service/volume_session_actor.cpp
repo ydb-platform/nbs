@@ -66,6 +66,7 @@ void TVolumeSessionActor::HandleDescribeVolumeResponse(
             CreateVolumeClient(
                 Config,
                 TraceSerializer,
+                EndpointEventHandler,
                 SelfId(),
                 VolumeInfo->DiskId,
                 TabletId
@@ -337,6 +338,7 @@ IActorPtr CreateVolumeSessionActor(
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
     TSharedServiceCountersPtr sharedCounters)
@@ -348,6 +350,7 @@ IActorPtr CreateVolumeSessionActor(
         std::move(profileLog),
         std::move(blockDigestGenerator),
         std::move(traceSerializer),
+        std::move(endpointEventHandler),
         std::move(rdmaClient),
         std::move(counters),
         std::move(sharedCounters));

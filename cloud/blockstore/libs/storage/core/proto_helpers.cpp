@@ -184,6 +184,15 @@ void VolumeConfigToVolume(
     volume.SetBaseDiskCheckpointId(volumeConfig.GetBaseDiskCheckpointId());
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
+
+    TStringBuf sit(volumeConfig.GetTagsStr());
+    TStringBuf tag;
+    while (sit.NextTok(',', tag)) {
+        if (tag == "use-fastpath") {
+            volume.SetIsFastPathEnabled(true);
+        }
+    }
+
 }
 
 void VolumeConfigToVolumeModel(
