@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    endpoint_events.cpp
     endpoint_listener.cpp
     endpoint_manager.cpp
     service_endpoint.cpp

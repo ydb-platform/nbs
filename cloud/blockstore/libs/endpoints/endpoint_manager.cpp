@@ -1,10 +1,12 @@
 #include "endpoint_manager.h"
 
+#include "endpoint_events.h"
 #include "endpoint_listener.h"
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -133,7 +135,9 @@ bool CompareRequests(
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEndpointManager final
-    : public IEndpointManager
+    : public std::enable_shared_from_this<TEndpointManager>
+    , public IEndpointManager
+    , public IEndpointEventHandler
 {
 private:
     const IServerStatsPtr ServerStats;
@@ -183,6 +187,8 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TRefreshEndpointRequest> request) override;
 
+    void OnVolumeConnectionEstablished(const TString& diskId) override;
+
 private:
     NProto::TStartEndpointResponse StartEndpointImpl(
         TCallContextPtr ctx,
@@ -216,6 +222,8 @@ private:
 
     std::shared_ptr<NProto::TStartEndpointRequest> CreateNbdStartEndpointRequest(
         const NProto::TStartEndpointRequest& request);
+
+    void TrySwitchEndpoint(const TString& diskId);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -613,6 +621,62 @@ TStartEndpointRequestPtr TEndpointManager::CreateNbdStartEndpointRequest(
     return nbdRequest;
 }
 
+void TEndpointManager::TrySwitchEndpoint(const TString& diskId)
+{
+    auto it = FindIf(Requests, [&] (auto& v) {
+        const auto& [_, req] = v;
+        return req->GetDiskId() == diskId
+            && req->GetIpcType() == NProto::IPC_VHOST;
+    });
+
+    if (it == Requests.end()) {
+        return;
+    }
+
+    const auto& req = it->second;
+    auto listenerIt = EndpointListeners.find(req->GetIpcType());
+    STORAGE_VERIFY(
+        listenerIt != EndpointListeners.end(),
+        TWellKnownEntityTypes::ENDPOINT,
+        req->GetUnixSocketPath());
+    const auto& listener = listenerIt->second;
+
+    auto ctx = MakeIntrusive<TCallContext>();
+    auto future = SessionManager->GetSession(
+        std::move(ctx),
+        req->GetUnixSocketPath(),
+        req->GetHeaders());
+    auto result = Executor->WaitFor(future);
+    if (HasError(result)) {
+        return;
+    }
+
+    const auto& sessionInfo = result.GetResult();
+
+    STORAGE_INFO("Switching endpoint for volume " << sessionInfo.Volume.GetDiskId()
+        << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
+        << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
+
+    auto switchFuture = listener->SwitchEndpoint(
+        *it->second,
+        sessionInfo.Volume,
+        sessionInfo.Session);
+    auto error = Executor->WaitFor(switchFuture);
+    if (HasError(error)) {
+        ReportEndpointSwitchFailure(TStringBuilder()
+            << "Failed to switch endpoint for volume "
+            << sessionInfo.Volume.GetDiskId()
+            << ", " << error.GetMessage());
+    }
+}
+
+void TEndpointManager::OnVolumeConnectionEstablished(const TString& diskId)
+{
+    Executor->ExecuteSimple([this, diskId] () {
+        return TrySwitchEndpoint(diskId);
+    });
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -621,17 +685,20 @@ IEndpointManagerPtr CreateEndpointManager(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
+    IEndpointEventProxyPtr eventProxy,
     ISessionManagerPtr sessionManager,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     TString nbdSocketSuffix)
 {
-    return std::make_shared<TEndpointManager>(
+    auto manager = std::make_shared<TEndpointManager>(
         std::move(logging),
         std::move(serverStats),
         std::move(executor),
         std::move(sessionManager),
         std::move(listeners),
         std::move(nbdSocketSuffix));
+    eventProxy->Register(manager);
+    return manager;
 }
 
 bool IsSameStartEndpointRequests(

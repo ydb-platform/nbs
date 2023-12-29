@@ -46,6 +46,7 @@ IEndpointManagerPtr CreateEndpointManager(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
+    IEndpointEventProxyPtr eventProxy,
     ISessionManagerPtr sessionManager,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     TString nbdSocketSuffix);

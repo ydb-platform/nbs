@@ -356,6 +356,18 @@ public:
         return {};
     }
 
+    TFuture<NProto::TError> SwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        Y_UNUSED(request);
+        Y_UNUSED(volume);
+        Y_UNUSED(session);
+        return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+
+
 private:
     NProto::TError DoStartEndpoint(
         const NProto::TStartEndpointRequest& request,
