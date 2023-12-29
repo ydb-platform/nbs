@@ -337,7 +337,7 @@ struct TTestEnv
 
         for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
            Runtime.SetLogPriority(i, NLog::PRI_INFO);
-            Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+           // Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         }
         Runtime.SetLogPriority(TBlockStoreComponents::PARTITION, NLog::PRI_DEBUG);
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
