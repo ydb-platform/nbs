@@ -337,7 +337,7 @@ struct TTestEnv
 
         for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
            Runtime.SetLogPriority(i, NLog::PRI_INFO);
-           // Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+            Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         }
         Runtime.SetLogPriority(TBlockStoreComponents::PARTITION, NLog::PRI_DEBUG);
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -1257,7 +1257,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(3072, resyncIndex);
     }
 
-    Y_UNIT_TEST(ShouldTreatFreshDevicesProperly)
+    void DoTestShouldTreatFreshDevicesProperly(bool afterResync)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, {"vasya#1", "vasya#2"});
@@ -1272,49 +1272,80 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         env.WriteReplica(1, range2, 'D');
         env.WriteReplica(2, range2, 'D');
 
+        env.CatchEvents(TEvNonreplPartitionPrivate::EvResyncNextRange);
         env.StartResync();
-        env.ResyncController.WaitForResyncedRangeCount(5);
-        UNIT_ASSERT(env.ResyncController.ResyncFinished);
+
+        auto read = [&] (TBlockRange64 range) {
+            return afterResync
+                ? env.ReadMirror(range)
+                : env.ReadActor(env.ActorId, range);
+        };
+
+        // Read a range which doesn't really require a resync
+        // Devices in replicas #1 and #2 have different data but those devices
+        // are fresh so they shouldn't be taken into account
+        for (const auto& block: read(range1)) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        }
+        for (const auto& block: read(range1)) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        }
+        for (const auto& block: read(range1)) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        }
+
+        // unblock resync
+        // XXX may trigger immediate resync and not actually test the
+        // slow path that happens during resync
+        env.ReleaseEvents();
+
+        if (afterResync) {
+            env.ResyncController.WaitForResyncedRangeCount(5);
+            UNIT_ASSERT(env.ResyncController.ResyncFinished);
+        }
 
         // Trigger sequential reading from different replicas
-        for (const auto& block: env.ReadMirror(range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
-        }
-        for (const auto& block: env.ReadMirror(range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
-        }
-        for (const auto& block: env.ReadMirror(range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
-        }
-        for (const auto& block: env.ReadMirror(range2)) {
+        for (const auto& block: read(range2)) {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
         }
-        for (const auto& block: env.ReadMirror(range2)) {
+        for (const auto& block: read(range2)) {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
         }
-        for (const auto& block: env.ReadMirror(range2)) {
+        for (const auto& block: read(range2)) {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
         }
 
-        // Check individual replicas
-        for (const auto& block: env.ReadReplica(0, range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        if (afterResync) {
+            // Check individual replicas
+            for (const auto& block: env.ReadReplica(0, range1)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+            for (const auto& block: env.ReadReplica(1, range1)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            }
+            for (const auto& block: env.ReadReplica(2, range1)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            }
+            for (const auto& block: env.ReadReplica(0, range2)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
+            }
+            for (const auto& block: env.ReadReplica(1, range2)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
+            }
+            for (const auto& block: env.ReadReplica(2, range2)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
+            }
         }
-        for (const auto& block: env.ReadReplica(1, range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
-        }
-        for (const auto& block: env.ReadReplica(2, range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
-        }
-        for (const auto& block: env.ReadReplica(0, range2)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
-        }
-        for (const auto& block: env.ReadReplica(1, range2)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
-        }
-        for (const auto& block: env.ReadReplica(2, range2)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
-        }
+    }
+
+    Y_UNIT_TEST(ShouldTreatFreshDevicesProperlyAfterResync)
+    {
+        DoTestShouldTreatFreshDevicesProperly(true);
+    }
+
+    Y_UNIT_TEST(ShouldTreatFreshDevicesProperlyDuringResync)
+    {
+        DoTestShouldTreatFreshDevicesProperly(false);
     }
 }
 

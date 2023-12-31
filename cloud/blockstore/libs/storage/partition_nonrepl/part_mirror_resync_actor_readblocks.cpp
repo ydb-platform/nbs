@@ -45,13 +45,6 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
         }
     }
 
-    if (replicas.size() != Replicas.size()) {
-        ProcessReadRequestSlowPath(
-            NActors::IEventHandlePtr(ev.Release()),
-            range,
-            ctx);
-        return;
-    }
     ProcessReadRequestFastPath(ev, std::move(replicas), range, ctx);
 }
 
@@ -61,6 +54,11 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%s] Resync read fast path %s",
+        PartConfig->GetName().c_str(),
+        DescribeRange(range).c_str());
+
     TFastPathRecord fastPathRecord{
         .Ev{NActors::IEventHandlePtr(ev.Release())},
         .BlockRange{range}};
@@ -101,6 +99,11 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%s] Resync read local fast path %s",
+        PartConfig->GetName().c_str(),
+        DescribeRange(range).c_str());
+
     auto blockSize = PartConfig->GetBlockSize();
     auto msg = ev->Get();
     TFastPathRecord fastPathRecord{
@@ -131,6 +134,11 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSlowPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%s] Resync read slow path %s",
+        PartConfig->GetName().c_str(),
+        DescribeRange(range).c_str());
+
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
     for (ui32 id = rangeId.first; id <= rangeId.second; ++id) {
         const auto blockRange =
