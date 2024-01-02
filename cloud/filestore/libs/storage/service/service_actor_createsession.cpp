@@ -66,7 +66,6 @@ private:
     google::protobuf::RepeatedPtrField<NProto::TSessionEvent> StoredEvents;
     TActorId EventListener;
 
-    bool CreateSessionRunning = false;
     bool Shutdown = false;
 
     TActorId Owner;
@@ -298,26 +297,6 @@ void TCreateSessionActor::HandleCreateSession(
     auto* msg = ev->Get();
     LastPing = ctx.Now();
 
-    if (CreateSessionRunning || Shutdown) {
-        auto error = MakeError(E_REJECTED, "request cancelled");
-
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
-            "%s reject create session as another create session is in progress %lu (%s)",
-            LogTag().c_str(),
-            msg->SessionSeqNo,
-            FormatError(error).c_str());
-
-        auto response = std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
-        response->ClientId = msg->ClientId;
-        response->SessionId = msg->SessionId;
-        response->SessionSeqNo = msg->SessionSeqNo;
-        response->ReadOnly = msg->ReadOnly;
-        response->RequestInfo = std::move(msg->RequestInfo);
-
-        NCloud::Send(ctx, MakeStorageServiceId(), std::move(response));
-        return;
-    }
-
     ClientId = msg->ClientId;
     FileSystemId = msg->FileSystemId;
     SessionId = msg->SessionId;
@@ -358,8 +337,6 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    CreateSessionRunning = false;
 
     const auto& sessionId = msg->Record.GetSessionId();
     if (FAILED(msg->GetStatus())) {
