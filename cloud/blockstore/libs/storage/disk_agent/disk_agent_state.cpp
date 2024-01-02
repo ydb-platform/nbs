@@ -19,12 +19,16 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/string/join.h>
+#include <util/system/fs.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -252,6 +256,7 @@ TDiskAgentState::TDiskAgentState(
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , Logging(std::move(logging))
+    , Log(Logging->CreateLog("BLOCKSTORE_DISK_AGENT"))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
 {
@@ -455,6 +460,8 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize(
                 Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
             InitRdmaTarget(std::move(rdmaTargetConfig));
+
+            RestoreSessions(*DeviceClient);
         });
 }
 
@@ -751,18 +758,16 @@ void TDiskAgentState::AcquireDevices(
     const TString& diskId,
     ui32 volumeGeneration)
 {
-    auto error = DeviceClient->AcquireDevices(
+    CheckError(DeviceClient->AcquireDevices(
         uuids,
         clientId,
         now,
         accessMode,
         mountSeqNumber,
         diskId,
-        volumeGeneration);
+        volumeGeneration));
 
-    if (HasError(error)) {
-        ythrow TServiceError(error);
-    }
+    UpdateSessionCache(*DeviceClient);
 }
 
 void TDiskAgentState::ReleaseDevices(
@@ -812,6 +817,86 @@ void TDiskAgentState::StopTarget()
 
     if (RdmaTarget) {
         RdmaTarget->Stop();
+    }
+}
+
+void TDiskAgentState::UpdateSessionCache(TDeviceClient& client) const
+{
+    const auto path = AgentConfig->GetCachedSessionsPath();
+
+    if (path.empty()) {
+        STORAGE_INFO("Session cache is not configured.");
+        return;
+    }
+
+    try {
+        auto sessions = client.GetSessions();
+
+        NProto::TDiskAgentDeviceSessionCache proto;
+        proto.MutableSessions()->Assign(
+            std::make_move_iterator(sessions.begin()),
+            std::make_move_iterator(sessions.end())
+        );
+
+        const TString tmpPath {path + ".tmp"};
+
+        SerializeToTextFormat(proto, tmpPath);
+
+        if (!NFs::Rename(tmpPath, path)) {
+            const auto ec = errno;
+            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)} << strerror(ec);
+        }
+    } catch (...) {
+        STORAGE_ERROR("Can't update session cache: " << CurrentExceptionMessage());
+        ReportDiskAgentSessionCacheUpdateError();
+    }
+}
+
+void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
+{
+    const auto path = AgentConfig->GetCachedSessionsPath();
+
+    if (path.empty()) {
+        STORAGE_INFO("Session cache is not configured.");
+        return;
+    }
+
+    if (!NFs::Exists(path)) {
+        STORAGE_INFO("Session cache is empty.");
+        return;
+    }
+
+    NProto::TDiskAgentDeviceSessionCache proto;
+
+    try {
+        ParseProtoTextFromFileRobust(path, proto);
+
+        auto& sessions = proto.GetSessions();
+
+        STORAGE_INFO("Found " << sessions.size()
+            << " sessions in the session cache:\n" << JoinSeq("\n", sessions));
+
+        for (auto& session: sessions) {
+            TVector<TString> uuids(
+                std::make_move_iterator(session.GetDeviceIds().begin()),
+                std::make_move_iterator(session.GetDeviceIds().end()));
+
+            CheckError(client.AcquireDevices(
+                uuids,
+                session.GetClientId(),
+                TInstant::MicroSeconds(session.GetLastActivityTs()),
+                session.GetReadOnly()
+                    ? NProto::VOLUME_ACCESS_READ_ONLY
+                    : NProto::VOLUME_ACCESS_READ_WRITE,
+                session.GetMountSeqNumber(),
+                session.GetDiskId(),
+                session.GetVolumeGeneration()
+            ));
+        }
+    } catch (...) {
+        STORAGE_ERROR("Can't restore sessions from the cache: "
+            << CurrentExceptionMessage());
+        ReportDiskAgentSessionCacheRestoreError();
     }
 }
 
