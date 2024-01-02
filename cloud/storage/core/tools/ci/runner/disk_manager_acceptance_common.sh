@@ -7,9 +7,6 @@ export dm="${d}/disk_manager_acceptance_test/disk_manager_acceptance_tests"
 export cluster="nemax"
 
 export results_dir="/var/www/build/results"
-export result_case_directory="${results_dir}/disk_manager_${test_name:=acceptance}/${cluster}/disk-manager/"
-results_path="${result_case_directory}${test_suite:?"test_suite parameter undefined"}/$(date +%Y-%m-%d)"
-export results_path
 
 function create_results_directory () {
     rm -rf "$results_path"
@@ -41,6 +38,9 @@ function report_results () {
 }
 
 function execute_tests () {
+    export result_case_directory="${results_dir}/disk_manager_${test_name:=acceptance}/${cluster}/disk-manager/"
+    results_path="${result_case_directory}${test_suite:?"test_suite parameter undefined"}/$(date +%Y-%m-%d)"
+    export results_path
     create_results_directory
     # shellcheck disable=SC2068
     # shellcheck disable=SC2046
