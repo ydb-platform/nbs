@@ -297,6 +297,26 @@ void TCreateSessionActor::HandleCreateSession(
     auto* msg = ev->Get();
     LastPing = ctx.Now();
 
+    if (Shutdown) {
+        auto error = MakeError(E_REJECTED, "TCreateSessionActor: shutting down");
+
+        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+            "%s reject create session - TCreateSessionActor is shutting down %lu (%s)",
+            LogTag().c_str(),
+            msg->SessionSeqNo,
+            FormatError(error).c_str());
+
+        auto response = std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
+        response->ClientId = msg->ClientId;
+        response->SessionId = msg->SessionId;
+        response->SessionSeqNo = msg->SessionSeqNo;
+        response->ReadOnly = msg->ReadOnly;
+        response->RequestInfo = std::move(msg->RequestInfo);
+
+        NCloud::Send(ctx, MakeStorageServiceId(), std::move(response));
+        return;
+    }
+
     ClientId = msg->ClientId;
     FileSystemId = msg->FileSystemId;
     SessionId = msg->SessionId;
