@@ -118,6 +118,17 @@ struct TTestEndpointListener
 
         return {};
     }
+
+    TFuture<NProto::TError> SwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        Y_UNUSED(request);
+        Y_UNUSED(volume);
+        Y_UNUSED(session);
+        return MakeFuture<NProto::TError>();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -345,15 +356,21 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL(Volume.GetDiskId(), create->DiskId);
 
             /*
-                --device ...                        2
-                --device ...                        2
+                --client-id ...                     2
+                --disk-id ...                       2
                 --serial local0                     2
                 --socket-path /tmp/socket.vhost     2
                 -q 2                                2
+                --device-backend ...                2
+                --device ...                        2
+                --device ...                        2
                 --read-only                         1
-                                                   11
+                                                   17
             */
-            UNIT_ASSERT_VALUES_EQUAL(11, create->CmdArgs.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(17, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL("client", GetArg(create->CmdArgs, "--client-id"));
+            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -361,6 +378,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 GetArg(create->CmdArgs, "--socket-path"));
 
             UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
+            UNIT_ASSERT_VALUES_EQUAL("aio", GetArg(create->CmdArgs, "--device-backend"));
             UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
 
             auto devices = GetArgN(create->CmdArgs, "--device");

@@ -401,6 +401,7 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
                 CreateVolumeClient(
                     Config,
                     TraceSerializer,
+                    EndpointEventHandler,
                     SelfId(),
                     VolumeInfo->DiskId,
                     TabletId

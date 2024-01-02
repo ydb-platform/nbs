@@ -2,6 +2,7 @@
 
 #include "service_events_private.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -71,6 +72,7 @@ class TVolumeClientActor final
 
 private:
     ITraceSerializerPtr TraceSerializer;
+    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const TActorId SessionActorId;
     const TString DiskId;
     const ui64 TabletId;
@@ -87,6 +89,7 @@ public:
     TVolumeClientActor(
         TStorageConfigPtr config,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         const TActorId& sessionActorId,
         TString diskId,
         ui64 tabletId);
@@ -136,11 +139,13 @@ private:
 TVolumeClientActor::TVolumeClientActor(
         TStorageConfigPtr config,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         const TActorId& sessionActorId,
         TString diskId,
         ui64 tabletId)
     : TActor(&TThis::StateWork)
     , TraceSerializer(std::move(traceSerializer))
+    , EndpointEventHandler(endpointEventHandler)
     , SessionActorId(sessionActorId)
     , DiskId(std::move(diskId))
     , TabletId(tabletId)
@@ -207,6 +212,7 @@ void TVolumeClientActor::HandleConnect(
         "Connection to tablet: " <<
         msg->TabletId <<
         " has been established");
+    EndpointEventHandler->OnVolumeConnectionEstablished(DiskId);
 }
 
 void TVolumeClientActor::HandleDisconnect(
@@ -466,6 +472,7 @@ STFUNC(TVolumeClientActor::StateWork)
 IActorPtr CreateVolumeClient(
     TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const TActorId& sessionActorId,
     TString diskId,
     ui64 tabletId)
@@ -473,10 +480,10 @@ IActorPtr CreateVolumeClient(
     return std::make_unique<TVolumeClientActor>(
         std::move(config),
         std::move(traceSerializer),
+        std::move(endpointEventHandler),
         sessionActorId,
         std::move(diskId),
         tabletId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

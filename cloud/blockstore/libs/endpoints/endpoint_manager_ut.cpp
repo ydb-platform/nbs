@@ -1,5 +1,6 @@
 #include "endpoint_manager.h"
 
+#include "endpoint_events.h"
 #include "endpoint_listener.h"
 #include "session_manager.h"
 
@@ -194,6 +195,18 @@ public:
         return {};
     }
 
+    TFuture<NProto::TError> SwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        Y_UNUSED(request);
+        Y_UNUSED(volume);
+        Y_UNUSED(session);
+
+        return MakeFuture<NProto::TError>();
+    }
+
     TMap<TString, TTestEndpoint> GetEndpoints() const
     {
         return Endpoints;
@@ -377,10 +390,13 @@ IEndpointManagerPtr CreateEndpointManager(
         bootstrap.Executor,
         sessionManagerOptions);
 
+    auto eventProxy = CreateEndpointEventProxy();
+
     return NServer::CreateEndpointManager(
         bootstrap.Logging,
         serverStats,
         bootstrap.Executor,
+        CreateEndpointEventProxy(),
         std::move(sessionManager),
         std::move(endpointListeners),
         std::move(nbdSocketSuffix));
@@ -1012,6 +1028,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Logging,
             CreateServerStatsStub(),
             bootstrap.Executor,
+            CreateEndpointEventProxy(),
             sessionManager,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
             ""  // NbdSocketSuffix
