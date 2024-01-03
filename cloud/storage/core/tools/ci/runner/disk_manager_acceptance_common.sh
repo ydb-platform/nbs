@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -eux
 export d="/root"
 scripts=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export scripts
