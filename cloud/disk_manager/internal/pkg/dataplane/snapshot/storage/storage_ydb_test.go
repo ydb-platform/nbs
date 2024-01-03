@@ -1262,6 +1262,40 @@ func TestCompressionMetricsCollection(t *testing.T) {
 	}
 }
 
+func TestSnapshotReadWriteAllZeroedChunk(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(
+			testCase.name, func(t *testing.T) {
+				f := createFixture(t)
+				defer f.teardown()
+
+				chunk := common.Chunk{
+					Index: 0,
+					Data:  make([]byte, 1024*1024*4),
+				}
+				chunkID, err := f.storage.WriteChunk(
+					f.ctx,
+					"",
+					"test",
+					chunk,
+					testCase.useS3,
+				)
+				require.NoError(t, err)
+
+				readChunk := common.Chunk{
+					ID:         chunkID,
+					Data:       make([]byte, len(chunk.Data)),
+					StoredInS3: testCase.useS3,
+				}
+				err = f.storage.ReadChunk(f.ctx, &readChunk)
+				require.NoError(t, err)
+				require.Equal(t, chunk.Data, readChunk.Data)
+				require.True(t, readChunk.Zero)
+			},
+		)
+	}
+}
+
 func expectHistogramCalledOnce(registry *mocks.RegistryMock, name string, compressionTags map[string]string) *mock.Call {
 	return registry.GetHistogram(
 		name,
