@@ -44,8 +44,8 @@ function execute_tests () {
     # shellcheck disable=SC2068
     # shellcheck disable=SC2046
     $dm/disk-manager-ci-acceptance-test-suite $(base_shell_args) $@ \
-    2>> "$results_path/disk_manager_${test_name:=acceptance}.err" \
-    >> "$results_path/disk_manager_${test_name:=acceptance}.out"
+    2>> "$results_path/stdout.txt" \
+    >> "$results_path/stderr.txt"
     report_results
 }
 
