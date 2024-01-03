@@ -590,7 +590,7 @@ func (s *storageYDB) WriteChunk(
 	useS3 bool,
 ) (chunkID string, err error) {
 
-	if chunk.Zero {
+	if chunk.Zero || chunk.IsZero() {
 		return s.writeZeroChunk(ctx, snapshotID, chunk)
 	} else {
 		return s.writeDataChunk(ctx, uniqueID, snapshotID, chunk, useS3)
