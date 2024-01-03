@@ -220,7 +220,6 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
     TabletId = fsDescr.GetIndexTabletId();
 
     CreatePipe(ctx);
-    ScheduleWakeUp(ctx);
 
     Become(&TThis::StateWork);
 }
@@ -269,6 +268,7 @@ void TCreateSessionActor::HandleConnect(
     LastPing = ctx.Now();
 
     CreateSession(ctx);
+    ScheduleWakeUp(ctx);
 }
 
 void TCreateSessionActor::HandleDisconnect(
@@ -833,7 +833,7 @@ void TStorageServiceActor::HandleSessionCreated(
     }
 
     if (msg->RequestInfo) {
-        auto inflight = FindInFlightRequest(msg->RequestInfo->Cookie);
+        auto* inflight = FindInFlightRequest(msg->RequestInfo->Cookie);
         if (!inflight) {
             LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
                 "%s failed complete CreateSession: invalid cookie (%lu)",
