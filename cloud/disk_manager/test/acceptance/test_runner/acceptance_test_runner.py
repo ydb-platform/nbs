@@ -17,9 +17,12 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
 
     def __init__(self, args, *arguments, **kwargs):
         super(AcceptanceTestBinaryExecutor, self).__init__(args, *arguments, **kwargs)
+        location = args.cluster
+        if args.profile_name is not None:
+            location = args.profile_name
         self._acceptance_test_cmd.extend([
             '--url-for-create-image-from-url-test',
-            f"https://{self._s3_host}/{args.cluster}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
+            f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
 
 
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
