@@ -170,6 +170,17 @@
     </xsl:call-template>
 </xsl:template>
 
+<xsl:template match="disk_manager_eternal" mode="detailed">
+    <xsl:call-template name="detailed">
+        <xsl:with-param name="suite-kind">disk_manager_eternal</xsl:with-param>
+    </xsl:call-template>
+</xsl:template>
+
+<xsl:template match="disk_manager_sync" mode="detailed">
+    <xsl:call-template name="detailed">
+        <xsl:with-param name="suite-kind">disk_manager_sync</xsl:with-param>
+    </xsl:call-template>
+</xsl:template>
 <!-- boilerplate wrappers for brief suite reports -->
 
 <xsl:template match="fio" mode="brief">
@@ -214,6 +225,17 @@
     </xsl:call-template>
 </xsl:template>
 
+<xsl:template match="disk_manager_eternal" mode="brief">
+    <xsl:call-template name="brief">
+        <xsl:with-param name="suite-kind">disk_manager_eternal</xsl:with-param>
+    </xsl:call-template>
+</xsl:template>
+
+<xsl:template match="disk_manager_sync" mode="brief">
+    <xsl:call-template name="brief">
+        <xsl:with-param name="suite-kind">disk_manager_sync</xsl:with-param>
+    </xsl:call-template>
+</xsl:template>
 <!-- main template -->
 
 <xsl:template match="index">
@@ -242,6 +264,8 @@
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>DM</h3>
                     <xsl:apply-templates select="disk_manager_acceptance" mode="brief"/>
+                    <xsl:apply-templates select="disk_manager_eternal" mode="brief"/>
+                    <xsl:apply-templates select="disk_manager_sync" mode="brief"/>
                 </div>
             </div>
             <div style="border-top: 1px dashed black; margin-bottom: 20px">
@@ -262,6 +286,8 @@
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>DM</h3>
                     <xsl:apply-templates select="disk_manager_acceptance" mode="detailed"/>
+                    <xsl:apply-templates select="disk_manager_eternal" mode="detailed"/>
+                    <xsl:apply-templates select="disk_manager_sync" mode="detailed"/>
                 </div>
             </div>
         </body>

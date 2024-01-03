@@ -66,7 +66,6 @@ private:
     google::protobuf::RepeatedPtrField<NProto::TSessionEvent> StoredEvents;
     TActorId EventListener;
 
-    bool CreateSessionRunning = false;
     bool Shutdown = false;
 
     TActorId Owner;
@@ -298,11 +297,11 @@ void TCreateSessionActor::HandleCreateSession(
     auto* msg = ev->Get();
     LastPing = ctx.Now();
 
-    if (CreateSessionRunning || Shutdown) {
-        auto error = MakeError(E_REJECTED, "request cancelled");
+    if (Shutdown) {
+        auto error = MakeError(E_REJECTED, "TCreateSessionActor: shutting down");
 
         LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
-            "%s reject create session as another create session is in progress %lu (%s)",
+            "%s reject create session - TCreateSessionActor is shutting down %lu (%s)",
             LogTag().c_str(),
             msg->SessionSeqNo,
             FormatError(error).c_str());
@@ -358,8 +357,6 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    CreateSessionRunning = false;
 
     const auto& sessionId = msg->Record.GetSessionId();
     if (FAILED(msg->GetStatus())) {

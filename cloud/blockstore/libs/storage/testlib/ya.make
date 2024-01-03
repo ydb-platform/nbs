@@ -17,6 +17,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery
+    cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/api

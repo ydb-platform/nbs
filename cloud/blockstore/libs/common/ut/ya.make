@@ -10,7 +10,12 @@ SRCS(
     caching_allocator_ut.cpp
     block_checksum_ut.cpp
     block_range_ut.cpp
+    device_path_ut.cpp
     iovector_ut.cpp
+)
+
+PEERDIR(
+    library/cpp/uri
 )
 
 END()

@@ -52,6 +52,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistrySourceDiskNotFound)                                        \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
+    xxx(EndpointSwitchFailure)                                                 \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

@@ -87,7 +87,9 @@ def generate_nfs_section(index, results_xml_path):
 
 
 def generate_dm_section(index, results_xml_path):
-    for tests_type in ["disk_manager_acceptance"]:
+    for tests_type in [
+        "disk_manager_acceptance", "disk_manager_eternal", "disk_manager_sync"
+    ]:
         generate_generic_tests_section(index, tests_type, results_xml_path)
 
 

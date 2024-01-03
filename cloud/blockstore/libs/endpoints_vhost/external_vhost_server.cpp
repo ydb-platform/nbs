@@ -1,6 +1,7 @@
 #include "external_vhost_server.h"
 #include "external_endpoint_stats.h"
 
+#include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 
@@ -39,6 +40,29 @@ using namespace NThreading;
 using namespace std::chrono_literals;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EEndpointType
+{
+    Local,
+    Rdma,
+    Fallback
+};
+
+const char* GetEndpointTypeName(EEndpointType state)
+{
+    static const char* names[] = {
+        "LOCAL",
+        "RDMA",
+        "FALLBACK",
+    };
+
+    if ((size_t)state < Y_ARRAY_SIZE(names)) {
+        return names[(size_t)state];
+    }
+    return "UNDEFINED";
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -572,6 +596,9 @@ public:
         if (!TryStartExternalEndpoint(request, volume)) {
             Endpoints.emplace(socketPath, nullptr);
 
+            STORAGE_INFO("starting endpoint "
+                << request.GetUnixSocketPath() << ", epType=FALLBACK");
+
             return FallbackListener->StartEndpoint(
                 request,
                 volume,
@@ -598,20 +625,7 @@ public:
             return FallbackListener->AlterEndpoint(request, volume, std::move(session));
         }
 
-        auto self = weak_from_this();
-
-        return StopEndpoint(socketPath)
-            .Apply([=] (const auto& future) {
-                if (future.HasException() || HasError(future.GetValue())) {
-                    return future;
-                }
-
-                if (auto p = self.lock()) {
-                    return p->StartEndpoint(request, volume, session);
-                }
-
-                return MakeFuture(MakeError(E_REJECTED, "Cancelled"));
-            });
+        return TrySwitchEndpoint(request, volume, session);
     }
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
@@ -652,7 +666,55 @@ public:
         return {};
     }
 
+    TFuture<NProto::TError> SwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        const auto& socketPath = request.GetUnixSocketPath();
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return MakeFuture(MakeError(E_NOT_FOUND, TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not found"));
+        }
+
+        bool isExternalEndpoint = it->second != nullptr;
+        if (isExternalEndpoint != CanStartExternalEndpoint(request, volume)) {
+            return TrySwitchEndpoint(request, volume, session);
+        }
+
+        return MakeFuture<NProto::TError>();
+    }
+
 private:
+    NThreading::TFuture<NProto::TError> TrySwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session)
+    {
+        auto epType = GetEndpointType(request, volume);
+
+        STORAGE_INFO(TStringBuilder()
+            << "switching endpoint " << request.GetUnixSocketPath()
+            << ", epType=" << GetEndpointTypeName(epType)
+            << ", external=" << CanStartExternalEndpoint(request, volume));
+
+        auto self = weak_from_this();
+
+        return StopEndpoint(request.GetUnixSocketPath())
+            .Apply([=] (const auto& future) {
+                if (future.HasException() || HasError(future.GetValue())) {
+                    return future;
+                }
+
+                if (auto p = self.lock()) {
+                    return p->StartEndpoint(request, volume, session);
+                }
+
+                return MakeFuture(MakeError(E_REJECTED, "Cancelled"));
+            });
+    }
+
     bool IsLocalMode(
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume) const
@@ -662,23 +724,60 @@ private:
             && request.GetIpcType() == NProto::IPC_VHOST;
     }
 
+    bool IsFastPathMode(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume) const
+    {
+        return volume.GetIsFastPathEnabled()
+            && request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL
+            && request.GetIpcType() == NProto::IPC_VHOST;
+    }
+
     bool CanStartExternalEndpoint(
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume) const
     {
-        return IsLocalMode(request, volume) && IsOnLocalAgent(volume);
+        auto epType = GetEndpointType(request, volume);
+        switch (epType) {
+        case EEndpointType::Local:
+            return true;
+        case EEndpointType::Rdma:
+            return volume.GetMigrations().empty();
+        case EEndpointType::Fallback:
+            return false;
+        }
+    }
+
+    EEndpointType GetEndpointType(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume) const
+    {
+        if (IsLocalMode(request, volume) && IsOnLocalAgent(volume)) {
+            return EEndpointType::Local;
+        }
+
+        if (IsFastPathMode(request, volume) && IsOnRdmaAgent(volume)) {
+            return EEndpointType::Rdma;
+        }
+
+        return EEndpointType::Fallback;
     }
 
     bool TryStartExternalEndpoint(
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume)
     {
-        if (!IsLocalMode(request, volume) || !ValidateLocation(volume)) {
+        auto epType = GetEndpointType(request, volume);
+        if (epType == EEndpointType::Local && !ValidateLocalLocation(volume)) {
+            return false;
+        }
+
+        if (!CanStartExternalEndpoint(request, volume)) {
             return false;
         }
 
         try {
-            StartExternalEndpoint(request, volume);
+            StartExternalEndpoint(epType, request, volume);
 
             return true;
 
@@ -690,27 +789,70 @@ private:
         return false;
     }
 
+    TString GetDeviceBackend(EEndpointType epType)
+    {
+        switch (epType) {
+        case EEndpointType::Local:
+            return "aio";
+        case EEndpointType::Rdma:
+            return "rdma";
+        case EEndpointType::Fallback:
+            return "fallback";
+        }
+    }
+
+    TString GetDevicePath(EEndpointType epType, const NProto::TDevice& device)
+    {
+        switch (epType) {
+        case EEndpointType::Local:
+            return device.GetDeviceName();
+        case EEndpointType::Rdma: {
+            DevicePath path(
+                "rdma",
+                device.GetRdmaEndpoint().GetHost(),
+                device.GetRdmaEndpoint().GetPort(),
+                device.GetDeviceUUID());
+            return path.Serialize();
+        }
+        case EEndpointType::Fallback:
+            return "";
+        }
+    }
+
     void StartExternalEndpoint(
+        EEndpointType epType,
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume)
     {
+        STORAGE_INFO("starting endpoint "
+            << request.GetUnixSocketPath() << ", epType="
+            << GetEndpointTypeName(epType));
+
         const auto& socketPath = request.GetUnixSocketPath();
         const auto& deviceName = request.GetDeviceName()
             ? request.GetDeviceName()
             : volume.GetDiskId();
+        const auto& clientId = request.GetClientId()
+            ? request.GetClientId()
+            : request.GetInstanceId();
 
         TVector<TString> args {
+            "--client-id", clientId,
+            "--disk-id", request.GetDiskId(),
             "--serial", deviceName,
             "--socket-path", socketPath,
             "-q", ToString(request.GetVhostQueuesCount())
         };
+
+        args.emplace_back("--device-backend");
+        args.emplace_back(GetDeviceBackend(epType));
 
         for (const auto& device: volume.GetDevices()) {
             const ui64 size = device.GetBlockCount() * volume.GetBlockSize();
 
             args.insert(args.end(), {
                 "--device", TStringBuilder()
-                    << device.GetDeviceName() << ":"
+                    << GetDevicePath(epType, device) << ":"
                     << size << ":"
                     << device.GetPhysicalOffset()
                 });
@@ -725,9 +867,6 @@ private:
             request.GetClientCGroups().end()
         );
 
-        const auto& clientId = request.GetClientId()
-            ? request.GetClientId()
-            : request.GetInstanceId();
 
         auto ep = EndpointFactory(
             clientId,
@@ -750,7 +889,17 @@ private:
             });
     }
 
-    bool ValidateLocation(const NProto::TVolume& volume) const
+    bool IsOnRdmaAgent(const NProto::TVolume& volume) const
+    {
+        return AllOf(
+            volume.GetDevices(),
+            [&] (const auto& d) {
+                return d.GetRdmaEndpoint().GetHost() == d.GetAgentId()
+                    && d.GetAgentId() != "";
+            });
+    }
+
+    bool ValidateLocalLocation(const NProto::TVolume& volume) const
     {
         if (LocalAgentId.empty()) {
             return true;

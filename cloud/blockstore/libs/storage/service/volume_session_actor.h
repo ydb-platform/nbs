@@ -7,6 +7,7 @@
 #include "service_state.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -47,6 +48,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
+    const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NRdma::IClientPtr RdmaClient;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
@@ -77,6 +79,7 @@ public:
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         std::shared_ptr<NKikimr::TTabletCountersBase> counters,
         TSharedServiceCountersPtr sharedCounters)
@@ -86,6 +89,7 @@ public:
         , ProfileLog(std::move(profileLog))
         , BlockDigestGenerator(std::move(blockDigestGenerator))
         , TraceSerializer(std::move(traceSerializer))
+        , EndpointEventHandler(std::move(endpointEventHandler))
         , RdmaClient(std::move(rdmaClient))
         , Counters(std::move(counters))
         , SharedCounters(std::move(sharedCounters))
