@@ -342,6 +342,10 @@ func (t Transferer) goRead(
 						return
 					}
 
+					if !chunk.Zero {
+						chunk.Zero = chunk.CheckDataIsAllZeroes()
+					}
+
 					select {
 					case chunks <- chunk:
 					case <-ctx.Done():

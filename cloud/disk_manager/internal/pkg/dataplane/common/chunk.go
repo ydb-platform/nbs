@@ -22,7 +22,7 @@ func (chunk Chunk) Checksum() uint32 {
 	return crc32.ChecksumIEEE(chunk.Data)
 }
 
-func (chunk Chunk) IsZero() bool {
+func (chunk Chunk) CheckDataIsAllZeroes() bool {
 	for i := 0; i < len(chunk.Data); i += len(zeroes) {
 		endOffset := i + len(zeroes)
 
@@ -30,9 +30,9 @@ func (chunk Chunk) IsZero() bool {
 			endOffset = len(chunk.Data)
 		}
 
-		chunkPart := chunk.Data[i:endOffset]
+		dataToCheck := chunk.Data[i:endOffset]
 
-		if !bytes.Equal(chunkPart, zeroes[:len(chunkPart)]) {
+		if !bytes.Equal(dataToCheck, zeroes[:len(dataToCheck)]) {
 			return false
 		}
 	}
