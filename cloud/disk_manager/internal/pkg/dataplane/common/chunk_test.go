@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 func TestChunkIsZero(t *testing.T) {
 	chunk := Chunk{
 		Data: []byte{1, 2, 3, 4, 5},
