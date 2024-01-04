@@ -5,11 +5,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/"
+        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/"
+        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
         description: "limit test to specific target"
       build_preset:
         type: choice
@@ -20,10 +20,10 @@ on:
           - relwithdebinfo
           - release-asan
           - release-tsan
-      update_bazel_cache:
+      cache_update:
         type: boolean
-        default: false
-        description: "Update remote cache"
+        default: true
+        description: "Update build and test cache"
       test_size:
         type: choice
         default: "small"
@@ -37,12 +37,13 @@ on:
         default: "unittest"
         description: "type of tests to run"
         options:
-          - unittest
-          - py3test,py2test,pytest
-          - unittest,py3test,py2test,pytest
+          - unittest,clang_tidy,gtest
+          - py3test,py2test,pytest,flake8,black,py2_flake8
+          - go_test,gofmt
+          - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt
       test_threads:
         type: string
-        default: "64"
+        default: "32"
         description: "Test threads count"
       link_threads:
         type: string
@@ -60,11 +61,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/"
+        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/"
+        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
         description: "limit test to specific target"
       build_preset:
         type: string
@@ -83,16 +84,16 @@ on:
         default: true
       test_threads:
         type: string
-        default: '28'
+        default: '32'
         description: "Test threads count"
       link_threads:
         type: string
-        default: '8'
+        default: '16'
         description: "link threads count"
-      update_bazel_cache:
+      cache_update:
         type: boolean
-        default: false
-        description: "Update remote cache"
+        default: true
+        description: "Update build and test cache"
 
 jobs:
   checkout:
@@ -127,11 +128,12 @@ jobs:
       with:
         build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
-        update_bazel_cache: ${{ inputs.update_bazel_cache }}
+        build_cache_update: ${{ inputs.cache_update }}
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         link_threads: ${{ inputs.link_threads }}
+      timeout-minutes: 1440
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -141,8 +143,10 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         test_size: ${{ inputs.test_size }}
         test_type: ${{ inputs.test_type }}
+        test_cache_update: ${{ inputs.cache_update }}
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
+      timeout-minutes: 1440
 
 
