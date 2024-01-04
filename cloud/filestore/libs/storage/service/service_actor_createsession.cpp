@@ -67,6 +67,7 @@ private:
     TActorId EventListener;
 
     bool Shutdown = false;
+    bool WakeupScheduled = false;
 
     TActorId Owner;
 
@@ -126,9 +127,9 @@ private:
         const TEvService::TEvGetSessionEventsResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void ScheduleWakeUp(const TActorContext& ctx);
+    void ScheduleWakeup(const TActorContext& ctx);
 
-    void HandleWakeUp(
+    void HandleWakeup(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
@@ -268,7 +269,7 @@ void TCreateSessionActor::HandleConnect(
     LastPing = ctx.Now();
 
     CreateSession(ctx);
-    ScheduleWakeUp(ctx);
+    ScheduleWakeup(ctx);
 }
 
 void TCreateSessionActor::HandleDisconnect(
@@ -454,12 +455,17 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
     }
 }
 
-void TCreateSessionActor::ScheduleWakeUp(const TActorContext& ctx)
+void TCreateSessionActor::ScheduleWakeup(const TActorContext& ctx)
 {
+    if (WakeupScheduled) {
+        return;
+    }
+
     ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
+    WakeupScheduled = true;
 }
 
-void TCreateSessionActor::HandleWakeUp(
+void TCreateSessionActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -489,7 +495,7 @@ void TCreateSessionActor::HandleWakeUp(
         CreatePipe(ctx);
     }
 
-    ScheduleWakeUp(ctx);
+    ScheduleWakeup(ctx);
 }
 
 void TCreateSessionActor::HandlePoisonPill(
@@ -574,7 +580,7 @@ STFUNC(TCreateSessionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvWakeup, HandleWakeUp);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
