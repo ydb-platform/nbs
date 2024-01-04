@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/common/env.h>
@@ -111,6 +112,7 @@ struct TNullConfigParams
     NProto::TStorageDiscoveryConfig DiscoveryConfig;
 
     TString CachedConfigPath;
+    TString CachedSessionsPath;
 };
 
 auto CreateNullConfig(TNullConfigParams params)
@@ -132,6 +134,7 @@ auto CreateNullConfig(TNullConfigParams params)
     *config.MutableStorageDiscoveryConfig() = std::move(params.DiscoveryConfig);
 
     config.SetCachedConfigPath(std::move(params.CachedConfigPath));
+    config.SetCachedSessionsPath(std::move(params.CachedSessionsPath));
 
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
 }
@@ -293,6 +296,7 @@ struct TFiles
     };
 
     const TString CachedConfigPath = TempDir.Path() / "nbs-disk-agent.txt";
+    const TString CachedSessionsPath = TempDir.Path() / "nbs-disk-agent-sessions.txt";
 
     const ui64 DefaultFileSize = DefaultDeviceBlockSize * DefaultBlocksCount;
 
@@ -1594,6 +1598,311 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 UNIT_ASSERT_VALUES_EQUAL(DefaultFileSize, rhs.GetFileSize());
                 UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
             }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldCacheSessions, TFiles)
+    {
+        PrepareFile(TempDir.Path() / "NVMENBS01", DefaultFileSize);
+        PrepareFile(TempDir.Path() / "NVMENBS02", DefaultFileSize);
+        PrepareFile(TempDir.Path() / "NVMENBS03", DefaultFileSize);
+        PrepareFile(TempDir.Path() / "NVMENBS04", DefaultFileSize);
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto restoreError = counters->GetCounter(
+            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            true);
+
+        UNIT_ASSERT_EQUAL(0, *restoreError);
+
+        auto createState = [&] {
+            NProto::TStorageDiscoveryConfig discovery;
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]+)");
+
+            auto& pool = *path.AddPoolConfigs();
+            pool.SetMaxSize(DefaultFileSize);
+
+            auto state = CreateDiskAgentStateNull(
+                CreateNullConfig({
+                    .AcquireRequired = true,
+                    .DiscoveryConfig = discovery,
+                    .CachedSessionsPath = CachedSessionsPath
+                })
+            );
+
+            auto future = state->Initialize({});
+            const auto& r = future.GetValue(WaitTimeout);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, r.Errors.size(), r.Errors[0]);
+
+            return state;
+        };
+
+        auto state = createState();
+
+        UNIT_ASSERT_EQUAL(0, *restoreError);
+
+        TVector<TString> devices;
+        for (auto& d: state->GetDevices()) {
+            devices.push_back(d.GetDeviceUUID());
+        }
+        Sort(devices);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
+
+        // acquire a bunch of devices
+
+        state->AcquireDevices(
+            { devices[0], devices[1] },
+            "writer-1",
+            TInstant::FromValue(1),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            42,     // MountSeqNumber
+            "vol0",
+            1000);  // VolumeGeneration
+
+        state->AcquireDevices(
+            { devices[0], devices[1] },
+            "reader-1",
+            TInstant::FromValue(2),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            -1,     // MountSeqNumber
+            "vol0",
+            1001);  // VolumeGeneration
+
+        state->AcquireDevices(
+            { devices[2], devices[3] },
+            "reader-2",
+            TInstant::FromValue(3),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            -1,     // MountSeqNumber
+            "vol1",
+            2000);  // VolumeGeneration
+
+        // validate the cache file
+
+        {
+            NProto::TDiskAgentDeviceSessionCache cache;
+            ParseProtoTextFromFileRobust(CachedSessionsPath, cache);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, cache.SessionsSize());
+
+            SortBy(*cache.MutableSessions(), [] (auto& session) {
+                return session.GetClientId();
+            });
+
+            {
+                auto& session = *cache.MutableSessions(0);
+                Sort(*session.MutableDeviceIds());
+
+                UNIT_ASSERT_VALUES_EQUAL("reader-1", session.GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+                ASSERT_VECTORS_EQUAL(
+                    TVector({devices[0], devices[1]}),
+                    session.GetDeviceIds());
+
+                // MountSeqNumber is not applicable to read sessions
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
+                UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
+                UNIT_ASSERT_VALUES_EQUAL(2, session.GetLastActivityTs());
+                UNIT_ASSERT(session.GetReadOnly());
+            }
+
+            {
+                auto& session = *cache.MutableSessions(1);
+
+                UNIT_ASSERT_VALUES_EQUAL("reader-2", session.GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+                ASSERT_VECTORS_EQUAL(
+                    TVector({devices[2], devices[3]}),
+                    session.GetDeviceIds());
+
+                // MountSeqNumber is not applicable to read sessions
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
+                UNIT_ASSERT_VALUES_EQUAL("vol1", session.GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(2000, session.GetVolumeGeneration());
+                UNIT_ASSERT_VALUES_EQUAL(3, session.GetLastActivityTs());
+                UNIT_ASSERT(session.GetReadOnly());
+            }
+
+            {
+                auto& session = *cache.MutableSessions(2);
+                Sort(*session.MutableDeviceIds());
+
+                UNIT_ASSERT_VALUES_EQUAL("writer-1", session.GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+                ASSERT_VECTORS_EQUAL(
+                    TVector({devices[0], devices[1]}),
+                    session.GetDeviceIds());
+
+                UNIT_ASSERT_VALUES_EQUAL(42, session.GetMountSeqNumber());
+                UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
+
+                // VolumeGeneration was updated by reader-1
+                UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
+                UNIT_ASSERT_VALUES_EQUAL(1, session.GetLastActivityTs());
+                UNIT_ASSERT(!session.GetReadOnly());
+            }
+        }
+
+        // restart
+        state = createState();
+
+        UNIT_ASSERT_EQUAL(0, *restoreError);
+
+        auto write = [&] (auto clientId, auto uuid) {
+            NProto::TWriteDeviceBlocksRequest request;
+            request.MutableHeaders()->SetClientId(clientId);
+            request.SetDeviceUUID(uuid);
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+
+            ResizeIOVector(*request.MutableBlocks(), 10, 4096);
+
+            return state->Write(Now(), std::move(request))
+                .GetValue(WaitTimeout);
+        };
+
+        auto read = [&] (auto clientId, auto uuid) {
+            NProto::TReadDeviceBlocksRequest request;
+            request.MutableHeaders()->SetClientId(clientId);
+            request.SetDeviceUUID(uuid);
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+
+            return state->Read(Now(), std::move(request))
+                .GetValue(WaitTimeout);
+        };
+
+        // should reject a request with a wrong client id
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            write("unknown", devices[1]),
+            TServiceError,
+            [] (auto& e) {
+                return e.GetCode() == E_BS_INVALID_SESSION;
+            });
+
+        // should reject a request with a wrong client id
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            write("reader-2", devices[0]),
+            TServiceError,
+            [] (auto& e) {
+                return e.GetCode() == E_BS_INVALID_SESSION;
+            });
+
+        // should reject a request with a wrong client id
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read("reader-2", devices[1]),
+            TServiceError,
+            [] (auto& e) {
+                return e.GetCode() == E_BS_INVALID_SESSION;
+            });
+
+        // should reject a write request for the read only session
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            write("reader-1", devices[1]),
+            TServiceError,
+            [] (auto& e) {
+                return e.GetCode() == E_BS_INVALID_SESSION;
+            });
+
+        // should be ok
+
+        {
+            auto error = write("writer-1", devices[0]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = write("writer-1", devices[1]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-1", devices[0]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-1", devices[1]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-2", devices[2]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-2", devices[3]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        state->ReleaseDevices(
+            { devices[0], devices[1] },
+            "writer-1",
+            "vol0",
+            1001);  // VolumeGeneration
+
+        // remove reader-2's file
+        TFsPath { state->GetDeviceName(devices[3]) }.DeleteIfExists();
+
+        // restart
+        state = createState();
+
+        // reader-2 is broken
+        UNIT_ASSERT_EQUAL(1, *restoreError);
+
+        {
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
+                write("writer-1", devices[0]),
+                TServiceError,
+                [] (auto& e) {
+                    return e.GetCode() == E_BS_INVALID_SESSION;
+                });
+        }
+
+        {
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
+                write("writer-1", devices[1]),
+                TServiceError,
+                [] (auto& e) {
+                    return e.GetCode() == E_BS_INVALID_SESSION;
+                });
+        }
+
+        {
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
+                read("reader-2", devices[2]),
+                TServiceError,
+                [] (auto& e) {
+                    return e.GetCode() == E_BS_INVALID_SESSION;
+                });
+        }
+
+        {
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
+                read("reader-2", devices[3]),
+                TServiceError,
+                [] (auto& e) {
+                    return e.GetCode() == E_NOT_FOUND;
+                });
+        }
+
+        // should be ok
+
+        {
+            auto error = read("reader-1", devices[0]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-1", devices[1]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
     }
 }

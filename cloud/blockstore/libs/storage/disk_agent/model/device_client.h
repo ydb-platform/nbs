@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -46,7 +47,7 @@ public:
     TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
-        TLog Log);
+        TLog log);
 
     TDeviceClient(const TDeviceClient&) = delete;
     TDeviceClient& operator=(const TDeviceClient&) = delete;
@@ -80,6 +81,8 @@ public:
     void DisableDevice(const TString& uuid) const;
     void EnableDevice(const TString& uuid) const;
     bool IsDeviceDisabled(const TString& uuid) const;
+
+    TVector<NProto::TDiskAgentDeviceSession> GetSessions() const;
 
 private:
     static TDevicesState MakeDevices(TVector<TString> uuids);
