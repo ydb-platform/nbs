@@ -217,6 +217,12 @@ Y_UNIT_TEST_SUITE(TVersionTest)
             UNIT_ASSERT_VALUES_EQUAL(-1, revision);
         }
     }
+
+    Y_UNIT_TEST(ShouldGetFullVersionString)
+    {
+        auto full = GetFullVersionString();
+        UNIT_ASSERT_VALUES_UNEQUAL("", full);
+    }
 }
 
 }   // namespace NCloud
