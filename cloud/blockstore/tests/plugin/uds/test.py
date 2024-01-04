@@ -55,8 +55,8 @@ TESTS = [
         "cloud/blockstore/tests/plugin/uds/endpoint.txt",
         "vol0.socket",
         "grpc",
-        restart_interval=3,
-        run_count=50,
+        restart_interval=15,
+        run_count=200,
     ),
 ]
 
