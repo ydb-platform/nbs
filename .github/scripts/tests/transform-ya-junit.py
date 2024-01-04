@@ -182,7 +182,11 @@ def transform(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i", action="store_true", dest="save_inplace", default=False, help="modify input file in-place"
+        "-i",
+        action="store_true",
+        dest="save_inplace",
+        default=False,
+        help="modify input file in-place",
     )
     parser.add_argument("-m", help="muted test list")
     parser.add_argument("--log-url-prefix", default="./", help="url prefix for logs")
