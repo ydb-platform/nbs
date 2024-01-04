@@ -135,7 +135,15 @@ def save_log(build_root, fn, out_dir, log_url_prefix, trunc_size):
     return f"{log_url_prefix}{quoted_fpath}"
 
 
-def transform(fp, mute_check: YaMuteCheck, ya_out_dir, save_inplace, log_url_prefix, log_out_dir, log_trunc_size):
+def transform(
+    fp,
+    mute_check: YaMuteCheck,
+    ya_out_dir,
+    save_inplace,
+    log_url_prefix,
+    log_out_dir,
+    log_trunc_size,
+):
     tree = ET.parse(fp)
     root = tree.getroot()
 
