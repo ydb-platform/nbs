@@ -67,6 +67,7 @@ private:
     TActorId EventListener;
 
     bool Shutdown = false;
+    bool FirstWakeupScheduled = false;
 
     TActorId Owner;
 
@@ -126,9 +127,9 @@ private:
         const TEvService::TEvGetSessionEventsResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void ScheduleWakeUp(const TActorContext& ctx);
+    void ScheduleWakeup(const TActorContext& ctx);
 
-    void HandleWakeUp(
+    void HandleWakeup(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
@@ -220,7 +221,6 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
     TabletId = fsDescr.GetIndexTabletId();
 
     CreatePipe(ctx);
-    ScheduleWakeUp(ctx);
 
     Become(&TThis::StateWork);
 }
@@ -269,6 +269,10 @@ void TCreateSessionActor::HandleConnect(
     LastPing = ctx.Now();
 
     CreateSession(ctx);
+    if (!FirstWakeupScheduled) {
+        ScheduleWakeup(ctx);
+        FirstWakeupScheduled = true;
+    }
 }
 
 void TCreateSessionActor::HandleDisconnect(
@@ -454,12 +458,12 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
     }
 }
 
-void TCreateSessionActor::ScheduleWakeUp(const TActorContext& ctx)
+void TCreateSessionActor::ScheduleWakeup(const TActorContext& ctx)
 {
     ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
 }
 
-void TCreateSessionActor::HandleWakeUp(
+void TCreateSessionActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -489,7 +493,7 @@ void TCreateSessionActor::HandleWakeUp(
         CreatePipe(ctx);
     }
 
-    ScheduleWakeUp(ctx);
+    ScheduleWakeup(ctx);
 }
 
 void TCreateSessionActor::HandlePoisonPill(
@@ -574,7 +578,7 @@ STFUNC(TCreateSessionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvWakeup, HandleWakeUp);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
@@ -833,7 +837,7 @@ void TStorageServiceActor::HandleSessionCreated(
     }
 
     if (msg->RequestInfo) {
-        auto inflight = FindInFlightRequest(msg->RequestInfo->Cookie);
+        auto* inflight = FindInFlightRequest(msg->RequestInfo->Cookie);
         if (!inflight) {
             LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
                 "%s failed complete CreateSession: invalid cookie (%lu)",

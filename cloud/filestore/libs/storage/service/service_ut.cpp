@@ -1,4 +1,5 @@
 #include "service.h"
+#include "service_private.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -533,26 +534,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui64 tabletId = -1;
         TActorId session;
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        TEvSSProxy::TEvDescribeFileStoreResponse::TPtr* ptr =
-                            reinterpret_cast<typename TEvSSProxy::TEvDescribeFileStoreResponse::TPtr*>(
-                                &event);
+            switch (event->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeFileStoreResponse: {
+                    const auto* msg = event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
+                    const auto& desc = msg->PathDescription.GetFileStoreDescription();
+                    tabletId = desc.GetIndexTabletId();
 
-                        auto* msg = (*ptr)->Get();
-                        const auto& desc = msg->PathDescription.GetFileStoreDescription();
-                        tabletId = desc.GetIndexTabletId();
-
-                        return TTestActorRuntime::EEventAction::PROCESS;
-                    }
-                    case TEvIndexTablet::EvCreateSessionRequest: {
-                        session = event->Sender;
-                        return TTestActorRuntime::EEventAction::PROCESS;
-                    }
+                    return TTestActorRuntime::EEventAction::PROCESS;
                 }
+                case TEvIndexTablet::EvCreateSessionRequest: {
+                    session = event->Sender;
+                    return TTestActorRuntime::EEventAction::PROCESS;
+                }
+            }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -1381,6 +1378,100 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             S_OK,
             response->GetStatus(),
             response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldProperlyProcessSlowPipeCreation)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        THeaders headers = {"test", "client", "", 0};
+
+        // delaying pipe creation response
+        ui64 tabletId = -1;
+        bool caughtClientConnected = false;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+            switch (event->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeFileStoreResponse: {
+                    const auto* msg = event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
+                    const auto& desc = msg->PathDescription.GetFileStoreDescription();
+                    tabletId = desc.GetIndexTabletId();
+
+                    return TTestActorRuntime::EEventAction::PROCESS;
+                }
+                case TEvTabletPipe::EvClientConnected: {
+                    const auto* msg = event->Get<TEvTabletPipe::TEvClientConnected>();
+                    if (msg->TabletId == tabletId) {
+                        if (!caughtClientConnected) {
+                            runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                            caughtClientConnected = true;
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        // creating session
+        service.SendCreateSessionRequest(headers);
+        auto response = service.RecvCreateSessionResponse();
+        headers.SessionId = response->Record.GetSession().GetSessionId();
+        // immediately pinging session to signal that it's not idle
+        service.PingSession(headers);
+
+        // just checking that we observed the events that we are expecting
+        UNIT_ASSERT_VALUES_UNEQUAL(-1llu, tabletId);
+        UNIT_ASSERT(caughtClientConnected);
+
+        // no need to intercept those events anymore
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+        bool pipeRestored = false;
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvClientConnected: {
+                        const auto* msg =
+                            event->Get<TEvTabletPipe::TEvClientConnected>();
+                        if (msg->TabletId == tabletId) {
+                            pipeRestored = true;
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        // rebooting tablet to destroy the pipe
+        tablet.RebootTablet();
+
+        // checking that pipe was reestablished successfully
+        UNIT_ASSERT(pipeRestored);
+
+        service.DestroySession(headers);
     }
 }
 
