@@ -67,7 +67,7 @@ private:
     TActorId EventListener;
 
     bool Shutdown = false;
-    bool WakeupScheduled = false;
+    bool FirstWakeupScheduled = false;
 
     TActorId Owner;
 
@@ -269,7 +269,10 @@ void TCreateSessionActor::HandleConnect(
     LastPing = ctx.Now();
 
     CreateSession(ctx);
-    ScheduleWakeup(ctx);
+    if (!FirstWakeupScheduled) {
+        ScheduleWakeup(ctx);
+        FirstWakeupScheduled = true;
+    }
 }
 
 void TCreateSessionActor::HandleDisconnect(
@@ -457,12 +460,7 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
 
 void TCreateSessionActor::ScheduleWakeup(const TActorContext& ctx)
 {
-    if (WakeupScheduled) {
-        return;
-    }
-
     ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
-    WakeupScheduled = true;
 }
 
 void TCreateSessionActor::HandleWakeup(
