@@ -8,7 +8,7 @@ inputs:
     required: true
     default: "relwithdebinfo"
     description: "relwithdebinfo, release-asan, release-tsan"
-  update_bazel_cache:
+  build_cache_update:
     required: true
     description: "bazel-remote upload results"
     default: "false"
@@ -44,7 +44,10 @@ runs:
         extra_params=()
 
         if [ ! -z "${{ inputs.build_target }}" ]; then
-          extra_params+=(--target="${{ inputs.build_target }}")
+          readarray -d ',' -t targets < <(printf "%s" "${{ inputs.build_target }}")
+          for target in "${targets[@]}"; do
+            extra_params+=(--target="${target}")
+          done
         fi
 
         if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
@@ -58,7 +61,7 @@ runs:
           extra_params+=(--add-result .o)
         fi
 
-        if [ "${{ inputs.update_bazel_cache }}" == "true" ]; then
+        if [ "${{ inputs.build_cache_update }}" == "true" ]; then
           extra_params+=(--bazel-remote-put --dist-cache-evict-bins)
         fi
 
