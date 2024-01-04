@@ -1,10 +1,6 @@
 UNITTEST_FOR(cloud/filestore/libs/storage/service)
 
-IF (SANITIZER_TYPE)
-    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
-ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
-ENDIF()
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SRCS(
     helpers_ut.cpp
