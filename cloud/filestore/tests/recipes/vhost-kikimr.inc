@@ -9,10 +9,17 @@ IF (VHOST_RESTART_INTERVAL)
     )
 ENDIF()
 
+SET(RECIPE_ARGS
+    --service kikimr
+    --restart-interval $VHOST_RESTART_INTERVAL
+    --restart-flag  $VHOST_RESTART_FLAG
+)
+
+IF (NOT OPENSOURCE)
+    SET_APPEND(RECIPE_ARGS --verbose)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/vhost/vhost-recipe
-        --service kikimr
-        --restart-interval $VHOST_RESTART_INTERVAL
-        --restart-flag  $VHOST_RESTART_FLAG
-        --verbose
+    ${RECIPE_ARGS}
 )

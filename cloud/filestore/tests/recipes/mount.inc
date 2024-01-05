@@ -3,8 +3,13 @@ DEPENDS(
     cloud/filestore/tests/recipes/mount
 )
 
+SET(RECIPE_ARGS --filesystem nfs_share)
+
+IF (NOT OPENSOURCE)
+    SET_APPEND(RECIPE_ARGS --verbose)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/mount/mount-recipe
-        --filesystem nfs_share
-        --verbose
+    ${RECIPE_ARGS}
 )
