@@ -8,7 +8,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestChunkIsZero(t *testing.T) {
+func TestCheckDataIsAllZeroes(t *testing.T) {
 	chunk := Chunk{
 		Data: []byte{1, 2, 3, 4, 5},
 	}
