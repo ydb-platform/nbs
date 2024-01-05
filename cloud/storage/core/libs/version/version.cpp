@@ -144,6 +144,11 @@ int GetRevisionFromBranch(const TString& branch)
 
 const TString& GetFullVersionString()
 {
+    static const TString custom = GetCustomVersion();
+    if (custom) {
+        return custom;
+    }
+
     static const TString fullVersion = TStringBuilder()
         << GetSvnRevision()
         << '.'

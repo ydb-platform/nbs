@@ -337,6 +337,7 @@ struct TTestEnv
 
         for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
            Runtime.SetLogPriority(i, NLog::PRI_INFO);
+            Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         }
         Runtime.SetLogPriority(TBlockStoreComponents::PARTITION, NLog::PRI_DEBUG);
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -434,16 +435,21 @@ struct TTestEnv
         ReplicaActors.push_back(actorId);
     }
 
-    void CatchEvents(ui32 eventType)
+    void CatchEvents(THashSet<ui32> eventTypes)
     {
         PrevObs = Runtime.SetObserverFunc([=] (auto& runtime, auto& event) {
-            if (event->GetTypeRewrite() == eventType) {
+            if (eventTypes.contains(event->GetTypeRewrite())) {
                 Caught.push_back(IEventHandlePtr(event.Release()));
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
             return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
+    }
+
+    void CatchEvents(ui32 eventType)
+    {
+        CatchEvents(THashSet<ui32>{eventType});
     }
 
     void ModifyEvents(
@@ -465,9 +471,11 @@ struct TTestEnv
             });
     }
 
-    void ReleaseEvents()
+    void ReleaseEvents(bool restoreObs = true)
     {
-        Runtime.SetObserverFunc(std::move(PrevObs));
+        if (restoreObs) {
+            Runtime.SetObserverFunc(std::move(PrevObs));
+        }
         for (auto& ev: Caught) {
             Runtime.Send(ev.release());
         }
@@ -948,18 +956,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        env.ModifyEvents(
+        env.CatchEvents({
             TEvNonreplPartitionPrivate::EvChecksumBlocksResponse,
-            [=](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
-            {
-                Y_UNUSED(runtime);
-
-                using TEvent =
-                    TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse;
-                auto* msg = event->template Get<TEvent>();
-                *msg->Record.MutableError() = MakeError(E_IO, "request failed");
-                return TTestActorRuntime::EEventAction::PROCESS;
-            });
+            TEvNonreplPartitionPrivate::EvRangeResynced,
+        });
 
         env.StartResync();
 
@@ -974,13 +974,54 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         {
             client.SendReadBlocksRequest(range);
+            // no response - EvChecksumBlocksResponse-s are suspended
+            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+
+            // changing response code for EvChecksumBlocksResponse-s to E_IO
+            // affects both fast path and resync since they started in parallel
+            for (auto& ev: env.Caught) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<int>(TEvNonreplPartitionPrivate::EvChecksumBlocksResponse),
+                    static_cast<int>(ev->GetTypeRewrite()));
+                using TEvent =
+                    TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse;
+                auto* msg = ev->template Get<TEvent>();
+                *msg->Record.MutableError() = MakeError(E_IO, "request failed");
+            }
+
+            UNIT_ASSERT(env.Caught.size() > 0);
+
+            // sending env.Caught - fast path request should fail, we should
+            // transition to slow path, which should also fail due to resync failure
+            env.ReleaseEvents(false);
+            while (env.Caught.empty()) {
+                runtime.DispatchEvents({}, ResyncNextRangeInterval);
+            }
+            for (auto& ev: env.Caught) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<int>(TEvNonreplPartitionPrivate::EvRangeResynced),
+                    static_cast<int>(ev->GetTypeRewrite()));
+            }
+            UNIT_ASSERT(env.Caught.size() > 0);
+
+            // unblocking EvRangeResynced
+            env.ReleaseEvents(true);
+
+            // read fails because both fast path and resync failed
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
 
-            env.ReleaseEvents();
+            // the next read should succeed because the next resync succeeds
+            client.SendReadBlocksRequest(range);
+            env.ResyncController.WaitForResyncedRangeCount(1);
+            response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
     }
 
@@ -1216,7 +1257,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(3072, resyncIndex);
     }
 
-    Y_UNIT_TEST(ShouldTreatFreshDevicesProperly)
+    void DoTestShouldTreatFreshDevicesProperly(bool afterResync)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, {"vasya#1", "vasya#2"});
@@ -1231,49 +1272,80 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         env.WriteReplica(1, range2, 'D');
         env.WriteReplica(2, range2, 'D');
 
+        env.CatchEvents(TEvNonreplPartitionPrivate::EvResyncNextRange);
         env.StartResync();
-        env.ResyncController.WaitForResyncedRangeCount(5);
-        UNIT_ASSERT(env.ResyncController.ResyncFinished);
+
+        auto read = [&] (TBlockRange64 range) {
+            return afterResync
+                ? env.ReadMirror(range)
+                : env.ReadActor(env.ActorId, range);
+        };
+
+        // Read a range which doesn't really require a resync
+        // Devices in replicas #1 and #2 have different data but those devices
+        // are fresh so they shouldn't be taken into account
+        for (const auto& block: read(range1)) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        }
+        for (const auto& block: read(range1)) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        }
+        for (const auto& block: read(range1)) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        }
+
+        // unblock resync
+        // XXX may trigger immediate resync and not actually test the
+        // slow path that happens during resync
+        env.ReleaseEvents();
+
+        if (afterResync) {
+            env.ResyncController.WaitForResyncedRangeCount(5);
+            UNIT_ASSERT(env.ResyncController.ResyncFinished);
+        }
 
         // Trigger sequential reading from different replicas
-        for (const auto& block: env.ReadMirror(range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
-        }
-        for (const auto& block: env.ReadMirror(range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
-        }
-        for (const auto& block: env.ReadMirror(range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
-        }
-        for (const auto& block: env.ReadMirror(range2)) {
+        for (const auto& block: read(range2)) {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
         }
-        for (const auto& block: env.ReadMirror(range2)) {
+        for (const auto& block: read(range2)) {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
         }
-        for (const auto& block: env.ReadMirror(range2)) {
+        for (const auto& block: read(range2)) {
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
         }
 
-        // Check individual replicas
-        for (const auto& block: env.ReadReplica(0, range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+        if (afterResync) {
+            // Check individual replicas
+            for (const auto& block: env.ReadReplica(0, range1)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+            for (const auto& block: env.ReadReplica(1, range1)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            }
+            for (const auto& block: env.ReadReplica(2, range1)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
+            }
+            for (const auto& block: env.ReadReplica(0, range2)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
+            }
+            for (const auto& block: env.ReadReplica(1, range2)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
+            }
+            for (const auto& block: env.ReadReplica(2, range2)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
+            }
         }
-        for (const auto& block: env.ReadReplica(1, range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
-        }
-        for (const auto& block: env.ReadReplica(2, range1)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
-        }
-        for (const auto& block: env.ReadReplica(0, range2)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
-        }
-        for (const auto& block: env.ReadReplica(1, range2)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
-        }
-        for (const auto& block: env.ReadReplica(2, range2)) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'D'), block);
-        }
+    }
+
+    Y_UNIT_TEST(ShouldTreatFreshDevicesProperlyAfterResync)
+    {
+        DoTestShouldTreatFreshDevicesProperly(true);
+    }
+
+    Y_UNIT_TEST(ShouldTreatFreshDevicesProperlyDuringResync)
+    {
+        DoTestShouldTreatFreshDevicesProperly(false);
     }
 }
 

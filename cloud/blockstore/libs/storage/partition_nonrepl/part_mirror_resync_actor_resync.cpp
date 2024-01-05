@@ -147,6 +147,12 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto range = msg->Range;
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%s] Range %s resync finished: %s",
+        PartConfig->GetName().c_str(),
+        DescribeRange(range).c_str(),
+        FormatError(msg->GetError()).c_str());
+
     STORAGE_VERIFY(
         rangeId.first == rangeId.second,
         TWellKnownEntityTypes::DISK,
@@ -190,7 +196,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
             "[%s] Range %s resync failed: %s",
             PartConfig->GetName().c_str(),
-            DescribeRange(msg->Range).c_str(),
+            DescribeRange(range).c_str(),
             FormatError(msg->GetError()).c_str());
 
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
