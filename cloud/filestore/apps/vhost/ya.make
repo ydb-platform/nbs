@@ -16,7 +16,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/daemon/vhost
-    cloud/filestore/libs/vfs_fuse
+    cloud/filestore/libs/vfs_fuse/vhost
 
     cloud/storage/core/libs/daemon
 
