@@ -28,6 +28,7 @@ struct TOptions
     bool NoSync = false;
     bool NoChmod = false;
     ui32 BatchSize = 1024;
+    ui32 BlockSize = 512;
     ui32 QueueCount = 0;
 
     TString LogType = "json";

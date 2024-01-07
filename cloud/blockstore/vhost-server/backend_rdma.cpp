@@ -39,7 +39,9 @@ private:
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
     TSimpleStats CompletionStatsData;
-    bool ReadOnly;
+    bool ReadOnly = false;
+    ui32 BlockSize = 0;
+    ui32 SectorsToBlockShift = 0;
 
 public:
     explicit TRdmaBackend(ILoggingServicePtr logging);
@@ -76,6 +78,14 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     ClientId = options.ClientId;
     ReadOnly = options.ReadOnly;
 
+    BlockSize = options.BlockSize;
+    STORAGE_VERIFY(
+        BlockSize >= 512 && IsPowerOf2(BlockSize),
+        TWellKnownEntityTypes::ENDPOINT,
+        ClientId);
+
+    SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
+
     auto rdmaClientConfig = std::make_shared<NRdma::TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
@@ -92,7 +102,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         NStorage::ERdmaTaskQueueOpt::DontUse);
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
-    Volume.SetBlockSize(VHD_SECTOR_SIZE);
+    Volume.SetBlockSize(BlockSize);
     Volume.SetDiskId(options.DiskId);
 
     ui64 totalBytes = 0;
@@ -120,29 +130,29 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
                 << ", offset=" << chunk.Offset);
 
         STORAGE_VERIFY_C(
-            chunk.ByteCount % Volume.GetBlockSize() == 0,
+            chunk.ByteCount % BlockSize == 0,
             TWellKnownEntityTypes::ENDPOINT,
             ClientId,
             "device chunk size is not aligned to "
-                << Volume.GetBlockSize()
+                << BlockSize
                 << ", device=" << chunk.DevicePath
                 << ", byte_count=" << chunk.ByteCount);
 
-        device->SetBlockCount(chunk.ByteCount / Volume.GetBlockSize());
+        device->SetBlockCount(chunk.ByteCount / BlockSize);
         totalBytes += chunk.ByteCount;
     }
 
     STORAGE_INFO("Volume:"
         << " DiskId=" << Volume.GetDiskId()
-        << " TotalBlocks=" << totalBytes / Volume.GetBlockSize()
-        << " BlockSize=" << Volume.GetBlockSize());
+        << " TotalBlocks=" << totalBytes / BlockSize
+        << " BlockSize=" << BlockSize);
 
     return {
         .serial = options.Serial.c_str(),
         .socket_path = options.SocketPath.c_str(),
-        .block_size = Volume.GetBlockSize(),
+        .block_size = BlockSize,
         .num_queues = options.QueueCount,   // Max count of virtio queues
-        .total_blocks = totalBytes / Volume.GetBlockSize(),
+        .total_blocks = totalBytes / BlockSize,
         .features = ReadOnly ? VHD_BDEV_F_READONLY : 0};
 }
 
@@ -227,9 +237,9 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     reqHeaders->SetTimestamp(TInstant::Now().MicroSeconds());
     reqHeaders->SetClientId(ClientId);
 
-    request->SetStartIndex(bio->first_sector);
-    request->SetBlocksCount(bio->total_sectors);
-    request->BlockSize = Volume.GetBlockSize();
+    request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
+    request->SetBlocksCount(bio->total_sectors >> SectorsToBlockShift);
+    request->BlockSize = BlockSize;
     request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
 
     STORAGE_DEBUG(
@@ -269,9 +279,9 @@ void TRdmaBackend::ProcessWriteRequest(
     reqHeaders->SetTimestamp(TInstant::Now().MicroSeconds());
     reqHeaders->SetClientId(ClientId);
 
-    request->SetStartIndex(bio->first_sector);
-    request->BlocksCount = bio->total_sectors;
-    request->BlockSize = Volume.GetBlockSize();
+    request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
+    request->BlocksCount = bio->total_sectors >> SectorsToBlockShift;
+    request->BlockSize = BlockSize;
     request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
 
     STORAGE_DEBUG(
