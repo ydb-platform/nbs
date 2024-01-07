@@ -362,13 +362,14 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 --socket-path /tmp/socket.vhost     2
                 -q 2                                2
                 --device-backend ...                2
+                --block-size ...                    2
                 --device ...                        2
                 --device ...                        2
                 --read-only                         1
-                                                   17
+                                                   19
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(17, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("client", GetArg(create->CmdArgs, "--client-id"));
             UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
@@ -379,6 +380,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
             UNIT_ASSERT_VALUES_EQUAL("aio", GetArg(create->CmdArgs, "--device-backend"));
+            UNIT_ASSERT_VALUES_EQUAL("4096", GetArg(create->CmdArgs, "--block-size"));
             UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
 
             auto devices = GetArgN(create->CmdArgs, "--device");

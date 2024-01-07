@@ -96,6 +96,10 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResultDef(&BatchSize);
 
+    opts.AddLongOption("block-size", "size of block device")
+        .RequiredArgument("INT")
+        .StoreResultDef(&BlockSize);
+
     opts.AddLongOption('q', "queue-count")
         .RequiredArgument("INT")
         .StoreResult(&QueueCount);
