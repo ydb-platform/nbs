@@ -847,6 +847,9 @@ private:
         args.emplace_back("--device-backend");
         args.emplace_back(GetDeviceBackend(epType));
 
+        args.emplace_back("--block-size");
+        args.emplace_back(ToString(volume.GetBlockSize()));
+
         for (const auto& device: volume.GetDevices()) {
             const ui64 size = device.GetBlockCount() * volume.GetBlockSize();
 
