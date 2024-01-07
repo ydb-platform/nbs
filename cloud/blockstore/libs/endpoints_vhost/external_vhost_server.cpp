@@ -850,11 +850,16 @@ private:
         for (const auto& device: volume.GetDevices()) {
             const ui64 size = device.GetBlockCount() * volume.GetBlockSize();
 
+            auto offset = device.GetPhysicalOffset();
+            if (epType == EEndpointType::Rdma) {
+                offset = 0;
+            }
+
             args.insert(args.end(), {
                 "--device", TStringBuilder()
                     << GetDevicePath(epType, device) << ":"
                     << size << ":"
-                    << device.GetPhysicalOffset()
+                    << offset
                 });
         }
 
