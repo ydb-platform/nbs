@@ -6737,13 +6737,18 @@ const TVector<TDiskStateUpdate>& TDiskRegistryState::GetDiskStateUpdates() const
     return NotificationSystem.GetDiskStateUpdates();
 }
 
-void TDiskRegistryState::SetDiskRegistryAgentListParams(
+NProto::TError TDiskRegistryState::SetDiskRegistryAgentListParams(
     TDiskRegistryDatabase& db,
     const TString& agentId,
     const NProto::TDiskRegistryAgentParams& params)
 {
+    if (!AgentList.FindAgent(agentId)) {
+        return MakeError(E_ARGUMENT, "agentId not found: " + agentId);
+    }
+
     AgentList.SetDiskRegistryAgentListParams(agentId, params);
     db.AddDiskRegistryAgentListParams(agentId, params);
+    return {};
 }
 
 void TDiskRegistryState::CleanupExpiredAgentListParams(

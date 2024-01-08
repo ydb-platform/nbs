@@ -784,7 +784,7 @@ public:
         AgentList.OnAgentDisconnected(now, agentId);
     }
 
-    void SetDiskRegistryAgentListParams(
+    NProto::TError SetDiskRegistryAgentListParams(
         TDiskRegistryDatabase& db,
         const TString& agentId,
         const NProto::TDiskRegistryAgentParams& params);
