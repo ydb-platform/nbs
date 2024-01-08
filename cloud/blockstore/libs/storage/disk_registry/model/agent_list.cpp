@@ -237,7 +237,10 @@ void TAgentList::UpdateDevice(
     device.SetCmsTs(oldConfig.GetCmsTs());
     device.SetNodeId(agent.GetNodeId());
     device.SetAgentId(agent.GetAgentId());
-    device.SetUnadjustedBlockCount(device.GetBlocksCount());
+
+    if (!device.GetUnadjustedBlockCount()) {
+        device.SetUnadjustedBlockCount(device.GetBlocksCount());
+    }
 
     if (device.GetBlockSize() == oldConfig.GetBlockSize() &&
         device.GetUnadjustedBlockCount() == oldConfig.GetUnadjustedBlockCount())

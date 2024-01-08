@@ -30,8 +30,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         });
 
         const ui32 nativeBlockSize = 512;
-        const ui32 adjustedBlockCount = 93_GB / nativeBlockSize;
-        const ui32 unAdjustedBlockCount = adjustedBlockCount + 100;
+        const ui64 adjustedBlockCount = 93_GB / nativeBlockSize;
+        const ui64 unAdjustedBlockCount = adjustedBlockCount + 100;
 
         auto deviceConfig = [&] (auto name, auto uuid) {
             NProto::TDeviceConfig config;
@@ -55,6 +55,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 deviceConfig("dev-1", "uuid-2.1"),    // dirty
                 deviceConfig("dev-2", "uuid-2.2"),
                 deviceConfig("dev-3", "uuid-2.3"),
+                deviceConfig("dev-4", "uuid-2.4"),
             })
         };
 
@@ -161,7 +162,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", result.Devices[0].GetDeviceUUID());
-            UNIT_ASSERT_VALUES_EQUAL(unAdjustedBlockCount, result.Devices[0].GetBlocksCount());// ???
+            UNIT_ASSERT_VALUES_EQUAL(unAdjustedBlockCount, result.Devices[0].GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
 
@@ -238,6 +239,47 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-1.3", info.Devices[1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(nativeBlockSize, info.LogicalBlockSize);
             UNIT_ASSERT_VALUES_EQUAL(1000, info.StateTs.GetValue());
+        });
+
+        // bs=4K
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TDiskRegistryState::TAllocateDiskResult result {};
+            auto error = state.CreateDiskFromDevices(
+                TInstant::FromValue(2000),
+                db,
+                false,  // force
+                "nonrepl-4K",
+                4_KB,
+                { deviceByUUID("uuid-2.4") },
+                &result);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.4", result.Devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(unAdjustedBlockCount, result.Devices[0].GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(nativeBlockSize, result.Devices[0].GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                result.Devices[0].GetBlocksCount(),
+                result.Devices[0].GetUnadjustedBlockCount());
+
+            TDiskInfo info;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("nonrepl-4K", info));
+
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+            UNIT_ASSERT_VALUES_EQUAL(1, info.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.4", info.Devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nativeBlockSize,
+                info.Devices[0].GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                unAdjustedBlockCount,
+                info.Devices[0].GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                info.Devices[0].GetBlocksCount(),
+                info.Devices[0].GetUnadjustedBlockCount());
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, info.LogicalBlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(2000, info.StateTs.GetValue());
         });
     }
 
