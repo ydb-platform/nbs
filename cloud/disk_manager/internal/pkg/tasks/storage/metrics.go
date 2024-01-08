@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

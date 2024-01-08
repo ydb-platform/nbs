@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	node_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/node/config"
 	recipe_tasks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/tasks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 )
 
