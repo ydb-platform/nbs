@@ -613,6 +613,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             Y_UNUSED(request);
             return MakeFuture(NProto::TStartEndpointResponse());
         };
+        endpointManager->StopEndpointHandler = [&] (
+            std::shared_ptr<NProto::TStopEndpointRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TStopEndpointResponse());
+        };
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
@@ -724,6 +730,49 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(response), response);
             UNIT_ASSERT_VALUES_EQUAL(endpointCount, response.GetEndpoints().size());
         }
+
+        for (size_t i = 0; i < 3; ++i) {
+            auto request = std::make_shared<NProto::TStopEndpointRequest>();
+            request->SetUnixSocketPath("testPersistentSocket" + ToString(i + 1));
+            --endpointCount;
+
+            auto future = endpointService->StopEndpoint(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        {
+            auto future = endpointService->ListKeyrings(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TListKeyringsRequest>());
+
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response);
+            UNIT_ASSERT_VALUES_EQUAL(endpointCount, response.GetEndpoints().size());
+        }
+
+        for (size_t i = 0; i < 3; ++i) {
+            auto request = std::make_shared<NProto::TStopEndpointRequest>();
+            request->SetUnixSocketPath("testTemporarySocket" + ToString(i + 1));
+
+            auto future = endpointService->StopEndpoint(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        {
+            auto future = endpointService->ListKeyrings(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TListKeyringsRequest>());
+
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response);
+            UNIT_ASSERT_VALUES_EQUAL(endpointCount, response.GetEndpoints().size());
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleParallelStartStopEndpoints)
@@ -745,6 +794,9 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             return stopPromise.GetFuture();
         };
 
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+
         auto endpointService = CreateMultipleEndpointService(
             nullptr,
             CreateWallClockTimer(),
@@ -753,7 +805,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
-            nullptr,
+            endpointStorage,
             endpointManager,
             {});
 

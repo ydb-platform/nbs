@@ -45,7 +45,7 @@ public:
         return endpointIds;
     }
 
-    TResultOrError<TString> GetEndpoint(ui32 keyringId) override
+    TResultOrError<TString> GetEndpoint(ui32 endpointId) override
     {
         auto keyringsOrError = GetEndpointKeyrings();
         if (HasError(keyringsOrError)) {
@@ -54,20 +54,27 @@ public:
 
         auto keyrings = keyringsOrError.ExtractResult();
         for (auto keyring: keyrings) {
-            if (keyring.GetId() == keyringId) {
+            if (keyring.GetId() == endpointId) {
                 return GetKeyringValue(keyring);
             }
         }
 
         return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "Failed to find endpoint with keyringId " << keyringId);
+            << "Failed to find endpoint with id " << endpointId);
     }
 
-    TResultOrError<ui32> AddEndpoint(const TString& endpoint) override
+    TResultOrError<ui32> AddEndpoint(const TString& endpointSpec) override
     {
-        Y_UNUSED(endpoint);
+        Y_UNUSED(endpointSpec);
         // TODO:
         return MakeError(E_NOT_IMPLEMENTED, "Failed to add endpoint to storage");
+    }
+
+    NProto::TError RemoveEndpoint(ui32 endpointId) override
+    {
+        Y_UNUSED(endpointId);
+        // TODO:
+        return MakeError(E_NOT_IMPLEMENTED, "Failed to remove endpoint from storage");
     }
 
 private:
@@ -122,6 +129,8 @@ public:
 
     TResultOrError<TVector<ui32>> GetEndpointIds() override
     {
+        TGuard guard(Mutex);
+
         if (!DirPath.IsDirectory()) {
             return MakeError(E_INVALID_STATE, TStringBuilder()
                 << "Failed to find directory " << DirPath.GetPath().Quote());
@@ -138,24 +147,37 @@ public:
         return endpointIds;
     }
 
-    TResultOrError<TString> GetEndpoint(ui32 keyringId) override
+    TResultOrError<TString> GetEndpoint(ui32 endpointId) override
     {
-        auto endpointFile = DirPath.Child(ToString(keyringId));
+        TGuard guard(Mutex);
+
+        auto endpointFile = DirPath.Child(ToString(endpointId));
         if (!endpointFile.Exists()) {
             return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Failed to find endpoint with keyringId " << keyringId);
+                << "Failed to find endpoint with id " << endpointId);
         }
 
         return ReadFile(endpointFile);
     }
 
-    TResultOrError<ui32> AddEndpoint(const TString& data) override
+    TResultOrError<ui32> AddEndpoint(const TString& endpointSpec) override
     {
+        TGuard guard(Mutex);
+
         auto id = GetFreeId();
         auto filepath = DirPath.Child(ToString(id));
         TFile file(filepath, EOpenModeFlag::CreateAlways);
-        TFileOutput(file).Write(data);
+        TFileOutput(file).Write(endpointSpec);
         return id;
+    }
+
+    NProto::TError RemoveEndpoint(ui32 endpointId) override
+    {
+        TGuard guard(Mutex);
+
+        auto filepath = DirPath.Child(ToString(endpointId));
+        filepath.DeleteIfExists();
+        return {};
     }
 
 private:
@@ -180,8 +202,6 @@ private:
 
     ui32 GetFreeId()
     {
-        TGuard guard(Mutex);
-
         auto idsOrError = GetEndpointIds();
         if (HasError(idsOrError)) {
             return 0;

@@ -371,6 +371,29 @@ public:
         });
     }
 
+    TFuture<NProto::TStopEndpointResponse> StopEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStopEndpointRequest> request) override
+    {
+        auto req = *request;
+        auto future = TServiceWrapper::StopEndpoint(
+            std::move(ctx),
+            std::move(request));
+
+        auto weakPtr = weak_from_this();
+        return future.Apply([weakPtr, req] (const auto& f) {
+            auto response = f.GetValue();
+            if (HasError(response)) {
+                return response;
+            }
+
+            if (auto ptr = weakPtr.lock()) {
+                ptr->RemovePersistentEndpointFromStorage(req);
+            }
+            return response;
+        });
+    }
+
     TFuture<NProto::TListEndpointsResponse> ListEndpoints(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TListEndpointsRequest> request) override
@@ -466,17 +489,46 @@ private:
     NProto::TError AddEndpointToStorage(
         const NProto::TStartEndpointRequest& request)
     {
-        auto strOrError = SerializeEndpoint(request);
-        if (HasError(strOrError)) {
-            return strOrError.GetError();
+        auto [data, error] = SerializeEndpoint(request);
+        if (HasError(error)) {
+            return error;
         }
 
-        auto idOrError = EndpointStorage->AddEndpoint(strOrError.GetResult());
-        if (HasError(idOrError)) {
-            return idOrError.GetError();
+        error = EndpointStorage->AddEndpoint(data).GetError();
+        if (HasError(error)) {
+            return error;
         }
 
         return {};
+    }
+
+    NProto::TError RemovePersistentEndpointFromStorage(
+        const NProto::TStopEndpointRequest& request)
+    {
+        const auto& socketPath = request.GetUnixSocketPath();
+
+        auto [ids, error] = EndpointStorage->GetEndpointIds();
+        if (HasError(error)) {
+            return error;
+        }
+
+        for (auto id: ids) {
+            auto [data, error] = EndpointStorage->GetEndpoint(id);
+            if (HasError(error)) {
+                continue;
+            }
+
+            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(data);
+            if (req && req->GetUnixSocketPath() == socketPath) {
+                if (req->GetPersistent()) {
+                    return EndpointStorage->RemoveEndpoint(id);
+                }
+                break;
+            }
+        }
+
+        return MakeError(E_INVALID_STATE, TStringBuilder()
+            << "Couldn't find endpoint " << socketPath);
     }
 };
 
