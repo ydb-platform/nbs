@@ -103,7 +103,7 @@ jobs:
     with:
       build_preset: "relwithdebinfo"
       test_size: "small,medium"
-      test_type: "unittest,py3test,py2test,pytest"
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       run_tests: true
       cache_update: false
     secrets: inherit
