@@ -33,6 +33,7 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     acceptance_tests
+    metrics
     mocks
     tasks_tests
     tests
