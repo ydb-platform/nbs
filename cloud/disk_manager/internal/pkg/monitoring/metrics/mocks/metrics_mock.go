@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	core_metrics "github.com/ydb-platform/nbs/library/go/core/metrics"
+	"github.com/ydb-platform/nbs/library/go/core/metrics"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,7 +118,7 @@ func (g *IntGaugeMock) asMock() *Mock {
 type HistogramMock struct {
 	Mock
 
-	Buckets core_metrics.Buckets
+	Buckets metrics.Buckets
 }
 
 func (h *HistogramMock) RecordValue(value float64) {
@@ -149,7 +148,7 @@ func (t *TimerMock) asMock() *Mock {
 type DurationHistogramMock struct {
 	Mock
 
-	Buckets core_metrics.DurationBuckets
+	Buckets metrics.DurationBuckets
 }
 
 func (d *DurationHistogramMock) RecordDuration(value time.Duration) {
@@ -168,7 +167,7 @@ type subregistry struct {
 	tags         map[string]string
 }
 
-func (r *subregistry) WithTags(tags map[string]string) core_metrics.Registry {
+func (r *subregistry) WithTags(tags map[string]string) metrics.Registry {
 	newTags := make(map[string]string)
 	for k, v := range r.tags {
 		newTags[k] = v
@@ -183,7 +182,7 @@ func (r *subregistry) WithTags(tags map[string]string) core_metrics.Registry {
 	}
 }
 
-func (r *subregistry) WithPrefix(prefix string) core_metrics.Registry {
+func (r *subregistry) WithPrefix(prefix string) metrics.Registry {
 	var newPrefix string
 	if len(r.prefix) == 0 {
 		newPrefix = prefix
@@ -208,46 +207,46 @@ func getName(prefix string, name string) string {
 	return fmt.Sprintf("%v.%v", prefix, name)
 }
 
-func (r *subregistry) Counter(name string) core_metrics.Counter {
+func (r *subregistry) Counter(name string) metrics.Counter {
 	return r.rootRegistry.GetCounter(getName(r.prefix, name), r.tags)
 }
 
-func (r *subregistry) FuncCounter(name string, function func() int64) core_metrics.FuncCounter {
+func (r *subregistry) FuncCounter(name string, function func() int64) metrics.FuncCounter {
 	return nil
 }
 
-func (r *subregistry) Gauge(name string) core_metrics.Gauge {
+func (r *subregistry) Gauge(name string) metrics.Gauge {
 	return r.rootRegistry.GetGauge(getName(r.prefix, name), r.tags)
 }
 
-func (r *subregistry) FuncGauge(_ string, _ func() float64) core_metrics.FuncGauge {
+func (r *subregistry) FuncGauge(_ string, _ func() float64) metrics.FuncGauge {
 	return nil
 }
 
-func (r *subregistry) IntGauge(name string) core_metrics.IntGauge {
+func (r *subregistry) IntGauge(name string) metrics.IntGauge {
 	return r.rootRegistry.GetIntGauge(getName(r.prefix, name), r.tags)
 }
 
-func (r *subregistry) FuncIntGauge(_ string, _ func() int64) core_metrics.FuncIntGauge {
+func (r *subregistry) FuncIntGauge(_ string, _ func() int64) metrics.FuncIntGauge {
 	return nil
 }
 
 func (r *subregistry) Histogram(
 	name string,
-	buckets core_metrics.Buckets,
-) core_metrics.Histogram {
+	buckets metrics.Buckets,
+) metrics.Histogram {
 
 	return r.rootRegistry.GetHistogram(getName(r.prefix, name), r.tags, buckets)
 }
 
-func (r *subregistry) Timer(name string) core_metrics.Timer {
+func (r *subregistry) Timer(name string) metrics.Timer {
 	return r.rootRegistry.GetTimer(getName(r.prefix, name), r.tags)
 }
 
 func (r *subregistry) DurationHistogram(
 	name string,
-	buckets core_metrics.DurationBuckets,
-) core_metrics.Timer {
+	buckets metrics.DurationBuckets,
+) metrics.Timer {
 
 	return r.rootRegistry.GetDurationHistogram(
 		getName(r.prefix, name),
@@ -256,27 +255,27 @@ func (r *subregistry) DurationHistogram(
 	)
 }
 
-func (r *subregistry) CounterVec(name string, labels []string) core_metrics.CounterVec {
+func (r *subregistry) CounterVec(name string, labels []string) metrics.CounterVec {
 	panic("not implemented")
 }
 
-func (r *subregistry) GaugeVec(name string, labels []string) core_metrics.GaugeVec {
+func (r *subregistry) GaugeVec(name string, labels []string) metrics.GaugeVec {
 	panic("not implemented")
 }
 
-func (r *subregistry) IntGaugeVec(name string, labels []string) core_metrics.IntGaugeVec {
+func (r *subregistry) IntGaugeVec(name string, labels []string) metrics.IntGaugeVec {
 	panic("not implemented")
 }
 
-func (r *subregistry) TimerVec(name string, labels []string) core_metrics.TimerVec {
+func (r *subregistry) TimerVec(name string, labels []string) metrics.TimerVec {
 	panic("not implemented")
 }
 
-func (r *subregistry) HistogramVec(name string, buckets core_metrics.Buckets, labels []string) core_metrics.HistogramVec {
+func (r *subregistry) HistogramVec(name string, buckets metrics.Buckets, labels []string) metrics.HistogramVec {
 	panic("not implemented")
 }
 
-func (r *subregistry) DurationHistogramVec(name string, buckets core_metrics.DurationBuckets, labels []string) core_metrics.TimerVec {
+func (r *subregistry) DurationHistogramVec(name string, buckets metrics.DurationBuckets, labels []string) metrics.TimerVec {
 	panic("not implemented")
 }
 
@@ -369,7 +368,7 @@ func (r *RegistryMock) GetIntGauge(
 func (r *RegistryMock) GetHistogram(
 	name string,
 	tags map[string]string,
-	buckets core_metrics.Buckets,
+	buckets metrics.Buckets,
 ) *HistogramMock {
 
 	return r.getOrNewSensor(name, tags, &HistogramMock{
@@ -388,7 +387,7 @@ func (r *RegistryMock) GetTimer(
 func (r *RegistryMock) GetDurationHistogram(
 	name string,
 	tags map[string]string,
-	buckets core_metrics.DurationBuckets,
+	buckets metrics.DurationBuckets,
 ) *TimerMock {
 
 	return r.getOrNewSensor(name, tags, &TimerMock{}).(*TimerMock)
@@ -407,7 +406,7 @@ func (r *RegistryMock) AssertAllExpectations(t *testing.T) bool {
 	return result
 }
 
-func (r *RegistryMock) WithTags(tags map[string]string) core_metrics.Registry {
+func (r *RegistryMock) WithTags(tags map[string]string) metrics.Registry {
 	return &subregistry{
 		rootRegistry: r,
 		tags:         tags,
@@ -415,7 +414,7 @@ func (r *RegistryMock) WithTags(tags map[string]string) core_metrics.Registry {
 	}
 }
 
-func (r *RegistryMock) WithPrefix(prefix string) core_metrics.Registry {
+func (r *RegistryMock) WithPrefix(prefix string) metrics.Registry {
 	return &subregistry{
 		rootRegistry: r,
 		tags:         make(map[string]string),
@@ -427,71 +426,71 @@ func (r *RegistryMock) ComposeName(parts ...string) string {
 	return strings.Join(parts, ".")
 }
 
-func (r *RegistryMock) Counter(name string) core_metrics.Counter {
+func (r *RegistryMock) Counter(name string) metrics.Counter {
 	return r.GetCounter(name, make(map[string]string))
 }
 
-func (r *RegistryMock) FuncCounter(_ string, _ func() int64) core_metrics.FuncCounter {
+func (r *RegistryMock) FuncCounter(_ string, _ func() int64) metrics.FuncCounter {
 	return nil
 }
 
-func (r *RegistryMock) Gauge(name string) core_metrics.Gauge {
+func (r *RegistryMock) Gauge(name string) metrics.Gauge {
 	return r.GetGauge(name, make(map[string]string))
 }
 
-func (r *RegistryMock) FuncGauge(_ string, _ func() float64) core_metrics.FuncGauge {
+func (r *RegistryMock) FuncGauge(_ string, _ func() float64) metrics.FuncGauge {
 	return nil
 }
 
-func (r *RegistryMock) IntGauge(name string) core_metrics.IntGauge {
+func (r *RegistryMock) IntGauge(name string) metrics.IntGauge {
 	return r.GetIntGauge(name, make(map[string]string))
 }
 
-func (r *RegistryMock) FuncIntGauge(_ string, _ func() int64) core_metrics.FuncIntGauge {
+func (r *RegistryMock) FuncIntGauge(_ string, _ func() int64) metrics.FuncIntGauge {
 	return nil
 }
 
 func (r *RegistryMock) Histogram(
 	name string,
-	buckets core_metrics.Buckets,
-) core_metrics.Histogram {
+	buckets metrics.Buckets,
+) metrics.Histogram {
 
 	return r.GetHistogram(name, make(map[string]string), buckets)
 }
 
-func (r *RegistryMock) Timer(name string) core_metrics.Timer {
+func (r *RegistryMock) Timer(name string) metrics.Timer {
 	return r.GetTimer(name, make(map[string]string))
 }
 
 func (r *RegistryMock) DurationHistogram(
 	name string,
-	buckets core_metrics.DurationBuckets,
-) core_metrics.Timer {
+	buckets metrics.DurationBuckets,
+) metrics.Timer {
 
 	return r.GetDurationHistogram(name, make(map[string]string), buckets)
 }
 
-func (r *RegistryMock) CounterVec(name string, labels []string) core_metrics.CounterVec {
+func (r *RegistryMock) CounterVec(name string, labels []string) metrics.CounterVec {
 	panic("not implemented")
 }
 
-func (r *RegistryMock) GaugeVec(name string, labels []string) core_metrics.GaugeVec {
+func (r *RegistryMock) GaugeVec(name string, labels []string) metrics.GaugeVec {
 	panic("not implemented")
 }
 
-func (r *RegistryMock) IntGaugeVec(name string, labels []string) core_metrics.IntGaugeVec {
+func (r *RegistryMock) IntGaugeVec(name string, labels []string) metrics.IntGaugeVec {
 	panic("not implemented")
 }
 
-func (r *RegistryMock) TimerVec(name string, labels []string) core_metrics.TimerVec {
+func (r *RegistryMock) TimerVec(name string, labels []string) metrics.TimerVec {
 	panic("not implemented")
 }
 
-func (r *RegistryMock) HistogramVec(name string, buckets core_metrics.Buckets, labels []string) core_metrics.HistogramVec {
+func (r *RegistryMock) HistogramVec(name string, buckets metrics.Buckets, labels []string) metrics.HistogramVec {
 	panic("not implemented")
 }
 
-func (r *RegistryMock) DurationHistogramVec(name string, buckets core_metrics.DurationBuckets, labels []string) core_metrics.TimerVec {
+func (r *RegistryMock) DurationHistogramVec(name string, buckets metrics.DurationBuckets, labels []string) metrics.TimerVec {
 	panic("not implemented")
 }
 
