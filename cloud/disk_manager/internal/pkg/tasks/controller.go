@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 )
 
