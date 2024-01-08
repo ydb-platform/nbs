@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/ydb-platform/nbs/library/go/core/metrics"
 )
@@ -34,19 +33,3 @@ type TimerVec = metrics.TimerVec
 type Buckets = metrics.Buckets
 
 type DurationBuckets = metrics.DurationBuckets
-
-type DelayedTimer struct {
-	startTime time.Time
-	timer     Timer
-}
-
-func StartDelayedTimer(timer Timer) DelayedTimer {
-	return DelayedTimer{
-		startTime: time.Now(),
-		timer:     timer,
-	}
-}
-
-func (t *DelayedTimer) Stop() {
-	t.timer.RecordDuration(time.Since(t.startTime))
-}
