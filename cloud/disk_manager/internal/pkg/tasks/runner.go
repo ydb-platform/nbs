@@ -135,7 +135,7 @@ func (r *runnerForRun) executeTask(
 		// If there was no error, task has completed successfully.
 		err = execCtx.finish(ctx)
 		if err != nil {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"failed to commit finishing for %v with task id %v",
@@ -147,7 +147,7 @@ func (r *runnerForRun) executeTask(
 		return
 	}
 
-	errors.LogError(
+	logError(
 		ctx,
 		err,
 		"got error for %v with task id %v",
@@ -158,7 +158,7 @@ func (r *runnerForRun) executeTask(
 
 	if errors.IsPanicError(err) {
 		if execCtx.taskState.PanicCount >= r.maxPanicCount {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"panic count exceeded for %v with task id %v",
@@ -178,7 +178,7 @@ func (r *runnerForRun) executeTask(
 
 		err = execCtx.incrementPanicCount(ctx)
 		if err != nil {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"failed to increment panic count for %v with task id %v",
@@ -198,7 +198,7 @@ func (r *runnerForRun) executeTask(
 	if errors.Is(err, errors.NewEmptyNonCancellableError()) {
 		err = execCtx.setNonCancellableError(ctx, err)
 		if err != nil {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"failed to commit non cancellable error for %v with task id %v",
@@ -222,7 +222,7 @@ func (r *runnerForRun) executeTask(
 		// Restart task from the beginning.
 		err = execCtx.clearState(ctx)
 		if err != nil {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"failed to clear state for %v with task id %v",
@@ -239,7 +239,7 @@ func (r *runnerForRun) executeTask(
 		if !retriableError.IgnoreRetryLimit &&
 			execCtx.getRetriableErrorCount() >= r.maxRetriableErrorCount {
 
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"retriable error count exceeded for %v with task id %v",
@@ -259,7 +259,7 @@ func (r *runnerForRun) executeTask(
 
 		err = execCtx.incrementRetriableErrorCount(ctx)
 		if err != nil {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"failed to increment retriable error count for %v with task id %v",
@@ -374,7 +374,7 @@ func (r *runnerForCancel) executeTask(
 	}
 
 	if err != nil {
-		errors.LogError(
+		logError(
 			ctx,
 			err,
 			"got error for %v with task id %v",
@@ -397,7 +397,7 @@ func (r *runnerForCancel) executeTask(
 	// completed.
 	err = execCtx.setCancelled(ctx)
 	if err != nil {
-		errors.LogError(
+		logError(
 			ctx,
 			err,
 			"failed to commit cancellation for %v with task id %v",
@@ -443,7 +443,7 @@ func taskPinger(
 		err := execCtx.ping(ctx)
 		// Pinger being cancelled does not constitute an error.
 		if err != nil && ctx.Err() == nil {
-			errors.LogError(
+			logError(
 				ctx,
 				err,
 				"failed to ping %v",
@@ -479,7 +479,7 @@ func lockAndExecuteTask(
 
 	taskState, err := runner.lockTask(ctx, taskInfo)
 	if err != nil {
-		errors.LogError(
+		logError(
 			ctx,
 			err,
 			"failed to lock task %v",
@@ -491,7 +491,7 @@ func lockAndExecuteTask(
 
 	task, err := registry.NewTask(taskState.TaskType)
 	if err != nil {
-		errors.LogError(
+		logError(
 			ctx,
 			err,
 			"failed to construct task %v",
@@ -505,7 +505,7 @@ func lockAndExecuteTask(
 
 	err = task.Load(taskState.Request, taskState.State)
 	if err != nil {
-		errors.LogError(
+		logError(
 			ctx,
 			err,
 			"failed to load task %v",
