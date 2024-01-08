@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	metrics_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics/mocks"
 	grpc_codes "google.golang.org/grpc/codes"
 )
 
@@ -87,7 +87,7 @@ func TestStorageYDBCreateTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -126,7 +126,7 @@ func TestStorageYDBCreateTaskIgnoresID(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -167,7 +167,7 @@ func TestStorageYDBCreateTwoTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -218,7 +218,7 @@ func TestStorageYDBCreateTwoTasksWithDifferentIdempotencyIDs(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -270,7 +270,7 @@ func TestStorageYDBCreateTwoTasksWithTheSameIdempotencyID(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -316,7 +316,7 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -376,7 +376,7 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -462,7 +462,7 @@ func TestStorageYDBGetTaskMissing(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2526,7 +2526,7 @@ func TestStorageYDBLockTaskToRun(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2579,7 +2579,7 @@ func TestStorageYDBLockTaskToRunWrongGeneration(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2625,7 +2625,7 @@ func TestStorageYDBLockTaskToRunWrongState(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2672,7 +2672,7 @@ func TestStorageYDBLockTaskToCancel(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2725,7 +2725,7 @@ func TestStorageYDBLockTaskToCancelWrongGeneration(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2771,7 +2771,7 @@ func TestStorageYDBLockTaskToCancelWrongState(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2818,7 +2818,7 @@ func TestStorageYDBMarkForCancellation(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2870,7 +2870,7 @@ func TestStorageYDBMarkForCancellationAlready(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2920,7 +2920,7 @@ func TestStorageYDBMarkForCancellationFinished(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2969,7 +2969,7 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3097,7 +3097,7 @@ func TestStorageYDBUpdateTaskStatus(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3187,7 +3187,7 @@ func TestStorageYDBUpdateTaskWrongGeneration(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3246,7 +3246,7 @@ func TestStorageYDBLockInParallel(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3311,7 +3311,7 @@ func TestStorageYDBMarkForCancellationInParallel(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3368,7 +3368,7 @@ func TestStorageYDBLockAlreadyCancellingTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3421,7 +3421,7 @@ func TestStorageYDBCheckStallingTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3471,7 +3471,7 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3605,7 +3605,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -3730,7 +3730,7 @@ func TestStorageYDBPauseResumeTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics_mocks.NewRegistryMock()
+	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
