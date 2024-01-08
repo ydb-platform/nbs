@@ -237,7 +237,7 @@ func (s *scheduler) WaitTask(
 
 	err := execCtx.AddTaskDependency(ctx, taskID)
 	if err != nil {
-		errors.LogError(ctx, err, "failed to add task dependency %v", taskID)
+		logError(ctx, err, "failed to add task dependency %v", taskID)
 		return nil, err
 	}
 

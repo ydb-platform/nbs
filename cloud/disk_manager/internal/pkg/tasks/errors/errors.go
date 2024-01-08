@@ -1,15 +1,11 @@
 package errors
 
 import (
-	"context"
 	"fmt"
 	"runtime/debug"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/common/protos"
-	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
 )
 
@@ -293,38 +289,6 @@ func (e *DetailedError) Is(target error) bool {
 func (e *DetailedError) GRPCStatus() *grpc_status.Status {
 	status, _ := grpc_status.FromError(e.Err)
 	return status
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func isCancelledError(err error) bool {
-	switch {
-	case
-		errors.Is(err, context.Canceled),
-		persistence.IsTransportError(err, grpc_codes.Canceled):
-		return true
-	default:
-		return false
-	}
-}
-
-func LogError(
-	ctx context.Context,
-	err error,
-	format string,
-	args ...interface{},
-) {
-
-	description := fmt.Sprintf(format, args...)
-
-	if Is(err, NewWrongGenerationError()) ||
-		Is(err, NewInterruptExecutionError()) ||
-		isCancelledError(err) {
-
-		logging.Debug(logging.AddCallerSkip(ctx, 1), "%v: %v", description, err)
-	} else {
-		logging.Warn(logging.AddCallerSkip(ctx, 1), "%v: %v", description, err)
-	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

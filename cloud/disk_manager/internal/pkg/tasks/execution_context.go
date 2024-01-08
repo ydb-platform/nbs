@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
+	grpc_codes "google.golang.org/grpc/codes"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -262,7 +263,7 @@ func (c *executionContext) setError(ctx context.Context, e error) error {
 		return taskState
 	})
 	if err != nil {
-		errors.LogError(
+		logError(
 			ctx,
 			err,
 			"failed to commit non retriable error for %v with task id %v",
@@ -273,7 +274,7 @@ func (c *executionContext) setError(ctx context.Context, e error) error {
 	}
 
 	if !errors.IsSilent(e) {
-		errors.LogError(
+		logError(
 			ctx,
 			e,
 			"commited fatal error for %v with task id %v",
@@ -337,5 +338,37 @@ func newExecutionContext(
 		task:      task,
 		storage:   storage,
 		taskState: taskState,
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func isCancelledError(err error) bool {
+	switch {
+	case
+		errors.Is(err, context.Canceled),
+		persistence.IsTransportError(err, grpc_codes.Canceled):
+		return true
+	default:
+		return false
+	}
+}
+
+func logError(
+	ctx context.Context,
+	err error,
+	format string,
+	args ...interface{},
+) {
+
+	description := fmt.Sprintf(format, args...)
+
+	if errors.Is(err, errors.NewWrongGenerationError()) ||
+		errors.Is(err, errors.NewInterruptExecutionError()) ||
+		isCancelledError(err) {
+
+		logging.Debug(logging.AddCallerSkip(ctx, 1), "%v: %v", description, err)
+	} else {
+		logging.Warn(logging.AddCallerSkip(ctx, 1), "%v: %v", description, err)
 	}
 }
