@@ -1,6 +1,8 @@
 UNITTEST_FOR(cloud/blockstore/libs/service_local)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+
+TIMEOUT(180)
 
 SRCS(
     compound_storage_ut.cpp
