@@ -66,4 +66,10 @@ private:
     TProtoMessagePtr CreateProto(ui32 msgId) const;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer);
+
+NProto::TError ParseError(TStringBuf buffer);
+
 }   // namespace NCloud::NBlockStore::NRdma

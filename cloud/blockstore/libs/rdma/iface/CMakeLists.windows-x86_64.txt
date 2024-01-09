@@ -16,20 +16,13 @@ target_link_libraries(libs-rdma-iface PUBLIC
   blockstore-libs-service
   core-libs-common
   core-libs-diagnostics
-  cpp-monlib-dynamic_counters
   cpp-threading-future
-  cpp-deprecated-atomic
   contrib-libs-protobuf
 )
 target_sources(libs-rdma-iface PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/client.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/error.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/list.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/poll.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/probes.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/protobuf.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/protocol.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/rcu.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/server.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/utils.cpp
 )

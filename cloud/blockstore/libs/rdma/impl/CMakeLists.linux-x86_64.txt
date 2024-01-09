@@ -28,9 +28,13 @@ target_sources(libs-rdma-impl PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/client.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/event.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/list.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/log.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/poll.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/rcu.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/server.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/test_verbs.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/utils.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/verbs.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/impl/work_queue.cpp
 )
