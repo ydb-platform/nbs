@@ -30,8 +30,6 @@ target_link_options(cloud-blockstore-libs-rdma-iface-ut PRIVATE
   -ldl
 )
 target_sources(cloud-blockstore-libs-rdma-iface-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/list_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/poll_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/rdma/iface/protobuf_ut.cpp
 )
 set_property(

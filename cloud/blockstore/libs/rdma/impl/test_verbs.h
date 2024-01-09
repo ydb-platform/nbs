@@ -1,8 +1,7 @@
 #pragma once
 
 #include "verbs.h"
-
-#include <cloud/blockstore/libs/rdma/iface/poll.h>
+#include "poll.h"
 
 #include <library/cpp/deprecated/atomic/atomic.h>
 

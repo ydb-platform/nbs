@@ -1,7 +1,7 @@
 #include "verbs.h"
-#include "work_queue.h"
 
-#include <cloud/blockstore/libs/rdma/iface/utils.h>
+#include "utils.h"
+#include "work_queue.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 
