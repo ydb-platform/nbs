@@ -18,9 +18,11 @@ struct IEndpointStorage
 
     virtual TResultOrError<TVector<ui32>> GetEndpointIds() = 0;
 
-    virtual TResultOrError<TString> GetEndpoint(ui32 keyringId) = 0;
+    virtual TResultOrError<TString> GetEndpoint(ui32 endpointId) = 0;
 
-    virtual TResultOrError<ui32> AddEndpoint(const TString& endpoint) = 0;
+    virtual TResultOrError<ui32> AddEndpoint(const TString& endpointSpec) = 0;
+
+    virtual NProto::TError RemoveEndpoint(ui32 endpointId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
