@@ -118,7 +118,10 @@ private:
                 blob.Block,
                 blob.BlocksCount);
 
-            ui32 rangeId = Tablet.GetMixedRangeIndex(block.NodeId, block.BlockIndex, blob.BlocksCount);
+            ui32 rangeId = Tablet.GetMixedRangeIndex(
+                block.NodeId,
+                block.BlockIndex,
+                blob.BlocksCount);
             AccessCompactionStats(rangeId).BlobsCount += 1;
         }
 

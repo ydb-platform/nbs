@@ -394,9 +394,7 @@ void TIndexTabletActor::HandleCompaction(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [&] (
-        const NProto::TError& error)
-    {
+    auto replyError = [&] (const NProto::TError& error) {
         if (ev->Sender == ctx.SelfID) {
             // nothing to do though should not happen
             return;
@@ -411,6 +409,11 @@ void TIndexTabletActor::HandleCompaction(
             std::make_unique<TEvIndexTabletPrivate::TEvCompactionResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
+
+    if (!CompactionStateLoaded) {
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+        return;
+    }
 
     if (!BlobIndexOpState.Start()) {
         replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
@@ -629,6 +632,105 @@ void TIndexTabletActor::HandleCompactionCompleted(
     EnqueueCollectGarbageIfNeeded(ctx);
 
     WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleLoadCompactionMapChunk(
+    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s LoadCompactionMapChunk started (first range: #%u, count: %u)",
+        LogTag.c_str(),
+        msg->FirstRangeId,
+        msg->RangeCount);
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    Y_UNUSED(requestInfo);
+
+    ExecuteTx<TLoadCompactionMapChunk>(
+        ctx,
+        std::move(requestInfo),
+        msg->FirstRangeId,
+        msg->RangeCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::LoadNextCompactionMapChunkIfNeeded(
+    const TActorContext& ctx)
+{
+    if (!LoadCompactionMapChunkInProgress && LoadCompactionMapQueue) {
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
+                LoadCompactionMapQueue.front())
+        );
+
+        LoadCompactionMapChunkInProgress = true;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
+    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s LoadCompactionMapChunk completed (%s)",
+        LogTag.c_str(),
+        FormatError(msg->GetError()).c_str());
+
+    TABLET_VERIFY(!!LoadCompactionMapQueue);
+    auto req = LoadCompactionMapQueue.front();
+
+    if (req.OutOfOrder) {
+        LoadedOutOfOrderRangeIds.insert(msg->FirstRangeId);
+    } else {
+        MaxLoadedInOrderRangeId =
+            Max(MaxLoadedInOrderRangeId, msg->LastRangeId);
+
+        if (msg->LastRangeId == 0) {
+            CompactionStateLoaded = true;
+
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u",
+                LogTag.c_str(),
+                MaxLoadedInOrderRangeId);
+        } else {
+            const ui32 loadedRangesPerIteration = 1024 * 1024;
+            LoadCompactionMapQueue.push_back({
+                msg->LastRangeId + 1,
+                loadedRangesPerIteration,
+                false});
+
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+                "%s Compaction map chunk loaded, LastRangeId: %u",
+                LogTag.c_str(),
+                msg->LastRangeId);
+        }
+    }
+
+    LoadCompactionMapQueue.pop_front();
+    LoadCompactionMapChunkInProgress = false;
+
+    if (LoadCompactionMapQueue) {
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
+                LoadCompactionMapQueue.front())
+        );
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

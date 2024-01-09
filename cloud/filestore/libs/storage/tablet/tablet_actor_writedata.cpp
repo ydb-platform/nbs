@@ -232,6 +232,45 @@ void TIndexTabletActor::HandleWriteData(
         GetBlockSize()
     );
 
+    auto replyError = [&] (const NProto::TError& error) {
+        FILESTORE_TRACK(
+            ResponseSent_Tablet,
+            msg->CallContext,
+            "WriteData");
+
+        auto response =
+            std::make_unique<TEvService::TEvWriteDataResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    if (!CompactionStateLoaded) {
+        bool reject = false;
+
+        for (ui64 b = range.FirstBlock();
+                b < range.FirstBlock() + range.BlockCount();
+                ++b)
+        {
+            const auto rangeId = GetMixedRangeIndex(
+                msg->Record.GetNodeId(),
+                range.FirstBlock());
+
+            if (rangeId > MaxLoadedInOrderRangeId
+                    && !LoadedOutOfOrderRangeIds.contains(rangeId))
+            {
+                LoadCompactionMapQueue.push_back({rangeId, 1, true});
+                reject = true;
+            }
+        }
+
+        if (reject) {
+            replyError(MakeError(
+                E_REJECTED,
+                "compaction state not loaded yet"));
+
+            return;
+        }
+    }
+
     auto validator = [&] (const NProto::TWriteDataRequest& request) {
         if (auto error = ValidateRange(range); HasError(error)) {
             return error;

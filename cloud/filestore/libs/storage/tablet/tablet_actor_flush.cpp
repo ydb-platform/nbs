@@ -270,6 +270,17 @@ void TIndexTabletActor::HandleFlush(
         }
     };
 
+    if (!CompactionStateLoaded) {
+        replyError(
+            ctx,
+            *ev,
+            std::move(profileLogRequest),
+            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
+        );
+
+        return;
+    }
+
     if (!FlushState.Start()) {
         replyError(
             ctx,

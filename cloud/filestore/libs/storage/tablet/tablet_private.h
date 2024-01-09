@@ -33,6 +33,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
     xxx(WriteBatch,                             __VA_ARGS__)                   \
+    xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
@@ -332,6 +333,43 @@ struct TEvIndexTabletPrivate
     };
 
     using TCompactionCompleted = TOperationCompleted;
+
+    //
+    // LoadCompactionMapChunk
+    //
+
+    struct TLoadCompactionMapChunkRequest
+    {
+        const ui32 FirstRangeId;
+        const ui32 RangeCount;
+        const bool OutOfOrder;
+
+        TLoadCompactionMapChunkRequest(
+                ui32 firstRangeId,
+                ui32 rangeCount,
+                bool outOfOrder)
+            : FirstRangeId(firstRangeId)
+            , RangeCount(rangeCount)
+            , OutOfOrder(outOfOrder)
+        {}
+    };
+
+    struct TLoadCompactionMapChunkResponse
+    {
+    };
+
+    struct TLoadCompactionMapChunkCompleted
+    {
+        const ui32 FirstRangeId;
+        const ui32 LastRangeId;
+
+        TLoadCompactionMapChunkCompleted(
+                ui32 firstRangeId,
+                ui32 lastRangeId)
+            : FirstRangeId(firstRangeId)
+            , LastRangeId(lastRangeId)
+        {}
+    };
 
     //
     // ForcedCompaction

@@ -157,6 +157,12 @@ private:
 
     TStorageConfigPtr Config;
 
+    TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadCompactionMapQueue;
+    ui32 MaxLoadedInOrderRangeId = 0;
+    THashSet<ui32> LoadedOutOfOrderRangeIds;
+    bool LoadCompactionMapChunkInProgress = false;
+    bool CompactionStateLoaded = false;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -214,6 +220,7 @@ private:
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedCompactionIfNeeded(const NActors::TActorContext& ctx);
+    void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,
