@@ -37,6 +37,7 @@ namespace {
     xxx(DeviceLockingEnabled,               bool,       false                 )\
     xxx(DeviceHealthCheckDisabled,          bool,       false                 )\
     xxx(CachedConfigPath,                   TString,    ""                    )\
+    xxx(CachedSessionsPath,                 TString,    ""                    )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

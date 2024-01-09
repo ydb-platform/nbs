@@ -22,6 +22,7 @@ RECURSE(
     rdma
     recipes
     resize-disk
+    session_cache
     spare_node
     stats_aggregator_perf
     storage_discovery

@@ -592,6 +592,80 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
     }
+
+    Y_UNIT_TEST_F(TestGetSessions, TFixture)
+    {
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
+
+        AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2", "uuid1"})
+                .SetClientId("writer")
+                .SetDiskId("vol1")
+                .SetNow(TInstant::Seconds(42))
+                .SetVolumeGeneration(1));
+
+        {
+            auto sessions = client.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            auto& session = sessions[0];
+            UNIT_ASSERT_VALUES_EQUAL("writer", session.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(1, session.GetVolumeGeneration());
+            UNIT_ASSERT(!session.GetReadOnly());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(42),
+                TInstant::MicroSeconds(session.GetLastActivityTs()));
+            UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
+            UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
+        }
+
+        AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2", "uuid1"})
+                .SetClientId("reader")
+                .SetDiskId("vol1")
+                .SetAccessMode(NProto::VOLUME_ACCESS_READ_ONLY)
+                .SetNow(TInstant::Seconds(100))
+                .SetVolumeGeneration(2));
+
+        {
+            auto sessions = client.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
+            {
+                auto& session = sessions[0];
+                UNIT_ASSERT_VALUES_EQUAL("reader", session.GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(2, session.GetVolumeGeneration());
+                UNIT_ASSERT(session.GetReadOnly());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TInstant::Seconds(100),
+                    TInstant::MicroSeconds(session.GetLastActivityTs()));
+                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+                UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
+                UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
+            }
+
+            {
+                auto& session = sessions[1];
+                UNIT_ASSERT_VALUES_EQUAL("writer", session.GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(2, session.GetVolumeGeneration());
+                UNIT_ASSERT(!session.GetReadOnly());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TInstant::Seconds(42),
+                    TInstant::MicroSeconds(session.GetLastActivityTs()));
+                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+                UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
+                UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
