@@ -24,6 +24,7 @@ target_link_libraries(blockstore-libs-endpoints PUBLIC
   core-libs-keyring
 )
 target_sources(blockstore-libs-endpoints PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoints/endpoint_events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoints/endpoint_listener.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoints/endpoint_manager.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoints/service_endpoint.cpp

@@ -16,6 +16,7 @@ target_link_libraries(blockstore-libs-storage-testlib PUBLIC
   yutil
   blockstore-libs-diagnostics
   blockstore-libs-discovery
+  blockstore-libs-endpoints
   blockstore-libs-kikimr
   blockstore-libs-service
   libs-storage-api
