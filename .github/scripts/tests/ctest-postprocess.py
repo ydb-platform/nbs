@@ -25,10 +25,10 @@ shard_suffix_re = re.compile(r"_\d+$")
 
 
 def strip_shardname(testcase):
-    name = testcase.get('classname')
-    classname = shard_suffix_re.sub('', name)
+    name = testcase.get("classname")
+    classname = shard_suffix_re.sub("", name)
 
-    testcase.set('classname', classname)
+    testcase.set("classname", classname)
 
 
 def postprocess_ctest(log_fp: TextIO, ctest_junit_report, is_mute_shard, dry_run):

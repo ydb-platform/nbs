@@ -48,7 +48,7 @@ runs:
         folder="${{ runner.arch == 'X64' && 'x86-64' || runner.arch == 'ARM64' && 'arm64' || 'unknown' }}"
 
         case "${{ inputs.build_preset }}" in
-          relwithdebinfo)
+          relwithdebinfo|release)
             ;;
           debug)
             folder+="-debug"

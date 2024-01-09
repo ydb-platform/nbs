@@ -21,7 +21,7 @@ def add_junit_property(testcase, name, value):
 
     # remove existing property if exists
     for item in props.findall("property"):
-        if item.get('name') == name:
+        if item.get("name") == name:
             props.remove(item)
             break
 
