@@ -23,6 +23,7 @@ target_sources(blockstore-libs-common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_checksum.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/caching_allocator.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/device_path.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/iovector.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/typeinfo.cpp
 )

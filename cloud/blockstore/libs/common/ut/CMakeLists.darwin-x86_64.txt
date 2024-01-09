@@ -15,6 +15,7 @@ target_link_libraries(cloud-blockstore-libs-common-ut PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
+  library-cpp-uri
   cpp-testing-unittest_main
   blockstore-libs-common
 )
@@ -29,6 +30,7 @@ target_sources(cloud-blockstore-libs-common-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/caching_allocator_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_checksum_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/block_range_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/device_path_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/common/iovector_ut.cpp
 )
 set_property(
