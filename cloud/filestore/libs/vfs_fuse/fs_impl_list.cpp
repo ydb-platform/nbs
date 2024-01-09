@@ -222,11 +222,7 @@ void TFileSystem::OpenDir(
     info.flags = fi->flags;
     info.fh = id;
 
-    int res = ReplyOpen(
-        *callContext,
-        req,
-        &info);
-
+    const int res = ReplyOpen(*callContext, {}, req, &info);
     if (res != 0) {
         // syscall was interrupted
         with_lock (CacheLock) {
@@ -253,6 +249,7 @@ void TFileSystem::ReadDir(
         if (it == DirectoryHandles.end()) {
             ReplyError(
                 *callContext,
+                ErrorInvalidHandle(fi->fh),
                 req,
                 EBADF);
             return;
@@ -264,16 +261,14 @@ void TFileSystem::ReadDir(
     Y_ABORT_UNLESS(handle);
 
     if (!CheckDirectoryHandle(req, ino, handle, Log, __func__)) {
-        ReplyError(
-            *callContext,
-            req,
-            EBADF);
+        ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
         return;
     }
 
     auto reply = [=] (TFileSystem& fs, const TDirectoryContent& content) {
         fs.ReplyBuf(
             *callContext,
+            {},
             req,
             content.GetData(),
             content.GetSize());
@@ -303,8 +298,9 @@ void TFileSystem::ReadDir(
 
                 self->ReplyError(
                     *callContext,
+                    response.GetError(),
                     req,
-                    E_IO);
+                    EIO);
                 return;
             }
 
@@ -326,13 +322,18 @@ void TFileSystem::ReadDir(
 
                 ConvertAttr(Config->GetBlockSize(), attr, entry.attr);
                 if (!entry.attr.st_ino) {
-                    STORAGE_ERROR("#" << fuse_req_unique(req)
+                    const auto error = MakeError(
+                        E_IO,
+                        TStringBuilder() << "#" << fuse_req_unique(req)
                         << " listed invalid entry: name " << name.Quote()
                         << ", stat " << DumpMessage(attr));
+
+                    STORAGE_ERROR(error.GetMessage());
                     self->ReplyError(
                         *callContext,
+                        error,
                         req,
-                        E_IO);
+                        EIO);
                     return;
                 }
 
@@ -371,10 +372,7 @@ void TFileSystem::ReleaseDir(
     }
 
     // should reply w/o lock
-    ReplyError(
-        *callContext,
-        req,
-        0);
+    ReplyError(*callContext, {}, req, 0);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -13,6 +13,7 @@ int ReplyNone(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req)
 {
     requestStats.ResponseSent(callContext);
@@ -20,7 +21,7 @@ int ReplyNone(
 
     fuse_reply_none(req);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -39,15 +40,16 @@ int ReplyError(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
-    int error)
+    int errorCode)
 {
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "Error");
 
-    int res = fuse_reply_err(req, error);
+    int res = fuse_reply_err(req, errorCode);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -57,7 +59,7 @@ int ReplyError(
         "Error",
         ts.TotalTime.MicroSeconds(),
         ts.ExecutionTime.MicroSeconds(),
-        error,
+        errorCode,
         res);
 
     return res;
@@ -67,6 +69,7 @@ int ReplyEntry(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const fuse_entry_param *e)
 {
@@ -75,7 +78,7 @@ int ReplyEntry(
 
     int res = fuse_reply_entry(req, e);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -94,6 +97,7 @@ int ReplyCreate(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const fuse_entry_param *e,
     const fuse_file_info *fi)
@@ -103,7 +107,7 @@ int ReplyCreate(
 
     int res = fuse_reply_create(req, e, fi);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -122,6 +126,7 @@ int ReplyAttr(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct stat *attr,
     double attr_timeout)
@@ -131,7 +136,7 @@ int ReplyAttr(
 
     int res = fuse_reply_attr(req, attr, attr_timeout);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -150,6 +155,7 @@ int ReplyReadLink(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const char *link)
 {
@@ -157,7 +163,7 @@ int ReplyReadLink(
     requestStats.ResponseSent(callContext);
     int res = fuse_reply_readlink(req, link);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -176,6 +182,7 @@ int ReplyOpen(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const fuse_file_info *fi)
 {
@@ -184,7 +191,7 @@ int ReplyOpen(
 
     int res = fuse_reply_open(req, fi);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -203,6 +210,7 @@ int ReplyWrite(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     size_t count)
 {
@@ -211,7 +219,7 @@ int ReplyWrite(
 
     int res = fuse_reply_write(req, count);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -230,6 +238,7 @@ int ReplyBuf(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const char *buf,
     size_t size)
@@ -239,7 +248,7 @@ int ReplyBuf(
 
     int res = fuse_reply_buf(req, buf, size);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -258,6 +267,7 @@ int ReplyStatFs(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct statvfs *stbuf)
 {
@@ -266,7 +276,7 @@ int ReplyStatFs(
 
     int res = fuse_reply_statfs(req, stbuf);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -285,6 +295,7 @@ int ReplyXAttr(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     size_t count)
 {
@@ -293,7 +304,7 @@ int ReplyXAttr(
 
     int res = fuse_reply_xattr(req, count);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -312,6 +323,7 @@ int ReplyLock(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct flock *lock)
 {
@@ -320,7 +332,7 @@ int ReplyLock(
 
     int res = fuse_reply_lock(req, lock);
 
-    requestStats.RequestCompleted(log, callContext);
+    requestStats.RequestCompleted(log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);

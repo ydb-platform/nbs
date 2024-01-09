@@ -69,12 +69,7 @@ bool TFileSystem::CheckError(
             "request #" << fuse_req_unique(req)
             << " failed: " << FormatError(error));
 
-        callContext.Error = error;
-
-        ReplyError(
-            callContext,
-            req,
-            ErrnoFromError(error.GetCode()));
+        ReplyError(callContext, error, req, ErrnoFromError(error.GetCode()));
         return false;
     }
 
@@ -87,7 +82,7 @@ bool TFileSystem::ValidateNodeId(
     fuse_ino_t ino)
 {
     if (Y_UNLIKELY(!ino)) {
-        ReplyError(callContext, req, EINVAL);
+        ReplyError(callContext, MakeError(E_FS_INVAL), req, EINVAL);
         return false;
     }
     return true;
@@ -136,6 +131,7 @@ void TFileSystem::UpdateXAttrCache(
 
 void TFileSystem::ReplyCreate(
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     ui64 handle,
     const NProto::TNodeAttr& attrs)
@@ -144,18 +140,14 @@ void TFileSystem::ReplyCreate(
 
     fuse_entry_param entry = {};
     if (!UpdateNodesCache(attrs, entry)) {
-        ReplyError(callContext, req, EIO);
+        ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
 
     fuse_file_info fi = {};
     fi.fh = handle;
 
-    int res = ReplyCreate(
-        callContext,
-        req,
-        &entry,
-        &fi);
+    const int res = ReplyCreate(callContext, error, req, &entry, &fi);
     if (res == -ENOENT) {
         // syscall was interrupted
         with_lock (CacheLock) {
@@ -166,6 +158,7 @@ void TFileSystem::ReplyCreate(
 
 void TFileSystem::ReplyEntry(
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs)
 {
@@ -173,14 +166,11 @@ void TFileSystem::ReplyEntry(
 
     fuse_entry_param entry = {};
     if (!UpdateNodesCache(attrs, entry)) {
-        ReplyError(callContext, req, EIO);
+        ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
 
-    int res = ReplyEntry(
-        callContext,
-        req,
-        &entry);
+    const int res = ReplyEntry(callContext, error, req, &entry);
     if (res == -ENOENT) {
         // syscall was interrupted
         with_lock (CacheLock) {
@@ -191,24 +181,19 @@ void TFileSystem::ReplyEntry(
 
 void TFileSystem::ReplyXAttrInt(
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const TString& value,
     size_t size)
 {
     if (size >= value.size()) {
-        ReplyBuf(
-            callContext,
-            req,
-            value.data(),
-            value.size());
+        ReplyBuf(callContext, error, req, value.data(), value.size());
     } else if (!size) {
-        ReplyXAttr(
-            callContext,
-            req,
-            value.size());
+        ReplyXAttr(callContext, error, req, value.size());
     } else {
         ReplyError(
             callContext,
+            MakeError(MAKE_FILESTORE_ERROR(NProto::E_FS_RANGE)),
             req,
             ERANGE);
     }
@@ -216,17 +201,19 @@ void TFileSystem::ReplyXAttrInt(
 
 void TFileSystem::ReplyAttr(
     TCallContext& callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs)
 {
     fuse_entry_param entry = {};
     if (!UpdateNodesCache(attrs, entry)) {
-        ReplyError(callContext, req, EIO);
+        ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
 
     ReplyAttr(
         callContext,
+        error,
         req,
         &entry.attr,
         Config->GetAttrTimeout().Seconds());

@@ -20,8 +20,6 @@ public:
     ui64 RequestSize = 0;
     bool Unaligned = false;
 
-    NProto::TError Error;
-
     explicit TCallContext(ui64 requestId = 0);
     TCallContext(TString fileSystemId, ui64 requestId = 0);
 
