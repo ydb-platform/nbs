@@ -127,7 +127,10 @@ class SshClient:
         self._host = ip
         self._ssh_key_path = ssh_key_path
         self._username = user
-
+        if ssh_key_path is None:
+            self._key_path_cmd_argument = []
+        else:
+            self._key_path_cmd_argument = ['-i', str(self._ssh_key_path)]
         self._key_path_cmd_argument = ['-i', str(self._ssh_key_path)]
         self._authorization_string = f'{self._username}@{self._host}'
         self._scp_authorization_string = self._authorization_string
