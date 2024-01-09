@@ -5,9 +5,13 @@ SRCS(
     buffer.cpp
     client.cpp
     event.cpp
+    list.cpp
     log.cpp
+    poll.cpp
+    rcu.cpp
     server.cpp
     test_verbs.cpp
+    utils.cpp
     verbs.cpp
     work_queue.cpp
 )
