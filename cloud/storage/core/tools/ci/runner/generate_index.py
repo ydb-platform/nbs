@@ -92,6 +92,9 @@ def generate_dm_section(index, results_xml_path):
     ]:
         generate_generic_tests_section(index, tests_type, results_xml_path)
 
+def generate_degradation_section(index, results_xml_path):
+    for tests_type in ["degradation_tests"]:
+        generate_generic_tests_section(index, tests_type, results_xml_path)
 
 xsl_filename = sys.argv[1]
 
@@ -110,6 +113,7 @@ generate_github_tests_section(index, tests_xml_index_path)
 generate_nbs_section(index, results_xml_path)
 generate_nfs_section(index, results_xml_path)
 generate_dm_section(index, results_xml_path)
+generate_degradation_section(index, results_xml_path)
 
 tree = etree.ElementTree(index)
 tree.write(xml_index_path, encoding="utf-8", pretty_print=True)
