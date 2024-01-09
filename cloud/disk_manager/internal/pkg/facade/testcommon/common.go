@@ -29,6 +29,7 @@ import (
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	tasks_headers "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
@@ -308,8 +309,8 @@ func GetRequestContext(t *testing.T, ctx context.Context) context.Context {
 	lastReqNumber++
 
 	cookie := fmt.Sprintf("%v_%v", t.Name(), lastReqNumber)
-	ctx = headers.SetOutgoingIdempotencyKey(ctx, cookie)
-	ctx = headers.SetOutgoingRequestID(ctx, cookie)
+	ctx = tasks_headers.SetOutgoingIdempotencyKey(ctx, cookie)
+	ctx = tasks_headers.SetOutgoingRequestID(ctx, cookie)
 	return ctx
 }
 

@@ -3,7 +3,7 @@ package tasks
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
 	grpc_metadata "google.golang.org/grpc/metadata"
 )
 

@@ -9,6 +9,7 @@ import (
 	"github.com/karlseguin/ccache/v2"
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
+	tasks_headers "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 )
 
@@ -47,7 +48,7 @@ func NewStubAuthorizer() Authorizer {
 ////////////////////////////////////////////////////////////////////////////////
 
 func GetRequestID(ctx context.Context) string {
-	return headers.GetRequestID(ctx)
+	return tasks_headers.GetRequestID(ctx)
 }
 
 func GetAccessToken(ctx context.Context) (string, error) {

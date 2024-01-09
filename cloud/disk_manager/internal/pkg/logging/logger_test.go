@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
 	"github.com/ydb-platform/nbs/library/go/core/log"
 )
 
