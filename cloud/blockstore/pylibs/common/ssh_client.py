@@ -209,6 +209,7 @@ class SshClient:
         self._exec_command(
             ['truncate', '-s', f'{size}', remote_path], check=True)
 
+    @retry(tries=4, delay=20)
     def upload_file(self, local_path: str, remote_path: str) -> None:
         command_line = [
             'scp',
