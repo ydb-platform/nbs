@@ -62,6 +62,7 @@ class _SafeClient(object):
             base_disk_id="",
             base_disk_checkpoint_id="",
             partitions_count=1,
+            storage_pool_name=None,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -79,7 +80,8 @@ class _SafeClient(object):
             TabletVersion=tablet_version,
             BaseDiskId=base_disk_id,
             BaseDiskCheckpointId=base_disk_checkpoint_id,
-            PartitionsCount=partitions_count
+            PartitionsCount=partitions_count,
+            StoragePoolName=storage_pool_name
         )
         return self.__impl.create_volume_async(
             request,
@@ -103,6 +105,7 @@ class _SafeClient(object):
             base_disk_id="",
             base_disk_checkpoint_id="",
             partitions_count=1,
+            storage_pool_name=None,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -120,7 +123,8 @@ class _SafeClient(object):
             TabletVersion=tablet_version,
             BaseDiskId=base_disk_id,
             BaseDiskCheckpointId=base_disk_checkpoint_id,
-            PartitionsCount=partitions_count
+            PartitionsCount=partitions_count,
+            StoragePoolName=storage_pool_name
         )
         self.__impl.create_volume(
             request,

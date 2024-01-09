@@ -8,7 +8,7 @@ from google.protobuf.text_format import MessageToString
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig, \
     TDiskAgentConfig, TFileDeviceArgs, TStorageDiscoveryConfig, \
-    DISK_AGENT_BACKEND_AIO
+    DISK_AGENT_BACKEND_AIO, EDeviceEraseMethod
 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, \
@@ -274,6 +274,7 @@ def generate_dr_proxy_txt():
 def generate_disk_agent_txt(
         agent_id,
         file_devices=None,
+        device_erase_method=None,
         storage_discovery_config=None):
 
     config = TDiskAgentConfig()
@@ -286,6 +287,9 @@ def generate_disk_agent_txt(
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = 0
+
+    if device_erase_method is not None:
+        config.DeviceEraseMethod = EDeviceEraseMethod.Value(device_erase_method)
 
     if file_devices is not None:
         for device in file_devices:

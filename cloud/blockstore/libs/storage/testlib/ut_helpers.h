@@ -15,12 +15,12 @@ namespace NCloud::NBlockStore::NStorage {
 }                                                                              \
 // ASSERT_MAP_EQUAL
 
-#define ASSERT_VECTORS_EQUAL(li, ri) [l = li, r = ri] {                        \
+#define ASSERT_VECTORS_EQUAL(li, ri) [] (const auto& l, const auto& r) {       \
     for (size_t i = 0; i < Min<ui32>(l.size(), r.size()); ++i) {               \
         UNIT_ASSERT_VALUES_EQUAL_C(l[i], r[i], i);                             \
     }                                                                          \
     UNIT_ASSERT_VALUES_EQUAL(l.size(), r.size());                              \
-}()                                                                            \
+}((li), (ri))                                                                  \
 // ASSERT_VECTORS_EQUAL
 
 #define ASSERT_VECTOR_CONTENTS_EQUAL(li, ri) {                                 \

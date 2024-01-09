@@ -213,6 +213,40 @@ message TDiskAgentConfig
 
     // The path where Disk Agent will store the cached config.
     optional string CachedConfigPath = 27;
+
+    // The path where Disk Agent will store active sessions.
+    optional string CachedSessionsPath = 28;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskAgentDeviceSession
+{
+    // Owner of the session.
+    optional string ClientId = 1;
+
+    // List of device UUIDs.
+    repeated string DeviceIds = 2;
+
+    // Access mode.
+    optional bool ReadOnly = 3;
+
+    // MountSeqNumber from volume state.
+    optional uint64 MountSeqNumber = 4;
+
+    // Disk id.
+    optional string DiskId = 5;
+
+    // Volume generation.
+    optional uint32 VolumeGeneration = 6;
+
+    // Last activity timestamp of the session (in microseconds).
+    optional uint64 LastActivityTs = 7;
+};
+
+message TDiskAgentDeviceSessionCache
+{
+    repeated TDiskAgentDeviceSession Sessions = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

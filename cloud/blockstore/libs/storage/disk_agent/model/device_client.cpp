@@ -21,6 +21,59 @@ TDeviceClient::TDeviceClient(
     , Log(std::move(log))
 {}
 
+TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
+{
+    THashMap<TString, NProto::TDiskAgentDeviceSession> sessions;
+
+    for (const auto& [id, state]: Devices) {
+        TReadGuard g(state->Lock);
+
+        if (!state->WriterSession.Id.empty()) {
+            auto& session = sessions[state->WriterSession.Id];
+
+            if (session.GetClientId().empty()) {
+                const auto& ws = state->WriterSession;
+
+                session.SetClientId(ws.Id);
+                session.SetReadOnly(false);
+                session.SetDiskId(state->DiskId);
+                session.SetVolumeGeneration(state->VolumeGeneration);
+                session.SetMountSeqNumber(ws.MountSeqNumber);
+                session.SetLastActivityTs(ws.LastActivityTs.MicroSeconds());
+            }
+            *session.AddDeviceIds() = id;
+        }
+
+        for (const auto& rs: state->ReaderSessions) {
+            auto& session = sessions[rs.Id];
+            if (session.GetClientId().empty()) {
+                session.SetClientId(rs.Id);
+                session.SetReadOnly(true);
+                session.SetDiskId(state->DiskId);
+                session.SetVolumeGeneration(state->VolumeGeneration);
+                session.SetMountSeqNumber(rs.MountSeqNumber);
+                session.SetLastActivityTs(rs.LastActivityTs.MicroSeconds());
+            }
+            *session.AddDeviceIds() = id;
+        }
+    }
+
+    TVector<NProto::TDiskAgentDeviceSession> r;
+    r.reserve(sessions.size());
+
+    for (auto&& [_, session]: sessions) {
+        Sort(*session.MutableDeviceIds());
+
+        r.push_back(std::move(session));
+    }
+
+    SortBy(r, [] (const auto& session) {
+        return TStringBuf {session.GetClientId()};
+    });
+
+    return r;
+}
+
 NCloud::NProto::TError TDeviceClient::AcquireDevices(
     const TVector<TString>& uuids,
     const TString& clientId,
@@ -34,6 +87,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         return MakeError(E_ARGUMENT, "empty client id");
     }
 
+    // check devices
     for (const auto& uuid: uuids) {
         TDeviceState* deviceState = GetDeviceState(uuid);
         if (!deviceState) {
@@ -55,9 +109,6 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
                 << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
-        deviceState->DiskId = diskId;
-        deviceState->VolumeGeneration = volumeGeneration;
-
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id
                 && deviceState->WriterSession.Id != clientId
@@ -73,6 +124,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         }
     }
 
+    // acquire devices
     for (const auto& uuid: uuids) {
         TDeviceState& ds = *GetDeviceState(uuid);
 
@@ -135,7 +187,7 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
         return MakeError(E_ARGUMENT, "empty client id");
     }
 
-    for (const auto& uuid : uuids) {
+    for (const auto& uuid: uuids) {
         auto* deviceState = GetDeviceState(uuid);
 
         if (deviceState == nullptr) {
