@@ -1,0 +1,111 @@
+name: Build and test NBS on demand using cmake
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_preset:
+        type: choice
+        default: "relwithdebinfo"
+        description: "Build preset"
+        options:
+          - debug
+          - relwithdebinfo
+          - release-asan
+          - release-tsan
+      run_build:
+        type: boolean
+        default: true
+        description: "run build"
+      run_tests:
+        type: boolean
+        default: true
+        description: "run tests"
+  workflow_call:
+    inputs:
+      build_preset:
+        type: string
+        default: "relwithdebinfo"
+      run_build:
+        type: boolean
+        default: true
+      run_tests:
+        type: boolean
+        default: true
+
+jobs:
+  provide-runner:
+    name: Start self-hosted runner
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-yc-runner.outputs.label }}
+      instance-id: ${{ steps.start-yc-runner.outputs.instance-id }}
+    steps:
+      - name: Start YC runner
+        id: start-yc-runner
+        uses: librarian/yc-github-runner@0.0.12
+        with:
+          mode: start
+          yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          folder-id: bjeuq5o166dq4ukv3eec
+          image-id: ${{ vars.IMAGE_ID_2204 }}
+          disk-size: '1023GB'
+          disk-type: network-ssd-nonreplicated
+          platform-id: standard-v2
+          cores: 60
+          memory: 120GB
+          core-fraction: 100
+          zone-id: eu-north1-c
+          subnet-id: f8uh0ml4rhb45nde9p75
+          filesystem-id: dp753obk26e8ldmptot1
+          filesystem-name: ccache
+
+  prepare-vm:
+    name: Prepare runner
+    needs: provide-runner
+    runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v3
+        if: github.event.pull_request.head.sha != ''
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Checkout
+        uses: actions/checkout@v3
+        if: github.event.pull_request.head.sha == ''
+      - name: Prepare VM
+        uses: ./.github/actions/prepare
+
+  build-and-test:
+    name: Build and test NBS
+    uses: ./.github/workflows/build_and_test_cmake.yaml
+    needs:
+      - provide-runner
+      - prepare-vm
+    with:
+      runner_kind: self-hosted
+      runner_label: ${{ needs.provide-runner.outputs.label }}
+      build_preset: ${{ inputs.build_preset }}
+      run_build: ${{ inputs.run_build }}
+      run_tests: ${{ inputs.run_tests }}
+    secrets: inherit
+
+  release-runner:
+    name: Release self-hosted runner
+    needs:
+      - provide-runner # required to get output from the start-runner job
+      - build-and-test # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Stop YC runner
+        uses: librarian/yc-github-runner@0.0.12
+        with:
+          mode: stop
+          yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.provide-runner.outputs.label }}
+          instance-id: ${{ needs.provide-runner.outputs.instance-id }}
+          folder-id: bjeuq5o166dq4ukv3eec
+          subnet-id: f8uh0ml4rhb45nde9p75

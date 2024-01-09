@@ -1,0 +1,56 @@
+name: Debug workflows using act and cmake
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_preset:
+        type: choice
+        default: "relwithdebinfo"
+        description: "Build preset"
+        options:
+          - debug
+          - release
+          - relwithdebinfo
+  workflow_call:
+    inputs:
+      build_preset:
+        type: string
+        default: "release"
+
+jobs:
+  checkout:
+    name: Checkout ${{ inputs.build_preset }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v3
+      with:
+        ref: refs/heads/stable-23-3
+
+    - name: Prepare VM
+      uses: ./.github/actions/prepare
+    - name: Prepare s3cmd
+      uses: ./.github/actions/s3cmd
+      with:
+        s3_bucket: ${{ vars.AWS_BUCKET }}
+        s3_endpoint: ${{ vars.AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        s3_key_secret: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        folder_prefix: nebius-
+        build_preset: ${{ inputs.build_preset }}
+
+    - name: Build
+      uses: ./.github/actions/build_cmake
+      with:
+        build_preset: ${{ inputs.build_preset }}
+        bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
+        bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
+        bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
+      timeout-minutes: 1440
+
+    - name: Run tests
+      uses: ./.github/actions/test_cmake
+      timeout-minutes: 1440
+
+
