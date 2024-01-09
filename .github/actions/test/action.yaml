@@ -4,22 +4,18 @@ inputs:
   test_target:
     required: false
     description: "test target"
-
   build_preset:
     required: true
     default: "relwithdebinfo"
     description: "relwithdebinfo, release-asan, release-tsan"
-
   test_size:
     required: false
     default: "small,medium,large"
     description: "small or small-medium or all"
-
   test_type:
     required: false
     default: "unittest,py3test,py2test,pytest"
-    description: "run "
-
+    description: "run test type"
   test_threads:
     required: false
     default: "28"
@@ -31,7 +27,7 @@ inputs:
   bazel_remote_uri:
     required: false
     description: "bazel-remote endpoint"
-  cache_tests:
+  test_cache_update:
     required: false
     description: "Use cache for tests"
 runs:
@@ -87,7 +83,10 @@ runs:
 
 
         if [ ! -z "${{ inputs.test_target }}" ]; then
-          extra_params+=(--target="${{ inputs.test_target }}")
+          readarray -d ',' -t targets < <(printf "%s" "${{ inputs.test_target }}")
+          for target in "${targets[@]}"; do
+            extra_params+=(--target="${target}")
+          done
         fi
 
         if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
@@ -95,7 +94,7 @@ runs:
           extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
         fi
 
-        if [ "${{ inputs.cache_tests }}" = "true" ]; then
+        if [ "${{ inputs.test_cache_update }}" = "true" ]; then
           extra_params+=(--cache-tests)
         fi
 
@@ -121,8 +120,7 @@ runs:
       shell: bash
       run: |
         .github/scripts/tests/transform-ya-junit.py -i \
-          --mu .github/config/muted_test.txt \
-          --mf .github/config/muted_functest.txt \
+          -m .github/config/muted_ya.txt \
           --ya-out "$OUT_DIR" \
           --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
           --log-out-dir "$ARTIFACTS_DIR/logs/" \

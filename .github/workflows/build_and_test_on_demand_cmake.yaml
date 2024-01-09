@@ -1,16 +1,8 @@
-name: Build and test NBS on demand
+name: Build and test NBS on demand using cmake
 
 on:
   workflow_dispatch:
     inputs:
-      build_target:
-        type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
-        description: "limit build to specific target"
-      test_target:
-        type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
-        description: "limit test to specific target"
       build_preset:
         type: choice
         default: "relwithdebinfo"
@@ -20,35 +12,6 @@ on:
           - relwithdebinfo
           - release-asan
           - release-tsan
-      cache_update:
-        type: boolean
-        default: false
-        description: "Update build cache for build and cache"
-      test_size:
-        type: choice
-        default: "small"
-        description: "test size to run"
-        options:
-          - small
-          - small,medium
-          - small,medium,large
-      test_type:
-        type: choice
-        default: "unittest"
-        description: "type of tests to run"
-        options:
-          - unittest,clang_tidy,gtest
-          - py3test,py2test,pytest,flake8,black,py2_flake8
-          - go_test,gofmt
-          - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt
-      test_threads:
-        type: string
-        default: "64"
-        description: "Test threads count"
-      link_threads:
-        type: string
-        default: "16"
-        description: "link threads count"
       run_build:
         type: boolean
         default: true
@@ -59,41 +22,15 @@ on:
         description: "run tests"
   workflow_call:
     inputs:
-      build_target:
-        type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
-        description: "limit build to specific target"
-      test_target:
-        type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
-        description: "limit test to specific target"
       build_preset:
         type: string
         default: "relwithdebinfo"
-      test_size:
-        type: string
-        default: "small,medium,large"
-      test_type:
-        type: string
-        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       run_build:
         type: boolean
         default: true
       run_tests:
         type: boolean
         default: true
-      test_threads:
-        type: string
-        default: '64'
-        description: "Test threads count"
-      link_threads:
-        type: string
-        default: '32'
-        description: "link threads count"
-      cache_update:
-        type: boolean
-        default: false
-        description: "Update build cache for build and cache"
 
 jobs:
   provide-runner:
@@ -142,24 +79,16 @@ jobs:
 
   build-and-test:
     name: Build and test NBS
-    uses: ./.github/workflows/build_and_test_ya.yaml
+    uses: ./.github/workflows/build_and_test_cmake.yaml
     needs:
       - provide-runner
       - prepare-vm
     with:
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
-      build_target: ${{ inputs.build_target }}
-      test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
       run_build: ${{ inputs.run_build }}
       run_tests: ${{ inputs.run_tests }}
-      test_size: ${{ inputs.test_size }}
-      test_type: ${{ inputs.test_type }}
-      link_threads: ${{ inputs.link_threads }}
-      test_threads: ${{ inputs.test_threads }}
-      build_cache_update: ${{ inputs.cache_update }}
-      test_cache_update: ${{ inputs.cache_update }}
     secrets: inherit
 
   release-runner:

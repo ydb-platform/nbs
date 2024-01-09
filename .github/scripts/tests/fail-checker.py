@@ -19,7 +19,7 @@ def check_for_fail(paths: List[str]):
                 error_list.append((test_name, fn))
 
     if failed_list or error_list:
-        print(f"::error::You have failed tests")
+        print("::error::You have failed tests")
         for t, fn in failed_list:
             print(f"failure: {t} ({fn})")
         for t, fn in error_list:

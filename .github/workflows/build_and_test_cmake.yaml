@@ -1,16 +1,8 @@
-name: Build and test
+name: Build and test using cmake
 
 on:
   workflow_call:
     inputs:
-      build_target:
-        type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
-        description: "limit build to specific target"
-      test_target:
-        type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
-        description: "limit test to specific target"
       build_preset:
         type: string
       runner_kind:
@@ -29,31 +21,7 @@ on:
         type: boolean
         default: true
         description: "run tests"
-      test_threads:
-        type: string
-        default: '64'
-        description: "Test threads count"
-      link_threads:
-        type: string
-        default: '32'
-        description: "link threads count"
-      test_size:
-        type: string
-        default: "small,medium,large"
-      test_type:
-        type: string
-        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
-      folder_prefix:
-        type: string
-        default: "nebius-"
-      build_cache_update:
-        type: boolean
-        default: false
-        description: "Update remote build cache"
-      test_cache_update:
-        type: boolean
-        default: false
-        description: "Update remote build cache"
+
 
 jobs:
   build-and-test:
@@ -82,26 +50,16 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
 
     - name: Build
-      uses: ./.github/actions/build
+      uses: ./.github/actions/build_cmake
       if: inputs.run_build
       with:
-        build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
-        build_cache_update: ${{ inputs.build_cache_update }}
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
-        link_threads: ${{ inputs.link_threads }}
 
     - name: Run tests
-      uses: ./.github/actions/test
+      uses: ./.github/actions/test_cmake
       if: inputs.run_tests
       with:
-        test_target: ${{ inputs.test_target }}
         build_preset: ${{ inputs.build_preset }}
-        test_size: ${{ inputs.test_size }}
-        test_type: ${{ inputs.test_type }}
-        test_cache_update: ${{ inputs.test_cache_update }}
-        bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
-        link_threads: ${{ inputs.link_threads }}
-        test_threads: ${{ inputs.test_threads }}

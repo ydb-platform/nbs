@@ -1,9 +1,8 @@
-name: PR-check
+name: PR check using cmake
 on:
   pull_request_target:
     branches:
-      - 'main'
-      - 'stable-*'
+      - 'stable-23-3'
     paths-ignore:
       - 'ydb/docs/**'
       - '.github/**'
@@ -99,11 +98,10 @@ jobs:
       - check-running-allowed
     if: needs.check-running-allowed.outputs.result == 'true'
     name: Build and test
-    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    uses: ./.github/workflows/build_and_test_on_demand_cmake.yaml
     with:
       build_preset: "relwithdebinfo"
-      test_size: "small,medium"
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       run_tests: true
-      cache_update: false
+      run_build: true
     secrets: inherit
+
