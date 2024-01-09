@@ -257,6 +257,13 @@ void TCreateSessionActor::HandleConnect(
 
         NTabletPipe::CloseClient(ctx, PipeClient);
         PipeClient = {};
+        
+        if (!FirstWakeupScheduled) {
+            // Wakeup cycle is inactive => reconnect won't be initiated
+            // if we don't initiate it here
+            CreatePipe(ctx);    
+        }
+        
         return;
     }
 
