@@ -17,7 +17,6 @@ PEERDIR(
     cloud/filestore/config
     cloud/filestore/public/api/protos
 
-    cloud/storage/core/libs/auth
     cloud/storage/core/libs/common
     cloud/storage/core/protos
 
