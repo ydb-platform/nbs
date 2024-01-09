@@ -9,6 +9,7 @@ SRCS(
 PEERDIR(
     library/cpp/getopt
     cloud/blockstore/apps/client/lib
+    cloud/storage/core/libs/iam/iface
 )
 
 END()
