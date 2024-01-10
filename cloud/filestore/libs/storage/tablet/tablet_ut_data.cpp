@@ -2732,29 +2732,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
         TTestEnv env({}, std::move(storageConfig));
 
         env.CreateSubDomain("nfs");
 
-        bool intercepted = false;
         TAutoPtr<IEventHandle> loadChunk;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
-                        if (!intercepted) {
-                            loadChunk = event.Release();
-                            intercepted = true;
-                            return TTestActorRuntime::EEventAction::DROP;
-                        }
+        ui32 loadChunkCount = 0;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    ++loadChunkCount;
+
+                    if (loadChunkCount == 1) {
+                        loadChunk = event.Release();
+                        return true;
                     }
                 }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
             }
-        );
+
+            return false;
+        });
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2775,7 +2777,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
 
-        // TODO: check compaction chunk load queue
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(1, loadChunkCount);
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
         tablet.SendCompactionRequest(rangeId);
@@ -2784,9 +2787,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
         }
 
-        // TODO: check compaction chunk load queue
+        UNIT_ASSERT_VALUES_EQUAL(1, loadChunkCount);
 
-        UNIT_ASSERT(loadChunk);
         env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
         tablet.SendWriteDataRequest(handle, 0, block, 'a');
         {
@@ -2799,6 +2801,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
 
+        UNIT_ASSERT_VALUES_EQUAL(2, loadChunkCount);
+
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
@@ -2807,20 +2811,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         // write some more data
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto handle1 = CreateHandle(tablet, id1);
-        tablet.WriteData(handle1, 0, block, 'b');
+        for (ui32 fileNo = 0; fileNo < 3 * NodeGroupSize; ++fileNo) {
+            auto id1 = CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, Sprintf("test%u", fileNo)));
+            auto handle1 = CreateHandle(tablet, id1);
+            tablet.WriteData(handle1, 0, 2 * BlockGroupSize * block, 'x');
+        }
 
-        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
-        auto handle2 = CreateHandle(tablet, id2);
-        tablet.WriteData(handle2, 0, block, 'c');
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetAllocatedCompactionRanges());
+        }
 
         tablet.RebootTablet();
         tablet.RecoverSession();
 
         handle = CreateHandle(tablet, id);
-        handle1 = CreateHandle(tablet, id1);
-        handle2 = CreateHandle(tablet, id2);
 
         {
             TString expected;
@@ -2832,28 +2841,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
-        {
-            TString expected;
-            expected.ReserveAndResize(block);
-            memset(expected.begin(), 'b', block);
-
-            auto response = tablet.ReadData(handle1, 0, block);
-            const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
-        }
+        UNIT_ASSERT_VALUES_EQUAL(7, loadChunkCount);
 
         {
-            TString expected;
-            expected.ReserveAndResize(block);
-            memset(expected.begin(), 'c', block);
-
-            auto response = tablet.ReadData(handle2, 0, block);
-            const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetAllocatedCompactionRanges());
         }
-
-        // TODO: check that compaction map ranges were actually loaded
-        // TODO: test the case when multiple chunks need to be loaded
 
         tablet.DestroyHandle(handle);
     }

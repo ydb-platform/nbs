@@ -283,10 +283,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
             << args.GarbageBlobs.size());
     LoadGarbage(args.NewBlobs, args.GarbageBlobs);
 
-    const ui32 loadedRangesPerIteration = 1024 * 1024;
-    LoadCompactionMapQueue.push_back({
+    CompactionStateLoadStatus.LoadQueue.push_back({
         0,
-        loadedRangesPerIteration,
+        Config->GetLoadedCompactionRangesPerTx(),
         false});
     LoadNextCompactionMapChunkIfNeeded(ctx);
 
@@ -326,8 +325,6 @@ void TIndexTabletActor::HandleLoadCompactionMapChunk(
         ev->Cookie,
         msg->CallContext);
 
-    Y_UNUSED(requestInfo);
-
     ExecuteTx<TLoadCompactionMapChunk>(
         ctx,
         std::move(requestInfo),
@@ -340,14 +337,16 @@ void TIndexTabletActor::HandleLoadCompactionMapChunk(
 void TIndexTabletActor::LoadNextCompactionMapChunkIfNeeded(
     const TActorContext& ctx)
 {
-    if (!LoadCompactionMapChunkInProgress && LoadCompactionMapQueue) {
+    if (!CompactionStateLoadStatus.LoadChunkInProgress
+            && CompactionStateLoadStatus.LoadQueue)
+    {
         ctx.Send(
             SelfId(),
             new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
-                LoadCompactionMapQueue.front())
+                CompactionStateLoadStatus.LoadQueue.front())
         );
 
-        LoadCompactionMapChunkInProgress = true;
+        CompactionStateLoadStatus.LoadChunkInProgress = true;
     }
 }
 
@@ -364,30 +363,43 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    TABLET_VERIFY(!!LoadCompactionMapQueue);
-    auto req = LoadCompactionMapQueue.front();
+    auto& s = CompactionStateLoadStatus;
+
+    // Front of the queue contains the request that has just completed
+    TABLET_VERIFY(!!s.LoadQueue);
+    auto req = s.LoadQueue.front();
 
     if (req.OutOfOrder) {
-        LoadedOutOfOrderRangeIds.insert(msg->FirstRangeId);
+        // It's an out-of-order request triggered by a write request
+        // It doesn't affect overall load progress but we should record the
+        // fact that this range is loaded to successfully process this WriteData
+        // request upon retry
+        s.LoadedOutOfOrderRangeIds.insert(msg->FirstRangeId);
     } else {
-        MaxLoadedInOrderRangeId =
-            Max(MaxLoadedInOrderRangeId, msg->LastRangeId);
+        // It's an in-order request - it affects overall load progress and
+        // triggers either the next in-order request or the completion of the
+        // whole compaction state load process
+        s.MaxLoadedInOrderRangeId =
+            Max(s.MaxLoadedInOrderRangeId, msg->LastRangeId);
 
         if (msg->LastRangeId == 0) {
-            CompactionStateLoaded = true;
+            // Nothing was loaded - it means that there are no more ranges to
+            // load => we have already loaded everything
+            s.Finished = true;
 
+            // Background ops can start now - all the required data is in memory
             EnqueueFlushIfNeeded(ctx);
             EnqueueBlobIndexOpIfNeeded(ctx);
 
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u",
                 LogTag.c_str(),
-                MaxLoadedInOrderRangeId);
+                s.MaxLoadedInOrderRangeId);
         } else {
-            const ui32 loadedRangesPerIteration = 1024 * 1024;
-            LoadCompactionMapQueue.push_back({
+            // Triggering the next in-order load request
+            s.LoadQueue.push_back({
                 msg->LastRangeId + 1,
-                loadedRangesPerIteration,
+                Config->GetLoadedCompactionRangesPerTx(),
                 false});
 
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
@@ -397,14 +409,16 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
         }
     }
 
-    LoadCompactionMapQueue.pop_front();
-    LoadCompactionMapChunkInProgress = false;
+    // Removing the request that has just completed
+    s.LoadQueue.pop_front();
+    s.LoadChunkInProgress = false;
 
-    if (LoadCompactionMapQueue) {
+    if (s.LoadQueue) {
+        // We still have more loading to do - sending the next load request
         ctx.Send(
             SelfId(),
             new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
-                LoadCompactionMapQueue.front())
+                s.LoadQueue.front())
         );
     }
 }

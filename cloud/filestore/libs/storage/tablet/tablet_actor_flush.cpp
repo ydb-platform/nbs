@@ -270,7 +270,7 @@ void TIndexTabletActor::HandleFlush(
         }
     };
 
-    if (!CompactionStateLoaded) {
+    if (!CompactionStateLoadStatus.Finished) {
         replyError(
             ctx,
             *ev,

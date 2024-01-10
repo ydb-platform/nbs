@@ -192,4 +192,8 @@ message TStorageConfig
     // Tenant hive tablet id different from root to be used by hive proxy.
     // Should be configured once and for the lifetime of the cluster.
     optional uint64 TenantHiveTabletId = 329;
+
+    // Max number of compaction ranges loaded per 1 compaction state load
+    // iteration.
+    optional uint32 LoadedCompactionRangesPerTx = 330;
 }

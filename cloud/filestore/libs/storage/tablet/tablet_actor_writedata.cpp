@@ -243,7 +243,9 @@ void TIndexTabletActor::HandleWriteData(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!CompactionStateLoaded) {
+    if (!CompactionStateLoadStatus.Finished) {
+        auto& s = CompactionStateLoadStatus;
+
         bool reject = false;
 
         for (ui64 b = range.FirstBlock();
@@ -254,10 +256,10 @@ void TIndexTabletActor::HandleWriteData(
                 msg->Record.GetNodeId(),
                 range.FirstBlock());
 
-            if (rangeId > MaxLoadedInOrderRangeId
-                    && !LoadedOutOfOrderRangeIds.contains(rangeId))
+            if (rangeId > s.MaxLoadedInOrderRangeId
+                    && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
             {
-                LoadCompactionMapQueue.push_back({rangeId, 1, true});
+                s.LoadQueue.push_back({rangeId, 1, true});
                 reject = true;
             }
         }

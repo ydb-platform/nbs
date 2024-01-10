@@ -40,7 +40,7 @@ void TIndexTabletActor::HandleCleanup(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!CompactionStateLoaded) {
+    if (!CompactionStateLoadStatus.Finished) {
         replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
         return;
     }

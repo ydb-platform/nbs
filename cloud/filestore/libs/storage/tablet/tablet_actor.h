@@ -157,11 +157,14 @@ private:
 
     TStorageConfigPtr Config;
 
-    TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadCompactionMapQueue;
-    ui32 MaxLoadedInOrderRangeId = 0;
-    THashSet<ui32> LoadedOutOfOrderRangeIds;
-    bool LoadCompactionMapChunkInProgress = false;
-    bool CompactionStateLoaded = false;
+    struct TCompactionStateLoadStatus
+    {
+        TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadQueue;
+        ui32 MaxLoadedInOrderRangeId = 0;
+        THashSet<ui32> LoadedOutOfOrderRangeIds;
+        bool LoadChunkInProgress = false;
+        bool Finished = false;
+    } CompactionStateLoadStatus;
 
 public:
     TIndexTabletActor(
