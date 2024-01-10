@@ -6,13 +6,13 @@ SRCS(
     collect_lister_metrics_task.go
     controller.go
     execution_context.go
-    headers.go
     lister.go
     registry.go
     runner.go
     runner_metrics.go
     scheduler.go
     scheduler_impl.go
+    storage_folder.go
     task.go
 )
 
@@ -28,6 +28,7 @@ RECURSE(
     common
     config
     errors
+    headers
     storage
 )
 
