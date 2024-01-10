@@ -260,6 +260,9 @@ message TDiskConfig
 
     // Contains checkpoint info if this disk is used as a checkpoint replica.
     TCheckpointReplica CheckpointReplica = 15;
+
+    // The timestamp of the start of migration (in microseconds).
+    uint64 MigrationStartTs = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

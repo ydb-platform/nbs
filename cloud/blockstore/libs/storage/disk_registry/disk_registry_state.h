@@ -52,6 +52,7 @@ struct TDiskInfo
         NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
     TString CheckpointId;
     TString SourceDiskId;
+    TInstant MigrationStartTs;
 
     ui64 GetBlocksCount() const;
     TString GetPoolName() const;
@@ -230,6 +231,8 @@ class TDiskRegistryState
         THashMap<TDeviceId, TDeviceId> MigrationTarget2Source;
         THashMap<TDeviceId, TDeviceId> MigrationSource2Target;
         TVector<TFinishedMigration> FinishedMigrations;
+
+        TInstant MigrationStartTs;
 
         bool AcquireInProgress = false;
         ui32 LogicalBlockSize = 0;
