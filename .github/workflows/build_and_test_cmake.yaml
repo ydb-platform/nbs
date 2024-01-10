@@ -61,5 +61,3 @@ jobs:
     - name: Run tests
       uses: ./.github/actions/test_cmake
       if: inputs.run_tests
-      with:
-        build_preset: ${{ inputs.build_preset }}

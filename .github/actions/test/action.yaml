@@ -27,7 +27,7 @@ inputs:
   bazel_remote_uri:
     required: false
     description: "bazel-remote endpoint"
-  test_cache_update:
+  cache_update:
     required: false
     description: "Use cache for tests"
 runs:
@@ -94,7 +94,7 @@ runs:
           extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
         fi
 
-        if [ "${{ inputs.test_cache_update }}" = "true" ]; then
+        if [ "${{ inputs.cache_update }}" = "true" ]; then
           extra_params+=(--cache-tests)
         fi
 

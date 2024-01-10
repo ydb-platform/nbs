@@ -8,7 +8,7 @@ inputs:
     required: true
     default: "relwithdebinfo"
     description: "relwithdebinfo, release-asan, release-tsan"
-  build_cache_update:
+  cache_update:
     required: true
     description: "bazel-remote upload results"
     default: "false"
@@ -61,7 +61,7 @@ runs:
           extra_params+=(--add-result .o)
         fi
 
-        if [ "${{ inputs.build_cache_update }}" == "true" ]; then
+        if [ "${{ inputs.cache_update }}" == "true" ]; then
           extra_params+=(--bazel-remote-put --dist-cache-evict-bins)
         fi
 
