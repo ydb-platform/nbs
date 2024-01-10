@@ -97,3 +97,6 @@ test-results
 /library/python/runtime_py3/sitecustomize.pyx.cpp
 /library/python/runtime_py3/sitecustomize.reg3.cpp
 /library/python/symbols/module/library.python.symbols.module.syms.reg3.cpp
+
+# IDE files
+*.swp
