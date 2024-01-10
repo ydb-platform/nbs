@@ -152,4 +152,12 @@ Execute command /usr/bin/eternal-load --config-type generated --blocksize 104857
 Input=
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*test.txt"
 SSH 1:1:1:1:1:1:1:1: mkdir -p /test && { sudo umount /test || true; } && mount -t virtiofs nfs /test && touch /test/test.txt
-Execute command /usr/bin/eternal-load --config-type generated --blocksize 1048576 --file /test/test.txt --filesize 256 --iodepth 1 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1
+Execute command /usr/bin/eternal-load --config-type generated --blocksize 1048576 --file /test/test.txt --filesize 256 --iodepth 1 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+Input=
+SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*test.txt"
+SSH 1:1:1:1:1:1:1:1: mkdir -p /test && { sudo umount /test || true; } && mount -t virtiofs nfs /test && touch /test/test.txt
+Execute command /usr/bin/eternal-load --config-type generated --blocksize 4096 --file /test/test.txt --filesize 256 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+Input=
+SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*test.txt"
+SSH 1:1:1:1:1:1:1:1: mkdir -p /test && { sudo umount /test || true; } && mount -t virtiofs nfs /test && touch /test/test.txt
+Execute command /usr/bin/eternal-load --config-type generated --blocksize 4096 --file /test/test.txt --filesize 256 --iodepth 1 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1
