@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_metrics "github.com/ydb-platform/ydb-go-sdk/v3/metrics"
 	ydb_trace "github.com/ydb-platform/ydb-go-sdk/v3/trace"

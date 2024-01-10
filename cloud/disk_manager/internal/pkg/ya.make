@@ -5,7 +5,6 @@ RECURSE(
     clients
     common
     dataplane
-    errors
     facade
     headers
     logging

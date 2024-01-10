@@ -13,9 +13,9 @@ import (
 	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
