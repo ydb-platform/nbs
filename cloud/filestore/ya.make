@@ -1,5 +1,4 @@
 RECURSE(
-RECURSE(
     apps
     bin
     config
