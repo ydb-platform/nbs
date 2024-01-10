@@ -521,8 +521,6 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     TInstant now,
     NProto::TReadDeviceBlocksRequest request)
 {
-    Y_UNUSED(now);
-
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
