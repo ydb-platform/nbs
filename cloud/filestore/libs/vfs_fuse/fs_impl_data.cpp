@@ -72,11 +72,13 @@ void TFileSystem::Create(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {parent});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyCreate(
                     *callContext,
+                    error,
                     req,
                     response.GetHandle(),
                     response.GetNodeAttr());
@@ -111,10 +113,7 @@ void TFileSystem::Open(
                 fuse_file_info fi = {};
                 fi.fh = response.GetHandle();
 
-                self->ReplyOpen(
-                    *callContext,
-                    req,
-                    &fi);
+                self->ReplyOpen(*callContext, response.GetError(), req, &fi);
             }
         });
 }
@@ -138,10 +137,7 @@ void TFileSystem::Release(
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(
-                    *callContext,
-                    req,
-                    0);
+                self->ReplyError(*callContext, response.GetError(), req, 0);
             }
         });
 }
@@ -161,6 +157,10 @@ void TFileSystem::Read(
     if (size > Config->GetMaxBufferSize()) {
         ReplyError(
             *callContext,
+            MakeError(
+                E_FS_INVAL,
+                TStringBuilder() << "Read size " << size
+                    << " is greater than max buffer size " << Config->GetMaxBufferSize()),
             req,
             EINVAL);
         return;
@@ -185,6 +185,7 @@ void TFileSystem::Read(
                 const auto& buffer = response.GetBuffer();
                 self->ReplyBuf(
                     *callContext,
+                    response.GetError(),
                     req,
                     buffer.data(),
                     buffer.size());
@@ -228,13 +229,11 @@ void TFileSystem::Write(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {ino}, THandle {handle});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(
-                    *callContext,
-                    req,
-                    size);
+                self->ReplyWrite(*callContext, error, req, size);
             }
         });
 }
@@ -268,10 +267,7 @@ void TFileSystem::WriteBuf(
 #endif
     );
     if (res < 0) {
-        ReplyError(
-            *callContext,
-            req,
-            res);
+        ReplyError(*callContext, MakeError(res), req, res);
         return;
     }
     Y_ABORT_UNLESS((size_t)res == size);
@@ -296,13 +292,11 @@ void TFileSystem::WriteBuf(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {ino}, THandle {handle});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(
-                    *callContext,
-                    req,
-                    size);
+                self->ReplyWrite(*callContext, error, req, size);
             }
         });
 }
@@ -323,8 +317,25 @@ void TFileSystem::FAllocate(
         << " size:" << length
         << " mode:" << FallocateFlagsToString(protoFlags));
 
-    if (offset < 0 || length <= 0) {
-        ReplyError(*callContext, req, EINVAL);
+    if (offset < 0) {
+        ReplyError(
+            *callContext,
+            MakeError(
+                E_FS_INVAL,
+                TStringBuilder() << "Incompatible offset " << offset),
+            req,
+            EINVAL);
+        return;
+    }
+
+    if (length <= 0) {
+        ReplyError(
+            *callContext,
+            MakeError(
+                E_FS_INVAL,
+                TStringBuilder() << "Incompatible length " << length),
+            req,
+            EINVAL);
         return;
     }
 
@@ -350,13 +361,11 @@ void TFileSystem::FAllocate(
             }
 
             const auto& response = future.GetValue();
-            self->FSyncQueue.Dequeue(reqId, response.GetError(), TNodeId {ino}, THandle {handle});
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(
-                    *callContext,
-                    req,
-                    0);
+                self->ReplyError(*callContext, error, req, 0);
             }
         });
 }
@@ -396,7 +405,7 @@ void TFileSystem::Flush(
                 self->ProfileLog);
 
             if (self->CheckError(*callContext, req, response)) {
-                self->ReplyError(*callContext, req, 0);
+                self->ReplyError(*callContext, response, req, 0);
             }
         };
 
@@ -444,7 +453,7 @@ void TFileSystem::FSync(
                 self->ProfileLog);
 
             if (self->CheckError(*callContext, req, response)) {
-                self->ReplyError(*callContext, req, 0);
+                self->ReplyError(*callContext, response, req, 0);
             }
         };
 
@@ -507,7 +516,7 @@ void TFileSystem::FSyncDir(
                 self->ProfileLog);
 
             if (self->CheckError(*callContext, req, response)) {
-                self->ReplyError(*callContext, req, 0);
+                self->ReplyError(*callContext, response, req, 0);
             }
         };
 

@@ -65,7 +65,11 @@ void TFileSystem::HandleLock(
             break;
         }
         default: {
-            ReplyError(*callContext, req, EINVAL);
+            ReplyError(
+                *callContext,
+                ErrorIncompatibleLockType(range.LockType),
+                req,
+                EINVAL);
             break;
         }
     }
@@ -79,12 +83,21 @@ void TFileSystem::GetLock(
     struct flock* lock)
 {
     if (lock->l_whence != SEEK_SET) {
-        ReplyError(*callContext, req, EINVAL);
+        ReplyError(
+            *callContext,
+            ErrorIncompatibleLockWhence(lock->l_whence),
+            req,
+            EINVAL);
         return;
     }
+
     auto lockType = FcntlModesToLockType(lock->l_type);
     if (!lockType.has_value()) {
-        ReplyError(*callContext, req, EINVAL);
+        ReplyError(
+            *callContext,
+            ErrorIncompatibleLockType(lock->l_type),
+            req,
+            EINVAL);
         return;
     }
 
@@ -108,12 +121,20 @@ void TFileSystem::SetLock(
     bool sleep)
 {
     if (lock->l_whence != SEEK_SET) {
-        ReplyError(*callContext, req, EINVAL);
+        ReplyError(
+            *callContext,
+            ErrorIncompatibleLockWhence(lock->l_whence),
+            req,
+            EINVAL);
         return;
     }
     auto lockType = FcntlModesToLockType(lock->l_type);
     if (!lockType.has_value()) {
-        ReplyError(*callContext, req, EINVAL);
+        ReplyError(
+            *callContext,
+            ErrorIncompatibleLockType(lock->l_type),
+            req,
+            EINVAL);
         return;
     }
 
@@ -139,7 +160,11 @@ void TFileSystem::FLock(
     int realOp = op & (LOCK_EX | LOCK_SH | LOCK_UN);
     auto lockType = FlockModesToLockType(realOp);
     if (!lockType.has_value()) {
-        ReplyError(*callContext, req, EINVAL);
+        ReplyError(
+            *callContext,
+            ErrorIncompatibleLockType(realOp),
+            req,
+            EINVAL);
         return;
     }
 
@@ -182,14 +207,12 @@ void TFileSystem::AcquireLock(
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
             if (SUCCEEDED(error.GetCode())) {
-                self->ReplyError(
-                    *callContext,
-                    req,
-                    0);
+                self->ReplyError(*callContext, error, req, 0);
             } else if (error.GetCode() == E_FS_WOULDBLOCK && sleep) {
                 // locks should be acquired synchronously if asked so retry attempt
                 self->ScheduleAcquireLock(
                     std::move(callContext),
+                    error,
                     req,
                     ino,
                     range,
@@ -199,6 +222,7 @@ void TFileSystem::AcquireLock(
                 STORAGE_DEBUG("Failed to acquire lock: " << error.GetMessage());
                 self->ReplyError(
                     *callContext,
+                    error,
                     req,
                     ErrnoFromError(error.GetCode()));
             }
@@ -207,13 +231,14 @@ void TFileSystem::AcquireLock(
 
 void TFileSystem::ScheduleAcquireLock(
     TCallContextPtr callContext,
+    const NCloud::NProto::TError& error,
     fuse_req_t req,
     fuse_ino_t ino,
     const TRangeLock& range,
     bool sleep,
     NProto::ELockOrigin origin)
 {
-    RequestStats->RequestCompleted(Log, *callContext);
+    RequestStats->RequestCompleted(Log, *callContext, error);
     Scheduler->Schedule(
         Timer->Now() + Config->GetLockRetryTimeout(),
         [=, ptr = weak_from_this()] () {
@@ -250,7 +275,7 @@ void TFileSystem::ReleaseLock(
             if (auto self = ptr.lock();
                 CheckResponse(self, *callContext, req, response))
             {
-                self->ReplyError(*callContext, req, 0);
+                self->ReplyError(*callContext, response.GetError(), req, 0);
             }
         });
 }
@@ -280,13 +305,14 @@ void TFileSystem::TestLock(
                 struct flock lock = {
                     .l_type = F_UNLCK,
                 };
-                self->ReplyLock(*callContext, req, &lock);
+                self->ReplyLock(*callContext, error, req, &lock);
             } else if (error.GetCode() == E_FS_WOULDBLOCK) {
                 auto lock = MakeCFlock(response);
-                self->ReplyLock(*callContext, req, &lock);
+                self->ReplyLock(*callContext, error, req, &lock);
             } else {
                 self->ReplyError(
                     *callContext,
+                    error,
                     req,
                     ErrnoFromError(error.GetCode()));
             }

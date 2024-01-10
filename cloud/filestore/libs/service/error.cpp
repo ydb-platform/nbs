@@ -270,6 +270,22 @@ NProto::TError ErrorIncompatibleLocks()
             << "incompatible locks");
 }
 
+NProto::TError ErrorIncompatibleLockType(int type)
+{
+    return MakeError(
+        MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
+        TStringBuilder()
+            << "incompatible lock type " << type);
+}
+
+NProto::TError ErrorIncompatibleLockWhence(int whence)
+{
+    return MakeError(
+        MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
+        TStringBuilder()
+            << "incompatible whence " << whence);
+}
+
 NProto::TError ErrorIncompatibleLockOriginLocks()
 {
     return MakeError(

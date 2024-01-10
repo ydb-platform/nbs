@@ -90,7 +90,8 @@ public:
         TLog& Log,
         TCallContext& callContext,
         TDuration totalTime,
-        EDiagnosticsErrorKind errorKind) const
+        EDiagnosticsErrorKind errorKind,
+        const NCloud::NProto::TError& error) const
     {
         ELogPriority logPriority;
         TStringBuf message;
@@ -121,8 +122,7 @@ public:
             << ", postponed_time: " << FormatDuration(postponedTime)
             << ", backoff_time: " << FormatDuration(backoffTime)
             << ", size: " << FormatByteSize(callContext.RequestSize)
-            << ", error: " << FormatError(callContext.Error)
-            << ")");
+            << ", error: " << FormatError(error) << ")");
     }
 
     virtual TString LogHeader(const TCallContext& callcontext) const = 0;
@@ -194,9 +194,13 @@ public:
         callContext.SetRequestStartedCycles(cycles);
     }
 
-    void RequestCompleted(TCallContext& callContext) override
+    void RequestCompleted(
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) override
     {
-        RequestCompleted(callContext, GetDiagnosticsErrorKind(callContext.Error));
+        RequestCompleted(
+            callContext,
+            GetDiagnosticsErrorKind(error));
     }
 
     void RequestStarted(TLog& log, TCallContext& callContext) override
@@ -205,11 +209,15 @@ public:
         LogStarted(log, callContext);
     }
 
-    void RequestCompleted(TLog& log, TCallContext& callContext) override
+    void RequestCompleted(
+        TLog& log,
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) override
     {
-        const auto errorKind = GetDiagnosticsErrorKind(callContext.Error);
+        const auto errorKind =
+            GetDiagnosticsErrorKind(error);
         const auto requestTime = RequestCompleted(callContext, errorKind);
-        LogCompleted(log, callContext, requestTime, errorKind);
+        LogCompleted(log, callContext, requestTime, errorKind, error);
     }
 
     void ResponseSent(TCallContext& callContext) override
@@ -441,9 +449,13 @@ public:
         PredictionStarted(callContext);
     }
 
-    void RequestCompleted(TCallContext& callContext) override
+    void RequestCompleted(
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) override
     {
-        RequestCompleted(callContext, GetDiagnosticsErrorKind(callContext.Error));
+        RequestCompleted(
+            callContext,
+            GetDiagnosticsErrorKind(error));
 
         PredictionCompleted(callContext);
     }
@@ -456,11 +468,15 @@ public:
         PredictionStarted(callContext);
     }
 
-    void RequestCompleted(TLog& log, TCallContext& callContext) override
+    void RequestCompleted(
+        TLog& log,
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) override
     {
-        const auto errorKind = GetDiagnosticsErrorKind(callContext.Error);
+        const auto errorKind =
+            GetDiagnosticsErrorKind(error);
         const auto requestTime = RequestCompleted(callContext, errorKind);
-        LogCompleted(log, callContext, requestTime, errorKind);
+        LogCompleted(log, callContext, requestTime, errorKind, error);
 
         PredictionCompleted(callContext);
     }
@@ -567,9 +583,12 @@ public:
         Y_UNUSED(callContext);
     }
 
-    void RequestCompleted(TCallContext& callContext) override
+    void RequestCompleted(
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) override
     {
         Y_UNUSED(callContext);
+        Y_UNUSED(error);
     }
 
     void RequestStarted(TLog& log, TCallContext& callContext) override
@@ -578,10 +597,14 @@ public:
         Y_UNUSED(callContext);
     }
 
-    void RequestCompleted(TLog& log, TCallContext& callContext) override
+    void RequestCompleted(
+        TLog& log,
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) override
     {
         Y_UNUSED(log);
         Y_UNUSED(callContext);
+        Y_UNUSED(error);
     }
 
     void ResponseSent(TCallContext& callContext) override

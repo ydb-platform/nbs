@@ -50,7 +50,7 @@ NProto::TError ErrorInvalidHandle();
 NProto::TError ErrorInvalidHandle(ui64 handle);
 
 //
-// XAttriubutes
+// XAttributes.
 //
 
 NProto::TError ErrorAttributeDoesNotExist(const TString& name);
@@ -60,10 +60,12 @@ NProto::TError ErrorAttributeValueTooBig(const TString& name);
 NProto::TError ErrorInvalidAttribute(const TString& name);
 
 //
-// Locks
+// Locks.
 //
 
 NProto::TError ErrorIncompatibleLocks();
+NProto::TError ErrorIncompatibleLockType(int type);
+NProto::TError ErrorIncompatibleLockWhence(int whence);
 NProto::TError ErrorIncompatibleLockOriginLocks();
 NProto::TError ErrorIncompatibleFileOpenMode();
 

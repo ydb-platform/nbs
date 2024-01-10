@@ -11,7 +11,17 @@
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
-namespace NCloud::NFileStore {
+namespace NCloud {
+
+namespace NProto {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TError;
+
+}   // namespace NProto
+
+namespace NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,11 +29,16 @@ struct IRequestStats
 {
     virtual void RequestStarted(TCallContext& callContext) = 0;
 
-    virtual void RequestCompleted(TCallContext& callContext) = 0;
+    virtual void RequestCompleted(
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) = 0;
 
     virtual void RequestStarted(TLog& log, TCallContext& callContext) = 0;
 
-    virtual void RequestCompleted(TLog& log, TCallContext& callContext) = 0;
+    virtual void RequestCompleted(
+        TLog& log,
+        TCallContext& callContext,
+        const NCloud::NProto::TError& error) = 0;
 
     virtual void ResponseSent(TCallContext& callContext) = 0;
 
@@ -74,4 +89,6 @@ IRequestStatsRegistryPtr CreateRequestStatsRegistry(
 
 IRequestStatsRegistryPtr CreateRequestStatsRegistryStub();
 
-}   // namespace NCloud::NFileStore
+}   // namespace NFileStore
+
+}   // namespace NCloud
