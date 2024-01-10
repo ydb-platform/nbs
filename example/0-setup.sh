@@ -16,6 +16,7 @@ find_blockstore_all_dir() {
 BIN_DIR=`find_bin_dir`
 BLOCKSTORE_ALL_DIR=`find_blockstore_all_dir`
 PERSISTENT_TMP_DIR=${PERSISTENT_TMP_DIR:-$HOME/tmp/nbs}
+source ./prepare_binaries.sh || exit 1
 
 BUILD_FILES=" \
     contrib/ydb/apps/ydbd/ydbd \
@@ -35,6 +36,7 @@ for dir in $DATA_DIRS; do
     ln -svfT "$PERSISTENT_TMP_DIR/$dir" "$BIN_DIR/$dir"
 done
 
+<<<<<<< HEAD
 # check symlinks
 for bin in ydbd nbsd blockstore-nbd blockstore-client diskagentd
 do
@@ -44,6 +46,8 @@ do
   fi
 done
 
+=======
+>>>>>>> 53ebe7b85 (Updating build documentation)
 generate_cert() {
     local pass="pass123"
     local name="$1"

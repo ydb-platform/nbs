@@ -1,12 +1,17 @@
 # Setup for local debugging
 
 ## Build binaries from sources
-1. Build nbsd, blockstore-client, diskagentd, blockstore-nbd
+Build nbsd, blockstore-client, diskagentd, blockstore-nbd and ydbd (for more info check [build instruction](BUILD.md))
 ```bash
 ya make cloud/blockstore/buildall -r
 ```
 
 ## Prepare current directory
+Move to example directory
+```bash
+cd example
+```
+
 ```bash
 ./0-setup.sh
 ```
@@ -36,7 +41,7 @@ Run the following command in a new tab:
 ## Create and attach disk
 Run the following command in a new tab to create new disk and attach it to your machine via nbd:
 ```bash
-./5-create_and_attach_disk.sh
+./5-create_and_attach_disk.sh -k ssd -d /dev/nbd0
 ```
 The device may be overridden by ```-d``` option.
 Storage kind may by overridden by ```-k``` option, following values are supported:
@@ -44,6 +49,7 @@ Storage kind may by overridden by ```-k``` option, following values are supporte
 * **nonreplicated** - nonreplicated disk, ```id=nbr0```
 * **mirror2** - x2 mirror (based on nonreplicated disks), ```id=mrr0```
 * **mirror3** - x3 mirror (based on nonreplicated disks), ```id=mrr1```
+
 For example, nonreplicated disk could be attached with the following command:
 ```bash
 ./5-create_and_attach_disk.sh -k nonreplicated -d /dev/nbd1

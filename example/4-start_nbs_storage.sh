@@ -10,17 +10,21 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
+<<<<<<< HEAD
 CLIENT="blockstore-client"
 DAGENT="diskagentd"
 export LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/diskagentd))
+=======
+source ./prepare_binaries.sh || exit 1
+>>>>>>> 53ebe7b85 (Updating build documentation)
 
-$BIN_DIR/$CLIENT ExecuteAction --action DiskRegistrySetWritableState --verbose error --input-bytes '{"State":true}'
+blockstore-client ExecuteAction --action DiskRegistrySetWritableState --verbose error --input-bytes '{"State":true}'
 if [ $? -ne 0 ]; then
     echo "Can't set writable state for disk registry"
     exit 1
 fi
 
-$BIN_DIR/$CLIENT UpdateDiskRegistryConfig --verbose error --input $BIN_DIR/nbs/nbs-disk-registry.txt --proto
+blockstore-client UpdateDiskRegistryConfig --verbose error --input $BIN_DIR/nbs/nbs-disk-registry.txt --proto
 if [ $? -ne 0 ]; then
     echo "Disk registry config is not updated. Do you apply in second time? " \
       "Consider update version value or add IgnoreVersion to $BIN_DIR/nbs/nbs-disk-registry.txt"
@@ -30,7 +34,7 @@ fi
 start_nbs_agent() {
   if [ -z "$1" ]; then echo "Agent number is required"; exit 1; fi
 
-  $BIN_DIR/$DAGENT \
+  diskagentd \
     --domain             Root \
     --node-broker        localhost:$GRPC_PORT \
     --ic-port            $(( $IC_PORT + $1 * 100 )) \

@@ -5,6 +5,7 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
+source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
@@ -64,12 +65,10 @@ if [ -z "$socket" ] ; then
     exit 1
 fi
 
-CLIENT="./blockstore-client"
-
 # start endpoint for disk
 echo "starting endpoint ${socket} for disk ${diskid}"
-$BIN_DIR/$CLIENT stopendpoint --socket $socket
-$BIN_DIR/$CLIENT startendpoint --ipc-type vhost --socket $socket --disk-id $diskid --persistent
+blockstore-client stopendpoint --socket $socket
+blockstore-client startendpoint --ipc-type vhost --socket $socket --disk-id $diskid --persistent
 
 # run qemu with secondary disk
 qmp_port=8678
@@ -108,6 +107,7 @@ NBS_ARGS=" \
     "
 
 echo "Running qemu with disk $diskid"
+QEMU="/usr/bin/qemu-system-x86_64"
 $QEMU \
     $MACHINE_ARGS \
     $MEMORY_ARGS \

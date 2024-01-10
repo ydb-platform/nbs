@@ -3,9 +3,16 @@
 NODE=${NODE:-1}
 GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8765}
+<<<<<<< HEAD
 YDBD="./ydbd"
 export LD_LIBRARY_PATH=$(dirname $(readlink ydbd))
 $YDBD server \
+=======
+
+source ./prepare_binaries.sh || exit 1
+
+ydbd server \
+>>>>>>> 53ebe7b85 (Updating build documentation)
     --tcp \
     --node              $NODE \
     --grpc-port         $GRPC_PORT \
