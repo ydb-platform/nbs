@@ -40,6 +40,11 @@ void TIndexTabletActor::HandleCleanup(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
+    if (!CompactionStateLoadStatus.Finished) {
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+        return;
+    }
+
     if (!BlobIndexOpState.Start()) {
         replyError(
             MakeError(S_ALREADY, "cleanup/compaction is in progress"));

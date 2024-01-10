@@ -107,7 +107,6 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db.ReadNewBlobs(args.NewBlobs),
         db.ReadGarbageBlobs(args.GarbageBlobs),
         db.ReadCheckpoints(args.Checkpoints),
-        db.ReadCompactionMap(args.CompactionMap),
         db.ReadTruncateQueue(args.TruncateQueue),
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadSessionHistoryEntries(args.SessionHistory)
@@ -284,17 +283,16 @@ void TIndexTabletActor::CompleteTx_LoadState(
             << args.GarbageBlobs.size());
     LoadGarbage(args.NewBlobs, args.GarbageBlobs);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Initializing compaction map: "
-            << args.CompactionMap.size());
-    LoadCompactionMap(args.CompactionMap);
+    CompactionStateLoadStatus.LoadQueue.push_back({
+        0,
+        Config->GetLoadedCompactionRangesPerTx(),
+        false});
+    LoadNextCompactionMapChunkIfNeeded(ctx);
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
     ScheduleCleanupSessions(ctx);
     RestartCheckpointDestruction(ctx);
-    EnqueueFlushIfNeeded(ctx);
-    EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
     EnqueueTruncateIfNeeded(ctx);
 
@@ -306,6 +304,182 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Load state completed");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleLoadCompactionMapChunk(
+    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s LoadCompactionMapChunk started (first range: #%u, count: %u)",
+        LogTag.c_str(),
+        msg->FirstRangeId,
+        msg->RangeCount);
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    ExecuteTx<TLoadCompactionMapChunk>(
+        ctx,
+        std::move(requestInfo),
+        msg->FirstRangeId,
+        msg->RangeCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::LoadNextCompactionMapChunkIfNeeded(
+    const TActorContext& ctx)
+{
+    if (!CompactionStateLoadStatus.LoadChunkInProgress
+            && CompactionStateLoadStatus.LoadQueue)
+    {
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
+                CompactionStateLoadStatus.LoadQueue.front())
+        );
+
+        CompactionStateLoadStatus.LoadChunkInProgress = true;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
+    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s LoadCompactionMapChunk completed (%s)",
+        LogTag.c_str(),
+        FormatError(msg->GetError()).c_str());
+
+    auto& s = CompactionStateLoadStatus;
+
+    // Front of the queue contains the request that has just completed
+    TABLET_VERIFY(!!s.LoadQueue);
+    auto req = s.LoadQueue.front();
+
+    if (req.OutOfOrder) {
+        // It's an out-of-order request triggered by a write request
+        // It doesn't affect overall load progress but we should record the
+        // fact that this range is loaded to successfully process this WriteData
+        // request upon retry
+        s.LoadedOutOfOrderRangeIds.insert(msg->FirstRangeId);
+    } else {
+        // It's an in-order request - it affects overall load progress and
+        // triggers either the next in-order request or the completion of the
+        // whole compaction state load process
+        s.MaxLoadedInOrderRangeId =
+            Max(s.MaxLoadedInOrderRangeId, msg->LastRangeId);
+
+        if (msg->LastRangeId == 0) {
+            // Nothing was loaded - it means that there are no more ranges to
+            // load => we have already loaded everything
+            s.Finished = true;
+
+            // Background ops can start now - all the required data is in memory
+            EnqueueFlushIfNeeded(ctx);
+            EnqueueBlobIndexOpIfNeeded(ctx);
+
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u",
+                LogTag.c_str(),
+                s.MaxLoadedInOrderRangeId);
+        } else {
+            // Triggering the next in-order load request
+            s.LoadQueue.push_back({
+                msg->LastRangeId + 1,
+                Config->GetLoadedCompactionRangesPerTx(),
+                false});
+
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+                "%s Compaction map chunk loaded, LastRangeId: %u",
+                LogTag.c_str(),
+                msg->LastRangeId);
+        }
+    }
+
+    // Removing the request that has just completed
+    s.LoadQueue.pop_front();
+    s.LoadChunkInProgress = false;
+
+    if (s.LoadQueue) {
+        // We still have more loading to do - sending the next load request
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
+                s.LoadQueue.front())
+        );
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TLoadCompactionMapChunk& args)
+{
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Loading compaction map chunk "
+            << args.FirstRangeId << ", " << args.RangeCount);
+
+    TIndexTabletDatabase db(tx.DB);
+
+    bool ready = db.ReadCompactionMap(
+        args.CompactionMap,
+        args.FirstRangeId,
+        args.RangeCount);
+
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Loading compaction map chunk "
+            << (ready ? "finished" : "restarted"));
+
+    return ready;
+}
+
+void TIndexTabletActor::ExecuteTx_LoadCompactionMapChunk(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TLoadCompactionMapChunk& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+}
+
+void TIndexTabletActor::CompleteTx_LoadCompactionMapChunk(
+    const TActorContext& ctx,
+    TTxIndexTablet::TLoadCompactionMapChunk& args)
+{
+    LoadCompactionMap(args.CompactionMap);
+    for (const auto& x: args.CompactionMap) {
+        args.LastRangeId = Max(args.LastRangeId, x.RangeId);
+    }
+
+    using TNotification =
+        TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted;
+    auto notification = std::make_unique<TNotification>(
+        args.FirstRangeId,
+        args.LastRangeId);
+    NCloud::Send(ctx, SelfId(), std::move(notification));
+
+    if (args.RequestInfo->Sender != ctx.SelfID) {
+        using TResponse =
+            TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse;
+        auto response = std::make_unique<TResponse>();
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

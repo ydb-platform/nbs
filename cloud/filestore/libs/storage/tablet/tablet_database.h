@@ -474,6 +474,10 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void WriteCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
     bool ReadCompactionMap(TVector<TCompactionRangeInfo>& compactionMap);
+    bool ReadCompactionMap(
+        TVector<TCompactionRangeInfo>& compactionMap,
+        ui32 firstRangeId,
+        ui32 rangeCount);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
