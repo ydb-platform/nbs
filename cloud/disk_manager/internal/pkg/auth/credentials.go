@@ -7,8 +7,8 @@ import (
 	"hash/crc32"
 
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	metadata "github.com/ydb-platform/ydb-go-yc-metadata"
 	"github.com/ydb-platform/ydb-go-yc-metadata/trace"
