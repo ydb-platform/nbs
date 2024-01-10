@@ -1,0 +1,1 @@
+CFLAGS=-ggdb -fno-omit-frame-pointer -DNALF_FORCE_MALLOC_FREE
