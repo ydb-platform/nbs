@@ -1,0 +1,8 @@
+{
+    "instance_ip": "2a02:6b8:bf00:1300:9cbe:8ff:feaa:b7d7",
+    "compute_node": "sas09-ct7-27.cloud.yandex.net",
+    "disk_id": "dcpo4jb6r5vu2c8fvqgp",
+    "disk_size": 320,
+    "checkpoint_id": "tmp-checkpoint-45",
+    "config_json": ""
+}
