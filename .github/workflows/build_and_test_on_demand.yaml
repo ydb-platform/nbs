@@ -90,10 +90,14 @@ on:
         type: string
         default: '32'
         description: "link threads count"
-      cache_update:
+      cache_update_build:
         type: boolean
         default: false
-        description: "Update build cache for build and cache"
+        description: "Update build cache in build stage"
+      cache_update_tests:
+        type: boolean
+        default: false
+        description: "Update build cache in test stage"
 
 jobs:
   provide-runner:
@@ -158,8 +162,8 @@ jobs:
       test_type: ${{ inputs.test_type }}
       link_threads: ${{ inputs.link_threads }}
       test_threads: ${{ inputs.test_threads }}
-      build_cache_update: ${{ inputs.cache_update }}
-      test_cache_update: ${{ inputs.cache_update }}
+      cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
+      cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
     secrets: inherit
 
   release-runner:
