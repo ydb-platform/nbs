@@ -7,7 +7,7 @@ runs:
       shell: bash
       run: |
         cd $TMP_DIR
-        ctest | tee -a "$TMP_DIR/ctest.log"
+        ctest  --rerun-failed --output-on-failure | tee -a "$TMP_DIR/ctest.log"
 
     - name: Sync logs to S3
       if: always()
