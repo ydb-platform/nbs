@@ -236,5 +236,7 @@ if __name__ == "__main__":
     generate_reports_local(["fio", "nfs_fio"], reports, cluster)
     generate_reports_monitoring(cluster, reports, sensors)
 
+    reports.sort(key=lambda x: x.get("status", "ok"))
+
     with open(os.path.join(output_dir, "degradation.json"), "w") as f:
         json.dump(reports, f, indent=4)
