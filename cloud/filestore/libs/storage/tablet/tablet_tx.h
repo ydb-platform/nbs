@@ -62,6 +62,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
     xxx(InitSchema,                         __VA_ARGS__)                       \
     xxx(LoadState,                          __VA_ARGS__)                       \
+    xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
                                                                                \
     xxx(CreateSession,                      __VA_ARGS__)                       \
@@ -262,7 +263,6 @@ struct TTxIndexTablet
         TVector<TPartialBlobId> NewBlobs;
         TVector<TPartialBlobId> GarbageBlobs;
         TVector<NProto::TCheckpoint> Checkpoints;
-        TVector<TCompactionRangeInfo> CompactionMap;
         TVector<NProto::TDupCacheEntry> DupCache;
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
@@ -284,11 +284,40 @@ struct TTxIndexTablet
             NewBlobs.clear();
             GarbageBlobs.clear();
             Checkpoints.clear();
-            CompactionMap.clear();
             DupCache.clear();
             TruncateQueue.clear();
             StorageConfig.Clear();
             SessionHistory.clear();
+        }
+    };
+
+    //
+    // LoadCompactionMapChunk
+    //
+
+    struct TLoadCompactionMapChunk
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 FirstRangeId;
+        const ui32 RangeCount;
+
+        TVector<TCompactionRangeInfo> CompactionMap;
+        ui32 LastRangeId = 0;
+
+        TLoadCompactionMapChunk(
+                TRequestInfoPtr requestInfo,
+                ui32 firstRangeId,
+                ui32 rangeCount)
+            : RequestInfo(std::move(requestInfo))
+            , FirstRangeId(firstRangeId)
+            , RangeCount(rangeCount)
+        {
+        }
+
+        void Clear()
+        {
+            CompactionMap.clear();
+            LastRangeId = 0;
         }
     };
 

@@ -394,9 +394,7 @@ void TIndexTabletActor::HandleCompaction(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [&] (
-        const NProto::TError& error)
-    {
+    auto replyError = [&] (const NProto::TError& error) {
         if (ev->Sender == ctx.SelfID) {
             // nothing to do though should not happen
             return;
@@ -411,6 +409,11 @@ void TIndexTabletActor::HandleCompaction(
             std::make_unique<TEvIndexTabletPrivate::TEvCompactionResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
+
+    if (!CompactionStateLoadStatus.Finished) {
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+        return;
+    }
 
     if (!BlobIndexOpState.Start()) {
         replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
