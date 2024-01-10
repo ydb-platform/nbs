@@ -116,7 +116,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
       if: github.event.pull_request.head.sha == ''
-
+    - name: Configure NCP
+      uses: ./.github/actions/ncp
+      with:
+        runner_label: dp7329odurnhplpf5ff0
+        sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
     - name: Prepare VM
       uses: ./.github/actions/prepare
     - name: Prepare s3cmd

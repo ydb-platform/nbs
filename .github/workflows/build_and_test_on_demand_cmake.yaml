@@ -60,6 +60,8 @@ jobs:
           subnet-id: f8uh0ml4rhb45nde9p75
           filesystem-id: dp753obk26e8ldmptot1
           filesystem-name: ccache
+          user: github
+          ssh-public-key: ${{ secrets.RUNNER_PUBLIC_KEY }}
 
   prepare-vm:
     name: Prepare runner
@@ -74,6 +76,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         if: github.event.pull_request.head.sha == ''
+      - name: Configure NCP
+        uses: ./.github/actions/ncp
+        with:
+          runner_label: ${{ needs.provide-runner.outputs.label }}
+          sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
       - name: Prepare VM
         uses: ./.github/actions/prepare
 

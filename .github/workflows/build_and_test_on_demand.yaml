@@ -41,14 +41,10 @@ on:
           - py3test,py2test,pytest,flake8,black,py2_flake8
           - go_test,gofmt
           - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt
-      test_threads:
+      sleep_after_tests:
         type: string
-        default: "64"
-        description: "Test threads count"
-      link_threads:
-        type: string
-        default: "16"
-        description: "link threads count"
+        default: "0"
+        description: "Amount of seconds to sleep after tests"
       run_build:
         type: boolean
         default: true
@@ -82,14 +78,10 @@ on:
       run_tests:
         type: boolean
         default: true
-      test_threads:
+      sleep_after_tests:
         type: string
-        default: '64'
-        description: "Test threads count"
-      link_threads:
-        type: string
-        default: '32'
-        description: "link threads count"
+        default: "0"
+        description: "Amount of seconds to sleep after tests"
       cache_update_build:
         type: boolean
         default: false
@@ -127,6 +119,8 @@ jobs:
           subnet-id: f8uh0ml4rhb45nde9p75
           filesystem-id: dp753obk26e8ldmptot1
           filesystem-name: ccache
+          user: github
+          ssh-public-key: ${{ secrets.RUNNER_PUBLIC_KEY }}
 
   prepare-vm:
     name: Prepare runner
@@ -141,6 +135,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         if: github.event.pull_request.head.sha == ''
+      - name: Configure NCP
+        uses: ./.github/actions/ncp
+        with:
+          runner_label: ${{ needs.provide-runner.outputs.label }}
+          sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
       - name: Prepare VM
         uses: ./.github/actions/prepare
 
@@ -160,8 +159,9 @@ jobs:
       run_tests: ${{ inputs.run_tests }}
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
-      link_threads: ${{ inputs.link_threads }}
-      test_threads: ${{ inputs.test_threads }}
+      sleep_after_tests: ${{ inputs.sleep_after_tests }}
+      link_threads: 32
+      test_threads: 64
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
     secrets: inherit
