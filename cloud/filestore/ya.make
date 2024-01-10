@@ -1,5 +1,7 @@
 RECURSE(
+RECURSE(
     apps
+    bin
     config
     libs
     private
