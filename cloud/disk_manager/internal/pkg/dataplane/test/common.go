@@ -3,9 +3,11 @@ package test
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 
+	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
@@ -40,4 +42,44 @@ func NewS3Key(config *snapshot_config.SnapshotConfig, chunkID string) string {
 		config.GetChunkBlobsS3KeyPrefix(),
 		chunkID,
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func FillTargetRange(
+	ctx context.Context,
+	target dataplane_common.Target,
+	chunkCount uint32,
+	chunkSize uint32,
+) ([]dataplane_common.Chunk, error) {
+
+	rand.Seed(time.Now().UnixNano())
+
+	chunks := make([]dataplane_common.Chunk, 0)
+	for i := uint32(0); i < chunkCount; i++ {
+		dice := rand.Intn(3)
+
+		switch dice {
+		case 0:
+			data := make([]byte, chunkSize)
+			rand.Read(data)
+			chunk := dataplane_common.Chunk{Index: i, Data: data}
+			chunks = append(chunks, chunk)
+		case 1:
+			// Zero chunk.
+			chunk := dataplane_common.Chunk{Index: i, Zero: true}
+			chunks = append(chunks, chunk)
+		}
+	}
+
+	logging.Info(ctx, "Filling resource...")
+
+	for _, chunk := range chunks {
+		err := target.Write(ctx, chunk)
+		if err != nil {
+			return chunks, err
+		}
+	}
+
+	return chunks, nil
 }
