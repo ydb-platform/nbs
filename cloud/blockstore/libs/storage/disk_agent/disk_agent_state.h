@@ -48,6 +48,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
     ILoggingServicePtr Logging;
+    TLog Log;
     NSpdk::ISpdkTargetPtr SpdkTarget;
     NRdma::IServerPtr RdmaServer;
     IRdmaTargetPtr RdmaTarget;
@@ -156,6 +157,9 @@ private:
     NThreading::TFuture<TInitializeResult> InitAioStorage();
 
     void InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig);
+
+    void UpdateSessionCache(TDeviceClient& client) const;
+    void RestoreSessions(TDeviceClient& client) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

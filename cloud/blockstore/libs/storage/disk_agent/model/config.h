@@ -99,6 +99,7 @@ public:
     }
 
     TString GetCachedConfigPath() const;
+    TString GetCachedSessionsPath() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

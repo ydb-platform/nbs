@@ -120,14 +120,16 @@ class DiskAgent(Daemon):
     def counters(self):
         return _get_counters(self.mon_port)
 
-    def wait_for_registration(self, delay_sec=1, max_retry_number=None):
+    def is_registered(self):
         url = f"http://localhost:{self.mon_port}/blockstore/disk_agent"
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        return r.text.find('Registered') != -1
 
+    def wait_for_registration(self, delay_sec=1, max_retry_number=None):
         i = 0
         while True:
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            if r.text.find('Registered') != -1:
+            if self.is_registered():
                 return True
             i += 1
             if max_retry_number is not None and i >= max_retry_number:
@@ -137,12 +139,12 @@ class DiskAgent(Daemon):
         return False
 
 
-def start_nbs(config: NbsConfigurator):
+def start_nbs(config: NbsConfigurator, name='nbs-server'):
     exe_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
 
     cwd = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
-        sub_folder="nbs-server"
+        sub_folder=f"{name}-{config.ic_port}"
     )
     ensure_path_exists(cwd)
 
@@ -168,12 +170,12 @@ def start_nbs(config: NbsConfigurator):
     return nbs
 
 
-def start_disk_agent(config: NbsConfigurator):
+def start_disk_agent(config: NbsConfigurator, name='disk-agent'):
     exe_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
 
     cwd = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
-        sub_folder="nbs-disk-agent"
+        sub_folder=f"{name}-{config.ic_port}"
     )
     ensure_path_exists(cwd)
 
