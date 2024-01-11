@@ -53,7 +53,15 @@ func (m *s3Metrics) StatCall(
 		}
 
 		if *err != nil {
-			logging.Error(ctx, "S3 call with name %v ended with error %v", name, *err)
+			logging.Error(
+				ctx,
+				"S3 call with name %v ended with error %v, bucket %v, key %v",
+				name,
+				*err,
+				bucket,
+				key,
+			)
+			
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
