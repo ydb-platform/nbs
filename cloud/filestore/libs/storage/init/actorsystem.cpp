@@ -336,6 +336,7 @@ void TActorSystem::Init()
     servicesMask.EnableLocalService = 0;    // configured manually
     servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableSchemeBoardMonitoring = 1;
+    servicesMask.EnableConfigsDispatcher = 1;
 
     if (Args.AppConfig->HasAuthConfig()) {
         servicesMask.EnableSecurityServices = 1;
