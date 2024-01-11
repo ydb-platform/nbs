@@ -122,10 +122,17 @@ func (c *S3Client) GetObject(
 	key string,
 ) (o S3Object, err error) {
 
+	logging.Debug(
+		ctx,
+		"getting object from s3, bucket %v, key %v",
+		bucket,
+		key,
+	)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "GetObject")(&err)
+	defer c.metrics.StatCall(ctx, "GetObject", bucket, key)(&err)
 
 	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
 		Bucket: &bucket,
@@ -165,10 +172,17 @@ func (c *S3Client) PutObject(
 	object S3Object,
 ) (err error) {
 
+	logging.Debug(
+		ctx,
+		"putting object getting object from s3, bucket %v, key %v",
+		bucket,
+		key,
+	)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "PutObject")(&err)
+	defer c.metrics.StatCall(ctx, "PutObject", bucket, key)(&err)
 
 	_, err = c.s3.PutObjectWithContext(ctx, &aws_s3.PutObjectInput{
 		Bucket:          &bucket,
@@ -197,10 +211,17 @@ func (c *S3Client) DeleteObject(
 	key string,
 ) (err error) {
 
+	logging.Debug(
+		ctx,
+		"deleting object from s3, bucket %v, key %v",
+		bucket,
+		key,
+	)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "DeleteObject")(&err)
+	defer c.metrics.StatCall(ctx, "DeleteObject", bucket, key)(&err)
 
 	_, err = c.s3.DeleteObjectWithContext(ctx, &aws_s3.DeleteObjectInput{
 		Bucket: &bucket,

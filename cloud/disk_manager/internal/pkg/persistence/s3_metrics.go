@@ -29,6 +29,8 @@ type s3Metrics struct {
 func (m *s3Metrics) StatCall(
 	ctx context.Context,
 	name string,
+	bucket string,
+	key string,
 ) func(err *error) {
 
 	start := time.Now()
@@ -51,6 +53,7 @@ func (m *s3Metrics) StatCall(
 		}
 
 		if *err != nil {
+			logging.Error(ctx, "S3 call with name %v ended with error %v", name, *err)
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
@@ -59,6 +62,14 @@ func (m *s3Metrics) StatCall(
 			}
 			return
 		}
+
+		logging.Debug(
+			ctx,
+			"S3 call with name %v ended, bucket %v, key %v",
+			name,
+			bucket,
+			key,
+		)
 
 		timeHistogram.RecordDuration(time.Since(start))
 		successCounter.Inc()
