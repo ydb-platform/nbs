@@ -185,17 +185,43 @@ private:
     NProto::TError AddEndpointToStorage(
         const NProto::TStartEndpointRequest& request)
     {
-        auto strOrError = SerializeEndpoint(request);
-        if (HasError(strOrError)) {
-            return strOrError.GetError();
+        auto [data, error] = SerializeEndpoint(request);
+        if (HasError(error)) {
+            return error;
         }
 
-        auto idOrError = Storage->AddEndpoint(strOrError.GetResult());
-        if (HasError(idOrError)) {
-            return idOrError.GetError();
+        error = Storage->AddEndpoint(data).GetError();
+        if (HasError(error)) {
+            return error;
         }
 
         return {};
+    }
+
+    NProto::TError RemoveEndpointFromStorage(
+        const NProto::TStopEndpointRequest& request)
+    {
+        const auto& socketPath = request.GetSocketPath();
+
+        auto [ids, error] = Storage->GetEndpointIds();
+        if (HasError(error)) {
+            return error;
+        }
+
+        for (auto id: ids) {
+            auto [data, error] = Storage->GetEndpoint(id);
+            if (HasError(error)) {
+                continue;
+            }
+
+            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(data);
+            if (req && req->GetEndpoint().GetSocketPath() == socketPath) {
+                return Storage->RemoveEndpoint(id);
+            }
+        }
+
+        return MakeError(E_INVALID_STATE, TStringBuilder()
+            << "Couldn't find endpoint " << socketPath);
     }
 };
 
@@ -324,6 +350,14 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     AddStoppingSocket(socketPath, future);
     Executor->WaitFor(future);
     RemoveStoppingSocket(socketPath);
+
+    const auto& response = future.GetValue();
+    if (SUCCEEDED(response.GetError().GetCode())) {
+        auto config = it->second.Config;
+        if (config.GetPersistent()) {
+            RemoveEndpointFromStorage(request);
+        }
+    }
 
     Endpoints.erase(it);
     return future.GetValue();
