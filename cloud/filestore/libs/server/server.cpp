@@ -147,6 +147,7 @@ template <typename TRequest>
 bool IsServiceControlPlaneRequest()
 {
     FILESTORE_SERVICE_METHODS(FILESTORE_REQUEST_CHECK);
+    FILESTORE_ENDPOINT_METHODS(FILESTORE_REQUEST_CHECK);
     return false;
 }
 
