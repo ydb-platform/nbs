@@ -101,7 +101,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     def _create_ext4_filesystem(self, block_device, instance) -> None:
         _logger.info(f'Creating ext4 filesystem on {block_device}')
-        self._execute_ssh_cmd(f"mkfs.ext4 {block_device}", instance.ip)
+        self._execute_ssh_cmd(f"mkfs.ext4 -F {block_device}", instance.ip)
         _logger.info(f'Created ext4 filesystem on {block_device}')
 
     def _create_random_files_and_get_checksums(self, folder, instance) -> list[str]:
