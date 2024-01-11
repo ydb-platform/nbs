@@ -30,6 +30,10 @@ inputs:
   cache_update:
     required: false
     description: "Use cache for tests"
+  sleep_after_tests:
+    required: false
+    default: "0"
+    description: "Number of seconds to sleep after ya test launch"
 runs:
   using: composite
   steps:
@@ -115,6 +119,8 @@ runs:
               exit $RC
             fi
         )
+
+        sleep ${{ inputs.sleep_after_tests }}
 
     - name: postprocess junit report
       shell: bash
