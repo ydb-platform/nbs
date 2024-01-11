@@ -9,13 +9,8 @@ cluster="nemax"
 results_path="/var/www/build/results/degradation_tests/${cluster}/$(date +%Y-%m-%d)"
 mkdir -p "$results_path"
 
-monitoring_url="https://monitoring.nebius.ai/projects/yc.nbs.cloud/dashboards"
-
-dashboard_ids=(
-    "aolabmsm1t9ab9t930td"
-    "aolml7d7t6hepnc1hou4"
-    "aolphv9oqpkufahuo7kh"
-)
+monitoring_url=$(jq -r '.monitoring_url' "$scripts/degradation_config.json")
+dashboard_ids=($(jq -r '.dashboard_ids[]' "$scripts/degradation_config.json" | tr "\n" " "))
 
 $scripts/degradation_test.py "$results_path" "$cluster" \
 <($scripts/generate_metrics.py "$monitoring_url" "$cluster" "${dashboard_ids[@]}") \
