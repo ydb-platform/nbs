@@ -10,12 +10,13 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
-	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
+	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
+	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,10 +92,21 @@ func (c *S3Client) CreateBucket(
 	bucket string,
 ) (err error) {
 
+	logging.Debug(
+		ctx,
+		"creating bucket %v in s3",
+		bucket,
+	)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "CreateBucket")(&err)
+	defer c.metrics.StatCall(
+		ctx, 
+		"CreateBucket", 
+		bucket, 
+		"", // key
+	)(&err)
 
 	_, err = c.s3.CreateBucketWithContext(ctx, &aws_s3.CreateBucketInput{
 		Bucket: &bucket,
