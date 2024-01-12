@@ -9,7 +9,6 @@ RECURSE(
     headers
     monitoring
     performance
-    persistence
     resources
     services
     tasks

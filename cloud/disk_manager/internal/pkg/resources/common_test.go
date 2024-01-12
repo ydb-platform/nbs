@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
-	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

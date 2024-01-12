@@ -14,7 +14,7 @@ PEERDIR(
     cloud/disk_manager/internal/pkg/tasks/logging/config
     cloud/disk_manager/internal/pkg/monitoring/config
     cloud/disk_manager/internal/pkg/performance/config
-    cloud/disk_manager/internal/pkg/persistence/config
+    cloud/disk_manager/internal/pkg/tasks/persistence/config
     cloud/disk_manager/internal/pkg/services/disks/config
     cloud/disk_manager/internal/pkg/services/filesystem/config
     cloud/disk_manager/internal/pkg/services/images/config

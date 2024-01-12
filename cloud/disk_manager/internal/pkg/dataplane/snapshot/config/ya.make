@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/disk_manager/internal/pkg/persistence/config
+    cloud/disk_manager/internal/pkg/tasks/persistence/config
 )
 
 END()

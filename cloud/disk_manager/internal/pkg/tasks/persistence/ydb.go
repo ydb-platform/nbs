@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
+	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_credentials "github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
