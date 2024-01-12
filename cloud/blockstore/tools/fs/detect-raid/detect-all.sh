@@ -68,14 +68,6 @@ check_fs () {
     done
 }
 
-if [ ! -x $DUMPE2FS ]; then
-    download https://proxy.sandbox.yandex-team.ru/2524949840
-fi
-
-if [ ! -x $XFS_DB ]; then
-    download https://proxy.sandbox.yandex-team.ru/2524943180
-fi
-
 sudo modprobe nbd
 
 echo "Process disk $1 | $DEV_PATH"
