@@ -184,7 +184,7 @@ bool TTestExecutor::Run()
         Sleep(TDuration::Seconds(1));
     }
 
-    for (const auto& future: Futures) {
+    for (auto future: Futures) {
         future.GetValueSync();
     }
     AsyncIO.Stop();
@@ -327,7 +327,7 @@ void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
     }
 
     Futures[rangeIdx] = WaitAll(futures);
-    Futures[rangeIdx].Subscribe([rangeIdx, this] (auto) {
+    Futures[rangeIdx].Subscribe([=] (auto) {
         DoRandomRequest(rangeIdx);
     });
 }
