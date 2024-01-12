@@ -6,8 +6,8 @@ echo Generate server key:
 openssl genrsa -passout pass:$mypass -des3 -out server.key 4096
 
 echo Generate server signing request:
-openssl req -passin pass:$mypass -new -key server.key -out server1.csr -subj "/C=RU/L=SaintPetersburg/O=Yandex/OU=Infrastructure/CN=localhost"
-openssl req -passin pass:$mypass -new -key server.key -out server2.csr -subj "/C=RU/L=SaintPetersburg/O=Yandex/OU=Infrastructure/CN=$(hostname --fqdn)"
+openssl req -passin pass:$mypass -new -key server.key -out server1.csr -subj "/C=RU/L=MyCloud/O=MyCloud/OU=Infrastructure/CN=localhost"
+openssl req -passin pass:$mypass -new -key server.key -out server2.csr -subj "/C=RU/L=MyCloud/O=MyCloud/OU=Infrastructure/CN=$(hostname --fqdn)"
 
 echo Self-sign server certificate:
 openssl x509 -req -passin pass:$mypass -days 36500 -in server1.csr -signkey server.key -set_serial 01 -out server.crt -extfile <(printf "subjectAltName=DNS:localhost")
