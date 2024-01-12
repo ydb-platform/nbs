@@ -208,9 +208,11 @@ public:
         return std::make_unique<TEvIndexTablet::TEvWaitReadyRequest>();
     }
 
-    auto CreateGetStorageStatsRequest()
+    auto CreateGetStorageStatsRequest(ui32 compactionRangeCount = 0)
     {
-        return std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+        auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+        request->Record.SetCompactionRangeCountByCompactionScore(compactionRangeCount);
+        return request;
     }
 
     auto CreateGetFileSystemConfigRequest()

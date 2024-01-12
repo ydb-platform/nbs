@@ -328,6 +328,30 @@ void TIndexTabletActor::HandleGetStorageStats(
     stats->SetUsedCompactionRanges(cmStats.UsedRangesCount);
     stats->SetAllocatedCompactionRanges(cmStats.AllocatedRangesCount);
 
+    const auto& req = ev->Get()->Record;
+
+    if (req.GetCompactionRangeCountByCompactionScore()) {
+        const auto topRanges = GetTopRangesByCompactionScore(
+            req.GetCompactionRangeCountByCompactionScore());
+        for (const auto& r: topRanges) {
+            auto* out = stats->AddCompactionRangeStats();
+            out->SetRangeId(r.RangeId);
+            out->SetBlobCount(r.Stats.BlobsCount);
+            out->SetDeletionCount(r.Stats.DeletionsCount);
+        }
+    }
+
+    if (req.GetCompactionRangeCountByCleanupScore()) {
+        const auto topRanges = GetTopRangesByCleanupScore(
+            req.GetCompactionRangeCountByCleanupScore());
+        for (const auto& r: topRanges) {
+            auto* out = stats->AddCompactionRangeStats();
+            out->SetRangeId(r.RangeId);
+            out->SetBlobCount(r.Stats.BlobsCount);
+            out->SetDeletionCount(r.Stats.DeletionsCount);
+        }
+    }
+
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
