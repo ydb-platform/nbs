@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package logging;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging/config";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package config;
 
-import "cloud/disk_manager/internal/pkg/logging/config/config.proto";
+import "cloud/disk_manager/internal/pkg/tasks/logging/config/config.proto";
 import "cloud/disk_manager/internal/pkg/persistence/config/config.proto";
 import "cloud/disk_manager/internal/pkg/tasks/config/config.proto";
 

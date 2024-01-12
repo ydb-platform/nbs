@@ -7,7 +7,7 @@ import "cloud/disk_manager/internal/pkg/auth/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nbs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nfs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/config/config.proto";
-import "cloud/disk_manager/internal/pkg/logging/config/config.proto";
+import "cloud/disk_manager/internal/pkg/tasks/logging/config/config.proto";
 import "cloud/disk_manager/internal/pkg/monitoring/config/config.proto";
 import "cloud/disk_manager/internal/pkg/performance/config/config.proto";
 import "cloud/disk_manager/internal/pkg/persistence/config/config.proto";

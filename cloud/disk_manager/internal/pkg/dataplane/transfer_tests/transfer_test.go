@@ -20,11 +20,11 @@ import (
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 

@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

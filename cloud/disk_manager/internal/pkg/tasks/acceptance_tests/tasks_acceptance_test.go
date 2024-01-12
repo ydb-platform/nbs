@@ -10,7 +10,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	node_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/node/config"
@@ -18,6 +17,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/tasks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 )

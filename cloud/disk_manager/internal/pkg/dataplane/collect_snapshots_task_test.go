@@ -11,8 +11,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/mocks"
 	storage_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/mocks"
 )
 

@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
@@ -22,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 )
 

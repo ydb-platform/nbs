@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

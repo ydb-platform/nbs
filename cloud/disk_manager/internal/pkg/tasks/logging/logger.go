@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	logging_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging/config"
+	logging_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging/config"
 	"github.com/ydb-platform/nbs/library/go/core/log"
 )
 
