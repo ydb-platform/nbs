@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
 )
 

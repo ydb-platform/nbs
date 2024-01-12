@@ -29,6 +29,7 @@ RECURSE(
     config
     errors
     headers
+    logging
     storage
 )
 

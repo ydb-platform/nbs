@@ -1,4 +1,4 @@
-GO_TEST_FOR(cloud/disk_manager/internal/pkg/logging)
+GO_TEST_FOR(cloud/disk_manager/internal/pkg/tasks/logging)
 
 GO_XTEST_SRCS(
     journald_logger_test.go

@@ -3,7 +3,7 @@ package persistence
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	ydb_log "github.com/ydb-platform/ydb-go-sdk/v3/log"
 )
 

@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/disk_manager/internal/pkg/logging/config
+    cloud/disk_manager/internal/pkg/tasks/logging/config
 )
 
 END()
