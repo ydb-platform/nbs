@@ -268,6 +268,8 @@ _FS_CONFIGS = {
     # Fio canonical tests with 1MiB request
     'eternal-1tb-4kib-nfs-canonical': FsCreateConfig(1024, 4096, 'network-ssd'),
     'eternal-1tb-4kib-1io-nfs-canonical': FsCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-1tb-4kib-nfs-canonical-default': FsCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-1tb-4kib-1io-nfs-canonical-default': FsCreateConfig(1024, 4096, 'network-ssd'),
 
     # DBs
     'eternal-1tb-nfs-postgresql': FsCreateConfig(1024, 4096, 'network-ssd', 'nfs', '/DB'),
@@ -332,6 +334,8 @@ _LOAD_CONFIGS = {
     # Fio canonical tests with 1MiB request
     'eternal-1tb-4kib-nfs-canonical': LoadConfig(False, False, 32, 50, 256, 1048576),
     'eternal-1tb-4kib-1io-nfs-canonical': LoadConfig(False, False, 1, 50, 256, 1048576),
+    'eternal-1tb-4kib-nfs-canonical-default': LoadConfig(False, False, 32, 50, 256, 4096),
+    'eternal-1tb-4kib-1io-nfs-canonical-default': LoadConfig(False, False, 1, 50, 256, 4096),
 }
 
 _IPC_TYPE = {

@@ -15,6 +15,7 @@ def pytest_addoption(parser):
 
 @pytest.fixture
 def target_dir_path(pytestconfig):
+    tmp_dir = None
     try:
         tmp_dir = tempfile.mkdtemp(dir=get_nfs_mount_path())
         yield tmp_dir
