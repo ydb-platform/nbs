@@ -12,6 +12,7 @@ PEERDIR(
 
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/api
+    cloud/storage/core/libs/auth
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/kikimr
