@@ -54,7 +54,14 @@ git clone https://github.com/ydb-platform/nbs.git
 cd nbs
 ```
 
-## Build
+## Build - cmake + ninja
+```bash
+mkdir ../../build && cd ../../build
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../blockstore/nbs/clang.toolchain ../blockstore/nbs
+ninja -j 8
+```
+
+## Build - ya make
 
 ### Build nbsd
 
