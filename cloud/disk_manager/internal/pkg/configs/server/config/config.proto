@@ -10,7 +10,7 @@ import "cloud/disk_manager/internal/pkg/dataplane/config/config.proto";
 import "cloud/disk_manager/internal/pkg/tasks/logging/config/config.proto";
 import "cloud/disk_manager/internal/pkg/monitoring/config/config.proto";
 import "cloud/disk_manager/internal/pkg/performance/config/config.proto";
-import "cloud/disk_manager/internal/pkg/persistence/config/config.proto";
+import "cloud/disk_manager/internal/pkg/tasks/persistence/config/config.proto";
 import "cloud/disk_manager/internal/pkg/services/disks/config/config.proto";
 import "cloud/disk_manager/internal/pkg/services/filesystem/config/config.proto";
 import "cloud/disk_manager/internal/pkg/services/images/config/config.proto";
