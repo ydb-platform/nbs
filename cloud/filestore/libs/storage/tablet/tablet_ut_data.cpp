@@ -2819,12 +2819,46 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tablet.WriteData(handle1, 0, 2 * BlockGroupSize * block, 'x');
         }
 
-        {
-            auto response = tablet.GetStorageStats();
+        auto checkCompactionMap = [&] () {
+            auto response = tablet.GetStorageStats(10);
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetAllocatedCompactionRanges());
-        }
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.CompactionRangeStatsSize());
+            auto rangeToString = [] (const NProtoPrivate::TCompactionRangeStats& rs) {
+                return Sprintf(
+                    "r=%u b=%u d=%u",
+                    rs.GetRangeId(),
+                    rs.GetBlobCount(),
+                    rs.GetDeletionCount());
+            };
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1656356864 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1656356865 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=4283236352 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(2)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=4283236353 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(3)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944064 b=14 d=833",
+                rangeToString(stats.GetCompactionRangeStats(4)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944065 b=13 d=832",
+                rangeToString(stats.GetCompactionRangeStats(5)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=737148928 b=3 d=192",
+                rangeToString(stats.GetCompactionRangeStats(6)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=737148929 b=3 d=192",
+                rangeToString(stats.GetCompactionRangeStats(7)));
+        };
+
+        checkCompactionMap();
 
         tablet.RebootTablet();
         tablet.RecoverSession();
@@ -2843,12 +2877,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         UNIT_ASSERT_VALUES_EQUAL(7, loadChunkCount);
 
-        {
-            auto response = tablet.GetStorageStats();
-            const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedCompactionRanges());
-            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetAllocatedCompactionRanges());
-        }
+        checkCompactionMap();
 
         tablet.DestroyHandle(handle);
     }
