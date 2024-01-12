@@ -9,7 +9,6 @@
 #include <util/string/builder.h>
 #include <util/system/file.h>
 #include <util/system/info.h>
-#include <util/thread/lfstack.h>
 
 namespace NCloud::NBlockStore {
 
@@ -130,8 +129,6 @@ private:
     TFileHandle File;
     NAsyncIO::TAsyncIOService AsyncIO;
 
-    TLockFreeStack<ui16> RangesQueue;
-
     TVector<NThreading::TFuture<void>> Futures;
 
     TAtomic ShouldStop = 0;
@@ -142,6 +139,7 @@ private:
 private:
     void DoWriteRequest(ui16 rangeIdx);
     void DoReadRequest(ui16 rangeIdx);
+    void DoRandomRequest(ui16 rangeIdx);
 
     void OnResponse(TInstant startTs, ui16 rangeIdx, TStringBuf reqType);
 
@@ -162,7 +160,6 @@ public:
             Ranges.emplace_back(
                 rangeConfig,
                 rangeConfig.RequestBlockCount() * config.BlockSize());
-            RangesQueue.Enqueue(i);
         }
 
         SlowRequestThreshold = TDuration::Parse(config.SlowRequestThreshold());
@@ -180,19 +177,15 @@ bool TTestExecutor::Run()
 
     AsyncIO.Start();
     TVector<ui16> buf;
-    while (!AtomicGet(ShouldStop)) {
-        buf.clear();
-        RangesQueue.DequeueAllSingleConsumer(&buf);
-        for (auto rangeIdx: buf) {
-            if (RandomNumber(100u) >= ConfigHolder->GetConfig().WriteRate()) {
-                DoReadRequest(rangeIdx);
-            } else {
-                DoWriteRequest(rangeIdx);
-            }
-        }
+    for (ui16 rangeIdx = 0; rangeIdx < ConfigHolder->GetConfig().IoDepth(); ++rangeIdx) {
+        DoRandomRequest(rangeIdx);
     }
 
-    for (auto future: Futures) {
+    while (!AtomicGet(ShouldStop)) {
+        Sleep(TDuration::Seconds(1));
+    }
+
+    for (const auto& future: Futures) {
         future.GetValueSync();
     }
     AsyncIO.Stop();
@@ -248,7 +241,7 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
         }
 
         if (!expected) {
-            RangesQueue.Enqueue(rangeIdx);
+            DoRandomRequest(rangeIdx);
             return;
         }
 
@@ -278,7 +271,7 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
                 return;
             }
         }
-        RangesQueue.Enqueue(rangeIdx);
+        DoRandomRequest(rangeIdx);
     });
 
     Futures[rangeIdx] = future.IgnoreResult();
@@ -335,9 +328,20 @@ void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
     }
 
     Futures[rangeIdx] = WaitAll(futures);
-    Futures[rangeIdx].Subscribe([=] (auto) {
-        RangesQueue.Enqueue(rangeIdx);
+    Futures[rangeIdx].Subscribe([rangeIdx, this] (auto) {
+        DoRandomRequest(rangeIdx);
     });
+}
+
+// Enques a random read or write request with probabil
+void TTestExecutor::DoRandomRequest(ui16 rangeIdx) {
+    if (!AtomicGet(ShouldStop)) {
+        if (RandomNumber(100U) >= ConfigHolder->GetConfig().WriteRate()) {
+            DoReadRequest(rangeIdx);
+        } else {
+            DoWriteRequest(rangeIdx);
+        }
+    }
 }
 
 void TTestExecutor::Stop()
