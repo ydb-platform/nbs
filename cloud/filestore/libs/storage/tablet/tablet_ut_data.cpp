@@ -1,4 +1,3 @@
-#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "tablet.h"
 #include "tablet_schema.h"
 
