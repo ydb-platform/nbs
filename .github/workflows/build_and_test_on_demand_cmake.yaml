@@ -99,7 +99,7 @@ jobs:
         with:
           org: ydb-platform
           team: nbs
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
       - name: Prepare VM
         uses: ./.github/actions/prepare
 
