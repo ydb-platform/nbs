@@ -12,6 +12,7 @@ find_bin_dir() {
 BIN_DIR=`find_bin_dir`
 CLIENT="blockstore-client"
 DAGENT="diskagentd"
+export LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/diskagentd))
 
 $BIN_DIR/$CLIENT ExecuteAction --action DiskRegistrySetWritableState --verbose error --input-bytes '{"State":true}'
 if [ $? -ne 0 ]; then
