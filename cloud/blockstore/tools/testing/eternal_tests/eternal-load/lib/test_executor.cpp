@@ -176,7 +176,6 @@ bool TTestExecutor::Run()
     STORAGE_INFO("Running load");
 
     AsyncIO.Start();
-    TVector<ui16> buf;
     for (ui16 rangeIdx = 0; rangeIdx < ConfigHolder->GetConfig().IoDepth(); ++rangeIdx) {
         DoRandomRequest(rangeIdx);
     }
@@ -333,7 +332,6 @@ void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
     });
 }
 
-// Enques a random read or write request with probabil
 void TTestExecutor::DoRandomRequest(ui16 rangeIdx) {
     if (!AtomicGet(ShouldStop)) {
         if (RandomNumber(100U) >= ConfigHolder->GetConfig().WriteRate()) {
