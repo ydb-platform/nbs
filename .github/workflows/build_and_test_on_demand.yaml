@@ -160,8 +160,8 @@ jobs:
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
-      link_threads: 32
-      test_threads: 64
+      link_threads: 24
+      test_threads: 24
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
     secrets: inherit
