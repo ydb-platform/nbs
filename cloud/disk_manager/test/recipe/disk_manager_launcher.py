@@ -175,7 +175,7 @@ AuthConfig: <
     FolderId: "DiskManagerFolderId"
 >
 PersistenceConfig: <
-    Endpoint: "localhost:{kikimr_port}"
+    Endpoint: "localhost:{ydb_port}"
     Database: "/Root"
     RootPath: "disk_manager/recipe"
 >
@@ -254,7 +254,7 @@ AuthConfig: <
     MetadataUrl: "{metadata_url}"
 >
 PersistenceConfig: <
-    Endpoint: "localhost:{kikimr_port}"
+    Endpoint: "localhost:{ydb_port}"
     Database: "/Root"
     RootPath: "disk_manager/recipe"
 >
@@ -262,7 +262,7 @@ DataplaneConfig: <
     SnapshotConfig: <
         LegacyStorageFolder: "legacy_snapshot"
         PersistenceConfig: <
-            Endpoint: "localhost:{kikimr_port}"
+            Endpoint: "localhost:{ydb_port}"
             Database: "/Root"
             S3Config: <
                 Endpoint: "http://localhost:{s3_port}"
@@ -321,7 +321,7 @@ class DiskManagerLauncher:
     def __init__(
         self,
         hostname,
-        kikimr_port,
+        ydb_port,
         nbs_port,
         nbs2_port,
         nbs3_port,
@@ -374,7 +374,7 @@ class DiskManagerLauncher:
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
-                    kikimr_port=kikimr_port,
+                    ydb_port=ydb_port,
                     s3_port=s3_port,
                     s3_credentials_file=s3_credentials_file
                 ))
@@ -394,7 +394,7 @@ class DiskManagerLauncher:
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
                     access_service_port=access_service_port,
-                    kikimr_port=kikimr_port
+                    ydb_port=ydb_port
                 )
                 f.write(self.__server_config)
 

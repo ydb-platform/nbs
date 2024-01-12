@@ -10,7 +10,7 @@ SERVICE_NAME = "nfs"
 
 class NfsLauncher:
 
-    def __init__(self, kikimr_port, domains_txt, names_txt, nfs_binary_path):
+    def __init__(self, ydb_port, domains_txt, names_txt, nfs_binary_path):
         server_config = TServerAppConfig()
         server_config.LocalServiceConfig.CopyFrom(TLocalServiceConfig())
 
@@ -24,7 +24,7 @@ class NfsLauncher:
             # FIXME: use kikimr service, resolve tenant config issues
             service_type="local",
             verbose=True,
-            kikimr_port=kikimr_port)
+            kikimr_port=ydb_port)
         self.__nfs_configurator.generate_configs(domains_txt, names_txt)
 
         self.__nfs_server = NfsServer(configurator=self.__nfs_configurator)

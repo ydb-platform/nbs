@@ -21,20 +21,20 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262186  # 262144 + 42
 class NbsLauncher:
 
     def __init__(self,
-                 kikimr_port,
+                 ydb_port,
                  domains_txt,
                  dynamic_storage_pools,
                  root_certs_file,
                  cert_file,
                  cert_key_file,
-                 kikimr_binary_path,
+                 ydb_binary_path,
                  nbs_binary_path,
-                 kikimr_client,
+                 ydb_client,
                  compute_port=0,
                  kms_port=0):
-        self.__kikimr_port = kikimr_port
+        self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
-        self.__kikimr_binary_path = kikimr_binary_path
+        self.__ydb_binary_path = ydb_binary_path
         self.__nbs_binary_path = nbs_binary_path
 
         self.__port_manager = yatest_common.PortManager()
@@ -78,7 +78,7 @@ class NbsLauncher:
         )
         self.__devices[1].storage_pool_name = "rot"
 
-        setup_nonreplicated(kikimr_client, [self.__devices])
+        setup_nonreplicated(ydb_client, [self.__devices])
 
         instance_list_file = os.path.join(yatest_common.output_path(),
                                           "static_instances_%s.txt" % nbs_port)
@@ -102,7 +102,7 @@ class NbsLauncher:
             kms_config.Insecure = True
 
         self.__nbs = LocalNbs(
-            kikimr_port,
+            ydb_port,
             domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage_config_patch],
@@ -111,7 +111,7 @@ class NbsLauncher:
             dynamic_storage_pools=dynamic_storage_pools,
             nbs_secure_port=nbs_secure_port,
             nbs_port=nbs_port,
-            kikimr_binary_path=kikimr_binary_path,
+            kikimr_binary_path=ydb_binary_path,
             nbs_binary_path=nbs_binary_path,
             grpc_trace=False,
             compute_config=compute_config,
@@ -136,12 +136,12 @@ class NbsLauncher:
         self.__server_app_config.ServerConfig.NodeType = 'disk-agent'
         self.__storage_config_patch.DisableLocalService = True
         disk_agent = LocalNbs(
-            self.__kikimr_port,
+            self.__ydb_port,
             self.__domains_txt,
             server_app_config=self.__server_app_config,
             storage_config_patches=[self.__storage_config_patch],
             enable_tls=True,
-            kikimr_binary_path=self.__kikimr_binary_path,
+            kikimr_binary_path=self.__ydb_binary_path,
             nbs_binary_path=self.__nbs_binary_path,
             ping_path='/blockstore/disk_agent')
 

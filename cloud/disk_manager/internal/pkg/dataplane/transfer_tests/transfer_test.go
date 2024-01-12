@@ -226,7 +226,7 @@ func fillDisk(
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_KIKIMR_PORT"),
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
 	)
 	database := "/Root"
 	connectionTimeout := "10s"

@@ -1,6 +1,6 @@
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/services/pools/storage)
 
-SET(RECIPE_ARGS --kikimr-only)
+SET(RECIPE_ARGS --ydb-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 IF (RACE)
