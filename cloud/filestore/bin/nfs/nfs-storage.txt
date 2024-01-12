@@ -1,0 +1,2 @@
+SchemeShardDir: "/Root/NFS"
+

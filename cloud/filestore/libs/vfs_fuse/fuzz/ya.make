@@ -1,3 +1,5 @@
+FUZZ()
+
 TAG(
     ya:not_autocheck
     ya:manual
@@ -18,7 +20,7 @@ PEERDIR(
     cloud/filestore/libs/service_null
     cloud/filestore/libs/vfs_fuse/vhost
     cloud/filestore/libs/vhost
-
+    
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/vhost-client
