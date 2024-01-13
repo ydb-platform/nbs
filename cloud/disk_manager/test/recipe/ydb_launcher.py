@@ -3,12 +3,12 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 
 from cloud.disk_manager.test.common.processes import register_process, kill_processes
 
-SERVICE_NAME = "kikimr"
+SERVICE_NAME = "ydb"
 
 
-class KikimrLauncher:
+class YDBLauncher:
 
-    def __init__(self, kikimr_binary_path):
+    def __init__(self, ydb_binary_path):
         dynamic_storage_pools = [
             dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
@@ -16,7 +16,7 @@ class KikimrLauncher:
             dict(name="dynamic_storage_pool:4", kind="ssdencrypted", pdisk_user_kind=0),
         ]
         configurator = KikimrConfigGenerator(
-            binary_path=kikimr_binary_path,
+            binary_path=ydb_binary_path,
             erasure=None,
             has_cluster_uuid=False,
             static_pdisk_size=64 * 2**30,

@@ -13,7 +13,7 @@ def start(argv):
     for i in range(0, NODES_COUNT):
         nodes.append(NodeLauncher(
             "localhost{}".format(i),
-            os.getenv("DISK_MANAGER_RECIPE_KIKIMR_PORT"),
+            os.getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
             i
         ))
         nodes[-1].start()

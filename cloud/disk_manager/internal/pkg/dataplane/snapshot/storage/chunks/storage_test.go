@@ -79,7 +79,7 @@ func setupEnvironment(
 
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_KIKIMR_PORT"),
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
 	)
 	database := "/Root"
 	rootPath := "disk_manager"
