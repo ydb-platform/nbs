@@ -1,11 +1,5 @@
 .git
 
-# nbs binaries
-/cloud/blockstore/apps/client/blockstore-client
-/cloud/blockstore/apps/disk_agent/diskagentd
-/cloud/blockstore/apps/server/nbsd
-/cloud/blockstore/tools/nbd/blockstore-nbd
-
 # filestore binaries
 /cloud/filestore/apps/client/filestore-client
 /cloud/filestore/apps/server/filestore-server

@@ -1,0 +1,16 @@
+analytics/block-data-dump/block-data-dump
+analytics/dump-event-log/blockstore-dump-event-log
+analytics/event-log-disk-usage/blockstore-event-log-disk-usage
+analytics/event-log-stats/blockstore-event-log-stats
+analytics/event-log-stats/tests/tools-analytics-event-log-stats-tests
+analytics/visualize-event-log/blockstore-visualize-event-log
+debug/featureconfig/blockstore-debug-featureconfig
+debug/formatter/blockstore-debug-formatter
+debug/readbdev/blockstore-readbdev
+nbd/blockstore-nbd
+testing/chaos-monkey/chaos-monkey
+testing/chaos-monkey/tests/tests
+testing/eternal_tests/eternal-load/bin/eternal-load
+testing/eternal_tests/eternal-load/bin/tests/eternal-load-bin-tests
+testing/loadtest/bin/blockstore-loadtest
+testing/loadtest/lib/ut/cloud-blockstore-tools-testing-loadtest-lib-ut
