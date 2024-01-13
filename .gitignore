@@ -1,10 +1,5 @@
 .git
 
-# filestore binaries
-/cloud/filestore/apps/client/filestore-client
-/cloud/filestore/apps/server/filestore-server
-/cloud/filestore/apps/vhost/filestore-vhost
-
 # build system generated files
 cmake-build-debug-system/*
 cmake-build-debug/*
