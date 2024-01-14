@@ -31,12 +31,9 @@ func newContext() context.Context {
 }
 
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
-	endpoint := fmt.Sprintf(
-		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
-	)
-	database := "/Root"
-	rootPath := "disk_manager"
+	endpoint := os.Getenv("YDB_ENDPOINT")
+	database := os.Getenv("YDB_DATABASE")
+	rootPath := "tasks"
 
 	return persistence.NewYDBClient(
 		ctx,
