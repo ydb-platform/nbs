@@ -1,7 +1,6 @@
 GO_TEST()
 
-SET(RECIPE_ARGS --ydb-only)
-INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/recipe.inc)
 
