@@ -1,4 +1,7 @@
 # RDMA architecture
+## Read/Write sequence
+![Read/Write Sequence](diagrams/rw_sequence.svg)
+
 ## [RDMA library](../../cloud/blockstore/libs/rdma)
 
 RDMA library provides interface to communicate
@@ -9,10 +12,10 @@ and `Server`. It allows multiple Clients to connect to a single Server.
 
 Single client object (created using `NRdma::CreateClient`) can connect to multiple
 servers using `StartEndpoint`. After successful connection `Endpoint` can be
-used to allocate request (`AllocateRequest`) and sending it (`SendRequest`).
+used to allocate request (`AllocateRequest`) and send it (`SendRequest`).
 
 Each endpoint pre-allocates `QueueDepth` buffers for request/response
-metadata. Additional buffers for request/response data is allocated on demand
+metadata. Additional buffers for request/response data are allocated on demand
 using `SendBuffers` or `RecvBuffers` buffer pools kept for each endpoint.
 
 Calling `AllocateRequest` on endpoint will allocate enough buffers for the
@@ -75,12 +78,12 @@ connections. Once connection is established the rdma_target will handle
 `Read/WriteDeviceBlocksRequest`.
 
 For `WriteDeviceBlocksRequest`, it constructs `WriteBlocksRequest` using the
-same data buffers and writes data using `StorageAdaptor`.
+same data buffers and writes data using `StorageAdapter`.
 
-For `ReadDeviceBlocksRequest`, it uses `StorageAdaptor` to read data into
+For `ReadDeviceBlocksRequest`, it uses `StorageAdapter` to read data into
 `ReadBlocksRequest` and then converts response to `ReadDeviceBlocksRequest`.
 
-There is extra buffer copy inside the `StorageAdaptor`. We use aio for
-read/write and it require page_size aligned buffers. When we call
+There is extra buffer copy inside the `StorageAdapter`. We use aio for
+read/write and it requires page_size aligned buffers. When we call
 `device->Read/WriteBlocks`, the device will allocate aligned buffer, and copy
 data to/from it.
