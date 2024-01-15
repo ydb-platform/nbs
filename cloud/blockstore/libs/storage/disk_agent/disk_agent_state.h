@@ -107,6 +107,8 @@ public:
 
     TVector<NProto::TDeviceConfig> GetDevices() const;
 
+    ui32 GetDevicesCount() const;
+
     TDeviceClient::TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TDeviceClient::TSessionInfo> GetReaderSessions(
         const TString& uuid) const;
