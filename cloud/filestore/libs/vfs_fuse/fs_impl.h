@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "cache.h"
-#include "config.h"
 #include "fs.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -56,7 +55,7 @@ private:
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const IFileStorePtr Session;
-    const TFileSystemConfigPtr Config;
+    const NVFS::TFileSystemConfigPtr Config;
 
     TLog Log;
     IRequestStatsPtr RequestStats;
@@ -77,7 +76,7 @@ public:
         IProfileLogPtr profileLog,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        TFileSystemConfigPtr config,
+        NVFS::TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue);

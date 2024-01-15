@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include <cloud/filestore/config/filesystem.pb.h>
 #include <cloud/filestore/config/vfs.pb.h>
 
 #include <util/datetime/base.h>
@@ -43,5 +44,34 @@ public:
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileSystemConfig
+{
+private:
+    const NProto::TFileSystemConfig ProtoConfig;
+
+public:
+    TFileSystemConfig(const NProto::TFileSystemConfig& protoConfig)
+        : ProtoConfig(protoConfig)
+    {}
+
+    TString GetFileSystemId() const;
+    ui32 GetBlockSize() const;
+
+    TDuration GetLockRetryTimeout() const;
+    TDuration GetEntryTimeout() const;
+    TDuration GetAttrTimeout() const;
+
+    ui32 GetXAttrCacheLimit() const;
+    TDuration GetXAttrCacheTimeout() const;
+
+    ui32 GetMaxBufferSize() const;
+
+    void Dump(IOutputStream& out) const;
+    void DumpHtml(IOutputStream& out) const;
+};
+
 
 }   // namespace NCloud::NFileStore::NVFS

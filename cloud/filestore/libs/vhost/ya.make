@@ -14,6 +14,8 @@ PEERDIR(
     library/cpp/threading/future
 
     cloud/contrib/vhost
+
+    contrib/libs/linux-headers
 )
 
 

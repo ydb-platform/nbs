@@ -36,10 +36,41 @@ FILESTORE_VFS_CONFIG(FILESTORE_VFS_DECLARE_CONFIG)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FILESTORE_FILESYSTEM_CONFIG(xxx)                                       \
+    xxx(FileSystemId,           TString,        ""                            )\
+    xxx(BlockSize,              ui32,           4_KB                          )\
+                                                                               \
+    xxx(LockRetryTimeout,       TDuration,      TDuration::Seconds(1)         )\
+    xxx(EntryTimeout,           TDuration,      TDuration::Seconds(15)        )\
+    xxx(AttrTimeout,            TDuration,      TDuration::Seconds(15)        )\
+                                                                               \
+    xxx(XAttrCacheLimit,        ui32,           512                           )\
+    xxx(XAttrCacheTimeout,      TDuration,      TDuration::Seconds(15)        )\
+                                                                               \
+    xxx(MaxBufferSize,          ui32,           4_MB                          )\
+                                                                               \
+// FILESTORE_FUSE_CONFIG
+
+#define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
+    Y_DECLARE_UNUSED static const type TFileSystemConfigDefault##name = value; \
+// FILESTORE_FILESYSTEM_DECLARE_CONFIG
+
+FILESTORE_FILESYSTEM_CONFIG(FILESTORE_FILESYSTEM_DECLARE_CONFIG)
+
+#undef FILESTORE_FUSE_DECLARE_CONFIG
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
+{
+    return TDuration::MilliSeconds(value);
 }
 
 template <typename T>
@@ -70,10 +101,17 @@ type class::Get##name() const                                                  \
     FILESTORE_CONFIG_GETTER(TVFSConfig, name, type, ...)                       \
 // FILESTORE_VFS_GETTER
 
+#define FILESTORE_FS_GETTER(name, type, ...)                                   \
+    FILESTORE_CONFIG_GETTER(TFileSystemConfig, name, type, ...)                \
+// FILESTORE_FS_GETTER
+
+
 FILESTORE_VFS_CONFIG(FILESTORE_VFS_GETTER)
+FILESTORE_FILESYSTEM_CONFIG(FILESTORE_FS_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 #undef FILESTORE_VFS_GETTER
+#undef FILESTORE_FS_GETTER
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -86,6 +124,11 @@ FILESTORE_VFS_CONFIG(FILESTORE_VFS_GETTER)
 void TVFSConfig::Dump(IOutputStream& out) const
 {
     FILESTORE_VFS_CONFIG(FILESTORE_CONFIG_DUMP);
+}
+
+void TFileSystemConfig::Dump(IOutputStream& out) const
+{
+    FILESTORE_FILESYSTEM_CONFIG(FILESTORE_CONFIG_DUMP);
 }
 
 #undef FILESTORE_CONFIG_DUMP
@@ -105,6 +148,17 @@ void TVFSConfig::DumpHtml(IOutputStream& out) const
         TABLE_CLASS("table table-condensed") {
             TABLEBODY() {
                 FILESTORE_VFS_CONFIG(FILESTORE_CONFIG_DUMP);
+            }
+        }
+    }
+}
+
+void TFileSystemConfig::DumpHtml(IOutputStream& out) const
+{
+    HTML(out) {
+        TABLE_CLASS("table table-condensed") {
+            TABLEBODY() {
+                FILESTORE_FILESYSTEM_CONFIG(FILESTORE_CONFIG_DUMP);
             }
         }
     }

@@ -12,5 +12,6 @@ RECURSE(
     storage
     vfs
     vfs_fuse
+    vfs_vhost
     vhost
 )

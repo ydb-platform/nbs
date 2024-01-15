@@ -54,12 +54,27 @@ TString MessageSafeStr(const TString& str)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError ErrorIO()
+{
+    return MakeError(
+        E_IO,
+        {});
+}
+NProto::TError ErrorInvalidState()
+{
+    return MakeError(
+        E_INVALID_STATE,
+        {});
+}
+
 NProto::TError ErrorNotSupported(const TString& message)
 {
     return MakeError(
         MAKE_FILESTORE_ERROR(NProto::E_FS_NOTSUPP),
         message);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorInvalidNodeType(ui64 nodeId)
 {
@@ -68,8 +83,6 @@ NProto::TError ErrorInvalidNodeType(ui64 nodeId)
         TStringBuilder()
             << "invalid node type #" << nodeId);
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorInvalidParent(ui64 nodeId)
 {

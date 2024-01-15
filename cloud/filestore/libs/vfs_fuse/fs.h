@@ -463,7 +463,7 @@ IFileSystemPtr CreateFileSystem(
     IProfileLogPtr profileLog,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
-    TFileSystemConfigPtr config,
+    NVFS::TFileSystemConfigPtr config,
     IFileStorePtr session,
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue);

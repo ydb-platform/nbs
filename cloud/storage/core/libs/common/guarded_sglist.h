@@ -135,7 +135,7 @@ public:
     // It is necessary to get access for a minimum time.
     // Always check whether access has been obtained.
     // This is non-blocking call.
-    TGuard Acquire() const;
+    [[nodiscard]] TGuard Acquire() const;
 
     // Terminates memory access of all associated TGuardedSgList on other
     // threads.

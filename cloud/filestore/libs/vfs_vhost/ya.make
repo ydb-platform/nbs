@@ -1,15 +1,15 @@
+LIBRARY()
+
+OWNER(g:cloud-nbs)
+
 SRCS(
-    cache.cpp
+    context.cpp
     fs.cpp
     fs_impl.cpp
-    fs_impl_attr.cpp
-    fs_impl_data.cpp
-    fs_impl_list.cpp
-    fs_impl_lock.cpp
-    fs_impl_node.cpp
-    fs_impl_stat.cpp
-    log.cpp
+    fs_impl_init.cpp
     loop.cpp
+    vfs.cpp
+    vfs_vhost.cpp
 )
 
 PEERDIR(
@@ -19,9 +19,20 @@ PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/vfs
     cloud/filestore/libs/vfs/protos
+    cloud/filestore/libs/vhost
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    library/cpp/lwtrace
+    cloud/contrib/vhost
+
+    library/cpp/logger
+
+    contrib/libs/linux-headers
+)
+
+END()
+
+RECURSE_FOR_TESTS(
+    ut
 )
