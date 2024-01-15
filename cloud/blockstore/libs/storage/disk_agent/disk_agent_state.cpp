@@ -324,6 +324,11 @@ TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevices() const
     return devices;
 }
 
+ui32 TDiskAgentState::GetDevicesCount() const
+{
+    return Devices.size();
+}
+
 TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 {
     return InitializeSpdk(AgentConfig, Spdk, Allocator)
