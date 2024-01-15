@@ -1,0 +1,16 @@
+core/libs/aio/ut/cloud-storage-core-libs-aio-ut
+core/libs/auth/ut/cloud-storage-core-libs-auth-ut
+core/libs/common/bench/compressed_bitmap/compressed_bitmap
+core/libs/common/ut/cloud-storage-core-libs-common-ut
+core/libs/coroutine/ut/cloud-storage-core-libs-coroutine-ut
+core/libs/diagnostics/ut/cloud-storage-core-libs-diagnostics-ut
+core/libs/grpc/ut/cloud-storage-core-libs-grpc-ut
+core/libs/hive_proxy/ut/cloud-storage-core-libs-hive_proxy-ut
+core/libs/keyring/ut/bin/cloud-storage-core-libs-keyring-ut-bin
+core/libs/keyring/ut/cloud-storage-core-libs-keyring-ut
+core/libs/tablet/model/ut/cloud-storage-core-libs-tablet-model-ut
+core/libs/tablet/ut/cloud-storage-core-libs-tablet-ut
+core/libs/throttling/ut/cloud-storage-core-libs-throttling-ut
+core/libs/version/ut/cloud-storage-core-libs-version-ut
+core/tools/ops/config_generator/config_generator
+core/tools/ops/config_generator/gotest/gotest
