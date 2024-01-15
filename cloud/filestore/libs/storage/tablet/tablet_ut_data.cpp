@@ -2725,6 +2725,163 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(response->Blobs.size(), 1);
     }
 
+    TABLET_TEST(ShouldLoadCompactionMapInBackground)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        TAutoPtr<IEventHandle> loadChunk;
+        ui32 loadChunkCount = 0;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    ++loadChunkCount;
+
+                    if (loadChunkCount == 1) {
+                        loadChunk = event.Release();
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        tablet.SendWriteDataRequest(handle, 0, block, 'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(1, loadChunkCount);
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.SendCompactionRequest(rangeId);
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, loadChunkCount);
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+        tablet.SendWriteDataRequest(handle, 0, block, 'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+        tablet.SendCompactionRequest(rangeId);
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, loadChunkCount);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+        }
+
+        // write some more data
+        for (ui32 fileNo = 0; fileNo < 3 * NodeGroupSize; ++fileNo) {
+            auto id1 = CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, Sprintf("test%u", fileNo)));
+            auto handle1 = CreateHandle(tablet, id1);
+            tablet.WriteData(handle1, 0, 2 * BlockGroupSize * block, 'x');
+        }
+
+        auto checkCompactionMap = [&] () {
+            auto response = tablet.GetStorageStats(10);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetAllocatedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.CompactionRangeStatsSize());
+            auto rangeToString = [] (const NProtoPrivate::TCompactionRangeStats& rs) {
+                return Sprintf(
+                    "r=%u b=%u d=%u",
+                    rs.GetRangeId(),
+                    rs.GetBlobCount(),
+                    rs.GetDeletionCount());
+            };
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1656356864 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1656356865 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=4283236352 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(2)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=4283236353 b=16 d=1024",
+                rangeToString(stats.GetCompactionRangeStats(3)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944064 b=14 d=833",
+                rangeToString(stats.GetCompactionRangeStats(4)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944065 b=13 d=832",
+                rangeToString(stats.GetCompactionRangeStats(5)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=737148928 b=3 d=192",
+                rangeToString(stats.GetCompactionRangeStats(6)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=737148929 b=3 d=192",
+                rangeToString(stats.GetCompactionRangeStats(7)));
+        };
+
+        checkCompactionMap();
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        handle = CreateHandle(tablet, id);
+
+        {
+            TString expected;
+            expected.ReserveAndResize(block);
+            memset(expected.begin(), 'a', block);
+
+            auto response = tablet.ReadData(handle, 0, block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(7, loadChunkCount);
+
+        checkCompactionMap();
+
+        tablet.DestroyHandle(handle);
+    }
+
 #undef TABLET_TEST
 }
 

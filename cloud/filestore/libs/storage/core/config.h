@@ -70,6 +70,7 @@ public:
     ui32 GetCollectGarbageThreshold() const;
     ui32 GetFlushBytesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
+    ui32 GetLoadedCompactionRangesPerTx() const;
 
     ui32 GetFlushThresholdForBackpressure() const;
     ui32 GetCleanupThresholdForBackpressure() const;

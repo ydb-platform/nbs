@@ -86,6 +86,13 @@ message TDestroySessionResponse
 ////////////////////////////////////////////////////////////////////////////////
 // GetStorageStats request/response.
 
+message TCompactionRangeStats
+{
+    uint32 RangeId = 1;
+    uint32 BlobCount = 2;
+    uint32 DeletionCount = 3;
+}
+
 message TStorageStats
 {
     // index stats
@@ -115,6 +122,9 @@ message TStorageStats
 
     // tx stats
     uint64 TxDeleteGarbageRwCompleted = 2000;
+
+    // compaction map range stats
+    repeated TCompactionRangeStats CompactionRangeStats = 3000;
 }
 
 message TGetStorageStatsRequest
@@ -124,6 +134,11 @@ message TGetStorageStatsRequest
 
     // FileSystem identifier.
     string FileSystemId = 2;
+
+    // If nonzero, requests the stats for the top N ranges by compaction score.
+    uint32 CompactionRangeCountByCompactionScore = 3;
+    // The same but for cleanup score.
+    uint32 CompactionRangeCountByCleanupScore = 4;
 }
 
 message TGetStorageStatsResponse
@@ -203,7 +218,7 @@ message TGetStorageConfigFieldsRequest
 
     // FileSystem identifier.
     string FileSystemId = 2;
-    
+
     // Storage config fields to get values for.
     repeated string StorageConfigFields = 3;
 }

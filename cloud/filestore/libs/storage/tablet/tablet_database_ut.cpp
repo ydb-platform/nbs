@@ -344,6 +344,74 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT(!serviceConfig->HasSSDSystemChannelPoolKind());
         });
     }
+
+    Y_UNIT_TEST(ShouldStoreCompactionMap)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        using TEntries = TVector<TCompactionRangeInfo>;
+        TEntries entries = {
+            {1, {50, 100}},
+            {4, {42, 10}},
+            {32, {50, 200}},
+            {65, {1, 400}},
+            {110, {2, 333}},
+            {113, {7, 444}},
+            {4233, {150, 555}},
+            {5632, {1000, 3}},
+            {6000, {30, 11}},
+            {6001, {12, 15}},
+            {6002, {2, 20}},
+            {6005, {99, 7}},
+            {7000, {1000, 5000}},
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            for (const auto& entry: entries) {
+                db.WriteCompactionMap(
+                    entry.RangeId,
+                    entry.Stats.BlobsCount,
+                    entry.Stats.DeletionsCount);
+            }
+        });
+
+        auto toString = [] (const TEntries& v, ui32 i = 0, ui32 c = Max<ui32>()) {
+            TStringBuilder sb;
+            ui32 processed = 0;
+            while (i < v.size() && processed < c) {
+                if (processed) {
+                    sb << " ";
+                }
+                sb << v[i].RangeId
+                    << "," << v[i].Stats.BlobsCount
+                    << "," << v[i].Stats.DeletionsCount;
+                ++processed;
+                ++i;
+            }
+            return sb;
+        };
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TCompactionRangeInfo> chunk;
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, 5));
+            UNIT_ASSERT_VALUES_EQUAL(toString(entries, 0, 5), toString(chunk));
+
+            chunk.clear();
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 111, 5));
+            UNIT_ASSERT_VALUES_EQUAL(toString(entries, 5, 5), toString(chunk));
+
+            chunk.clear();
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 6002, 5));
+            UNIT_ASSERT_VALUES_EQUAL(toString(entries, 10, 5), toString(chunk));
+
+            chunk.clear();
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 7001, 5));
+            UNIT_ASSERT_VALUES_EQUAL("", toString(chunk));
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

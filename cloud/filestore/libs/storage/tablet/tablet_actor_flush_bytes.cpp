@@ -489,6 +489,16 @@ void TIndexTabletActor::HandleFlushBytes(
         }
     };
 
+    if (!CompactionStateLoadStatus.Finished) {
+        replyError(
+            ctx,
+            *ev,
+            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
+        );
+
+        return;
+    }
+
     if (!BlobIndexOpState.Start()) {
         if (FlushState.Start()) {
             FlushState.Complete();

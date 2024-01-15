@@ -1596,10 +1596,18 @@ void TIndexTabletDatabase::WriteCompactionMap(
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap)
 {
+    return ReadCompactionMap(compactionMap, 0, Max<ui32>());
+}
+
+bool TIndexTabletDatabase::ReadCompactionMap(
+    TVector<TCompactionRangeInfo>& compactionMap,
+    ui32 firstRangeId,
+    ui32 rangeCount)
+{
     using TTable = TIndexTabletSchema::CompactionMap;
 
     auto it = Table<TTable>()
-        .Range()
+        .GreaterOrEqual(firstRangeId)
         .Select();
 
     if (!it.IsReady()) {
@@ -1614,6 +1622,10 @@ bool TIndexTabletDatabase::ReadCompactionMap(
                 it.GetValue<TTable::DeletionsCount>(),
             }
         });
+
+        if (compactionMap.size() == rangeCount) {
+            break;
+        }
 
         if (!it.Next()) {
             return false;   // not ready
