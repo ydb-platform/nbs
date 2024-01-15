@@ -199,7 +199,7 @@ private:
                 << "Failed to open file " << filepath.GetPath().Quote());
         }
 
-        return Strip(TFileInput(file).ReadAll());
+        return TFileInput(file).ReadAll();
     }
 
     ui32 GetFreeId()

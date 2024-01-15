@@ -180,9 +180,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(request);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            diskId,
-            strOrError.GetResult());
+        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         {
@@ -334,9 +332,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(startRequest);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                diskId,
-                strOrError.GetResult());
+            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
@@ -411,12 +407,9 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         size_t wrongDataCount = 3;
         size_t wrongSocketCount = 4;
         size_t correctCount = 5;
-        size_t num = 0;
 
         for (size_t i = 0; i < wrongDataCount; ++i) {
-            auto keyOrError = mutableStorage->AddEndpoint(
-                TStringBuilder() << "endpoint" << ++num,
-                "invalid proto request data");
+            auto keyOrError = endpointStorage->AddEndpoint("invalid proto request data");
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -427,9 +420,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                TStringBuilder() << "endpoint" << ++num,
-                strOrError.GetResult());
+            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -440,9 +431,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                TStringBuilder() << "endpoint" << ++num,
-                strOrError.GetResult());
+            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -563,9 +552,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                TStringBuilder() << "endpoint" << i,
-                strOrError.GetResult());
+            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
         }
 
@@ -644,9 +631,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                request.GetDiskId(),
-                strOrError.GetResult());
+            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
             requests.emplace(keyOrError.GetResult(), request);
@@ -931,9 +916,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(*startRequest);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            "endpoint",
-            strOrError.GetResult());
+        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto restoreFuture = endpointService->RestoreEndpoints();

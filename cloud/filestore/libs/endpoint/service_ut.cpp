@@ -182,9 +182,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(start);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            id,
-            strOrError.GetResult());
+        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto request = std::make_shared<NProto::TKickEndpointRequest>();
@@ -260,9 +258,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(start);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            id,
-            strOrError.GetResult());
+        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto request = std::make_shared<NProto::TKickEndpointRequest>();
@@ -309,9 +305,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(start);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                id,
-                strOrError.GetResult());
+            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
