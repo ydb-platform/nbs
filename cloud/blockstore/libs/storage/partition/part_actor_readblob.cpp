@@ -47,6 +47,7 @@ void TPartitionActor::HandleReadBlob(
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
         SelfId(),
+        VolumeActorId,
         TabletID(),
         State->GetBlockSize(),
         StorageAccessMode,

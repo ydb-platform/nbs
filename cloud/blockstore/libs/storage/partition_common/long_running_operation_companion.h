@@ -45,7 +45,8 @@ public:
         TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation;
 
 private:
-    const NActors::TActorId ParentActor;
+    const NActors::TActorId PartitionActor;
+    const NActors::TActorId VolumeActor;
     const EOperation Operation;
     const ui32 GroupId;
 
@@ -56,13 +57,15 @@ private:
 
 public:
     TLongRunningOperationCompanion(
-        NActors::TActorId parentActor,
+        NActors::TActorId partitionActor,
+        NActors::TActorId volumeActor,
         TDuration longRunningThreshold,
         EOperation operation,
         ui32 groupId);
 
     void RequestStarted(const NActors::TActorContext& ctx);
     void RequestFinished(const NActors::TActorContext& ctx);
+    void RequestCanceled(const NActors::TActorContext& ctx);
 
     void HandleTimeout(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

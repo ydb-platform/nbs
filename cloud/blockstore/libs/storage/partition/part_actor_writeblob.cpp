@@ -46,6 +46,7 @@ private:
 public:
     TWriteBlobActor(
         const TActorId& tabletActorId,
+        const TActorId& volumeActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
@@ -84,6 +85,7 @@ private:
 
 TWriteBlobActor::TWriteBlobActor(
         const TActorId& tabletActorId,
+        const TActorId& volumeActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
@@ -91,6 +93,7 @@ TWriteBlobActor::TWriteBlobActor(
         ui32 groupId)
     : TLongRunningOperationCompanion(
           tabletActorId,
+          volumeActorId,
           longRunningThreshold,
           TLongRunningOperationCompanion::EOperation::WriteBlob,
           groupId)
@@ -188,8 +191,13 @@ void TWriteBlobActor::ReplyAndDie(
             RequestInfo->CallContext->RequestId);
     }
 
+    if (HasError(response->GetError())) {
+        TLongRunningOperationCompanion::RequestCanceled(ctx);
+    } else {
+        TLongRunningOperationCompanion::RequestFinished(ctx);
+    }
+
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    TLongRunningOperationCompanion::RequestFinished(ctx);
     Die(ctx);
 }
 
@@ -340,6 +348,7 @@ void TPartitionActor::HandleWriteBlob(
         channel,
         std::make_unique<TWriteBlobActor>(
             SelfId(),
+            VolumeActorId,
             requestInfo,
             TabletID(),
             std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
@@ -450,9 +459,6 @@ void TPartitionActor::HandleLongRunningBlobOperation(
         State->RegisterDowntime(ctx.Now(), msg.GroupId);
         Actors.MarkLongRunning(ev->Sender, msg.Operation);
     }
-
-    // Forward request to TVolumeActor
-    ctx.Send(ev->Forward(VolumeActorId));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
