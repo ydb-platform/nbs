@@ -123,7 +123,6 @@ jobs:
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
-        sleep_after_tests: ${{ inputs.sleep_after_tests }}
 
     - id: failure
       name: set sleep_after_tests in case of failure
