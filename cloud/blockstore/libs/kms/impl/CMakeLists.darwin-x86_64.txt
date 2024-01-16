@@ -7,7 +7,6 @@
 
 
 add_subdirectory(example)
-add_subdirectory(ut_client)
 
 add_library(libs-kms-impl)
 target_link_libraries(libs-kms-impl PUBLIC
