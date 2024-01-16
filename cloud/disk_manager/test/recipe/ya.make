@@ -15,8 +15,8 @@ PY_SRCS(
 PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/tests/python/lib
-    cloud/disk_manager/test/common
     cloud/filestore/tests/python/lib
+    cloud/tasks/test/common
     contrib/ydb/tests/library
     library/python/testing/recipe
 )

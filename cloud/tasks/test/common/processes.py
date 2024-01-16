@@ -54,4 +54,4 @@ def kill_processes(service_name: str):
 
 
 def _get_pids_file_name(service_name: str):
-    return "disk_manager_recipe_%s.pids" % service_name
+    return "cloud_tasks_test_common_%s.pids" % service_name

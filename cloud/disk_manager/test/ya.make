@@ -1,6 +1,5 @@
 RECURSE(
     acceptance
-    common
     images
     mocks
     nemesis

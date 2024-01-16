@@ -39,5 +39,6 @@ RECURSE_FOR_TESTS(
     metrics
     mocks
     tasks_tests
+    test
     tests
 )

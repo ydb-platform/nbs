@@ -1,9 +1,9 @@
 import yatest.common as common
 
-from cloud.disk_manager.test.common.processes import register_process, kill_processes
 from cloud.filestore.config.server_pb2 import TServerAppConfig, TLocalServiceConfig
 from cloud.filestore.tests.python.lib.daemon_config import NfsServerConfigGenerator
 from cloud.filestore.tests.python.lib.server import NfsServer, wait_for_nfs_server
+from cloud.tasks.test.common.processes import register_process, kill_processes
 
 SERVICE_NAME = "nfs"
 
